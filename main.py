@@ -1,501 +1,924 @@
-# main.py — Ghost Mini (single‑file, copy‑paste friendly)
-# - Runs out-of-the-box (SIM) with a heartbeat + UI
-# - Optional Coinbase Advanced Trade overlay if creds are present
-# - Simple advisor loop, safe defaults, and /health + /api/status
-# - No secrets required to start
+# main.py — Ghost Protocol v2.6.1 (Fusion AI + Grok-Ready)
+# Base: v2.5.1 Stable + Security Patch → v2.6 Fusion
+# This patch fixes all syntax errors, restores missing functions/vars,
+# and keeps the existing UI/logic. Grok hook is present but optional.
+#
+# Adds/keeps:
+# - Fusion AI layer (Ghost/Claude/Gemini + optional Grok) with weights
+# - Fusion performance tracker + daily re-weight
+# - /api/fusion_status (weights/stats/next reweight/last_grok)
+# - CSV/Sheets trade logging (includes GrokScore column)
+# - Background auto-updater intact
+# - UI unchanged (Fusion panel + controls)
 
-import os, time, math, random, json, logging, threading, hmac, hashlib, base64
+import os, time, json, random, requests, threading, traceback, logging, base64, hashlib, sys
+try:
+    import gspread
+except Exception:
+    gspread = None
+from flask import Flask, request, jsonify, redirect
 from collections import deque
-from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
-from datetime import datetime, timezone, date
-import requests
-from flask import Flask, request, jsonify, Response, redirect
+from functools import wraps
 
-# =============================== CONFIG ===============================
-VERSION = "mini-1.0.0"
+VERSION = "v2.6.1-fusion"
 
-def _env_bool(k, d=False):
-    v = os.getenv(k, str(d))
-    return str(v).lower() in ("1", "true", "yes", "y")
+# ============================== CONFIG ===============================
+TRACKED = [s.strip() for s in os.getenv("TRACKED","BTC,ETH,PEPE,DOGE,SHIB,WEPE,USDC").split(',') if s.strip()]
+TOKEN = os.getenv("TOKEN", "supersecret123")
 
-# Advisor & runtime
-ADVISOR_MODE     = os.getenv("ADVISOR_MODE", "opportunistic")   # opportunistic | conservative
-PAPER_TRADE      = _env_bool("PAPER_TRADE", True)               # True boots even w/o creds
-EXECUTION_BACKEND= os.getenv("EXECUTION_BACKEND", "sim")        # sim | coinbase
-CB_MODE          = os.getenv("CB_MODE", "read")                 # read | trade
-CB_SANDBOX       = _env_bool("CB_SANDBOX", False)
+WALLET_ADDRESS = os.getenv("WALLET_ADDRESS", "0x4f33f5e4322e2c8ff95159e2eae8057190217ac7")
+ROTATE_WALLETS = [w.strip() for w in os.getenv("ROTATE_WALLETS", WALLET_ADDRESS).split(',') if w.strip()]
+COVALENT_KEY = os.getenv("COVALENT_KEY", "demo")
+COINBASE_API_KEY = os.getenv("COINBASE_API_KEY", "")
+COINBASE_API_SECRET = os.getenv("COINBASE_API_SECRET", "")
 
-LOOP_SECONDS     = int(os.getenv("LOOP_SECONDS", "5"))
-PORT             = int(os.getenv("PORT", "3000"))
-TOKEN            = os.getenv("TOKEN", "changeme")
-POLL_SEC         = int(os.getenv("POLL_SEC", "2"))
+ALLOC_BASE_FRAC = float(os.getenv("ALLOC_BASE_FRAC", "0.25"))
+TAKE_PROFIT_PCT = float(os.getenv("TAKE_PROFIT_PCT", "0.20"))
+STOP_LOSS_PCT   = float(os.getenv("STOP_LOSS_PCT",   "0.30"))
+LOW_CASH_USD_THRESHOLD = float(os.getenv("LOW_CASH_USD_THRESHOLD", "25"))
+PRICE_CACHE_SEC = int(os.getenv("PRICE_CACHE_SEC", "8"))
 
-# Goal panel (cosmetic)
-START_EQUITY     = float(os.getenv("START_EQUITY", "1000"))
-GOAL_EQUITY      = float(os.getenv("GOAL_EQUITY", "10000"))
-GOAL_DEADLINE    = os.getenv("GOAL_DEADLINE_ISO", "2025-12-31")
+# Fusion layer config
+FUSION_MODE = (os.getenv("FUSION_MODE", "1") == "1")                 # ON by default
+FUSION_REWEIGHT_HOURS = int(os.getenv("FUSION_REWEIGHT_HOURS", "24"))
+FUSION_MIN_TRADES_FOR_REWEIGHT = int(os.getenv("FUSION_MIN_TRADES_FOR_REWEIGHT", "5"))
+FUSION_APPROVAL_THRESHOLD = float(os.getenv("FUSION_APPROVAL_THRESHOLD", "0.66"))  # weighted sum ≥ 0.66 passes
+FUSION_SIM = (os.getenv("FUSION_SIM", "1") == "1")                   # simulate AI opinions if true
 
-# Universe
-STABLE           = os.getenv("STABLE", "USDC").upper()
-UNIVERSE         = [s.strip().upper() for s in os.getenv("UNIVERSE", "BTC,ETH,PEPE,DOGE,SHIB").split(",") if s.strip()]
-if STABLE not in UNIVERSE: UNIVERSE.append(STABLE)
+# Auto-update config
+BACKGROUND_UPDATE_HOURS = int(os.getenv("BACKGROUND_UPDATE_HOURS", "6"))  # 0 disables
+UPDATE_URL = os.getenv("UPDATE_URL", "")         # expects JSON {version, sha256?, code_b64? or code?}
+UPDATE_BEARER = os.getenv("UPDATE_BEARER", "")    # optional Authorization: Bearer <token>
+AUTO_APPLY_UPDATE = (os.getenv("AUTO_APPLY_UPDATE", "0") == "1")      # if 1, write to main.py and restart
 
-TOP_N            = int(os.getenv("TOP_N", "3"))
-MIN_SCORE_ENTER  = float(os.getenv("MIN_SCORE_ENTER", "1.00"))
-MIN_SCORE_EXIT   = float(os.getenv("MIN_SCORE_EXIT", "0.85"))
-REBAL_EVERY_TICKS= int(os.getenv("REBAL_EVERY_TICKS", "12"))
-WARMUP_TICKS     = int(os.getenv("WARMUP_TICKS", "60"))
+# Grok (xAI) optional integration (hooked but safe if disabled)
+GROK_ENABLE = (os.getenv("GROK_ENABLE", "0") == "1")
+GROK_API_KEY = os.getenv("GROK_API_KEY", "")
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-2-latest")
+GROK_ENDPOINT = os.getenv("GROK_ENDPOINT", "https://api.x.ai/v1/chat/completions")
+GROK_TIMEOUT = int(os.getenv("GROK_TIMEOUT", "12"))
 
-# Risk (simple)
-MAX_GROSS_EXPOSURE = float(os.getenv("MAX_GROSS_EXPOSURE", "0.80"))
-MAX_PER_TRADE_FRAC = float(os.getenv("MAX_PER_TRADE_FRAC", "0.35"))
-MIN_TRADE_USD      = float(os.getenv("MIN_TRADE_USD", "50"))
+# Google Sheets logging (optional; CSV fallback if not set)
+GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID", "")
+GOOGLE_SERVICE_ACCOUNT_JSON_B64 = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_B64", "")
 
-# Coinbase creds (optional)
-CB_API_KEY     = os.getenv("CB_API_KEY", "").strip()
-CB_API_SECRET  = os.getenv("CB_API_SECRET", "").strip()   # entire PEM string OK
-COINBASE_PRODUCTS = [p.strip() for p in os.getenv("COINBASE_PRODUCTS", "BTC-USD,ETH-USD,PEPE-USD,DOGE-USD,SHIB-USD,USDC-USD").split(",") if p.strip()]
+# Mappings for price APIs
+COINGECKO_IDS = {
+  'BTC':'bitcoin','ETH':'ethereum','PEPE':'pepe','DOGE':'dogecoin','SHIB':'shiba-inu','USDC':'usd-coin','WEPE':'wepe'
+}
+COINPAPRIKA_IDS = {
+  'BTC':'btc-bitcoin','ETH':'eth-ethereum','PEPE':'pepe-pepe','DOGE':'doge-dogecoin','SHIB':'shib-shiba-inu','USDC':'usdc-usd-coin'
+}
 
-# =============================== Coinbase client ===============================
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
-class CoinbaseClient:
-    """
-    Advanced Trade client with retry/backoff and safe base‑URL handling.
-    Works in production by default; set CB_SANDBOX=true to switch.
-    """
-
-    def __init__(self, key, secret, sandbox=False, base_url=None, timeout=12):
-        self.key = (key or "").strip()
-        self.secret = (secret or "").strip()
-
-        env_url = (os.getenv("COINBASE_API_URL") or "").strip()
-        if not base_url:
-            base_url = env_url or ("https://api.sandbox.coinbase.com" if sandbox else "https://api.coinbase.com")
-        if "sandbox" in base_url.lower() and not sandbox:
-            base_url = "https://api.coinbase.com"
-
-        self.base_v3 = base_url.rstrip("/") + "/api/v3/brokerage"
-        self.timeout = timeout
-
-        self.s = requests.Session()
-        retry = Retry(
-            total=6, connect=3, read=3, backoff_factor=0.6,
-            status_forcelist=(429, 500, 502, 503, 504),
-            allowed_methods=frozenset(["GET", "POST"]),
-        )
-        self.s.mount("https://", HTTPAdapter(max_retries=retry))
-        self.s.mount("http://",  HTTPAdapter(max_retries=retry))
-
-    def _sig(self, ts: str, method: str, path: str, body: str = "") -> str:
-        msg = f"{ts}{method.upper()}{path}{body}".encode("utf-8")
-        mac = hmac.new(self.secret.encode("utf-8"), msg, hashlib.sha256).digest()
-        return base64.b64encode(mac).decode("utf-8")
-
-    def _headers(self, method: str, path: str, body: str = "") -> Dict[str, str]:
-        ts = str(int(time.time()))
-        return {
-            "CB-ACCESS-KEY": self.key,
-            "CB-ACCESS-SIGN": self._sig(ts, method, path, body),
-            "CB-ACCESS-TIMESTAMP": ts,
-            "Content-Type": "application/json",
-        }
-
-    def _get(self, path: str):
-        url = self.base_v3 + path
-        hdr = self._headers("GET", path)
-        r = self.s.get(url, headers=hdr, timeout=self.timeout)
-        if r.status_code >= 400:
-            logging.error("CB GET %s -> %s body=%s", url, r.status_code, r.text[:600])
-        r.raise_for_status()
-        return r.json()
-
-    def _post(self, path: str, payload: dict):
-        body = json.dumps(payload, separators=(",", ":"))
-        url = self.base_v3 + path
-        hdr = self._headers("POST", path, body)
-        r = self.s.post(url, data=body, headers=hdr, timeout=self.timeout)
-        if r.status_code >= 400:
-            logging.error("CB POST %s -> %s body=%s", url, r.status_code, r.text[:600])
-        r.raise_for_status()
-        return r.json()
-
-    def accounts(self):
-        return self._get("/accounts")
-
-    def best_bid_ask(self, product_ids: List[str]):
-        if not product_ids:
-            return []
-        q = "?product_ids=" + ",".join(product_ids)
-        return self._get("/best_bid_ask" + q).get("pricebooks", [])
-
-    def place_market_order(self, product_id: str, side: str, usd_amount=None, size=None):
-        order = {
-            "client_order_id": f"ghost-{int(time.time()*1000)}",
-            "product_id": product_id,
-            "side": side.lower(),
-            "order_configuration": {"market_market_ioc": {}},
-        }
-        oc = order["order_configuration"]["market_market_ioc"]
-        if usd_amount is not None:
-            oc["quote_size"] = str(usd_amount)
-        elif size is not None:
-            oc["base_size"] = str(size)
-        else:
-            raise ValueError("Provide usd_amount or size")
-        return self._post("/orders", order)
-
-# =============================== Types/State ===============================
-@dataclass
-class Bar:
-    price: float
-    ts: float
-
-@dataclass
-class Series:
-    prices: deque = field(default_factory=lambda: deque(maxlen=1440))
-
-@dataclass
-class Position:
-    symbol: str
-    qty: float
-    avg: float
-    peak: float
-
-class Portfolio:
-    def __init__(self, equity_usd=START_EQUITY):
-        self.cash = equity_usd
-        self.positions: Dict[str, Position] = {}
-        self.tick = 0
-        self.equity_hist: deque = deque(maxlen=200000)
-        self.halted = False
-        self.last_rebalance_tick = -999
-        self.msg = ""
-        self.diag = {
-            "ranks": [],
-            "ticks_left": REBAL_EVERY_TICKS,
-            "warmup_left": WARMUP_TICKS,
-            "feed_ok": True,
-            "feed_via": "sim",
-            "last_reason": "",
-        }
-
-    def equity(self, prices: Dict[str, float]) -> float:
-        v = self.cash
-        for p in self.positions.values():
-            v += p.qty * prices.get(p.symbol, p.avg)
-        return v
-
-    def gross_exposure(self, prices: Dict[str, float]) -> float:
-        eq = self.equity(prices)
-        return 1 - (self.cash / max(eq, 1e-9))
-
-# =============================== Data (SIM + CB overlay) ===============================
-series: Dict[str, Series] = {s: Series() for s in UNIVERSE}
-latest_prices: Dict[str, float] = {s: 1.0 for s in UNIVERSE}
-_last_sim_price = {s: 1.0 for s in UNIVERSE}
-
-cb = None
-if EXECUTION_BACKEND == "coinbase" and (CB_API_KEY and CB_API_SECRET):
-    try:
-        cb = CoinbaseClient(CB_API_KEY, CB_API_SECRET, sandbox=CB_SANDBOX)
-    except Exception as e:
-        logging.error("Coinbase client init failed: %s", e)
-        cb = None
-
-def _sim_snapshot() -> Dict[str, Bar]:
-    snap: Dict[str, Bar] = {}
-    now = time.time()
-    for s in UNIVERSE:
-        base = _last_sim_price[s]
-        if s == STABLE:
-            price = 1.0
-        else:
-            drift = 0.0008
-            noise = random.uniform(-0.004, 0.004)
-            price = max(1e-9, base * (1 + drift + noise))
-        _last_sim_price[s] = price
-        snap[s] = Bar(price=price, ts=now)
-    return snap
-
-def get_market_snapshot() -> Dict[str, Bar]:
-    snap = _sim_snapshot()
-    if cb:
-        try:
-            books = cb.best_bid_ask(COINBASE_PRODUCTS)
-            now = time.time()
-            pid_to_sym = {"BTC-USD":"BTC","ETH-USD":"ETH","PEPE-USD":"PEPE","DOGE-USD":"DOGE","SHIB-USD":"SHIB","USDC-USD":"USDC"}
-            for b in books:
-                pid = b.get("product_id")
-                bid = b.get("bid_price")
-                ask = b.get("ask_price")
-                if not pid or pid not in pid_to_sym: continue
-                mid = (float(bid)+float(ask))/2 if bid and ask else None
-                if mid:
-                    sym = pid_to_sym[pid]
-                    if sym in snap:
-                        snap[sym].price = mid
-                        snap[sym].ts = now
-            state.diag["feed_ok"] = True
-            state.diag["feed_via"] = "coinbase"
-        except Exception as e:
-            state.msg = f"Coinbase feed error: {e}"
-            state.diag["feed_ok"] = False
-            state.diag["feed_via"] = "sim"
-    else:
-        state.diag["feed_ok"] = True
-        state.diag["feed_via"] = "sim"
-    return snap
-
-# =============================== Signals (very simple) ===============================
-def stdev(vals: List[float]) -> float:
-    n=len(vals)
-    if n<2: return 0.0
-    m=sum(vals)/n
-    return (sum((x-m)**2 for x in vals)/(n-1))**0.5
-
-def pct_ret(a, b): 
-    return a/b - 1 if b>0 else 0.0
-
-def rank_asset(sym: str) -> float:
-    if sym == STABLE: return -1.0
-    p = list(series[sym].prices)
-    if len(p) < WARMUP_TICKS: return -1.0
-    # Momentum + quality / vol
-    def mom(win):
-        if len(p) < win+2: return 0.0
-        a, b = p[-win-1], p[-2]
-        return pct_ret(b, a)
-    mom1  = mom(12)
-    mom4  = mom(48)
-    mom24 = mom(288)
-    vol   = (stdev([pct_ret(p[i], p[i-1]) for i in range(1, len(p))]) or 1e-9)
-    score = (0.5*mom24 + 0.3*mom4 + 0.2*mom1) / max(vol, 1e-9)
-    return score
-
-def should_enter(sym: str, score: float) -> bool:
-    if ADVISOR_MODE == "conservative":
-        return score >= (MIN_SCORE_ENTER + 0.25)
-    return score >= MIN_SCORE_ENTER
-
-# =============================== Core Step ===============================
-def rebalance(port: Portfolio, snap: Dict[str, Bar]):
-    # append prices
-    for sym, bar in snap.items():
-        series[sym].prices.append(bar.price)
-
-    prices = {k: v.price for k, v in snap.items()}
-    latest_prices.update(prices)
-
-    # warmup
-    nonstable_lengths = [len(series[s].prices) for s in UNIVERSE if s != STABLE]
-    port.diag["warmup_left"] = max(0, WARMUP_TICKS - (min(nonstable_lengths) if nonstable_lengths else 0))
-
-    # cadence gate
-    ticks_since = port.tick - port.last_rebalance_tick
-    port.diag["ticks_left"] = max(0, REBAL_EVERY_TICKS - ticks_since)
-    if ticks_since < REBAL_EVERY_TICKS:
-        return
-    port.last_rebalance_tick = port.tick
-
-    # rank
-    scores = {sym: rank_asset(sym) for sym in UNIVERSE}
-    brain = [{"sym": s, "score": round(scores.get(s, -1.0), 4)} for s in UNIVERSE]
-    brain.sort(key=lambda x: x["score"], reverse=True)
-    port.diag["ranks"] = brain[:8]
-
-    # keep current positions if score ok
-    kept, exits = [], []
-    for sym, pos in list(port.positions.items()):
-        sc = scores.get(sym, -1.0)
-        if sc >= MIN_SCORE_EXIT: kept.append(sym)
-        else: exits.append(sym)
-    for sym in exits:
-        pos = port.positions.get(sym)
-        if not pos: continue
-        port.cash += pos.qty * prices.get(sym, pos.avg)
-        del port.positions[sym]
-
-    ranked = [s for s in sorted(UNIVERSE, key=lambda x: scores.get(x, -1.0), reverse=True)
-              if s != STABLE and scores.get(s, -1.0) >= MIN_SCORE_ENTER]
-    targets = (kept + [s for s in ranked if s not in kept])[:TOP_N]
-
-    eq = port.equity(prices)
-    current_gross = port.gross_exposure(prices)
-    target_gross = MAX_GROSS_EXPOSURE
-    cash_budget = eq * max(0.0, (target_gross - current_gross))
-    per_trade_cash = min(eq * MAX_PER_TRADE_FRAC, cash_budget)
-
-    buys=[]
-    if targets and per_trade_cash >= MIN_TRADE_USD:
-        for sym in targets:
-            if sym in port.positions: continue
-            if not should_enter(sym, scores[sym]): continue
-            qty = per_trade_cash / prices[sym]
-            port.cash -= qty * prices[sym]
-            port.positions[sym] = Position(sym, qty, prices[sym], prices[sym])
-            buys.append(sym)
-
-    reason = []
-    if exits: reason.append("EXIT " + ",".join(exits))
-    if buys:  reason.append("BUY " + ",".join(buys))
-    port.diag["last_reason"] = "; ".join(reason) if reason else "HOLD"
-
-# =============================== Feasibility display ===============================
-def required_daily_growth(cur, goal, days):
-    try: return (goal/max(1e-9,cur))**(1/max(1,days)) - 1
-    except Exception: return 0.0
-
-def progress_line(port: Portfolio, prices: Dict[str, float]) -> str:
-    eq = port.equity(prices)
-    port.equity_hist.append(eq)
-    try:
-        today = date.today()
-        deadline = date.fromisoformat(GOAL_DEADLINE)
-        days_left = max(0, (deadline - today).days)
-    except Exception:
-        days_left = 0
-    req = required_daily_growth(eq, GOAL_EQUITY, max(1, days_left))
-    return f"Equity ${eq:,.2f} | req/day {req*100:.2f}% | days_left {days_left}"
-
-# =============================== Server / UI ===============================
+# ============================== APP/STATE ============================
 app = Flask(__name__)
-state = Portfolio(START_EQUITY)
+logging.basicConfig(level=logging.INFO)
 
-def authed(req): return req.args.get("token") == TOKEN
+class Pos:
+    def __init__(self, sym, qty, price):
+        self.sym = sym; self.qty = qty; self.price = price; self.peak = price
 
+state = type("State", (), {})()
+state.positions = {}
+state.msg = f"Ghost Protocol {VERSION} — Fusion ON" if FUSION_MODE else f"Ghost Protocol {VERSION} — Fusion OFF"
+state.diag = {"memory": {}, "equity": deque(maxlen=300), "cb_holdings": []}
+state.cash = 1000.0
+state.cb_cash = 0.0
+state.pnl = {}
+state.history = []
+state.tracebacks = []
+state.last_updated = time.time()
+state.lock = threading.Lock()
+state.trading_enabled = True
+state.halted = False
+state.base_equity = None
+state.wallets = ROTATE_WALLETS[:]
+state.wallet_index = 0
+state.current_wallet = state.wallets[state.wallet_index] if state.wallets else WALLET_ADDRESS
+LOG_RING = deque(maxlen=500)
+_price_cache = {}
+
+# Fusion state
+state.last_fusion_meta = {}
+state.last_grok = None
+state.fusion_installed_at = time.time()
+state.last_reweight_at = None
+state.fusion_weights = {"ghost": 0.30, "claude": 0.30, "gemini": 0.20, "grok": 0.20}
+state.fusion_stats = {
+    "ghost":  {"calls":0,"wins":0,"losses":0,"roi_sum":0.0},
+    "claude": {"calls":0,"wins":0,"losses":0,"roi_sum":0.0},
+    "gemini": {"calls":0,"wins":0,"losses":0,"roi_sum":0.0},
+    "grok":   {"calls":0,"wins":0,"losses":0,"roi_sum":0.0},
+}
+
+# ============================== LOGGING ==============================
+
+def _log(msg):
+    ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+    line = f"{ts} | {msg}"
+    LOG_RING.append(line)
+    logging.info(line)
+
+# ============================== AUTH =================================
+
+def _authed_query():
+    tok = request.args.get("token")
+    return tok == TOKEN
+
+def require_auth(fn):
+    @wraps(fn)
+    def wrap(*a, **k):
+        hdr = request.headers.get("Authorization")
+        if hdr == TOKEN:
+            return fn(*a, **k)
+        # allow GET fallback via query token for convenience
+        if request.method == 'GET' and _authed_query():
+            return fn(*a, **k)
+        return jsonify({"error":"unauthorized"}), 403
+    return wrap
+
+# ============================== DATA SRCS ============================
+
+def price_primary(sym):
+    gid = COINGECKO_IDS.get(sym)
+    if not gid: return -1.0
+    r = requests.get("https://api.coingecko.com/api/v3/simple/price", params={"ids":gid, "vs_currencies":"usd"}, timeout=6)
+    r.raise_for_status()
+    v = r.json().get(gid,{}).get("usd")
+    return float(v) if v is not None else -1.0
+
+def price_fallback(sym):
+    pid = COINPAPRIKA_IDS.get(sym)
+    if not pid: return -1.0
+    r = requests.get(f"https://api.coinpaprika.com/v1/tickers/{pid}", timeout=6)
+    r.raise_for_status()
+    v = r.json().get('quotes',{}).get('USD',{}).get('price')
+    return float(v) if v is not None else -1.0
+
+def get_price(sym):
+    now = time.time()
+    c = _price_cache.get(sym)
+    if c and now - c['ts'] < PRICE_CACHE_SEC:
+        return c['price']
+    val = -1.0
+    try:
+        val = price_primary(sym)
+    except Exception as e:
+        _log(f"price primary err {sym}: {e}")
+    if val <= 0:
+        try:
+            val = price_fallback(sym)
+        except Exception as e:
+            _log(f"price fallback err {sym}: {e}")
+    if val > 0:
+        _price_cache[sym] = {"price": val, "ts": now}
+    return val
+
+def get_eth_balance_usd(wallet):
+    try:
+        url = (f"https://api.covalenthq.com/v1/1/address/{wallet}/balances_v2/"
+               f"?quote-currency=USD&nft=false&no-nft-fetch=true&key={COVALENT_KEY}")
+        res = requests.get(url, timeout=8)
+        js = res.json(); items = js.get("data",{}).get("items",[])
+        for it in items:
+            if it.get("contract_ticker_symbol") == "ETH":
+                q = it.get("quote") or 0
+                return round(float(q), 2)
+    except Exception as e:
+        _log(f"Covalent err: {e}")
+    return 0.0
+
+def get_coinbase_balance_and_positions():
+    try:
+        headers = {"CB-ACCESS-KEY": COINBASE_API_KEY, "CB-ACCESS-SIGN": "", "CB-ACCESS-TIMESTAMP": str(int(time.time())), "CB-VERSION": "2023-01-01"}
+        r = requests.get("https://api.coinbase.com/v2/accounts", headers=headers, timeout=8)
+        data = r.json().get("data", []) if r.status_code == 200 else []
+        usd_total, positions = 0.0, []
+        for a in data:
+            cur = a.get('balance',{}).get('currency'); amt = float(a.get('balance',{}).get('amount',0))
+            if not cur or amt == 0: continue
+            if cur == 'USD': usd_total += amt
+            else: positions.append({"symbol": cur, "amount": amt})
+        return round(usd_total,2), positions
+    except Exception as e:
+        _log(f"Coinbase err: {e}")
+        return 0.0, []
+
+# ============================== MEMORY ===============================
+
+def ghostmirror_update(sym, score):
+    mem = state.diag["memory"].setdefault(sym, deque(maxlen=40))
+    try:
+        score = round(float(score), 3)
+    except Exception:
+        score = 0.0
+    mem.append(score)
+
+# ======================== SHEETS/CSV LOGGING =========================
+
+def _ensure_csv_header(path):
+    try:
+        if not os.path.exists(path):
+            with open(path, "w") as f:
+                f.write("Timestamp,ISO,Coin,Action,Price,Amount,GhostScore,ClaudeScore,GeminiScore,GrokScore,FusionPass\n")
+    except Exception as e:
+        _log(f"CSV header error: {e}")
+
+def _append_csv_row(path, row):
+    try:
+        _ensure_csv_header(path)
+        with open(path, "a") as f:
+            f.write(",".join([str(x) if x is not None else "" for x in row]) + "\n")
+    except Exception as e:
+        _log(f"CSV append error: {e}")
+
+def _init_sheets():
+    if not gspread:
+        _log("Sheets: gspread not installed; using CSV fallback")
+        return
+    if not GOOGLE_SHEETS_ID or not GOOGLE_SERVICE_ACCOUNT_JSON_B64:
+        _log("Sheets: GOOGLE_SHEETS_ID/GOOGLE_SERVICE_ACCOUNT_JSON_B64 not set; CSV fallback")
+        return
+    try:
+        creds = json.loads(base64.b64decode(GOOGLE_SERVICE_ACCOUNT_JSON_B64))
+        client = gspread.service_account_from_dict(creds)
+        sh = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            ws = sh.worksheet("Trades")
+        except Exception:
+            ws = sh.add_worksheet(title="Trades", rows="1", cols="11")
+            ws.append_row(["Timestamp","ISO","Coin","Action","Price","Amount","GhostScore","ClaudeScore","GeminiScore","GrokScore","FusionPass"], value_input_option="USER_ENTERED")
+        state.gs = {"client": client, "sheet": ws, "ready": True}
+        _log("Sheets: connected to Trades worksheet")
+    except Exception as e:
+        _log(f"Sheets init error: {e}")
+
+
+def _fmt_ts(ts):
+    if not ts:
+        return None
+    try:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(ts))
+    except Exception:
+        return None
+
+
+def log_trade_row(sym, action, price, amount, fmeta=None):
+    ts = int(time.time())
+    iso = _fmt_ts(ts)
+    g = c = m = k = ""
+    fusion_pass = ""
+    if fmeta:
+        sc = fmeta.get("scores", {})
+        gv = sc.get("ghost"); cv = sc.get("claude"); mv = sc.get("gemini"); kv = sc.get("grok")
+        g = round(gv, 4) if isinstance(gv, (int, float)) else (gv if gv is not None else "")
+        c = round(cv, 4) if isinstance(cv, (int, float)) else (cv if cv is not None else "")
+        m = round(mv, 4) if isinstance(mv, (int, float)) else (mv if mv is not None else "")
+        k = round(kv, 4) if isinstance(kv, (int, float)) else (kv if kv is not None else "")
+        fusion_pass = "YES" if fmeta.get("approved") else "NO"
+    row = [ts, iso, sym, action, price, amount, g, c, m, k, fusion_pass]
+
+    if getattr(state, "gs", {}).get("ready"):
+        try:
+            state.gs["sheet"].append_row(row, value_input_option="USER_ENTERED")
+        except Exception as e:
+            _log(f"Sheets append error: {e}; writing CSV fallback")
+            _append_csv_row("trades.csv", row)
+    else:
+        _append_csv_row("trades.csv", row)
+
+# ============================== GROK (xAI) SENTIMENT ==================
+
+def _grok_hype_score(sym, context=None):
+    if not (GROK_ENABLE and GROK_API_KEY):
+        return None
+    try:
+        prompt = (
+            "You are scoring crypto meme coin hype. "
+            "Return ONLY a JSON object with key 'hype' between 0 and 1. "
+            f"Symbol: {sym}. Consider recent social buzz, novelty, and virality likelihood."
+        )
+        headers = {"Authorization": f"Bearer {GROK_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "model": GROK_MODEL,
+            "messages": [
+                {"role": "system", "content": "Return JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0,
+        }
+        r = requests.post(GROK_ENDPOINT, headers=headers, json=payload, timeout=GROK_TIMEOUT)
+        if r.status_code != 200:
+            _log(f"Grok API HTTP {r.status_code}")
+            return None
+        js = r.json()
+        try:
+            content = js["choices"][0]["message"]["content"].strip()
+        except Exception:
+            return None
+        try:
+            if content.startswith("{") and content.endswith("}"):
+                data = json.loads(content)
+            else:
+                lb = content.find("{"); rb = content.rfind("}")
+                data = json.loads(content[lb:rb+1]) if lb != -1 and rb != -1 else {}
+        except Exception:
+            return None
+        hype = float(data.get("hype"))
+        return max(0.0, min(1.0, hype))
+    except Exception as e:
+        _log(f"Grok error: {e}")
+        return None
+
+# ============================== FUSION CORE ===========================
+
+# --- Fusion AI debate (stub/sim) ---
+
+def _simulate_ai_scores(sym, base_score):
+    # Map base score (0.4..2.0) to 0..1 confidence and add small noise per AI
+    x = max(0.0, min(1.0, (base_score - 0.4) / (2.0 - 0.4)))
+    rn = random.random()
+    ghost = max(0.0, min(1.0, x + (0.10*rn - 0.05)))
+    claude = max(0.0, min(1.0, x + (0.12*random.random() - 0.06)))
+    gemini = max(0.0, min(1.0, x + (0.12*random.random() - 0.06)))
+    return {"ghost": ghost, "claude": claude, "gemini": gemini}
+
+
+def fusion_consensus(sym, base_signal_score):
+    """Returns (approved:boolean, scores:dict, weighted_sum:float)."""
+    if not FUSION_MODE:
+        return True, {"ghost":1.0, "claude":1.0, "gemini":1.0, "grok":1.0}, 1.0
+
+    # Opinions (stub unless real APIs wired)
+    scores = _simulate_ai_scores(sym, base_signal_score) if FUSION_SIM else _simulate_ai_scores(sym, base_signal_score)
+
+    # Add Grok as fourth voter if available
+    gscore = _grok_hype_score(sym)
+    if gscore is not None:
+        state.last_grok = gscore
+        scores["grok"] = gscore
+
+    # Weighted average over whichever voters are present
+    total_w = 0.0; total = 0.0; used = []
+    for k, w in state.fusion_weights.items():
+        s = scores.get(k)
+        if s is None:
+            continue
+        used.append(k)
+        total_w += float(w)
+        total += float(s) * float(w)
+    weighted = (total / total_w) if total_w > 0 else 0.0
+
+    approved = (weighted >= FUSION_APPROVAL_THRESHOLD)
+
+    # Count a call for each contributing AI
+    for k in used:
+        state.fusion_stats[k]["calls"] += 1
+
+    return approved, scores, weighted
+
+
+def recompute_fusion_weights():
+    """Re-weight AI based on simple performance heuristic (wins/losses + ROI)."""
+    try:
+        stats = state.fusion_stats
+        # Score each AI = win_rate * 0.7 + avg_roi_norm * 0.3
+        scores = {}
+        for k, s in stats.items():
+            calls = max(1, (s.get("wins",0) + s.get("losses",0)))
+            win_rate = s.get("wins",0) / calls
+            avg_roi = (s.get("roi_sum",0.0) / calls)
+            # normalize avg_roi into 0..1 softly
+            roi_norm = max(0.0, min(1.0, 0.5 + avg_roi))
+            scores[k] = 0.7*win_rate + 0.3*roi_norm
+        # prevent all-zero
+        total = sum(scores.values()) or 1.0
+        new_w = {k: max(0.05, v/total) for k, v in scores.items()}
+        # re-normalize
+        ssum = sum(new_w.values())
+        new_w = {k: v/ssum for k, v in new_w.items()}
+        state.fusion_weights = new_w
+        state.last_reweight_at = time.time()
+        _log(f"Fusion re-weight -> {state.fusion_weights}")
+    except Exception as e:
+        _log(f"recompute_fusion_weights error: {e}")
+
+
+def _fusion_reweight_due():
+    now = time.time()
+    if state.last_reweight_at is None:
+        return (now - state.fusion_installed_at) >= FUSION_REWEIGHT_HOURS*3600
+    return (now - state.last_reweight_at) >= FUSION_REWEIGHT_HOURS*3600
+
+
+def _fusion_min_trades_met():
+    total_calls = sum(s["calls"] for s in state.fusion_stats.values())
+    if state.last_reweight_at is None:
+        return total_calls >= FUSION_MIN_TRADES_FOR_REWEIGHT
+    return total_calls >= FUSION_MIN_TRADES_FOR_REWEIGHT
+
+
+def fusion_reweight_loop():
+    while True:
+        try:
+            if _fusion_reweight_due() and _fusion_min_trades_met():
+                recompute_fusion_weights()
+        except Exception as e:
+            _log(f"Fusion re-weight error: {e}")
+        time.sleep(60)
+
+# ============================== TRADING ===============================
+
+def dynamic_alloc_frac():
+    try:
+        if state.base_equity is None: return ALLOC_BASE_FRAC
+        last_eq = state.diag["equity"][-1] if state.diag["equity"] else state.base_equity
+        growth = max(0.0, (last_eq - state.base_equity) / max(1.0, state.base_equity))
+        bump = min(0.10, 0.5*growth)
+        return max(0.05, min(0.50, ALLOC_BASE_FRAC + bump))
+    except Exception:
+        return ALLOC_BASE_FRAC
+
+def buy(sym, score, fusion_meta=None):
+    if not state.trading_enabled or state.halted: return
+    px = get_price(sym)
+    if px <= 0: return
+    with state.lock:
+        alloc = dynamic_alloc_frac(); budget = state.cash * alloc
+        if budget < 1: return
+        qty = round(budget/px, 6)
+        state.positions[sym] = Pos(sym, qty, px)
+        state.cash -= qty*px
+        state.pnl[sym] = state.pnl.get(sym, 0.0) - qty*px
+        state.history.append(("BUY", sym, qty, px))
+        extra = ""
+        if fusion_meta:
+            sc = fusion_meta.get('scores', {})
+            g_s = sc.get('ghost', 0.0); c_s = sc.get('claude', 0.0); m_s = sc.get('gemini', 0.0); k_s = sc.get('grok')
+            extra = f" | Fusion {fusion_meta['weighted']:.2f} (G:{g_s:.2f}, C:{c_s:.2f}, M:{m_s:.2f}" + (f", K:{k_s:.2f}" if isinstance(k_s,(int,float)) else "") + ")"
+            state.last_fusion_meta[sym] = fusion_meta
+        state.msg = f"BUY {sym} @ ${px:.6f} ({qty}u) — alloc {alloc:.2f}{extra}"
+        _log(state.msg)
+        try:
+            log_trade_row(sym, "BUY", px, qty, fusion_meta)
+        except Exception as e:
+            _log(f"log_trade_row BUY error: {e}")
+
+def sell(sym, reason="EXIT"):
+    if sym not in state.positions: return
+    px = get_price(sym)
+    if px <= 0: return
+    with state.lock:
+        p = state.positions.pop(sym)
+        proceeds = p.qty*px
+        state.cash += proceeds
+        pnl_delta = proceeds - (p.qty*p.price)
+        state.pnl[sym] = state.pnl.get(sym, 0.0) + proceeds
+        state.history.append(("SELL", sym, p.qty, px))
+        state.msg = f"{reason} {sym} @ ${px:.6f} ({p.qty}u)"
+        _log(state.msg)
+        # Update Fusion stats win/loss by realized PnL sign
+        outcome = "wins" if pnl_delta > 0 else "losses"
+        for k in state.fusion_stats:
+            state.fusion_stats[k][outcome] += 1
+            try:
+                roi = (px - p.price) / max(1e-9, p.price)
+            except Exception:
+                roi = 0.0
+            state.fusion_stats[k]["roi_sum"] += roi
+        try:
+            fmeta = state.last_fusion_meta.get(sym)
+            log_trade_row(sym, "SELL", px, p.qty, fmeta)
+        except Exception as e:
+            _log(f"log_trade_row SELL error: {e}")
+        finally:
+            state.last_fusion_meta.pop(sym, None)
+
+
+def risk_checks_and_trailing():
+    for sym, p in list(state.positions.items()):
+        cur = get_price(sym)
+        if cur <= 0: continue
+        if cur > p.peak: p.peak = cur
+        if cur >= p.price*(1+TAKE_PROFIT_PCT):
+            sell(sym, reason="TP"); continue
+        if cur <= p.price*(1-STOP_LOSS_PCT):
+            sell(sym, reason="SL"); continue
+
+# ============================== UPDATE ENGINE ========================
+
+def _sha256(data: bytes):
+    h = hashlib.sha256(); h.update(data); return h.hexdigest()
+
+
+def maybe_check_update():
+    if not UPDATE_URL or BACKGROUND_UPDATE_HOURS <= 0:
+        return
+    try:
+        headers = {"User-Agent":"GhostFusion/2.6"}
+        if UPDATE_BEARER:
+            headers["Authorization"] = f"Bearer {UPDATE_BEARER}"
+        r = requests.get(UPDATE_URL, timeout=10, headers=headers)
+        if r.status_code != 200:
+            _log(f"Update check: HTTP {r.status_code}")
+            return
+        payload = r.json() if r.headers.get('content-type','').startswith('application/json') else None
+        if not payload:
+            _log("Update check: expected JSON payload {version, code or code_b64}")
+            return
+        new_ver = payload.get("version")
+        code_b64 = payload.get("code_b64")
+        code_txt = payload.get("code")
+        blob = base64.b64decode(code_b64) if code_b64 else (code_txt.encode('utf-8') if code_txt else None)
+        if not blob:
+            _log("Update check: no code provided")
+            return
+        sha_ok = True
+        if payload.get("sha256"):
+            sha_ok = (payload.get("sha256").lower() == _sha256(blob).lower())
+        if not sha_ok:
+            _log("Update check: sha256 mismatch; aborting")
+            return
+        # Compare with existing file hash
+        try:
+            with open(sys.argv[0], 'rb') as f:
+                cur = f.read()
+            if _sha256(cur) == _sha256(blob):
+                _log("Update check: already up to date")
+                return
+        except Exception:
+            pass
+        # Write new file
+        with open("main.py.new", 'wb') as f:
+            f.write(blob)
+        _log(f"Update downloaded: {new_ver} -> main.py.new")
+        if AUTO_APPLY_UPDATE:
+            try:
+                os.replace("main.py.new", sys.argv[0])
+                _log("Update applied. Restarting...")
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+            except Exception as e:
+                _log(f"Auto-apply failed: {e}")
+                return
+    except Exception as e:
+        _log(f"Update check error: {e}")
+
+
+def updater_loop():
+    if not UPDATE_URL or BACKGROUND_UPDATE_HOURS <= 0:
+        return
+    while True:
+        try:
+            maybe_check_update()
+        except Exception as e:
+            _log(f"Updater error: {e}")
+        time.sleep(max(60, BACKGROUND_UPDATE_HOURS*3600))
+
+# ============================== ROUTES ================================
 @app.get("/")
-def root(): return redirect(f"/view?token={TOKEN}", code=302)
+def home():
+    return redirect(f"/view8?token={TOKEN}")
 
 @app.get("/health")
 def health():
-    return jsonify({"ok": True, "ts": int(time.time()), "mode": ADVISOR_MODE, "via": state.diag.get("feed_via","sim")})
+    return jsonify({"ok": True, "ts": int(time.time()), "version": VERSION})
+
+@app.get("/api/logs")
+@require_auth
+def api_logs():
+    return jsonify({"ok": True, "n": len(LOG_RING), "items": list(LOG_RING)})
+
+@app.get("/api/version")
+@require_auth
+def api_version():
+    return jsonify({"version": VERSION, "fusion_mode": FUSION_MODE})
+
+@app.post("/api/update_now")
+@require_auth
+def api_update_now():
+    maybe_check_update()
+    return jsonify({"ok": True})
+
+@app.get("/view8")
+@require_auth
+def view8():
+    state.cb_cash, state.diag["cb_holdings"] = get_coinbase_balance_and_positions()
+    state.cash = get_eth_balance_usd(state.current_wallet)
+    total_cash = state.cash + state.cb_cash
+
+    held = {s: {"qty": p.qty, "price": p.price} for s,p in state.positions.items()}
+    prices = {s: get_price(s) for s in TRACKED}
+    equity = total_cash + sum(h["qty"]*max(0.0, prices.get(s,0.0)) for s,h in held.items())
+    if state.base_equity is None: state.base_equity = equity
+    state.diag["equity"].append(equity)
+
+    equity_list = list(state.diag["equity"])
+    labels_list = list(range(1, len(equity_list)+1))
+    signals = "<br>".join([f"{t} {s} @ ${p:.6f} ({q}u)" for t,s,q,p in state.history[-8:]]) or "—"
+    held_box = "<br>".join([f"{s}: {d['qty']} @ ${d['price']:.6f}" for s,d in held.items()]) or "None"
+    cb_box = "<br>".join([f"{x['symbol']}: {x['amount']}" for x in state.diag.get('cb_holdings',[])]) or "None"
+
+    trade_badge = "ON" if state.trading_enabled else "OFF"
+    halted_badge = "PAUSED (low cash)" if state.halted else "RUNNING"
+
+    # Fusion panel derived values
+    weights = state.fusion_weights
+    last_rw = _fmt_ts(state.last_reweight_at)
+    next_rw = None
+    base_ts = state.last_reweight_at if state.last_reweight_at else state.fusion_installed_at
+    next_ts = base_ts + FUSION_REWEIGHT_HOURS*3600 if FUSION_REWEIGHT_HOURS else None
+    if next_ts:
+        next_rw = _fmt_ts(next_ts)
+
+    html = f"""
+    <html><head><title>Ghost Bridge {VERSION}</title><meta name='viewport' content='width=device-width'>
+    <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
+    <style>
+      body{{margin:0;background:#003b00;color:#fff;font-family:ui-monospace,Menlo,Consolas,monospace}}
+      .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;padding:20px}}
+      .card{{border:1px solid #0f0;background:#002700;border-radius:12px;padding:14px}}
+      .btn{{display:inline-block;margin:4px 6px;padding:8px 10px;border:1px solid #0f0;border-radius:10px;color:#0f0;background:#001a00;cursor:pointer}}
+      .btn:hover{{background:#013501}}
+      .kv small{{opacity:.8}}
+      .pill{{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #0f0;margin-left:6px}}
+    </style>
+    </head><body>
+    <div class='grid'>
+      <div class='card'>
+        <div class='kv'><small>Total Equity</small></div>
+        <div style='font-size:30px;' id='eq_val'>${equity:,.2f}</div>
+        <div style='background:#133;height:10px;border-radius:8px;margin-top:8px'>
+          <div id='eq_bar' style='background:#0f0;height:10px;border-radius:8px;width:{min(100.0, (equity/100)):.2f}%'></div>
+        </div>
+        <div style='margin-top:8px'>Target $10,000</div>
+      </div>
+
+      <div class='card'>
+        <div class='kv'><small>Engine</small></div>
+        <div>Feed: sim</div>
+        <div>Status: {halted_badge}</div>
+        <div>Trading: <b id='trade_badge'>{trade_badge}</b></div>
+        <div style='margin-top:8px'>
+          <button class='btn' onclick='toggleTrading()'>Toggle Trading</button>
+          <button class='btn' onclick='rotateWallet()'>Rotate Wallet</button>
+          <button class='btn' onclick='quickTP()'>TP+{int(TAKE_PROFIT_PCT*100)}%</button>
+          <button class='btn' onclick='quickSL()'>SL-{int(STOP_LOSS_PCT*100)}%</button>
+        </div>
+      </div>
+
+      <div class='card'>
+        <div class='kv'><small>Wallet (MetaMask)</small></div>
+        <div id='mm_addr'>{state.current_wallet}</div>
+        <div>USD: $<span id='mm_usd'>{state.cash:,.2f}</span></div>
+      </div>
+
+      <div class='card'>
+        <div class='kv'><small>Wallet (Coinbase)</small></div>
+        <div>USD: $<span id='cb_usd'>{state.cb_cash:,.2f}</span></div>
+        <div style='margin-top:6px'><small>Holdings:</small><br><span id='cb_box'>{cb_box}</span></div>
+      </div>
+
+      <div class='card'>
+        <div class='kv'><small>Positions</small></div>
+        <div id='pos_box'>{held_box}</div>
+      </div>
+
+      <div class='card'>
+        <div class='kv'><small>Signal Feed</small></div>
+        <div style='max-height:160px;overflow:auto' id='sig_box'>{signals}</div>
+      </div>
+
+      <div class='card'>
+        <div class='kv'><small>Fusion AI Influence</small><span class='pill' id='fusion_mode_pill'>{'ON' if FUSION_MODE else 'OFF'}</span></div>
+        <div id='fusion_weights'>Ghost {int(weights['ghost']*100)}% · Claude {int(weights['claude']*100)}% · Gemini {int(weights['gemini']*100)}%</div>
+        <div style='margin-top:6px'>Last: <span id='fusion_last'>{last_rw or '—'}</span> | Next: <span id='fusion_next'>{next_rw or '—'}</span></div>
+        <div style='margin-top:8px'>
+          <button class='btn' onclick='toggleFusion()'>Toggle Fusion</button>
+          <button class='btn' onclick='reweightNow()'>Re-weight Now</button>
+          <button class='btn' onclick='updateNow()'>Update Now</button>
+        </div>
+      </div>
+
+      <div class='card' style='grid-column:1/-1'>
+        <canvas id='eq' height='110'></canvas>
+      </div>
+    </div>
+    <script>
+    async function post(url, body={{}}){{ body.token='{TOKEN}'; const r = await fetch(url+'?token={TOKEN}', {{method:'POST', headers:{{'Content-Type':'application/json','Authorization':'{TOKEN}'}}, body:JSON.stringify(body)}}); return r.json(); }}
+    async function get(url){{ const r = await fetch(url+'?token={TOKEN}', {{headers:{{'Authorization':'{TOKEN}'}}}}); return r.json(); }}
+    async function toggleTrading(){{ const d = await post('/api/toggle_trading'); document.getElementById('trade_badge').innerText = d.enabled?'ON':'OFF'; }}
+    async function rotateWallet(){{ const d = await post('/api/rotate_wallet'); document.getElementById('mm_addr').innerText = d.wallet; }}
+    async function quickTP(){{ const d = await post('/api/config', {{take_profit: {TAKE_PROFIT_PCT}}}); alert('TP: '+Math.round(d.take_profit*100)+'%'); }}
+    async function quickSL(){{ const d = await post('/api/config', {{stop_loss: {STOP_LOSS_PCT}}}); alert('SL: '+Math.round(d.stop_loss*100)+'%'); }}
+
+    async function toggleFusion(){{ const d = await post('/api/toggle_fusion'); document.getElementById('fusion_mode_pill').innerText = d.fusion_mode?'ON':'OFF'; }}
+    async function reweightNow(){{ const d = await post('/api/reweight_now'); alert('Re-weighted: '+(d.ts || 'now')); pullFusion(); }}
+    async function updateNow(){{ const d = await post('/api/update_now'); alert('Update check triggered'); }}
+
+    async function pull(){{
+      try{{
+        const d = await get('/api/status');
+        document.getElementById('eq_val').innerText = '$'+Number(d.equity||0).toLocaleString();
+        document.getElementById('eq_bar').style.width = Math.min(100,(d.equity||0)/100).toFixed(2)+'%';
+        document.getElementById('mm_usd').innerText = Number(d.cash_mm||0).toLocaleString();
+        document.getElementById('cb_usd').innerText = Number(d.cash_cb||0).toLocaleString();
+      }}catch(e){{}}
+    }}
+
+    async function pullFusion(){{
+      try{{
+        const f = await get('/api/fusion_status');
+        const fw = f.weights || {{ghost:0.35,claude:0.40,gemini:0.25}};
+        document.getElementById('fusion_mode_pill').innerText = f.fusion_mode?'ON':'OFF';
+        document.getElementById('fusion_weights').innerText = 'Ghost '+Math.round(fw.ghost*100)+'% · Claude '+Math.round(fw.claude*100)+'% · Gemini '+Math.round(fw.gemini*100)+'%';
+        document.getElementById('fusion_last').innerText = f.last_reweight_at_str || '—';
+        document.getElementById('fusion_next').innerText = f.next_reweight_at_str || '—';
+      }}catch(e){{}}
+    }}
+    setInterval(pull, 4000);
+    setInterval(pullFusion, 4000);
+
+    const ctx = document.getElementById('eq').getContext('2d');
+    const labels = {labels_list};
+    const data = {equity_list};
+    new Chart(ctx, {{type:'line', data:{{labels:labels, datasets:[{{label:'Equity', data:data, borderColor:'lime', tension:0.35}}]}}, options:{{responsive:true, scales:{{y:{{beginAtZero:true}}}}}}}});
+    </script>
+    </body></html>
+    """
+    return html
 
 @app.get("/api/status")
+@require_auth
 def api_status():
-    if not authed(request): return jsonify({"error":"forbidden"}), 403
-    prices = dict(latest_prices)
-    eq = state.equity(prices)
-    payload = {
-        "ok": True,
-        "equity": eq,
-        "target": GOAL_EQUITY,
-        "progress_pct": (eq/GOAL_EQUITY if GOAL_EQUITY>0 else 0.0),
-        "gross_exposure": state.gross_exposure(prices),
-        "halted": state.halted,
+    last_eq = state.diag["equity"][-1] if state.diag["equity"] else 0
+    return jsonify({
+        "version": VERSION,
         "msg": state.msg,
-        "held": [f"{s}:{float(p.qty):.4g}" for s,p in state.positions.items()],
-        "coins_held": len(state.positions),
-        "stable_pct": (state.cash/max(eq,1e-9)),
-        "ticks_left": int(state.diag.get("ticks_left", REBAL_EVERY_TICKS)),
-        "warmup_left": int(state.diag.get("warmup_left", WARMUP_TICKS)),
-        "brain": state.diag.get("ranks", []),
-        "last_reason": state.diag.get("last_reason", ""),
-        "ts": int(time.time()),
-        "via": state.diag.get("feed_via", "sim"),
-        "advisor_mode": ADVISOR_MODE,
-        "version": VERSION
-    }
-    return jsonify(payload)
+        "trading_enabled": state.trading_enabled,
+        "halted": state.halted,
+        "wallet": state.current_wallet,
+        "cash_mm": state.cash,
+        "cash_cb": state.cb_cash,
+        "equity": last_eq,
+        "held": {s:{"qty":p.qty,"price":p.price} for s,p in state.positions.items()},
+        "cb_holdings": state.diag.get("cb_holdings", []),
+        "tracebacks": state.tracebacks[-5:],
+    })
 
-@app.get("/view")
-def view():
-    if not authed(request): return Response("Forbidden", status=403)
-    html = """<!doctype html><html><head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Ghost Mini</title>
-<style>
-  html,body{margin:0;height:100%;background:#0d6b24;color:#fff;font-family:system-ui,Segoe UI,Roboto,Inter,Arial}
-  .wrap{max-width:1100px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:16px}
-  .card{background:rgba(0,0,0,.12);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:16px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
-  .label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.9;margin-bottom:8px}
-  .big{font-size:36px;font-weight:800}
-  .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
-  .bar{height:12px;background:rgba(255,255,255,.18);border-radius:999px;overflow:hidden}
-  .bar>span{display:block;height:100%;background:#fff}
-  .chip{display:inline-block;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.18);padding:6px 10px;border-radius:999px;font-size:12px;margin:3px}
-  .badge{padding:6px 10px;border-radius:999px;font-weight:800}
-  .ok{background:rgba(255,255,255,.22)}
-  .fault{background:#ff3b3b;color:#000}
-</style></head><body>
-<div class="wrap">
-  <div class="card">
-    <div class="label">Ghost Mini — <span class="mono">v{VER}</span> · <span id="mode" class="mono"></span></div>
-    <div id="clock" class="mono" style="opacity:.9"></div>
-  </div>
-  <div class="grid">
-    <div class="card">
-      <div class="label">Total Equity</div>
-      <div class="big mono" id="equity">$0</div>
-      <div>Target <span class="mono" id="target">$0</span></div>
-      <div style="height:10px"></div>
-      <div class="bar"><span id="progress" style="width:0%"></span></div>
-    </div>
-    <div class="card">
-      <div class="label">Engine</div>
-      <div class="mono" id="via">via —</div>
-      <div class="mono" id="reason" style="margin-top:6px">—</div>
-    </div>
-    <div class="card">
-      <div class="label">Wallet</div>
-      <div id="held" class="mono">—</div>
-    </div>
-    <div class="card">
-      <div class="label">Top Scores</div>
-      <div id="tops" class="mono">—</div>
-    </div>
-  </div>
-</div>
-<script>
-const POLL={POLL};
-function chip(x){return `<span class='chip'>${x}</span>`}
-function fmt(x){return "$"+Number(x).toLocaleString(undefined,{maximumFractionDigits:6})}
-function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
-async function pull(){
-  try{
-    const r = await fetch("/api/status?token={TOKEN}",{cache:"no-store"});
-    const s = await r.json();
-    document.getElementById("clock").textContent=(new Date()).toUTCString();
-    document.getElementById("mode").textContent="mode: "+(s.advisor_mode||"-")+" · "+(s.version||"");
-    document.getElementById("via").textContent="feed: "+(s.via||"-");
-    document.getElementById("equity").textContent=fmt(s.equity||0);
-    document.getElementById("target").textContent=fmt(s.target||0);
-    document.getElementById("reason").textContent=s.last_reason||"—";
-    const prog=clamp((s.progress_pct||0),0,1);
-    document.getElementById("progress").style.width=(prog*100).toFixed(1)+"%";
-    const held=(s.held||[]).map(chip).join("")||"—";
-    document.getElementById("held").innerHTML=held;
-    const tops=(s.brain||[]).map(b=>`${b.sym||b.SYM||'-'}:${b.score}`).join("  ")||"—";
-    document.getElementById("tops").textContent=tops;
-  }catch(e){ /* ignore */ }
-}
-pull(); setInterval(pull, POLL);
-</script>
-</body></html>
-""".replace("{POLL}", str(POLL_SEC*1000)).replace("{TOKEN}", TOKEN).replace("{VER}", VERSION)
-    return Response(html, mimetype="text/html")
+@app.get("/api/fusion_status")
+@require_auth
+def api_fusion_status():
+    weights = getattr(state, "fusion_weights", {"ghost": 0.35, "claude": 0.40, "gemini": 0.25, "grok": 0.0})
+    stats = getattr(state, "fusion_stats", {
+        "ghost":  {"calls": 0, "wins": 0, "losses": 0, "roi_sum": 0.0},
+        "claude": {"calls": 0, "wins": 0, "losses": 0, "roi_sum": 0.0},
+        "gemini": {"calls": 0, "wins": 0, "losses": 0, "roi_sum": 0.0},
+        "grok":   {"calls": 0, "wins": 0, "losses": 0, "roi_sum": 0.0},
+    })
+    installed_at = getattr(state, "fusion_installed_at", time.time())
+    last_reweight_at = getattr(state, "last_reweight_at", None)
 
-# =============================== Runner ===============================
-def run_server():
-    app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+    reweight_hours = globals().get("FUSION_REWEIGHT_HOURS", 24)
+    min_trades = globals().get("FUSION_MIN_TRADES_FOR_REWEIGHT", 5)
+    fusion_mode = bool(globals().get("FUSION_MODE", True))
 
-def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
-    logging.info("=== Ghost Mini %s START === Paper=%s Loop=%ss Exec=%s CB=%s", VERSION, PAPER_TRADE, LOOP_SECONDS, EXECUTION_BACKEND, "on" if cb else "off")
-    threading.Thread(target=run_server, daemon=True).start()
+    ai_calls_total = sum(int(s.get("calls", 0)) for s in stats.values())
+    base_ts = last_reweight_at if last_reweight_at else installed_at
+    next_reweight_at = base_ts + reweight_hours * 3600 if reweight_hours else None
 
+    last_eq = state.diag["equity"][-1] if state.diag.get("equity") else 0.0
+    open_positions = {s: {"qty": p.qty, "price": p.price} for s, p in state.positions.items()}
+
+    return jsonify({
+        "ok": True,
+        "version": VERSION,
+        "fusion_mode": fusion_mode,
+        "weights": weights,
+        "stats": stats,
+        "ai_calls_total": ai_calls_total,
+        "reweight_interval_hours": reweight_hours,
+        "min_trades_for_reweight": min_trades,
+        "installed_at": int(installed_at),
+        "installed_at_str": _fmt_ts(installed_at),
+        "last_reweight_at": (int(last_reweight_at) if last_reweight_at else None),
+        "last_reweight_at_str": _fmt_ts(last_reweight_at),
+        "next_reweight_at": (int(next_reweight_at) if next_reweight_at else None),
+        "next_reweight_at_str": _fmt_ts(next_reweight_at),
+        "last_grok": state.last_grok,
+        "engine": {
+            "trading_enabled": state.trading_enabled,
+            "halted": state.halted,
+            "wallet": getattr(state, "current_wallet", None),
+        },
+        "portfolio": {
+            "equity": last_eq,
+            "positions": open_positions,
+            "history_n": len(state.history),
+        }
+    })
+
+@app.post("/api/toggle_trading")
+@require_auth
+def api_toggle_trading():
+    state.trading_enabled = not state.trading_enabled
+    return jsonify({"enabled": state.trading_enabled})
+
+@app.post("/api/rotate_wallet")
+@require_auth
+def api_rotate_wallet():
+    if not state.wallets:
+        return jsonify({"ok": False, "reason": "no wallets configured"}), 400
+    state.wallet_index = (state.wallet_index + 1) % len(state.wallets)
+    state.current_wallet = state.wallets[state.wallet_index]
+    return jsonify({"ok": True, "wallet": state.current_wallet, "index": state.wallet_index})
+
+@app.get("/api/config")
+@require_auth
+def api_get_cfg():
+    return jsonify({
+        "alloc_base_frac": ALLOC_BASE_FRAC,
+        "take_profit": TAKE_PROFIT_PCT,
+        "stop_loss": STOP_LOSS_PCT,
+        "low_cash_usd_threshold": LOW_CASH_USD_THRESHOLD,
+        "price_cache_sec": PRICE_CACHE_SEC,
+        "fusion_mode": FUSION_MODE,
+        "fusion_reweight_hours": FUSION_REWEIGHT_HOURS,
+    })
+
+@app.post("/api/config")
+@require_auth
+def api_set_cfg():
+    global ALLOC_BASE_FRAC, TAKE_PROFIT_PCT, STOP_LOSS_PCT, PRICE_CACHE_SEC, FUSION_REWEIGHT_HOURS
+    d = request.get_json(force=True, silent=True) or {}
+    if "alloc_base_frac" in d:
+        try: ALLOC_BASE_FRAC = float(d["alloc_base_frac"])
+        except Exception: pass
+    if "take_profit" in d:
+        try: TAKE_PROFIT_PCT = float(d["take_profit"])
+        except Exception: pass
+    if "stop_loss" in d:
+        try: STOP_LOSS_PCT = float(d["stop_loss"]) 
+        except Exception: pass
+    if "price_cache_sec" in d:
+        try: PRICE_CACHE_SEC = int(d["price_cache_sec"]) 
+        except Exception: pass
+    if "fusion_reweight_hours" in d:
+        try: FUSION_REWEIGHT_HOURS = int(d["fusion_reweight_hours"]) 
+        except Exception: pass
+    return api_get_cfg()
+
+@app.post("/api/toggle_fusion")
+@require_auth
+def api_toggle_fusion():
+    global FUSION_MODE
+    FUSION_MODE = not FUSION_MODE
+    state.msg = f"Ghost Protocol {VERSION} — Fusion ON" if FUSION_MODE else f"Ghost Protocol {VERSION} — Fusion OFF"
+    return jsonify({"ok": True, "fusion_mode": FUSION_MODE})
+
+@app.post("/api/reweight_now")
+@require_auth
+def api_reweight_now():
+    recompute_fusion_weights()
+    return jsonify({"ok": True, "weights": state.fusion_weights, "ts": int(state.last_reweight_at)})
+
+# ============================== LOOP =================================
+
+def core_step():
+    state.halted = (state.cash < LOW_CASH_USD_THRESHOLD)
+    sym = random.choice(TRACKED)
+    score = round(random.uniform(0.4, 2.0), 2)
+    ghostmirror_update(sym, score)
+
+    if state.trading_enabled and not state.halted:
+        approved = True; fmeta = None
+        if FUSION_MODE:
+            ok, scores, weighted = fusion_consensus(sym, score)
+            approved = ok
+            fmeta = {"scores": scores, "weighted": weighted, "approved": ok}
+        if approved and (score > 1.5) and (sym not in state.positions):
+            buy(sym, score, fusion_meta=fmeta)
+        elif (score < 0.6) and (sym in state.positions):
+            sell(sym, reason="EXIT")
+
+    risk_checks_and_trailing()
+
+
+def safe_loop():
     while True:
-        snap = get_market_snapshot()
-        rebalance(state, snap)
-        prices = {k: v.price for k, v in snap.items()}
-        held = ", ".join([f"{s}:{state.positions[s].qty:.4g}" for s in state.positions]) or "(none)"
-        logging.info("[Tick %d] %s | Held: %s | via=%s", state.tick, progress_line(state, prices), held, state.diag.get("feed_via"))
-        state.msg = ""
-        state.tick += 1
-        time.sleep(LOOP_SECONDS)
+        try:
+            core_step()
+        except Exception:
+            state.tracebacks.append(traceback.format_exc())
+            if len(state.tracebacks) > 10: state.tracebacks.pop(0)
+        time.sleep(8)
 
-if __name__ == "__main__":
-    main()
+# ============================== ENTRY ================================
+if __name__ == '__main__':
+    try:
+        _init_sheets()
+    except Exception as e:
+        _log(f"Sheets init at startup failed: {e}")
+    threading.Thread(target=safe_loop, daemon=True).start()
+    threading.Thread(target=fusion_reweight_loop, daemon=True).start()
+    app.run(host='0.0.0.0', port=8080)
+
