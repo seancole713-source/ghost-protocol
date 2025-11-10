@@ -3625,6 +3625,9 @@ async def _auto_refresh_price():
 
     while True:
         try:
+            # Increment tick counter for SSE state change detection
+            STATE["tick"] = STATE.get("tick", 0) + 1
+
             is_open, _ = _is_market_open_now()
             if is_open:
                 p, prev2, provider2 = get_wolf_price()
