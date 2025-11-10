@@ -1,0 +1,43 @@
+{
+    "portfolio": {
+        "positions": [
+            {
+                "symbol": "WOLF",
+                "shares": 8.41959051,
+                "cost_basis": 359.28,
+                "entry_date": "2024-01-01",
+                "notes": "Wolfspeed verified baseline position - $3,025.02 invested"
+            }
+        ],
+        "cash": {
+            "stock": 0.0,
+            "crypto": 0.0
+        }
+    },
+  "watchlist": [
+    "WOLF",
+    "AAPL",
+    "MSFT",
+    "TSLA",
+    "NVDA",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "NFLX",
+    "AMD",
+    "INTC",
+    "QCOM",
+    "AVGO",
+    "TXN",
+    "MU",
+    "AMAT",
+    "LRCX",
+    "KLAC",
+    "SNPS",
+    "CDNS"
+  ],
+  "config": {
+    "auto_load_on_startup": true,
+    "last_updated": "2025-10-06T14:00:00Z"
+  }
+}

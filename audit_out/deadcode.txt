@@ -1,0 +1,2 @@
+wolf_app.py:63: unused import '_duckdb' (90% confidence)
+wolf_app.py:5033: unused variable 'since_hours' (100% confidence)

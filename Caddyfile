@@ -1,0 +1,27 @@
+# Caddy reverse proxy for Ghost + optional monitoring
+
+ghost.example.com {
+    encode zstd gzip
+
+    @ui {
+        path /
+    }
+    handle @ui {
+        reverse_proxy ghost:5000
+    }
+
+    # Optional: expose internal services (lock down or auth for production)
+    /prometheus* {
+        reverse_proxy prometheus:9090
+    }
+    /grafana* {
+        reverse_proxy grafana:3000
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer-when-downgrade"
+        X-Frame-Options "SAMEORIGIN"
+    }
+}

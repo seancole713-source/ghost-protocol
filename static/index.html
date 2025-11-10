@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ghost WOLF</title>
+    <link rel="stylesheet" href="/static/ghost.css" />
+    <style>
+      .container { max-width: 860px; margin: 3rem auto; padding: 0 1rem; }
+      .links a { display: inline-block; margin-right: 1rem; }
+      code { background: #f6f8fa; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Ghost WOLF</h1>
+      <p>Welcome. The API is live. Quick links:</p>
+      <div class="links">
+        <a href="/api/cockpit">/api/cockpit</a>
+        <a href="/health">/health</a>
+        <a href="/metrics">/metrics</a>
+      </div>
+      <p>
+        Tip: run <code>./smoke-test.sh</code> to verify health, cockpit, alerts, news, and metrics in one go.
+      </p>
+      <script src="/static/ghost.js" defer></script>
+    </div>
+  </body>
+  </html>

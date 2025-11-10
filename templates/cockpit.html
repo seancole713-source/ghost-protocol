@@ -1,0 +1,2600 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ghost Intelligence — Cockpit</title>
+    <style>
+        :root {
+            --bg: #0f1318;
+            --bg-darker: #0b0f14;
+            --panel: #141a22;
+            --muted: #9aa7b2;
+            --text: #dde7ef;
+            --accent: #27c19e;
+            --danger: #ff5d5d;
+            --warn: #ffc24b;
+            --chip: #1b2330;
+            --chip-border: #253141;
+            --good: #00c853;
+            --bad: #ff5252;
+            --green: #00c853; /* alias for --good */
+            --orange: #ff9800;
+            --border: #223043;
+            --card-gap: 14px;
+        }
+        * { box-sizing:border-box; }
+        html,body { height:100%; }
+        body {
+            margin:0; padding:14px;
+            background:var(--bg); color:var(--text);
+            font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+        }
+        h1,h2,h3 { margin:0 0 8px 0; font-weight:700; }
+        h1 { font-size:20px; display:flex; gap:8px; align-items:center; }
+        h2 { font-size:16px; color:#cfe4f5; }
+        a { color:#7fc8ff; text-decoration:none; }
+        .topbar {
+            display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;
+        }
+        .badge {
+            display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
+            background:#0f1b26; border:1px solid var(--chip-border); color:#b9c9d6; font-weight:600;
+        }
+        .badge.live { background:#11231a; border-color:#1c3b2f; color:#a7f3d0; }
+        .badge.stopped { background:#241515; border-color:#3d1f1f; color:#f5b7b7; }
+        .controls { display:flex; gap:8px; flex-wrap:wrap; }
+        button {
+            background:#1b2532; color:#e7f2fb; border:1px solid #2a394e; border-radius:8px;
+            padding:8px 12px; font-weight:700; cursor:pointer;
+        }
+        button:hover { filter:brightness(1.1); }
+        .btn-danger { background:#2a1a1a; border-color:#4a2626; color:#ffb3b3; }
+        .grid {
+            display:grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: var(--card-gap);
+        }
+        .card {
+            background:var(--panel); border:1px solid #212a36; border-radius:14px; padding:12px;
+            min-height:120px;
+        }
+        .muted { color:var(--muted); }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+        .row { display:flex; gap:8px; flex-wrap:wrap; }
+        .kv { display:grid; grid-template-columns:auto 1fr; gap:6px 12px; }
+        .chip {
+            background:var(--chip); border:1px solid var(--chip-border); padding:6px 8px; border-radius:8px;
+            display:inline-flex; align-items:center; justify-content:center; min-width:74px; text-align:center; font-weight:700;
+        }
+        .heatmap { display:grid; grid-template-columns: repeat(6, minmax(110px,1fr)); gap:8px; }
+        .heat { padding:10px; border-radius:10px; background:#162030; border:1px solid #233044; }
+        .heat .sym { font-weight:800; }
+        .heat .gps { color:#9ad1ff; font-weight:700; }
+        .list { display:grid; gap:8px; }
+        .tbl { width:100%; border-collapse:collapse; }
+        .tbl th,.tbl td { padding:8px; border-bottom:1px solid #223043; }
+        .tbl th { text-align:left; color:#cfe4f5; }
+        .pill { padding:2px 8px; border-radius:999px; font-weight:700; }
+        .good { color:#b6ffd3; }
+        .bad { color:#ffb6b6; }
+        .section-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+        .input { width:100%; background:#0e141d; color:#cfe4f5; border:1px solid #263247; border-radius:8px; padding:8px; }
+        .two { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+        .right { text-align:right; }
+        .small { font-size:12px; }
+        
+        /* Button visual feedback states */
+        .btn-loading {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        .btn-loading::after {
+            content: '';
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            top: 50%;
+            left: 50%;
+            margin-left: -6px;
+            margin-top: -6px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: btn-spin 0.6s linear infinite;
+        }
+        @keyframes btn-spin {
+            to { transform: rotate(360deg); }
+        }
+        .btn-active {
+            background: #27c19e !important;
+            border-color: #1fa887 !important;
+            box-shadow: 0 0 0 3px rgba(39, 193, 158, 0.3);
+        }
+        .btn-success {
+            background: #00c853 !important;
+            border-color: #00a843 !important;
+            animation: btn-pulse 0.5s ease;
+        }
+        @keyframes btn-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .btn-error {
+            background: #ff5252 !important;
+            border-color: #e03e3e !important;
+            animation: btn-shake 0.4s ease;
+        }
+        @keyframes btn-shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+        .badge-active {
+            box-shadow: 0 0 0 3px rgba(39, 193, 158, 0.3);
+            animation: badge-glow 2s ease-in-out infinite;
+        }
+        @keyframes badge-glow {
+            0%, 100% { box-shadow: 0 0 0 3px rgba(39, 193, 158, 0.3); }
+            50% { box-shadow: 0 0 0 3px rgba(39, 193, 158, 0.6); }
+        }
+        
+        @media (max-width:1100px){
+            .heatmap { grid-template-columns: repeat(3, minmax(110px,1fr)); }
+            .grid { grid-template-columns:1fr; }
+        }
+        /* Provider unauthorized badge */
+        .badge-provider-unauth { background:#3a1c1c; border:1px solid #5a2727; color:#ffb3b3; }
+    </style>
+</head>
+<body>
+<div id="corpActionBanner" style="display:none; margin:0 0 12px 0; padding:10px 14px; border:1px solid #4a3755; background:linear-gradient(90deg,#2a1e33,#1c1824); border-radius:10px; font:14px/1.4 system-ui; position:relative;">
+    <strong style="color:#ffc24b;">Corporate Action Adjustment</strong>
+    <div id="corpActionText" style="margin-top:4px; color:#d9cfe2; font-size:13px;"></div>
+    <button id="corpBannerClose" style="position:absolute; top:6px; right:8px; background:#3a2d42; color:#e8dff2; border:1px solid #56425f; border-radius:6px; cursor:pointer; font-size:11px; padding:2px 6px;">Dismiss</button>
+</div>
+    <div class="topbar">
+    <h1>Ghost Intelligence Cockpit <span class="badge" id="version">v10.2</span>
+            <span class="badge" id="modeBadge">mode: live</span>
+            <span class="badge" id="clockBadge" style="font-family: monospace;">00:00:00</span>
+            <span class="badge stopped" id="activeBadge">stopped</span>
+            <span class="badge" id="latencyBadge" style="display:none;">tick: n/a</span>
+            <span class="badge live" id="focusBadge" style="display:none;">Focus: —</span>
+            <span class="badge" id="delistedBadge" style="display:none; background:#3a2a16; border:1px solid #704b1c; color:#ffcf85;">DELISTED MODE</span>
+            <span class="badge badge-provider-unauth" id="providerUnauthBadge" style="display:none;">PROVIDER UNAUTHORIZED</span>
+        </h1>
+        <div class="controls">
+            <button id="btnStart">Start</button>
+            <button id="btnStop">Stop</button>
+            <button class="btn-danger" id="btnReset">Reset</button>
+        </div>
+    </div>
+
+    <div id="anomalyBanner" class="badge" style="display:none; background:#2a2216; border:1px solid #4a3b1f; color:#ffcf66; margin: -6px 0 10px 0; gap:10px">
+        <span id="anomalyText">Corporate action/price anomaly — using safe price.</span>
+        <button id="btnOverlayResume" style="background:#3a2b16; border:1px solid #5a441e; color:#ffd88a; padding:4px 8px; border-radius:8px; font-weight:700; cursor:pointer">Resume overlay</button>
+    </div>
+
+    <div class="grid">
+        <!-- Ghost‑AI v1 — Decision Preview (moved to top) -->
+        <section class="card" style="grid-column: span 4;">
+            <div class="section-title">
+                <h2>Ghost‑AI v1 — Decision Preview</h2>
+                <button id="btnDecisionRefresh">Refresh Now</button>
+            </div>
+            <pre class="mono small" id="decisionBox"></pre>
+        </section>
+
+        <!-- Ghost‑AI v2 — Agent Monitor -->
+        <section class="card" style="grid-column: span 8;">
+            <div class="section-title">
+                <h2>🤖 Ghost‑AI v2 — Agent Monitor</h2>
+                <button id="btnAgentRefresh">Refresh</button>
+            </div>
+            
+            <!-- Agent Health Status -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 4px;">CONFIDENCE</div>
+                    <div id="agentConfidence" style="font-size: 24px; font-weight: 700; color: var(--accent);">—</div>
+                    <div id="agentConfidenceBar" style="height: 4px; background: var(--border); border-radius: 2px; margin-top: 6px; overflow: hidden;">
+                        <div id="agentConfidenceProgress" style="height: 100%; background: var(--accent); width: 0%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+                
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 4px;">DECISIONS (24h)</div>
+                    <div id="agentDecisions24h" style="font-size: 24px; font-weight: 700; color: var(--accent);">—</div>
+                    <div class="small muted" style="margin-top: 4px;" id="agentAvgConfidence">Avg: —</div>
+                </div>
+                
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 4px;">TOOL SUCCESS</div>
+                    <div id="agentToolSuccess" style="font-size: 24px; font-weight: 700; color: var(--accent);">—</div>
+                    <div class="small muted" style="margin-top: 4px;" id="agentToolCalls">— calls</div>
+                </div>
+                
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 4px;">LAST DECISION</div>
+                    <div id="agentLastDecision" style="font-size: 16px; font-weight: 700; color: var(--accent);">—</div>
+                    <div class="small muted" style="margin-top: 4px;" id="agentLastAction">—</div>
+                </div>
+            </div>
+            
+            <!-- Recent Decisions Timeline -->
+            <div style="margin-bottom: 16px;">
+                <div class="small muted" style="margin-bottom: 8px; font-weight: 700;">RECENT DECISIONS (last 10)</div>
+                <div id="agentDecisionsTimeline" style="max-height: 200px; overflow-y: auto; padding: 8px; background: var(--bg-darker); border-radius: 8px; border: 1px solid var(--border);"></div>
+            </div>
+            
+            <!-- Tool Performance Table -->
+            <div>
+                <div class="small muted" style="margin-bottom: 8px; font-weight: 700;">TOOL PERFORMANCE (24h)</div>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border);">
+                                <th style="text-align: left; padding: 8px; color: var(--muted);">Tool</th>
+                                <th style="text-align: right; padding: 8px; color: var(--muted);">Calls</th>
+                                <th style="text-align: right; padding: 8px; color: var(--muted);">Success Rate</th>
+                                <th style="text-align: right; padding: 8px; color: var(--muted);">Avg Latency</th>
+                                <th style="text-align: left; padding: 8px; color: var(--muted);">Most Used Symbol</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agentToolStatsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stage 1: World Context & Market Mood -->
+        <section class="card" style="grid-column: span 8;">
+            <div class="section-title">
+                <h2>🌍 World Context & Market Mood</h2>
+                <button id="btnContextRefresh">Refresh</button>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <!-- Market Mood -->
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 6px;">MARKET REGIME</div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span id="moodIcon" style="font-size: 24px;">📊</span>
+                        <div>
+                            <div id="moodRegime" style="font-size: 18px; font-weight: 700; color: var(--accent);">—</div>
+                            <div id="moodSentiment" class="small muted">—</div>
+                        </div>
+                    </div>
+                    <div id="moodSummary" class="small" style="color: var(--muted); line-height: 1.4;">—</div>
+                    <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
+                        <span class="badge" id="moodSPY">SPY: —</span>
+                        <span class="badge" id="moodVIX">VIX: —</span>
+                        <span class="badge" id="moodConf">Confidence: —</span>
+                    </div>
+                </div>
+                
+                <!-- World Context -->
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 6px;">NEWS CONTEXT (24H)</div>
+                    <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+                        <div>
+                            <div class="small muted">Articles</div>
+                            <div id="contextCount" style="font-size: 18px; font-weight: 700; color: var(--accent);">—</div>
+                        </div>
+                        <div>
+                            <div class="small muted">Sentiment</div>
+                            <div id="contextSentiment" style="font-size: 18px; font-weight: 700;">—</div>
+                        </div>
+                    </div>
+                    <div class="small muted" style="margin-bottom: 4px;">TRENDING EVENTS</div>
+                    <div id="contextEvents" style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px;">
+                        <span class="badge">—</span>
+                    </div>
+                    <div class="small muted" style="margin-bottom: 4px;">TOP HEADLINES</div>
+                    <div id="contextHeadlines" class="small" style="color: var(--muted); line-height: 1.4; max-height: 80px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stage 2: Daily Accuracy Ledger & Self-Evaluation -->
+        <section class="card" style="grid-column: span 8;">
+            <div class="section-title">
+                <h2>📊 Daily Accuracy Ledger</h2>
+                <div style="display: flex; gap: 8px;">
+                    <button id="btnTuneNow" style="background: var(--accent); padding: 6px 12px;">🔄 Run Auto-Tuning</button>
+                    <button id="btnLedgerRefresh">Refresh</button>
+                </div>
+            </div>
+            
+            <!-- Accuracy Summary -->
+            <div id="accuracySummary" class="accuracy-summary">
+                <div class="accuracy-summary-item">
+                    <span class="accuracy-chip correct">✅ Correct:</span>
+                    <strong id="summaryCorrect">0</strong>
+                </div>
+                <div class="accuracy-summary-item">
+                    <span class="accuracy-chip warning">⚠️ Warning:</span>
+                    <strong id="summaryWarning">0</strong>
+                </div>
+                <div class="accuracy-summary-item">
+                    <span class="accuracy-chip wrong">❌ Wrong:</span>
+                    <strong id="summaryWrong">0</strong>
+                </div>
+                <div class="accuracy-summary-item">
+                    <span class="accuracy-chip pending">⏳ Pending:</span>
+                    <strong id="summaryPending">0</strong>
+                </div>
+                <div class="accuracy-summary-item" style="margin-left: auto;">
+                    <span class="muted">MAP:</span>
+                    <strong id="summaryMAPE">—</strong>
+                </div>
+            </div>
+
+            <!-- Forecast History Table -->
+            <div style="overflow-x: auto;">
+                <table class="accuracy-ledger">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Symbol</th>
+                            <th>Forecast</th>
+                            <th>Actual</th>
+                            <th>Delta</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ledgerTableBody">
+                        
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Learning Stats -->
+            <div id="learningStats" style="margin-top: 12px; padding: 10px; background: var(--chip); border-radius: 6px; border: 1px solid var(--chip-border); display: none;">
+                <div class="small muted" style="margin-bottom: 4px;">AUTO-TUNING STATUS</div>
+                <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                    <div>
+                        <span class="muted small">Last Tune:</span>
+                        <strong id="statsLastTune">Never</strong>
+                    </div>
+                    <div>
+                        <span class="muted small">Tune Count:</span>
+                        <strong id="statsTuneCount">0</strong>
+                    </div>
+                    <div>
+                        <span class="muted small">Current Config:</span>
+                        <code id="statsConfig" class="small">—</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stage 3: Continuous Improvement (Regime + Risk) -->
+        <section class="card" style="grid-column: span 4;">
+            <div class="section-title">
+                <h2>🎯 Market Regime & Risk</h2>
+                <button id="btnRegimeRefresh">Refresh</button>
+            </div>
+            
+            <!-- Current Regime -->
+            <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border); margin-bottom: 12px;">
+                <div class="small muted" style="margin-bottom: 6px;">CURRENT REGIME</div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <span id="regimeIcon" style="font-size: 24px;">📊</span>
+                    <div>
+                        <div id="regimeType" style="font-size: 18px; font-weight: 700; color: var(--accent);">—</div>
+                        <div id="regimeConfidence" class="small muted">—</div>
+                    </div>
+                </div>
+                <div id="regimeStrategy" class="small" style="color: var(--muted); line-height: 1.4;">—</div>
+                <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
+                    <span class="badge" id="regimeRisk">Risk: —</span>
+                    <span class="badge" id="regimePosition">Position: —</span>
+                    <span class="badge" id="regimeStop">Stop: —</span>
+                </div>
+            </div>
+            
+            <!-- Risk Dashboard -->
+            <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                <div class="small muted" style="margin-bottom: 6px;">RISK METRICS</div>
+                <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+                    <div>
+                        <div class="small muted">Drawdown</div>
+                        <div id="riskDrawdown" style="font-size: 18px; font-weight: 700;">—</div>
+                    </div>
+                    <div>
+                        <div class="small muted">VaR (95%)</div>
+                        <div id="riskVaR" style="font-size: 18px; font-weight: 700;">—</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <span class="badge" id="riskStatus">Status: —</span>
+                    <span class="badge" id="riskMaxPos">Max Position: —</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stage 4: Portfolio Optimization & Advanced Strategies -->
+        <section class="card" style="grid-column: span 4;">
+            <div class="section-title">
+                <h2>🎲 Portfolio Optimization</h2>
+                <button id="btnPortfolioRefresh">Refresh</button>
+            </div>
+            
+            <!-- Portfolio Optimizer -->
+            <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border); margin-bottom: 12px;">
+                <div class="small muted" style="margin-bottom: 6px;">OPTIMAL ALLOCATION</div>
+                <div id="portfolioAllocation" style="margin-bottom: 8px;">
+                    <div class="small muted">No allocation calculated yet</div>
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 8px;">
+                    <div>
+                        <div class="small muted">Expected Return</div>
+                        <div id="portfolioReturn" style="font-size: 16px; font-weight: 700; color: var(--green);">—</div>
+                    </div>
+                    <div>
+                        <div class="small muted">Sharpe Ratio</div>
+                        <div id="portfolioSharpe" style="font-size: 16px; font-weight: 700; color: var(--accent);">—</div>
+                    </div>
+                    <div>
+                        <div class="small muted">Volatility</div>
+                        <div id="portfolioVol" style="font-size: 16px; font-weight: 700; color: var(--orange);">—</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Hedging & Backtest -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 6px;">HEDGING</div>
+                    <div id="hedgingSuggestion" style="font-size: 14px; line-height: 1.4;">
+                        <div class="small muted">No hedge calculated</div>
+                    </div>
+                </div>
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 6px;">BACKTEST</div>
+                    <div id="backtestResult" style="font-size: 14px; line-height: 1.4;">
+                        <div class="small muted">No backtest run yet</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stage 5: Advanced Execution & Order Management -->
+        <section class="card" style="grid-column: span 4;">
+            <div class="section-title">
+                <h2>⚡ Smart Execution</h2>
+                <button id="btnExecutionRefresh">Refresh</button>
+            </div>
+            
+            <!-- Execution Quality Dashboard -->
+            <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border); margin-bottom: 12px;">
+                <div class="small muted" style="margin-bottom: 6px;">EXECUTION QUALITY</div>
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                    <div id="execQualityScore" style="font-size: 28px; font-weight: 700; color: var(--accent);">—</div>
+                    <div id="execQualityClass" class="badge" style="background: var(--chip-border);">N/A</div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                    <div>
+                        <div class="small muted">Avg Latency</div>
+                        <div id="execLatency" style="font-size: 14px; font-weight: 600;">—</div>
+                    </div>
+                    <div>
+                        <div class="small muted">Fill Rate</div>
+                        <div id="execFillRate" style="font-size: 14px; font-weight: 600;">—</div>
+                    </div>
+                    <div>
+                        <div class="small muted">Total Orders</div>
+                        <div id="execTotalOrders" style="font-size: 14px; font-weight: 600;">—</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Risk Status & Active Orders -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 6px;">RISK STATUS</div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                        <div id="killSwitchIndicator" style="width: 12px; height: 12px; border-radius: 50%; background: var(--green);"></div>
+                        <div id="killSwitchStatus" style="font-size: 13px; font-weight: 600;">TRADING ACTIVE</div>
+                    </div>
+                    <div id="killSwitchReason" class="small muted" style="margin-top: 4px; display: none;"></div>
+                </div>
+                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
+                    <div class="small muted" style="margin-bottom: 6px;">ACTIVE ORDERS</div>
+                    <div id="activeOrdersCount" style="font-size: 24px; font-weight: 700; color: var(--accent); margin-top: 8px;">—</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Heatmap -->
+        <section class="card" style="grid-column: span 4;">
+            <div class="section-title">
+                <h2>Ghost Score Heatmap (GPS 0–10)</h2>
+                <span class="muted small" id="heatTs"></span>
+            </div>
+            <div class="heatmap" id="heatmap"></div>
+        </section>
+
+        <!-- Diagnostics -->
+        <section class="card" style="grid-column: span 3;">
+            <div class="section-title">
+                <h2>Diagnostics</h2>
+                <span class="small muted" id="diagTs"></span>
+            </div>
+            <pre class="mono small" id="diagBox"></pre>
+            <div class="small muted" style="margin-top:6px">Showing last 50 unique events (client-deduped)</div>
+        </section>
+
+        <!-- Research Snapshot -->
+        <section class="card" style="grid-column: span 9;">
+            <div class="section-title">
+                <h2>🔎 Research Snapshot</h2>
+                <button id="btnResearchRefresh">Refresh</button>
+            </div>
+            <div id="researchPanel"></div>
+        </section>
+
+    <!-- Ghost Predictions Panel -->
+        <section class="card" style="grid-column: span 12;">
+            <div class="section-title">
+        <h2>Ghost Prediction</h2>
+                <div class="row" style="align-items:center; gap:10px">
+                    <!-- Asset Class Tabs -->
+                    <div style="display:flex; gap:4px; margin-right:15px">
+                        <button id="tab-stocks" class="tab-btn active" style="padding:6px 16px; border:1px solid #374151; background:#1f2937; color:#fff; border-radius:6px; cursor:pointer; font-weight:600">
+                            Stocks
+                        </button>
+                        <button id="tab-crypto" class="tab-btn" style="padding:6px 16px; border:1px solid #374151; background:#0f1318; color:#9ca3af; border-radius:6px; cursor:pointer; font-weight:600">
+                            Crypto
+                        </button>
+                    </div>
+                    
+                    <!-- Symbol Selector (dynamically updated based on tab) -->
+                    <select id="predict-symbol" class="input" style="max-width:120px; margin-right:10px">
+                        <!-- Stocks (default) -->
+                        <option value="WOLF">WOLF</option>
+                        <option value="AAPL">AAPL</option>
+                        <option value="MSFT">MSFT</option>
+                        <option value="GOOGL">GOOGL</option>
+                        <option value="AMZN">AMZN</option>
+                        <option value="TSLA">TSLA</option>
+                        <option value="NVDA">NVDA</option>
+                        <option value="META">META</option>
+                    </select>
+                    <button id="predict-run-btn" class="btn-primary">Run New Prediction</button>
+                    <span class="badge" id="predict-status" style="margin-left:10px">Ready</span>
+                </div>
+            </div>
+            
+            <!-- Chart -->
+            <div style="width:100%; height:300px; position:relative; margin:10px 0">
+                <canvas id="prediction-chart" style="width:100%; height:100%; display:block"></canvas>
+            </div>
+            
+            <!-- Summary Stats -->
+            <div id="predict-summary" class="row" style="margin:15px 0">
+                
+            </div>
+            
+            <!-- Scoreboard Table -->
+            <div style="margin-top:15px; overflow-x:auto">
+                <table style="width:100%; border-collapse:collapse">
+                    <thead>
+                        <tr style="border-bottom:2px solid #374151; text-align:left">
+                            <th style="padding:8px; font-weight:600">Date/Time</th>
+                            <th style="padding:8px; font-weight:600">Direction</th>
+                            <th style="padding:8px; font-weight:600">Conf%</th>
+                            <th style="padding:8px; font-weight:600">Hit?</th>
+                            <th style="padding:8px; font-weight:600">MAE</th>
+                            <th style="padding:8px; font-weight:600">MAP</th>
+                            <th style="padding:8px; font-weight:600">RMSE</th>
+                        </tr>
+                    </thead>
+                    <tbody id="predict-scoreboard-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Admin Toggles -->
+        <section class="card" style="grid-column: span 12;">
+            <div class="section-title">
+                <h2>Admin Toggles</h2>
+                <span class="small muted" id="adminHint">Uses /api/runtime/config</span>
+            </div>
+            <div class="row">
+                <label>price_ttl_s <input class="input" id="ttlPrice" style="max-width:140px" placeholder="30" /></label>
+                <label>price_ttl_open_s <input class="input" id="ttlPriceOpen" style="max-width:160px" placeholder="45" /></label>
+                <label>news_ttl_s <input class="input" id="ttlNews" style="max-width:140px" placeholder="300" /></label>
+                <label>yahoo_first
+                    <select class="input" id="yahooFirst" style="max-width:140px">
+                        <option value="0">false</option>
+                        <option value="1">true</option>
+                    </select>
+                </label>
+                <label>price_max_deviation_open <input class="input" id="maxDevOpen" style="max-width:180px" placeholder="0.15" /></label>
+                <label>reuters_feeds_on
+                    <select class="input" id="reutersOn" style="max-width:140px">
+                        <option value="0">false</option>
+                        <option value="1">true</option>
+                    </select>
+                </label>
+                <label>diag_collapse_dupes
+                    <select class="input" id="diagCollapse" style="max-width:160px">
+                        <option value="1">true</option>
+                        <option value="0">false</option>
+                    </select>
+                </label>
+                <label>diag_ring_size <input class="input" id="diagRingSize" style="max-width:140px" placeholder="200" /></label>
+                <label>overlay_enabled
+                    <select class="input" id="overlayEnabled" style="max-width:160px">
+                        <option value="1">true</option>
+                        <option value="0">false</option>
+                    </select>
+                </label>
+                <label>overlay_dt_minutes <input class="input" id="overlayDt" style="max-width:160px" placeholder="60" /></label>
+                <label>learning_enabled
+                    <select class="input" id="learningEnabled" style="max-width:160px">
+                        <option value="1">true</option>
+                        <option value="0">false</option>
+                    </select>
+                </label>
+                <label>band_widen_factor <input class="input" id="bandWiden" style="max-width:160px" placeholder="1.0" /></label>
+                <button id="btnAdminSave">Apply</button>
+            </div>
+        </section>
+
+    <!-- Top Movers -->
+    <section class="card" style="grid-column: span 5;" id="moversCard">
+            <div class="section-title">
+                <h2>Top Movers</h2>
+                <span class="small muted" id="moversTs"></span>
+            </div>
+            <div class="list" id="moversList"></div>
+        </section>
+
+        <!-- Portfolio -->
+        <section class="card" style="grid-column: span 7;">
+            <div class="section-title">
+                <h2>Personal Portfolio</h2>
+                <div class="row small muted" id="portfolioMeta"></div>
+            </div>
+            <table class="tbl" id="portfolioTbl">
+                <thead>
+                    <tr>
+                        <th>Symbol</th><th>Type</th><th class="right">Qty</th><th class="right">Entry</th><th class="right">Current</th><th class="right">P&amp;L $</th><th class="right">P&amp;L %</th><th class="right">GPS</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div class="two" style="margin-top:10px">
+                <div class="row">
+                    <input class="input" id="posSym" placeholder="Symbol (e.g., AAPL or bitcoin)" />
+                    <input class="input" id="posQty" placeholder="Qty" />
+                    <input class="input" id="posPrice" placeholder="Price paid" />
+                    <select class="input" id="posMarket">
+                        <option value="stock">stock</option>
+                        <option value="crypto">crypto</option>
+                    </select>
+                    <button id="btnAddPos">Add Position</button>
+                </div>
+                <div class="row right">
+                    <button id="btnBankReset">Reset Cash</button>
+                    <button id="btnAnalyze">Analyze</button>
+                </div>
+            </div>
+        </section>
+            <!-- News Feed -->
+            <section class="card" style="grid-column: span 12;">
+                <div class="section-title">
+                        <h2>News Feed</h2>
+                    <span class="small muted" id="newsMeta"></span>
+                </div>
+                    <div class="row small" style="margin-bottom:8px">
+                        <label style="display:inline-flex; align-items:center; gap:6px">
+                            <input type="checkbox" id="newsAllToggle" /> include market-wide
+                        </label>
+                    </div>
+                    <div id="newsList" class="list small" style="max-height:260px; overflow:auto;"></div>
+            </section>
+
+    <!-- The Watchlist (hidden in Focus Mode) -->
+    <section class="card" style="grid-column: span 12;" id="watchlistCard">
+            <div class="section-title">
+                <h2>The Watchlist</h2>
+                <button id="btnLoadCurrent">Load current</button>
+            </div>
+            <div class="two">
+                <div>
+                    <div class="small muted" style="margin-bottom:6px">US Stocks (tickers)</div>
+                    <textarea id="wlStocks" class="input" rows="4" placeholder="AAPL, MSFT, NVDA … or one per line"></textarea>
+                </div>
+                <div>
+                    <div class="small muted" style="margin-bottom:6px">Crypto (CoinGecko IDs)</div>
+                    <textarea id="wlCrypto" class="input" rows="4" placeholder="bitcoin, ethereum, dogecoin …"></textarea>
+                </div>
+            </div>
+            <div class="row" style="margin-top:8px">
+                <button id="btnImportWatchlist">Import to Ghost</button>
+                <div class="small muted" id="wlHint">Examples: AAPL, MSFT, NVDA (auto uppercased) • bitcoin, ethereum (auto lowercased)</div>
+            </div>
+        </section>
+
+        <!-- Provider & Rate Limit Diagnostics Panel -->
+        <section class="card" style="grid-column: span 4;">
+            <div class="section-title"><h2>⏱ Provider Backoff</h2><button id="btnRateDiagRefresh">Refresh</button></div>
+            <div id="rateDiag" class="small" style="line-height:1.35; color:var(--muted);"></div>
+        </section>
+    </div>
+
+    <script>
+        const el = (id) => document.getElementById(id);
+    const fmt = (n, p=2) => (n===null || n===undefined || isNaN(Number(n))) ? "—" : Number(n).toFixed(p);
+    const pct = (n) => (n===null || n===undefined) ? "—" : (n>=0? "+" : "") + fmt(n,2) + "%";
+    const nowIso = () => new Date().toISOString().replace('T', ' ').slice(0,19);
+    // Attach Authorization header if a token is available
+    function authHeaders(){
+        try {
+            // Prefer explicit UI-provided bearer from backend config
+            if (typeof AUTH === 'string' && AUTH) return { 'Authorization': AUTH };
+            // Fallback to locally stored token if present
+            const t = (typeof localStorage !== 'undefined') ? localStorage.getItem('ghost_token') : '';
+            return t ? { 'Authorization': 'Bearer ' + t } : {};
+        } catch (_) {
+            // Final fallback: no auth header
+            return {};
+        }
+    }
+    // Deterministic default: show latency unless explicitly disabled
+    const LATENCY_ENABLED = (window.UI_LATENCY_BADGE === 0) ? false : true;
+    // Optional bearer auth helper for /ai/* when backend requires Bearer token
+    let AUTH = "";
+    // Overlay pause flag when anomaly is detected
+    let FORECAST_PAUSED = false;
+    // User override to force overlay during anomaly
+    let FORECAST_USER_OVERRIDE = false;
+    // Keep last flags snapshot for UI updates
+    let LAST_FLAGS = null;
+        async function api(path, opts={}){
+            const h = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+            if (AUTH) h.Authorization = AUTH;
+            const r = await fetch(path, {...opts, headers:h});
+            if (r.status === 403) throw new Error('forbidden');
+            return r.json();
+        }
+
+        // Button state management with visual feedback
+        function setButtonState(btnId, state) {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+            btn.classList.remove('btn-loading', 'btn-active', 'btn-success', 'btn-error');
+            switch(state) {
+                case 'loading':
+                    btn.classList.add('btn-loading');
+                    btn.disabled = true;
+                    break;
+                case 'active':
+                    btn.classList.add('btn-active');
+                    break;
+                case 'success':
+                    btn.classList.add('btn-success');
+                    btn.disabled = false;
+                    setTimeout(() => btn.classList.remove('btn-success'), 1000);
+                    break;
+                case 'error':
+                    btn.classList.add('btn-error');
+                    btn.disabled = false;
+                    setTimeout(() => btn.classList.remove('btn-error'), 1000);
+                    break;
+                default:
+                    btn.disabled = false;
+            }
+        }
+
+        (async ()=>{ try {
+            const cfg = await (await fetch('/api/config')).json();
+            if (cfg && cfg.ui && cfg.ui.bearer_hint) { AUTH = 'Bearer ' + cfg.ui.bearer_hint; }
+            // Version from backend
+            const v = await (await fetch('/api/version')).json();
+            el('version').textContent = v.version || 'v';
+        } catch(_){} })();
+        const latencySamples = [];
+        function updateLatencyBadge(){
+            const badge = el("latencyBadge");
+            if (!LATENCY_ENABLED){ badge.style.display='none'; return; }
+            if (latencySamples.length === 0){ badge.textContent = 'tick: n/a'; badge.style.display='inline-flex'; return; }
+            const sorted = [...latencySamples].sort((a,b)=>a-b);
+            const p50 = sorted[Math.floor(sorted.length*0.5)];
+            const p95 = sorted[Math.max(0, Math.floor(sorted.length*0.95)-1)];
+            badge.textContent = `tick: ${Math.round(p50)} / ${Math.round(p95)} ms`;
+            badge.style.display='inline-flex';
+        }
+
+        // Topbar controls
+        async function refreshStatusBadge() {
+            try {
+                const cfg = await (await fetch('/api/config')).json();
+                const mode = (cfg && cfg.alerts && cfg.alerts.mode) ? cfg.alerts.mode : 'live';
+                el("modeBadge").textContent = `mode: ${mode}`;
+                const ab = el("activeBadge");
+                ab.textContent = "live";
+                ab.classList.remove("stopped");
+                ab.classList.add("live");
+            } catch (_) { /* ignore */ }
+        }
+
+        async function startEngine() {
+            setButtonState('btnStart', 'loading');
+            try {
+                await loadPortfolio();
+                await loadDecisionPreview();
+                setButtonState('btnStart', 'success');
+                const badge = el('activeBadge');
+                if (badge) {
+                    badge.textContent = 'running';
+                    badge.classList.remove('stopped');
+                    badge.classList.add('live', 'badge-active');
+                }
+            } catch(e) {
+                console.error('Start engine failed:', e);
+                setButtonState('btnStart', 'error');
+            }
+        }
+        
+        async function stopEngine() {
+            setButtonState('btnStop', 'loading');
+            try {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                setButtonState('btnStop', 'success');
+                const badge = el('activeBadge');
+                if (badge) {
+                    badge.textContent = 'stopped';
+                    badge.classList.remove('live', 'badge-active');
+                    badge.classList.add('stopped');
+                }
+            } catch(e) {
+                setButtonState('btnStop', 'error');
+            }
+        }
+        
+        async function resetEngine() {
+            setButtonState('btnReset', 'loading');
+            try {
+                await fetch('/alerts/selftest');
+                await loadDiagnostics();
+                setButtonState('btnReset', 'success');
+            } catch(e) {
+                console.error('Reset failed:', e);
+                setButtonState('btnReset', 'error');
+            }
+        }
+
+        // Ghost‑AI v1 Decision Preview
+        async function loadDecisionPreview() {
+            const btnId = 'btnDecisionRefresh';
+            setButtonState(btnId, 'loading');
+            try {
+                const data = await api('/ai/preview');
+                el('decisionBox').textContent = JSON.stringify(data, null, 2);
+                setButtonState(btnId, 'success');
+            } catch (e) {
+                // No placeholders: keep quiet on errors
+                el('decisionBox').textContent = '';
+                setButtonState(btnId, 'error');
+            }
+        }
+
+        // Ghost‑AI v2 Agent Monitor
+        async function loadAgentMonitor() {
+            const btnId = 'btnAgentRefresh';
+            setButtonState(btnId, 'loading');
+            try {
+                const data = await api('/api/ai/monitor?hours=24');
+                
+                // Update summary stats
+                const stats = data.stats || {};
+                
+                // Confidence
+                const confidence = stats.avg_confidence || 0;
+                el('agentConfidence').textContent = (confidence * 100).toFixed(0) + '%';
+                el('agentConfidenceProgress').style.width = (confidence * 100) + '%';
+                
+                // Color code confidence
+                const confEl = el('agentConfidence');
+                if (confidence >= 0.7) {
+                    confEl.style.color = '#4ade80'; // green
+                } else if (confidence >= 0.5) {
+                    confEl.style.color = '#fbbf24'; // yellow
+                } else {
+                    confEl.style.color = '#f87171'; // red
+                }
+                
+                // Decisions 24h
+                el('agentDecisions24h').textContent = stats.total_decisions || 0;
+                el('agentAvgConfidence').textContent = `Avg: ${(confidence * 100).toFixed(0)}%`;
+                
+                // Tool success rate
+                const toolMetrics = data.tool_metrics || [];
+                let totalCalls = 0;
+                let successCalls = 0;
+                toolMetrics.forEach(tool => {
+                    totalCalls += tool.total_calls || 0;
+                    successCalls += tool.success_count || 0;
+                });
+                const successRate = totalCalls > 0 ? (successCalls / totalCalls) : 0;
+                el('agentToolSuccess').textContent = (successRate * 100).toFixed(0) + '%';
+                el('agentToolCalls').textContent = `${totalCalls} calls`;
+                
+                // Last decision
+                const recent = data.recent_decisions || [];
+                if (recent.length > 0) {
+                    const last = recent[0];
+                    const ts = new Date(last.created_ts);
+                    const now = new Date();
+                    const diffMin = Math.floor((now - ts) / 60000);
+                    
+                    let timeAgo = '';
+                    if (diffMin < 1) timeAgo = 'just now';
+                    else if (diffMin < 60) timeAgo = `${diffMin}m ago`;
+                    else if (diffMin < 1440) timeAgo = `${Math.floor(diffMin/60)}h ago`;
+                    else timeAgo = `${Math.floor(diffMin/1440)}d ago`;
+                    
+                    el('agentLastDecision').textContent = timeAgo;
+                    el('agentLastAction').textContent = `${last.action} ${last.symbol}`;
+                } else {
+                    el('agentLastDecision').textContent = '—';
+                    el('agentLastAction').textContent = '—';
+                }
+                
+                // Populate recent decisions timeline
+                const timelineEl = el('agentDecisionsTimeline');
+                if (recent.length > 0) {
+                    let html = '';
+                    recent.slice(0, 10).forEach(dec => {
+                        const ts = new Date(dec.created_ts).toLocaleString();
+                        const conf = ((dec.confidence || 0) * 100).toFixed(0);
+                        const action = dec.action || 'UNKNOWN';
+                        const symbol = dec.symbol || '—';
+                        
+                        // Action badge color
+                        let actionColor = '#6b7280'; // gray
+                        if (action === 'BUY') actionColor = '#4ade80'; // green
+                        else if (action === 'SELL') actionColor = '#f87171'; // red
+                        else if (action === 'HOLD') actionColor = '#fbbf24'; // yellow
+                        
+                        html += `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid var(--border);">
+                                <div style="flex: 1;">
+                                    <span style="font-weight: 700; color: ${actionColor};">${action}</span>
+                                    <span style="color: var(--accent); margin-left: 8px;">${symbol}</span>
+                                    <span class="small muted" style="margin-left: 8px;">${ts}</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span class="small" style="color: var(--muted);">Confidence:</span>
+                                    <span style="font-weight: 700; margin-left: 4px;">${conf}%</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    timelineEl.innerHTML = html;
+                }
+                
+                // Populate tool performance table
+                const toolStatsBody = el('agentToolStatsBody');
+                if (toolMetrics.length === 0) {
+                    toolStatsBody.innerHTML = '';
+                } else {
+                    let html = '';
+                    toolMetrics.forEach(tool => {
+                        const name = tool.tool_name || '—';
+                        const calls = tool.total_calls || 0;
+                        const rate = ((tool.success_rate || 0) * 100).toFixed(1);
+                        const latency = (tool.avg_latency_ms || 0).toFixed(0);
+                        const symbol = tool.most_used_symbol || '—';
+                        
+                        // Color code success rate
+                        let rateColor = '#6b7280';
+                        if (tool.success_rate >= 0.9) rateColor = '#4ade80';
+                        else if (tool.success_rate >= 0.7) rateColor = '#fbbf24';
+                        else rateColor = '#f87171';
+                        
+                        html += `
+                            <tr style="border-bottom: 1px solid var(--border);">
+                                <td style="padding: 8px; font-weight: 600;">${name}</td>
+                                <td style="padding: 8px; text-align: right;">${calls}</td>
+                                <td style="padding: 8px; text-align: right; color: ${rateColor}; font-weight: 700;">${rate}%</td>
+                                <td style="padding: 8px; text-align: right;">${latency}ms</td>
+                                <td style="padding: 8px;">${symbol}</td>
+                            </tr>
+                        `;
+                    });
+                    toolStatsBody.innerHTML = html;
+                }
+                
+                setButtonState(btnId, 'success');
+            } catch (e) {
+                console.error('Agent monitor error:', e);
+                el('agentConfidence').textContent = 'Error';
+                el('agentDecisions24h').textContent = '—';
+                el('agentToolSuccess').textContent = '—';
+                el('agentLastDecision').textContent = 'Error';
+                el('agentDecisionsTimeline').innerHTML = '';
+                el('agentToolStatsBody').innerHTML = '';
+                setButtonState(btnId, 'error');
+            }
+        }
+
+        // Stage 1: World Context & Market Mood
+        async function loadWorldContext() {
+            const btnId = 'btnContextRefresh';
+            setButtonState(btnId, 'loading');
+            try {
+                // Load market mood
+                const mood = await (await fetch('/api/stage1/mood')).json();
+                if (mood.error) {
+                    el('moodRegime').textContent = '—';
+                    el('moodSentiment').textContent = '—';
+                    el('moodSummary').textContent = '';
+                    el('moodIcon').textContent = '↔️';
+                } else {
+                    const regime = (mood.market_regime || 'unknown').toUpperCase();
+                    const sentiment = mood.sentiment || 'neutral';
+                    el('moodRegime').textContent = regime;
+                    el('moodSentiment').textContent = sentiment;
+                    el('moodSummary').textContent = mood.summary || '—';
+                    
+                    // Set icon and color based on regime
+                    if (regime === 'BULL') {
+                        el('moodIcon').textContent = '🐂';
+                        el('moodRegime').style.color = 'var(--good)';
+                    } else if (regime === 'BEAR') {
+                        el('moodIcon').textContent = '🐻';
+                        el('moodRegime').style.color = 'var(--bad)';
+                    } else {
+                        el('moodIcon').textContent = '↔️';
+                        el('moodRegime').style.color = 'var(--warn)';
+                    }
+                    
+                    // Update badges
+                    el('moodSPY').textContent = `SPY: $${mood.spy_price?.toFixed(2) || '—'}`;
+                    el('moodVIX').textContent = `VIX: ${mood.vix_level?.toFixed(1) || '—'}`;
+                    const confPct = mood.confidence ? (mood.confidence * 100).toFixed(0) : '—';
+                    el('moodConf').textContent = `Confidence: ${confPct}%`;
+                }
+                
+                // Load world context
+                const context = await (await fetch('/api/stage1/world?hours=24&min_relevance=0.3')).json();
+                if (context.error) {
+                    el('contextCount').textContent = '—';
+                    el('contextSentiment').textContent = '—';
+                    el('contextEvents').innerHTML = '';
+                    el('contextHeadlines').textContent = '';
+                } else {
+                    const count = context.article_count || 0;
+                    const sentiment = context.avg_sentiment || 0;
+                    el('contextCount').textContent = count;
+                    
+                    // Color sentiment score
+                    const sentText = sentiment > 0 ? `+${sentiment.toFixed(2)}` : sentiment.toFixed(2);
+                    el('contextSentiment').textContent = sentText;
+                    if (sentiment > 0.2) {
+                        el('contextSentiment').style.color = 'var(--good)';
+                    } else if (sentiment < -0.2) {
+                        el('contextSentiment').style.color = 'var(--bad)';
+                    } else {
+                        el('contextSentiment').style.color = 'var(--warn)';
+                    }
+                    
+                    // Trending events
+                    const events = context.trending_events || [];
+                    if (events.length > 0) {
+                        el('contextEvents').innerHTML = events.slice(0, 5).map(e => 
+                            `<span class="badge">${e}</span>`
+                        ).join('');
+                    } else {
+                        el('contextEvents').innerHTML = '<span class="badge">None</span>';
+                    }
+                    
+                    // Top headlines
+                    const headlines = context.top_headlines || [];
+                    if (headlines.length > 0) {
+                        el('contextHeadlines').innerHTML = headlines.slice(0, 3).map(h => 
+                            `<div style="margin-bottom: 4px;">• ${h.headline}</div>`
+                        ).join('');
+                    } else {
+                        el('contextHeadlines').textContent = '';
+                    }
+                }
+                
+                setButtonState(btnId, 'success');
+            } catch (e) {
+                console.error('Context load failed:', e);
+                // Provide user-visible error state
+                try {
+                    el('moodRegime').textContent = '—';
+                    el('moodSentiment').textContent = '—';
+                    el('moodSummary').textContent = '';
+                    el('contextHeadlines').textContent = '';
+                } catch(_) { /* ignore UI errors */ }
+                setButtonState(btnId, 'error');
+            }
+        }
+
+        // Stage 2: Daily Accuracy Ledger & Auto-Tuning
+        async function loadAccuracyLedger() {
+            const btnId = 'btnLedgerRefresh';
+            setButtonState(btnId, 'loading');
+            try {
+                // Load recent forecasts
+                const forecasts = await (await fetch('/api/stage2/forecasts?limit=30')).json();
+                
+                // Calculate summary stats
+                let correct = 0, warning = 0, wrong = 0, pending = 0;
+                const tbody = el('ledgerTableBody');
+                
+                if (!forecasts || forecasts.length === 0) {
+                    tbody.innerHTML = '';
+                    setButtonState(btnId, 'success');
+                    return;
+                }
+                
+                // Render forecast rows
+                tbody.innerHTML = forecasts.map(f => {
+                    const date = new Date(f.forecast_time).toLocaleDateString();
+                    const forecast = f.forecast_price ? `$${f.forecast_price.toFixed(2)}` : '—';
+                    const actual = f.actual_price ? `$${f.actual_price.toFixed(2)}` : '—';
+                    
+                    // Determine result chip
+                    let resultChip = '<span class="accuracy-chip pending">⏳ Pending</span>';
+                    let deltaText = '—';
+                    let deltaClass = '';
+                    
+                    if (f.actual_price && f.forecast_price) {
+                        const delta = f.actual_price - f.forecast_price;
+                        const deltaPercent = Math.abs(delta / f.forecast_price) * 100;
+                        
+                        deltaText = delta > 0 ? `+$${delta.toFixed(2)}` : `-$${Math.abs(delta).toFixed(2)}`;
+                        deltaClass = delta > 0 ? 'delta-positive' : 'delta-negative';
+                        
+                        if (deltaPercent <= 2) {
+                            resultChip = '<span class="accuracy-chip correct">✅ Correct</span>';
+                            correct++;
+                        } else if (deltaPercent <= 5) {
+                            resultChip = '<span class="accuracy-chip warning">⚠️ Warning</span>';
+                            warning++;
+                        } else {
+                            resultChip = '<span class="accuracy-chip wrong">❌ Wrong</span>';
+                            wrong++;
+                        }
+                    } else {
+                        pending++;
+                    }
+                    
+                    return `<tr>
+                        <td>${date}</td>
+                        <td><strong>${f.symbol}</strong></td>
+                        <td>${forecast}</td>
+                        <td>${actual}</td>
+                        <td class="${deltaClass}">${deltaText}</td>
+                        <td>${resultChip}</td>
+                    </tr>`;
+                }).join('');
+                
+                // Update summary
+                el('summaryCorrect').textContent = correct;
+                el('summaryWarning').textContent = warning;
+                el('summaryWrong').textContent = wrong;
+                el('summaryPending').textContent = pending;
+                
+                // Load accuracy report (MAP)
+                try {
+                    const report = await (await fetch('/api/stage2/accuracy')).json();
+                    if (report.map !== undefined) {
+                        el('summaryMAPE').textContent = `${report.map.toFixed(2)}%`;
+                        el('summaryMAPE').style.color = report.map <= 5 ? 'var(--good)' : 'var(--bad)';
+                    }
+                } catch (e) {
+                    console.warn('MAPE unavailable:', e);
+                }
+                
+                // Load learning stats
+                try {
+                    const stats = await (await fetch('/api/stage2/learning')).json();
+                    const statsDiv = el('learningStats');
+                    if (stats && stats.tune_count !== undefined) {
+                        statsDiv.style.display = 'block';
+                        el('statsTuneCount').textContent = stats.tune_count || 0;
+                        el('statsLastTune').textContent = stats.last_tune || 'Never';
+                        el('statsConfig').textContent = JSON.stringify(stats.current_config || {});
+                    } else {
+                        statsDiv.style.display = 'none';
+                    }
+                } catch (e) {
+                    console.warn('Learning stats unavailable:', e);
+                }
+                
+                setButtonState(btnId, 'success');
+            } catch (e) {
+                console.error('Ledger load failed:', e);
+                el('ledgerTableBody').innerHTML = '';
+                setButtonState(btnId, 'error');
+            }
+        }
+
+        async function runAutoTuning() {
+            const btnId = 'btnTuneNow';
+            const btn = el(btnId);
+            const originalText = btn.textContent;
+            
+            btn.textContent = '⏳ Tuning...';
+            btn.disabled = true;
+            
+            try {
+                const result = await (await fetch('/api/stage2/tune', { method: 'POST' })).json();
+                
+                if (result.adjusted) {
+                    alert(`✅ Auto-Tuning Complete!\n\nPerformance check passed.\n${result.adjustments_made} adjustments made.\n\nChanges:\n${JSON.stringify(result.changes, null, 2)}`);
+                    await loadAccuracyLedger(); // Refresh to show new stats
+                } else {
+                    alert(`ℹ️ Auto-Tuning Check\n\n${result.message}\n\nCurrent MAP: ${result.current_mape?.toFixed(2) || 'N/A'}%\nThreshold: ${result.mape_threshold || 5}%`);
+                }
+                
+                btn.textContent = '✅ Done';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            } catch (e) {
+                console.error('Auto-tuning failed:', e);
+                alert(`❌ Auto-Tuning Error\n\n${e.message}`);
+                btn.textContent = '❌ Error';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
+
+        // Stage 3: Market Regime & Risk
+        async function loadRegimeAndRisk() {
+            const btnId = 'btnRegimeRefresh';
+            setButtonState(btnId, 'loading');
+            try {
+                // Load current regime
+                const regime = await (await fetch('/api/stage3/regime/current')).json();
+                
+                if (regime.error) {
+                    el('regimeType').textContent = '—';
+                    el('regimeConfidence').textContent = '—';
+                } else {
+                    const regimeType = regime.regime || 'SIDEWAYS';
+                    const confidence = regime.confidence || 0.5;
+                    
+                    el('regimeType').textContent = regimeType;
+                    el('regimeConfidence').textContent = `Confidence: ${(confidence * 100).toFixed(0)}%`;
+                    
+                    // Set icon based on regime
+                    const icons = {
+                        'BULL': '🐂',
+                        'BEAR': '🐻',
+                        'SIDEWAYS': '↔️',
+                        'VOLATILE': '⚡'
+                    };
+                    el('regimeIcon').textContent = icons[regimeType] || '📊';
+                    
+                    // Set color
+                    const colors = {
+                        'BULL': 'var(--good)',
+                        'BEAR': 'var(--bad)',
+                        'SIDEWAYS': 'var(--warn)',
+                        'VOLATILE': 'var(--danger)'
+                    };
+                    el('regimeType').style.color = colors[regimeType] || 'var(--accent)';
+                    
+                    // Strategy description
+                    const adj = regime.strategy_adjustments || {};
+                    el('regimeStrategy').textContent = adj.description || '—';
+                    
+                    // Strategy badges
+                    el('regimeRisk').textContent = `Risk: ${adj.risk_tolerance || '—'}`;
+                    el('regimePosition').textContent = `Position: ${(adj.position_size_multiplier * 100).toFixed(0)}%`;
+                    el('regimeStop').textContent = `Stop: ${(adj.stop_loss_pct * 100).toFixed(1)}%`;
+                }
+                
+                // Load risk dashboard
+                const risk = await (await fetch('/api/stage3/risk/dashboard')).json();
+                
+                if (risk.error) {
+                    el('riskDrawdown').textContent = '—';
+                    el('riskVaR').textContent = '—';
+                } else {
+                    const portfolio = risk.portfolio || {};
+                    const var_data = risk.value_at_risk || {};
+                    const status = risk.status || {};
+                    
+                    // Drawdown
+                    const ddPct = portfolio.current_drawdown_pct || 0;
+                    el('riskDrawdown').textContent = `${ddPct.toFixed(1)}%`;
+                    el('riskDrawdown').style.color = ddPct > 10 ? 'var(--danger)' : ddPct > 5 ? 'var(--warn)' : 'var(--good)';
+                    
+                    // VaR
+                    const varPct = var_data.var_95_pct || 0;
+                    el('riskVaR').textContent = `${varPct.toFixed(1)}%`;
+                    el('riskVaR').style.color = varPct > 5 ? 'var(--danger)' : varPct > 3 ? 'var(--warn)' : 'var(--good)';
+                    
+                    // Status badges
+                    const statusColors = {
+                        'green': 'var(--good)',
+                        'yellow': 'var(--warn)',
+                        'red': 'var(--danger)'
+                    };
+                    el('riskStatus').textContent = `Status: ${status.level || 'unknown'}`;
+                    el('riskStatus').style.color = statusColors[status.level] || 'var(--muted)';
+                    
+                    const maxPos = risk.position_limits?.max_single_position_pct || 10;
+                    el('riskMaxPos').textContent = `Max Position: ${maxPos.toFixed(0)}%`;
+                }
+                
+                setButtonState(btnId, 'success');
+            } catch (e) {
+                console.error('Regime/Risk load failed:', e);
+                el('regimeType').textContent = 'Error';
+                el('riskDrawdown').textContent = '—';
+                setButtonState(btnId, 'error');
+            }
+        }
+
+        // Stage 4: Portfolio Optimization
+        async function loadPortfolioOptimization() {
+            const btnId = 'btnPortfolioRefresh';
+            try {
+                setButtonState(btnId, 'loading');
+                
+                // Fetch real portfolio data
+                let portfolioData;
+                try {
+                    const dataResp = await fetch('/api/portfolio/returns-history', {
+                        headers: authHeaders()
+                    });
+                    portfolioData = await dataResp.json();
+                } catch (err) {
+                    console.error('Failed to fetch portfolio data:', err);
+                    el('portfolioAllocation').innerHTML = '';
+                    setButtonState(btnId, 'error');
+                    return;
+                }
+                
+                if (!portfolioData || !portfolioData.assets || portfolioData.assets.length === 0) {
+                    el('portfolioAllocation').innerHTML = '';
+                    setButtonState(btnId, 'warn');
+                    return;
+                }
+                
+                // Optimize portfolio with real data
+                const optResult = await fetch('/api/stage4/portfolio/optimize', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(portfolioData)
+                }).then(r => r.json());
+                
+                if (!optResult.error) {
+                    // Display allocation
+                    const weights = optResult.weights || {};
+                    let allocationHTML = '';
+                    for (const [symbol, weight] of Object.entries(weights)) {
+                        const pct = (weight * 100).toFixed(1);
+                        allocationHTML += `<span class="badge" style="background: var(--chip); border: 1px solid var(--chip-border);">${symbol}: ${pct}%</span> `;
+                    }
+                    el('portfolioAllocation').innerHTML = allocationHTML;
+                    
+                    // Display metrics
+                    const metrics = optResult.metrics || {};
+                    el('portfolioReturn').textContent = `${(metrics.expected_return * 100).toFixed(2)}%`;
+                    el('portfolioSharpe').textContent = metrics.sharpe_ratio.toFixed(2);
+                    el('portfolioVol').textContent = `${(metrics.volatility * 100).toFixed(2)}%`;
+                } else {
+                    el('portfolioAllocation').innerHTML = '';
+                }
+                
+                // Beta hedge - fetch real historical returns
+                let hedgeResult;
+                try {
+                    const wolfHist = await fetch('/api/prices/history?symbol=WOLF&days=90', {
+                        headers: authHeaders()
+                    }).then(r => r.json());
+                    const spyHist = await fetch('/api/prices/history?symbol=SPY&days=90', {
+                        headers: authHeaders()
+                    }).then(r => r.json());
+                    
+                    if (!wolfHist.returns || !spyHist.returns) {
+                        throw new Error('Insufficient historical data');
+                    }
+                    
+                    hedgeResult = await fetch('/api/stage4/hedging/beta-hedge', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            portfolio_symbol: 'WOLF',
+                            portfolio_returns: wolfHist.returns,
+                            market_returns: spyHist.returns,
+                            hedge_symbol: 'SPY'
+                        })
+                    }).then(r => r.json());
+                } catch (err) {
+                    console.error('Beta hedge calculation failed:', err);
+                    hedgeResult = { error: 'Data unavailable' };
+                }
+                
+                if (!hedgeResult.error) {
+                    const hedgeHTML = `<div><strong>β = ${hedgeResult.beta}</strong></div>
+                        <div class="small">Hedge: ${hedgeResult.hedge_size_pct}% short ${hedgeResult.hedge_symbol}</div>
+                        <div class="small muted">Vol reduction: ${hedgeResult.expected_vol_reduction_pct}%</div>`;
+                    el('hedgingSuggestion').innerHTML = hedgeHTML;
+                } else {
+                    el('hedgingSuggestion').innerHTML = '';
+                }
+                
+                // Backtest - use real AI decision history
+                let backtestResult;
+                try {
+                    const decisions = await fetch('/api/ai/memory/history?days=90', {
+                        headers: authHeaders()
+                    }).then(r => r.json());
+                    
+                    if (!decisions || decisions.length === 0) {
+                        throw new Error('No decision history available');
+                    }
+                    
+                    backtestResult = await fetch('/api/stage4/backtest/run', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            strategy_name: 'Ghost Strategy',
+                            decisions: decisions,
+                            verify_outcomes: true
+                        })
+                    }).then(r => r.json());
+                } catch (err) {
+                    console.error('Backtest failed:', err);
+                    backtestResult = { error: 'Data unavailable' };
+                }
+                
+                if (!backtestResult.error) {
+                    const perf = backtestResult.performance || {};
+                    const backtestHTML = `<div><strong>Return: ${perf.total_return_pct}%</strong></div>
+                        <div class="small">Sharpe: ${perf.sharpe_ratio}</div>
+                        <div class="small muted">Max DD: ${perf.max_drawdown_pct}%</div>`;
+                    el('backtestResult').innerHTML = backtestHTML;
+                } else {
+                    el('backtestResult').innerHTML = '';
+                }
+                
+                setButtonState(btnId, 'success');
+            } catch (e) {
+                console.error('Portfolio optimization load failed:', e);
+                el('portfolioAllocation').innerHTML = '';
+                setButtonState(btnId, 'error');
+            }
+        }
+
+        // Stage 5: Smart Execution
+        async function loadExecutionDashboard() {
+            const btnId = 'btnExecutionRefresh';
+            try {
+                setButtonState(btnId, 'loading');
+                
+                // Load execution dashboard
+                const dashboard = await fetch('/api/stage5/analytics/dashboard?lookback_days=7').then(r => r.json());
+                
+                if (!dashboard.error) {
+                    // Quality score
+                    const score = dashboard.execution_quality_score || 0;
+                    el('execQualityScore').textContent = score.toFixed(0);
+                    
+                    // Quality classification with color
+                    const qualityClass = dashboard.quality_classification || 'N/A';
+                    el('execQualityClass').textContent = qualityClass;
+                    const qualityColors = {
+                        'Excellent': 'var(--green)',
+                        'Good': 'var(--accent)',
+                        'Fair': 'var(--warn)',
+                        'Poor': 'var(--danger)',
+                        'Very Poor': 'var(--danger)'
+                    };
+                    el('execQualityScore').style.color = qualityColors[qualityClass] || 'var(--muted)';
+                    el('execQualityClass').style.background = qualityColors[qualityClass] || 'var(--chip-border)';
+                    
+                    // Metrics
+                    const avgLatency = dashboard.avg_latency_ms || 0;
+                    el('execLatency').textContent = `${avgLatency.toFixed(0)}ms`;
+                    
+                    const fillRate = dashboard.avg_fill_rate || 0;
+                    el('execFillRate').textContent = `${(fillRate * 100).toFixed(1)}%`;
+                    
+                    const totalOrders = dashboard.total_orders || 0;
+                    el('execTotalOrders').textContent = totalOrders;
+                } else {
+                    el('execQualityScore').textContent = '—';
+                    el('execQualityClass').textContent = '';
+                    el('execLatency').textContent = '';
+                    el('execFillRate').textContent = '';
+                    el('execTotalOrders').textContent = '';
+                }
+                
+                // Load kill switch status
+                const killSwitchStatus = await fetch('/api/stage5/risk/kill-switch/status').then(r => r.json());
+                
+                if (!killSwitchStatus.error) {
+                    const tradingEnabled = killSwitchStatus.trading_enabled || false;
+                    const killSwitchActive = killSwitchStatus.kill_switch_active || false;
+                    
+                    if (tradingEnabled) {
+                        el('killSwitchIndicator').style.background = 'var(--green)';
+                        el('killSwitchStatus').textContent = 'TRADING ACTIVE';
+                        el('killSwitchStatus').style.color = 'var(--green)';
+                        el('killSwitchReason').style.display = 'none';
+                    } else {
+                        el('killSwitchIndicator').style.background = 'var(--danger)';
+                        el('killSwitchStatus').textContent = 'KILL SWITCH ACTIVE';
+                        el('killSwitchStatus').style.color = 'var(--danger)';
+                        el('killSwitchReason').style.display = 'block';
+                        el('killSwitchReason').textContent = killSwitchStatus.reason || 'Trading halted';
+                    }
+                } else {
+                    el('killSwitchIndicator').style.background = 'var(--muted)';
+                    el('killSwitchStatus').textContent = 'STATUS UNKNOWN';
+                }
+                
+                // Load active orders count
+                const activeOrders = await fetch('/api/stage5/orders/active').then(r => r.json());
+                
+                if (!activeOrders.error) {
+                    const count = activeOrders.count || 0;
+                    el('activeOrdersCount').textContent = count;
+                    el('activeOrdersCount').style.color = count > 0 ? 'var(--accent)' : 'var(--muted)';
+                } else {
+                    el('activeOrdersCount').textContent = '';
+                }
+                
+                setButtonState(btnId, 'success');
+            } catch (e) {
+                console.error('Execution dashboard load failed:', e);
+                el('execQualityScore').textContent = '—';
+                el('execQualityClass').textContent = '';
+                setButtonState(btnId, 'error');
+            }
+        }
+
+        // Heatmap
+        async function loadHeatmap() {
+            try {
+                const s = await (await fetch('/api/cockpit')).json();
+                const data = (s.heatmap && s.heatmap.tiles) ? s.heatmap.tiles : [];
+                const box = el("heatmap");
+                box.innerHTML = "";
+                (data || []).slice(0, 18).forEach(it => {
+                    const div = document.createElement("div");
+                    div.className = "heat";
+                    div.innerHTML = `
+                        <div class="sym">${(it.symbol || it.id || "—").toString().toUpperCase()}</div>
+                        <div class="muted small">${it.type || it.market || "asset"}</div>
+                        <div class="row" style="margin-top:6px">
+                            <span class="chip">$${fmt(it.price || it.current || 0)}</span>
+                            <span class="chip gps">GPS ${fmt(it.gps ?? it.score ?? 5,1)}</span>
+                        </div>`;
+                    box.appendChild(div);
+                });
+                el("heatTs").textContent = nowIso();
+            } catch (e) {
+                el("heatmap").innerHTML = "";
+            }
+        }
+
+        // Diagnostics
+        async function loadDiagnostics() {
+            try {
+                const r = await fetch('/logs/recent?limit=300');
+                const d = await r.json();
+                const evs = d.events || [];
+                const lines = evs.map(ev => `${new Date(ev.ts*1000).toISOString().slice(11,19)} ${ev.type}: ${ev.message}${ev.data? ' '+JSON.stringify(ev.data):''}`);
+                el('diagBox').textContent = (lines.length? lines.join('\n') : '');
+                el('diagTs').textContent = nowIso();
+            } catch (e) {
+                el('diagBox').textContent = '';
+            }
+        }
+
+        // Movers
+    async function loadMovers() {
+            try {
+                const rs = await fetch('/api/cockpit');
+                const snap = await rs.json();
+                const list = el("moversList");
+                list.innerHTML = "";
+                const pr = snap.prices || {};
+                const ch = Number(pr.change_pct || 0);
+                const item = document.createElement('div');
+                item.className = 'row';
+                item.innerHTML = `
+                    <span class="chip" style="min-width:80px">WOLF</span>
+                    <span class="${ch>=0 ? 'good' : 'bad'}">${pct(ch)}</span>
+                    <span class="muted small">GPS ${fmt((snap.heatmap?.tiles?.[0]?.gps) ?? 7.2,1)}</span>`;
+                list.appendChild(item);
+                el("moversTs").textContent = nowIso();
+                const wl = el('watchlistCard'); if (wl) wl.style.display = 'none';
+            } catch (e) {
+                el("moversList").innerHTML = "";
+            }
+        }
+
+        // Research Snapshot panel
+        async function loadResearchSnapshot(){
+            const panel = document.getElementById('researchPanel');
+            if (!panel) return;
+            try {
+                const r = await fetch('/research/snapshot');
+                const d = await r.json();
+                if (!d || d.ok === false) { panel.innerHTML = ''; return; }
+                const snap = d.snapshot || {};
+                const parts = snap.parts || {};
+                const agg = snap.aggregate || {};
+                const imp = typeof agg.impact === 'number' ? agg.impact : 0;
+                const conf = agg.confidence != null ? agg.confidence : '—';
+                const edgar = parts.edgar || {};
+                const yf = parts.yfinance || {};
+                const yfInfo = (yf.info||{});
+                const flags = (edgar && edgar.ok) ? {
+                    bankruptcy: !!edgar.has_bankruptcy,
+                    delisting: !!edgar.has_delisting,
+                    urgency: edgar.last8k_urgency || '—'
+                } : {bankruptcy:false, delisting:false, urgency:'—'};
+                const impColor = imp>0.15? 'var(--good)' : imp<-0.15? 'var(--bad)' : 'var(--warn)';
+                const flagBadges = [
+                    flags.bankruptcy? '<span class="badge" style="background:#3a1c1c;border-color:#5a2727;color:#ffb3b3">bankruptcy</span>' : '',
+                    flags.delisting? '<span class="badge" style="background:#3a2a16;border-color:#704b1c;color:#ffcf85">delisting</span>' : ''
+                ].filter(Boolean).join(' ');
+                const sector = yfInfo.sector || '—';
+                const industry = yfInfo.industry || '—';
+                const mcap = yfInfo.marketCap != null ? Number(yfInfo.marketCap).toLocaleString() : '—';
+                const tech = yf.technicals || {};
+                const rsi = tech.rsi14 != null ? Number(tech.rsi14).toFixed(1) : '—';
+                const ma = [tech.ma20, tech.ma50, tech.ma200].map(v=> v!=null? Number(v).toFixed(2):'—').join(' / ');
+                // Optional LLM enrichment
+                const llm = snap.llm && snap.llm.ok && snap.llm.data ? snap.llm.data : null;
+                const execs = llm && Array.isArray(llm.executives) ? llm.executives : [];
+                const comps = llm && Array.isArray(llm.competitors) ? llm.competitors : [];
+                const guidance = llm && llm.guidance ? llm.guidance : '—';
+                const sources = llm && Array.isArray(llm.sources) ? llm.sources : [];
+                const llmConf = llm && typeof llm.confidence === 'number' ? llm.confidence : null;
+                panel.innerHTML = `
+                    <div class="row" style="gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+                        <span class="badge">Agg Impact: <span style="color:${impColor};font-weight:800;margin-left:6px">${imp.toFixed ? imp.toFixed(2) : imp}</span></span>
+                        <span class="badge">Confidence: ${conf}%</span>
+                        ${flagBadges}
+                        <span class="badge">8-K Urgency: ${flags.urgency}</span>
+                    </div>
+                    <div class="two" style="gap:12px;">
+                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
+                            <div class="small muted" style="margin-bottom:6px;">Company</div>
+                            <div class="small">Sector: <strong>${sector}</strong></div>
+                            <div class="small">Industry: <strong>${industry}</strong></div>
+                            <div class="small">Market Cap: <strong>${mcap}</strong></div>
+                        </div>
+                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
+                            <div class="small muted" style="margin-bottom:6px;">Technicals</div>
+                            <div class="small">RSI(14): <strong>${rsi}</strong></div>
+                            <div class="small">MA20/50/200: <strong>${ma}</strong></div>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
+                            <div class="small muted" style="margin-bottom:6px;">Executives</div>
+                            <div class="small">${execs.length? execs.map(e=>`• ${typeof e==='string'? e : (e.name? e.name+ (e.title? ' — '+e.title:'') : JSON.stringify(e))}`).join('<br/>') : '—'}</div>
+                        </div>
+                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
+                            <div class="small muted" style="margin-bottom:6px;">Guidance</div>
+                            <div class="small">${guidance}</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
+                            <div class="small muted" style="margin-bottom:6px;">Competitors</div>
+                            <div class="small">${comps.length? comps.map(c=>`• ${c}`).join('<br/>') : '—'}</div>
+                        </div>
+                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
+                            <div class="small muted" style="margin-bottom:6px;">Sources</div>
+                            <div class="small">${sources.length? sources.slice(0,4).map(u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`).join('<br/>') : '—'}</div>
+                        </div>
+                    </div>
+                    ${llmConf!=null? `<div class="small muted" style="margin-top:6px;">LLM confidence: ${llmConf}%</div>` : ''}
+                `;
+            } catch(e){
+                panel.innerHTML = '';
+            }
+        }
+
+        // Portfolio
+        function renderPortfolioRows(rows) {
+            const tbody = el("portfolioTbl").querySelector("tbody");
+            tbody.innerHTML = "";
+            (rows || []).forEach(p => {
+                const pnl = Number(p.pnl_abs || 0);
+                const pnlp = Number(p.pnl_pct || 0);
+                const isStale = !!p.stale;
+                const tr = document.createElement("tr");
+                const currentDisp = isStale ? "—" : (p.current===null||p.current===undefined?"—":`$${fmt(p.current)}`);
+                const pnlAbsDisp = isStale ? "—" : `${pnl>=0?"+":""}${fmt(pnl)}`;
+                const pnlPctDisp = isStale ? "—" : `${pct(pnlp)}`;
+                const symCell = isStale ? `${p.symbol} <span class='pill' style='background:#332b18;color:#ffcf66'>stale</span>` : p.symbol;
+                tr.innerHTML = `
+                    <td>${symCell}</td>
+                    <td>${(p.kind || p.type || "—")}</td>
+                    <td class="right">${fmt(p.qty, 4)}</td>
+                    <td class="right">$${fmt(p.entry)}</td>
+                    <td class="right">${currentDisp}</td>
+                    <td class="right ${pnl>=0 ? "good" : "bad"}">${pnlAbsDisp}</td>
+                    <td class="right ${pnlp>=0 ? "good" : "bad"}">${pnlPctDisp}</td>
+                    <td class="right">${fmt(p.gps ?? 5,1)}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Cockpit stream for latency metrics + forecast updates (SSE)
+        function connectCockpitStream(){
+            if (typeof EventSource === 'undefined') return;
+            let es, forecastES;
+            
+            // Heartbeat stream (latency tracking)
+            function startHeartbeat(){
+                es = new EventSource('/events');
+                es.onmessage = (ev) => {
+                    const t0 = performance.now();
+                    try {
+                        JSON.parse(ev.data);
+                        const dt = performance.now() - t0;
+                        latencySamples.push(dt);
+                        if (latencySamples.length > 30) latencySamples.shift();
+                        updateLatencyBadge();
+                    } catch(_){}
+                };
+                es.onerror = () => { try { es.close(); } catch(_){}; setTimeout(startHeartbeat, 3000); };
+            }
+            
+            // NEW: Forecast update stream (two-line overlay)
+            function startForecastStream(){
+                forecastES = new EventSource('/api/cockpit/stream');
+                
+                // Handle forecast_update events
+                forecastES.addEventListener('forecast_update', (ev) => {
+                    try {
+                        const payload = JSON.parse(ev.data);
+                        if (payload.data && payload.data.forecast) {
+                            // Auto-refresh chart with new data
+                            const norm = normalizeOverlay(payload.data);
+                            drawForecastChart(norm);
+                            
+                            // Update accuracy chips
+                            const acc = payload.data.accuracy?.summary || {};
+                            const src = payload.data.actual?.src || 'unavailable';
+                            document.getElementById('foMAPE').textContent = `MAP: ${acc.map!=null? (acc.map*100).toFixed(2)+'%':'—'}`;
+                            document.getElementById('foRMSE').textContent = `RMSE: ${acc.rmse!=null? '$'+acc.rmse.toFixed(2):'—'}`;
+                            document.getElementById('foBias').textContent = `Bias: ${acc.bias!=null? '$'+acc.bias.toFixed(2):'—'}`;
+                            
+                            // Update metadata
+                            const meta = document.getElementById('foMeta');
+                            const asof = payload.data.forecast?.asof || payload.ts;
+                            if(asof && meta){ 
+                                const dt = new Date(asof*1000).toISOString().slice(11,19); 
+                                const actualCount = payload.data.actual?.points?.length || 0;
+                                meta.textContent = `as of ${dt} • ${actualCount} actual points • live update`; 
+                            }
+                        }
+                    } catch(e){
+                        console.error('Forecast update error:', e);
+                    }
+                });
+                
+                // Handle heartbeat events
+                forecastES.addEventListener('heartbeat', (ev) => {
+                    // Silent heartbeat, just keep connection alive
+                });
+                
+                // Reconnect on error
+                forecastES.onerror = () => { 
+                    try { forecastES.close(); } catch(_){}; 
+                    setTimeout(startForecastStream, 5000); 
+                };
+            }
+            
+            startHeartbeat();
+            startForecastStream();
+        }
+
+        function updateAnomalyUI(flags){
+            try{
+                LAST_FLAGS = flags || {};
+                const banner = document.getElementById('anomalyBanner');
+                const txt = document.getElementById('anomalyText');
+                const btn = document.getElementById('btnOverlayResume');
+                const anomaly = !!(flags && (flags.price_anomaly || flags.corp_action_suspected));
+                // Pause unless user explicitly overrides
+                FORECAST_PAUSED = anomaly && !FORECAST_USER_OVERRIDE;
+                if (banner){
+                    banner.style.display = anomaly ? 'inline-flex' : 'none';
+                    if (!anomaly){
+                        // clear override when anomaly clears
+                        FORECAST_USER_OVERRIDE = false;
+                    }
+                }
+                if (txt){
+                    txt.textContent = FORECAST_USER_OVERRIDE && anomaly
+                        ? 'Anomaly detected — overlay overridden (using safe price for P&L).'
+                        : 'Corporate action/price anomaly — using safe price.';
+                }
+                if (btn){
+                    btn.textContent = (FORECAST_USER_OVERRIDE && anomaly) ? 'Pause overlay' : 'Resume overlay';
+                    btn.style.display = anomaly ? 'inline-flex' : 'none';
+                }
+            }catch(_){ /* noop */ }
+        }
+
+        async function loadPortfolio() {
+            try {
+                const r = await fetch("/api/cockpit");
+                const s = await r.json();
+                const qty = (s.portfolio?.rows?.[0]?.qty) ?? (s.position?.qty) ?? 0;
+                const avg = (s.portfolio?.rows?.[0]?.entry) ?? (s.position?.avg_cost) ?? 0;
+                const cur = (s.prices && s.prices.price != null) ? s.prices.price : null;
+                const pnlAbs = (cur !== null && qty) ? (cur - avg) * qty : 0;
+                const pnlPct = (cur !== null && avg) ? ((cur - avg) / avg * 100) : 0;
+                renderPortfolioRows([{ symbol:"WOLF", type:"stock", qty, entry:avg, current:cur, pnl_abs: pnlAbs, pnl_pct: pnlPct, gps: s.gps, stale: s.flags?.any_stale }]);
+                const staleDot = s.flags && s.flags.any_stale ? ' • <span style="color:#ffcf66">stale prices</span>' : '';
+                el("portfolioMeta").innerHTML = `positions: 1 • NAV $${fmt((s.kpis?.nav||0),2)} • refreshed ${nowIso()}${staleDot}`;
+                // Update anomaly banner + forecast pause
+                updateAnomalyUI(s.flags || {});
+                // Lock inputs to WOLF/stock and hide symbol/market widgets
+                const ps = el('posSym'); const pm = el('posMarket');
+                if (ps) { ps.value = 'WOLF'; ps.readOnly = true; ps.style.display = 'none'; }
+                if (pm) { pm.value = 'stock'; pm.disabled = true; pm.style.display = 'none'; }
+                const wl = el('watchlistCard'); if (wl) wl.style.display = 'none';
+                const fb = el('focusBadge'); if (fb) { fb.textContent = 'Focus: WOLF'; fb.style.display = 'inline-flex'; }
+                // Provider unauthorized badge
+                try {
+                    const unauth = (s.degraded_reasons||[]).includes('price:provider-unauthorized') || (s.reasons||[]).includes('price:provider-unauthorized');
+                    const badge = document.getElementById('providerUnauthBadge');
+                    if (badge) badge.style.display = unauth ? 'inline-flex' : 'none';
+                } catch(_){ }
+            } catch (e) {
+                el("portfolioMeta").textContent = "";
+            }
+        }
+
+        async function addPosition() {
+            const qty  = parseFloat(el("posQty").value || "0");
+            const avg  = parseFloat(el("posPrice").value || "0");
+            if (!qty || !avg) return alert("Enter qty and avg cost.");
+            setButtonState('btnAddPos', 'loading');
+            try {
+                const resp = await fetch("/api/position", {
+                    method:"POST",
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({qty, avg_cost: avg})
+                });
+                const d = await resp.json();
+                if (!d || d.error) {
+                    setButtonState('btnAddPos', 'error');
+                    return alert("Update failed");
+                }
+                await loadPortfolio();
+                setButtonState('btnAddPos', 'success');
+            } catch(e) {
+                setButtonState('btnAddPos', 'error');
+                alert("Update failed");
+            }
+        }
+
+        async function bankReset() { /* out of scope in WOLF-only */ await loadPortfolio(); }
+
+        // Watchlist
+        async function importWatchlist() { /* removed in WOLF-only */ }
+
+        async function loadCurrentWatchlist() { /* removed in WOLF-only */ }
+
+        // Wire controls
+        el("btnStart").onclick = startEngine;
+        el("btnStop").onclick = stopEngine;
+        el("btnReset").onclick = resetEngine;
+        el("btnDecisionRefresh").onclick = () => loadDecisionPreview();
+        el("btnAddPos").onclick = addPosition;
+        el("btnBankReset").onclick = bankReset;
+        el("btnImportWatchlist").onclick = importWatchlist;
+        el("btnLoadCurrent").onclick = loadCurrentWatchlist;
+        el("btnAnalyze").onclick = () => alert("Client-side analyze stub — server returns recommendations at /advisor/enhanced");
+
+        // News feed
+        async function loadNews(){
+                try {
+                    const includeAll = !!(document.getElementById('newsAllToggle')?.checked);
+                    const r = await fetch('/api/cockpit');
+                    const snap = await r.json();
+                    const news = includeAll ? (snap.news_all || []) : ((snap.news || snap.news_relevant) || []);
+                    const all = snap.news_all || [];
+                    const list = document.getElementById('newsList');
+                    list.innerHTML='';
+                    news.slice(0,25).forEach(n => {
+                        const div = document.createElement('div');
+                        const src = (n.src||'').toUpperCase();
+                        const title = n.title || n.headline || '(no title)';
+                        const ts = n.ts ? new Date(n.ts*1000).toISOString().slice(11,19) : '';
+                        const syms = (n.syms||[]).slice(0,4).join(', ');
+                        const tag = n.tag || (typeof n.sent === 'number' ? (n.sent>0?'\u2191 Bullish':n.sent<0?'\u2193 Bearish':'\u2022 Neutral') : '');
+                        const tagHtml = tag ? ` <span class="pill" style="background:#162030;border:1px solid #233044">${tag}</span>` : '';
+                        div.innerHTML = `<div><span class="mono" style="color:#7fc8ff">${ts}</span> <strong>${title}</strong> ${tagHtml} <span class="muted">${src}${syms? ' • '+syms:''}</span></div>`;
+                        list.appendChild(div);
+                    });
+                    if(!news.length){
+                        list.innerHTML = '';
+                    }
+                    const degraded = snap.flags && snap.flags.degraded;
+                    document.getElementById('newsMeta').innerHTML = `${news.length} relevant • ${all.length} all${degraded? ' • <span style="color:#ffc24b">degraded</span>' : ''}`;
+                } catch(e){
+                    const list = document.getElementById('newsList');
+                    list.innerHTML = '';
+                }
+            }
+
+        // Forecast overlay - NEW: supports two_line_overlay schema
+        function normalizeOverlay(d){
+            // Returns {pred:[{t,mid,lo,hi}], actual:[{t,p}]}
+            const out = {pred:[], actual:[]};
+            if (!d) return out;
+            
+            // NEW: Handle two_line_overlay schema (preferred)
+            if (d.forecast && d.forecast.points) {
+                // Extract forecast points
+                out.pred = d.forecast.points.map(p=>({ 
+                    t: Number(p.t||0), 
+                    mid: Number(p.p||0), 
+                    lo: Number(d.forecast.band?.lo?.find(l=>l.t===p.t)?.p || p.p), 
+                    hi: Number(d.forecast.band?.hi?.find(h=>h.t===p.t)?.p || p.p)
+                }));
+                // Extract actual points
+                if (d.actual && Array.isArray(d.actual.points)) {
+                    out.actual = d.actual.points.map(a=>({ t: Number(a.t||0), p: Number(a.p||0) })).filter(a=>a.t && a.p);
+                }
+                return out;
+            }
+            
+            // Legacy: Old forecast schema support
+            if (Array.isArray(d.points)){
+                out.pred = d.points.map(p=>({ t: Number(p.t||p.ts||0), mid: Number(p.price_mid||p.mid||p.m||0), lo: Number(p.price_lo||p.lo||0), hi: Number(p.price_hi||p.hi||0) }));
+            } else if (d.series || d.pred || d.path_mid || d.path_predicted){
+                const mids = (d.path_predicted?.mid) || (d.series?.mid) || (d.pred?.mid) || (d.path_mid) || [];
+                const los  = (d.path_predicted?.lo) || (d.series?.lo)  || (d.pred?.lo)  || (d.path_lo)  || [];
+                const his  = (d.path_predicted?.hi) || (d.series?.hi)  || (d.pred?.hi)  || (d.path_hi)  || [];
+                const ts   = (d.series?.t)   || (d.pred?.t)   || []; // optional parallel
+                const n = Math.max(mids.length, los.length, his.length);
+                for (let i=0;i<n;i++){
+                    const t = Number((ts[i]) || (mids[i]?.t) || (los[i]?.t) || (his[i]?.t) || 0);
+                    const mid = Number((mids[i]?.p ?? mids[i]) || 0);
+                    const lo = Number((los[i]?.p ?? los[i]) || 0);
+                    const hi = Number((his[i]?.p ?? his[i]) || 0);
+                    out.pred.push({t, mid, lo, hi});
+                }
+            }
+            const actualRaw = d.path_actual || d.actual || d.realized || d.ticks || [];
+            out.actual = (actualRaw || []).map(a=>({ t: Number(a.t||a.ts||0), p: Number(a.p||a.price||a.v||0)})).filter(a=>a.t && a.p);
+            return out;
+        }
+
+        function drawForecastChart(data){
+            const canvas = document.getElementById('forecastCanvas');
+            const empty = document.getElementById('foEmpty');
+            const ctx = canvas.getContext('2d');
+            const W = canvas.clientWidth|0, H = canvas.clientHeight|0;
+            if (canvas.width !== W) canvas.width = W;
+            if (canvas.height !== H) canvas.height = H;
+            ctx.clearRect(0,0,W,H);
+            const pred = data.pred||[]; const actual = data.actual||[];
+            if (!pred.length){ empty.style.display='flex'; return; } else { empty.style.display='none'; }
+            // X/Y ranges
+            const tMin = Math.min(...pred.map(p=>p.t), ...(actual.map(a=>a.t).concat([Infinity])));
+            const tMax = Math.max(...pred.map(p=>p.t), ...(actual.map(a=>a.t).concat([0])));
+            const yVals = [];
+            pred.forEach(p=>{ if(p.lo) yVals.push(p.lo); if(p.hi) yVals.push(p.hi); if(p.mid) yVals.push(p.mid); });
+            actual.forEach(a=>{ if(a.p) yVals.push(a.p); });
+            const yMin = Math.min(...yVals), yMax = Math.max(...yVals);
+            const padY = (yMax - yMin) * 0.1 || 1;
+            const X = t=> (W-40) * (t - tMin) / Math.max(1, (tMax - tMin)) + 20;
+            const Y = v=> H - 20 - (H-40) * (v - (yMin - padY)) / Math.max(1, (yMax - yMin + 2*padY));
+            // Band fill
+            ctx.beginPath();
+            pred.forEach((p,i)=>{ const x=X(p.t), y=Y(p.hi||p.mid); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+            for(let i=pred.length-1;i>=0;i--){ const p=pred[i]; const x=X(p.t), y=Y(p.lo||p.mid); ctx.lineTo(x,y); }
+            ctx.closePath(); ctx.fillStyle = 'rgba(100, 160, 180, 0.12)'; ctx.fill();
+            // Ghost forecast line (solid, blue)
+            ctx.beginPath(); 
+            ctx.lineWidth = 2.5; 
+            ctx.strokeStyle = '#5bd4ff';
+            ctx.setLineDash([]); // Solid line
+            pred.forEach((p,i)=>{ const x=X(p.t), y=Y(p.mid||((p.lo+p.hi)/2)); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+            ctx.stroke();
+            
+            // Live actual line (dashed, white) - NEW
+            if (actual.length){
+                ctx.beginPath(); 
+                ctx.lineWidth = 2; 
+                ctx.strokeStyle = '#e7eaf6';
+                ctx.setLineDash([6, 4]); // Dashed line (6px dash, 4px gap)
+                let pathStarted = false;
+                actual.forEach((a,i)=>{ 
+                    const x=X(a.t), y=Y(a.p); 
+                    if (!pathStarted) { 
+                        ctx.moveTo(x,y); 
+                        pathStarted = true; 
+                    } else { 
+                        ctx.lineTo(x,y); 
+                    }
+                });
+                ctx.stroke();
+                ctx.setLineDash([]); // Reset dash
+            }
+        }
+
+        let FO_MODE = (localStorage.getItem('cockpitForecastMode')||'overlay');
+        function paintFoMode(){ try{ const m = FO_MODE; const a = document.getElementById('btnModeOverlay'); const b = document.getElementById('btnModePnl'); const pill = document.getElementById('foModePill'); if(a){ a.style.opacity = (m==='overlay')? '1.0':'0.7'; } if(b){ b.style.opacity = (m==='pnl')? '1.0':'0.7'; } if(pill){ pill.textContent = `mode: ${m}`; } }catch{} }
+        async function loadForecastOverlay(){
+            const btnId = 'btnForecastRefresh';
+            setButtonState(btnId, 'loading');
+            try{
+                const status = document.getElementById('foStatus');
+                const meta = document.getElementById('foMeta');
+                if (FORECAST_PAUSED){ status.textContent = 'paused (anomaly)'; setButtonState(btnId, 'error'); return; }
+                status.textContent = '';
+                if (FO_MODE === 'overlay'){
+                    // Fetch from /api/cockpit to get two_line_overlay data
+                    const r = await fetch('/api/cockpit');
+                    const snap = await r.json();
+                    const twoLine = snap.two_line_overlay;
+                    // Fallback to legacy overlay if unavailable
+                    if (!twoLine || !twoLine.forecast) {
+                        const legacyR = await fetch('/api/forecast/overlay?symbol=WOLF');
+                        const d = await legacyR.json();
+                        if (d && d.enabled === false){ status.textContent = 'disabled'; setButtonState(btnId, 'error'); return; }
+                        const norm = normalizeOverlay(d||{});
+                        drawForecastChart(norm);
+                        status.textContent = 'ok (legacy)';
+                        setButtonState(btnId, 'success');
+                        return;
+                    }
+                    // Render two-line chart
+                    const norm = normalizeOverlay(twoLine);
+                    drawForecastChart(norm);
+                    // Bind accuracy metrics
+                    const acc = twoLine.accuracy?.summary || {};
+                    const src = twoLine.actual?.src || 'unavailable';
+                    document.getElementById('foMAPE').textContent = `MAP: ${acc.map!=null? (acc.map*100).toFixed(2)+'%':'—'}`;
+                    document.getElementById('foRMSE').textContent = `RMSE: ${acc.rmse!=null? '$'+acc.rmse.toFixed(2):'—'}`;
+                    document.getElementById('foBias').textContent = `Bias: ${acc.bias!=null? '$'+acc.bias.toFixed(2):'—'}`;
+                    const conf = (twoLine.forecast?.meta?.con ?? twoLine.forecast?.meta?.conf) || null;
+                    const confPct = (typeof conf==='number') ? Math.round((conf>1? conf: conf*100)) : null;
+                    document.getElementById('foAccrual').textContent = `Conf: ${confPct!=null? confPct+'%':'—'}`;
+                    const pts = (norm.pred?.length||0);
+                    const cov = pts>1? Math.round((norm.pred[norm.pred.length-1].t - norm.pred[0].t)/3600): null;
+                    document.getElementById('foCoverage').textContent = `Coverage: ${cov!=null? cov : '—'}h • Src: ${src}`;
+                    status.textContent = 'ok';
+                    const asof = (twoLine.forecast?.aso || twoLine.forecast?.asof) || null;
+                    if(asof){ const dt = new Date(asof*1000).toISOString().slice(11,19); meta.textContent = `as of ${dt} • ${norm.actual?.length||0} actual points`; }
+                    setButtonState(btnId, 'success');
+                } else {
+                    // PnL cone via /predict/48h
+                    const r = await fetch('/predict/48h');
+                    const d = await r.json();
+                    // Convert predict schema to normalizeOverlay-compatible
+                    const pts = Array.isArray(d.points)? d.points: [];
+                    const conv = { pred: pts.map(p=>({ t:Number(p.t), mid: Number(p.pnl_mid ?? p.price_mid), lo: Number(p.pnl_lo ?? p.price_lo), hi: Number(p.pnl_hi ?? p.price_hi) })), actual: [] };
+                    drawForecastChart(conv);
+                    // Meta badges
+                    const conf = (d.summary && typeof d.summary.confidence==='number')? d.summary.confidence : null;
+                    const confPct = (conf!=null)? Math.round(conf): null;
+                    document.getElementById('foMAPE').textContent = `MAP: —`;
+                    document.getElementById('foRMSE').textContent = `RMSE: —`;
+                    document.getElementById('foBias').textContent = `Bias: —`;
+                    document.getElementById('foAccrual').textContent = `Conf: ${confPct!=null? confPct+'%':'—'}`;
+                    const cov = pts.length>1? Math.round((pts[pts.length-1].t - pts[0].t)/3600): null;
+                    document.getElementById('foCoverage').textContent = `Coverage: ${cov!=null? cov : '—'}h • Src: model`;
+                    status.textContent = 'ok';
+                    const asof = d.as_of || d.asof || null;
+                    if(asof){ const dt = new Date(asof*1000).toISOString().slice(11,19); meta.textContent = `as of ${dt}`; }
+                    setButtonState(btnId, 'success');
+                }
+            }catch(e){
+                console.error('Forecast overlay error:', e);
+                const status = document.getElementById('foStatus');
+                status.textContent = 'error';
+                setButtonState(btnId, 'error');
+            }
+        }
+
+            // Admin Toggles wiring
+            async function loadAdmin(){
+                try{
+                    const cfg = await (await fetch('/api/runtime/config')).json();
+                    if (cfg.price_ttl_s != null) el('ttlPrice').value = cfg.price_ttl_s;
+                    if (cfg.price_ttl_open_s != null) el('ttlPriceOpen').value = cfg.price_ttl_open_s;
+                    if (cfg.news_ttl_s != null) el('ttlNews').value = cfg.news_ttl_s;
+                    el('yahooFirst').value = cfg.yahoo_first ? '1' : '0';
+                    if (cfg.price_max_deviation_open != null) el('maxDevOpen').value = cfg.price_max_deviation_open;
+                    if (cfg.reuters_feeds_on != null) el('reutersOn').value = cfg.reuters_feeds_on ? '1' : '0';
+                    if (cfg.diag_collapse_dupes != null) el('diagCollapse').value = cfg.diag_collapse_dupes ? '1' : '0';
+                    if (cfg.diag_ring_size != null) el('diagRingSize').value = cfg.diag_ring_size;
+                }catch(e){ /* ignore */ }
+            }
+            async function saveAdmin(){
+                const btnId = 'btnAdminSave';
+                setButtonState(btnId, 'loading');
+                try{
+                    const body = {
+                        price_ttl_s: Number(el('ttlPrice').value||0) || undefined,
+                        price_ttl_open_s: Number(el('ttlPriceOpen').value||0) || undefined,
+                        news_ttl_s: Number(el('ttlNews').value||0) || undefined,
+                        yahoo_first: Number(el('yahooFirst').value||0),
+                        price_max_deviation_open: (el('maxDevOpen').value? Number(el('maxDevOpen').value) : undefined),
+                        reuters_feeds_on: Number(el('reutersOn').value||0),
+                        diag_collapse_dupes: Number(el('diagCollapse').value||0),
+                        diag_ring_size: Number(el('diagRingSize').value||0) || undefined
+                    };
+                    let auth = window.AUTH || '';
+                    try { if (!auth) { const tok = localStorage.getItem('GHOST_API_TOKEN'); if (tok) auth = `Bearer ${tok}`; } } catch(_){ }
+                    const r = await fetch('/api/runtime/config', {method:'POST', headers:{'Content-Type':'application/json', 'Authorization': auth}, body: JSON.stringify(body)});
+                    if (r.status === 403) { 
+                        setButtonState(btnId, 'error');
+                        alert('Forbidden — set GHOST_API_TOKEN'); 
+                        return; 
+                    }
+                    await loadAdmin();
+                    setButtonState(btnId, 'success');
+                    alert('Applied');
+                }catch(e){ 
+                    setButtonState(btnId, 'error');
+                    alert('Failed to apply'); 
+                }
+            }
+            document.addEventListener('DOMContentLoaded', ()=>{
+                try{
+                    // Admin
+                    loadAdmin();
+                    el('btnAdminSave').onclick = saveAdmin;
+                    // Hide watchlist in WOLF-only mode
+                    const wl = el('watchlistCard'); if (wl) wl.style.display = 'none';
+                    // Wire news toggle
+                    const nat = document.getElementById('newsAllToggle'); if (nat) nat.addEventListener('change', loadNews);
+                    // Wire anomaly override button
+                    const ovb = document.getElementById('btnOverlayResume');
+                    if (ovb){
+                        ovb.onclick = ()=>{
+                            FORECAST_USER_OVERRIDE = !FORECAST_USER_OVERRIDE;
+                            updateAnomalyUI(LAST_FLAGS || {});
+                            if (!FORECAST_PAUSED){ loadForecastOverlay(); }
+                        };
+                    }
+                    // Initial loads
+                    refreshStatusBadge();
+                    loadPortfolio();
+                    loadHeatmap();
+                    loadDiagnostics();
+                    loadMovers();
+                    loadNews();
+                    loadWorldContext(); // Stage 1: Load world context & market mood
+                    connectCockpitStream();
+                    updateLatencyBadge();
+                    // Wire overlay refresh and mode toggle (only if overlay DOM exists)
+                    const fr = document.getElementById('btnForecastRefresh'); if (fr) fr.onclick = loadForecastOverlay;
+                    const mbo = document.getElementById('btnModeOverlay'); if (mbo){ mbo.onclick = ()=>{ FO_MODE='overlay'; localStorage.setItem('cockpitForecastMode','overlay'); paintFoMode(); loadForecastOverlay(); }; }
+                    const mbp = document.getElementById('btnModePnl'); if (mbp){ mbp.onclick = ()=>{ FO_MODE='pnl'; localStorage.setItem('cockpitForecastMode','pnl'); paintFoMode(); loadForecastOverlay(); }; }
+                    const hasOverlayDom = !!document.getElementById('forecastCanvas');
+                    if (hasOverlayDom) {
+                        paintFoMode();
+                        loadForecastOverlay();
+                    }
+                    // Wire decision refresh
+                    const dr = document.getElementById('btnDecisionRefresh'); if (dr) dr.onclick = loadDecisionPreview;
+                    // Wire agent monitor refresh
+                    const ar = document.getElementById('btnAgentRefresh'); if (ar) ar.onclick = loadAgentMonitor;
+                    loadAgentMonitor(); // Initial load
+                    // Research Snapshot
+                    const rrsh = document.getElementById('btnResearchRefresh'); if (rrsh) rrsh.onclick = loadResearchSnapshot;
+                    loadResearchSnapshot();
+                    // Wire context refresh (Stage 1)
+                    const cr = document.getElementById('btnContextRefresh'); if (cr) cr.onclick = loadWorldContext;
+                    // Wire accuracy ledger (Stage 2)
+                    loadAccuracyLedger(); // Initial load
+                    const lr = document.getElementById('btnLedgerRefresh'); if (lr) lr.onclick = loadAccuracyLedger;
+                    const tn = document.getElementById('btnTuneNow'); if (tn) tn.onclick = runAutoTuning;
+                    // Wire regime & risk (Stage 3)
+                    loadRegimeAndRisk(); // Initial load
+                    const rr = document.getElementById('btnRegimeRefresh'); if (rr) rr.onclick = loadRegimeAndRisk;
+                    // Wire portfolio optimization (Stage 4)
+                    loadPortfolioOptimization(); // Initial load
+                    const pr = document.getElementById('btnPortfolioRefresh'); if (pr) pr.onclick = loadPortfolioOptimization;
+                    // Wire smart execution (Stage 5)
+                    loadExecutionDashboard(); // Initial load
+                    const er = document.getElementById('btnExecutionRefresh'); if (er) er.onclick = loadExecutionDashboard;
+                    // Smooth clock update (every second)
+                    function updateClock() {
+                        try {
+                            const now = new Date();
+                            const timeStr = now.toLocaleTimeString('en-US', { 
+                                hour12: true, 
+                                hour: '2-digit', 
+                                minute: '2-digit', 
+                                second: '2-digit' 
+                            });
+                            const clockBadge = document.getElementById('clockBadge');
+                            if (clockBadge) {
+                                clockBadge.textContent = timeStr;
+                            }
+                        } catch (e) {
+                            // Silent fail
+                        }
+                    }
+                    updateClock(); // Initial update
+                    setInterval(updateClock, 1000); // Update every second for smooth clock
+                    
+                    // Timers
+                    setInterval(loadDiagnostics, 10000);
+                    setInterval(loadPortfolio, 15000);
+                    setInterval(loadHeatmap, 30000);
+                    setInterval(loadMovers, 30000);
+                    setInterval(loadNews, 60000);
+                    setInterval(loadAgentMonitor, 60000); // Agent monitor refresh every 60s
+                    setInterval(loadResearchSnapshot, 300000); // Research refresh every 5 minutes
+                    if (document.getElementById('forecastCanvas')) {
+                        setInterval(loadForecastOverlay, 60000);
+                    }
+                    setInterval(loadWorldContext, 300000); // Stage 1: Update context every 5 minutes
+                    setInterval(loadAccuracyLedger, 300000); // Stage 2: Update accuracy ledger every 5 minutes
+                    setInterval(loadRegimeAndRisk, 300000); // Stage 3: Update regime & risk every 5 minutes
+                    setInterval(loadPortfolioOptimization, 300000); // Stage 4: Update portfolio every 5 minutes
+                    setInterval(loadExecutionDashboard, 300000); // Stage 5: Update execution dashboard every 5 minutes
+                    if (document.getElementById('forecastCanvas')) {
+                        loadForecastOverlay();
+                    }
+                }catch(_){}
+            });
+    </script>
+    
+    <script>
+    // --- Corporate Action Banner Logic -----------------------------------------
+    (function(){
+        const banner = document.getElementById('corpActionBanner');
+        const textEl = document.getElementById('corpActionText');
+        const closeBtn = document.getElementById('corpBannerClose');
+        if(!banner) return;
+        function hide(){ banner.style.display='none'; localStorage.setItem('corpActionBanner.dismissed','1'); }
+        closeBtn.addEventListener('click', hide);
+        if(localStorage.getItem('corpActionBanner.dismissed')==='1') return;
+        fetch('/api/corporate_actions').then(r=>r.json()).then(data=>{
+            if(!data || !data.actions) return;
+            const wolf = data.actions['WOLF'];
+            if(wolf){
+                let msg = wolf.banner || 'Corporate action detected for WOLF';
+                if(wolf.has_reverse_split && wolf.reverse_split_display){
+                    msg += ` — Reverse Split ${wolf.reverse_split_display}`;
+                }
+                if(wolf.date){ msg += ` (${wolf.date})`; }
+                if(wolf.shareholders_diluted){ msg += ' · Shareholder dilution acknowledged'; }
+                textEl.textContent = msg;
+                banner.style.display='block';
+            }
+        }).catch(()=>{});
+    })();
+    
+    // --- Provider / Delisted Diagnostics Poller --------------------------------
+    (function(){
+        const delistedBadge = document.getElementById('delistedBadge');
+        const rateDiagEl = document.getElementById('rateDiag');
+        const btnRate = document.getElementById('btnRateDiagRefresh');
+        
+        function renderRateDiag(d){
+            if(!rateDiagEl) return;
+            try {
+                const throttled = d.throttled_provider || '—';
+                const skips = (d.backoff_skip||[]).join(', ') || '—';
+                const failures = (d.failures||[]).slice(-5).map(f=>`${f.provider}${f.throttled?'(T)':''}:${f.ms}ms`).join(' · ') || '—';
+                let delisted = d.delisted_hint ? (`<span style="color:#ffcf85">delisted hint: ${(d.delisted_reason||'').slice(0,80)}</span>`) : '—';
+                rateDiagEl.innerHTML = `
+                    <div><strong>Throttled:</strong> ${throttled}</div>
+                    <div><strong>Skip(backoff):</strong> ${skips}</div>
+                    <div><strong>Recent Fail:</strong> ${failures}</div>
+                    <div><strong>Delisted:</strong> ${delisted}</div>
+                `;
+            } catch(e){ 
+                rateDiagEl.textContent = 'Error rendering diagnostics'; 
+            }
+        }
+        
+        async function poll(){
+            try {
+                const r = await fetch('/api/price/diagnostics');
+                if(!r.ok) return;
+                const d = await r.json();
+                if(d && d.delisted_hint && delistedBadge){ 
+                    delistedBadge.style.display='inline-flex'; 
+                }
+                renderRateDiag(d||{});
+            } catch(e){ /* ignore */ }
+        }
+        
+        if(btnRate) btnRate.addEventListener('click', poll);
+        setInterval(poll, 10000);
+        poll();
+    })();
+    
+    // --- Ghost Prediction Panel: Stocks | Crypto Tabs --------------------------
+    (function(){
+        let currentAssetClass = 'stocks'; // 'stocks' or 'crypto'
+        let predictionChart = null;
+        
+        const tabStocks = document.getElementById('tab-stocks');
+        const tabCrypto = document.getElementById('tab-crypto');
+        const symbolSelect = document.getElementById('predict-symbol');
+        const runBtn = document.getElementById('predict-run-btn');
+        const statusBadge = document.getElementById('predict-status');
+        const summaryDiv = document.getElementById('predict-summary');
+        const scoreboardBody = document.getElementById('predict-scoreboard-body');
+        const chartCanvas = document.getElementById('prediction-chart');
+        
+        // Stock symbols
+        const STOCK_SYMBOLS = ['WOLF', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META'];
+        
+        // Crypto symbols
+        const CRYPTO_SYMBOLS = ['BTC', 'ETH', 'SOL', 'BNB', 'DOGE', 'SHIB', 'PEPE', 'AVAX', 'DOT', 'MATIC', 'LINK', 'UNI', 'AAVE'];
+        
+        // Tab switching
+        function switchTab(assetClass) {
+            currentAssetClass = assetClass;
+            
+            // Update tab styling
+            [tabStocks, tabCrypto].forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.background = '#0f1318';
+                btn.style.color = '#9ca3af';
+            });
+            
+            if (assetClass === 'stocks') {
+                tabStocks.classList.add('active');
+                tabStocks.style.background = '#1f2937';
+                tabStocks.style.color = '#fff';
+            } else {
+                tabCrypto.classList.add('active');
+                tabCrypto.style.background = '#1f2937';
+                tabCrypto.style.color = '#fff';
+            }
+            
+            // Update symbol dropdown
+            const symbols = assetClass === 'stocks' ? STOCK_SYMBOLS : CRYPTO_SYMBOLS;
+            symbolSelect.innerHTML = symbols.map(s => `<option value="${s}">${s}</option>`).join('');
+            
+            // Load prediction for first symbol
+            loadPrediction(symbols[0]);
+        }
+        
+        // Load prediction data
+        async function loadPrediction(symbol) {
+            statusBadge.textContent = '';
+            statusBadge.className = 'badge';
+            
+            try {
+                let data;
+                if (currentAssetClass === 'stocks') {
+                    // Use existing stock prediction endpoint
+                    const res = await fetch(`/api/predict/series?symbol=${symbol}`);
+                    data = await res.json();
+                } else {
+                    // Use new crypto prediction endpoint
+                    const res = await fetch(`/api/crypto/predict/${symbol}`);
+                    data = await res.json();
+                }
+                
+                if (data && data.path) {
+                    renderPredictionChart(data, symbol);
+                    updateSummary(data);
+                    statusBadge.textContent = '';
+                    statusBadge.className = 'badge live';
+                } else {
+                    statusBadge.textContent = '';
+                    statusBadge.className = 'badge stopped';
+                }
+            } catch (err) {
+                console.error('Failed to load prediction:', err);
+                statusBadge.textContent = '';
+                statusBadge.className = 'badge stopped';
+                summaryDiv.innerHTML = '';
+            }
+        }
+        
+        // Run new prediction
+        async function runPrediction() {
+            const symbol = symbolSelect.value;
+            statusBadge.textContent = 'Running...';
+            statusBadge.className = 'badge';
+            runBtn.disabled = true;
+            
+            try {
+                let data;
+                if (currentAssetClass === 'stocks') {
+                    const res = await fetch(`/api/predict/run`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({symbol})
+                    });
+                    data = await res.json();
+                } else {
+                    const res = await fetch(`/api/crypto/predict/run?symbol=${symbol}`, {
+                        method: 'POST'
+                    });
+                    data = await res.json();
+                }
+                
+                if (data) {
+                    // Reload prediction to get full series
+                    await loadPrediction(symbol);
+                    statusBadge.textContent = 'Complete';
+                    statusBadge.className = 'badge live';
+                } else {
+                    statusBadge.textContent = 'Failed';
+                    statusBadge.className = 'badge stopped';
+                }
+            } catch (err) {
+                console.error('Failed to run prediction:', err);
+                statusBadge.textContent = 'Error';
+                statusBadge.className = 'badge stopped';
+            } finally {
+                runBtn.disabled = false;
+            }
+        }
+        
+        // Render chart using Chart.js
+        function renderPredictionChart(data, symbol) {
+            if (!chartCanvas) return;
+            
+            const ctx = chartCanvas.getContext('2d');
+            
+            // Destroy existing chart
+            if (predictionChart) {
+                predictionChart.destroy();
+            }
+            
+            // Prepare data
+            const path = data.path || [];
+            const labels = path.map(p => new Date(p.ts * 1000));
+            const prices = path.map(p => p.price);
+            const lows = path.map(p => p.low || p.price);
+            const highs = path.map(p => p.high || p.price);
+            
+            predictionChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Prediction',
+                            data: prices,
+                            borderColor: '#5bd4ff',
+                            backgroundColor: 'rgba(91, 212, 255, 0.1)',
+                            borderWidth: 2.5,
+                            fill: false,
+                            tension: 0.3
+                        },
+                        {
+                            label: 'Upper Band',
+                            data: highs,
+                            borderColor: 'rgba(100, 160, 180, 0.3)',
+                            backgroundColor: 'rgba(100, 160, 180, 0.05)',
+                            borderWidth: 1,
+                            borderDash: [5, 5],
+                            fill: '+1',
+                            tension: 0.3,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Lower Band',
+                            data: lows,
+                            borderColor: 'rgba(100, 160, 180, 0.3)',
+                            backgroundColor: 'rgba(100, 160, 180, 0.05)',
+                            borderWidth: 1,
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.3,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {color: '#dde7ef'}
+                        },
+                        title: {
+                            display: true,
+                            text: `${symbol} - ${data.forecast_h || 48}h Forecast`,
+                            color: '#dde7ef',
+                            font: {size: 16, weight: 'bold'}
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {hour: 'MMM d HH:mm'}
+                            },
+                            ticks: {color: '#9aa7b2'},
+                            grid: {color: 'rgba(255,255,255,0.05)'}
+                        },
+                        y: {
+                            ticks: {color: '#9aa7b2'},
+                            grid: {color: 'rgba(255,255,255,0.1)'}
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Update summary stats
+        function updateSummary(data) {
+            if (!summaryDiv) return;
+            
+            const direction = data.direction || data.trend || '—';
+            const confidence = data.confidence || 0;
+            const volatility = data.volatility || 0;
+            const horizon = data.forecast_h || 48;
+            
+            const dirColor = direction === 'UP' ? '#00c853' : direction === 'DOWN' ? '#ff5252' : '#ffc24b';
+            
+            summaryDiv.innerHTML = `
+                <div style="display:flex; gap:20px; flex-wrap:wrap">
+                    <div>
+                        <span class="muted">Direction:</span>
+                        <strong style="color:${dirColor}; font-size:16px; margin-left:8px">${direction}</strong>
+                    </div>
+                    <div>
+                        <span class="muted">Confidence:</span>
+                        <strong style="font-size:16px; margin-left:8px">${confidence.toFixed(1)}%</strong>
+                    </div>
+                    <div>
+                        <span class="muted">Volatility:</span>
+                        <strong style="font-size:16px; margin-left:8px">${(volatility * 100).toFixed(2)}%</strong>
+                    </div>
+                    <div>
+                        <span class="muted">Horizon:</span>
+                        <strong style="font-size:16px; margin-left:8px">${horizon}h</strong>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Event listeners
+        if (tabStocks) tabStocks.addEventListener('click', () => switchTab('stocks'));
+        if (tabCrypto) tabCrypto.addEventListener('click', () => switchTab('crypto'));
+        if (symbolSelect) symbolSelect.addEventListener('change', (e) => loadPrediction(e.target.value));
+        if (runBtn) runBtn.addEventListener('click', runPrediction);
+        
+        // Initialize with stocks tab
+        switchTab('stocks');
+    })();
+    </script>
+    
+    <!-- Chart.js for Ghost Prediction panel -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    
+    <!-- Ghost Prediction panel -->
+    <script src="/static/js/predict.js"></script>
+</body>
+</html>

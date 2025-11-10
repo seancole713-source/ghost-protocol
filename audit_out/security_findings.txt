@@ -1,0 +1,5 @@
+=== Security Findings ===
+No SSL verification bypasses found
+
+wolf_app.py:3629:OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+wolf_app.py:8876:                parsed.hostname in ("localhost", "127.0.0.1", "::1")

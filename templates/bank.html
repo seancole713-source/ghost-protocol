@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bank & Portfolio</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; }
+    header { padding:1rem 1.5rem; border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center; }
+    a { color:#38bdf8; text-decoration:none; }
+    main { padding:1rem 1.5rem; display:grid; gap:1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card { background:#111827; border:1px solid #334155; border-radius:10px; padding:1rem; }
+    h2 { margin:0 0 .75rem; font-size:1.1rem; color:#93c5fd }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:.4rem .5rem; border-bottom:1px solid #334155; text-align:left; font-size:.9rem }
+    input, button { padding:.5rem .6rem; border-radius:6px; border:1px solid #334155; background:#0b1220; color:#e2e8f0 }
+    button { background:#0ea5e9; border-color:#0284c7; cursor:pointer }
+  </style>
+</head>
+<body>
+  <header>
+    <div><a href="/">👻 Ghost</a> / Bank & Portfolio</div>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Cash Accounts</h2>
+  <div id="cash"></div>
+      <div style="margin-top:.5rem">
+        <input id="setAmt" placeholder="Set total cash" type="number" step="0.01" />
+        <button onclick="setCash()">Apply</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Ledger</h2>
+      <div id="ledger">(no entries)</div>
+    </section>
+    <section class="card">
+      <h2>Positions</h2>
+      <table>
+        <thead><tr><th>Symbol</th><th>Type</th><th>Qty</th><th>Avg</th><th>Price</th><th>P/L</th></tr></thead>
+        <tbody id="positions"></tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    function fmt(n){ return Number(n).toLocaleString(undefined,{maximumFractionDigits:2}) }
+    function loadBank(){
+      fetch('/api/bank').then(r=>r.json()).then(d=>{
+        document.getElementById('cash').innerText = `Stock $${fmt(d.stock_cash)} • Crypto $${fmt(d.crypto_cash)} • Total $${fmt(d.cash_balance)}`
+      })
+      fetch('/portfolio').then(r=>r.json()).then(p=>{
+        const tb = document.getElementById('positions'); tb.innerHTML='';
+        (p.positions||[]).forEach(pos=>{
+          tb.insertAdjacentHTML('beforeend', `<tr><td>${pos.symbol}</td><td>${pos.type||pos.market}</td><td>${fmt(pos.quantity)}</td><td>${fmt(pos.entry_price||pos.price)}</td><td>${fmt(pos.current_price||pos.price)}</td><td>${fmt(pos.pnl||0)}</td></tr>`)
+        })
+      })
+    }
+    function setCash(){
+      const amt = Number(document.getElementById('setAmt').value||0);
+      if(!amt) return; fetch('/api/set_cash',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({amount: amt})}).then(()=>loadBank())
+    }
+    loadBank();
+  </script>
+</body>
+</html>

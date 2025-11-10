@@ -1,0 +1,298 @@
+{
+  "timestamp": "2025-10-14T13:33:02.254830",
+  "test_sections": {
+    "1_environment": {
+      "tests": [
+        {
+          "name": "OPENAI_API_KEY",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "Set (164 chars)"
+        },
+        {
+          "name": "TELEGRAM_BOT_TOKEN",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "Set (46 chars)"
+        },
+        {
+          "name": "POLYGON_API_KEY",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "Set (32 chars)"
+        },
+        {
+          "name": "ALPHAVANTAGE_API_KEY",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Set (16 chars)"
+        },
+        {
+          "name": "COINBASE_API_KEY",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Not set (optional)"
+        },
+        {
+          "name": "COINBASE_API_SECRET",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Not set (optional)"
+        },
+        {
+          "name": "CDP_API_KEY_NAME",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Not set (optional)"
+        },
+        {
+          "name": "CDP_API_KEY_PRIVATE_KEY",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Not set (optional)"
+        },
+        {
+          "name": "OPENAI_BASE_URL",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Set (25 chars)"
+        }
+      ],
+      "summary": "3 required vars set"
+    },
+    "2_api_connections": {
+      "tests": [
+        {
+          "name": "OpenAI API",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "93 models, 437.46ms"
+        },
+        {
+          "name": "Polygon API",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "180.88ms"
+        },
+        {
+          "name": "AlphaVantage API",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "136.79ms"
+        },
+        {
+          "name": "Telegram Bot",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "@GhostAlphaSniperBot, 383.32ms"
+        }
+      ],
+      "summary": "4 APIs working"
+    },
+    "3_databases": {
+      "tests": [
+        {
+          "name": "ghost.db",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Does not exist yet"
+        },
+        {
+          "name": "wolf_memory.db",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Does not exist yet"
+        },
+        {
+          "name": "vector_memory.db",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Does not exist yet"
+        },
+        {
+          "name": "agent_memory.db",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Does not exist yet"
+        }
+      ],
+      "summary": "4 databases checked"
+    },
+    "4_imports": {
+      "tests": [
+        {
+          "name": "FastAPI module",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "v0.100.0"
+        },
+        {
+          "name": "Pydantic module",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "v1.10.19"
+        },
+        {
+          "name": "OpenAI module",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "v2.3.0"
+        },
+        {
+          "name": "HTTPX module",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "v0.27.2"
+        },
+        {
+          "name": "DuckDB module",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "v1.4.1"
+        },
+        {
+          "name": "SQLite3 module",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "vunknown"
+        },
+        {
+          "name": "Requests module",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "v2.32.4"
+        },
+        {
+          "name": "AgentKit module",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Not installed (optional)"
+        },
+        {
+          "name": "LangChain module",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": true,
+          "details": "Not installed (optional)"
+        }
+      ],
+      "summary": "9 modules available"
+    },
+    "5_server": {
+      "tests": [
+        {
+          "name": "Server Running",
+          "status": "\u274c FAIL",
+          "passed": false,
+          "warning": false,
+          "details": "Connection refused - server not running"
+        }
+      ],
+      "summary": "Server status checked"
+    },
+    "6_unit_tests": {
+      "tests": [
+        {
+          "name": "PyTest Available",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "Ready to run tests"
+        },
+        {
+          "name": "Test Files Found",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "60 test files"
+        },
+        {
+          "name": "Test Collection",
+          "status": "\u274c FAIL",
+          "passed": false,
+          "warning": false,
+          "details": "Error: [Errno 2] No such file or dire"
+        }
+      ],
+      "summary": "Unit tests validated"
+    },
+    "7_critical_features": {
+      "tests": [
+        {
+          "name": "wolf_app.py",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "0.61 MB"
+        },
+        {
+          "name": "Feature: FastAPI app",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "Found"
+        },
+        {
+          "name": "Feature: WOLF endpoint",
+          "status": "\u274c FAIL",
+          "passed": false,
+          "warning": false,
+          "details": "Not found"
+        },
+        {
+          "name": "Feature: Portfolio system",
+          "status": "\u274c FAIL",
+          "passed": false,
+          "warning": false,
+          "details": "Not found"
+        },
+        {
+          "name": "Feature: Watchlist system",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "Found"
+        },
+        {
+          "name": "Feature: Price fetcher",
+          "status": "\u2705 PASS",
+          "passed": true,
+          "warning": false,
+          "details": "Found"
+        }
+      ],
+      "summary": "Critical features validated"
+    }
+  },
+  "overall_status": "\u26a0\ufe0f  DEGRADED",
+  "total_tests": 36,
+  "passed_tests": 20,
+  "failed_tests": 4,
+  "warnings": 12,
+  "test_duration_seconds": 1.54
+}

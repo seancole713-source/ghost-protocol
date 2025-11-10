@@ -1,0 +1,33 @@
+{
+  "name": "GHOST Dev Container",
+  "build": {
+    // Use the correct key name per devcontainer schema
+    "dockerfile": "Dockerfile",
+    "context": ".",
+    "args": {}
+  },
+  "features": {},
+  "customizations": {
+    "codespaces": {
+      "autoApproveCommands": true
+    },
+    "vscode": {
+      "extensions": [
+        "ms-toolsai.jupyter"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "CODESPACES_AUTOAPPROVE": "1",
+    "FEATURE_LIVE": "false"
+  },
+  "forwardPorts": [5000],
+  "portsAttributes": {
+    "5000": {
+      "label": "Ghost",
+      "onAutoForward": "openBrowser",
+      "protocol": "http"
+    }
+  },
+  "postStartCommand": "pkill -f 'python3 -u main.py' || true; PORT=5000 SIM_MODE=0 nohup python3 -u main.py > /tmp/ghost_server.log 2>&1 &"
+}

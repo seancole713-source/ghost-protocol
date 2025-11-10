@@ -1,0 +1,36 @@
+{
+  "version": "0.3.0",
+  "generated_at": "2024-01-01T00:00:00Z",
+  "degraded": false,
+  "fail_reasons": [],
+  "prices": [
+    {"symbol": "BTC", "px": 42000.12, "price": 42000.12},
+    {"symbol": "ETH", "px": 3100.55, "price": 3100.55}
+  ],
+  "portfolio": {
+    "rows": [
+      {"symbol": "BTC", "weight": 0.6, "value": 60000},
+      {"symbol": "ETH", "weight": 0.4, "value": 40000}
+    ],
+    "positions": [
+      {"symbol": "BTC", "weight": 0.6, "value": 60000},
+      {"symbol": "ETH", "weight": 0.4, "value": 40000}
+    ],
+    "cash": {"stock": 0, "crypto": 0, "total": 0}
+  },
+  "movers": [],
+  "heatmap": [],
+  "heatmap_obj": {},
+  "outlook": {"summary": "Example only"},
+  "news": [
+    {"title": "Sample Relevant Headline", "url": "https://example.com/news/1"}
+  ],
+  "news_all": [
+    {"title": "Sample Headline A", "url": "https://example.com/news/a"},
+    {"title": "Sample Headline B", "url": "https://example.com/news/b"}
+  ],
+  "alerts_recent": [],
+  "events_recent": [],
+  "flags": {"degraded": false},
+  "kpis": {"tvl": 1234567.89}
+}

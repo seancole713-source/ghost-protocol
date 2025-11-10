@@ -1,0 +1,29 @@
+{
+  "date": "2025-10-15",
+  "timestamp": 1760542342,
+  "spy": {
+    "price": 667.68,
+    "change_5d": -0.52,
+    "ma20": 663.43,
+    "ma50": 663.43
+  },
+  "qqq": {
+    "price": 605.22,
+    "change_5d": -0.9
+  },
+  "vix": {
+    "current": 19.52,
+    "interpretation": "normal"
+  },
+  "market_regime": "sideways",
+  "sentiment": "neutral",
+  "confidence": 50,
+  "volatility": 0.294,
+  "signals": {
+    "short_term": "bullish (above 20MA)",
+    "medium_term": "bullish (above 50MA)",
+    "ma_crossover": "neutral",
+    "volatility": "normal"
+  },
+  "summary": "Sideways/consolidation phase. SPY range-bound (-0.5% over 5 days), VIX 19.5. Neutral bias."
+}

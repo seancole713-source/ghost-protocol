@@ -1,0 +1,4 @@
+-r requirements-test.txt
+
+# UI tests (installed only in UI job)
+playwright==1.46.0

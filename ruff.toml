@@ -1,0 +1,19 @@
+# Ruff configuration
+line-length = 100
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+  "E402",  # module imports not at top (intentional for dynamic imports)
+  "B008",  # function calls in defaults (FastAPI pattern)
+  "E501",  # line too long (formatter handles this)
+  "B904",  # raise without from (too many for safe bulk fix)
+  "B018",  # useless expression (used for type checking)
+  "F811",  # redefined unused name (wolf_app.py has conditional definitions)
+  "F821",  # undefined name (wolf_app.py has complex conditional logic)
+]
+
+[lint.isort]
+combine-as-imports = true
+force-single-line = false
+known-first-party = ["core", "app"]

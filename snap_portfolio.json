@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "saved_at": "2025-09-18T00:00:00.000000",
+  "cash": { "stock": 5000.0, "crypto": 5000.0 },
+  "positions": [],
+  "goals": [],
+  "goal_locked": false,
+  "order_queue": [],
+  "ledger": [],
+  "portfolio_value": 10000.0,
+  "ghost_score": 0
+}

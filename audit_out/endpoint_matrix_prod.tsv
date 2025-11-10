@@ -1,0 +1,15 @@
+# Fetched 231 paths from production
+path	status	bytes
+/health	200	35
+/api/news	404	22
+/api/news/recent	404	22
+/api/agent/stats	200	142
+/api/agent/decisions	200	70
+/api/agent/decide	404	22
+/api/sources/status	404	22
+/api/market/movers	404	22
+/api/predictions/run	404	22
+/api/portfolio	200	268
+/api/snapshot	200	382
+/api/stage2/forecasts	200	26
+/api/stage1/world	200	42

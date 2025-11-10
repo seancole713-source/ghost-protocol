@@ -1,0 +1,159 @@
+{
+  "timestamp": "2025-10-14T13:32:49.506734",
+  "api_connections": {
+    "openai": {
+      "status": "\u2705 ACTIVE",
+      "latency_ms": 854.58,
+      "models_available": 93,
+      "sample_models": [
+        "gpt-4-0613",
+        "gpt-4",
+        "gpt-3.5-turbo",
+        "sora-2-pro",
+        "gpt-audio-mini-2025-10-06"
+      ],
+      "base_url": "https://api.openai.com/v1"
+    },
+    "polygon": {
+      "status": "\u2705 ACTIVE",
+      "latency_ms": 245.25,
+      "sample_data": {
+        "T": "WOLF",
+        "v": 4787925.0,
+        "vw": 31.8379,
+        "o": 33.52,
+        "c": 32.57,
+        "h": 34.2,
+        "l": 28.8,
+        "t": 1760385600000,
+        "n": 49337
+      }
+    },
+    "alphavantage": {
+      "status": "\u2705 ACTIVE",
+      "latency_ms": 177.71,
+      "sample_quote": {
+        "01. symbol": "WOLF",
+        "02. open": "33.5200",
+        "03. high": "34.2000",
+        "04. low": "28.8000",
+        "05. price": "32.5700",
+        "06. volume": "4787925",
+        "07. latest trading day": "2025-10-13",
+        "08. previous close": "31.1000",
+        "09. change": "1.4700",
+        "10. change percent": "4.7267%"
+      }
+    }
+  },
+  "agentkit_status": {},
+  "data_feeds": {},
+  "telegram": {
+    "status": "\u2705 ACTIVE",
+    "latency_ms": 377.08,
+    "bot_username": "GhostAlphaSniperBot",
+    "bot_name": "GhostAlphaSniper",
+    "chat_id_configured": "940596997"
+  },
+  "ui_sync": {},
+  "vector_memory": {},
+  "gpt_reasoning": {},
+  "overall_health": "\u2705 HEALTHY",
+  "env_vars": {
+    "OPENAI_API_KEY": {
+      "status": "\u2705 SET",
+      "value": "***ubEA"
+    },
+    "OPENAI_AGENT_API_KEY": {
+      "status": "\u2705 SET",
+      "value": "***ubEA"
+    },
+    "POLYGON_API_KEY": {
+      "status": "\u2705 SET",
+      "value": "***M0jR"
+    },
+    "ALPHAVANTAGE_API_KEY": {
+      "status": "\u2705 SET",
+      "value": "***G4AK"
+    },
+    "TELEGRAM_BOT_TOKEN": {
+      "status": "\u2705 SET",
+      "value": "***3gYw"
+    },
+    "TELEGRAM_CHAT_ID": {
+      "status": "\u2705 SET",
+      "value": "940596997"
+    },
+    "GHOST_API_TOKEN": {
+      "status": "\u2705 SET",
+      "value": "***"
+    },
+    "OPENAI_ORG_ID": {
+      "status": "\u26a0\ufe0f  NOT SET",
+      "value": ""
+    },
+    "VECTOR_DB_URL": {
+      "status": "\u26a0\ufe0f  NOT SET",
+      "value": ""
+    },
+    "VECTOR_DB_API_KEY": {
+      "status": "\u26a0\ufe0f  NOT SET",
+      "value": ""
+    },
+    "AGENTKIT_ENABLED": {
+      "status": "\u2705 SET",
+      "value": "true"
+    },
+    "AGENTS_ENABLED": {
+      "status": "\u2705 SET",
+      "value": "true"
+    },
+    "CACHE_MODE": {
+      "status": "\u26a0\ufe0f  NOT SET",
+      "value": ""
+    },
+    "SIM_MODE": {
+      "status": "\u2705 SET",
+      "value": "0"
+    }
+  },
+  "ghost_server": {
+    "server_running": true,
+    "endpoints": {
+      "/api/health": {
+        "status": "\u26a0\ufe0f",
+        "status_code": 403,
+        "latency_ms": 3.54
+      },
+      "/api/portfolio": {
+        "status": "\u26a0\ufe0f",
+        "status_code": 403,
+        "latency_ms": 0.8
+      },
+      "/api/price/WOLF": {
+        "status": "\u26a0\ufe0f",
+        "status_code": 403,
+        "latency_ms": 0.92
+      },
+      "/agent/health": {
+        "status": "\u26a0\ufe0f",
+        "status_code": 403,
+        "latency_ms": 0.68
+      }
+    }
+  },
+  "databases": {
+    "data/wolf.db": {
+      "status": "\u2705 EXISTS",
+      "size_kb": 4432.0
+    },
+    "data/ghost_agent.db": {
+      "status": "\u2705 EXISTS",
+      "size_kb": 92.0
+    },
+    "ghost_state.json": {
+      "status": "\u2705 EXISTS",
+      "size_kb": 2.29
+    }
+  }
+}

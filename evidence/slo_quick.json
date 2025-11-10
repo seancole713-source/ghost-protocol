@@ -1,0 +1,15 @@
+{
+  "ts": 1760305987.3643878,
+  "ok": true,
+  "violations": [],
+  "slos": {
+    "price_freshness_s": 0,
+    "price_quorum_agreement_pct": 0.02550904780168005,
+    "quorum_size": 2,
+    "ui_invalidation_s": 0,
+    "ghost_score_update_min": 5,
+    "telegram_rtt_s": null,
+    "telegram_delivery_success_pct": null,
+    "news_latency_s": null
+  }
+}

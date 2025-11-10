@@ -1,0 +1,25 @@
+{
+  "positions": [
+    {
+      "symbol": "AAPL",
+      "type": "stock",
+      "quantity": 100.0,
+      "entry_price": 150.0,
+      "current_price": 256.08
+    },
+    {
+      "symbol": "NVDA",
+      "type": "stock",
+      "quantity": 20.0,
+      "entry_price": 450.0,
+      "current_price": 183.61
+    },
+    {
+      "symbol": "BTC",
+      "type": "crypto",
+      "quantity": 0.5,
+      "entry_price": 65000.0,
+      "current_price": 112750.0
+    }
+  ]
+}

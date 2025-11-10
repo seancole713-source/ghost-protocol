@@ -1,0 +1,7 @@
+-rw-r--r--  1 studio713  staff    44K Oct 14 00:01 watchlist.db
+-rw-r--r--@ 1 studio713  staff     0B Oct 14 08:56 wolf.db
+total 40
+-rw-r--r--@ 1 studio713  staff    77B Oct 14 12:24 __init__.py
+drwxr-xr-x@ 5 studio713  staff   160B Oct 14 22:48 __pycache__
+-rw-r--r--@ 1 studio713  staff   3.6K Oct 14 22:18 crypto_ohlcv_routes.py
+-rw-r--r--@ 1 studio713  staff    11K Oct 14 12:53 news_routes.py

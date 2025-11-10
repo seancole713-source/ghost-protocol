@@ -1,0 +1,36 @@
+fastapi==0.100.0
+uvicorn[standard]==0.22.0
+jinja2==3.1.2
+pydantic==1.10.19
+requests>=2.31.0
+httpx==0.27.2
+yfinance==0.2.27
+web3==6.15.1
+eth-account==0.10.0
+qrcode==7.4.2
+redis==5.0.8
+prometheus-client==0.21.0
+gunicorn==21.2.0
+Pillow==10.4.0
+python-telegram-bot==21.6
+python-multipart==0.0.9
+
+# Analytics / Math
+scipy==1.11.4
+numpy>=1.24.0
+pandas>=2.0.0
+duckdb==1.1.3
+
+# NLP / News Feeds (APEX Feature #8)
+feedparser==6.0.11
+textblob==0.18.0.post0
+vaderSentiment==3.3.2
+
+# Testing / QA
+pytest==8.4.1
+pytest-timeout==2.3.1
+pytest-asyncio==0.23.8
+
+# Tooling / Quality
+ruff==0.13.0
+mypy==1.12.0

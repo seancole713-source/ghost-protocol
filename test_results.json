@@ -1,0 +1,77 @@
+{
+  "timestamp": 1760305911.1606274,
+  "summary": {
+    "total": 11,
+    "passed": 10,
+    "failed": 1,
+    "pass_rate": 90.9090909090909
+  },
+  "results": [
+    {
+      "contract": "health:returns_ok_true",
+      "passed": true,
+      "details": "status=200, ok=True",
+      "timestamp": 1760305907.6515412
+    },
+    {
+      "contract": "metrics:prometheus_format",
+      "passed": true,
+      "details": "status=200, has_ghost_up=True",
+      "timestamp": 1760305907.6555371
+    },
+    {
+      "contract": "database:exists",
+      "passed": false,
+      "details": "Database not found: /data/wolf.db",
+      "timestamp": 1760305907.6556656
+    },
+    {
+      "contract": "crypto_price:btc_valid",
+      "passed": true,
+      "details": "price=114801.00, provider=coingecko, age=60s",
+      "timestamp": 1760305907.6584704
+    },
+    {
+      "contract": "crypto_price:quorum_metadata",
+      "passed": true,
+      "details": "quorum_size=2, confidence=0.85",
+      "timestamp": 1760305907.6584883
+    },
+    {
+      "contract": "crypto_predict:btc_forecast",
+      "passed": true,
+      "details": "forecast_h=48, conf=60.0, path_len=49",
+      "timestamp": 1760305907.6639168
+    },
+    {
+      "contract": "crypto_watchlist:valid_assets",
+      "passed": true,
+      "details": "count=5, all_have_price=True",
+      "timestamp": 1760305908.614344
+    },
+    {
+      "contract": "cockpit:structure",
+      "passed": true,
+      "details": "as_of=True, portfolio=True, predictions=True",
+      "timestamp": 1760305911.1361315
+    },
+    {
+      "contract": "cockpit:predictions_structure",
+      "passed": true,
+      "details": "stocks=True, crypto=True",
+      "timestamp": 1760305911.1361606
+    },
+    {
+      "contract": "code:no_placeholders",
+      "passed": true,
+      "details": "clean",
+      "timestamp": 1760305911.1390939
+    },
+    {
+      "contract": "security:no_hardcoded_secrets",
+      "passed": true,
+      "details": "clean",
+      "timestamp": 1760305911.1602492
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+╔══════════════════════════════════════════════════════════════╗
+║       🚀 RAILWAY DEPLOYMENT - MANUAL STEPS               ║
+╚══════════════════════════════════════════════════════════════╝
+
+✅ READY: Railway CLI installed (v4.10.0)
+✅ READY: Your credentials configured
+✅ READY: Code pushed to GitHub
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: LOGIN TO RAILWAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Run this command (it will open your browser):
+
+  railway login
+
+Then authenticate in the browser that opens.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 2: CREATE PROJECT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  railway init --name ghost-trading
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 3: SET ENVIRONMENT VARIABLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Copy-paste these commands:
+
+railway variables set GHOST_API_TOKEN="e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0"
+railway variables set POLYGON_API_KEY="G1UkONuCx3Mpcngnvu239peiSyhNWRC3"
+railway variables set ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK"
+railway variables set TELEGRAM_BOT_TOKEN="8229069551:AAEBHMpX8TkaPFD2hhGL_Wgo2J8k5Sr3gYw"
+railway variables set TELEGRAM_CHAT_ID="940596997"
+railway variables set GHOST_FOCUS_TICKER="WOLF"
+railway variables set WOLF_PERSIST_MODE="sqlite"
+railway variables set SIM_MODE="0"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 4: DEPLOY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  railway up
+
+This will:
+  • Upload your code to Railway
+  • Build the container
+  • Start Ghost
+  • Takes 2-5 minutes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 5: GET YOUR URL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  railway domain
+
+This will show your live URL like:
+  https://ghost-trading-production.up.railway.app
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 6: TEST DEPLOYMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Replace with your actual URL from step 5
+GHOST_URL="https://your-app.up.railway.app"
+
+# Test health
+curl $GHOST_URL/health
+
+# Should return: {"ok":true,"ts":...}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 7: RESTORE POSITION DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+curl -X POST $GHOST_URL/api/position \
+  -H "Authorization: Bearer e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0" \
+  -H "Content-Type: application/json" \
+  -d '{"qty": 8.41959051, "avg_cost": 359.28}'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 8: VERIFY EVERYTHING WORKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Check health
+curl $GHOST_URL/health/detailed | jq '.ok, .issues'
+
+# Check portfolio
+curl $GHOST_URL/api/cockpit | jq '.portfolio'
+
+# Check AI memory
+curl $GHOST_URL/ai/memory/stats
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+USEFUL COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+View logs:
+  railway logs
+
+View logs (follow):
+  railway logs -f
+
+Open dashboard:
+  railway open
+
+Check status:
+  railway status
+
+Redeploy:
+  railway up
+
+View environment:
+  railway variables
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 COMPLETE COMMAND SEQUENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Just copy-paste this entire block:
+
+railway login
+railway init --name ghost-trading
+railway variables set GHOST_API_TOKEN="e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0"
+railway variables set POLYGON_API_KEY="G1UkONuCx3Mpcngnvu239peiSyhNWRC3"
+railway variables set ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK"
+railway variables set TELEGRAM_BOT_TOKEN="8229069551:AAEBHMpX8TkaPFD2hhGL_Wgo2J8k5Sr3gYw"
+railway variables set TELEGRAM_CHAT_ID="940596997"
+railway variables set GHOST_FOCUS_TICKER="WOLF"
+railway variables set WOLF_PERSIST_MODE="sqlite"
+railway variables set SIM_MODE="0"
+railway up
+railway domain
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎉 START NOW: Run "railway login" to begin!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,0 +1,20 @@
+{
+  "annotations": {"list": []},
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Fused Final Score",
+      "targets": [{"expr": "ghost_decision_final_score"}],
+      "fieldConfig": {"defaults": {"unit": "none"}}
+    },
+    {
+      "type": "stat",
+      "title": "Why Now Count",
+      "targets": [{"expr": "ghost_why_now_count"}],
+      "fieldConfig": {"defaults": {"unit": "none"}}
+    }
+  ],
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "Ghost Fusion & AI"
+}

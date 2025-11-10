@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block title %}Markets — Watchlist & Movers{% endblock %}
+{% block content %}
+<main class="layout">
+  <section class="card">
+    <div class="card-header">Watchlist</div>
+    <div class="card-body">
+      <div style="margin-bottom:.5rem">
+        <input id="wlInput" placeholder="Add symbol (AAPL or BTC)" />
+        <select id="wlMarket"><option value="stock">Stock</option><option value="crypto">Crypto</option></select>
+        <button class="btn" onclick="addWL()">Add</button>
+        <button class="btn" onclick="reloadWL()">Refresh</button>
+      </div>
+      <ul id="wl"></ul>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-header">Top Movers (24h)</div>
+    <div class="card-body">
+  <div id="movers"></div>
+    </div>
+  </section>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>
+async function reloadWL(){
+  try{
+    const r = await fetch('/watchlist');
+    const j = await r.json();
+    const ul = document.getElementById('wl');
+    ul.innerHTML = '';
+    (j.watchlist||[]).forEach(w=>{
+      const li = document.createElement('li');
+      li.textContent = `${w.symbol} (${w.type||w.market||'stock'})`;
+      ul.appendChild(li);
+    });
+  }catch(e){ document.getElementById('wl').textContent = 'Failed: '+e }
+}
+async function addWL(){
+  const sym = document.getElementById('wlInput').value.trim();
+  const market = document.getElementById('wlMarket').value;
+  if(!sym) return;
+  await fetch('/watchlist/add',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({symbol:sym, type:market})});
+  document.getElementById('wlInput').value='';
+  reloadWL();
+}
+async function loadMovers(){
+  const r = await fetch('/api/top_movers');
+  const j = await r.json();
+  const el = document.getElementById('movers');
+  const stocks = (j.stocks||[]).map(m=>`${m.sym}: ${m.change_pct}% (GPS ${m.gps??'-'})`).join('<br/>');
+  const crypto = (j.crypto||[]).map(m=>`${m.id}: ${m.change_pct}% (GPS ${m.gps??'-'})`).join('<br/>');
+  el.innerHTML = `<strong>Stocks</strong><br/>${stocks || 'None'}<br/><strong>Crypto</strong><br/>${crypto || 'None'}`;
+}
+reloadWL(); loadMovers();
+</script>
+{% endblock %}

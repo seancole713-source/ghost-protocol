@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Security & Risk</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; }
+    header { padding:1rem 1.5rem; border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center; }
+    a { color:#38bdf8; text-decoration:none; }
+    main { padding:1rem 1.5rem; display:grid; gap:1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card { background:#111827; border:1px solid #334155; border-radius:10px; padding:1rem; }
+    h2 { margin:0 0 .75rem; font-size:1.1rem; color:#93c5fd }
+    label { display:block; margin:.25rem 0 }
+    input, button { padding:.5rem .6rem; border-radius:6px; border:1px solid #334155; background:#0b1220; color:#e2e8f0 }
+    button { background:#0ea5e9; border-color:#0284c7; cursor:pointer }
+  </style>
+</head>
+<body>
+  <header>
+    <div><a href="/">👻 Ghost</a> / Security & Risk</div>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Limits</h2>
+  <div id="limits"></div>
+      <div style="margin-top:.5rem">
+        <label>Max position (USD) <input id="max_trade_usd" type="number" step="10" /></label>
+        <label>Stop loss % <input id="stop_loss_pct" type="number" step="0.1" /></label>
+        <label>Trailing stop % <input id="trailing_stop_pct" type="number" step="0.1" /></label>
+        <button onclick="saveLimits()">Save</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Flags</h2>
+      <label><input id="exec_on" type="checkbox" /> Execution enabled</label>
+      <label><input id="adv_only" type="checkbox" checked /> Advisory only</label>
+      <button onclick="saveFlags()">Apply</button>
+    </section>
+    <section class="card">
+      <h2>RPC Provider</h2>
+  <div id="rpc"></div>
+      <button onclick="testRPC()">Test RPC</button>
+    </section>
+  </main>
+  <script>
+    function load(){
+      fetch('/security/settings').then(r=>r.json()).then(d=>{
+        document.getElementById('limits').innerText = JSON.stringify(d.limits)
+        document.getElementById('max_trade_usd').value = d.limits.max_trade_usd
+        document.getElementById('stop_loss_pct').value = d.limits.stop_loss_pct
+        document.getElementById('trailing_stop_pct').value = d.limits.trailing_stop_pct
+        document.getElementById('exec_on').checked = !!d.flags.execution_enabled
+        document.getElementById('adv_only').checked = !!d.flags.advisory_only
+        document.getElementById('rpc').innerText = d.apis.rpc_url_set ? 'RPC configured' : 'RPC not set'
+      })
+    }
+    function saveLimits(){
+      const limits = {
+        max_trade_usd: Number(document.getElementById('max_trade_usd').value||0),
+        stop_loss_pct: Number(document.getElementById('stop_loss_pct').value||0),
+        trailing_stop_pct: Number(document.getElementById('trailing_stop_pct').value||0),
+      }
+      fetch('/security/settings',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({limits})}).then(()=>load())
+    }
+    function saveFlags(){
+      const execution_enabled = document.getElementById('exec_on').checked
+      const advisory_only = document.getElementById('adv_only').checked
+      fetch('/security/settings',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({execution_enabled, advisory_only})}).then(()=>load())
+    }
+    function testRPC(){ fetch('/security/test_rpc',{method:'POST'}).then(r=>r.json()).then(d=>{ alert(`RPC ok: ${d.ok}\nURL: ${d.url}\nLatency: ${d.latency_ms||'n/a'}ms`) }) }
+    load()
+  </script>
+</body>
+</html>

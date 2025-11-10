@@ -1,0 +1,34 @@
+{% macro ghost_panel(title, progress_value, status_label, metrics=[], actions=[]) %}
+<div class="ghost-card">
+  <div class="ghost-card-body text-center">
+    <h5 class="ghost-card-title">{{ title }}</h5>
+
+    <div class="ghost-progress-circle">
+      <div class="ghost-progress-value">{{ progress_value }}%</div>
+      <div class="ghost-progress-label">{{ status_label }}</div>
+    </div>
+
+    {% if metrics %}
+    <div class="ghost-metrics mt-3">
+      {% for label, value in metrics %}
+        <p><strong>{{ label }}:</strong> {{ value }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if actions %}
+    <div class="ghost-actions">
+      {% for btn in actions %}
+        <button
+          class="ghost-btn {{ btn.class or '' }}"
+          {% if btn.id %}id="{{ btn.id }}"{% endif %}
+          {% if btn.data_attrs %}{% for k,v in btn.data_attrs.items() %}data-{{k}}="{{v}}"{% endfor %}{% endif %}
+        >
+          {{ btn.label }}
+        </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}

@@ -1,0 +1,57 @@
+version: "3.9"
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      # Persistence
+      - WOLF_PERSIST_MODE=${WOLF_PERSIST_MODE:-auto}
+      - WOLF_STATE_FILE=${WOLF_STATE_FILE:-/data/wolf_state.json}
+      - WOLF_SQLITE_PATH=${WOLF_SQLITE_PATH:-/data/wolf.db}
+      - WOLF_AUTOSAVE_S=${WOLF_AUTOSAVE_S:-30}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      # Research LLM enrichment
+      - RESEARCH_LLM_ON=${RESEARCH_LLM_ON:-1}
+      - RESEARCH_LLM_MODEL=${RESEARCH_LLM_MODEL:-gpt-4o-mini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Ghost features
+      - CRYPTO_ENABLED=${CRYPTO_ENABLED:-1}
+      - USE_NEW_COCKPIT=${USE_NEW_COCKPIT:-1}
+      - AGENTS_ENABLED=${AGENTS_ENABLED:-1}
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - POLYGON_API_KEY=${POLYGON_API_KEY}
+      # Metrics (multiprocess)
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
+      # Security
+      - GHOST_API_TOKEN=${GHOST_API_TOKEN}
+      - ADMIN_IP_ALLOWLIST=${ADMIN_IP_ALLOWLIST:-}
+      - IDEMPOTENCY_TTL_S=${IDEMPOTENCY_TTL_S:-300}
+    depends_on:
+      - redis
+    volumes:
+      - app-data:/data  # used if WOLF_PERSIST_MODE=file and WOLF_STATE_FILE is under /data
+      - prom-mp:/tmp/prom_multiproc
+    ports:
+      - "8444:8444"
+      - "80:8444"
+    restart: unless-stopped
+    # Prometheus scrape example (add to your external prometheus.yml, not here):
+    # scrape_configs:
+    #   - job_name: ghost
+    #     static_configs:
+    #       - targets: ['ghost:8444']
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8444/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+volumes:
+  redis-data:
+  app-data:
+  prom-mp:

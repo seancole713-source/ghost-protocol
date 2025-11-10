@@ -1,0 +1,5 @@
+/api/price/WOLF 200 133 15 ms
+/api/price/SPY 200 63 3 ms
+/api/price/BTC-USD 200 67 2 ms
+/api/news 200 5238 138 ms
+/api/news/recent 200 106 148 ms

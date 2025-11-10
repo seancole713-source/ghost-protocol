@@ -1,0 +1,40 @@
+# VCS
+.git
+.gitignore
+.github/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pytest_cache/
+.pytest_cache/
+.venv/
+.env
+.env.*
+.mypy_cache/
+.ruff_cache/
+
+# Node/Frontend
+node_modules/
+dist/
+build/
+
+# Editors/OS
+.vscode/
+.DS_Store
+
+# Test and sample data
+/tests/
+*.log
+*.out
+
+# Notebooks and data dumps
+*.ipynb
+*.csv
+*.tsv
+*.parquet
+
+# Docker
+Dockerfile~

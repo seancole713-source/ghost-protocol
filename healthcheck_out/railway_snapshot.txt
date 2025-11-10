@@ -1,0 +1,1 @@
+Expect start: PORT= python3 wolf_app.py | Healthcheck: /health | Host: 0.0.0.0

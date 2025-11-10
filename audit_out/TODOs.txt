@@ -1,0 +1,4 @@
+ghost_agent_loop.py:1105:    TODO: Wire this to your actual executor that can:
+ghost_agent_loop.py:1122:                    # TODO: Execute the task
+migrate_ai_memory.py:104:                'symbol': 'WOLF',  # TODO: Make dynamic
+migrate_ai_memory.py:173:                'symbol': 'WOLF',  # TODO: Make dynamic

@@ -1,0 +1,35 @@
+{
+  "name": "Ghost 2.0 (Live)",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": false,
+  "shutdownAction": "stopContainer",
+  "containerEnv": {
+    "SIM_MODE": "0",
+    "PORT": "5000",
+    "ENABLE_REDIS": "1",
+    "REDIS_URL": "redis://localhost:6379/0"
+  },
+  "remoteEnv": {
+    "COINGECKO_API_KEY": "${localEnv:COINGECKO_API_KEY}",
+    "TELEGRAM_BOT_TOKEN": "${localEnv:TELEGRAM_BOT_TOKEN}"
+  },
+  "forwardPorts": [5000],
+  "portsAttributes": {
+    "5000": { "label": "Ghost UI", "onAutoForward": "openBrowser" }
+  },
+  "postCreateCommand": "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y redis-server && python -m venv .venv && . .venv/bin/activate && pip -q install --upgrade pip && pip -q install -r requirements.txt || true",
+  "postStartCommand": "sudo service redis-server start || sudo redis-server --daemonize yes || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

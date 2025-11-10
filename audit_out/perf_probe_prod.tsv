@@ -1,0 +1,6 @@
+path	status	ms
+/health	200	225
+/api/agent/stats	200	121
+/api/portfolio	200	1016
+/api/snapshot	200	180
+/api/stage2/forecasts	200	115

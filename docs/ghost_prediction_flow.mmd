@@ -1,0 +1,50 @@
+%% GHOST - End-to-End Prediction Flow (Mermaid)
+%% Shows how a prediction is produced from start to finish
+
+flowchart LR
+  A[Client requests snapshot: /api/cockpit, /advisor_refresh] --> B{Cache valid?}
+
+  B -- Yes --> C[Serve from PRICE_CACHE]
+  class C step;
+  B -- No --> D[Fetch prices from providers]
+
+  subgraph Providers
+    D1[Yahoo / yfinance]
+    D2[Polygon.io]
+    D3[AlphaVantage]
+  end
+
+  D --> D1
+  D --> D2
+  D --> D3
+  D1 --> E[Quorum + Merge]
+  D2 --> E
+  D3 --> E
+  E --> F{Guardrails}
+  F -->|Anomaly or corp action| G[Use prev_close / mark stale]
+  F -->|OK| H[Record price tick]
+  G --> H
+
+  H --> I[Compute change % vs prev_close]
+  I --> J[Portfolio update qty*price and PnL]
+  J --> K{Should forecast now?}
+
+  K -- No --> L[Return snapshot with stale flag]
+  K -- Yes --> M[Generate 48h forecast]
+  M --> N[Store forecast rows]
+  N --> O[Compute forecast metrics]
+  O --> P[Build snapshot: prices + portfolio + forecast]
+
+  P --> Q[UI panels update via SSE or polling]
+  P --> R[Optional alerts Telegram and MCP]
+
+  %% Styles
+  classDef step fill:#264653,stroke:#1b3a4b,stroke-width:0.5px,color:#fff;
+  classDef io fill:#2a9d8f,stroke:#1f776c,stroke-width:0.5px,color:#fff;
+  classDef warn fill:#e9c46a,stroke:#b38e3c,stroke-width:0.5px,color:#222;
+  classDef critical fill:#e76f51,stroke:#b64f3b,stroke-width:0.5px,color:#fff;
+  classDef ok fill:#457b9d,stroke:#2c5d7a,stroke-width:0.5px,color:#fff;
+  class A,L,Q,R io;
+  class D,E,F,G,H,I,J,K,M,N,O,P step;
+  class G warn;
+  class C ok;

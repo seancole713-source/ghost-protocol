@@ -1,0 +1,351 @@
+{
+  "scan_time": "2025-10-15T10:06:14.873159",
+  "base_url": "http://localhost:8444",
+  "subsystems": {
+    "ai_core": {
+      "name": "AI Core & Prediction Engine",
+      "endpoints": {
+        "/api/agent/stats": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 11,
+          "response_size": 143,
+          "content_type": "application/json",
+          "data_preview": "{'total_decisions': 0, 'win_rate': 0.0, 'avg_confidence': 0.0, 'active_goals': 0, 'portfolio_value': 0.0, 'daily_pnl': 0.0, 'timestamp': 1760540774.8815365}",
+          "data_keys": [
+            "total_decisions",
+            "win_rate",
+            "avg_confidence",
+            "active_goals",
+            "portfolio_value",
+            "daily_pnl",
+            "timestamp"
+          ]
+        },
+        "/api/agent/decisions": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 2,
+          "response_size": 26,
+          "content_type": "application/json",
+          "data_preview": "{'decisions': [], 'count': 0}",
+          "data_keys": [
+            "decisions",
+            "count"
+          ]
+        },
+        "/api/stage2/forecasts": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 2,
+          "response_size": 26,
+          "content_type": "application/json",
+          "data_preview": "{'forecasts': [], 'count': 0}",
+          "data_keys": [
+            "forecasts",
+            "count"
+          ]
+        },
+        "/api/stage2/accuracy": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 2,
+          "response_size": 74,
+          "content_type": "application/json",
+          "data_preview": "{'error': 'No completed forecasts found', 'count': 0, 'symbol': None, 'days': 30}",
+          "data_keys": [
+            "error",
+            "count",
+            "symbol",
+            "days"
+          ]
+        },
+        "/api/stage3/regime/current": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 2,
+          "response_size": 267,
+          "content_type": "application/json",
+          "data_preview": "{'regime': 'SIDEWAYS', 'confidence': 0.6, 'strategy_adjustments': {'risk_tolerance': 'medium', 'position_size_multiplier': 0.8, 'stop_loss_pct': 0.06, 'take_profit_pct': 0.1, 'strategy': 'range_tradin",
+          "data_keys": [
+            "regime",
+            "confidence",
+            "strategy_adjustments"
+          ]
+        },
+        "/api/snapshot": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 209,
+          "response_size": 1348,
+          "content_type": "application/json",
+          "data_preview": "{'timestamp': 1760540774.8972857, 'portfolio': {}, 'market_regime': {'regime': 'SIDEWAYS', 'confidence': 0.6, 'strategy_adjustments': {'risk_tolerance': 'medium', 'position_size_multiplier': 0.8, 'sto",
+          "data_keys": [
+            "timestamp",
+            "portfolio",
+            "market_regime",
+            "forecasts",
+            "goals",
+            "decisions",
+            "news"
+          ]
+        }
+      },
+      "health": "6/6 endpoints online",
+      "status": "\u2705 HEALTHY"
+    },
+    "data_feeds": {
+      "name": "Data Feeds (Stocks + Crypto)",
+      "endpoints": {
+        "/api/price/WOLF": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 6,
+          "response_size": 135,
+          "content_type": "application/json",
+          "data_preview": "{'symbol': 'WOLF', 'price': 32.58, 'prev_close': 32.58, 'provider': 'alphavantage', 'timestamp': 1760540775, 'change_pct': 0.0, 'market_open': True}",
+          "data_keys": [
+            "symbol",
+            "price",
+            "prev_close",
+            "provider",
+            "timestamp",
+            "change_pct",
+            "market_open"
+          ]
+        },
+        "/api/price/SPY": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 4,
+          "response_size": 63,
+          "content_type": "application/json",
+          "data_preview": "[{'error': 'Symbol SPY not supported', 'supported': ['WOLF']}, 404]",
+          "data_keys": null
+        },
+        "/api/price/AAPL": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 5,
+          "response_size": 64,
+          "content_type": "application/json",
+          "data_preview": "[{'error': 'Symbol AAPL not supported', 'supported': ['WOLF']}, 404]",
+          "data_keys": null
+        },
+        "/api/price/BTC-USD": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 5,
+          "response_size": 67,
+          "content_type": "application/json",
+          "data_preview": "[{'error': 'Symbol BTC-USD not supported', 'supported': ['WOLF']}, 404]",
+          "data_keys": null
+        },
+        "/api/crypto/price/bitcoin": {
+          "status": "\u26a0\ufe0f HTTP 503",
+          "status_code": 503,
+          "latency_ms": 3,
+          "response_size": 60,
+          "content_type": "application/json",
+          "data_preview": "{'detail': 'Crypto module not enabled. Set CRYPTO_ENABLED=1'}",
+          "data_keys": [
+            "detail"
+          ]
+        },
+        "/api/crypto/price/ethereum": {
+          "status": "\u26a0\ufe0f HTTP 503",
+          "status_code": 503,
+          "latency_ms": 3,
+          "response_size": 60,
+          "content_type": "application/json",
+          "data_preview": "{'detail': 'Crypto module not enabled. Set CRYPTO_ENABLED=1'}",
+          "data_keys": [
+            "detail"
+          ]
+        },
+        "/api/crypto/ohlcv/bitcoin?days=7": {
+          "status": "\u26a0\ufe0f HTTP 503",
+          "status_code": 503,
+          "latency_ms": 3,
+          "response_size": 38,
+          "content_type": "application/json",
+          "data_preview": "{'detail': 'Crypto module not enabled'}",
+          "data_keys": [
+            "detail"
+          ]
+        }
+      },
+      "health": "7/7 endpoints responding",
+      "status": "\u2705 HEALTHY"
+    },
+    "news_sentiment": {
+      "name": "News & Sentiment Analysis",
+      "endpoints": {
+        "/api/news": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 132,
+          "response_size": 5238,
+          "content_type": "application/json",
+          "data_preview": "{'news': [{'title': 'These cooking oil stocks are surging, as Trump-China trade tensions heat up', 'summary': 'Shares of Bunge and Archer-Daniels-Midland rallied, after President Trump said America di",
+          "data_keys": [
+            "news",
+            "count",
+            "timestamp",
+            "symbol",
+            "status"
+          ]
+        },
+        "/api/news/recent": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 129,
+          "response_size": 105,
+          "content_type": "application/json",
+          "data_preview": "{'news': [], 'count': 0, 'timestamp': 1760540775.398467, 'symbol': None, 'timeframe_minutes': 120, 'status': 'live'}",
+          "data_keys": [
+            "news",
+            "count",
+            "timestamp",
+            "symbol",
+            "timeframe_minutes",
+            "status"
+          ]
+        },
+        "/api/watcher/ticker_news": {
+          "status": "\u26a0\ufe0f HTTP 422",
+          "status_code": 422,
+          "latency_ms": 5,
+          "response_size": 91,
+          "content_type": "application/json",
+          "data_preview": "{'detail': [{'loc': ['query', 'symbol'], 'msg': 'field required', 'type': 'value_error.missing'}]}",
+          "data_keys": [
+            "detail"
+          ]
+        }
+      },
+      "health": "2/3 endpoints online",
+      "status": "\u26a0\ufe0f DEGRADED"
+    },
+    "cockpit_ui": {
+      "name": "Cockpit UI & Frontend",
+      "endpoints": {
+        "/": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 11,
+          "response_size": 137060,
+          "content_type": "text/html; charset=utf-8"
+        },
+        "/cockpit": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 4,
+          "response_size": 137060,
+          "content_type": "text/html; charset=utf-8"
+        },
+        "/api/openapi.json": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 62,
+          "response_size": 154843,
+          "content_type": "application/json",
+          "data_preview": "{'openapi': '3.1.0', 'info': {'title': 'Ghost \u2014 WOLF-only', 'version': '1.0'}, 'paths': {'/api/news': {'get': {'summary': 'Api News', 'description': 'Get recent news articles for the cockpit news feed",
+          "data_keys": [
+            "openapi",
+            "info",
+            "paths",
+            "components"
+          ]
+        },
+        "/api/docs": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 2,
+          "response_size": 947,
+          "content_type": "text/html; charset=utf-8"
+        },
+        "/health": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 2,
+          "response_size": 35,
+          "content_type": "application/json",
+          "data_preview": "{'ok': True, 'ts': 1760540775.4953885}",
+          "data_keys": [
+            "ok",
+            "ts"
+          ]
+        },
+        "/static/img/neo_glass_bg.webp": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 3,
+          "response_size": 0,
+          "content_type": "text/plain; charset=utf-8"
+        }
+      },
+      "health": "6/6 endpoints accessible",
+      "status": "\u2705 HEALTHY"
+    },
+    "database_services": {
+      "name": "Database & Backend Services",
+      "endpoints": {
+        "/api/portfolio": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 3,
+          "response_size": 268,
+          "content_type": "application/json",
+          "data_preview": "{'positions': [{'symbol': 'WOLF', 'type': 'stock', 'qty': 8.41959051, 'price': 359.28, 'current': 32.58, 'pnl': -3022.704559609335, 'pnl_pct': -99.92443219772879, 'pnl_note': 'Adjusted for 120.0:1 rev",
+          "data_keys": [
+            "positions",
+            "cash",
+            "nav"
+          ]
+        },
+        "/api/memory/stats": {
+          "status": "\u26a0\ufe0f HTTP 404",
+          "status_code": 404,
+          "latency_ms": 4,
+          "response_size": 22,
+          "content_type": "application/json",
+          "data_preview": "{'detail': 'Not Found'}",
+          "data_keys": [
+            "detail"
+          ]
+        },
+        "/health": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 2,
+          "response_size": 34,
+          "content_type": "application/json",
+          "data_preview": "{'ok': True, 'ts': 1760540775.510488}",
+          "data_keys": [
+            "ok",
+            "ts"
+          ]
+        },
+        "/metrics": {
+          "status": "\u2705 ONLINE",
+          "status_code": 200,
+          "latency_ms": 4,
+          "response_size": 7913,
+          "content_type": "text/plain; version=0.0.4; charset=utf-8; charset=utf-8"
+        }
+      },
+      "health": "3/4 services responding",
+      "status": "\u2705 HEALTHY"
+    }
+  },
+  "critical_issues": [],
+  "warnings": [],
+  "summary": {
+    "overall_status": "\u2705 OPERATIONAL",
+    "subsystems_healthy": "4/5",
+    "endpoints_online": "21/26",
+    "critical_issues_count": 0,
+    "warnings_count": 0
+  }
+}
