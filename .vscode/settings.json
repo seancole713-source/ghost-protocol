@@ -19,7 +19,7 @@
   "ruff.organizeImports": true,
   
   "cSpell.enabled": true,
-  "cSpell.import": [".cspell.json"],
+  "cSpell.import": ["cspell.json"],
   
   "markdownlint.config": {
     "MD013": false,

@@ -1,0 +1,248 @@
+"""
+Ghost Beast Scheduler
+Periodic market predictions and alerts for stocks and crypto
+"""
+
+import threading
+import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# Will be set by wolf_app.py
+REDIS_CLIENT = None
+LOGGER = None
+GET_PRICE_FUNC = None  # func(symbol, market) -> (price, prev_close, provider, after_hours)
+RUN_PREDICTION_FUNC = None  # func(symbol, market, horizon) -> prediction dict
+TELEGRAM_ALERTS_MODULE = None  # telegram_alerts module
+
+# Scheduler state
+_SCHEDULER_THREAD: threading.Thread | None = None
+_SCHEDULER_STOP = threading.Event()
+
+# Watch lists
+STOCK_SYMBOLS = ["AAPL", "WOLF", "NVDA"]
+CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL", "PEPE", "WEPE", "LILPEPE", "DORKL", "SLOTH", "APC", "XRP"]
+
+# Timezone
+CHICAGO_TZ = ZoneInfo("America/Chicago")
+
+
+def _get_chicago_time():
+    """Get current time in Chicago timezone"""
+    return datetime.now(CHICAGO_TZ)
+
+
+def _is_market_day(dt):
+    """Check if it's a weekday (Mon-Fri)"""
+    return dt.weekday() <= 4
+
+
+def _send_prediction_alert(symbol: str, market: str, horizon: str):
+    """
+    Generate and send a prediction alert for a symbol
+
+    Args:
+        symbol: Trading symbol
+        market: "stock" or "crypto"
+        horizon: "SHORT" or "LONG"
+    """
+    if not GET_PRICE_FUNC or not RUN_PREDICTION_FUNC or not TELEGRAM_ALERTS_MODULE:
+        if LOGGER:
+            LOGGER.warning(f"Missing functions for {symbol} alert")
+        return
+
+    try:
+        # Get current price
+        price_result = GET_PRICE_FUNC(symbol, market)
+        if not price_result:
+            if LOGGER:
+                LOGGER.warning(f"No price data for {symbol}")
+            return
+
+        price, prev_close, provider, after_hours = price_result
+
+        # Check if price is stale (prev close fallback during closed market)
+        if after_hours and market == "stock":
+            if LOGGER:
+                LOGGER.info(f"Skipping {symbol} alert - market closed, prev close only")
+            return
+
+        # Run prediction
+        prediction = RUN_PREDICTION_FUNC(symbol, market, horizon)
+        if not prediction:
+            if LOGGER:
+                LOGGER.warning(f"No prediction for {symbol}")
+            return
+
+        # Build price metadata
+        price_meta = {
+            "price": price,
+            "prev_close": prev_close,
+            "provider": provider,
+            "after_hours": after_hours,
+        }
+
+        # Send alert via telegram_alerts module
+        success = TELEGRAM_ALERTS_MODULE.send_alert(
+            symbol=symbol,
+            market=market,
+            horizon_bucket=horizon,
+            prediction=prediction,
+            price_meta=price_meta,
+        )
+
+        if success:
+            if LOGGER:
+                LOGGER.info(f"✅ Sent {horizon} alert for {symbol}")
+        else:
+            if LOGGER:
+                LOGGER.info(f"⏭️  Skipped {horizon} alert for {symbol} (duplicate)")
+
+    except Exception as e:
+        if LOGGER:
+            LOGGER.error(f"Error sending {symbol} alert: {e}")
+
+
+def _run_stock_predictions(horizon: str):
+    """Run predictions for all stock symbols"""
+    for symbol in STOCK_SYMBOLS:
+        _send_prediction_alert(symbol, "stock", horizon)
+        time.sleep(0.5)  # Rate limit
+
+
+def _run_crypto_predictions(horizon: str):
+    """Run predictions for all crypto symbols"""
+    for symbol in CRYPTO_SYMBOLS:
+        _send_prediction_alert(symbol, "crypto", horizon)
+        time.sleep(0.5)  # Rate limit
+
+
+def _check_schedule():
+    """
+    Check if it's time to run predictions
+
+    Stock schedule (CT):
+    - 07:55: Pre-market (SHORT + LONG)
+    - 09:35: Market open (SHORT + LONG)
+    - 12:00: Midday (SHORT)
+    - 15:10: Close (SHORT + LONG)
+
+    Crypto schedule (CT):
+    - Every 2 hours on the hour (00:00, 02:00, 04:00, etc.)
+    - Run SHORT + LONG
+    """
+    now = _get_chicago_time()
+    hour = now.hour
+    minute = now.minute
+
+    # Stock schedules (weekdays only)
+    if _is_market_day(now):
+        # Pre-market: 07:55
+        if hour == 7 and minute == 55:
+            if LOGGER:
+                LOGGER.info("📊 Running pre-market stock predictions")
+            _run_stock_predictions("SHORT")
+            _run_stock_predictions("LONG")
+            time.sleep(60)  # Skip next minute
+            return
+
+        # Market open: 09:35
+        if hour == 9 and minute == 35:
+            if LOGGER:
+                LOGGER.info("📊 Running market open stock predictions")
+            _run_stock_predictions("SHORT")
+            _run_stock_predictions("LONG")
+            time.sleep(60)
+            return
+
+        # Midday: 12:00
+        if hour == 12 and minute == 0:
+            if LOGGER:
+                LOGGER.info("📊 Running midday stock predictions")
+            _run_stock_predictions("SHORT")
+            time.sleep(60)
+            return
+
+        # Close: 15:10
+        if hour == 15 and minute == 10:
+            if LOGGER:
+                LOGGER.info("📊 Running market close stock predictions")
+            _run_stock_predictions("SHORT")
+            _run_stock_predictions("LONG")
+            time.sleep(60)
+            return
+
+    # Crypto schedule: Every 2 hours on the hour
+    if minute == 0 and hour % 2 == 0:
+        if LOGGER:
+            LOGGER.info(f"₿ Running {hour:02d}:00 crypto predictions")
+        _run_crypto_predictions("SHORT")
+        _run_crypto_predictions("LONG")
+        time.sleep(60)
+        return
+
+
+def _scheduler_loop():
+    """Main scheduler loop"""
+    if LOGGER:
+        LOGGER.info("🚀 Beast scheduler started")
+
+    while not _SCHEDULER_STOP.is_set():
+        try:
+            _check_schedule()
+            time.sleep(30)  # Check every 30 seconds
+        except Exception as e:
+            if LOGGER:
+                LOGGER.error(f"Scheduler loop error: {e}")
+            time.sleep(60)
+
+
+def start_beast_scheduler():
+    """Start the beast scheduler"""
+    global _SCHEDULER_THREAD
+
+    if _SCHEDULER_THREAD is None or not _SCHEDULER_THREAD.is_alive():
+        _SCHEDULER_STOP.clear()
+        _SCHEDULER_THREAD = threading.Thread(
+            target=_scheduler_loop, name="beast-scheduler", daemon=True
+        )
+        _SCHEDULER_THREAD.start()
+
+        if LOGGER:
+            LOGGER.info("✅ Beast scheduler started")
+
+        print("[BEAST SCHEDULER] Started - Stock: 07:55, 09:35, 12:00, 15:10 CT | Crypto: Every 2h")
+
+
+def stop_beast_scheduler():
+    """Stop the beast scheduler"""
+    try:
+        _SCHEDULER_STOP.set()
+        if _SCHEDULER_THREAD and _SCHEDULER_THREAD.is_alive():
+            _SCHEDULER_THREAD.join(timeout=2.0)
+
+        if LOGGER:
+            LOGGER.info("⏹️  Beast scheduler stopped")
+    except Exception:
+        pass
+
+
+def trigger_manual_prediction(symbol: str, market: str, horizon: str = "SHORT") -> bool:
+    """
+    Manually trigger a prediction alert (for testing)
+
+    Args:
+        symbol: Trading symbol
+        market: "stock" or "crypto"
+        horizon: "SHORT" or "LONG"
+
+    Returns:
+        True if alert was sent successfully
+    """
+    try:
+        _send_prediction_alert(symbol, market, horizon)
+        return True
+    except Exception as e:
+        if LOGGER:
+            LOGGER.error(f"Manual prediction error: {e}")
+        return False
