@@ -9695,39 +9695,57 @@ async def _rate_limit_mw(request: Request, call_next):
 
 @APP.middleware("http")
 async def _log_requests(request: Request, call_next):
+    """Robust request logging middleware with error handling."""
+    from fastapi.responses import JSONResponse
+    
     # Skip noisy paths for readability
     try:
         if _should_skip_request_log(request.url.path):
             return await call_next(request)
     except Exception:
         pass
+    
     # Sampling
     try:
         if LOG_SAMPLE_RATE < 1.0:
             import random
-
             if random.random() > LOG_SAMPLE_RATE:
                 return await call_next(request)
     except Exception:
         pass
+    
     rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex
     token_tid = _cv_trace_id.set(rid)
     token_path = _cv_path.set(request.url.path)
     token_method = _cv_method.set(request.method)
     t0 = time.perf_counter()
+    response = None
+    error_response = None
+    
     try:
         response = await call_next(request)
-    except Exception:
+    except Exception as e:
         dt = (time.perf_counter() - t0) * 1000.0
-        LOGGER.exception(
-            "request_error",
-            extra={
-                "component": "api",
-                "duration_ms": round(dt, 2),
-                "client": request.client.host if request.client else None,
-            },
+        try:
+            LOGGER.exception(
+                "request_failed: %s %s",
+                request.method,
+                request.url.path,
+                extra={
+                    "component": "api",
+                    "duration_ms": round(dt, 2),
+                    "client": request.client.host if request.client else None,
+                    "error": str(e)[:512],
+                },
+            )
+        except Exception:
+            pass
+        # Prepare error response
+        error_response = JSONResponse(
+            {"error": "internal", "detail": str(e)[:512]},
+            status_code=500,
+            headers={"X-Request-ID": rid}
         )
-        raise
     finally:
         # Restore contextvars
         try:
@@ -9736,6 +9754,11 @@ async def _log_requests(request: Request, call_next):
             _cv_method.reset(token_method)
         except Exception:
             pass
+    
+    # Return error response if exception occurred
+    if error_response is not None:
+        return error_response
+    
     dt = (time.perf_counter() - t0) * 1000.0
     try:
         response.headers["X-Request-ID"] = rid
