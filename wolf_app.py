@@ -10375,6 +10375,51 @@ async def api_cache_clear_get(cache_type: str = "all"):
     return await api_cache_clear(cache_type)
 
 
+@APP.post("/api/cache/purge")
+async def api_cache_purge_keys(keys: list[str] | None = None):
+    """Targeted purge of specific cache keys.
+    
+    Args:
+        keys: List of cache key patterns to delete (e.g., ['price:AAPL', 'diagnostics:*'])
+    
+    Returns:
+        {"ok": True, "deleted": [...], "count": N}
+    """
+    if not keys:
+        return {"ok": False, "error": "keys parameter required"}
+    
+    deleted = []
+    try:
+        # Handle PRICE_CACHE deletions
+        for key in keys:
+            if key.startswith("price:"):
+                symbol = key.split(":", 1)[1].upper()
+                if symbol in PRICE_CACHE:
+                    PRICE_CACHE.pop(symbol)
+                    deleted.append(key)
+            elif key.startswith("diagnostics:"):
+                # Clear PRICE_DIAG entries matching pattern
+                pattern = key.split(":", 1)[1]
+                if pattern == "*":
+                    PRICE_DIAG.clear()
+                    deleted.append(key)
+                else:
+                    # Remove specific diagnostics keys
+                    keys_to_remove = [k for k in PRICE_DIAG.keys() if pattern in k]
+                    for k in keys_to_remove:
+                        PRICE_DIAG.pop(k, None)
+                        deleted.append(f"diagnostics:{k}")
+            else:
+                # Generic cache key deletion
+                if key in PRICE_CACHE:
+                    PRICE_CACHE.pop(key)
+                    deleted.append(key)
+        
+        return {"ok": True, "deleted": deleted, "count": len(deleted)}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "deleted": deleted, "count": len(deleted)}
+
+
 @APP.get("/api/telegram/reinit")
 async def api_telegram_reinit():
     """Reinitialize Telegram connection (for auto-fixer)"""
@@ -17192,10 +17237,11 @@ async def api_price_diagnostics(symbol: str | None = None):
     """Detailed price diagnostics for debugging UI.
 
     Args:
-        symbol: Stock symbol to diagnose (defaults to WOLF if not provided)
+        symbol: Stock symbol to diagnose (required - no default to WOLF)
 
     Returns:
         {
+          symbol: str,
           price: float|None,
           prev_close: float|None,
           provider: str|None,
@@ -17206,12 +17252,13 @@ async def api_price_diagnostics(symbol: str | None = None):
           now: epoch seconds
         }
     """
-    # Default to WOLF if no symbol provided for backward compatibility
-    sym = (symbol or WOLF).upper().strip()
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol parameter is required")
     
-    # Skip FOCUS_WOLF_ONLY check when explicitly querying for diagnostics
-    # This allows testing AAPL even when FOCUS_WOLF_ONLY=1 (for debugging)
+    sym = symbol.upper().strip()
     
+    # Use ensure_price_cached which handles the full provider chain
+    # This ensures we get real-time data through the same path as normal API calls
     now = time.time()
     price = None
     prev = None
@@ -17219,16 +17266,15 @@ async def api_price_diagnostics(symbol: str | None = None):
     cache_age_s: float | None = None
     
     try:
-        if sym == WOLF:
-            # Use get_wolf_price for WOLF to maintain existing flow
-            price, prev, provider = get_wolf_price()
-        else:
-            # Use generic price fetch for other symbols
-            result = await fetch_price_live(sym, strict_live=False, max_age_seconds=None)
-            if result:
-                price = result.get("price")
-                prev = result.get("prev_close")
-                provider = result.get("provider")
+        # Call ensure_price_cached to force fresh fetch through provider chain
+        result = await ensure_price_cached(sym, strict_live=False, max_age_seconds=None)
+        if result:
+            price = result.get("price")
+            prev = result.get("prev_close")
+            provider = result.get("provider")
+    except HTTPException:
+        # If ensure_price_cached raises 404/503, let it propagate
+        raise
     except Exception as e:
         LOGGER.debug(f"price_diagnostics_error for {sym}: {e}")
     
