@@ -3593,6 +3593,18 @@ async def _on_startup():
             "forecast_48h_background_tasks_started",
             extra={"component": "startup", "interval": "60min"},
         )
+        
+        # Background movers scanner tasks
+        if os.getenv("CRYPTO_ENABLED", "0") == "1" or os.getenv("STOCKS_ENABLED", "1") == "1":
+            loop.create_task(_auto_scan_movers())
+            LOGGER.info(
+                "background_movers_scanner_started",
+                extra={
+                    "component": "startup",
+                    "crypto_interval": "300s",
+                    "stocks_schedule": "CT market hours"
+                },
+            )
     except Exception:
         LOGGER.exception("forecast_background_tasks_failed", extra={"component": "startup"})
 
@@ -3670,6 +3682,129 @@ async def _auto_refresh_price():
             except Exception:
                 pass
         await asyncio.sleep(PRICE_AUTO_REFRESH_S)
+
+
+# ---------------------------------------------------------------------------
+# Background movers scanner
+# ---------------------------------------------------------------------------
+
+async def _auto_scan_movers():
+    """
+    Periodic task that scans for market movers.
+    - Crypto: every 300 seconds (5 minutes)
+    - Stocks: scheduled times in CT timezone
+    """
+    import asyncio
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    
+    # Crypto scan interval
+    CRYPTO_SCAN_INTERVAL = 300  # 5 minutes
+    
+    # Stock scan times (CT timezone)
+    # 07:55, 09:35, then every 10m from 09:40 to 15:50, plus 15:58 summary
+    STOCK_SCAN_TIMES = [
+        "07:55", "09:35", "09:40", "09:50", "10:00", "10:10", "10:20", "10:30",
+        "10:40", "10:50", "11:00", "11:10", "11:20", "11:30", "11:40", "11:50",
+        "12:00", "12:10", "12:20", "12:30", "12:40", "12:50", "13:00", "13:10",
+        "13:20", "13:30", "13:40", "13:50", "14:00", "14:10", "14:20", "14:30",
+        "14:40", "14:50", "15:00", "15:10", "15:20", "15:30", "15:40", "15:50",
+        "15:58"
+    ]
+    
+    last_crypto_scan = 0
+    last_stock_scan_minute = None
+    
+    try:
+        from app.core import movers_scanner
+        from core import telegram_alerts
+    except Exception as e:
+        LOGGER.error(f"Failed to import movers scanner: {e}")
+        return
+    
+    # Price fetch wrapper
+    async def fetch_price_wrapper(symbol: str, is_crypto: bool = False):
+        try:
+            if is_crypto:
+                result = await api_crypto_price(symbol)
+                return result
+            else:
+                result = await fetch_price_live(symbol)
+                return {
+                    "price": result[0] if result else None,
+                    "provider": result[2] if result and len(result) > 2 else "unknown",
+                    "ts": int(time.time() * 1000)
+                }
+        except Exception:
+            return None
+    
+    while True:
+        try:
+            now = time.time()
+            ct_tz = ZoneInfo("America/Chicago")
+            ct_now = datetime.now(ct_tz)
+            current_time = ct_now.strftime("%H:%M")
+            current_minute = ct_now.strftime("%H:%M")
+            
+            # Crypto scan (every 5 minutes)
+            if os.getenv("CRYPTO_ENABLED", "0") == "1":
+                if now - last_crypto_scan >= CRYPTO_SCAN_INTERVAL:
+                    try:
+                        crypto_movers = await movers_scanner.scan_crypto(
+                            fetch_price_wrapper,
+                            None,
+                            REDIS
+                        )
+                        
+                        # Persist stats
+                        movers_scanner.persist_last_run(
+                            "crypto",
+                            {"count": len(crypto_movers), "ts": int(now), "error": "", "duration_ms": 0},
+                            REDIS
+                        )
+                        
+                        # Send alerts for new tier breaches
+                        for mover in crypto_movers:
+                            telegram_alerts.send_mover_alert("crypto", mover)
+                        
+                        LOGGER.info(f"Crypto movers scan complete: {len(crypto_movers)} movers")
+                        last_crypto_scan = now
+                        
+                    except Exception as e:
+                        LOGGER.error(f"Crypto movers scan failed: {e}")
+            
+            # Stock scan (scheduled times)
+            if os.getenv("STOCKS_ENABLED", "1") == "1":
+                if current_minute in STOCK_SCAN_TIMES and current_minute != last_stock_scan_minute:
+                    try:
+                        stock_movers = await movers_scanner.scan_stocks(
+                            fetch_price_wrapper,
+                            None,
+                            REDIS
+                        )
+                        
+                        # Persist stats
+                        movers_scanner.persist_last_run(
+                            "stocks",
+                            {"count": len(stock_movers), "ts": int(now), "error": "", "duration_ms": 0},
+                            REDIS
+                        )
+                        
+                        # Send alerts for new tier breaches
+                        for mover in stock_movers:
+                            telegram_alerts.send_mover_alert("stocks", mover)
+                        
+                        LOGGER.info(f"Stock movers scan complete at {current_time} CT: {len(stock_movers)} movers")
+                        last_stock_scan_minute = current_minute
+                        
+                    except Exception as e:
+                        LOGGER.error(f"Stock movers scan failed: {e}")
+            
+        except Exception as e:
+            LOGGER.error(f"Movers scanner error: {e}")
+        
+        # Sleep 60 seconds (check every minute for stock schedule)
+        await asyncio.sleep(60)
 
 
 # If WOLF_SQLITE_PATH target is not writable/creatable (common in local dev where /data is not permitted),
@@ -16424,6 +16559,174 @@ async def api_alerts_test():
         LOGGER.error(f"alerts_test_error: {e}")
         return JSONResponse(
             {"ok": False, "detail": str(e)},
+            status_code=500
+        )
+
+
+# ============================================================================
+# MOVERS SCANNER ROUTES
+# ============================================================================
+
+@APP.get("/api/scan/movers")
+async def api_scan_movers():
+    """
+    Get real-time market movers for crypto and stocks.
+    
+    Returns:
+        {
+            "crypto": [...],
+            "stocks": [...],
+            "ts": int,
+            "crypto_count": int,
+            "stocks_count": int
+        }
+    """
+    try:
+        # Import movers scanner
+        from app.core import movers_scanner
+        
+        # Create price fetch wrapper for the scanner
+        async def fetch_price_wrapper(symbol: str, is_crypto: bool = False):
+            """Wrapper to use existing fetch_price_live function"""
+            try:
+                if is_crypto:
+                    # Use existing crypto price endpoint logic
+                    result = await api_crypto_price(symbol)
+                    return result
+                else:
+                    # Use existing stock price fetch
+                    result = await fetch_price_live(symbol)
+                    return {
+                        "price": result[0] if result else None,
+                        "provider": result[2] if result and len(result) > 2 else "unknown",
+                        "ts": int(time.time() * 1000)
+                    }
+            except Exception as e:
+                LOGGER.debug(f"Price fetch error for {symbol}: {e}")
+                return None
+        
+        # Run scans with timeout
+        try:
+            crypto_task = movers_scanner.scan_crypto(
+                fetch_price_wrapper,
+                None,  # ohlcv_func not implemented yet
+                REDIS
+            )
+            stocks_task = movers_scanner.scan_stocks(
+                fetch_price_wrapper,
+                None,  # ohlcv_func not implemented yet
+                REDIS
+            )
+            
+            # Execute with timeout
+            crypto_movers, stock_movers = await asyncio.wait_for(
+                asyncio.gather(crypto_task, stocks_task),
+                timeout=movers_scanner.SCAN_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            return JSONResponse(
+                {"ok": False, "detail": "Scan timeout exceeded"},
+                status_code=504
+            )
+        
+        # Build payload
+        payload = movers_scanner.build_payload(crypto_movers, stock_movers)
+        
+        # Persist stats
+        movers_scanner.persist_last_run(
+            "crypto",
+            {
+                "count": len(crypto_movers),
+                "ts": int(time.time()),
+                "error": "",
+                "duration_ms": 0
+            },
+            REDIS
+        )
+        movers_scanner.persist_last_run(
+            "stocks",
+            {
+                "count": len(stock_movers),
+                "ts": int(time.time()),
+                "error": "",
+                "duration_ms": 0
+            },
+            REDIS
+        )
+        
+        return payload
+        
+    except Exception as e:
+        LOGGER.error(f"scan_movers_error: {e}", exc_info=True)
+        return JSONResponse(
+            {"ok": False, "detail": str(e)[:200]},
+            status_code=500
+        )
+
+
+@APP.get("/api/scan/health")
+async def api_scan_health():
+    """
+    Get movers scanner health status.
+    
+    Returns:
+        {
+            "last_crypto_ts": int,
+            "last_stocks_ts": int,
+            "last_counts": {...},
+            "last_error": {...},
+            "redis_dedup_stats": {...}
+        }
+    """
+    try:
+        from app.core import movers_scanner
+        
+        # Get last run stats
+        crypto_stats = movers_scanner.get_last_run_stats("crypto", REDIS)
+        stocks_stats = movers_scanner.get_last_run_stats("stocks", REDIS)
+        
+        # Get de-dup stats from Redis
+        dedup_stats = {}
+        if REDIS:
+            try:
+                # Count active de-dup keys
+                date = datetime.now().strftime("%Y-%m-%d")
+                pattern = f"ghost:alert:mover:*:{date}"
+                
+                cursor = 0
+                dedup_count = 0
+                while True:
+                    cursor, keys = REDIS.scan(cursor, match=pattern, count=100)
+                    dedup_count += len(keys)
+                    if cursor == 0:
+                        break
+                
+                dedup_stats = {
+                    "active_dedups_today": dedup_count,
+                    "pattern": pattern
+                }
+            except Exception as e:
+                dedup_stats = {"error": str(e)}
+        
+        return {
+            "last_crypto_ts": crypto_stats.get("ts") if crypto_stats else None,
+            "last_stocks_ts": stocks_stats.get("ts") if stocks_stats else None,
+            "last_counts": {
+                "crypto": crypto_stats.get("count") if crypto_stats else 0,
+                "stocks": stocks_stats.get("count") if stocks_stats else 0
+            },
+            "last_error": {
+                "crypto": crypto_stats.get("error") if crypto_stats else "",
+                "stocks": stocks_stats.get("error") if stocks_stats else ""
+            },
+            "redis_dedup_stats": dedup_stats,
+            "ts": int(time.time() * 1000)
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"scan_health_error: {e}", exc_info=True)
+        return JSONResponse(
+            {"ok": False, "detail": str(e)[:200]},
             status_code=500
         )
 

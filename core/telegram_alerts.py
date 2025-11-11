@@ -273,3 +273,74 @@ def get_recent_alerts(limit: int = 20) -> list[dict[str, Any]]:
         if LOGGER:
             LOGGER.error(f"Failed to get recent alerts: {e}")
         return []
+
+
+def send_mover_alert(kind: str, item: dict[str, Any]) -> bool:
+    """
+    Send a market mover alert to Telegram.
+    
+    Args:
+        kind: "crypto" or "stocks"
+        item: Mover dict with symbol, price, pct_1h, pct_24h, vol_mult, age_s, provider, tier
+    
+    Returns:
+        True if sent successfully (or de-duped), False if error
+    """
+    if not TELEGRAM_SEND_FUNC or not TELEGRAM_CHAT_ID or not REDIS_CLIENT:
+        if LOGGER:
+            LOGGER.warning("Telegram or Redis not configured for mover alerts")
+        return False
+    
+    try:
+        symbol = item.get("symbol", "UNKNOWN")
+        price = item.get("price", 0.0)
+        pct_1h = item.get("pct_1h", 0.0)
+        pct_24h = item.get("pct_24h", 0.0)
+        vol_mult = item.get("vol_mult")
+        age_s = item.get("age_s", 0)
+        provider = item.get("provider", "unknown")
+        tier = item.get("tier", "📊6+")
+        
+        # De-duplication key: ghost:alert:mover:{kind}:{symbol}:{tier}:{date}
+        date = datetime.now(ZoneInfo(DEFAULT_TZ)).strftime("%Y-%m-%d")
+        dedup_key = f"ghost:alert:mover:{kind}:{symbol}:{tier}:{date}"
+        
+        # Check if already sent today
+        if REDIS_CLIENT.exists(dedup_key):
+            if LOGGER:
+                LOGGER.debug(f"Mover alert de-duped: {symbol} {tier} (already sent today)")
+            return True  # Not an error, just already sent
+        
+        # Format volume multiplier
+        vol_str = f"Vol×{vol_mult:.2f}" if vol_mult is not None else "Vol: N/A"
+        
+        # Build message
+        kind_display = kind.upper()
+        message = (
+            f"📈 {kind_display} Mover • {symbol}\n"
+            f"Price ${price:.4f} ({pct_24h:+.2f}%, 1h {pct_1h:+.2f}%) • {vol_str}\n"
+            f"Provider {provider} • Age {age_s}s\n"
+            f"Tier {tier}\n"
+            f"Short-term: 48h window • Long-term: 30–180d"
+        )
+        
+        # Send via Telegram
+        result = TELEGRAM_SEND_FUNC(message, TELEGRAM_CHAT_ID)
+        
+        if result:
+            # Set de-dup key with 24h TTL
+            REDIS_CLIENT.setex(dedup_key, 86400, "1")
+            
+            if LOGGER:
+                LOGGER.info(f"Sent mover alert: {symbol} {tier}")
+            
+            return True
+        else:
+            if LOGGER:
+                LOGGER.error(f"Failed to send mover alert: {symbol}")
+            return False
+            
+    except Exception as e:
+        if LOGGER:
+            LOGGER.error(f"Mover alert error: {e}", exc_info=True)
+        return False
