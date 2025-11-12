@@ -1176,66 +1176,8 @@ async def _cockpit_page_alias():
 
 @APP.get("/ui/health")
 async def ui_health():
-    # Defer health data computation to avoid calling get_wolf_price before it's defined
-    try:
-        # Use _cache_get_price as a fallback to avoid forward reference
-        price, prev, provider, _ = _cache_get_price(WOLF)
-        # If cache is empty, try direct fetch
-        if price is None and prev is None:
-            try:
-                price, prev, provider = get_wolf_price()
-            except NameError:
-                # Price fetch unavailable during initialization
-                price, prev, provider = None, None, "unavailable"
-        reasons: list[str] = []
-        degraded = False if (provider or prev) and (price or prev) else True
-        if not provider or provider == "unavailable":
-            reasons.append(REASON_PRICE_PROVIDER_UNAVAILABLE)
-        if price is None and prev is None:
-            reasons.append(REASON_PRICE_UNAVAILABLE)
-        elif price is None and prev is not None:
-            reasons.append(REASON_PRICE_STALE_PREV_ONLY)
-        if not POLYGON_KEY:
-            reasons.append(REASON_NEWS_PROVIDER_MISSING)
-        if not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
-            reasons.append("alerts:telegram-disabled")
-        data = {
-            "ok": True,
-            "degraded": degraded,
-            "degraded_reasons": reasons,
-        }
-    except Exception:
-        data = {"ok": False, "degraded": True, "degraded_reasons": ["unreachable"]}
-
-    reasons = data.get("degraded_reasons") or []
-
-    def badge(cond_bad: bool, cond_warn: bool) -> str:
-        if cond_bad:
-            return "bad"
-        if cond_warn:
-            return "warn"
-        return "ok"
-
-    price_bad = REASON_PRICE_UNAVAILABLE in reasons
-    price_warn = (REASON_PRICE_PROVIDER_UNAVAILABLE in reasons) or (
-        REASON_PRICE_STALE_PREV_ONLY in reasons
-    )
-    news_bad = REASON_NEWS_PROVIDER_MISSING in reasons
-    news_warn = "news:rate-limited" in reasons
-    alerts_warn = "alerts:telegram-disabled" in reasons
-    if price_bad:
-        overall = "bad"
-    elif data.get("degraded") or price_warn or news_warn:
-        overall = "warn"
-    else:
-        overall = "ok"
-    return {
-        "overall": overall,
-        "price": badge(price_bad, price_warn),
-        "news": badge(news_bad, news_warn),
-        "alerts": ("warn" if alerts_warn else "ok"),
-        "reasons": reasons,
-    }
+    """Simple healthcheck endpoint that always returns 200 OK"""
+    return {"status": "ok", "service": "ghost-protocol"}
 
 
 # Load secrets from secrets.env if API keys not already in environment
