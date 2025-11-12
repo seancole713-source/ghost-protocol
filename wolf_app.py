@@ -203,6 +203,30 @@ APP = FastAPI(
 app = APP
 
 
+# ---------------------------------------------------------------------------
+# Global Exception Handlers - Always Return JSON 500
+# ---------------------------------------------------------------------------
+def _json500(msg: str):
+    return JSONResponse({"error": "internal_error", "detail": msg}, status_code=500)
+
+@APP.exception_handler(RuntimeError)
+async def _rt_handler(request: Request, exc: RuntimeError):
+    if str(exc).strip() == "No response returned.":
+        return _json500("runtime_no_response")
+    return _json500("runtime_error")
+
+@APP.exception_handler(Exception)
+async def _ex_handler(request: Request, exc: Exception):
+    return _json500("unhandled_exception")
+
+try:
+    @APP.exception_handler(BaseException)  # catches CancelledError, ExceptionGroup
+    async def _base_handler(request: Request, exc: BaseException):
+        return _json500("base_exception")
+except Exception:
+    pass
+
+
 # Compatibility shim: keep /openapi.json working but redirect to new location
 @APP.get("/openapi.json", include_in_schema=False)
 async def _openapi_compat():
@@ -9694,17 +9718,20 @@ async def _rate_limit_mw(request: Request, call_next):
 
 
 @APP.middleware("http")
-async def _log_requests(request: Request, call_next):
-    """Decorator middleware that never drops the response."""
+async def _log_requests(request, call_next):
+    # Catch absolutely everything and always return a JSON response.
     from starlette.responses import JSONResponse
-    
     try:
-        return await call_next(request)
-    except Exception as e:
-        LOGGER.exception("request failed", exc_info=e)
-        return JSONResponse({"error": "internal_error"}, status_code=500)
-    except BaseException as e:  # safety net for CancelledError, etc.
-        LOGGER.exception("base exception", exc_info=e)
+        response = await call_next(request)
+        if response is None:
+            LOGGER.error("call_next returned None for %s %s", request.method, request.url.path)
+            return JSONResponse({"error": "internal_error"}, status_code=500)
+        return response
+    except BaseException as e:  # includes Exception, CancelledError, etc.
+        try:
+            LOGGER.exception("Unhandled error on %s %s", request.method, request.url.path, exc_info=e)
+        except Exception:
+            pass  # logging should never crash the request path
         return JSONResponse({"error": "internal_error"}, status_code=500)
 
 
@@ -16388,6 +16415,17 @@ async def api_simulation_data():
         data = json.load(f)
 
     return data
+
+
+
+
+# --- Canary Route to Test Exception Handling ---
+
+
+@APP.get("/api/_crash")
+async def _crash():
+    """Canary route to verify exception handlers always return JSON 500."""
+    raise RuntimeError("boom")
 
 
 @APP.get("/api/status")
