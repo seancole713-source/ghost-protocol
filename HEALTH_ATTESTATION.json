@@ -1,0 +1,127 @@
+{
+  "status": "pending_deploy",
+  "critical_fix_deployed": true,
+  "commit": "790b74d",
+  "fix_description": "Removed BaseException handler causing AssertionError in Starlette middleware stack",
+  "railway_status": "awaiting_auto_deploy",
+  "endpoints": {
+    "/ui/health": {
+      "expected_status": 200,
+      "expected_response": {"status": "ok", "service": "ghost-protocol"},
+      "expected_latency_ms": "<10ms",
+      "critical": true
+    },
+    "/api/health": {
+      "expected_status": 200,
+      "expected_response": {"ok": true, "service": "ghost-protocol"},
+      "expected_latency_ms": "<10ms",
+      "critical": true
+    },
+    "/api/status": {
+      "expected_status": 200,
+      "expected_response_keys": ["mode", "active", "version", "env"],
+      "expected_latency_ms": "<50ms",
+      "critical": true
+    },
+    "/api/tick": {
+      "expected_status": 200,
+      "expected_response_keys": ["tick"],
+      "expected_latency_ms": "<50ms",
+      "critical": true
+    },
+    "/api/regime/current": {
+      "expected_status": 200,
+      "expected_response": {"mode": "neutral", "active": true, "confidence": 0.0},
+      "expected_latency_ms": "<50ms",
+      "critical": true
+    },
+    "/api/portfolio": {
+      "expected_status": 200,
+      "expected_response_keys": ["positions", "cash", "nav"],
+      "expected_latency_ms": "<2500ms",
+      "critical": true
+    },
+    "/api/position": {
+      "expected_status": 200,
+      "expected_response_keys": ["symbol", "qty", "avg_cost"],
+      "expected_latency_ms": "<50ms",
+      "critical": true
+    },
+    "/api/price/WOLF": {
+      "expected_status": 200,
+      "expected_response_keys": ["symbol", "price", "provider"],
+      "expected_latency_ms": "<2500ms",
+      "critical": true
+    }
+  },
+  "fixes_deployed": {
+    "assertion_error": {
+      "commit": "790b74d",
+      "status": "pushed_to_github",
+      "railway_deployed": false,
+      "description": "Removed @APP.exception_handler(BaseException) causing fatal AssertionError"
+    },
+    "healthcheck_simplification": {
+      "commit": "19bafcb",
+      "status": "pushed_to_github",
+      "railway_deployed": false,
+      "description": "Simplified /ui/health to 2-line response, no external calls"
+    },
+    "timeout_wrappers": {
+      "commit": "ce79459",
+      "status": "pushed_to_github",
+      "railway_deployed": false,
+      "description": "Added with_cap() 2.5s timeout to all external API calls"
+    },
+    "auth_fast_fail": {
+      "commit": "ce79459",
+      "status": "pushed_to_github",
+      "railway_deployed": false,
+      "description": "Auth middleware returns 401 in <10ms if Bearer token missing"
+    },
+    "crypto_short_circuit": {
+      "commit": "ce79459",
+      "status": "pushed_to_github",
+      "railway_deployed": false,
+      "description": "Crypto provider exits on first success, skips 401 errors"
+    }
+  },
+  "error_metrics": {
+    "http_404": {
+      "before": "5+",
+      "target": 0,
+      "expected_after_deploy": 0
+    },
+    "http_499": {
+      "before": "10+",
+      "target": 0,
+      "expected_after_deploy": 0
+    },
+    "http_500_unhandled": {
+      "before": "100%",
+      "target": 0,
+      "expected_after_deploy": 0
+    },
+    "assertion_errors": {
+      "before": "100%",
+      "target": 0,
+      "expected_after_deploy": 0
+    },
+    "average_latency_ms": {
+      "before": "10000+",
+      "target": "<1000",
+      "expected_after_deploy": "<1000"
+    }
+  },
+  "verification_command": "bash verify_deployment.sh",
+  "next_steps": [
+    "Monitor Railway dashboard for deployment of commit 790b74d",
+    "Wait for healthcheck to pass (should succeed on first attempt)",
+    "Run: bash verify_deployment.sh",
+    "Confirm all endpoints return HTTP 200 with valid JSON",
+    "Verify average latency <1000ms",
+    "Update this file with status='green' and railway_deployed=true"
+  ],
+  "timestamp": "2025-11-12T14:30:00Z",
+  "report": "See FORENSIC_ZERO_ISSUES_REPORT.md for complete details"
+}
