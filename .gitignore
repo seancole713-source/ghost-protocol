@@ -1,0 +1,7 @@
+__pycache__/
+**/__pycache__/
+*.pyc
+data/*.db
+data/last_good_cockpit.json
+GHOST_STATUS_REPORT.json
+*.log
