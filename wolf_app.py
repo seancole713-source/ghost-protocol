@@ -3225,6 +3225,22 @@ async def post_generate_forecast_48h(symbol: str = WOLF):
 
 @APP.on_event("startup")
 async def _on_startup():
+    # Log critical environment configuration at boot
+    try:
+        env_config = {
+            "SIM_MODE": os.getenv("SIM_MODE", "0"),
+            "STOCKS_ENABLED": os.getenv("STOCKS_ENABLED", "1"),
+            "CRYPTO_ENABLED": os.getenv("CRYPTO_ENABLED", "0"),
+            "PRICE_STRICT_LIVE": os.getenv("PRICE_STRICT_LIVE", "0"),
+            "PRICE_REQUIRE_QUORUM": os.getenv("PRICE_REQUIRE_QUORUM", "0"),
+            "PREDICT_REQUIRE_PRICE_QUORUM": os.getenv("PREDICT_REQUIRE_PRICE_QUORUM", "0"),
+            "STOCK_PRICE_SOURCE": os.getenv("STOCK_PRICE_SOURCE", "polygon"),
+            "CRYPTO_PRICE_SOURCE": os.getenv("CRYPTO_PRICE_SOURCE", "coingecko"),
+        }
+        LOGGER.info(f"[GHOST BOOT] Environment flags: {json.dumps(env_config)}")
+    except Exception as e:
+        LOGGER.warning(f"Failed to log env config: {e}")
+    
     # Ensure Prometheus metrics registered
     try:
         _ensure_metrics_registered()
@@ -9720,19 +9736,29 @@ async def _rate_limit_mw(request: Request, call_next):
 @APP.middleware("http")
 async def _log_requests(request, call_next):
     # Catch absolutely everything and always return a JSON response.
+    # Add x-ghost-mw header to confirm middleware execution.
     from starlette.responses import JSONResponse
     try:
         response = await call_next(request)
         if response is None:
             LOGGER.error("call_next returned None for %s %s", request.method, request.url.path)
-            return JSONResponse({"error": "internal_error"}, status_code=500)
+            resp = JSONResponse({"error": "internal_error", "detail": "no_response_returned"}, status_code=500)
+            resp.headers["x-ghost-mw"] = "on"
+            return resp
+        # Add header to all responses
+        try:
+            response.headers["x-ghost-mw"] = "on"
+        except Exception:
+            pass
         return response
     except BaseException as e:  # includes Exception, CancelledError, etc.
         try:
             LOGGER.exception("Unhandled error on %s %s", request.method, request.url.path, exc_info=e)
         except Exception:
             pass  # logging should never crash the request path
-        return JSONResponse({"error": "internal_error"}, status_code=500)
+        resp = JSONResponse({"error": "internal_error"}, status_code=500)
+        resp.headers["x-ghost-mw"] = "on"
+        return resp
 
 
 class PositionBody(BaseModel):
@@ -16430,20 +16456,38 @@ async def _crash():
 
 @APP.get("/api/status")
 async def api_status():
-    """Minimal status endpoint expected by prebuilt UI topbar.
-    Returns current mode and active flags.
+    """Status endpoint with runtime environment configuration.
+    Returns current mode, active flags, and critical env settings.
     """
     try:
+        env_flags = {
+            "SIM_MODE": os.getenv("SIM_MODE", "0"),
+            "STOCKS_ENABLED": os.getenv("STOCKS_ENABLED", "1"),
+            "CRYPTO_ENABLED": os.getenv("CRYPTO_ENABLED", "0"),
+            "PRICE_STRICT_LIVE": os.getenv("PRICE_STRICT_LIVE", "0"),
+            "PRICE_REQUIRE_QUORUM": os.getenv("PRICE_REQUIRE_QUORUM", "0"),
+            "PREDICT_REQUIRE_PRICE_QUORUM": os.getenv("PREDICT_REQUIRE_PRICE_QUORUM", "0"),
+            "STOCK_PRICE_SOURCE": os.getenv("STOCK_PRICE_SOURCE", "polygon"),
+            "CRYPTO_PRICE_SOURCE": os.getenv("CRYPTO_PRICE_SOURCE", "coingecko"),
+        }
         return {
             "mode": str(STATE.get("mode", "live")),
             "active": bool(STATE.get("active", True)),
             "version": app.version,
+            "env": env_flags,
+            "uptime_seconds": int(time.time() - _START_TS),
         }
     except Exception:
-        return {"mode": "live", "active": True}
+        return {"mode": "live", "active": True, "version": app.version}
 
 
 # --- Six Minimal Live Endpoints (Phase Upgrade → 90% Ops) ---
+
+
+@APP.get("/api/health")
+async def api_health():
+    """Simple health check endpoint for monitoring systems."""
+    return {"ok": True, "ts": int(time.time() * 1000)}
 
 
 @APP.get("/api/tick")
