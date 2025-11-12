@@ -251,12 +251,8 @@ async def _rt_handler(request: Request, exc: RuntimeError):
 async def _ex_handler(request: Request, exc: Exception):
     return _json500("unhandled_exception")
 
-try:
-    @APP.exception_handler(BaseException)  # catches CancelledError, ExceptionGroup
-    async def _base_handler(request: Request, exc: BaseException):
-        return _json500("base_exception")
-except Exception:
-    pass
+# NOTE: Cannot register BaseException handler - Starlette requires Exception subclasses
+# Middleware will catch BaseException (CancelledError, KeyboardInterrupt, etc.)
 
 
 # Compatibility shim: keep /openapi.json working but redirect to new location
