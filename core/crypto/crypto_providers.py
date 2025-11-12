@@ -5,6 +5,7 @@ Multi-source quorum system for reliable crypto prices
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -22,9 +23,9 @@ _adapter = HTTPAdapter(max_retries=_retry_strategy)
 _session.mount("http://", _adapter)
 _session.mount("https://", _adapter)
 
-# VIP Contract Map - Load once at module init
+# VIP Contract Map - Load once at module init with env override support
 _CONTRACT_MAP: dict[str, dict] = {}
-_CONTRACT_MAP_FILE = Path(__file__).parent / "contract_map.json"
+_CONTRACT_MAP_FILE = Path(os.getenv("VIP_CONTRACT_MAP_PATH", str(Path(__file__).parent / "contract_map.json")))
 _CONTRACT_MAP_MTIME = 0.0
 
 

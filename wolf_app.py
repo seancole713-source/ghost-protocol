@@ -1303,10 +1303,9 @@ except Exception:
 PRICE_PROVIDER_TIMEOUT_S = float(os.getenv("PRICE_PROVIDER_TIMEOUT", "6"))
 
 # Per-symbol provider blacklist (exclude misbehaving sources from consensus)
-# Acceptance: never surface polygon as provider for WOLF if it disagrees
-# TEMPORARY FIX: Allow polygon since AlphaVantage rate limited and Yahoo blocked
+# Provider blocklist removed for WOLF since AlphaVantage rate limited and Yahoo blocked
 PROVIDER_BLOCKLIST: dict[str, set[str]] = {
-    "WOLF": set(),  # Removed {"polygon"} - it's the only working provider after rate limits
+    "WOLF": set(),  # No providers blocked - polygon is the primary working provider
 }
 
 # Add near other globals (after PROVIDER_BLOCKLIST)
@@ -9778,7 +9777,7 @@ async def _log_requests(request, call_next):
         except Exception:
             pass
         return response
-    except BaseException as e:  # includes Exception, CancelledError, etc.
+    except Exception as e:  # Only catch Exception subclasses, not BaseException (preserves CancelledError, KeyboardInterrupt)
         try:
             LOGGER.exception("Unhandled error on %s %s", request.method, request.url.path, exc_info=e)
         except Exception:
