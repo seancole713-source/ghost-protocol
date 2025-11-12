@@ -45,14 +45,31 @@ curl http://localhost:5000/metrics | grep ghost_up
 ### Production (Railway)
 
 ```bash
-# 1. Set all environment variables in Railway dashboard
-# 2. Deploy via Railway CLI
-railway up
+# 1. Configure environment variables in Railway dashboard (see section below)
+# 2. Push to main branch - Railway auto-deploys from GitHub
+git push origin main
 
-# 3. Verify deployment
-curl https://your-app.railway.app/health
-curl https://your-app.railway.app/api/cockpit | jq '.predictions.crypto'
+# 3. Monitor deployment in Railway dashboard
+#    - Build logs: Check for Python dependency errors
+#    - Deploy logs: Verify uvicorn starts successfully
+#    - Health check: Wait for "Healthcheck passed" status
+
+# 4. Verify deployment
+RAILWAY_URL="https://ghost-protocol-production.up.railway.app"  # Replace with your Railway URL
+curl $RAILWAY_URL/health | jq
+curl $RAILWAY_URL/ready | jq
+curl $RAILWAY_URL/api/cockpit | jq '.predictions.crypto'
+
+# 5. Run full smoke test
+./deployment_smoke_test.sh $RAILWAY_URL
 ```
+
+**Railway Configuration Notes:**
+- **Start Command**: `uvicorn wolf_app:app --host 0.0.0.0 --port $PORT`
+- **Health Check Path**: `/health`
+- **Region**: Choose closest to your users (us-west1 recommended for US)
+- **Restart Policy**: Always (for automatic recovery)
+- **Deployment Trigger**: Automatic on `main` branch push
 
 ______________________________________________________________________
 
