@@ -9695,18 +9695,16 @@ async def _rate_limit_mw(request: Request, call_next):
 
 @APP.middleware("http")
 async def _log_requests(request: Request, call_next):
-    """Robust request logging middleware with error handling."""
+    """Decorator middleware that never drops the response."""
     from starlette.responses import JSONResponse
     
     try:
-        response = await call_next(request)
-        return response
-    except Exception:
-        # never drop the response; surface a 500 and keep logs
-        try:
-            LOGGER.exception("request failed: %s %s", request.method, request.url, exc_info=True)
-        except Exception:
-            pass
+        return await call_next(request)
+    except Exception as e:
+        LOGGER.exception("request failed", exc_info=e)
+        return JSONResponse({"error": "internal_error"}, status_code=500)
+    except BaseException as e:  # safety net for CancelledError, etc.
+        LOGGER.exception("base exception", exc_info=e)
         return JSONResponse({"error": "internal_error"}, status_code=500)
 
 
