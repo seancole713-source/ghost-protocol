@@ -9945,123 +9945,11 @@ async def orders_queue(limit: int = 100):
     return {"orders": items, "count": len(items)}
 
 
-@APP.get("/health")
-async def health():
-    """Fast health check - no expensive operations"""
-    import time
+# /health endpoint defined earlier at line 1179 - this duplicate removed
 
-    return {"ok": True, "ts": time.time()}
+# /ready endpoint defined earlier at line 7437 - this duplicate removed
 
-
-@APP.get("/ready")
-async def ready():
-    """Kubernetes-style readiness probe - checks all dependencies."""
-    checks = {}
-    ready_status = True
-
-    # Check database
-    try:
-        conn = __import__("sqlite3").connect("wolf.db", timeout=2)
-        conn.execute("SELECT 1").fetchone()
-        conn.close()
-        checks["database"] = True
-    except Exception as e:
-        checks["database"] = False
-        ready_status = False
-        LOGGER.error(f"Database check failed: {e}")
-
-    # Check price providers
-    try:
-        price, _, provider = get_wolf_price()
-        checks["price_provider"] = provider is not None and price is not None
-        if not checks["price_provider"]:
-            ready_status = False
-    except Exception:
-        checks["price_provider"] = False
-        ready_status = False
-
-    # Check broker (if enabled)
-    if os.getenv("BROKER", "") == "alpaca":
-        try:
-            from core.alpaca_broker import get_broker
-
-            broker = get_broker()
-            health_check = broker.health_check()
-            checks["broker"] = health_check.get("ok", False)
-            if not checks["broker"]:
-                ready_status = False
-        except Exception:
-            checks["broker"] = False
-            ready_status = False
-
-    return {"ready": ready_status, "checks": checks, "timestamp": int(time.time())}
-
-
-@APP.get("/metrics")
-async def metrics():
-    """Prometheus metrics endpoint in text format."""
-    lines = []
-
-    # HELP and TYPE declarations
-    lines.append("# HELP ghost_uptime_seconds Time since Ghost started")
-    lines.append("# TYPE ghost_uptime_seconds gauge")
-    lines.append(f"ghost_uptime_seconds {round(time.time() - _START_TS, 2)}")
-
-    lines.append("# HELP ghost_price_current Current WOLF stock price")
-    lines.append("# TYPE ghost_price_current gauge")
-    try:
-        price, _, provider = get_wolf_price()
-        if price:
-            lines.append(f'ghost_price_current{{symbol="WOLF",provider="{provider}"}} {price}')
-    except Exception:
-        pass
-
-    lines.append("# HELP ghost_portfolio_nav_usd Portfolio Net Asset Value in USD")
-    lines.append("# TYPE ghost_portfolio_nav_usd gauge")
-    try:
-        qty, avg = _get_portfolio_qty_and_avg()
-        price, _, _ = get_wolf_price()
-        nav = qty * (price if price else avg)
-        lines.append(f"ghost_portfolio_nav_usd {nav}")
-    except Exception:
-        pass
-
-    lines.append("# HELP ghost_errors_total Total error count")
-    lines.append("# TYPE ghost_errors_total counter")
-    errors = len(EVENTS.get("errors", []))
-    lines.append(f"ghost_errors_total {errors}")
-
-    lines.append("# HELP ghost_price_fetch_total Total price fetch attempts")
-    lines.append("# TYPE ghost_price_fetch_total counter")
-    price_fetches = len(
-        [e for e in EVENTS.get("prices", []) if e.get("msg", "").startswith("Price")]
-    )
-    lines.append(f"ghost_price_fetch_total {price_fetches}")
-
-    lines.append("# HELP ghost_broker_enabled Broker integration enabled")
-    lines.append("# TYPE ghost_broker_enabled gauge")
-    broker_enabled = 1 if os.getenv("BROKER", "") == "alpaca" else 0
-    lines.append(f"ghost_broker_enabled {broker_enabled}")
-
-    lines.append("# HELP ghost_risk_kill_switch Risk engine kill switch status")
-    lines.append("# TYPE ghost_risk_kill_switch gauge")
-    risk_kill = int(os.getenv("RISK_KILL", "0"))
-    lines.append(f"ghost_risk_kill_switch {risk_kill}")
-
-    lines.append("# HELP ghost_crypto_enabled Crypto module enabled")
-    lines.append("# TYPE ghost_crypto_enabled gauge")
-    crypto_enabled = 1 if os.getenv("CRYPTO_ENABLED", "0") == "1" else 0
-    lines.append(f"ghost_crypto_enabled {crypto_enabled}")
-
-    lines.append("# HELP ghost_agents_enabled AI agents enabled")
-    lines.append("# TYPE ghost_agents_enabled gauge")
-    agents_enabled = 1 if os.getenv("AGENTS_ENABLED", "0") == "1" else 0
-    lines.append(f"ghost_agents_enabled {agents_enabled}")
-
-    # Return as plain text
-    from fastapi.responses import Response
-
-    return Response(content="\n".join(lines) + "\n", media_type="text/plain")
+# /metrics endpoint defined earlier at line 7414 with multiprocess support - this duplicate removed
 
 
 @APP.get("/health/detailed")
@@ -16578,48 +16466,7 @@ async def api_news_trending():
     except Exception:
         return {"items": [], "ts": int(time.time() * 1000)}
 
-
-@APP.post("/api/crypto/predict/run")
-async def api_crypto_predict_run(
-    payload: dict[str, Any], credentials: HTTPAuthorizationCredentials | None = AUTH_DEP
-):
-    """Run crypto prediction for given symbol and horizon. Returns forecast or 501 if disabled."""
-    _require_bearer(
-        (f"Bearer {credentials.credentials}") if credentials and credentials.credentials else None
-    )
-
-    symbol = str(payload.get("symbol", "BTC")).upper()
-    horizon_h = int(payload.get("horizon_h", 48))
-
-    # Check if crypto forecasting is available
-    crypto_enabled = int(os.getenv("CRYPTO_ENABLED", "1"))
-    if not crypto_enabled:
-        return JSONResponse(
-            {"ok": False, "detail": "crypto forecast disabled"},
-            status_code=501
-        )
-
-    try:
-        # Call existing crypto forecast logic if available
-        # For now, return minimal structure
-        return {
-            "ok": True,
-            "symbol": symbol,
-            "horizon_h": horizon_h,
-            "forecast": {
-                "action": "HOLD",
-                "confidence": 0.5,
-                "price_target": None,
-                "note": "Crypto forecast placeholder - integrate with existing crypto module"
-            },
-            "ts": int(time.time() * 1000)
-        }
-    except Exception as e:
-        LOGGER.error(f"crypto_predict_run_error: {e}")
-        return JSONResponse(
-            {"ok": False, "detail": str(e)},
-            status_code=500
-        )
+# /api/crypto/predict/run endpoint defined earlier at line 5810 - this duplicate removed
 
 
 @APP.post("/api/alerts/test")
@@ -17249,14 +17096,7 @@ async def api_news(limit: int = 20):
         return {"news": [], "count": 0, "error": str(e)}
 
 
-@APP.get("/api/news/recent")
-async def api_news_recent(limit: int = 20):
-    """Get recent news articles for the cockpit news feed."""
-    try:
-        return await _get_news_feed(limit)
-    except Exception as e:
-        LOGGER.error(f"Error getting news: {e}")
-        return {"news": [], "count": 0, "error": str(e)}
+# /api/news/recent endpoint defined earlier at line 502 - this duplicate removed
 
 
 @APP.get("/api/snapshot")
@@ -20926,33 +20766,7 @@ async def trade_close_position(
         return {"ok": False, "error": str(e)}
 
 
-@APP.get("/api/risk/status")
-async def risk_get_status(credentials: HTTPAuthorizationCredentials | None = AUTH_DEP):
-    """
-    Get current risk engine status and limits.
-    """
-    try:
-        _require_bearer(
-            (f"Bearer {credentials.credentials}")
-            if credentials and credentials.credentials
-            else None
-        )
-    except Exception:
-        pass
-
-    try:
-        from core.risk_engine import get_risk_engine
-
-        risk_engine = get_risk_engine()
-
-        status = risk_engine.get_status()
-        return {
-            "ok": True,
-            "risk": status,
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get risk status: {e}")
-        return {"ok": False, "error": str(e)}
+# /api/risk/status endpoint defined earlier at line 17744 - this duplicate removed
 
 
 @APP.get("/api/risk/scan_exits")
