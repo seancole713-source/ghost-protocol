@@ -5,3 +5,7 @@ data/*.db
 data/last_good_cockpit.json
 GHOST_STATUS_REPORT.json
 *.log
+
+# Ignore local DBs
+/data/*.db
+
