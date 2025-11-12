@@ -52,20 +52,42 @@
     }
   },
   
-  "pre_deployment_state": {
+  "validation_results": {
+    "test_date": "2025-11-12",
     "railway_version": "10.3.1",
+    "deployment_status": "NOT_DEPLOYED",
     "commits_pending_deployment": [
-      "95bdee8 - Middleware safety",
-      "f530555 - Diagnostics routing fix",
-      "259469c - Movers scanner"
+      "4e7a190 - Push instructions",
+      "77e7175 - Deploy tools and cleanup",
+      "2d772ed - Middleware simplification",
+      "95bdee8 - Middleware safety"
     ],
-    "test_results": {
-      "routes_tested": 9,
-      "routes_passing": 1,
-      "routes_failing": 8,
-      "reason": "New code not yet deployed to Railway",
-      "status_endpoint": "200 OK",
-      "other_endpoints": "404 or timeout (expected pre-deployment)"
+    "endpoint_tests": {
+      "total_tested": 11,
+      "passing": 3,
+      "failing": 8,
+      "operational_percentage": 27.27,
+      "passing_endpoints": [
+        "/api/status (200 OK)",
+        "/api/portfolio (200 OK)",
+        "/api/position (200 OK)"
+      ],
+      "failing_endpoints": [
+        "/api/tick (404 Not Found)",
+        "/api/regime/current (404 Not Found)",
+        "/api/scan/movers (404 Not Found)",
+        "/api/scan/health (404 Not Found)",
+        "/api/cache/purge (404 Not Found)",
+        "/api/alerts/test (404 Not Found)",
+        "/api/cockpit/stream (Timeout)",
+        "/api/price/diagnostics (Degraded - provider failures)"
+      ]
+    },
+    "critical_findings": {
+      "new_routes_not_deployed": true,
+      "sse_stream_timeout": true,
+      "price_providers_failing": true,
+      "middleware_not_updated": true
     }
   },
   
