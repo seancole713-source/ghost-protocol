@@ -115,6 +115,26 @@ else
     echo "{\"endpoint\": \"/api/status (env)\", \"status\": \"failed\", \"error\": \"missing_env_object\"}" >> "$RESULTS_FILE"
 fi
 
+# Test 10: Check /openapi.json has paths
+echo -n "Testing /openapi.json paths ... "
+openapi_resp=$(curl -s "$GHOST_BASE_URL/api/openapi.json" 2>&1)
+if echo "$openapi_resp" | jq -e '.paths' >/dev/null 2>&1; then
+    path_count=$(echo "$openapi_resp" | jq -r '.paths | keys | length')
+    if [ "$path_count" -gt 10 ]; then
+        echo "✅ PASSED ($path_count paths exposed)"
+        PASSED=$((PASSED + 1))
+        echo "{\"endpoint\": \"/api/openapi.json\", \"status\": \"passed\", \"path_count\": $path_count}" >> "$RESULTS_FILE"
+    else
+        echo "❌ FAILED (only $path_count paths)"
+        FAILED=$((FAILED + 1))
+        echo "{\"endpoint\": \"/api/openapi.json\", \"status\": \"failed\", \"path_count\": $path_count}" >> "$RESULTS_FILE"
+    fi
+else
+    echo "❌ FAILED (no paths object)"
+    FAILED=$((FAILED + 1))
+    echo "{\"endpoint\": \"/api/openapi.json\", \"status\": \"failed\", \"error\": \"missing_paths_object\"}" >> "$RESULTS_FILE"
+fi
+
 # Close JSON array
 echo "]" >> "$RESULTS_FILE"
 

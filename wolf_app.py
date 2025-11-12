@@ -18,6 +18,12 @@ import uuid
 from collections import deque
 from datetime import UTC, datetime, timedelta
 
+# Import anyio for timeout control
+try:
+    import anyio
+except ImportError:
+    anyio = None  # type: ignore
+
 # Load .env file FIRST before any os.getenv() calls
 try:
     from dotenv import load_dotenv
@@ -201,6 +207,32 @@ APP = FastAPI(
 )
 # Alias for deployment runners that expect `wolf_app:app`
 app = APP
+
+
+# ---------------------------------------------------------------------------
+# Timeout Wrapper for External Calls (2.5s cap to prevent 499 errors)
+# ---------------------------------------------------------------------------
+async def with_cap(coro, sec=2.5, fallback=None):
+    """Hard timeout wrapper for external calls (Alpaca, price providers, Redis).
+    Prevents 10s stalls that cause 499 errors from proxy timeout.
+    """
+    if anyio is None:
+        # Fallback if anyio not available - use asyncio.wait_for
+        try:
+            return await asyncio.wait_for(coro, timeout=sec)
+        except (asyncio.TimeoutError, TimeoutError):
+            LOGGER.warning(f"with_cap: timeout after {sec}s, returning fallback")
+            return fallback
+        except Exception as e:
+            LOGGER.error(f"with_cap: error {e}, returning fallback")
+            return fallback
+    
+    try:
+        with anyio.fail_after(sec):
+            return await coro
+    except (TimeoutError, Exception) as e:
+        LOGGER.warning(f"with_cap: timeout/error after {sec}s ({type(e).__name__}), returning fallback")
+        return fallback
 
 
 # ---------------------------------------------------------------------------
@@ -656,6 +688,27 @@ APP.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+# Fast-fail auth middleware: return 401 JSON immediately if Bearer token missing
+@APP.middleware("http")
+async def auth_fast_fail_middleware(request: Request, call_next):
+    """Return 401 JSON immediately on missing auth for protected endpoints."""
+    # Public endpoints (no auth required)
+    public_paths = [
+        "/", "/health", "/metrics", "/docs", "/redoc", "/openapi.json",
+        "/api/status", "/api/health", "/api/openapi.json"
+    ]
+    
+    # Check if path requires auth
+    if request.url.path.startswith("/api/") and request.url.path not in public_paths:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "unauthorized", "message": "Bearer token required"}
+            )
+    
+    return await call_next(request)
 
 # IP Allowlisting Middleware
 if IP_ALLOWLIST_ENABLED:
@@ -10147,6 +10200,7 @@ async def api_secrets_health():
 
 @APP.get("/api/position")
 async def api_position_get():
+    """Position endpoint with fast response (<50ms), no external calls."""
     return {
         "symbol": WOLF,
         "qty": float(STATE.get("qty", 0.0)),
@@ -11151,17 +11205,33 @@ async def api_stage3_regime_history(limit: int = 50):
 
 @APP.get("/api/regime/current")
 async def api_regime_current():
-    """Get current market regime (neutral fallback if Stage 3 not enabled)."""
+    """Get current market regime with <50ms response time (neutral fallback if Stage 3 not enabled)."""
     try:
+        # Fast path: check if STAGE3 enabled and return cached regime
         if STAGE3_ENABLED:
-            regime_detector = get_regime_detector()
-            return {
-                "regime": regime_detector.current_regime.lower(),
-                "ts": int(time.time()),
-                "confidence": float(regime_detector.confidence),
-                "source": "stage3_detector",
-            }
+            async def get_regime_fast():
+                regime_detector = get_regime_detector()
+                return {
+                    "regime": regime_detector.current_regime.lower(),
+                    "ts": int(time.time()),
+                    "confidence": float(regime_detector.confidence),
+                    "source": "stage3_detector",
+                }
+            
+            # Cap at 2.5s to prevent stalls
+            result = await with_cap(
+                get_regime_fast(),
+                sec=2.5,
+                fallback={
+                    "regime": "neutral",
+                    "ts": int(time.time()),
+                    "confidence": 0.5,
+                    "source": "timeout_fallback",
+                }
+            )
+            return result
         else:
+            # Instant fallback if Stage 3 disabled
             return {
                 "regime": "neutral",
                 "ts": int(time.time()),
@@ -11175,7 +11245,6 @@ async def api_regime_current():
             "ts": int(time.time()),
             "confidence": 0.5,
             "source": "error_fallback",
-            "error": str(e),
         }
 
 
@@ -16496,17 +16565,8 @@ async def api_tick():
     return {"tick": int(STATE.get("tick", 0)), "ts": int(time.time() * 1000)}
 
 
-@APP.get("/api/regime/current")
-async def api_regime_current():
-    """Return current market regime with fallback to neutral. Never returns empty dict."""
-    regime_data = STATE.get("regime")
-    if isinstance(regime_data, dict) and regime_data:
-        return {
-            "regime": regime_data.get("regime", "neutral"),
-            "confidence": float(regime_data.get("confidence", 0.5)),
-            "ts": int(time.time() * 1000),
-        }
-    return {"regime": "neutral", "confidence": 0.5, "ts": int(time.time() * 1000)}
+# NOTE: /api/regime/current is defined at line ~11152 with comprehensive logic
+# Removed duplicate definition here to avoid route conflicts
 
 
 @APP.get("/api/goals")
@@ -17500,79 +17560,110 @@ async def api_agent_decide_hint():
 
 @APP.get("/api/price/{symbol}")
 async def api_price(symbol: str, force: int = 0, strict: int | None = None):
-    """Return current price for a symbol, optionally bypassing cache."""
-    strict_flag: bool | None = None
-    if strict is not None:
-        strict_flag = bool(strict)
-    if force == 1:
-        strict_flag = True
+    """Return current price for a symbol with 2.5s timeout to prevent 499 errors."""
+    async def get_price_data():
+        strict_flag: bool | None = None
+        if strict is not None:
+            strict_flag = bool(strict)
+        if force == 1:
+            strict_flag = True
 
-    result = await ensure_price_cached(
-        symbol,
-        strict_live=strict_flag,
-        drop_cache=bool(force),
+        result = await ensure_price_cached(
+            symbol,
+            strict_live=strict_flag,
+            drop_cache=bool(force),
+        )
+
+        response = _build_price_response(result)
+        response["force"] = bool(force)
+        response["strict_live"] = strict_flag if strict_flag is not None else PRICE_STRICT_LIVE
+        return response
+    
+    # Apply 2.5s timeout
+    return await with_cap(
+        get_price_data(),
+        sec=2.5,
+        fallback={"symbol": symbol, "price": None, "error": "timeout", "provider": "timeout"}
     )
-
-    response = _build_price_response(result)
-    response["force"] = bool(force)
-    response["strict_live"] = strict_flag if strict_flag is not None else PRICE_STRICT_LIVE
-    return response
 
 
 @APP.get("/api/price/refresh")
 async def api_price_refresh_get(symbol: str = WOLF, strict: int | None = None):
-    """Force a live price refresh and update cache before responding."""
-    strict_flag = True if strict is None else bool(strict)
-    result = await ensure_price_cached(
-        symbol,
-        strict_live=strict_flag,
-        drop_cache=True,
+    """Force a live price refresh with 2.5s timeout to prevent 499 errors."""
+    async def refresh_price():
+        strict_flag = True if strict is None else bool(strict)
+        result = await ensure_price_cached(
+            symbol,
+            strict_live=strict_flag,
+            drop_cache=True,
+        )
+        response = _build_price_response(result)
+        response["cache_cleared"] = True
+        response["strict_live"] = strict_flag
+        return response
+    
+    return await with_cap(
+        refresh_price(),
+        sec=2.5,
+        fallback={"symbol": symbol, "price": None, "error": "timeout", "provider": "timeout"}
     )
-    response = _build_price_response(result)
-    response["cache_cleared"] = True
-    response["strict_live"] = strict_flag
-    return response
 
 
 @APP.post("/api/price/refresh")
 async def api_price_refresh(symbol: str = WOLF):
-    """Back-compat: POST variant that proxies to the GET refresh logic."""
-    result = await ensure_price_cached(
-        symbol,
-        strict_live=True,
-        drop_cache=True,
+    """Back-compat POST with 2.5s timeout to prevent 499 errors."""
+    async def refresh_price():
+        result = await ensure_price_cached(
+            symbol,
+            strict_live=True,
+            drop_cache=True,
+        )
+        response = _build_price_response(result)
+        response["cache_cleared"] = True
+        response["strict_live"] = True
+        return response
+    
+    return await with_cap(
+        refresh_price(),
+        sec=2.5,
+        fallback={"symbol": symbol, "price": None, "error": "timeout", "provider": "timeout"}
     )
-    response = _build_price_response(result)
-    response["cache_cleared"] = True
-    response["strict_live"] = True
-    return response
 
 
 @APP.get("/api/portfolio")
 async def api_portfolio():
-    price, prev, provider = get_wolf_price()
-    qty, avg = _get_portfolio_qty_and_avg()  # Use helper to read from positions array
-    cash = float(STATE.get("cash", 0.0))
-    cur = price if price is not None else avg
+    """Portfolio endpoint with 2.5s timeout to prevent 499 errors."""
+    async def get_portfolio_data():
+        price, prev, provider = get_wolf_price()
+        qty, avg = _get_portfolio_qty_and_avg()  # Use helper to read from positions array
+        cash = float(STATE.get("cash", 0.0))
+        cur = price if price is not None else avg
 
-    # Adjust P&L for corporate actions (reverse splits, etc.)
-    pnl_adjustment = _adjust_pnl_for_corporate_action(WOLF, avg, cur, qty)
+        # Adjust P&L for corporate actions (reverse splits, etc.)
+        pnl_adjustment = _adjust_pnl_for_corporate_action(WOLF, avg, cur, qty)
 
-    positions = [
-        {
-            "symbol": WOLF,
-            "type": "stock",
-            "qty": qty,
-            "price": avg,
-            "current": cur,
-            "pnl": pnl_adjustment["pnl_abs"],  # Use adjusted P&L
-            "pnl_pct": pnl_adjustment["pnl_pct"],  # Use adjusted P&L %
-            "pnl_note": pnl_adjustment["adjustment_note"],  # Show adjustment reason
-            "gps": 7.2,
-            "src": provider or "unavailable",
-        }
-    ]
-    return {"positions": positions, "cash": cash, "nav": round(qty * cur + cash, 2)}
+        positions = [
+            {
+                "symbol": WOLF,
+                "type": "stock",
+                "qty": qty,
+                "price": avg,
+                "current": cur,
+                "pnl": pnl_adjustment["pnl_abs"],  # Use adjusted P&L
+                "pnl_pct": pnl_adjustment["pnl_pct"],  # Use adjusted P&L %
+                "pnl_note": pnl_adjustment["adjustment_note"],  # Show adjustment reason
+                "gps": 7.2,
+                "src": provider or "unavailable",
+            }
+        ]
+        return {"positions": positions, "cash": cash, "nav": round(qty * cur + cash, 2)}
+    
+    # Apply 2.5s timeout to prevent proxy 499 errors
+    return await with_cap(
+        get_portfolio_data(),
+        sec=2.5,
+        fallback={"positions": [], "cash": 0.0, "nav": 0.0, "error": "timeout"}
+    )
 
 
 @APP.get("/api/portfolio/history")

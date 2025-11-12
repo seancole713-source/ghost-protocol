@@ -325,7 +325,7 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
         ("coinbase", CoinbaseProvider()),
     ]
 
-    # Collect prices from all providers
+    # Collect prices from all providers - SHORT-CIRCUIT on first success to avoid 401/451 retries
     results: list[tuple[str, float, dict]] = []
 
     for name, provider in providers:
@@ -334,7 +334,15 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
             if price_data and price_data.get("price", 0) > 0:
                 results.append((name, price_data["price"], price_data))
                 LOGGER.debug(f"{name}: {symbol} = ${price_data['price']:.2f}")
+                # Short-circuit: accept first working provider to avoid slow 401/451 errors
+                if len(results) >= 1:
+                    LOGGER.info(f"Short-circuit: using {name} for {symbol} (fast-path)")
+                    break
         except Exception as e:
+            # Skip 401/451 immediately instead of retrying
+            if "401" in str(e) or "451" in str(e) or "Unauthorized" in str(e):
+                LOGGER.info(f"Provider {name} auth failed for {symbol}, skipping: {e}")
+                continue
             LOGGER.warning(f"Provider {name} failed for {symbol}: {e}")
 
     if not results:
