@@ -1,0 +1,39 @@
+
+================================================================================
+POST-DEPLOYMENT VALIDATION SUMMARY
+================================================================================
+
+Status: ❌ FAILED - Railway has NOT deployed commit 77e4971
+Operational: 33% (3/9 endpoints passing)
+
+Passing Endpoints (3):
+  ✅ /api/status (200 OK)
+  ✅ /api/portfolio (200 OK)
+  ✅ /api/position (200 OK)
+
+Failing Endpoints (6):
+  ❌ /api/tick → 404 (route not loaded)
+  ❌ /api/regime/current → 404 (route not loaded)
+  ❌ /api/scan/movers → 404 (route not loaded)
+  ❌ /api/scan/health → 404 (route not loaded)
+  ❌ /api/cache/purge → 404 (route not loaded)
+  ❌ /api/cockpit/stream → TIMEOUT (no SSE events in 60s)
+
+Root Cause: GitHub has commit 77e4971 but Railway still running old code (v10.3.1)
+
+Required Fix: Manually trigger Railway redeploy from dashboard
+  → https://railway.app → Deployments → Deploy commit 77e4971
+  → Expected improvement: 33% → 83% operational
+
+SSE Stream Issue: Separate problem - endpoint hangs without emitting events
+  → Investigate /api/cockpit/stream after deployment completes
+  → Check for middleware blocking or infinite loops in stream generation
+
+Reports Generated:
+  • OPS_REPORT.json (detailed findings)
+  • DEPLOYMENT_SUMMARY.txt (this file)
+
+Next Action: Deploy commit 77e4971, then re-run: bash /app/deployment_smoke_test.sh
+
+================================================================================
+

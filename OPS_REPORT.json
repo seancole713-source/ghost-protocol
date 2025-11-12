@@ -1,195 +1,67 @@
 {
-  "report_type": "backend_operations_validation",
+  "report_type": "post_deployment_validation",
   "timestamp": "2025-11-12T00:00:00Z",
-  "environment": "production",
-  "base_url": "https://ghost-sniper-bot-seancole713-production.up.railway.app",
-  "version": "10.3.1",
   "deployment_status": "NOT_DEPLOYED",
+  "commit_expected": "77e4971",
+  "version": "10.3.1",
   
   "summary": {
-    "total_endpoints_tested": 11,
-    "passing_endpoints": 3,
-    "failing_endpoints": 8,
-    "operational_percentage": 27.27,
-    "status": "CRITICAL - NEW ROUTES NOT DEPLOYED"
+    "total_endpoints_tested": 9,
+    "passing": 3,
+    "failing": 6,
+    "operational_percentage": 33.33,
+    "status": "CRITICAL - NEW CODE NOT DEPLOYED"
   },
   
-  "endpoint_tests": {
-    "/api/status": {
-      "method": "GET",
-      "status_code": 200,
-      "response_time_ms": 130,
-      "result": "PASS",
-      "response": {"mode": "live", "active": true, "version": "10.3.1"},
-      "notes": "Core status endpoint working"
-    },
-    "/api/tick": {
-      "method": "GET",
-      "status_code": 404,
-      "result": "FAIL",
-      "error": "Not Found",
-      "notes": "Route not loaded - needs deployment"
-    },
-    "/api/regime/current": {
-      "method": "GET",
-      "status_code": 404,
-      "result": "FAIL",
-      "error": "Not Found",
-      "notes": "Route not loaded - needs deployment"
-    },
-    "/api/price/diagnostics": {
-      "method": "GET",
-      "status_code": 200,
-      "response_time_ms": 1200,
-      "result": "PASS",
-      "response": {
-        "symbol": "AAPL",
-        "price": 17.4,
-        "provider": "prev-close",
-        "cache_age_s": -5.94
-      },
-      "notes": "Working but using fallback prev-close, all providers failing"
-    },
-    "/api/scan/movers": {
-      "method": "GET",
-      "status_code": 404,
-      "result": "FAIL",
-      "error": "Not Found",
-      "notes": "Route not loaded - needs deployment"
-    },
-    "/api/scan/health": {
-      "method": "GET",
-      "status_code": 404,
-      "result": "FAIL",
-      "error": "Not Found",
-      "notes": "Route not loaded - needs deployment"
-    },
-    "/api/portfolio": {
-      "method": "GET",
-      "status_code": 200,
-      "response_time_ms": 450,
-      "result": "PASS",
-      "response": {
-        "positions": [{"symbol": "WOLF", "qty": 8.41959051, "current": 17.4, "pnl": -3023.77}],
-        "cash": 250.9,
-        "nav": 397.4
-      },
-      "notes": "Portfolio endpoint working"
-    },
-    "/api/position": {
-      "method": "GET",
-      "status_code": 200,
-      "response_time_ms": 120,
-      "result": "PASS",
-      "response": {"symbol": "WOLF", "qty": 8.41959051, "avg_cost": 359.28},
-      "notes": "Position endpoint working"
-    },
-    "/api/cache/purge": {
-      "method": "POST",
-      "status_code": 404,
-      "result": "FAIL",
-      "error": "Not Found",
-      "notes": "Route not loaded - needs deployment"
-    },
-    "/api/alerts/test": {
-      "method": "GET",
-      "status_code": 404,
-      "result": "FAIL",
-      "error": "Not Found",
-      "notes": "Route not loaded - needs deployment"
-    },
-    "/api/cockpit/stream": {
-      "method": "GET",
-      "result": "FAIL",
-      "error": "Connection timeout after 10s",
-      "notes": "SSE stream not responding"
-    }
-  },
-  
-  "critical_issues": [
+  "failing_endpoints": [
     {
-      "severity": "CRITICAL",
-      "issue": "New routes not deployed",
-      "affected_endpoints": [
-        "/api/tick",
-        "/api/regime/current",
-        "/api/scan/movers",
-        "/api/scan/health",
-        "/api/cache/purge",
-        "/api/alerts/test"
-      ],
-      "root_cause": "Commits 4e7a190, 77e7175, 2d772ed, 95bdee8 not pushed to Railway",
-      "resolution": "Push commits from host machine and redeploy on Railway"
+      "endpoint": "/api/tick",
+      "http_code": 404,
+      "body": {"detail": "Not Found"},
+      "fix": "Deploy commit 77e4971 - route exists in code but not loaded"
     },
     {
-      "severity": "HIGH",
-      "issue": "SSE stream timeout",
-      "affected_endpoints": ["/api/cockpit/stream"],
-      "root_cause": "Endpoint not responding within 10 seconds",
-      "resolution": "Investigate middleware blocking or check for infinite loops"
+      "endpoint": "/api/regime/current",
+      "http_code": 404,
+      "body": {"detail": "Not Found"},
+      "fix": "Deploy commit 77e4971 - route exists in code but not loaded"
     },
     {
-      "severity": "MEDIUM",
-      "issue": "Price provider failures",
-      "affected_endpoints": ["/api/price/diagnostics"],
-      "root_cause": "All providers (alphavantage, yahoo, yfinance, polygon) failing",
-      "details": {
-        "alphavantage": "15-30ms latency but returning null",
-        "yahoo": "4900-5100ms timeouts",
-        "yfinance": "350-800ms but returning null",
-        "polygon": "640-660ms but returning null"
-      },
-      "resolution": "Check API keys, rate limits, and provider connectivity"
+      "endpoint": "/api/scan/movers",
+      "http_code": 404,
+      "body": {"detail": "Not Found"},
+      "fix": "Deploy commit 77e4971 - route exists in code but not loaded"
+    },
+    {
+      "endpoint": "/api/scan/health",
+      "http_code": 404,
+      "body": {"detail": "Not Found"},
+      "fix": "Deploy commit 77e4971 - route exists in code but not loaded"
+    },
+    {
+      "endpoint": "/api/cache/purge",
+      "http_code": 404,
+      "body": {"detail": "Not Found"},
+      "fix": "Deploy commit 77e4971 - route exists in code but not loaded"
+    },
+    {
+      "endpoint": "/api/cockpit/stream (SSE)",
+      "http_code": "timeout",
+      "body": "No events received in 60 seconds",
+      "fix": "Investigate after deployment - may be middleware blocking or infinite loop"
     }
   ],
   
-  "middleware_status": {
-    "deployed_version": "old_middleware",
-    "expected_version": "simplified_middleware",
-    "commit": "2d772ed not deployed",
-    "499_errors_expected": true,
-    "notes": "Old middleware still running, new middleware not deployed"
+  "sse_test": {
+    "duration_seconds": 60,
+    "events_received": 0,
+    "status": "FAILED"
   },
   
-  "deployment_readiness": {
-    "code_committed": true,
-    "commits_ready": ["4e7a190", "77e7175", "2d772ed", "95bdee8"],
-    "working_tree_clean": true,
-    "pushed_to_remote": false,
-    "deployed_to_railway": false,
-    "healthcheck_passed": "unknown",
-    "blocker": "Manual push from host machine required"
-  },
-  
-  "recommendations": [
-    {
-      "priority": "CRITICAL",
-      "action": "Push commits to Railway",
-      "command": "git push origin master && railway redeploy",
-      "expected_impact": "6 failing endpoints will become operational"
-    },
-    {
-      "priority": "HIGH",
-      "action": "Investigate SSE stream timeout",
-      "details": "Check middleware blocking or infinite loops in stream generation"
-    },
-    {
-      "priority": "MEDIUM",
-      "action": "Fix price provider connectivity",
-      "details": "Verify API keys and rate limits for all providers"
-    },
-    {
-      "priority": "LOW",
-      "action": "Monitor 499/502 errors after deployment",
-      "details": "New middleware should eliminate 499 errors"
-    }
-  ],
-  
-  "next_steps": [
-    "1. Push commits from host machine: git push origin master",
-    "2. Redeploy on Railway: Dashboard → Deployments → Redeploy",
-    "3. Wait for healthcheck to pass (~2-3 minutes)",
-    "4. Re-run this validation script",
-    "5. Expected result: 90%+ operational (10/11 endpoints passing)"
+  "deployment_instructions": [
+    "1. Open Railway Dashboard",
+    "2. Deploy commit 77e4971",
+    "3. Wait for healthcheck",
+    "4. Re-run validation"
   ]
 }

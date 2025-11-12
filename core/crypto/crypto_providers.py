@@ -3,8 +3,10 @@ Crypto Price Providers
 Multi-source quorum system for reliable crypto prices
 """
 
+import json
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -19,6 +21,60 @@ _retry_strategy = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500,
 _adapter = HTTPAdapter(max_retries=_retry_strategy)
 _session.mount("http://", _adapter)
 _session.mount("https://", _adapter)
+
+# VIP Contract Map - Load once at module init
+_CONTRACT_MAP: dict[str, dict] = {}
+_CONTRACT_MAP_FILE = Path(__file__).parent / "contract_map.json"
+_CONTRACT_MAP_MTIME = 0.0
+
+
+def _load_contract_map():
+    """Load contract map with file mtime watcher for hot-reload"""
+    global _CONTRACT_MAP, _CONTRACT_MAP_MTIME
+
+    try:
+        if not _CONTRACT_MAP_FILE.exists():
+            LOGGER.warning(f"Contract map not found: {_CONTRACT_MAP_FILE}")
+            return
+
+        current_mtime = _CONTRACT_MAP_FILE.stat().st_mtime
+
+        # Only reload if file changed
+        if current_mtime <= _CONTRACT_MAP_MTIME and _CONTRACT_MAP:
+            return
+
+        with open(_CONTRACT_MAP_FILE) as f:
+            raw_map = json.load(f)
+
+        # Normalize: uppercase keys, validate addresses
+        _CONTRACT_MAP = {}
+        for symbol, data in raw_map.items():
+            symbol_upper = symbol.upper().strip()
+            address = data.get("address", "").strip()
+
+            # Fail closed on invalid addresses
+            if not address or address.startswith("0x...") or len(address) < 20:
+                LOGGER.error(f"Invalid contract address for {symbol_upper}: {address}")
+                continue
+
+            _CONTRACT_MAP[symbol_upper] = {
+                "chain": data.get("chain", "ethereum").lower(),
+                "address": address.lower() if address.startswith("0x") else address,
+                "decimals": data.get("decimals", 18),
+                "name": data.get("name", symbol_upper),
+                "coingecko_id": data.get("coingecko_id", "")
+            }
+
+        _CONTRACT_MAP_MTIME = current_mtime
+        LOGGER.info(f"✅ Loaded contract map: {len(_CONTRACT_MAP)} VIP tokens: {list(_CONTRACT_MAP.keys())}")
+
+    except Exception as e:
+        LOGGER.error(f"Failed to load contract map: {e}")
+        _CONTRACT_MAP = {}
+
+
+# Load contract map on module import
+_load_contract_map()
 
 
 class CoinGeckoProvider:
@@ -93,6 +149,68 @@ class CoinGeckoProvider:
     def get_coin_id(self, symbol: str) -> str | None:
         """Convert symbol to CoinGecko ID"""
         return self.SYMBOL_MAP.get(symbol.upper())
+
+    def get_price_by_contract(self, chain: str, address: str, symbol: str) -> dict[str, Any] | None:
+        """
+        Get price using contract address (VIP path for mapped tokens)
+
+        Args:
+            chain: Chain name (ethereum, solana, etc.)
+            address: Contract address
+            symbol: Token symbol for response
+
+        Returns:
+            Same format as get_price() but via contract endpoint
+        """
+        try:
+            self._rate_limit()
+
+            # Map chain names to CoinGecko platform IDs
+            chain_map = {
+                "ethereum": "ethereum",
+                "bsc": "binance-smart-chain",
+                "polygon": "polygon-pos",
+                "solana": "solana",
+                "avalanche": "avalanche",
+                "arbitrum": "arbitrum-one",
+                "optimism": "optimistic-ethereum"
+            }
+
+            platform_id = chain_map.get(chain.lower(), "ethereum")
+            url = f"{self.BASE_URL}/coins/{platform_id}/contract/{address}"
+
+            response = _session.get(url, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+            market_data = data.get("market_data", {})
+
+            if not market_data:
+                LOGGER.warning(f"No market data for contract {address} on {chain}")
+                return None
+
+            current_price = market_data.get("current_price", {}).get("usd", 0)
+            if current_price <= 0:
+                return None
+
+            price_change_24h = market_data.get("price_change_percentage_24h", 0)
+
+            LOGGER.info(f"✅ Contract price for {symbol}: ${current_price:.6f} (source=contract)")
+
+            return {
+                "symbol": symbol.upper(),
+                "price": float(current_price),
+                "change_24h_pct": float(price_change_24h),
+                "market_cap": float(market_data.get("market_cap", {}).get("usd", 0)),
+                "volume_24h": float(market_data.get("total_volume", {}).get("usd", 0)),
+                "last_updated": int(time.time()),
+                "provider": "coingecko",
+                "price_source": "contract"  # Debug marker
+            }
+
+        except Exception as e:
+            LOGGER.warning(f"CoinGecko contract fetch failed for {symbol} ({address}): {e}")
+            return None
 
     def get_price(self, symbol: str) -> dict[str, Any] | None:
         """
@@ -286,11 +404,10 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
 
     Strategy:
     1. Check cache if enabled
-    2. Query CoinGecko (primary)
-    3. Query Binance (secondary)
-    4. Query Coinbase (tertiary)
-    5. Require 2+ providers agreeing within 1% spread
-    6. Return median price with quorum metadata
+    2. Check if symbol has contract mapping (VIP path)
+    3. Try contract-based lookup first (CoinGecko contract endpoint)
+    4. Fallback to symbol-based lookups
+    5. Short-circuit on first success
 
     Args:
         symbol: Crypto symbol (BTC, ETH, etc.)
@@ -302,11 +419,12 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
             'price': 43251.50,
             'provider': 'coingecko',
             'confidence': 0.95,
-            'quorum_size': 3,
-            'spread': 0.003,
+            'quorum_size': 1,
+            'spread': 0.0,
             'timestamp': 1728741600,
             'change_24h_pct': 2.98,
-            'market_cap': 845000000000
+            'market_cap': 845000000000,
+            'price_source': 'contract'  # Present for VIP tokens
         }
     """
     symbol = symbol.upper()
@@ -318,17 +436,63 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
             LOGGER.debug(f"Crypto price cache hit for {symbol}")
             return cached
 
-    # Initialize providers
-    providers = [
-        ("coingecko", CoinGeckoProvider()),
-        ("binance", BinanceProvider()),
-        ("coinbase", CoinbaseProvider()),
-    ]
+    # Reload contract map if file changed
+    _load_contract_map()
+
+    # VIP CONTRACT PATH: Use contract address if available
+    if symbol in _CONTRACT_MAP:
+        contract_info = _CONTRACT_MAP[symbol]
+        chain = contract_info["chain"]
+        address = contract_info["address"]
+
+        LOGGER.info(f"🎯 VIP token {symbol}: using contract path ({chain}/{address[:8]}...)")
+
+        coingecko = CoinGeckoProvider()
+        price_data = coingecko.get_price_by_contract(chain, address, symbol)
+
+        if price_data and price_data.get("price", 0) > 0:
+            # Success via contract - package as single-provider quorum
+            result = {
+                "symbol": symbol,
+                "price": price_data["price"],
+                "provider": "coingecko",
+                "confidence": 0.90,  # High confidence for contract-based
+                "quorum_size": 1,
+                "spread": 0.0,
+                "timestamp": int(time.time()),
+                "change_24h_pct": price_data.get("change_24h_pct", 0),
+                "market_cap": price_data.get("market_cap", 0),
+                "volume_24h": price_data.get("volume_24h", 0),
+                "price_source": "contract"  # Debug marker
+            }
+
+            _set_crypto_cache(symbol, result)
+            LOGGER.info(f"✅ VIP_CONTRACT_PRICE_OK: {symbol} = ${result['price']:.6f}")
+            return result
+        else:
+            LOGGER.warning(f"Contract lookup failed for {symbol}, falling back to symbol search")
+
+    # STANDARD PATH: Symbol-based lookup with quorum
+    # Read CRYPTO_QUORUM env for provider order
+    import os
+    quorum_env = os.getenv("CRYPTO_QUORUM", "coingecko,binance,coinbase")
+    provider_names = [p.strip() for p in quorum_env.split(",") if p.strip()]
+
+    # Initialize providers in quorum order
+    available_providers = {
+        "coingecko": CoinGeckoProvider(),
+        "binance": BinanceProvider(),
+        "coinbase": CoinbaseProvider(),
+    }
 
     # Collect prices from all providers - SHORT-CIRCUIT on first success to avoid 401/451 retries
     results: list[tuple[str, float, dict]] = []
 
-    for name, provider in providers:
+    for name in provider_names:
+        provider = available_providers.get(name)
+        if not provider:
+            continue
+
         try:
             price_data = provider.get_price(symbol)
             if price_data and price_data.get("price", 0) > 0:

@@ -115,7 +115,52 @@ else
     echo "{\"endpoint\": \"/api/status (env)\", \"status\": \"failed\", \"error\": \"missing_env_object\"}" >> "$RESULTS_FILE"
 fi
 
-# Test 10: Check /openapi.json has paths
+# Test 10: VIP Token Pricing (contract-mapped)
+echo ""
+echo "Testing VIP Token Pricing (WEPE, LILPEPE, DORKL, SLOTH, APC)..."
+VIP_TOKENS=("WEPE" "LILPEPE" "DORKL" "SLOTH" "APC")
+VIP_OK=0
+VIP_FAIL=0
+
+for symbol in "${VIP_TOKENS[@]}"; do
+    echo -n "  Testing VIP token $symbol ... "
+    vip_resp=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $GHOST_API_TOKEN" "$GHOST_BASE_URL/api/price/$symbol" 2>&1)
+    vip_body=$(echo "$vip_resp" | head -n -1)
+    vip_code=$(echo "$vip_resp" | tail -n 1)
+    
+    if [ "$vip_code" = "200" ]; then
+        if echo "$vip_body" | jq -e '.current_price' >/dev/null 2>&1; then
+            price=$(echo "$vip_body" | jq -r '.current_price')
+            echo "✅ PASSED (price=$price)"
+            VIP_OK=$((VIP_OK + 1))
+            PASSED=$((PASSED + 1))
+            echo "{\"endpoint\": \"/api/price/$symbol\", \"status\": \"passed\", \"price\": $price}" >> "$RESULTS_FILE"
+        else
+            echo "❌ FAILED (no current_price field)"
+            VIP_FAIL=$((VIP_FAIL + 1))
+            FAILED=$((FAILED + 1))
+            echo "{\"endpoint\": \"/api/price/$symbol\", \"status\": \"failed\", \"error\": \"missing_current_price\"}" >> "$RESULTS_FILE"
+        fi
+    else
+        echo "❌ FAILED (HTTP $vip_code)"
+        VIP_FAIL=$((VIP_FAIL + 1))
+        FAILED=$((FAILED + 1))
+        echo "{\"endpoint\": \"/api/price/$symbol\", \"status\": \"failed\", \"http_code\": $vip_code}" >> "$RESULTS_FILE"
+    fi
+done
+
+# Log VIP summary
+if [ $VIP_OK -eq 5 ]; then
+    echo "✅ VIP_PRICE_OK: {WEPE:ok, LILPEPE:ok, DORKL:ok, SLOTH:ok, APC:ok}"
+else
+    echo "⚠️  VIP_PRICE_PARTIAL: $VIP_OK/5 tokens working"
+fi
+echo ""
+
+# Test 11: /api/crypto/vip/health
+test_endpoint "/api/crypto/vip/health" "/api/crypto/vip/health" 200 true
+
+# Test 12: Check /openapi.json has paths
 echo -n "Testing /openapi.json paths ... "
 openapi_resp=$(curl -s "$GHOST_BASE_URL/api/openapi.json" 2>&1)
 if echo "$openapi_resp" | jq -e '.paths' >/dev/null 2>&1; then

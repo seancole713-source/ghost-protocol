@@ -1176,6 +1176,12 @@ async def ui_health():
     return {"status": "ok", "service": "ghost-protocol"}
 
 
+@APP.get("/health")
+async def health():
+    """Alias for /ui/health - simple healthcheck"""
+    return {"status": "ok", "service": "ghost-protocol"}
+
+
 # Load secrets from secrets.env if API keys not already in environment
 _secrets_file = os.path.join(os.path.dirname(__file__), "secrets.env")
 if os.path.exists(_secrets_file) and (
@@ -5701,6 +5707,36 @@ def _get_crypto_providers():
             LOGGER.error(f"Failed to initialize crypto providers: {e}")
             raise HTTPException(500, "Crypto providers not available") from e
     return _crypto_provider
+
+
+@APP.get("/api/crypto/vip/health")
+async def api_crypto_vip_health():
+    """
+    Health probe for VIP token pricing
+    Returns status for each VIP token (WEPE, LILPEPE, DORKL, SLOTH, APC)
+    """
+    import time
+
+    vip_symbols = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
+    vip_status = {}
+
+    providers = _get_crypto_providers()
+
+    for symbol in vip_symbols:
+        try:
+            # Quick check - don't use cache
+            price_data = await providers.get_crypto_price_quorum(symbol, use_cache=False)
+            if price_data and price_data.get("price", 0) > 0:
+                vip_status[symbol] = "ok"
+            else:
+                vip_status[symbol] = "no_price"
+        except Exception as e:
+            vip_status[symbol] = f"error: {str(e)[:50]}"
+
+    return {
+        "vip": vip_status,
+        "ts": int(time.time())
+    }
 
 
 @APP.get("/api/crypto/price/{symbol}")

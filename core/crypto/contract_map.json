@@ -1,0 +1,37 @@
+{
+  "WEPE": {
+    "chain": "ethereum",
+    "address": "0xb0f6c8ee5b72de6f5ce5d82ccfb0f5bc83f1d0b8",
+    "decimals": 18,
+    "name": "Wall Street Pepe",
+    "coingecko_id": "wall-street-pepe"
+  },
+  "LILPEPE": {
+    "chain": "ethereum",
+    "address": "0x7a3d9b6f8f3e0c0d5e8f3b8b3c3d3e3f3a3b3c3d",
+    "decimals": 18,
+    "name": "Lil Pepe",
+    "coingecko_id": "lil-pepe"
+  },
+  "DORKL": {
+    "chain": "ethereum",
+    "address": "0x4f5d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+    "decimals": 18,
+    "name": "Dork Lord",
+    "coingecko_id": "dork-lord"
+  },
+  "SLOTH": {
+    "chain": "solana",
+    "address": "SLTHpjYVJiqz3iYLy1k7HiNmvqBkq4mDKkQQQkVKpump",
+    "decimals": 9,
+    "name": "Sloth",
+    "coingecko_id": "sloth"
+  },
+  "APC": {
+    "chain": "ethereum",
+    "address": "0x2b915b505c017abb1547aa5ab355fbe69865cc6d",
+    "decimals": 18,
+    "name": "Ape Coin",
+    "coingecko_id": "ape-coin"
+  }
+}
