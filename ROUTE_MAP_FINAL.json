@@ -1,0 +1,1133 @@
+{
+  "timestamp": "2025-11-13T00:00:00Z",
+  "total_routes": 280,
+  "routes_by_method": {
+    "GET": 163,
+    "POST": 111,
+    "PUT": 0,
+    "DELETE": 6,
+    "PATCH": 0
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/control"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/stop"
+    },
+    {
+      "method": "POST",
+      "path": "/ai/agent/run"
+    },
+    {
+      "method": "POST",
+      "path": "/ai/backfill"
+    },
+    {
+      "method": "POST",
+      "path": "/ai/chat"
+    },
+    {
+      "method": "POST",
+      "path": "/ai/decide"
+    },
+    {
+      "method": "POST",
+      "path": "/ai/memory/debug/auth"
+    },
+    {
+      "method": "GET",
+      "path": "/ai/memory/recent"
+    },
+    {
+      "method": "POST",
+      "path": "/ai/memory/similar"
+    },
+    {
+      "method": "GET",
+      "path": "/ai/memory/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/ai/preview"
+    },
+    {
+      "method": "POST",
+      "path": "/ai/train"
+    },
+    {
+      "method": "GET",
+      "path": "/alerts/selftest"
+    },
+    {
+      "method": "POST",
+      "path": "/alerts/status"
+    },
+    {
+      "method": "GET",
+      "path": "/alerts/status/preview"
+    },
+    {
+      "method": "GET",
+      "path": "/alerts/test"
+    },
+    {
+      "method": "POST",
+      "path": "/alerts/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/_crash"
+    },
+    {
+      "method": "POST",
+      "path": "/api/advisor/chat"
+    },
+    {
+      "method": "GET",
+      "path": "/api/advisor/recommendations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/advisor/scan_now"
+    },
+    {
+      "method": "POST",
+      "path": "/api/advisor/start"
+    },
+    {
+      "method": "GET",
+      "path": "/api/advisor/stats"
+    },
+    {
+      "method": "POST",
+      "path": "/api/advisor/stop"
+    },
+    {
+      "method": "POST",
+      "path": "/api/advisor_refresh"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/ask"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/decide"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/decisions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ai/signals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/alerts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/alerts/config"
+    },
+    {
+      "method": "POST",
+      "path": "/api/alerts/config"
+    },
+    {
+      "method": "POST",
+      "path": "/api/alerts/dispatch"
+    },
+    {
+      "method": "POST",
+      "path": "/api/alerts/hold"
+    },
+    {
+      "method": "POST",
+      "path": "/api/alerts/template"
+    },
+    {
+      "method": "POST",
+      "path": "/api/alerts/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/algo/patterns"
+    },
+    {
+      "method": "POST",
+      "path": "/api/algo/update_microstructure"
+    },
+    {
+      "method": "POST",
+      "path": "/api/bank/add_position"
+    },
+    {
+      "method": "POST",
+      "path": "/api/bank/reset"
+    },
+    {
+      "method": "POST",
+      "path": "/api/bank/set_cash"
+    },
+    {
+      "method": "GET",
+      "path": "/api/broker/account"
+    },
+    {
+      "method": "GET",
+      "path": "/api/broker/clock"
+    },
+    {
+      "method": "GET",
+      "path": "/api/broker/health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/broker/metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/api/broker/positions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cache/clear"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cache/clear"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cache/purge"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cache/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/calibration/adaptive_horizon"
+    },
+    {
+      "method": "GET",
+      "path": "/api/calibration/history"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calibration/log_forecast"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calibration/log_strategy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/calibration/performance"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calibration/run"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cash"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cash"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cockpit"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cockpit/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cockpit/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/config"
+    },
+    {
+      "method": "GET",
+      "path": "/api/corporate_actions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/crypto/accuracy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/crypto/decide"
+    },
+    {
+      "method": "GET",
+      "path": "/api/crypto/decisions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/crypto/movers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/crypto/news"
+    },
+    {
+      "method": "POST",
+      "path": "/api/crypto/predict/run"
+    },
+    {
+      "method": "GET",
+      "path": "/api/crypto/predict/{symbol}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/crypto/price/{symbol}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/crypto/regime/current"
+    },
+    {
+      "method": "GET",
+      "path": "/api/crypto/vip/health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/crypto/watchlist"
+    },
+    {
+      "method": "GET",
+      "path": "/api/db/rebuild"
+    },
+    {
+      "method": "GET",
+      "path": "/api/edgar/company_filings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/edgar/insider_transactions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/edgar/recent_filings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/features/importance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/features/top"
+    },
+    {
+      "method": "POST",
+      "path": "/api/feeds/fetch"
+    },
+    {
+      "method": "GET",
+      "path": "/api/feeds/latest"
+    },
+    {
+      "method": "GET",
+      "path": "/api/feeds/reopen"
+    },
+    {
+      "method": "GET",
+      "path": "/api/feeds/search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/feeds/sentiment"
+    },
+    {
+      "method": "GET",
+      "path": "/api/feeds/sources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forecast/backtest"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecast/multi_horizon"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecast/overlay"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forecast/record"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forecast/score"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecast/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ghost/score"
+    },
+    {
+      "method": "GET",
+      "path": "/api/goals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/goals/active"
+    },
+    {
+      "method": "POST",
+      "path": "/api/goals/create"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/goals/delete"
+    },
+    {
+      "method": "GET",
+      "path": "/api/goals/history"
+    },
+    {
+      "method": "GET",
+      "path": "/api/goals/risk_multiplier"
+    },
+    {
+      "method": "POST",
+      "path": "/api/goals/update"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ip/allowlist"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ip/allowlist/add"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ip/allowlist/remove"
+    },
+    {
+      "method": "GET",
+      "path": "/api/keys"
+    },
+    {
+      "method": "POST",
+      "path": "/api/keys/create"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/keys/{key_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/keys/{key_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/market/movers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/recall_similar"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/stats"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/store_trade"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mode"
+    },
+    {
+      "method": "GET",
+      "path": "/api/news"
+    },
+    {
+      "method": "GET",
+      "path": "/api/news/recent"
+    },
+    {
+      "method": "GET",
+      "path": "/api/news/trending"
+    },
+    {
+      "method": "GET",
+      "path": "/api/polygon/corporate_events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/polygon/market_status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/polygon/quote"
+    },
+    {
+      "method": "GET",
+      "path": "/api/portfolio"
+    },
+    {
+      "method": "GET",
+      "path": "/api/portfolio/history"
+    },
+    {
+      "method": "GET",
+      "path": "/api/position"
+    },
+    {
+      "method": "POST",
+      "path": "/api/position"
+    },
+    {
+      "method": "GET",
+      "path": "/api/positions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/positions/add"
+    },
+    {
+      "method": "POST",
+      "path": "/api/positions/clear"
+    },
+    {
+      "method": "POST",
+      "path": "/api/positions/import"
+    },
+    {
+      "method": "POST",
+      "path": "/api/positions/import_raw"
+    },
+    {
+      "method": "GET",
+      "path": "/api/predict/history"
+    },
+    {
+      "method": "POST",
+      "path": "/api/predict/run"
+    },
+    {
+      "method": "GET",
+      "path": "/api/predict/scoreboard"
+    },
+    {
+      "method": "GET",
+      "path": "/api/predict/series"
+    },
+    {
+      "method": "GET",
+      "path": "/api/predictions/history"
+    },
+    {
+      "method": "GET",
+      "path": "/api/predictions/overlay/{symbol}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/predictions/run"
+    },
+    {
+      "method": "GET",
+      "path": "/api/price/diagnostics"
+    },
+    {
+      "method": "POST",
+      "path": "/api/price/record"
+    },
+    {
+      "method": "GET",
+      "path": "/api/price/refresh"
+    },
+    {
+      "method": "POST",
+      "path": "/api/price/refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/price/{symbol}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/regime/current"
+    },
+    {
+      "method": "POST",
+      "path": "/api/risk/circuit_breaker"
+    },
+    {
+      "method": "GET",
+      "path": "/api/risk/dashboard"
+    },
+    {
+      "method": "POST",
+      "path": "/api/risk/kill_switch"
+    },
+    {
+      "method": "GET",
+      "path": "/api/risk/scan_exits"
+    },
+    {
+      "method": "GET",
+      "path": "/api/risk/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime/config"
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime/config"
+    },
+    {
+      "method": "GET",
+      "path": "/api/scan/health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/scan/movers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/secrets/health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/simulation_data"
+    },
+    {
+      "method": "GET",
+      "path": "/api/snapshot"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sources"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sources/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage1/mood"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage1/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage1/symbol/{symbol}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage1/world"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage2/accuracy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage2/forecasts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage2/learning"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage2/tune"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage3/ensemble/forecast"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage3/ensemble/performance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage3/regime/current"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage3/regime/detect"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage3/regime/history"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage3/risk/check"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage3/risk/dashboard"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage3/risk/update"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/backtest/monte-carlo"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/backtest/run"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/backtest/walk-forward"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/hedging/beta-hedge"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/hedging/pairs-trade"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/portfolio/optimize"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/portfolio/rebalance-check"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/portfolio/risk-parity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/strategy/ab-test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage4/strategy/champion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage4/strategy/register"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage5/analytics/dashboard"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage5/analytics/latency"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage5/order/cancel/{order_id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage5/order/create"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage5/order/submit/{order_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage5/order/{order_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage5/orders/active"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage5/positions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage5/risk/check"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage5/risk/kill-switch/activate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage5/risk/kill-switch/deactivate"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stage5/risk/kill-switch/status"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage5/router/adaptive"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage5/router/twap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stage5/router/vwap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/state/reset"
+    },
+    {
+      "method": "GET",
+      "path": "/api/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/strategies/ensemble"
+    },
+    {
+      "method": "GET",
+      "path": "/api/telegram/reinit"
+    },
+    {
+      "method": "POST",
+      "path": "/api/telegram/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tick"
+    },
+    {
+      "method": "GET",
+      "path": "/api/top_movers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/trade/order/{order_id}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/trade/order/{order_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/trade/orders"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/trade/orders/cancel_all"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trade/position/close/{symbol}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trade/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/api/trade_card/{symbol}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/version"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watcher/add_ticker"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watcher/generate_signal"
+    },
+    {
+      "method": "GET",
+      "path": "/api/watcher/performance"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/watcher/remove_ticker"
+    },
+    {
+      "method": "GET",
+      "path": "/api/watcher/ticker_news"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watcher/update_macro"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watcher/update_prices"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watcher/update_signal_outcome"
+    },
+    {
+      "method": "GET",
+      "path": "/api/watcher/watchlist"
+    },
+    {
+      "method": "GET",
+      "path": "/api/watchlist"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watchlist/add"
+    },
+    {
+      "method": "GET",
+      "path": "/api/watchlist/history/{symbol}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watchlist/remove"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watchlist/scan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watchlist/score"
+    },
+    {
+      "method": "GET",
+      "path": "/api/watchlist/statistics"
+    },
+    {
+      "method": "GET",
+      "path": "/api/webhooks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/webhooks/subscribe"
+    },
+    {
+      "method": "POST",
+      "path": "/api/webhooks/test/{webhook_id}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/webhooks/{webhook_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/cockpit"
+    },
+    {
+      "method": "GET",
+      "path": "/cockpit.html"
+    },
+    {
+      "method": "POST",
+      "path": "/control"
+    },
+    {
+      "method": "POST",
+      "path": "/control/reset"
+    },
+    {
+      "method": "POST",
+      "path": "/control/save"
+    },
+    {
+      "method": "GET",
+      "path": "/debug/info"
+    },
+    {
+      "method": "POST",
+      "path": "/debug/prev_close"
+    },
+    {
+      "method": "GET",
+      "path": "/debug/price"
+    },
+    {
+      "method": "POST",
+      "path": "/debug/price_diag"
+    },
+    {
+      "method": "POST",
+      "path": "/debug/price_override"
+    },
+    {
+      "method": "POST",
+      "path": "/debug/reset_breakers"
+    },
+    {
+      "method": "GET",
+      "path": "/debug/routes"
+    },
+    {
+      "method": "POST",
+      "path": "/debug/telegram_test"
+    },
+    {
+      "method": "GET",
+      "path": "/diagnostics/summary"
+    },
+    {
+      "method": "GET",
+      "path": "/events"
+    },
+    {
+      "method": "GET",
+      "path": "/forecast/48h"
+    },
+    {
+      "method": "POST",
+      "path": "/forecast/48h/generate"
+    },
+    {
+      "method": "GET",
+      "path": "/forecast/48h/metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/forecast/48h/recent"
+    },
+    {
+      "method": "GET",
+      "path": "/forecast/two_line"
+    },
+    {
+      "method": "GET",
+      "path": "/fusion/ai"
+    },
+    {
+      "method": "POST",
+      "path": "/fusion/refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/health"
+    },
+    {
+      "method": "GET",
+      "path": "/health/detailed"
+    },
+    {
+      "method": "GET",
+      "path": "/heatmap"
+    },
+    {
+      "method": "GET",
+      "path": "/index.html"
+    },
+    {
+      "method": "GET",
+      "path": "/live"
+    },
+    {
+      "method": "GET",
+      "path": "/logs/recent"
+    },
+    {
+      "method": "GET",
+      "path": "/metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/openapi.json"
+    },
+    {
+      "method": "POST",
+      "path": "/orders/clear"
+    },
+    {
+      "method": "POST",
+      "path": "/orders/place"
+    },
+    {
+      "method": "GET",
+      "path": "/orders/queue"
+    },
+    {
+      "method": "GET",
+      "path": "/predict/48h"
+    },
+    {
+      "method": "POST",
+      "path": "/predict/feedback"
+    },
+    {
+      "method": "GET",
+      "path": "/predict/metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/ready"
+    },
+    {
+      "method": "GET",
+      "path": "/research/snapshot"
+    },
+    {
+      "method": "GET",
+      "path": "/self/diagnostics"
+    },
+    {
+      "method": "GET",
+      "path": "/source/status"
+    },
+    {
+      "method": "POST",
+      "path": "/start"
+    },
+    {
+      "method": "POST",
+      "path": "/telegram/webhook"
+    },
+    {
+      "method": "GET",
+      "path": "/ui"
+    },
+    {
+      "method": "GET",
+      "path": "/ui/health"
+    },
+    {
+      "method": "GET",
+      "path": "/watchlist"
+    },
+    {
+      "method": "POST",
+      "path": "/watchlist/import"
+    }
+  ]
+}
