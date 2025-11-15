@@ -251,12 +251,8 @@ async def _rt_handler(request: Request, exc: RuntimeError):
 async def _ex_handler(request: Request, exc: Exception):
     return _json500("unhandled_exception")
 
-try:
-    @APP.exception_handler(BaseException)  # catches CancelledError, ExceptionGroup
-    async def _base_handler(request: Request, exc: BaseException):
-        return _json500("base_exception")
-except Exception:
-    pass
+# Note: BaseException handler removed - not supported by FastAPI/Starlette
+# (BaseException is not a subclass of Exception)
 
 
 # Compatibility shim: keep /openapi.json working but redirect to new location
@@ -696,7 +692,9 @@ async def auth_fast_fail_middleware(request: Request, call_next):
     # Public endpoints (no auth required)
     public_paths = [
         "/", "/health", "/metrics", "/docs", "/redoc", "/openapi.json",
-        "/api/status", "/api/health", "/api/openapi.json"
+        "/api/status", "/api/health", "/api/openapi.json",
+        "/api/predictions/multi/run",  # Multi-symbol predictions are public
+        "/api/health/predictions"  # Prediction health check is public
     ]
     
     # Check if path requires auth
@@ -1207,6 +1205,18 @@ if os.path.exists(_secrets_file) and (
 WOLF = "WOLF"
 ALPHAVANTAGE_KEY = os.getenv("ALPHAVANTAGE_API_KEY") or os.getenv("ALPHA_VANTAGE_API_KEY", "")
 POLYGON_KEY = os.getenv("POLYGON_API_KEY", "")
+
+# Multi-symbol prediction lists
+STOCK_SYMBOLS = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "TSLA", "META", "WOLF"]
+CRYPTO_SYMBOLS = ["BTC", "ETH", "DOGE", "SOL", "BNB", "ADA", "XRP", "MATIC"]
+VIP_COINS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
+
+# Multi-symbol prediction health tracking
+_LAST_MULTI_PREDICTION_TIME: float | None = None
+_LAST_MULTI_PREDICTION_COUNTS: dict[str, int] = {"stocks": 0, "crypto": 0, "vip": 0}
+_LAST_TELEGRAM_SEND_TIME: float | None = None
+_LAST_TELEGRAM_STATUS: str = "never_run"
+_LAST_TELEGRAM_ERROR: str | None = None
 
 # ChatGPT Price Provider (for watchlist stocks)
 try:
@@ -2967,12 +2977,30 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
     Stores in database and returns forecast details.
     """
     try:
-        # Get current price
+        # Get current price using price quorum for any symbol
         if symbol == WOLF:
             price, _, provider = get_wolf_price()
         else:
-            price = None
-            provider = "unavailable"
+            # Use price quorum for other symbols
+            try:
+                is_market_open, _ = _is_market_open_now()
+            except Exception:
+                is_market_open = False
+            
+            providers = _build_price_providers(symbol, is_market_open=is_market_open)
+            if providers:
+                decision = get_price_quorum().get_price(
+                    symbol=symbol,
+                    providers=providers,
+                    prev_close=None,
+                    is_market_open=is_market_open,
+                    timeout=6.0,
+                )
+                price = decision.price
+                provider = decision.provider_label
+            else:
+                price = None
+                provider = "unavailable"
 
         if price is None or price <= 0:
             return {
@@ -3539,15 +3567,13 @@ async def _on_startup():
     # Start Scheduled Predictions (8am pre-market, 9:35am market open check)
     try:
         if SCHEDULED_PREDICTIONS_ENABLED:
-            # Configure the scheduler with our functions
-            scheduled_predictions.TELEGRAM_SEND_FUNC = _tg_send_chat_message
-            scheduled_predictions.TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "940596997")
-            scheduled_predictions.GET_WOLF_PRICE_FUNC = get_wolf_price
-            scheduled_predictions.EVALUATE_SIGNAL_FUNC = _evaluate_signal
+            # Configure the scheduler with multi-symbol functions
+            scheduled_predictions.MULTI_SYMBOL_PREDICTION_FUNC = _generate_multi_symbol_predictions
+            scheduled_predictions.TELEGRAM_SEND_MULTI_FUNC = _send_multi_symbol_telegram_alert
             scheduled_predictions.LOGGER = LOGGER
 
             scheduled_predictions.start_prediction_scheduler()
-            LOGGER.info("Scheduled predictions enabled: 8:00 AM & 9:35 AM ET")
+            LOGGER.info("Scheduled predictions enabled: 8:00 AM, 12:00 PM, 4:00 PM ET (multi-symbol)")
     except Exception:
         LOGGER.exception("scheduled_predictions_start_failed", extra={"component": "startup"})
 
@@ -9246,6 +9272,158 @@ def _tg_send_chat_message(chat_id: str, text: str) -> bool:
         return False
 
 
+def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> str:
+    """
+    Format multi-symbol prediction data into a Telegram message.
+    Groups symbols by type: STOCKS → CRYPTO → VIP.
+    
+    Args:
+        predictions_data: Output from _generate_multi_symbol_predictions()
+    
+    Returns:
+        HTML-formatted Telegram message string
+    """
+    if not predictions_data.get("ok"):
+        return "⚠️ <b>Multi-Symbol Predictions Failed</b>\n\nError: " + predictions_data.get("error", "Unknown error")
+    
+    predictions = predictions_data.get("predictions", {})
+    counts = predictions_data.get("counts", {})
+    
+    # Build message header
+    now_str = datetime.now(ZoneInfo("America/New_York") if ZoneInfo else None).strftime("%I:%M %p %Z") if ZoneInfo else datetime.now().strftime("%I:%M %p")
+    
+    message = f"""📊 <b>GHOST MULTI-SYMBOL PREDICTIONS</b>
+⏰ Time: {now_str}
+📈 Total: {counts.get('stocks', 0)} stocks, {counts.get('crypto', 0)} crypto, {counts.get('vip', 0)} VIP
+
+"""
+    
+    # Format STOCKS group
+    stocks = predictions.get("stocks", [])
+    if stocks:
+        message += "<b>📈 STOCKS</b>\n"
+        for pred in stocks:
+            symbol = pred.get("symbol", "???")
+            direction = pred.get("direction", "HOLD")
+            confidence = pred.get("confidence", 0) * 100
+            price = pred.get("price_current")
+            
+            # Direction emoji
+            if direction == "BUY":
+                emoji = "🟢"
+            elif direction == "SELL":
+                emoji = "🔴"
+            else:
+                emoji = "⚪"
+            
+            if price:
+                message += f"{emoji} {symbol}: {direction} (${price:.2f}, {confidence:.0f}%)\n"
+            else:
+                message += f"{emoji} {symbol}: {direction} (NO DATA, {confidence:.0f}%)\n"
+        message += "\n"
+    
+    # Format CRYPTO group
+    crypto = predictions.get("crypto", [])
+    if crypto:
+        message += "<b>💎 CRYPTO</b>\n"
+        for pred in crypto:
+            symbol = pred.get("symbol", "???")
+            direction = pred.get("direction", "HOLD")
+            confidence = pred.get("confidence", 0) * 100
+            price = pred.get("price_current")
+            
+            if direction == "BUY":
+                emoji = "🟢"
+            elif direction == "SELL":
+                emoji = "🔴"
+            else:
+                emoji = "⚪"
+            
+            if price:
+                message += f"{emoji} {symbol}: {direction} (${price:.2f}, {confidence:.0f}%)\n"
+            else:
+                message += f"{emoji} {symbol}: {direction} (NO DATA, {confidence:.0f}%)\n"
+        message += "\n"
+    
+    # Format VIP group
+    vip = predictions.get("vip", [])
+    if vip:
+        message += "<b>⭐ VIP COINS</b>\n"
+        for pred in vip:
+            symbol = pred.get("symbol", "???")
+            direction = pred.get("direction", "HOLD")
+            confidence = pred.get("confidence", 0) * 100
+            price = pred.get("price_current")
+            
+            if direction == "BUY":
+                emoji = "🟢"
+            elif direction == "SELL":
+                emoji = "🔴"
+            else:
+                emoji = "⚪"
+            
+            if price:
+                message += f"{emoji} {symbol}: {direction} (${price:.2f}, {confidence:.0f}%)\n"
+            else:
+                message += f"{emoji} {symbol}: {direction} (NO DATA, {confidence:.0f}%)\n"
+        message += "\n"
+    
+    # Add footer
+    if not stocks and not crypto and not vip:
+        message += "⚠️ No prediction data available (check API keys)\n"
+    else:
+        message += "💡 <i>Live predictions from Ghost Protocol</i>"
+    
+    return message
+
+
+def _send_multi_symbol_telegram_alert() -> bool:
+    """
+    Generate and send multi-symbol predictions via Telegram.
+    Updates global tracking state.
+    
+    Returns:
+        True if send succeeded, False otherwise
+    """
+    global _LAST_TELEGRAM_SEND_TIME, _LAST_TELEGRAM_STATUS, _LAST_TELEGRAM_ERROR
+    
+    try:
+        # Generate predictions
+        predictions_data = _generate_multi_symbol_predictions()
+        
+        # Format message
+        message = _format_multi_symbol_telegram_message(predictions_data)
+        
+        # Send via Telegram
+        if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+            success = _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
+            
+            # Update tracking
+            _LAST_TELEGRAM_SEND_TIME = time.time()
+            if success:
+                _LAST_TELEGRAM_STATUS = "ok"
+                _LAST_TELEGRAM_ERROR = None
+                LOGGER.info("Multi-symbol Telegram alert sent successfully")
+            else:
+                _LAST_TELEGRAM_STATUS = "error"
+                _LAST_TELEGRAM_ERROR = "Telegram API returned failure"
+                LOGGER.warning("Multi-symbol Telegram alert failed")
+            
+            return success
+        else:
+            _LAST_TELEGRAM_STATUS = "error"
+            _LAST_TELEGRAM_ERROR = "Telegram credentials not configured"
+            LOGGER.warning("Cannot send Telegram alert: credentials missing")
+            return False
+    
+    except Exception as e:
+        _LAST_TELEGRAM_SEND_TIME = time.time()
+        _LAST_TELEGRAM_STATUS = "error"
+        _LAST_TELEGRAM_ERROR = str(e)[:200]
+        LOGGER.exception("Multi-symbol Telegram alert failed with exception")
+        return False
+
+
 def post_webhooks(text: str) -> None:
     for u in ALERT_WEBHOOK_URLS:
         try:
@@ -9919,6 +10097,87 @@ async def health():
     import time
 
     return {"ok": True, "ts": time.time()}
+
+
+@APP.get("/api/health/predictions")
+async def api_health_predictions():
+    """
+    Health check endpoint for multi-symbol predictions and Telegram alerts.
+    Returns current state, last run times, provider health, Ghost Score V2, and risk guard status.
+    """
+    # Get provider health data
+    crypto_provider_health = {}
+    vip_provider_health = {}
+    
+    try:
+        from core.crypto.vip_providers import get_vip_provider_health
+        vip_provider_health = get_vip_provider_health()
+    except Exception as e:
+        LOGGER.warning(f"Could not get VIP provider health: {e}")
+    
+    # Compute Ghost Score V2
+    ghost_score_v2 = {}
+    try:
+        from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
+        
+        # Gather data quality metrics
+        total_symbols = len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS)
+        symbols_with_data = _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0) + \
+                           _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0) + \
+                           vip_provider_health.get("symbols_with_data", 0)
+        
+        data_quality = {
+            "symbols_with_data": symbols_with_data,
+            "total_symbols": total_symbols,
+            "provider_redundancy": 0.7,  # Conservative estimate (multiple providers active)
+            "avg_confidence": 0.75  # Typical confidence for multi-provider data
+        }
+        
+        # Prediction coverage
+        predictions_generated = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
+        prediction_coverage = {
+            "predictions_generated": predictions_generated,
+            "total_expected": total_symbols,
+            "success_rate_estimate": 0.5  # Neutral until historical tracking available
+        }
+        
+        # Risk status
+        risk_status = get_current_risk_status()
+        
+        # Compute score
+        ghost_score_v2 = compute_ghost_score_v2(
+            data_quality=data_quality,
+            prediction_coverage=prediction_coverage,
+            risk_status=risk_status
+        )
+    except Exception as e:
+        LOGGER.error(f"Could not compute Ghost Score V2: {e}")
+        ghost_score_v2 = {"score": 0, "status": "error", "error": str(e)}
+    
+    # Get risk guard status
+    risk_guard_status = {}
+    try:
+        from core.risk.risk_guard import get_risk_guard
+        risk_guard = get_risk_guard()
+        risk_guard_status = risk_guard.get_status()
+    except Exception as e:
+        LOGGER.warning(f"Could not get risk guard status: {e}")
+        risk_guard_status = {"enabled": False, "error": str(e)}
+    
+    return {
+        "ok": True,
+        "last_multi_prediction_run_time": _LAST_MULTI_PREDICTION_TIME,
+        "last_telegram_send_time": _LAST_TELEGRAM_SEND_TIME,
+        "symbol_counts": _LAST_MULTI_PREDICTION_COUNTS.copy(),
+        "last_telegram_status": _LAST_TELEGRAM_STATUS,
+        "last_telegram_error": _LAST_TELEGRAM_ERROR,
+        "telegram_configured": bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID),
+        "crypto_provider_health": crypto_provider_health,
+        "vip_provider_health": vip_provider_health,
+        "ghost_score_v2": ghost_score_v2,
+        "risk_guard_status": risk_guard_status,
+        "timestamp": time.time()
+    }
 
 
 @APP.get("/ready")
@@ -14186,8 +14445,34 @@ async def ai_memory_similar(
             pass
 
 
-def _evaluate_signal() -> dict[str, Any]:
-    price, prev, provider = get_wolf_price()
+def _evaluate_signal(symbol: str = WOLF) -> dict[str, Any]:
+    # Get price for the specified symbol
+    if symbol == WOLF:
+        price, prev, provider = get_wolf_price()
+    else:
+        # Use price quorum for other symbols
+        try:
+            is_market_open, _ = _is_market_open_now()
+        except Exception:
+            is_market_open = False
+        
+        providers = _build_price_providers(symbol, is_market_open=is_market_open)
+        if providers:
+            decision = get_price_quorum().get_price(
+                symbol=symbol,
+                providers=providers,
+                prev_close=None,
+                is_market_open=is_market_open,
+                timeout=6.0,
+            )
+            price = decision.price
+            prev = decision.prev_close
+            provider = decision.provider_label
+        else:
+            price = None
+            prev = None
+            provider = "unavailable"
+    
     qty, avg = _get_portfolio_qty_and_avg()  # Use helper to read from positions array
     action = "HOLD"
     used_mode = ALERT_MODE
@@ -15483,6 +15768,54 @@ async def api_cockpit():
         "two_line_overlay": two_line_data,
         "notes": (["news:polygon_key_missing"] if not POLYGON_KEY else []),
     }
+    
+    # === Ghost 2.x Enhancements ===
+    # Add provider health, Ghost Score V2, and risk guard status to snapshot
+    try:
+        from core.crypto.vip_providers import get_vip_provider_health
+        from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
+        from core.risk.risk_guard import get_risk_guard
+        
+        vip_health = get_vip_provider_health()
+        
+        total_symbols = len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS)
+        symbols_with_data = _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0) + \
+                           _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0) + \
+                           vip_health.get("symbols_with_data", 0)
+        
+        ghost_score = compute_ghost_score_v2(
+            data_quality={
+                "symbols_with_data": symbols_with_data,
+                "total_symbols": total_symbols,
+                "provider_redundancy": 0.7,
+                "avg_confidence": 0.75
+            },
+            prediction_coverage={
+                "predictions_generated": sum(_LAST_MULTI_PREDICTION_COUNTS.values()),
+                "total_expected": total_symbols,
+                "success_rate_estimate": 0.5
+            },
+            risk_status=get_current_risk_status()
+        )
+        
+        risk_guard = get_risk_guard()
+        
+        # Add Ghost 2.x fields to snapshot
+        snapshot["ghost_2x"] = {
+            "ghost_score_v2": ghost_score,
+            "vip_provider_health": vip_health,
+            "risk_guard_status": risk_guard.get_status(),
+            "provider_health_summary": {
+                "crypto_providers_active": 3,
+                "vip_symbols_with_data": vip_health.get("symbols_with_data", 0),
+                "vip_symbols_total": len(VIP_COINS),
+                "multi_symbol_counts": _LAST_MULTI_PREDICTION_COUNTS.copy()
+            }
+        }
+    except Exception as e:
+        LOGGER.warning(f"Could not load Ghost 2.x enhancements for cockpit: {e}")
+        snapshot["ghost_2x"] = {"error": str(e)}
+    # === End Ghost 2.x Enhancements ===\"
 
     # Inject crypto predictions if enabled
     try:
@@ -17487,6 +17820,161 @@ async def api_predictions_run(symbol: str = WOLF):
         return {"ok": True, "result": res}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def _generate_multi_symbol_predictions() -> dict[str, Any]:
+    """
+    Internal function to generate multi-symbol predictions.
+    Used by both the API endpoint and scheduled Telegram alerts.
+    
+    Returns dict with structure:
+    {
+        "ok": True/False,
+        "predictions": {"stocks": [...], "crypto": [...], "vip": [...]},
+        "counts": {"stocks": N, "crypto": M, "vip": K},
+        "total": X,
+        "timestamp": unix_ts
+    }
+    """
+    global _LAST_MULTI_PREDICTION_TIME, _LAST_MULTI_PREDICTION_COUNTS
+    
+    try:
+        results = {
+            "stocks": [],
+            "crypto": [],
+            "vip": []
+        }
+        
+        # Generate predictions for stock symbols
+        for symbol in STOCK_SYMBOLS:
+            try:
+                forecast = _generate_48h_forecast(symbol)
+                if forecast.get("ok") is not False:
+                    signal = _evaluate_signal(symbol)
+                    prediction = {
+                        "symbol": symbol,
+                        "type": "stock",
+                        "price_current": forecast.get("price_now"),
+                        "price_pred_mid": forecast.get("price_pred_mid"),
+                        "confidence": forecast.get("confidence", 0.5),
+                        "direction": signal.get("action", "HOLD"),
+                        "momentum": signal.get("fused_score", 0.0),
+                        "timestamp": time.time()
+                    }
+                    results["stocks"].append(prediction)
+            except Exception as e:
+                LOGGER.warning(f"Multi-prediction failed for stock {symbol}: {e}")
+                continue
+        
+        # Generate predictions for crypto symbols
+        for symbol in CRYPTO_SYMBOLS:
+            try:
+                forecast = _generate_48h_forecast(symbol)
+                if forecast.get("ok") is not False:
+                    signal = _evaluate_signal(symbol)
+                    prediction = {
+                        "symbol": symbol,
+                        "type": "crypto",
+                        "price_current": forecast.get("price_now"),
+                        "price_pred_mid": forecast.get("price_pred_mid"),
+                        "confidence": forecast.get("confidence", 0.5),
+                        "direction": signal.get("action", "HOLD"),
+                        "momentum": signal.get("fused_score", 0.0),
+                        "timestamp": time.time()
+                    }
+                    results["crypto"].append(prediction)
+            except Exception as e:
+                LOGGER.warning(f"Multi-prediction failed for crypto {symbol}: {e}")
+                continue
+        
+        # Generate predictions for VIP coins (using dedicated VIP provider)
+        try:
+            from core.crypto.vip_providers import get_vip_price
+            
+            for symbol in VIP_COINS:
+                try:
+                    # Get VIP price (may return NO DATA)
+                    vip_data = get_vip_price(symbol, use_cache=True)
+                    
+                    if vip_data.get("available"):
+                        # VIP coin has real data - generate forecast
+                        forecast = _generate_48h_forecast(symbol)
+                        if forecast.get("ok") is not False:
+                            signal = _evaluate_signal(symbol)
+                            prediction = {
+                                "symbol": symbol,
+                                "type": "vip",
+                                "price_current": vip_data.get("price") or forecast.get("price_now"),
+                                "price_pred_mid": forecast.get("price_pred_mid"),
+                                "confidence": forecast.get("confidence", 0.5) * vip_data.get("confidence", 0.7),
+                                "direction": signal.get("action", "HOLD"),
+                                "momentum": signal.get("fused_score", 0.0),
+                                "timestamp": time.time(),
+                                "provider": vip_data.get("provider", "none")
+                            }
+                            results["vip"].append(prediction)
+                    else:
+                        # VIP coin has NO DATA - include with explicit status
+                        prediction = {
+                            "symbol": symbol,
+                            "type": "vip",
+                            "price_current": None,
+                            "price_pred_mid": None,
+                            "confidence": 0.0,
+                            "direction": "NO_DATA",
+                            "momentum": 0.0,
+                            "timestamp": time.time(),
+                            "provider": "none",
+                            "reason": vip_data.get("reason", "Price not available")
+                        }
+                        results["vip"].append(prediction)
+                except Exception as e:
+                    LOGGER.warning(f"Multi-prediction failed for VIP coin {symbol}: {e}")
+                    # Include failed VIP coin with error status
+                    results["vip"].append({
+                        "symbol": symbol,
+                        "type": "vip",
+                        "price_current": None,
+                        "price_pred_mid": None,
+                        "confidence": 0.0,
+                        "direction": "ERROR",
+                        "momentum": 0.0,
+                        "timestamp": time.time(),
+                        "provider": "none",
+                        "reason": str(e)
+                    })
+                    continue
+        except ImportError as ie:
+            LOGGER.error(f"VIP provider module not available: {ie}")
+            # Continue without VIP predictions if module missing
+        
+        # Update tracking globals
+        _LAST_MULTI_PREDICTION_TIME = time.time()
+        _LAST_MULTI_PREDICTION_COUNTS = {
+            "stocks": len(results["stocks"]),
+            "crypto": len(results["crypto"]),
+            "vip": len(results["vip"])
+        }
+        
+        return {
+            "ok": True,
+            "predictions": results,
+            "counts": _LAST_MULTI_PREDICTION_COUNTS.copy(),
+            "total": sum(_LAST_MULTI_PREDICTION_COUNTS.values()),
+            "timestamp": _LAST_MULTI_PREDICTION_TIME
+        }
+    except Exception as e:
+        LOGGER.exception("Multi-prediction generation failed")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/predictions/multi/run")
+async def api_predictions_multi_run():
+    """
+    Generate predictions for multiple symbols across stocks, crypto, and VIP coins.
+    This is a public endpoint that returns predictions for all configured symbols.
+    """
+    return _generate_multi_symbol_predictions()
 
 
 @APP.get("/api/agent/decide")
@@ -20553,6 +21041,66 @@ async def trade_submit(
 
         # Get current price for the symbol
         symbol = request.symbol.upper()
+        try:
+            current_price = get_current_price(symbol)
+            if not current_price or current_price <= 0:
+                return {
+                    "ok": False,
+                    "submitted": False,
+                    "error": f"Could not get valid price for {symbol}"
+                }
+        except Exception as e:
+            LOGGER.error(f"Failed to get price for {symbol}: {e}")
+            return {
+                "ok": False,
+                "submitted": False,
+                "error": f"Price lookup failed: {e}"
+            }
+        
+        # === RISK GUARD CHECK (Ghost 2.x) ===
+        # Apply risk budget enforcement for paper trading
+        try:
+            from core.risk.risk_guard import get_risk_guard
+            risk_guard = get_risk_guard()
+            
+            if risk_guard.is_enabled():
+                # Determine quantity
+                trade_qty = request.qty if request.qty else 0
+                if not trade_qty and request.notional:
+                    trade_qty = request.notional / current_price
+                
+                # Get current equity and P&L (approximations)
+                current_equity = portfolio_value
+                daily_pnl = 0.0  # TODO: Calculate from today's trades
+                total_pnl = current_equity - float(account.get("last_equity", current_equity))
+                
+                # Check risk limits
+                allowed, reason = risk_guard.check_order(
+                    symbol=symbol,
+                    side=request.side,
+                    quantity=trade_qty,
+                    price=current_price,
+                    current_equity=current_equity,
+                    current_positions=existing_positions,
+                    daily_pnl=daily_pnl,
+                    total_pnl=total_pnl
+                )
+                
+                if not allowed:
+                    LOGGER.warning(f"Risk guard blocked order: {symbol} {request.side} - {reason}")
+                    return {
+                        "ok": False,
+                        "submitted": False,
+                        "blocked_by_risk_guard": True,
+                        "error": f"Risk limit exceeded: {reason}",
+                        "risk_guard_reason": reason
+                    }
+                
+                LOGGER.info(f"Risk guard approved order: {symbol} {request.side} {trade_qty}@${current_price:.2f}")
+        except Exception as e:
+            LOGGER.error(f"Risk guard check failed: {e}")
+            # Continue without risk guard if it fails (fail-open for availability)
+        # === END RISK GUARD CHECK ===
         try:
             if request.type == "market":
                 # For market orders, get current price for risk calculation

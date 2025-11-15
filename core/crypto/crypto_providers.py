@@ -1,9 +1,11 @@
 """
 Crypto Price Providers
 Multi-source quorum system for reliable crypto prices
+Supports environment-driven provider selection via CRYPTO_QUORUM
 """
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -19,6 +21,44 @@ _retry_strategy = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500,
 _adapter = HTTPAdapter(max_retries=_retry_strategy)
 _session.mount("http://", _adapter)
 _session.mount("https://", _adapter)
+
+# Provider configuration from environment
+_DEFAULT_CRYPTO_QUORUM = ["coingecko", "binance", "coinbase"]
+_CRYPTO_QUORUM_ORDER = None  # Lazy-loaded from env
+
+# Provider configuration from environment
+_DEFAULT_CRYPTO_QUORUM = ["coingecko", "binance", "coinbase"]
+_CRYPTO_QUORUM_ORDER = None  # Lazy-loaded from env
+
+
+def _get_crypto_provider_order() -> list[str]:
+    """
+    Get crypto provider order from CRYPTO_QUORUM environment variable.
+    
+    Returns ordered list of provider names to try.
+    Falls back to default order if env var not set.
+    
+    Example: CRYPTO_QUORUM="coingecko,binance,coinbase"
+    """
+    global _CRYPTO_QUORUM_ORDER
+    
+    if _CRYPTO_QUORUM_ORDER is not None:
+        return _CRYPTO_QUORUM_ORDER
+    
+    env_quorum = os.getenv("CRYPTO_QUORUM", "").strip()
+    
+    if env_quorum:
+        # Parse comma-separated provider names
+        providers = [p.strip().lower() for p in env_quorum.split(",") if p.strip()]
+        if providers:
+            _CRYPTO_QUORUM_ORDER = providers
+            LOGGER.info(f"Crypto provider order from CRYPTO_QUORUM: {providers}")
+            return _CRYPTO_QUORUM_ORDER
+    
+    # Fallback to default
+    _CRYPTO_QUORUM_ORDER = _DEFAULT_CRYPTO_QUORUM.copy()
+    LOGGER.info(f"Crypto provider order (default): {_CRYPTO_QUORUM_ORDER}")
+    return _CRYPTO_QUORUM_ORDER
 
 
 class CoinGeckoProvider:
@@ -318,11 +358,18 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
             LOGGER.debug(f"Crypto price cache hit for {symbol}")
             return cached
 
-    # Initialize providers
+    # Initialize providers based on environment configuration
+    provider_order = _get_crypto_provider_order()
+    provider_map = {
+        "coingecko": CoinGeckoProvider(),
+        "binance": BinanceProvider(),
+        "coinbase": CoinbaseProvider(),
+    }
+    
     providers = [
-        ("coingecko", CoinGeckoProvider()),
-        ("binance", BinanceProvider()),
-        ("coinbase", CoinbaseProvider()),
+        (name, provider_map[name]) 
+        for name in provider_order 
+        if name in provider_map
     ]
 
     # Collect prices from all providers - SHORT-CIRCUIT on first success to avoid 401/451 retries
