@@ -2152,6 +2152,55 @@
             }
         }
 
+            // Ghost 2.x Health Panel Functions
+            function renderGhostScore(ghostScore) {
+                const scoreEl = document.getElementById('ghost2-score');
+                const gradeEl = document.getElementById('ghost2-grade');
+                const statusEl = document.getElementById('ghost2-status');
+                const tsEl = document.getElementById('ghost2-last-refresh');
+                if (!scoreEl || !gradeEl || !statusEl) return;
+                
+                if (!ghostScore) {
+                    scoreEl.textContent = 'NO_DATA';
+                    gradeEl.textContent = 'NO_DATA';
+                    statusEl.textContent = 'critical';
+                    if (tsEl) tsEl.textContent = '';
+                    return;
+                }
+                
+                scoreEl.textContent = ghostScore.score != null ? ghostScore.score.toFixed(1) : 'NO_DATA';
+                gradeEl.textContent = ghostScore.grade || 'NO_DATA';
+                statusEl.textContent = ghostScore.status || 'NO_DATA';
+                if (tsEl) tsEl.textContent = nowIso();
+            }
+            
+            function renderVipHealth(vipHealth) {
+                const vipEl = document.getElementById('ghost2-vip-summary');
+                if (!vipEl) return;
+                
+                if (!vipHealth) {
+                    vipEl.textContent = 'NO_DATA';
+                    return;
+                }
+                
+                const withData = vipHealth.symbols_with_data ?? 0;
+                const withoutData = vipHealth.symbols_without_data ?? 0;
+                const list = Array.isArray(vipHealth.available_symbols) ? vipHealth.available_symbols : [];
+                vipEl.textContent = 'VIP symbols with data: ' + withData + ', without: ' + withoutData + ', symbols: ' + (list.join(', ') || 'NO_DATA');
+            }
+            
+            async function refreshGhost2xPanel() {
+                try {
+                    const resp = await fetch('/api/health/predictions');
+                    if (!resp.ok) return;
+                    const data = await resp.json();
+                    renderGhostScore(data.ghost_score_v2);
+                    renderVipHealth(data.vip_provider_health);
+                } catch (e) {
+                    // Keep NO_DATA on failure
+                }
+            }
+
             // Admin Toggles wiring
             async function loadAdmin(){
                 try{
@@ -2222,6 +2271,7 @@
                     loadMovers();
                     loadNews();
                     loadWorldContext(); // Stage 1: Load world context & market mood
+                    refreshGhost2xPanel(); // Ghost 2.x Health Panel
                     connectCockpitStream();
                     updateLatencyBadge();
                     // Wire overlay refresh and mode toggle (only if overlay DOM exists)
@@ -2285,6 +2335,7 @@
                     setInterval(loadNews, 60000);
                     setInterval(loadAgentMonitor, 60000); // Agent monitor refresh every 60s
                     setInterval(loadResearchSnapshot, 300000); // Research refresh every 5 minutes
+                    setInterval(refreshGhost2xPanel, 30000); // Ghost 2.x refresh every 30 seconds
                     if (document.getElementById('forecastCanvas')) {
                         setInterval(loadForecastOverlay, 60000);
                     }
