@@ -17853,6 +17853,10 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "crypto": [],
             "vip": []
         }
+        failed_symbols = {
+            "stocks": [],
+            "crypto": []
+        }
         
         # Generate predictions for stock symbols
         for symbol in STOCK_SYMBOLS:
@@ -17874,6 +17878,10 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
                 else:
                     # Log detailed failure reason
                     error_reason = forecast.get("error", "unknown")
+                    failed_symbols["stocks"].append({
+                        "symbol": symbol,
+                        "error": error_reason
+                    })
                     LOGGER.warning(
                         f"Stock forecast failed for {symbol}: {error_reason}",
                         extra={"symbol": symbol, "error": error_reason}
@@ -17899,8 +17907,19 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
                         "timestamp": time.time()
                     }
                     results["crypto"].append(prediction)
+                else:
+                    # Log crypto failure
+                    error_reason = forecast.get("error", "unknown")
+                    failed_symbols["crypto"].append({
+                        "symbol": symbol,
+                        "error": error_reason
+                    })
             except Exception as e:
                 LOGGER.warning(f"Multi-prediction failed for crypto {symbol}: {e}")
+                failed_symbols["crypto"].append({
+                    "symbol": symbol,
+                    "error": str(e)
+                })
                 continue
         
         # Generate predictions for VIP coins (using dedicated VIP provider)
@@ -17977,6 +17996,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "predictions": results,
             "counts": _LAST_MULTI_PREDICTION_COUNTS.copy(),
             "total": sum(_LAST_MULTI_PREDICTION_COUNTS.values()),
+            "failed_symbols": failed_symbols if (failed_symbols["stocks"] or failed_symbols["crypto"]) else None,
             "timestamp": _LAST_MULTI_PREDICTION_TIME
         }
     except Exception as e:
