@@ -2995,7 +2995,7 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                     providers=providers,
                     prev_close=None,
                     is_market_open=is_market_open,
-                    timeout=6.0,
+                    timeout=10.0,  # Increased from 6.0 to allow more provider attempts
                 )
                 price = decision.price
                 provider = decision.provider_label
@@ -17871,6 +17871,13 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
                         "timestamp": time.time()
                     }
                     results["stocks"].append(prediction)
+                else:
+                    # Log detailed failure reason
+                    error_reason = forecast.get("error", "unknown")
+                    LOGGER.warning(
+                        f"Stock forecast failed for {symbol}: {error_reason}",
+                        extra={"symbol": symbol, "error": error_reason}
+                    )
             except Exception as e:
                 LOGGER.warning(f"Multi-prediction failed for stock {symbol}: {e}")
                 continue
