@@ -10,6 +10,16 @@ let predictionChart = null;
 let currentSymbol = 'WOLF';
 let refreshInterval = null;
 
+// Shared auth helper for all prediction API calls
+function ghostAuthHeaders(extra = {}) {
+    const token = (window.GHOST_API_TOKEN || '').trim();
+    const headers = { ...extra };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+}
+
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
     initPredictionPanel();
@@ -147,7 +157,10 @@ function initPredictionChart() {
 async function refreshPredictionData() {
     try {
         // Fetch series data (forecast + actual)
-        const seriesResp = await fetch(`/api/predict/series?symbol=${currentSymbol}`);
+        const seriesResp = await fetch(
+            `/api/predict/series?symbol=${encodeURIComponent(currentSymbol)}`,
+            { headers: ghostAuthHeaders() }
+        );
         const seriesData = await seriesResp.json();
         
         // Update chart
@@ -209,11 +222,17 @@ function updatePredictionChart(data) {
 async function updateScoreboard() {
     try {
         // Fetch history
-        const historyResp = await fetch(`/api/predict/history?symbol=${currentSymbol}&limit=10`);
+        const historyResp = await fetch(
+            `/api/predict/history?symbol=${encodeURIComponent(currentSymbol)}&limit=10`,
+            { headers: ghostAuthHeaders() }
+        );
         const history = await historyResp.json();
         
         // Fetch scoreboard stats
-        const scoreResp = await fetch(`/api/predict/scoreboard?symbol=${currentSymbol}`);
+        const scoreResp = await fetch(
+            `/api/predict/scoreboard?symbol=${encodeURIComponent(currentSymbol)}`,
+            { headers: ghostAuthHeaders() }
+        );
         const scores = await scoreResp.json();
         
         // Update table
@@ -329,10 +348,7 @@ async function runNewForecast() {
     try {
         const resp = await fetch('/api/predict/run', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${window.GHOST_API_TOKEN || ''}`
-            },
+            headers: ghostAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ symbol: currentSymbol })
         });
         
