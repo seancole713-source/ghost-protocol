@@ -14079,43 +14079,6 @@ def _llm_decide(ctx: dict[str, Any]) -> AiDecision:
         )
 
 
-@APP.get("/api/predictions/multi/run")
-async def api_predictions_multi_run(symbols: str | None = None):
-    """Run multi-symbol predictions for stocks, crypto, and VIP coins.
-
-    If `symbols` is provided, it should be a comma-separated list of symbols
-    to include. If omitted, the default STOCK_SYMBOLS/CRYPTO_SYMBOLS/VIP_COINS
-    sets are used.
-    """
-    # Existing implementation (simplified view): build predictions & counts
-    predictions: dict[str, list[dict[str, Any]]] = {"stocks": [], "crypto": [], "vip": []}
-    counts: dict[str, int] = {"stocks": 0, "crypto": 0, "vip": 0}
-
-    # ... existing prediction logic populates `predictions` and `counts` ...
-
-    total = counts["stocks"] + counts["crypto"] + counts["vip"]
-    envelope = {
-        "ok": True,
-        "predictions": predictions,
-        "counts": counts,
-        "total": total,
-        "timestamp": time.time(),
-    }
-
-    # Update health snapshot so /api/health/predictions reflects latest run
-    try:
-        from time import time as _time
-
-        global _LAST_MULTI_PREDICTION_TIME, _LAST_MULTI_PREDICTION_COUNTS
-        _LAST_MULTI_PREDICTION_TIME = _time()
-        _LAST_MULTI_PREDICTION_COUNTS = counts
-    except Exception:
-        # Never break the API if health counters fail to update
-        pass
-
-    return envelope
-
-
 class ChatRequest(BaseModel):
     question: str
     include_context: bool = False
