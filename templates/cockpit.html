@@ -1604,7 +1604,7 @@
         // Heatmap
         async function loadHeatmap() {
             try {
-                const s = await (await fetch('/api/cockpit')).json();
+                const s = await (await fetch('/api/cockpit/snapshot')).json();
                 const data = (s.heatmap && s.heatmap.tiles) ? s.heatmap.tiles : [];
                 const box = el("heatmap");
                 box.innerHTML = "";
@@ -1643,7 +1643,7 @@
         // Movers
     async function loadMovers() {
             try {
-                const rs = await fetch('/api/cockpit');
+                const rs = await fetch('/api/cockpit/snapshot');
                 const snap = await rs.json();
                 const list = el("moversList");
                 list.innerHTML = "";
@@ -1876,7 +1876,7 @@
 
         async function loadPortfolio() {
             try {
-                const r = await fetch("/api/cockpit");
+                const r = await fetch("/api/cockpit/snapshot");
                 const s = await r.json();
                 const qty = (s.portfolio?.rows?.[0]?.qty) ?? (s.position?.qty) ?? 0;
                 const avg = (s.portfolio?.rows?.[0]?.entry) ?? (s.position?.avg_cost) ?? 0;
@@ -1951,7 +1951,7 @@
         async function loadNews(){
                 try {
                     const includeAll = !!(document.getElementById('newsAllToggle')?.checked);
-                    const r = await fetch('/api/cockpit');
+                    const r = await fetch('/api/cockpit/snapshot');
                     const snap = await r.json();
                     const news = includeAll ? (snap.news_all || []) : ((snap.news || snap.news_relevant) || []);
                     const all = snap.news_all || [];
@@ -2088,8 +2088,8 @@
                 if (FORECAST_PAUSED){ status.textContent = 'paused (anomaly)'; setButtonState(btnId, 'error'); return; }
                 status.textContent = '';
                 if (FO_MODE === 'overlay'){
-                    // Fetch from /api/cockpit to get two_line_overlay data
-                    const r = await fetch('/api/cockpit');
+                    // Fetch from /api/cockpit/snapshot to get two_line_overlay data
+                    const r = await fetch('/api/cockpit/snapshot');
                     const snap = await r.json();
                     const twoLine = snap.two_line_overlay;
                     // Fallback to legacy overlay if unavailable

@@ -15341,8 +15341,9 @@ async def api_alerts_dispatch(
     return resp
 
 
-@APP.get("/api/cockpit")
-async def api_cockpit():
+@APP.get("/api/cockpit/snapshot")
+async def api_cockpit_legacy():
+    """Legacy cockpit snapshot with prices, portfolio, news. Use /api/cockpit for Ghost 2.x data."""
     price, prev, provider = get_wolf_price()
 
     # CRITICAL: Handle case where all providers fail and return None
