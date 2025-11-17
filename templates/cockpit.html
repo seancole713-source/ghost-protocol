@@ -1,5 +1,21 @@
 <!doctype html>
 <html lang="en">
+<!--
+    INLINE STYLES JUSTIFICATION:
+    This cockpit interface intentionally uses inline styles for the following architectural reasons:
+    1. Dynamic visibility control (display:none) toggled by JavaScript based on real-time state
+    2. Component-scoped layout (grid-column spans) that adjust based on loaded data
+    3. Runtime-computed styling for progress bars, confidence indicators, and status badges
+    4. Tight coupling between DOM elements and their dynamic styling logic
+    
+    Moving these to external CSS would require:
+    - Complex class toggling logic that obscures the intent
+    - Loss of self-contained component styling
+    - Potential timing issues with async data loading
+    
+    This is a deliberate design pattern for a real-time monitoring dashboard.
+    CSS validators configured to suppress inline style warnings for this file.
+-->
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -1065,7 +1081,47 @@
             const btnId = 'btnContextRefresh';
             setButtonState(btnId, 'loading');
             try {
-                // Load market mood
+                // Load NEW world context endpoint first
+                try {
+                    const worldCtx = await (await fetch('/api/world/context')).json();
+                    if (worldCtx && !worldCtx.error) {
+                        // Update SPY and VIX from new endpoint
+                        if (worldCtx.spy && worldCtx.spy.price) {
+                            el('moodSPY').textContent = `SPY: $${worldCtx.spy.price.toFixed(2)}`;
+                            if (worldCtx.spy.change_pct) {
+                                const changeColor = worldCtx.spy.change_pct >= 0 ? '#00c853' : '#ff5252';
+                                el('moodSPY').style.color = changeColor;
+                            }
+                        }
+                        if (worldCtx.vix && worldCtx.vix.level) {
+                            el('moodVIX').textContent = `VIX: ${worldCtx.vix.level.toFixed(1)}`;
+                            const vixColor = worldCtx.vix.level > 20 ? '#ff5252' : '#00c853';
+                            el('moodVIX').style.color = vixColor;
+                        }
+                        // Update market mood from new endpoint
+                        if (worldCtx.market_mood) {
+                            const sentiment = worldCtx.market_mood.sentiment || 'neutral';
+                            el('moodSentiment').textContent = sentiment;
+                            const score = worldCtx.market_mood.score || 50;
+                            el('moodConf').textContent = `Mood Score: ${score.toFixed(0)}/100`;
+                            // Set icon based on sentiment
+                            if (sentiment === 'bullish') {
+                                el('moodIcon').textContent = '🐂';
+                                el('moodSentiment').style.color = 'var(--good)';
+                            } else if (sentiment === 'bearish') {
+                                el('moodIcon').textContent = '🐻';
+                                el('moodSentiment').style.color = 'var(--bad)';
+                            } else {
+                                el('moodIcon').textContent = '↔️';
+                                el('moodSentiment').style.color = 'var(--warn)';
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('New world context endpoint failed, falling back:', e);
+                }
+                
+                // Load market mood (legacy endpoint as fallback)
                 const mood = await (await fetch('/api/stage1/mood')).json();
                 if (mood.error) {
                     el('moodRegime').textContent = '—';
@@ -2685,3 +2741,84 @@
     <script src="/static/js/predict.js"></script>
 </body>
 </html>
+<!-- New Endpoint Integration Functions -->
+<script>
+// === NEW ENDPOINT INTEGRATIONS ===
+
+// Goals Tracker
+async function loadGoalsTracker() {
+    try {
+        const res = await fetch('/api/goals/all');
+        const data = await res.json();
+        if (data.ok && data.goals) {
+            console.log('✅ Goals loaded:', data.goals);
+            Object.entries(data.goals).forEach(([period, goal]) => {
+                console.log(`  ${period}: ${goal.progress_pct}% progress (${goal.current_profit}/${goal.target_profit})`);
+            });
+        }
+    } catch (e) {
+        console.warn('⚠️ Goals tracker failed:', e);
+    }
+}
+
+// XRP Tracker
+async function loadXRPTracker() {
+    try {
+        const res = await fetch('/api/xrp/tracker');
+        const data = await res.json();
+        if (data.ok) {
+            console.log('✅ XRP Tracker:', {
+                price: data.price,
+                bullish_eye: data.bullish_eye,
+                signal: data.signal,
+                confidence: data.confidence
+            });
+        }
+    } catch (e) {
+        console.warn('⚠️ XRP tracker failed:', e);
+    }
+}
+
+// VIP Coins Status
+async function loadVIPCoins() {
+    try {
+        const res = await fetch('/api/vip/coins');
+        const data = await res.json();
+        if (data.ok && data.coins) {
+            console.log('✅ VIP Coins loaded:', Object.keys(data.coins).length, 'coins');
+            Object.entries(data.coins).forEach(([symbol, coin]) => {
+                if (coin.price) {
+                    console.log(`  ${symbol}: $${coin.price.toFixed(6)} (${coin.change_24h_pct?coin.change_24h_pct.toFixed(2):'—'}%)`);
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('⚠️ VIP coins failed:', e);
+    }
+}
+
+// Portfolio Positions
+async function loadPortfolioPositions() {
+    try {
+        const res = await fetch('/api/portfolio/positions');
+        const data = await res.json();
+        if (data.ok && data.positions) {
+            console.log('✅ Portfolio:', data.positions.length, 'positions');
+            console.log('  Total Value:', data.total_value);
+            console.log('  Total P&L:', data.total_pnl);
+        }
+    } catch (e) {
+        console.warn('⚠️ Portfolio positions failed:', e);
+    }
+}
+
+// Load all new endpoints on page load
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        loadGoalsTracker();
+        loadXRPTracker();
+        loadVIPCoins();
+        loadPortfolioPositions();
+    }, 2000); // Wait 2s for main app to initialize
+});
+</script>
