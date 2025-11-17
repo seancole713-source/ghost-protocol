@@ -3028,12 +3028,17 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                 LOGGER.warning(f"No providers available for {symbol}")
 
         if price is None or price <= 0:
-            error_msg = f"live price unavailable (provider: {provider if 'provider' in locals() else 'unknown'})"
+            provider_label = provider if 'provider' in locals() else "unknown"
+            error_msg = f"live price unavailable (provider: {provider_label})"
+            LOGGER.error(
+                f"Forecast failed for {symbol}: {error_msg}",
+                extra={"symbol": symbol, "price": price, "provider": provider_label}
+            )
             return {
                 "ok": False,
                 "error": error_msg,
                 "symbol": symbol,
-                "provider": provider if 'provider' in locals() else "unknown",
+                "provider": provider_label,
             }
 
         # Get portfolio for PnL prediction
@@ -3117,10 +3122,13 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
         }
 
     except Exception as e:
+        error_str = str(e) if str(e) else f"{type(e).__name__}: (empty message)"
+        LOGGER.exception(f"Forecast exception for {symbol}: {error_str}")
         return {
             "ok": False,
-            "error": str(e),
+            "error": error_str,
             "symbol": symbol,
+            "exception_type": type(e).__name__,
         }
 
 
