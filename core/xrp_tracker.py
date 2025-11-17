@@ -25,8 +25,6 @@ def get_xrp_status() -> dict[str, Any]:
             "timestamp": float
         }
     """
-    from services.price_quorum import get_price_quorum
-    
     result = {
         "price": None,
         "change_24h_pct": None,
@@ -38,78 +36,80 @@ def get_xrp_status() -> dict[str, Any]:
     }
     
     try:
-        # Get XRP price
-        xrp_data = get_price_quorum("XRP", "crypto")
+        from core.price_quorum import get_price_quorum
+        from core.providers.crypto_providers import get_crypto_providers
         
-        if xrp_data and xrp_data.get("price"):
-            price = xrp_data["price"]
+        # Get XRP price
+        quorum = get_price_quorum()
+        providers = get_crypto_providers("XRP")
+        xrp_decision = quorum.get_price("XRP", providers, is_market_open=True)
+        
+        if xrp_decision and xrp_decision.price:
+            price = xrp_decision.price
             result["price"] = round(price, 4)
             
             # Calculate 24h change if available
-            if xrp_data.get("prev_close"):
-                change_pct = ((price - xrp_data["prev_close"]) / xrp_data["prev_close"]) * 100
+            if xrp_decision.prev_close:
+                change_pct = ((price - xrp_decision.prev_close) / xrp_decision.prev_close) * 100
                 result["change_24h_pct"] = round(change_pct, 2)
             
-            # Simple bullish eye logic
-            # Green = strong buy, Yellow = neutral, Red = caution
-            confidence = xrp_data.get("confidence", 0.5)
-            
+            # Calculate bullish eye and signal
             factors = []
-            signal_score = 0  # -1 to +1 scale
+            confidence = 0.0
             
             # Factor 1: Price momentum
-            if result["change_24h_pct"]:
-                if result["change_24h_pct"] > 5:
-                    factors.append("Strong upward momentum (+5%)")
-                    signal_score += 0.4
-                elif result["change_24h_pct"] > 2:
-                    factors.append("Positive momentum (+2%)")
-                    signal_score += 0.2
-                elif result["change_24h_pct"] < -5:
-                    factors.append("Sharp decline (-5%)")
-                    signal_score -= 0.4
-                elif result["change_24h_pct"] < -2:
-                    factors.append("Negative momentum (-2%)")
-                    signal_score -= 0.2
+            if result["change_24h_pct"] is not None:
+                change = result["change_24h_pct"]
+                if change > 5.0:
+                    factors.append("Strong momentum +5%")
+                    confidence += 0.3
+                elif change > 2.0:
+                    factors.append("Positive momentum +2%")
+                    confidence += 0.2
+                elif change < -5.0:
+                    factors.append("Weak momentum -5%")
+                    confidence -= 0.3
+                elif change < -2.0:
+                    factors.append("Negative momentum -2%")
+                    confidence -= 0.2
             
-            # Factor 2: Data confidence
-            if confidence > 0.8:
-                factors.append("High data confidence")
-                signal_score += 0.1
-            elif confidence < 0.5:
-                factors.append("Low data confidence")
-                signal_score -= 0.1
-            
-            # Factor 3: Price level analysis (simple)
-            if price > 1.0:
-                factors.append("Above $1 resistance")
-                signal_score += 0.1
-            elif price < 0.5:
-                factors.append("Below $0.50 support")
-                signal_score -= 0.1
-            
-            # Determine bullish eye and signal
-            if signal_score > 0.3:
-                result["bullish_eye"] = "🟢"
-                result["signal"] = "BUY"
-                result["confidence"] = min(0.9, 0.5 + signal_score)
-            elif signal_score < -0.3:
-                result["bullish_eye"] = "🔴"
-                result["signal"] = "SELL"
-                result["confidence"] = min(0.9, 0.5 + abs(signal_score))
-            elif abs(signal_score) > 0.1:
-                result["bullish_eye"] = "🟡"
-                result["signal"] = "HOLD"
-                result["confidence"] = 0.6
+            # Factor 2: Data quality (quorum confidence)
+            if xrp_decision.quorum_size >= 2:
+                factors.append(f"Strong quorum ({xrp_decision.quorum_size} providers)")
+                confidence += 0.2
             else:
-                result["bullish_eye"] = "🟡"
+                factors.append(f"Weak quorum ({xrp_decision.quorum_size} providers)")
+                confidence -= 0.1
+            
+            # Factor 3: Price levels (simple example)
+            if price > 2.0:
+                factors.append("Above $2.00")
+                confidence += 0.1
+            elif price < 0.50:
+                factors.append("Below $0.50")
+                confidence -= 0.1
+            
+            # Normalize confidence to 0-1 range
+            confidence = max(0.0, min(1.0, (confidence + 0.5)))
+            result["confidence"] = round(confidence, 2)
+            
+            # Determine signal based on confidence
+            if confidence >= 0.7:
+                result["signal"] = "BUY"
+                result["bullish_eye"] = "🟢"  # Green = bullish
+            elif confidence >= 0.4:
+                result["signal"] = "HOLD"
+                result["bullish_eye"] = "🟡"  # Yellow = neutral
+            elif confidence >= 0.2:
                 result["signal"] = "WAIT"
-                result["confidence"] = 0.3
+                result["bullish_eye"] = "🟡"  # Yellow = cautious
+            else:
+                result["signal"] = "SELL"
+                result["bullish_eye"] = "🔴"  # Red = bearish
             
             result["factors"] = factors
-            
+    
     except Exception as e:
         logger.error(f"XRP tracker error: {e}")
-        result["factors"] = [f"Error: {str(e)[:50]}"]
     
     return result

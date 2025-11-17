@@ -1,6 +1,6 @@
 """
 World Context Module
-Provides SPY, VIX, market mood, and news aggregation for cockpit display.
+Aggregates global market context including SPY, VIX, market mood, and news.
 """
 
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def get_world_context() -> dict[str, Any]:
     """
-    Get comprehensive world market context.
+    Get current world market context.
     
     Returns:
         {
@@ -23,7 +23,7 @@ def get_world_context() -> dict[str, Any]:
             "timestamp": float
         }
     """
-    from services.price_quorum import get_price_quorum
+    from core.price_quorum import get_price_quorum
     
     result = {
         "spy": {"price": None, "change_pct": None, "provider": "unavailable"},
@@ -35,23 +35,44 @@ def get_world_context() -> dict[str, Any]:
     
     # Get SPY price
     try:
-        spy_data = get_price_quorum("SPY", "stock")
-        if spy_data and spy_data.get("price"):
-            result["spy"]["price"] = spy_data["price"]
-            result["spy"]["provider"] = spy_data.get("provider", "unknown")
-            # Calculate change % if we have previous close
-            if spy_data.get("prev_close"):
-                change_pct = ((spy_data["price"] - spy_data["prev_close"]) / spy_data["prev_close"]) * 100
+        from core.price_quorum import get_price_quorum
+        from core.providers.stock_providers import get_stock_providers
+        
+        quorum = get_price_quorum()
+        providers = get_stock_providers("SPY")
+        spy_decision = quorum.get_price("SPY", providers, is_market_open=True)
+        
+        if spy_decision and spy_decision.price:
+            price = spy_decision.price
+            result["spy"]["price"] = round(price, 2)
+            result["spy"]["provider"] = spy_decision.provider_label
+            
+            # Calculate change percentage if prev_close available
+            if spy_decision.prev_close:
+                prev = spy_decision.prev_close
+                change_pct = ((price - prev) / prev) * 100
                 result["spy"]["change_pct"] = round(change_pct, 2)
     except Exception as e:
         logger.warning(f"Could not get SPY price: {e}")
     
-    # Get VIX level (mock for now - would integrate with real provider)
+    # Get VIX level
     try:
-        vix_data = get_price_quorum("VIX", "stock")
-        if vix_data and vix_data.get("price"):
-            vix_level = vix_data["price"]
+        from core.price_quorum import get_price_quorum
+        from core.providers.stock_providers import get_stock_providers
+        
+        quorum = get_price_quorum()
+        providers = get_stock_providers("VIX")
+        vix_decision = quorum.get_price("VIX", providers, is_market_open=True)
+        
+        if vix_decision and vix_decision.price:
+            vix_level = vix_decision.price
             result["vix"]["level"] = round(vix_level, 2)
+            
+            # Calculate VIX change if prev_close available
+            if vix_decision.prev_close:
+                prev = vix_decision.prev_close
+                change = vix_level - prev
+                result["vix"]["change"] = round(change, 2)
             
             # Determine VIX status
             if vix_level < 15:
@@ -63,65 +84,69 @@ def get_world_context() -> dict[str, Any]:
             else:
                 result["vix"]["status"] = "high-fear"
     except Exception as e:
-        logger.warning(f"Could not get VIX level: {e}")
+        logger.error(f"Could not get VIX level: {e}")
     
-    # Calculate market mood
+    # Calculate market mood based on SPY and VIX
     try:
-        spy_change = result["spy"].get("change_pct", 0) or 0
-        vix_level = result["vix"].get("level", 20) or 20
+        spy_price = result["spy"]["price"]
+        spy_change = result["spy"]["change_pct"]
+        vix_level = result["vix"]["level"]
         
-        # Simple mood calculation
-        mood_score = 50.0  # Neutral baseline
+        factors = []
+        score = 50.0  # Neutral baseline
         
-        # SPY movement impact
-        mood_score += spy_change * 5  # +1% SPY = +5 mood points
+        if spy_change is not None:
+            if spy_change > 1.0:
+                score += 20
+                factors.append("SPY strong up")
+            elif spy_change > 0:
+                score += 10
+                factors.append("SPY up")
+            elif spy_change < -1.0:
+                score -= 20
+                factors.append("SPY strong down")
+            elif spy_change < 0:
+                score -= 10
+                factors.append("SPY down")
         
-        # VIX impact (inverse - lower VIX = better mood)
-        if vix_level < 15:
-            mood_score += 10
-        elif vix_level > 30:
-            mood_score -= 15
+        if vix_level is not None:
+            if vix_level < 15:
+                score += 10
+                factors.append("VIX calm")
+            elif vix_level > 30:
+                score -= 20
+                factors.append("VIX high")
+            elif vix_level > 20:
+                score -= 10
+                factors.append("VIX elevated")
         
-        # Clamp to 0-100
-        mood_score = max(0, min(100, mood_score))
+        # Clamp score to 0-100
+        score = max(0.0, min(100.0, score))
         
         # Determine sentiment
-        if mood_score >= 65:
+        if score >= 70:
             sentiment = "bullish"
-        elif mood_score >= 35:
+        elif score >= 40:
             sentiment = "neutral"
         else:
             sentiment = "bearish"
         
         result["market_mood"] = {
             "sentiment": sentiment,
-            "score": round(mood_score, 1),
-            "factors": [
-                f"SPY {'+' if spy_change >= 0 else ''}{spy_change:.2f}%" if spy_change else "SPY flat",
-                f"VIX {vix_level:.1f} ({result['vix']['status']})" if vix_level else "VIX unavailable"
-            ]
+            "score": round(score, 1),
+            "factors": factors
         }
     except Exception as e:
-        logger.warning(f"Could not calculate market mood: {e}")
+        logger.error(f"Could not calculate market mood: {e}")
+    
+    # Get news summary (placeholder for now - would integrate with news provider)
+    result["news_summary"] = get_news_summary()
     
     return result
 
 
 def get_news_summary() -> dict[str, Any]:
-    """
-    Get aggregated news summary with sentiment distribution.
-    
-    Returns:
-        {
-            "total": int,
-            "bullish": int,
-            "bearish": int,
-            "neutral": int,
-            "top_stories": [{"title": str, "sentiment": str, "source": str, "timestamp": float}, ...]
-        }
-    """
-    # This would integrate with actual news feed
-    # For now, return empty structure
+    """Get market news summary. Placeholder for future news integration."""
     return {
         "total": 0,
         "bullish": 0,
