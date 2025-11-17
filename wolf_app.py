@@ -1,234 +1,6 @@
 #!/usr/bin/env python3
 # Clean WOLF-only FastAPI app (standalone module)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    return {"ok": False, "error": "Trade not found"}            return {"ok": True, "trade": trade}                trade["status"] = "CLOSED"            if kwargs.get("exit_price"):            # Update status if exit price provided                trade["pnl_pct"] = (trade["pnl"] / (trade["quantity"] * trade["entry_price"])) * 100            if trade.get("pnl") and trade.get("quantity") and trade.get("entry_price"):            # Recalculate P&L %                    trade[key] = value                if key in trade:            for key, value in kwargs.items():        if trade["id"] == trade_id:    for trade in _TRADE_JOURNAL:    """Update a trade entry."""def update_trade(trade_id: int, **kwargs) -> dict[str, Any]:    }        "average_pnl": round(total_pnl / total_trades, 2) if total_trades > 0 else 0        "total_pnl": round(total_pnl, 2),        "win_rate": round(win_rate, 2),        "closed_trades": total_trades,        "open_trades": len([t for t in symbol_trades if t["status"] == "OPEN"]),        "total_trades": total_trades,        "symbol": symbol,    return {    total_pnl = sum(t["pnl"] for t in closed_trades)    win_rate = (len(winners) / total_trades * 100) if total_trades > 0 else 0    winners = [t for t in closed_trades if t["pnl"] > 0]    total_trades = len(closed_trades)        }            "win_rate": 0            "closed_trades": 0,            "open_trades": len(symbol_trades),            "total_trades": len(symbol_trades),            "symbol": symbol,        return {    if not closed_trades:    closed_trades = [t for t in symbol_trades if t["status"] == "CLOSED" and t["pnl"] is not None]        }            "total_pnl": 0            "win_rate": 0,            "total_trades": 0,            "symbol": symbol,        return {    if not symbol_trades:    symbol_trades = [t for t in _TRADE_JOURNAL if t["symbol"] == symbol]    """Get statistics for a specific symbol."""def get_symbol_statistics(symbol: str) -> dict[str, Any]:    }        "worst_trade": worst_trade        "best_trade": best_trade,        "average_hold_time_hours": round(average_hold_time, 2),        "profit_factor": round(abs(avg_winner / avg_loser), 2) if avg_loser != 0 else 0,        "average_loser": round(avg_loser, 2),        "average_winner": round(avg_winner, 2),        "average_pnl": round(average_pnl, 2),        "total_pnl": round(total_pnl, 2),        "win_rate": round(win_rate, 2),        "losers": len(losers),        "winners": len(winners),        "closed_trades": total_trades,        "open_trades": len([t for t in _TRADE_JOURNAL if t["status"] == "OPEN"]),        "total_trades": total_trades,    return {    avg_loser = sum(t["pnl"] for t in losers) / len(losers) if losers else 0    avg_winner = sum(t["pnl"] for t in winners) / len(winners) if winners else 0    # Average winner/loser    worst_trade = min(closed_trades, key=lambda x: x["pnl"]) if closed_trades else None    best_trade = max(closed_trades, key=lambda x: x["pnl"]) if closed_trades else None    # Best and worst trades    average_hold_time = sum(hold_times) / len(hold_times) if hold_times else 0    hold_times = [t["hold_time_hours"] for t in closed_trades if t["hold_time_hours"]]    # Average hold time    average_pnl = total_pnl / total_trades if total_trades > 0 else 0    total_pnl = sum(t["pnl"] for t in closed_trades)    win_rate = (len(winners) / total_trades * 100) if total_trades > 0 else 0    losers = [t for t in closed_trades if t["pnl"] < 0]    winners = [t for t in closed_trades if t["pnl"] > 0]    total_trades = len(closed_trades)    # Calculate metrics        }            "total_pnl": 0            "average_pnl": 0,            "win_rate": 0,            "open_trades": len([t for t in _TRADE_JOURNAL if t["status"] == "OPEN"]),            "closed_trades": 0,            "total_trades": len(_TRADE_JOURNAL),        return {    if not closed_trades:    closed_trades = [t for t in _TRADE_JOURNAL if t["status"] == "CLOSED" and t["pnl"] is not None]        }            "worst_trade": None            "best_trade": None,            "average_hold_time_hours": 0,            "total_pnl": 0,            "average_pnl": 0,            "win_rate": 0,            "total_trades": 0,        return {    if not _TRADE_JOURNAL:    """        Win rate, average gain/loss, best/worst trades, etc.    Returns:    Calculate overall trade statistics.    """def get_trade_statistics() -> dict[str, Any]:    return trades[:limit]    trades = sorted(trades, key=lambda x: x["timestamp"], reverse=True)    # Return most recent first        trades = [t for t in trades if t["status"] == status]    if status:        trades = [t for t in trades if t["symbol"] == symbol]    if symbol:    trades = _TRADE_JOURNAL    """        List of trades    Returns:        status: Filter by status (OPEN/CLOSED)        limit: Max number of trades to return        symbol: Filter by symbol (optional)    Args:    Get trades from journal.    """) -> list[dict[str, Any]]:    status: str | None = None    limit: int = 100,    symbol: str | None = None,def get_trade_journal(    return trade    _TRADE_ID_COUNTER += 1    _TRADE_JOURNAL.append(trade)    }        "status": "CLOSED" if exit_price else "OPEN"        "timestamp": ts,        "confidence": confidence,        "notes": notes,        "strategy": strategy or "ghost-ai-signal",        "hold_time_hours": hold_time_hours,        "pnl_pct": ((pnl / (quantity * entry_price)) * 100) if pnl and quantity and entry_price else None,        "pnl": pnl,        "exit_price": exit_price,        "entry_price": entry_price,        "quantity": quantity,        "action": action,        "symbol": symbol,        "id": _TRADE_ID_COUNTER,    trade = {    ts = timestamp or time.time()    global _TRADE_ID_COUNTER    """        Trade entry with ID    Returns:        timestamp: Unix timestamp (defaults to now)        confidence: Model confidence at entry        notes: Additional notes        strategy: Trading strategy used        hold_time_hours: How long position was held        pnl: Profit/loss ($)        exit_price: Exit price (if closed)        entry_price: Entry price        quantity: Number of shares/coins        action: BUY or SELL        symbol: Stock/crypto ticker    Args:    Log a trade to the journal.    """) -> dict[str, Any]:    timestamp: float | None = None    confidence: float | None = None,    notes: str | None = None,    strategy: str | None = None,    hold_time_hours: float | None = None,    pnl: float | None = None,    exit_price: float | None = None,    entry_price: float,    quantity: float,    action: str,  # "BUY" or "SELL"    symbol: str,def log_trade(_TRADE_ID_COUNTER = 1_TRADE_JOURNAL: list[dict[str, Any]] = []# In-memory storage (production would use database)from typing import Anyimport time"""Tracks all trades with entry/exit, P&L, notes, and performance metrics.
 import asyncio
 import atexit
 import contextvars
@@ -3232,102 +3004,9 @@ def _compute_forecast_48h_metrics(symbol: str, window: int = 30) -> dict[str, An
         }
 
 
-def _calculate_entry_exit_targets(current_price: float, predicted_price: float, confidence: float) -> dict[str, Any]:
-    """
-    Calculate optimal entry, exit, stop-loss, and take-profit levels.
-    
-    Returns:
-        {
-            "entry_target": float,  # Optimal entry price
-            "exit_target_1": float,  # First take-profit (50% position)
-            "exit_target_2": float,  # Second take-profit (rest)
-            "stop_loss": float,  # Risk management exit
-            "risk_reward_ratio": float,  # R/R ratio
-            "position_size_pct": float  # % of portfolio (based on confidence)
-        }
-    """
-    if not current_price or not predicted_price:
-        return {}
-    
-    # Calculate gain/loss percentage
-    gain_pct = ((predicted_price - current_price) / current_price) * 100
-    
-    if gain_pct > 0:  # Bullish
-        # Entry: Current price or slight pullback
-        entry_target = current_price * 0.995  # 0.5% below current
-        
-        # Take profit levels
-        exit_target_1 = current_price + (predicted_price - current_price) * 0.5  # 50% of move
-        exit_target_2 = predicted_price  # Full target
-        
-        # Stop loss: 2% below entry for high confidence, 3% for medium
-        stop_loss_pct = 0.02 if confidence > 0.75 else 0.03
-        stop_loss = entry_target * (1 - stop_loss_pct)
-        
-        # Risk/reward ratio
-        risk = entry_target - stop_loss
-        reward = predicted_price - entry_target
-        risk_reward_ratio = reward / risk if risk > 0 else 0
-        
-    else:  # Bearish (short/sell)
-        entry_target = current_price * 1.005  # 0.5% above current (for shorts)
-        exit_target_1 = current_price + (predicted_price - current_price) * 0.5
-        exit_target_2 = predicted_price
-        
-        stop_loss_pct = 0.02 if confidence > 0.75 else 0.03
-        stop_loss = entry_target * (1 + stop_loss_pct)
-        
-        risk = stop_loss - entry_target
-        reward = entry_target - predicted_price
-        risk_reward_ratio = reward / risk if risk > 0 else 0
-    
-    # Position sizing based on confidence (Kelly Criterion simplified)
-    # High confidence = larger position, low confidence = smaller
-    if confidence >= 0.85:
-        position_size_pct = 10.0  # 10% of portfolio
-    elif confidence >= 0.75:
-        position_size_pct = 5.0   # 5%
-    elif confidence >= 0.70:
-        position_size_pct = 3.0   # 3%
-    else:
-        position_size_pct = 1.0   # 1% (minimum)
-    
-    return {
-        "entry_target": round(entry_target, 2),
-        "exit_target_1": round(exit_target_1, 2),
-        "exit_target_2": round(exit_target_2, 2),
-        "stop_loss": round(stop_loss, 2),
-        "risk_reward_ratio": round(risk_reward_ratio, 2),
-        "position_size_pct": position_size_pct
-    }
-
-
-def _detect_market_condition(symbol: str) -> str:
-    """
-    Detect current market condition: BULL, BEAR, or SIDEWAYS.
-    Based on momentum and volatility indicators.
-    
-    Returns: "BULL", "BEAR", "SIDEWAYS", or "UNKNOWN"
-    """
-    try:
-        signal = _evaluate_signal(symbol)
-        momentum = signal.get("fused_score", 0)
-        
-        # Simple momentum-based detection
-        if momentum > 0.5:
-            return "BULL"
-        elif momentum < -0.5:
-            return "BEAR"
-        else:
-            return "SIDEWAYS"
-    except Exception:
-        return "UNKNOWN"
-
-
 def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
     """
     Generate a new 48h forecast using current price and model.
-    NOW WITH: Entry/exit targets, stop-loss, take-profit, position sizing, market conditions.
     Stores in database and returns forecast details.
     """
     try:
@@ -3395,50 +3074,14 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
         # Get portfolio for PnL prediction
         qty, avg_cost = _get_portfolio_qty_and_avg()  # Use helper to get portfolio data
 
-        # USE GHOST'S AI BRAIN - Ensemble forecaster (4 models)
-        try:
-            from core.ensemble_forecaster import get_ensemble_forecaster
-            ensemble = get_ensemble_forecaster()
-            
-            # Get news sentiment for ensemble
-            sentiment_score = 0.0
-            try:
-                from core.news_sentiment import fetch_news_sentiment
-                news = fetch_news_sentiment(symbol, limit=5)
-                if news.get("ok"):
-                    sentiment_score = news.get("sentiment_score", 0.0)
-            except Exception:
-                pass
-            
-            # Generate ensemble forecast (combines 4 models)
-            ensemble_result = ensemble.forecast(
-                symbol=symbol,
-                current_price=price,
-                sentiment=sentiment_score,
-                horizon_hours=48
-            )
-            
-            price_pred_mid = ensemble_result["ensemble_prediction"]
-            confidence = ensemble_result["confidence"]
-            model = "ghost-ai-ensemble-4x"
-            
-            # Calculate price range from ensemble std
-            model_preds = list(ensemble_result["model_predictions"].values())
-            std_dev = np.std(model_preds) if len(model_preds) > 1 else (price * 0.02)
-            price_pred_lo = price_pred_mid - (std_dev * 1.5)
-            price_pred_hi = price_pred_mid + (std_dev * 1.5)
-            
-        except Exception as e:
-            LOGGER.warning(f"Ensemble forecaster failed for {symbol}, using fallback: {e}")
-            # Fallback: simple volatility model
-            sigma_daily = float(PRED_SIGMA_DAILY)
-            vol_48h = sigma_daily * math.sqrt(2)
-            
-            price_pred_mid = price * (1.0 + (vol_48h * 0.1))
-            price_pred_lo = price * (1.0 - vol_48h)
-            price_pred_hi = price * (1.0 + vol_48h)
-            confidence = 0.50  # Low confidence for fallback
-            model = "simple-vol-fallback"
+        # Simple volatility-based forecast model
+        # In production, you'd use GPT-4o or ensemble model
+        sigma_daily = float(PRED_SIGMA_DAILY)
+        vol_48h = sigma_daily * math.sqrt(2)  # 2-day volatility
+
+        price_pred_mid = price * (1.0 + (vol_48h * 0.1))  # Slight upward bias
+        price_pred_lo = price * (1.0 - vol_48h)
+        price_pred_hi = price * (1.0 + vol_48h)
 
         # PnL prediction
         if qty > 0:
@@ -3448,45 +3091,11 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
         else:
             pnl_pred_mid = None
 
-        # Adjust confidence with learning loop (auto-tuned based on accuracy)
+        # Confidence based on data availability, nudged by research aggregate if available
+        confidence = 0.75 if provider in ["polygon", "alphavantage"] else 0.50
+        research_features: dict[str, Any] = {}
         try:
-            from core.learning_loop import get_learning_loop
-            learning = get_learning_loop()
-            current_config = learning.get_current_config()
-            
-            # Apply learned bias correction
-            bias_correction = current_config.get("bias_correction", 0.0)
-            price_pred_mid = price_pred_mid * (1.0 + bias_correction)
-            
-            # Apply learned confidence threshold
-            learned_threshold = current_config.get("confidence_threshold", 0.7)
-            if confidence < learned_threshold:
-                # Ghost learned this confidence level is too risky
-                confidence = max(0.0, confidence - 0.10)
-        except Exception:
-            pass
-
-        # Adjust confidence with social sentiment
-        try:
-            from core.social_sentiment import adjust_confidence_with_social
-            confidence, social_reason = adjust_confidence_with_social(symbol, confidence)
-        except Exception:
-            social_reason = "No social data"
-
-        # Adjust confidence with economic calendar
-        try:
-            from core.economic_calendar import adjust_confidence_with_calendar
-            confidence, calendar_reason = adjust_confidence_with_calendar(symbol, confidence)
-        except Exception:
-            calendar_reason = "No calendar risk"
-
-        # Collect research features
-        research_features: dict[str, Any] = {
-            "model": model,
-            "social_adjustment": social_reason,
-            "calendar_adjustment": calendar_reason
-        }
-        try:
+            # Include recent news sentiment score
             ns = (get_wolf_news(limit=3).get("news_signal") or {}).get("score")
             research_features["news_score"] = ns
         except Exception:
@@ -3497,8 +3106,20 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                 research_features["filings"] = f
         except Exception:
             pass
+        try:
+            if RESEARCH_BLUEPRINT_ON:
+                snap = build_research_snapshot(symbol, asset_type="stock")
+                agg = snap.get("aggregate") or {}
+                research_features["research_aggregate"] = agg
+                # Nudge confidence towards aggregate confidence (blend 80/20 if numeric)
+                rc = agg.get("confidence") if isinstance(agg, dict) else None
+                if isinstance(rc, (int, float)):
+                    confidence = max(0.3, min(0.95, 0.8 * confidence + 0.2 * (float(rc) / 100.0)))
+        except Exception:
+            pass
 
         # Store forecast
+        model = "simple-vol"  # Change to "gpt-4o" when integrated
         forecast_id = _store_forecast_48h(
             symbol=symbol,
             price_now=price,
@@ -3516,22 +3137,6 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
             },
         )
 
-        # Calculate entry/exit targets and position sizing
-        targets = _calculate_entry_exit_targets(price, price_pred_mid, confidence)
-        
-        # Detect market condition
-        market_condition = _detect_market_condition(symbol)
-        
-        # Calculate gain potential
-        gain_pct = ((price_pred_mid - price) / price * 100) if price else 0
-        
-        # Get trade signal
-        try:
-            signal = _evaluate_signal(symbol)
-            trade_signal = signal.get("action") if signal else None
-        except Exception:
-            trade_signal = None
-
         return {
             "ok": True,
             "forecast_id": forecast_id,
@@ -3544,18 +3149,6 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
             "pnl_pred_mid": round(pnl_pred_mid, 2) if pnl_pred_mid else None,
             "confidence": confidence,
             "model": model,
-            "trade_signal": trade_signal,
-            "gain_potential_pct": round(gain_pct, 2),
-            "market_condition": market_condition,
-            "entry_target": targets.get("entry_target"),
-            "exit_targets": {
-                "take_profit_1": targets.get("exit_target_1"),
-                "take_profit_2": targets.get("exit_target_2")
-            },
-            "stop_loss": targets.get("stop_loss"),
-            "risk_reward_ratio": targets.get("risk_reward_ratio"),
-            "position_size_pct": targets.get("position_size_pct"),
-            "timeframe": "48h-7d",
         }
 
     except Exception as e:
@@ -3818,54 +3411,6 @@ async def _on_startup():
             )
         except Exception as e:
             LOGGER.exception("stage3_init_failed", extra={"component": "startup", "error": str(e)})
-    
-    # Start SL/TP monitor (live stop-loss/take-profit monitoring)
-    try:
-        from core.sl_tp_monitor import start_sl_tp_monitor
-        asyncio.create_task(start_sl_tp_monitor())
-        LOGGER.info("sl_tp_monitor_started", extra={"component": "startup", "interval": "60s"})
-    except Exception as e:
-        LOGGER.exception("sl_tp_monitor_init_failed", extra={"component": "startup", "error": str(e)})
-    
-    # Start continuous learning loop (24/7 self-improvement)
-    try:
-        from core.learning_loop import run_learning_cycle
-        async def _learning_loop():
-            await asyncio.sleep(60)  # Initial delay
-            while True:
-                try:
-                    result = run_learning_cycle(auto_apply=True)
-                    if result.get("adjustments_made"):
-                        LOGGER.info(f"Ghost learned: {result.get('summary')}")
-                except Exception as e:
-                    LOGGER.error(f"Learning loop error: {e}")
-                await asyncio.sleep(3600)  # Run every hour
-        
-        asyncio.create_task(_learning_loop())
-        LOGGER.info("learning_loop_started", extra={"component": "startup", "interval": "1h"})
-    except Exception as e:
-        LOGGER.exception("learning_loop_init_failed", extra={"component": "startup", "error": str(e)})
-    
-    # Start continuous news monitoring (24/7 sentiment tracking)
-    try:
-        from core.news_sentiment import fetch_news_sentiment
-        async def _news_monitor():
-            await asyncio.sleep(120)  # Initial delay
-            watchlist = ["AAPL", "TSLA", "NVDA", "AMD", "MSFT", "GOOGL", "AMZN", "META"]
-            while True:
-                try:
-                    for symbol in watchlist:
-                        sentiment = fetch_news_sentiment(symbol, limit=5)
-                        if sentiment and abs(sentiment.get("sentiment_score", 0)) > 0.5:
-                            LOGGER.info(f"News sentiment: {symbol} = {sentiment.get('sentiment_score'):.2f}")
-                except Exception as e:
-                    LOGGER.error(f"News monitor error: {e}")
-                await asyncio.sleep(900)  # Run every 15 minutes
-        
-        asyncio.create_task(_news_monitor())
-        LOGGER.info("news_monitor_started", extra={"component": "startup", "interval": "15min"})
-    except Exception as e:
-        LOGGER.exception("news_monitor_init_failed", extra={"component": "startup", "error": str(e)})
 
     # Stage 4: Initialize Portfolio Optimization & Advanced Strategies
     if STAGE4_ENABLED:
@@ -4510,13 +4055,13 @@ STATE: dict[str, Any] = {
     "avg_cost": round(DEFAULT_AVG, 2) if DEFAULT_AVG else 0.0,
     # UI compatibility state
     "active": True,
-    "mode": "live",  # Ghost is ALWAYS live - no simulation mode
+    "mode": "live",  # live|sim
     # Cash balance (unallocated) in account currency
     "cash": 0.0,
 }
 
-# Ghost runs in LIVE MODE ONLY - 24/7 real-time AI trading master
-# Removed SIM_MODE - Ghost is always watching live markets
+# Simulation mode flag (set via environment variable SIM_MODE=1 for simulation)
+SIM_MODE = os.getenv("SIM_MODE", "0").strip() in ("1", "true", "yes")
 
 PRICE_CACHE: dict[str, dict[str, Any]] = {}  # symbol -> {price, prev_close, provider, ts}
 NEWS_CACHE: dict[str, Any] = {"items": [], "ts": 0.0}
@@ -5971,8 +5516,9 @@ async def api_predict_run(
             f"Predictions unavailable due to configuration issues: {degraded_reason}"
         )
 
-    # Ghost runs LIVE ONLY - always using real-time market data
-    
+    if SIM_MODE:
+        raise HTTPException(400, "Predictions require live mode (SIM_MODE=0)")
+
     symbol = body.symbol.upper().strip()
     if not symbol:
         raise HTTPException(400, "symbol required")
@@ -22292,496 +21838,231 @@ async def risk_scan_exits(credentials: HTTPAuthorizationCredentials | None = AUT
         return {"ok": False, "error": str(e)}
 
 
-# ===== NEW TIER 1-3 ENDPOINTS =====
+# ========== NEW COCKPIT DATA ENDPOINTS ==========
 
-@APP.get("/api/portfolio/summary")
-async def api_portfolio_summary():
-    """Get portfolio summary with P&L, winners/losers, win rate."""
+@APP.get("/api/world/context")
+async def api_world_context():
+    """Get world market context (SPY, VIX, market mood, news)."""
     try:
-        from core.portfolio_tracker import get_portfolio_summary
-        
-        # Get current prices for all positions
-        portfolio = get_portfolio_summary({})  # Will fetch prices inside
-        
-        return {
-            "ok": True,
-            "portfolio": portfolio
-        }
+        from core.world_context import get_world_context
+        return get_world_context()
     except Exception as e:
-        LOGGER.error(f"Failed to get portfolio summary: {e}")
+        LOGGER.error(f"World context failed: {e}")
+        return {
+            "spy": {"price": None, "change_pct": None, "provider": "error"},
+            "vix": {"level": None, "change": None, "status": "error"},
+            "market_mood": {"sentiment": "error", "score": 0, "factors": [str(e)]},
+            "news_summary": {"total": 0, "bullish": 0, "bearish": 0, "top_stories": []},
+            "timestamp": time.time(),
+            "error": str(e)
+        }
+
+
+@APP.get("/api/accuracy/ledger")
+async def api_accuracy_ledger():
+    """Get accuracy tracking data for predictions."""
+    try:
+        from core.accuracy_tracker import AccuracyTracker
+        tracker = AccuracyTracker()
+        report = tracker.get_accuracy_report(days=7)
+        return {"ok": True, "report": report, "timestamp": time.time()}
+    except Exception as e:
+        LOGGER.error(f"Accuracy ledger failed: {e}")
+        return {
+            "ok": False,
+            "report": {
+                "total_forecasts": 0,
+                "completed": 0,
+                "pending": 0,
+                "mape": 0,
+                "rmse": 0,
+                "bias": 0,
+                "by_symbol": []
+            },
+            "error": str(e),
+            "timestamp": time.time()
+        }
+
+
+@APP.get("/api/regime/current")
+async def api_regime_current():
+    """Get current market regime detection."""
+    try:
+        from core.regime_detector import RegimeDetector
+        detector = RegimeDetector()
+        regime_data = {
+            "regime": detector.current_regime,
+            "confidence": detector.confidence,
+            "timestamp": time.time()
+        }
+        return {"ok": True, **regime_data}
+    except Exception as e:
+        LOGGER.error(f"Regime detection failed: {e}")
+        return {
+            "ok": False,
+            "regime": "UNKNOWN",
+            "confidence": 0.0,
+            "error": str(e),
+            "timestamp": time.time()
+        }
+
+
+@APP.get("/api/risk/status")
+async def api_risk_status():
+    """Get comprehensive risk status and limits."""
+    try:
+        from core.risk_engine import RiskEngine
+        engine = RiskEngine()
+        status = {
+            "portfolio_value": engine.portfolio_value,
+            "peak_value": engine.peak_value,
+            "current_drawdown_pct": engine.current_drawdown_pct,
+            "max_drawdown_limit": engine.max_drawdown_pct,
+            "within_limits": engine.current_drawdown_pct < engine.max_drawdown_pct,
+            "timestamp": time.time()
+        }
+        return {"ok": True, **status}
+    except Exception as e:
+        LOGGER.error(f"Risk status failed: {e}")
+        return {
+            "ok": False,
+            "portfolio_value": 0,
+            "peak_value": 0,
+            "current_drawdown_pct": 0,
+            "error": str(e),
+            "timestamp": time.time()
+        }
+
+
+@APP.get("/api/goals/all")
+async def api_goals_all():
+    """Get all goals with progress tracking."""
+    try:
+        from core.goals_tracker import GoalsTracker
+        tracker = GoalsTracker()
+        goals = tracker.get_all_goals()
+        return {"ok": True, "goals": goals, "timestamp": time.time()}
+    except Exception as e:
+        LOGGER.error(f"Goals fetch failed: {e}")
+        return {
+            "ok": False,
+            "goals": {
+                "daily": {"target": 0, "current": 0, "progress_pct": 0, "remaining": 0},
+                "weekly": {"target": 0, "current": 0, "progress_pct": 0, "remaining": 0},
+                "monthly": {"target": 0, "current": 0, "progress_pct": 0, "remaining": 0},
+                "yearly": {"target": 0, "current": 0, "progress_pct": 0, "remaining": 0}
+            },
+            "error": str(e),
+            "timestamp": time.time()
+        }
+
+
+@APP.post("/api/goals/set")
+async def api_goals_set(period: str, target_amount: float):
+    """Set a goal for a specific period."""
+    try:
+        from core.goals_tracker import GoalsTracker
+        tracker = GoalsTracker()
+        result = tracker.set_goal(period, target_amount)
+        return {"ok": True, **result}
+    except Exception as e:
+        LOGGER.error(f"Goal set failed: {e}")
         return {"ok": False, "error": str(e)}
 
 
-@APP.post("/api/portfolio/position")
-async def api_portfolio_add_position(
-    symbol: str,
-    quantity: float,
-    entry_price: float
-):
-    """Add a position to the portfolio."""
+@APP.get("/api/xrp/tracker")
+async def api_xrp_tracker():
+    """Get XRP bullish eye tracker status."""
     try:
-        from core.portfolio_tracker import add_position
-        
-        result = add_position(symbol, quantity, entry_price)
-        
-        return {
-            "ok": True,
-            "position": result
-        }
+        from core.xrp_tracker import get_xrp_status
+        return {"ok": True, **get_xrp_status()}
     except Exception as e:
-        LOGGER.error(f"Failed to add position: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.delete("/api/portfolio/position/{symbol}")
-async def api_portfolio_remove_position(
-    symbol: str,
-    quantity: float
-):
-    """Remove or reduce a position."""
-    try:
-        from core.portfolio_tracker import remove_position
-        
-        result = remove_position(symbol, quantity)
-        
+        LOGGER.error(f"XRP tracker failed: {e}")
         return {
-            "ok": True,
-            "realized_pnl": result
+            "ok": False,
+            "price": None,
+            "change_24h_pct": None,
+            "bullish_eye": "⚠️",
+            "signal": "ERROR",
+            "confidence": 0.0,
+            "factors": [str(e)],
+            "error": str(e),
+            "timestamp": time.time()
         }
-    except Exception as e:
-        LOGGER.error(f"Failed to remove position: {e}")
-        return {"ok": False, "error": str(e)}
 
 
-@APP.get("/api/portfolio/position/{symbol}")
-async def api_portfolio_get_position(symbol: str):
-    """Get specific position P&L."""
+@APP.get("/api/vip/coins")
+async def api_vip_coins():
+    """Get VIP coins status (WEPE, LILPEPE, DORKL, SLOTH, APC)."""
     try:
-        from core.portfolio_tracker import calculate_pnl
-        
-        # Get current price
-        forecast = _generate_48h_forecast(symbol)
-        current_price = forecast.get("price_now")
-        
-        if not current_price:
-            return {"ok": False, "error": "Could not get current price"}
-        
-        pnl = calculate_pnl(symbol, current_price)
-        
-        return {
-            "ok": True,
-            "symbol": symbol,
-            "pnl": pnl
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get position P&L: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/risk/dashboard")
-async def api_risk_dashboard():
-    """Get comprehensive risk metrics for portfolio."""
-    try:
-        from core.portfolio_tracker import get_portfolio
-        from core.risk_dashboard import calculate_portfolio_risk
-        
-        # Get positions
-        positions = get_portfolio()
-        
-        if not positions:
-            return {
-                "ok": True,
-                "risk": {
-                    "total_exposure_pct": 0,
-                    "risk_level": "NONE",
-                    "message": "No positions"
-                }
+        from core.crypto.vip_providers import get_vip_provider_health
+        health = get_vip_provider_health()
+        vip_symbols = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
+        coins_status = []
+        for symbol in vip_symbols:
+            coin_data = {
+                "symbol": symbol,
+                "price": None,
+                "change_24h_pct": None,
+                "status": "NO_DATA",
+                "provider": "unavailable"
             }
-        
-        # Get current prices and forecasts
-        current_prices = {}
-        forecasts = {}
-        
-        for symbol in positions.keys():
-            forecast = _generate_48h_forecast(symbol)
-            if forecast.get("ok") is not False:
-                current_prices[symbol] = forecast.get("price_now")
-                forecasts[symbol] = forecast
-        
-        # Calculate risk metrics
-        risk_metrics = calculate_portfolio_risk(positions, current_prices, forecasts)
-        
-        return {
-            "ok": True,
-            "risk": risk_metrics
+            if health.get("coins_with_prices") and symbol in health.get("coins_with_prices", []):
+                coin_data["status"] = "ACTIVE"
+            coins_status.append(coin_data)
+        return {"ok": True, "coins": coins_status, "health": health, "timestamp": time.time()}
+    except Exception as e:
+        LOGGER.error(f"VIP coins failed: {e}")
+        return {"ok": False, "coins": [], "error": str(e), "timestamp": time.time()}
+
+
+@APP.get("/api/portfolio/positions")
+async def api_portfolio_positions():
+    """Get current portfolio positions."""
+    try:
+        from core.portfolio_tracker import _PORTFOLIO
+        positions = []
+        for symbol, pos_data in _PORTFOLIO.items():
+            positions.append({
+                "symbol": symbol,
+                "quantity": pos_data["quantity"],
+                "entry_price": pos_data["entry_price"],
+                "current_price": None,
+                "pnl": None,
+                "pnl_pct": None
+            })
+        return {"ok": True, "positions": positions, "count": len(positions), "timestamp": time.time()}
+    except Exception as e:
+        LOGGER.error(f"Portfolio positions failed: {e}")
+        return {"ok": False, "positions": [], "error": str(e), "timestamp": time.time()}
+
+
+@APP.get("/api/admin/config")
+async def api_admin_config():
+    """Get current configuration values (safe for display)."""
+    try:
+        config = {
+            "risk": {
+                "max_position_pct": float(os.getenv("RISK_MAX_POS_PCT", "5")),
+                "max_daily_dd_pct": float(os.getenv("RISK_MAX_DAILY_DD_PCT", "5")),
+                "stop_loss_pct": float(os.getenv("RISK_SL_PCT", "3")),
+                "take_profit_pct": float(os.getenv("RISK_TP_PCT", "6")),
+                "max_drawdown": float(os.getenv("MAX_RISK_DRAWDOWN", "0.05"))
+            },
+            "trading": {
+                "sim_mode": int(os.getenv("SIM_MODE", "0")),
+                "active": bool(STATE.get("active", False))
+            },
+            "providers": {
+                "polygon_configured": bool(os.getenv("POLYGON_API_KEY")),
+                "alphavantage_configured": bool(os.getenv("ALPHAVANTAGE_API_KEY")),
+                "telegram_configured": bool(os.getenv("TELEGRAM_BOT_TOKEN"))
+            }
         }
+        return {"ok": True, "config": config, "timestamp": time.time()}
     except Exception as e:
-        LOGGER.error(f"Failed to get risk dashboard: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/alerts/active")
-async def api_alerts_active(symbol: str | None = None):
-    """Get active alerts (optionally filtered by symbol)."""
-    try:
-        from core.alert_system import get_active_alerts
-        
-        alerts = get_active_alerts(symbol)
-        
-        return {
-            "ok": True,
-            "alerts": alerts,
-            "count": len(alerts)
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get active alerts: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.post("/api/alerts/create")
-async def api_alerts_create(
-    symbol: str,
-    alert_type: str,
-    target_price: float | None = None,
-    message: str | None = None
-):
-    """Create a price alert."""
-    try:
-        from core.alert_system import create_alert
-        
-        alert = create_alert(
-            symbol=symbol,
-            alert_type=alert_type,
-            target_price=target_price,
-            message=message
-        )
-        
-        return {
-            "ok": True,
-            "alert": alert
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to create alert: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.delete("/api/alerts/{alert_id}")
-async def api_alerts_delete(alert_id: str):
-    """Delete an alert."""
-    try:
-        from core.alert_system import delete_alert
-        
-        result = delete_alert(alert_id)
-        
-        return result
-    except Exception as e:
-        LOGGER.error(f"Failed to delete alert: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/alerts/history")
-async def api_alerts_history(limit: int = 50):
-    """Get recent triggered alerts."""
-    try:
-        from core.alert_system import get_alert_history
-        
-        history = get_alert_history(limit)
-        
-        return {
-            "ok": True,
-            "alerts": history,
-            "count": len(history)
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get alert history: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/predictions/multi-timeframe")
-async def api_predictions_multi_timeframe(
-    symbol: str = WOLF,
-    timeframes: str = "1h,4h,1d,1w"
-):
-    """Get predictions across multiple timeframes."""
-    try:
-        from core.multi_timeframe import (
-            generate_1h_forecast,
-            generate_4h_forecast,
-            generate_daily_forecast,
-            generate_weekly_forecast
-        )
-        
-        timeframe_list = [t.strip() for t in timeframes.split(",")]
-        results = {}
-        
-        for tf in timeframe_list:
-            if tf == "1h":
-                results["1h"] = generate_1h_forecast(symbol)
-            elif tf == "4h":
-                results["4h"] = generate_4h_forecast(symbol)
-            elif tf == "1d":
-                results["1d"] = generate_daily_forecast(symbol)
-            elif tf == "1w":
-                results["1w"] = generate_weekly_forecast(symbol)
-        
-        return {
-            "ok": True,
-            "symbol": symbol,
-            "timeframes": results
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get multi-timeframe predictions: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/momentum/detect")
-async def api_momentum_detect(
-    symbol: str,
-    lookback_minutes: int = 60
-):
-    """Detect momentum shifts for a symbol."""
-    try:
-        from core.momentum_detector import detect_momentum_shift
-        
-        # Get current momentum
-        signal = _evaluate_signal(symbol)
-        current_momentum = signal.get("fused_score", 0.0)
-        
-        # Detect shift
-        shift_data = detect_momentum_shift(symbol, current_momentum, lookback_minutes)
-        
-        return {
-            "ok": True,
-            "symbol": symbol,
-            "shift": shift_data
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to detect momentum shift: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/momentum/history/{symbol}")
-async def api_momentum_history(symbol: str, limit: int = 20):
-    """Get momentum history for a symbol."""
-    try:
-        from core.momentum_detector import get_momentum_history
-        
-        history = get_momentum_history(symbol, limit)
-        
-        return {
-            "ok": True,
-            "symbol": symbol,
-            "history": history,
-            "count": len(history)
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get momentum history: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/journal")
-async def api_journal_get(
-    symbol: str | None = None,
-    limit: int = 100,
-    status: str | None = None
-):
-    """Get trade journal entries."""
-    try:
-        from core.trade_journal import get_trade_journal
-        
-        trades = get_trade_journal(symbol, limit, status)
-        
-        return {
-            "ok": True,
-            "trades": trades,
-            "count": len(trades)
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get trade journal: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.post("/api/journal/trade")
-async def api_journal_log_trade(
-    symbol: str,
-    action: str,
-    quantity: float,
-    entry_price: float,
-    exit_price: float | None = None,
-    pnl: float | None = None,
-    hold_time_hours: float | None = None,
-    strategy: str | None = None,
-    notes: str | None = None,
-    confidence: float | None = None
-):
-    """Log a trade to the journal."""
-    try:
-        from core.trade_journal import log_trade
-        
-        trade = log_trade(
-            symbol=symbol,
-            action=action,
-            quantity=quantity,
-            entry_price=entry_price,
-            exit_price=exit_price,
-            pnl=pnl,
-            hold_time_hours=hold_time_hours,
-            strategy=strategy,
-            notes=notes,
-            confidence=confidence
-        )
-        
-        return {
-            "ok": True,
-            "trade": trade
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to log trade: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/journal/statistics")
-async def api_journal_statistics(symbol: str | None = None):
-    """Get trade statistics."""
-    try:
-        from core.trade_journal import get_trade_statistics, get_symbol_statistics
-        
-        if symbol:
-            stats = get_symbol_statistics(symbol)
-        else:
-            stats = get_trade_statistics()
-        
-        return {
-            "ok": True,
-            "statistics": stats
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get statistics: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.put("/api/journal/trade/{trade_id}")
-async def api_journal_update_trade(trade_id: int, **kwargs):
-    """Update a trade entry."""
-    try:
-        from core.trade_journal import update_trade
-        
-        result = update_trade(trade_id, **kwargs)
-        
-        return result
-    except Exception as e:
-        LOGGER.error(f"Failed to update trade: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-# ===== TIER 3 ENDPOINTS =====
-
-@APP.get("/api/news/sentiment")
-async def api_news_sentiment(symbol: str, limit: int = 10):
-    """Get news sentiment analysis for a symbol."""
-    try:
-        from core.news_sentiment import fetch_news_sentiment
-        
-        sentiment_data = fetch_news_sentiment(symbol, limit)
-        
-        return sentiment_data
-    except Exception as e:
-        LOGGER.error(f"Failed to get news sentiment: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.post("/api/backtest/run")
-async def api_backtest_run(
-    symbol: str,
-    start_date: str,
-    end_date: str,
-    initial_capital: float = 10000.0,
-    position_size_pct: float = 0.10,
-    strategy: str = "ghost-momentum"
-):
-    """Run backtest on historical data."""
-    try:
-        from core.backtesting import run_backtest
-        
-        result = run_backtest(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date,
-            initial_capital=initial_capital,
-            position_size_pct=position_size_pct,
-            strategy=strategy
-        )
-        
-        return result
-    except Exception as e:
-        LOGGER.error(f"Failed to run backtest: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/broker/connect")
-async def api_broker_connect():
-    """Test broker connection (Alpaca)."""
-    try:
-        from core.auto_execution import get_executor
-        
-        executor = get_executor()
-        result = executor.connect()
-        
-        return result
-    except Exception as e:
-        LOGGER.error(f"Failed to connect to broker: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/broker/account")
-async def api_broker_account():
-    """Get broker account information."""
-    try:
-        from core.auto_execution import get_executor
-        
-        executor = get_executor()
-        account = executor.get_account()
-        
-        return account
-    except Exception as e:
-        LOGGER.error(f"Failed to get broker account: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.post("/api/broker/execute")
-async def api_broker_execute(
-    symbol: str,
-    signal: dict
-):
-    """Automatically execute a Ghost signal on real broker."""
-    try:
-        from core.auto_execution import execute_ghost_signal
-        
-        result = execute_ghost_signal(symbol, signal)
-        
-        return result
-    except Exception as e:
-        LOGGER.error(f"Failed to execute signal: {e}")
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/broker/positions")
-async def api_broker_positions():
-    """Get current broker positions."""
-    try:
-        from core.auto_execution import get_executor
-        
-        executor = get_executor()
-        positions = executor.get_positions()
-        
-        return {
-            "ok": True,
-            "positions": positions,
-            "count": len(positions)
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get broker positions: {e}")
-        return {"ok": False, "error": str(e)}
+        LOGGER.error(f"Admin config failed: {e}")
+        return {"ok": False, "error": str(e), "timestamp": time.time()}
 
 
 # Alias for Railway/Uvicorn compatibility (expects lowercase 'app')
