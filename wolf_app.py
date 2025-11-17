@@ -7783,9 +7783,9 @@ def _fetch_price_alphavantage(symbol: str) -> tuple[float | None, float | None, 
         url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol.upper()}&apikey={ALPHAVANTAGE_KEY}"
         if _OTEL_TRACER is not None:
             with _OTEL_TRACER.start_as_current_span("provider.alphavantage.get"):  # type: ignore[attr-defined]
-                r = _http_get(url, timeout=8)
+                r = _http_get(url, timeout=30)
         else:
-            r = _http_get(url, timeout=8)
+            r = _http_get(url, timeout=30)
         r.raise_for_status()
         data = r.json() or {}
         gq = data.get("Global Quote") or data.get("GlobalQuote") or {}
@@ -7830,9 +7830,9 @@ def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
         url = f"https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/prev?adjusted=true&limit=1&apiKey={POLYGON_KEY}"
         if _OTEL_TRACER is not None:
             with _OTEL_TRACER.start_as_current_span("provider.polygon.get"):  # type: ignore[attr-defined]
-                r = _http_get(url, timeout=8)
+                r = _http_get(url, timeout=30)
         else:
-            r = _http_get(url, timeout=8)
+            r = _http_get(url, timeout=30)
         r.raise_for_status()
         data = r.json() or {}
         results = data.get("results") or []
@@ -7899,7 +7899,7 @@ def _fetch_polygon_intraday(symbol: str = "WOLF") -> dict:
 
         url = f"https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/range/1/minute/{from_ms}/{now_ms}?adjusted=true&sort=desc&limit=30&apiKey={POLYGON_KEY}"
 
-        resp = _http_get(url, timeout=8)
+        resp = _http_get(url, timeout=30)
         resp.raise_for_status()
         data = resp.json() or {}
 
@@ -8037,9 +8037,9 @@ def _fetch_price_yahoo_http(symbol: str) -> tuple[float | None, float | None, st
         url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol.upper()}"
         if _OTEL_TRACER is not None:
             with _OTEL_TRACER.start_as_current_span("provider.yahoo_http.get"):  # type: ignore[attr-defined]
-                r = _http_get(url, timeout=8)
+                r = _http_get(url, timeout=30)
         else:
-            r = _http_get(url, timeout=8)
+            r = _http_get(url, timeout=30)
         r.raise_for_status()
         data = r.json() or {}
         result = (data.get("quoteResponse") or {}).get("result") or []
