@@ -3395,14 +3395,50 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
         # Get portfolio for PnL prediction
         qty, avg_cost = _get_portfolio_qty_and_avg()  # Use helper to get portfolio data
 
-        # Simple volatility-based forecast model
-        # In production, you'd use GPT-4o or ensemble model
-        sigma_daily = float(PRED_SIGMA_DAILY)
-        vol_48h = sigma_daily * math.sqrt(2)  # 2-day volatility
-
-        price_pred_mid = price * (1.0 + (vol_48h * 0.1))  # Slight upward bias
-        price_pred_lo = price * (1.0 - vol_48h)
-        price_pred_hi = price * (1.0 + vol_48h)
+        # USE GHOST'S AI BRAIN - Ensemble forecaster (4 models)
+        try:
+            from core.ensemble_forecaster import get_ensemble_forecaster
+            ensemble = get_ensemble_forecaster()
+            
+            # Get news sentiment for ensemble
+            sentiment_score = 0.0
+            try:
+                from core.news_sentiment import fetch_news_sentiment
+                news = fetch_news_sentiment(symbol, limit=5)
+                if news.get("ok"):
+                    sentiment_score = news.get("sentiment_score", 0.0)
+            except Exception:
+                pass
+            
+            # Generate ensemble forecast (combines 4 models)
+            ensemble_result = ensemble.forecast(
+                symbol=symbol,
+                current_price=price,
+                sentiment=sentiment_score,
+                horizon_hours=48
+            )
+            
+            price_pred_mid = ensemble_result["ensemble_prediction"]
+            confidence = ensemble_result["confidence"]
+            model = "ghost-ai-ensemble-4x"
+            
+            # Calculate price range from ensemble std
+            model_preds = list(ensemble_result["model_predictions"].values())
+            std_dev = np.std(model_preds) if len(model_preds) > 1 else (price * 0.02)
+            price_pred_lo = price_pred_mid - (std_dev * 1.5)
+            price_pred_hi = price_pred_mid + (std_dev * 1.5)
+            
+        except Exception as e:
+            LOGGER.warning(f"Ensemble forecaster failed for {symbol}, using fallback: {e}")
+            # Fallback: simple volatility model
+            sigma_daily = float(PRED_SIGMA_DAILY)
+            vol_48h = sigma_daily * math.sqrt(2)
+            
+            price_pred_mid = price * (1.0 + (vol_48h * 0.1))
+            price_pred_lo = price * (1.0 - vol_48h)
+            price_pred_hi = price * (1.0 + vol_48h)
+            confidence = 0.50  # Low confidence for fallback
+            model = "simple-vol-fallback"
 
         # PnL prediction
         if qty > 0:
@@ -3412,11 +3448,45 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
         else:
             pnl_pred_mid = None
 
-        # Confidence based on data availability, nudged by research aggregate if available
-        confidence = 0.75 if provider in ["polygon", "alphavantage"] else 0.50
-        research_features: dict[str, Any] = {}
+        # Adjust confidence with learning loop (auto-tuned based on accuracy)
         try:
-            # Include recent news sentiment score
+            from core.learning_loop import get_learning_loop
+            learning = get_learning_loop()
+            current_config = learning.get_current_config()
+            
+            # Apply learned bias correction
+            bias_correction = current_config.get("bias_correction", 0.0)
+            price_pred_mid = price_pred_mid * (1.0 + bias_correction)
+            
+            # Apply learned confidence threshold
+            learned_threshold = current_config.get("confidence_threshold", 0.7)
+            if confidence < learned_threshold:
+                # Ghost learned this confidence level is too risky
+                confidence = max(0.0, confidence - 0.10)
+        except Exception:
+            pass
+
+        # Adjust confidence with social sentiment
+        try:
+            from core.social_sentiment import adjust_confidence_with_social
+            confidence, social_reason = adjust_confidence_with_social(symbol, confidence)
+        except Exception:
+            social_reason = "No social data"
+
+        # Adjust confidence with economic calendar
+        try:
+            from core.economic_calendar import adjust_confidence_with_calendar
+            confidence, calendar_reason = adjust_confidence_with_calendar(symbol, confidence)
+        except Exception:
+            calendar_reason = "No calendar risk"
+
+        # Collect research features
+        research_features: dict[str, Any] = {
+            "model": model,
+            "social_adjustment": social_reason,
+            "calendar_adjustment": calendar_reason
+        }
+        try:
             ns = (get_wolf_news(limit=3).get("news_signal") or {}).get("score")
             research_features["news_score"] = ns
         except Exception:
@@ -3427,20 +3497,8 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                 research_features["filings"] = f
         except Exception:
             pass
-        try:
-            if RESEARCH_BLUEPRINT_ON:
-                snap = build_research_snapshot(symbol, asset_type="stock")
-                agg = snap.get("aggregate") or {}
-                research_features["research_aggregate"] = agg
-                # Nudge confidence towards aggregate confidence (blend 80/20 if numeric)
-                rc = agg.get("confidence") if isinstance(agg, dict) else None
-                if isinstance(rc, (int, float)):
-                    confidence = max(0.3, min(0.95, 0.8 * confidence + 0.2 * (float(rc) / 100.0)))
-        except Exception:
-            pass
 
         # Store forecast
-        model = "simple-vol"  # Change to "gpt-4o" when integrated
         forecast_id = _store_forecast_48h(
             symbol=symbol,
             price_now=price,
