@@ -2980,6 +2980,15 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
     Stores in database and returns forecast details.
     """
     try:
+        # Normalize ticker symbols (handle alternate formats)
+        normalized_symbol = symbol.upper()
+        if normalized_symbol == "META":
+            # Try META first, fallback to FB if needed
+            normalized_symbol = "META"
+        elif normalized_symbol == "GOOGL":
+            # GOOGL is correct, but some providers use GOOG
+            normalized_symbol = "GOOGL"
+        
         # Get current price using price quorum for any symbol
         if symbol == WOLF:
             price, _, provider = get_wolf_price()
@@ -2990,10 +2999,10 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
             except Exception:
                 is_market_open = False
             
-            providers = _build_price_providers(symbol, is_market_open=is_market_open)
+            providers = _build_price_providers(normalized_symbol, is_market_open=is_market_open)
             if providers:
                 decision = get_price_quorum().get_price(
-                    symbol=symbol,
+                    symbol=normalized_symbol,  # Use normalized symbol
                     providers=providers,
                     prev_close=None,
                     is_market_open=is_market_open,
@@ -3001,15 +3010,30 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                 )
                 price = decision.price
                 provider = decision.provider_label
+                
+                # Log provider attempts for debugging
+                if price is None:
+                    LOGGER.warning(
+                        f"All providers failed for {symbol}",
+                        extra={
+                            "symbol": symbol,
+                            "normalized": normalized_symbol,
+                            "provider_count": len(providers),
+                            "provider_label": provider
+                        }
+                    )
             else:
                 price = None
                 provider = "unavailable"
+                LOGGER.warning(f"No providers available for {symbol}")
 
         if price is None or price <= 0:
+            error_msg = f"live price unavailable (provider: {provider if 'provider' in locals() else 'unknown'})"
             return {
                 "ok": False,
-                "error": "live price unavailable",
+                "error": error_msg,
                 "symbol": symbol,
+                "provider": provider if 'provider' in locals() else "unknown",
             }
 
         # Get portfolio for PnL prediction
