@@ -1215,6 +1215,8 @@ VIP_COINS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
 # Multi-symbol prediction health tracking
 _LAST_MULTI_PREDICTION_TIME: float | None = None
 _LAST_MULTI_PREDICTION_COUNTS: dict[str, int] = {"stocks": 0, "crypto": 0, "vip": 0}
+_LAST_MULTI_PREDICTION_RESULT: dict[str, Any] | None = None  # Cache full result
+_MULTI_PREDICTION_CACHE_TTL = 120  # Cache for 2 minutes to prevent provider exhaustion
 _LAST_TELEGRAM_SEND_TIME: float | None = None
 _LAST_TELEGRAM_STATUS: str = "never_run"
 _LAST_TELEGRAM_ERROR: str | None = None
@@ -17840,10 +17842,22 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
         "predictions": {"stocks": [...], "crypto": [...], "vip": [...]},
         "counts": {"stocks": N, "crypto": M, "vip": K},
         "total": X,
-        "timestamp": unix_ts
+        "timestamp": unix_ts,
+        "cached": bool (if returned from cache)
     }
     """
-    global _LAST_MULTI_PREDICTION_TIME, _LAST_MULTI_PREDICTION_COUNTS
+    global _LAST_MULTI_PREDICTION_TIME, _LAST_MULTI_PREDICTION_COUNTS, _LAST_MULTI_PREDICTION_RESULT
+    
+    # Check cache first to prevent provider exhaustion
+    now = time.time()
+    if _LAST_MULTI_PREDICTION_RESULT and _LAST_MULTI_PREDICTION_TIME:
+        cache_age = now - _LAST_MULTI_PREDICTION_TIME
+        if cache_age < _MULTI_PREDICTION_CACHE_TTL:
+            # Return cached result with cache indicator
+            cached_result = _LAST_MULTI_PREDICTION_RESULT.copy()
+            cached_result["cached"] = True
+            cached_result["cache_age_seconds"] = cache_age
+            return cached_result
     
     try:
         results = {
@@ -17991,14 +18005,20 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "vip": len(results["vip"])
         }
         
-        return {
+        result = {
             "ok": True,
             "predictions": results,
             "counts": _LAST_MULTI_PREDICTION_COUNTS.copy(),
             "total": sum(_LAST_MULTI_PREDICTION_COUNTS.values()),
             "failed_symbols": failed_symbols if (failed_symbols["stocks"] or failed_symbols["crypto"]) else None,
-            "timestamp": _LAST_MULTI_PREDICTION_TIME
+            "timestamp": _LAST_MULTI_PREDICTION_TIME,
+            "cached": False
         }
+        
+        # Cache result to prevent provider exhaustion
+        _LAST_MULTI_PREDICTION_RESULT = result.copy()
+        
+        return result
     except Exception as e:
         LOGGER.exception("Multi-prediction generation failed")
         return {"ok": False, "error": str(e)}
