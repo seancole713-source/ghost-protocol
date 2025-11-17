@@ -8120,8 +8120,8 @@ def _build_price_providers(symbol: str, *, is_market_open: bool) -> list[PricePr
     
     # PRIORITY 1: Free unlimited APIs (Yahoo, yfinance)
     # These have no rate limits, try them first to conserve paid API calls
-    add_provider("yfinance", lambda: _fetch_price_yfinance(provider_symbol), configured=True)
-    add_provider("yahoo", lambda: _fetch_price_yahoo_http(provider_symbol), configured=True)
+    add_provider("yfinance", lambda s=provider_symbol: _fetch_price_yfinance(s), configured=True)
+    add_provider("yahoo", lambda s=provider_symbol: _fetch_price_yahoo_http(s), configured=True)
     
     # PRIORITY 2: Paid APIs with rate limits (AlphaVantage, Polygon)
     # Only use these as fallback when free APIs fail
