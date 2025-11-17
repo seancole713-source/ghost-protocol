@@ -401,20 +401,30 @@ railway logs --service web | grep -E "ERROR|WARNING|forecast failed" | tail -50
 
 ## 📌 CONCLUSION
 
-**Ghost 2.x Status**: ✅ **OPERATIONAL** (with optimization needed)
+**Ghost 2.x Status**: ✅ **OPERATIONAL** (50% stock coverage achieved)
 
-**Critical Path**:
-1. Enable CRYPTO_ENABLED=1 → +8 predictions, +15 Ghost Score points
-2. Verify stock prediction fix → 3/8 → 6-8/8 stocks
-3. Expose Ghost Score → visibility into system health
-4. Implement missing modules → full Ghost Protocol feature set
+**Completed Fixes**:
+1. ✅ Provider reordering (free APIs first)
+2. ✅ 2-minute aggressive caching (prevents exhaustion)
+3. ✅ Ticker normalization (META, GOOGL)
+4. ✅ Timeout increased 6s → 30s
+5. ✅ Error diagnostics (identified TimeoutError root cause)
 
-**Current Grade**: D (3/8 stocks, 0 crypto, ~57 score)  
-**Target Grade**: B (8/8 stocks, 8/8 crypto, 85+ score)  
-**Estimated Time to Target**: 2-4 hours (for Priority 1-3 fixes)
+**Current Performance**:
+- **Stocks**: 4/8 (50%) - AAPL, MSFT, AMZN, WOLF
+- **Crypto**: 0/8 (0%) - **READY TO ENABLE**
+- **Ghost Score**: ~60 (Grade D)
+- **System**: Stable, cached responses working
+
+**Remaining 4 stocks** (NVDA, GOOGL, TSLA, META) timing out at 30s due to provider throttling on high-volume symbols.
+
+**Next Action**: Enable CRYPTO_ENABLED=1 in Railway
+- Immediate: +8 crypto predictions
+- Expected: 4 stocks + 8 crypto = 12 total
+- Ghost Score: 60 → 72-75 (Grade C)
 
 ---
 
 **Report Generated**: November 16, 2025  
-**Last Updated**: After 10s timeout deployment  
-**Next Review**: After CRYPTO_ENABLED=1 applied
+**Last Updated**: After provider reordering and timeout fixes (4/8 stocks working)  
+**Next Review**: After CRYPTO_ENABLED=1 verification
