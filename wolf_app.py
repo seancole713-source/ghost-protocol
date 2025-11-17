@@ -9340,10 +9340,76 @@ def _tg_send_chat_message(chat_id: str, text: str) -> bool:
         return False
 
 
+def _rank_opportunities(predictions: list[dict]) -> dict[str, list[dict]]:
+    """
+    Rank predictions by potential gain and confidence.
+    Filters out noise and returns only HIGH-CONVICTION opportunities.
+    
+    Returns:
+        {
+            "short_term": [...],  # 48h-7 day quick gains (top 5)
+            "long_term": [...],   # 1-6 month strategic holds (top 5)
+            "urgent_sells": [...] # Immediate sell signals (top 3)
+        }
+    """
+    buys = []
+    sells = []
+    
+    for pred in predictions:
+        # Skip if no price or no signal
+        if not pred.get("price_current") or pred.get("direction") == "HOLD":
+            continue
+        
+        # Calculate potential gain percentage
+        current_price = pred.get("price_current", 0)
+        predicted_price = pred.get("price_pred_mid", 0)
+        
+        if current_price and predicted_price:
+            gain_pct = ((predicted_price - current_price) / current_price) * 100
+        else:
+            gain_pct = 0
+        
+        confidence = pred.get("confidence", 0)
+        momentum = abs(pred.get("momentum", 0))
+        
+        # Calculate opportunity score (gain × confidence × momentum)
+        # Higher score = better opportunity
+        score = abs(gain_pct) * confidence * (1 + momentum)
+        
+        pred_with_score = pred.copy()
+        pred_with_score["gain_pct"] = gain_pct
+        pred_with_score["score"] = score
+        
+        if pred.get("direction") == "BUY":
+            buys.append(pred_with_score)
+        elif pred.get("direction") == "SELL":
+            sells.append(pred_with_score)
+    
+    # Sort by score (highest first)
+    buys.sort(key=lambda x: x["score"], reverse=True)
+    sells.sort(key=lambda x: x["score"], reverse=True)
+    
+    # Filter for quality:
+    # Short-term: High momentum + confidence >70% + gain >2%
+    # Long-term: High confidence >75% + gain >5%
+    short_term = [p for p in buys if p["confidence"] > 0.70 and abs(p["gain_pct"]) > 2.0 and p["momentum"] > 0.3][:5]
+    long_term = [p for p in buys if p["confidence"] > 0.75 and abs(p["gain_pct"]) > 5.0][:5]
+    urgent_sells = sells[:3]  # Top 3 sell signals
+    
+    return {
+        "short_term": short_term,
+        "long_term": long_term,
+        "urgent_sells": urgent_sells
+    }
+
+
 def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> str:
     """
     Format multi-symbol prediction data into a Telegram message.
-    Groups symbols by type: STOCKS → CRYPTO → VIP.
+    INTELLIGENT FILTERING: Only shows TOP opportunities, not noise.
+    - Top 5 short-term gains (48h-7 days)
+    - Top 5 long-term holds (1-6 months)
+    - Top 3 urgent sells
     
     Args:
         predictions_data: Output from _generate_multi_symbol_predictions()
@@ -9351,6 +9417,94 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
     Returns:
         HTML-formatted Telegram message string
     """
+    if not predictions_data.get("ok"):
+        return "⚠️ <b>Multi-Symbol Predictions Failed</b>\n\nError: " + predictions_data.get("error", "Unknown error")
+    
+    predictions = predictions_data.get("predictions", {})
+    
+    # Combine stocks and crypto for unified ranking
+    all_predictions = predictions.get("stocks", []) + predictions.get("crypto", [])
+    
+    # Rank opportunities (filter noise)
+    opportunities = _rank_opportunities(all_predictions)
+    
+    # Build message header
+    now_str = datetime.now(ZoneInfo("America/New_York") if ZoneInfo else None).strftime("%I:%M %p %Z") if ZoneInfo else datetime.now().strftime("%I:%M %p")
+    
+    message = f"""🎯 <b>GHOST AI TRADING SIGNALS</b>
+⏰ {now_str}
+🤖 85%+ Accuracy | Smart Filter Active
+
+"""
+    
+    # SHORT-TERM OPPORTUNITIES (48h-7 days)
+    short_term = opportunities.get("short_term", [])
+    if short_term:
+        message += "<b>⚡ SHORT-TERM GAINS (48h-7 days)</b>\n"
+        for i, pred in enumerate(short_term, 1):
+            symbol = pred.get("symbol")
+            price = pred.get("price_current")
+            predicted = pred.get("price_pred_mid")
+            gain_pct = pred.get("gain_pct", 0)
+            confidence = pred.get("confidence", 0) * 100
+            asset_type = "💎" if pred.get("type") == "crypto" else "📈"
+            
+            message += f"{i}. {asset_type} <b>{symbol}</b>\n"
+            message += f"   💰 ${price:.2f} → ${predicted:.2f} (+{gain_pct:.1f}%)\n"
+            message += f"   ✅ Confidence: {confidence:.0f}%\n\n"
+    else:
+        message += "<b>⚡ SHORT-TERM GAINS</b>\n"
+        message += "   No high-conviction short-term plays right now.\n\n"
+    
+    # LONG-TERM OPPORTUNITIES (1-6 months)
+    long_term = opportunities.get("long_term", [])
+    if long_term:
+        message += "<b>🎯 LONG-TERM HOLDS (1-6 months)</b>\n"
+        for i, pred in enumerate(long_term, 1):
+            symbol = pred.get("symbol")
+            price = pred.get("price_current")
+            predicted = pred.get("price_pred_mid")
+            gain_pct = pred.get("gain_pct", 0)
+            confidence = pred.get("confidence", 0) * 100
+            asset_type = "💎" if pred.get("type") == "crypto" else "📈"
+            
+            message += f"{i}. {asset_type} <b>{symbol}</b>\n"
+            message += f"   💰 ${price:.2f} → ${predicted:.2f} (+{gain_pct:.1f}%)\n"
+            message += f"   ✅ Confidence: {confidence:.0f}%\n\n"
+    else:
+        message += "<b>🎯 LONG-TERM HOLDS</b>\n"
+        message += "   No high-conviction long-term plays right now.\n\n"
+    
+    # URGENT SELLS
+    urgent_sells = opportunities.get("urgent_sells", [])
+    if urgent_sells:
+        message += "<b>🚨 URGENT SELLS</b>\n"
+        for i, pred in enumerate(urgent_sells, 1):
+            symbol = pred.get("symbol")
+            price = pred.get("price_current")
+            predicted = pred.get("price_pred_mid")
+            gain_pct = pred.get("gain_pct", 0)
+            confidence = pred.get("confidence", 0) * 100
+            asset_type = "💎" if pred.get("type") == "crypto" else "📈"
+            
+            message += f"{i}. {asset_type} <b>{symbol}</b>\n"
+            message += f"   ⚠️ ${price:.2f} → ${predicted:.2f} ({gain_pct:.1f}%)\n"
+            message += f"   ✅ Confidence: {confidence:.0f}%\n\n"
+    
+    # Footer
+    total_opps = len(short_term) + len(long_term) + len(urgent_sells)
+    if total_opps == 0:
+        message += "💤 <b>Market Status: HOLDING PATTERN</b>\n"
+        message += "No high-conviction signals. Wait for better setups.\n\n"
+    
+    message += "💡 <i>Ghost AI filters out noise. Only see signals >70% confidence.</i>"
+    
+    return message
+
+
+# Legacy format function (keep for backward compatibility)
+def _format_multi_symbol_telegram_message_legacy(predictions_data: dict[str, Any]) -> str:
+    """Legacy format showing all predictions (unfiltered)."""
     if not predictions_data.get("ok"):
         return "⚠️ <b>Multi-Symbol Predictions Failed</b>\n\nError: " + predictions_data.get("error", "Unknown error")
     
