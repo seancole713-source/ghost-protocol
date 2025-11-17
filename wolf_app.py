@@ -3006,7 +3006,7 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                     providers=providers,
                     prev_close=None,
                     is_market_open=is_market_open,
-                    timeout=10.0,  # Increased from 6.0 to allow more provider attempts
+                    timeout=20.0,  # Increased from 10.0 - providers timing out for some symbols
                 )
                 price = decision.price
                 provider = decision.provider_label
