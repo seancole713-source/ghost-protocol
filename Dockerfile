@@ -27,16 +27,15 @@ RUN mkdir -p /data /tmp/prom_multiproc
 
 # Environment defaults
 ENV SIM_MODE=0 \
-    PORT=8444 \
     PYTHONUNBUFFERED=1 \
     PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
 
-# Expose port
-EXPOSE 8444
+# Expose port (Railway assigns PORT dynamically)
+EXPOSE 8080
 
-# Health check
+# Health check (use Railway's PORT)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -fsS http://localhost:8444/health || exit 1
+    CMD curl -fsS http://localhost:${PORT:-8080}/ui/health || exit 1
 
-# Run the application
-CMD ["python3", "wolf_app.py"]
+# Run the application with uvicorn (Railway PORT)
+CMD uvicorn wolf_app:APP --host 0.0.0.0 --port ${PORT:-8080}
