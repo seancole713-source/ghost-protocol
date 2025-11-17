@@ -3006,7 +3006,7 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                     providers=providers,
                     prev_close=None,
                     is_market_open=is_market_open,
-                    timeout=30.0,  # Increased to 30s - some providers very slow when throttled
+                    timeout=45.0,  # Increased to 45s - crypto providers especially slow
                 )
                 price = decision.price
                 provider = decision.provider_label
