@@ -1,1 +1,1 @@
-web: uvicorn wolf_app:app --host 0.0.0.0 --port $PORT
+web: uvicorn wolf_app:APP --host 0.0.0.0 --port $PORT
