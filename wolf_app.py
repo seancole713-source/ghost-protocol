@@ -17877,15 +17877,15 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
                     results["stocks"].append(prediction)
                 else:
                     # Log detailed failure reason
-                    error_reason = forecast.get("error") or forecast.get("message") or "unknown error"
+                    error_msg = forecast.get("error") or forecast.get("message") or "unknown error"
                     failed_symbols["stocks"].append({
                         "symbol": symbol,
-                        "error": error_reason,
-                        "forecast_keys": list(forecast.keys()) if isinstance(forecast, dict) else None
+                        "error": error_msg if error_msg else "live price unavailable",
+                        "raw_forecast": forecast
                     })
                     LOGGER.warning(
-                        f"Stock forecast failed for {symbol}: {error_reason}",
-                        extra={"symbol": symbol, "error": error_reason, "forecast": forecast}
+                        f"Stock forecast failed for {symbol}: {error_msg}",
+                        extra={"symbol": symbol, "error": error_msg, "forecast": forecast}
                     )
             except Exception as e:
                 LOGGER.warning(f"Multi-prediction failed for stock {symbol}: {e}")
