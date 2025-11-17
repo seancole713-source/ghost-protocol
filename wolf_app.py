@@ -8079,34 +8079,32 @@ def _build_price_providers(symbol: str, *, is_market_open: bool) -> list[PricePr
             )
         )
 
+    # PRIORITY 1: Free unlimited APIs (Yahoo, yfinance)
+    # These have no rate limits, try them first to conserve paid API calls
+    add_provider("yfinance", lambda: _fetch_price_yfinance(symbol), configured=True)
+    add_provider("yahoo", lambda: _fetch_price_yahoo_http(symbol), configured=True)
+    
+    # PRIORITY 2: Paid APIs with rate limits (AlphaVantage, Polygon)
+    # Only use these as fallback when free APIs fail
+    add_provider(
+        "alphavantage",
+        lambda: _fetch_price_alphavantage(symbol),
+        configured=bool(ALPHAVANTAGE_KEY),
+    )
+    
+    add_provider(
+        "polygon",
+        lambda: _fetch_price_polygon(symbol),
+        configured=bool(POLYGON_KEY),
+    )
+    
+    # PRIORITY 3: Polygon intraday (only during market hours)
     if is_market_open and POLYGON_KEY:
         add_provider(
             "polygon_intraday",
             lambda: _fetch_price_polygon_intraday(symbol),
             configured=True,
         )
-
-    add_provider(
-        "polygon",
-        lambda: _fetch_price_polygon(symbol),
-        configured=bool(POLYGON_KEY),
-    )
-
-    provider_sequence = [
-        (
-            "alphavantage",
-            lambda: _fetch_price_alphavantage(symbol),
-            bool(ALPHAVANTAGE_KEY),
-        ),
-        ("yahoo", lambda: _fetch_price_yahoo_http(symbol), True),
-    ]
-    if PRICE_YAHOO_FIRST:
-        provider_sequence.reverse()
-
-    for name, fn, configured in provider_sequence:
-        add_provider(name, fn, configured=configured)
-
-    add_provider("yfinance", lambda: _fetch_price_yfinance(symbol), configured=True)
 
     return providers
 
