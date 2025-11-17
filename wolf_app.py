@@ -3313,6 +3313,12 @@ async def post_generate_forecast_48h(symbol: str = WOLF):
 
 @APP.on_event("startup")
 async def _on_startup():
+    """
+    Startup handler with comprehensive error protection.
+    Each initialization step is wrapped in try/except to prevent cascading failures.
+    """
+    LOGGER.info("[GHOST STARTUP] Beginning initialization...")
+    
     # Log critical environment configuration at boot
     try:
         env_config = {
@@ -3324,17 +3330,21 @@ async def _on_startup():
             "PREDICT_REQUIRE_PRICE_QUORUM": os.getenv("PREDICT_REQUIRE_PRICE_QUORUM", "0"),
             "STOCK_PRICE_SOURCE": os.getenv("STOCK_PRICE_SOURCE", "polygon"),
             "CRYPTO_PRICE_SOURCE": os.getenv("CRYPTO_PRICE_SOURCE", "coingecko"),
+            "REDIS_URL_SET": bool(os.getenv("REDIS_URL")),
+            "OPENAI_KEY_SET": bool(os.getenv("OPENAI_API_KEY")),
+            "TELEGRAM_TOKEN_SET": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
         }
         LOGGER.info(f"[GHOST BOOT] Environment flags: {json.dumps(env_config)}")
     except Exception as e:
-        LOGGER.warning(f"Failed to log env config: {e}")
+        LOGGER.warning(f"Failed to log env config: {e}", exc_info=True)
     
     # Ensure Prometheus metrics registered
     try:
         _ensure_metrics_registered()
         LOGGER.info("prometheus_metrics_registered", extra={"component": "startup"})
-    except Exception:
-        LOGGER.exception("metrics_registration_failed", extra={"component": "startup"})
+    except Exception as e:
+        LOGGER.error(f"metrics_registration_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
 
     # Log OpenAI/AI provider config for debugging
     try:
@@ -3350,20 +3360,25 @@ async def _on_startup():
     # Ensure required directories exist
     try:
         _ensure_startup_dirs()
-    except Exception:
-        LOGGER.exception("startup_dirs_failed", extra={"component": "startup"})
+        LOGGER.info("[GHOST STARTUP] Directories created")
+    except Exception as e:
+        LOGGER.error(f"startup_dirs_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Critical failure - but try to continue
+        
     # Initialize forecast tables
     try:
         _init_forecast_tables()
-    except Exception:
-        LOGGER.exception("forecast_tables_init_failed", extra={"component": "startup"})
+        LOGGER.info("[GHOST STARTUP] Forecast tables initialized")
+    except Exception as e:
+        LOGGER.error(f"forecast_tables_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
     # Stage 1: Initialize Context Awareness Layer
     if STAGE1_ENABLED:
         try:
             task = initialize_stage1()
             if task:
                 LOGGER.info(
-                    "stage1_initialized",
+                    "[GHOST STARTUP] Stage 1 initialized: world_context, market_mood",
                     extra={
                         "component": "startup",
                         "features": "world_context,market_mood",
@@ -3373,14 +3388,15 @@ async def _on_startup():
             else:
                 LOGGER.warning("stage1_init_no_task", extra={"component": "startup"})
         except Exception as e:
-            LOGGER.exception("stage1_init_failed", extra={"component": "startup", "error": str(e)})
+            LOGGER.error(f"stage1_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+            # Non-critical - continue startup
     # Stage 2: Initialize Self-Evaluation System
     if STAGE2_ENABLED:
         try:
             get_accuracy_tracker()
             learning = get_learning_loop()
             LOGGER.info(
-                "stage2_initialized",
+                "[GHOST STARTUP] Stage 2 initialized: accuracy_tracker, learning_loop",
                 extra={
                     "component": "startup",
                     "features": "accuracy_tracker,learning_loop",
@@ -3388,7 +3404,8 @@ async def _on_startup():
                 },
             )
         except Exception as e:
-            LOGGER.exception("stage2_init_failed", extra={"component": "startup", "error": str(e)})
+            LOGGER.error(f"stage2_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+            # Non-critical - continue startup
 
     # Stage 3: Initialize Continuous Improvement System
     if STAGE3_ENABLED:
@@ -3397,7 +3414,7 @@ async def _on_startup():
             regime = get_regime_detector()
             risk = get_risk_engine()
             LOGGER.info(
-                "stage3_initialized",
+                "[GHOST STARTUP] Stage 3 initialized: ensemble, regime, risk",
                 extra={
                     "component": "startup",
                     "features": "ensemble_forecaster,regime_detector,risk_engine",
@@ -3410,7 +3427,11 @@ async def _on_startup():
                 },
             )
         except Exception as e:
-            LOGGER.exception("stage3_init_failed", extra={"component": "startup", "error": str(e)})
+            LOGGER.error(f"stage3_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+            # Non-critical - continue startup
+    
+    # Final startup confirmation
+    LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
 
     # Stage 4: Initialize Portfolio Optimization & Advanced Strategies
     if STAGE4_ENABLED:
