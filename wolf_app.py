@@ -694,6 +694,8 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         "/", "/health", "/metrics", "/docs", "/redoc", "/openapi.json",
         "/api/status", "/api/health", "/api/openapi.json",
         "/api/predictions/multi/run",  # Multi-symbol predictions are public
+        "/api/predictions/run",  # Single-symbol on-demand predictions are public (supports 500+ stocks, 1000+ crypto)
+        "/api/predictions/symbols",  # Symbol discovery endpoint
         "/api/health/predictions",  # Prediction health check is public
         "/api/cockpit"  # Cockpit snapshot is public
     ]
@@ -1208,8 +1210,36 @@ ALPHAVANTAGE_KEY = os.getenv("ALPHAVANTAGE_API_KEY") or os.getenv("ALPHA_VANTAGE
 POLYGON_KEY = os.getenv("POLYGON_API_KEY", "")
 
 # Multi-symbol prediction lists
-STOCK_SYMBOLS = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "TSLA", "META", "WOLF"]
-CRYPTO_SYMBOLS = ["BTC", "ETH", "DOGE", "SOL", "BNB", "ADA", "XRP", "MATIC"]
+# Default watchlist: Top 20 stocks + Top 20 crypto (manageable for real-time generation)
+# For custom watchlists, set STOCK_SYMBOLS / CRYPTO_SYMBOLS environment variables
+# For on-demand predictions of ANY symbol, use /api/predictions/run?symbol=SYMBOL
+
+DEFAULT_STOCK_SYMBOLS = [
+    # Mega Cap Tech (FAANG+)
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA",
+    # Major Tech
+    "ORCL", "CRM", "ADBE", "NFLX", "INTC", "AMD",
+    # Finance
+    "JPM", "BAC", "WFC", "GS",
+    # Healthcare
+    "UNH", "JNJ",
+    # Consumer
+    "WMT", "HD",
+    # WOLF token
+    "WOLF"
+]
+
+DEFAULT_CRYPTO_SYMBOLS = [
+    # Top 20 by market cap + volume
+    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX",
+    "DOT", "MATIC", "SHIB", "LTC", "UNI", "LINK", "ATOM", "ETC",
+    "PEPE", "ARB", "OP", "INJ"
+]
+
+# Load from environment or use defaults
+STOCK_SYMBOLS = os.getenv("STOCK_SYMBOLS", ",".join(DEFAULT_STOCK_SYMBOLS)).split(",")
+CRYPTO_SYMBOLS = os.getenv("CRYPTO_SYMBOLS", ",".join(DEFAULT_CRYPTO_SYMBOLS)).split(",")
+
 VIP_COINS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
 
 # Multi-symbol prediction health tracking
@@ -18068,6 +18098,41 @@ async def api_predictions_multi_run():
     This is a public endpoint that returns predictions for all configured symbols.
     """
     return _generate_multi_symbol_predictions()
+
+
+@APP.get("/api/predictions/symbols")
+async def api_predictions_symbols():
+    """
+    Return list of supported symbols for predictions.
+    
+    - Multi-symbol watchlist: Returns predictions for top 20-40 symbols (fast, cached)
+    - Single-symbol API: Supports ANY stock/crypto symbol (on-demand, use /api/predictions/run?symbol=SYMBOL)
+    
+    Ghost can predict 500+ stocks and 1000+ crypto via the single-symbol endpoint.
+    """
+    return {
+        "ok": True,
+        "multi_symbol_watchlist": {
+            "stocks": STOCK_SYMBOLS,
+            "crypto": CRYPTO_SYMBOLS,
+            "vip": VIP_COINS,
+            "total": len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS),
+            "description": "Featured watchlist for /api/predictions/multi/run (cached 120s)"
+        },
+        "single_symbol_capability": {
+            "endpoint": "/api/predictions/run?symbol=SYMBOL",
+            "supported_stocks": "500+ (any valid ticker: AAPL, TSLA, AMD, etc.)",
+            "supported_crypto": "1000+ (format: BTC, ETH, SOL, etc.)",
+            "description": "On-demand prediction for ANY stock or crypto symbol",
+            "examples": [
+                "/api/predictions/run?symbol=AAPL",
+                "/api/predictions/run?symbol=BTC",
+                "/api/predictions/run?symbol=AMD",
+                "/api/predictions/run?symbol=GME"
+            ]
+        },
+        "note": "Multi-symbol returns batch predictions quickly. Single-symbol supports unlimited tickers on-demand."
+    }
 
 
 @APP.get("/api/agent/decide")
