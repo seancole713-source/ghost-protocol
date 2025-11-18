@@ -3317,12 +3317,14 @@ async def _on_startup():
     Startup handler with comprehensive error protection.
     Each initialization step is wrapped in try/except to prevent cascading failures.
     """
+    import os as _os_module  # Import locally to avoid UnboundLocalError
+    
     # Railway debugging: Log immediately to confirm app is starting
     print("[RAILWAY DEBUG] ==========================================")
     print("[RAILWAY DEBUG] GHOST STARTING - Python import successful")
-    print(f"[RAILWAY DEBUG] PORT: {os.getenv('PORT', 'NOT_SET')}")
-    print(f"[RAILWAY DEBUG] RAILWAY_ENVIRONMENT: {os.getenv('RAILWAY_ENVIRONMENT', 'NOT_SET')}")
-    print(f"[RAILWAY DEBUG] REDIS_URL: {'SET' if os.getenv('REDIS_URL') else 'NOT_SET'}")
+    print(f"[RAILWAY DEBUG] PORT: {_os_module.getenv('PORT', 'NOT_SET')}")
+    print(f"[RAILWAY DEBUG] RAILWAY_ENVIRONMENT: {_os_module.getenv('RAILWAY_ENVIRONMENT', 'NOT_SET')}")
+    print(f"[RAILWAY DEBUG] REDIS_URL: {'SET' if _os_module.getenv('REDIS_URL') else 'NOT_SET'}")
     print("[RAILWAY DEBUG] ==========================================")
     
     LOGGER.info("[GHOST STARTUP] Beginning initialization...")
@@ -3330,17 +3332,17 @@ async def _on_startup():
     # Log critical environment configuration at boot
     try:
         env_config = {
-            "SIM_MODE": os.getenv("SIM_MODE", "0"),
-            "STOCKS_ENABLED": os.getenv("STOCKS_ENABLED", "1"),
-            "CRYPTO_ENABLED": os.getenv("CRYPTO_ENABLED", "0"),
-            "PRICE_STRICT_LIVE": os.getenv("PRICE_STRICT_LIVE", "0"),
-            "PRICE_REQUIRE_QUORUM": os.getenv("PRICE_REQUIRE_QUORUM", "0"),
-            "PREDICT_REQUIRE_PRICE_QUORUM": os.getenv("PREDICT_REQUIRE_PRICE_QUORUM", "0"),
-            "STOCK_PRICE_SOURCE": os.getenv("STOCK_PRICE_SOURCE", "polygon"),
-            "CRYPTO_PRICE_SOURCE": os.getenv("CRYPTO_PRICE_SOURCE", "coingecko"),
-            "REDIS_URL_SET": bool(os.getenv("REDIS_URL")),
-            "OPENAI_KEY_SET": bool(os.getenv("OPENAI_API_KEY")),
-            "TELEGRAM_TOKEN_SET": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
+            "SIM_MODE": _os_module.getenv("SIM_MODE", "0"),
+            "STOCKS_ENABLED": _os_module.getenv("STOCKS_ENABLED", "1"),
+            "CRYPTO_ENABLED": _os_module.getenv("CRYPTO_ENABLED", "0"),
+            "PRICE_STRICT_LIVE": _os_module.getenv("PRICE_STRICT_LIVE", "0"),
+            "PRICE_REQUIRE_QUORUM": _os_module.getenv("PRICE_REQUIRE_QUORUM", "0"),
+            "PREDICT_REQUIRE_PRICE_QUORUM": _os_module.getenv("PREDICT_REQUIRE_PRICE_QUORUM", "0"),
+            "STOCK_PRICE_SOURCE": _os_module.getenv("STOCK_PRICE_SOURCE", "polygon"),
+            "CRYPTO_PRICE_SOURCE": _os_module.getenv("CRYPTO_PRICE_SOURCE", "coingecko"),
+            "REDIS_URL_SET": bool(_os_module.getenv("REDIS_URL")),
+            "OPENAI_KEY_SET": bool(_os_module.getenv("OPENAI_API_KEY")),
+            "TELEGRAM_TOKEN_SET": bool(_os_module.getenv("TELEGRAM_BOT_TOKEN")),
         }
         LOGGER.info(f"[GHOST BOOT] Environment flags: {json.dumps(env_config)}")
     except Exception:
