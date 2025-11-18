@@ -1328,7 +1328,8 @@ PRICE_PREV_ONLY_RESPECT_TTL = os.getenv("PRICE_PREV_ONLY_RESPECT_TTL", "1").lowe
     "yes",
 )
 
-_DEFAULT_PROVIDER_ORDER = ("polygon", "alphavantage", "yfinance", "yahoo")
+# Reorder to prioritize AlphaVantage (most reliable) over Yahoo/yfinance (rate limited)
+_DEFAULT_PROVIDER_ORDER = ("alphavantage", "polygon", "yfinance", "yahoo")
 _stock_source_env = os.getenv("STOCK_PRICE_SOURCE", ",".join(_DEFAULT_PROVIDER_ORDER))
 STOCK_PRICE_SOURCE = [
     token for token in (piece.strip().lower() for piece in _stock_source_env.split(",")) if token
@@ -5013,6 +5014,14 @@ def _ensure_startup_dirs():
             os.makedirs(mp_dir, exist_ok=True)
     except Exception:
         pass
+    
+    # Create /tmp/ghost_prom directory for metrics persistence (Railway fix)
+    try:
+        prom_dir = "/tmp/ghost_prom"
+        if not os.path.exists(prom_dir):
+            os.makedirs(prom_dir, exist_ok=True)
+    except Exception:
+        pass
 
 
 def _ensure_ai_dir():
@@ -7872,9 +7881,9 @@ def _fetch_price_alphavantage(symbol: str) -> tuple[float | None, float | None, 
         url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol.upper()}&apikey={ALPHAVANTAGE_KEY}"
         if _OTEL_TRACER is not None:
             with _OTEL_TRACER.start_as_current_span("provider.alphavantage.get"):  # type: ignore[attr-defined]
-                r = _http_get(url, timeout=30)
+                r = _http_get(url, timeout=10)
         else:
-            r = _http_get(url, timeout=30)
+            r = _http_get(url, timeout=10)
         r.raise_for_status()
         data = r.json() or {}
         gq = data.get("Global Quote") or data.get("GlobalQuote") or {}
@@ -8062,7 +8071,10 @@ def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]
         t0 = time.perf_counter()
         import yfinance as yf
 
+        # Increase timeout and add better JSON error handling
         tkr = yf.Ticker(symbol.upper())
+        # Use timeout in session to prevent hanging on bad JSON responses
+        tkr.session.timeout = (5, 15)  # (connect, read) timeouts in seconds
         hist = tkr.history(period="2d")
         if not hist.empty:
             close = float(hist["Close"].iloc[-1])
@@ -10796,6 +10808,8 @@ async def api_position_get():
 
 
 # --- Memory MCP Integration Endpoints -------------------------------------
+# Note: Memory MCP integration is an optional feature module
+# Gracefully handle if module doesn't exist (not required for core functionality)
 try:
     from core.memory_mcp_integration import GhostMemoryEngine, MemoryStoreRequest  # type: ignore
 
