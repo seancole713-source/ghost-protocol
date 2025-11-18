@@ -3335,8 +3335,8 @@ async def _on_startup():
             "TELEGRAM_TOKEN_SET": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
         }
         LOGGER.info(f"[GHOST BOOT] Environment flags: {json.dumps(env_config)}")
-    except Exception as e:
-        LOGGER.warning(f"Failed to log env config: {e}", exc_info=True)
+    except Exception:
+        LOGGER.warning("Failed to log env config", exc_info=False)
     
     # Ensure Prometheus metrics registered
     try:
@@ -3754,6 +3754,16 @@ async def _on_startup():
             )
     except Exception:
         LOGGER.exception("forecast_background_tasks_failed", extra={"component": "startup"})
+    
+    # Initialize REDIS connection (non-blocking)
+    try:
+        _get_redis()
+    except Exception as e:
+        LOGGER.warning(f"[REDIS] Initialization deferred: {e}", extra={"component": "startup"})
+    
+    # Final startup confirmation
+    LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
+
 
 
 WOLF_STATE_FILE = os.getenv("WOLF_STATE_FILE", "data/wolf_state.json")
@@ -3761,6 +3771,23 @@ REDIS_URL = os.getenv("REDIS_URL", "")
 WOLF_SQLITE_PATH = os.getenv("WOLF_SQLITE_PATH", "data/wolf.db")
 WOLF_AUTOSAVE_S = int(os.getenv("WOLF_AUTOSAVE_S", "0"))  # 0 disables periodic autosave
 SQLITE_FALLBACK = False
+
+# Global REDIS client - lazy initialized on first use
+REDIS = None
+
+def _get_redis():
+    """Lazy initialize REDIS client with error handling."""
+    global REDIS
+    if REDIS is None and REDIS_URL:
+        try:
+            import redis
+            REDIS = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+            REDIS.ping()  # Test connection
+            LOGGER.info("[REDIS] ✅ Connected successfully")
+        except Exception as e:
+            LOGGER.warning(f"[REDIS] ⚠️ Connection failed: {e} - continuing without cache")
+            REDIS = False  # Mark as failed to prevent retries
+    return REDIS if REDIS not in (None, False) else None
 
 # ---------------------------------------------------------------------------
 # Background live price updater
@@ -3897,17 +3924,18 @@ async def _auto_scan_movers():
             if os.getenv("CRYPTO_ENABLED", "0") == "1":
                 if now - last_crypto_scan >= CRYPTO_SCAN_INTERVAL:
                     try:
+                        redis_client = _get_redis()
                         crypto_movers = await movers_scanner.scan_crypto(
                             fetch_price_wrapper,
                             None,
-                            REDIS
+                            redis_client
                         )
                         
                         # Persist stats
                         movers_scanner.persist_last_run(
                             "crypto",
                             {"count": len(crypto_movers), "ts": int(now), "error": "", "duration_ms": 0},
-                            REDIS
+                            redis_client
                         )
                         
                         # Send alerts for new tier breaches
