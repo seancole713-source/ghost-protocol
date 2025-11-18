@@ -22269,7 +22269,7 @@ async def api_scan_all():
 @APP.get("/api/opportunities/top")
 async def api_opportunities_top(limit: int = 10, min_confidence: float = 0.70):
     """
-    Get top-ranked opportunities across all markets.
+    Get top-ranked opportunities across all markets with scoring.
 
     Query params:
         limit: Max opportunities to return (default 10)
@@ -22277,11 +22277,12 @@ async def api_opportunities_top(limit: int = 10, min_confidence: float = 0.70):
     """
     try:
         from core.market_scanner import scan_all
+        from core.opportunity_scorer import rank_opportunities
 
         # Get all opportunities
         results = await scan_all()
 
-        # Combine and sort by confidence
+        # Combine
         all_opportunities = results.get("stocks", []) + results.get("crypto", [])
 
         # Filter by confidence
@@ -22289,11 +22290,11 @@ async def api_opportunities_top(limit: int = 10, min_confidence: float = 0.70):
             opp for opp in all_opportunities if opp.get("confidence", 0) >= min_confidence
         ]
 
-        # Sort by confidence (highest first)
-        filtered.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+        # Calculate scores and rank
+        ranked = rank_opportunities(filtered)
 
         # Take top N
-        top = filtered[:limit]
+        top = ranked[:limit]
 
         return {
             "ok": True,
