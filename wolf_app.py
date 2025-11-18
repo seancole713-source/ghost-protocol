@@ -3466,23 +3466,28 @@ async def _on_startup():
         except Exception as e:
             LOGGER.error(f"stage4_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
-    # Start SL/TP monitoring background task
-    try:
-        import asyncio as _asyncio_module
-        from core.sl_tp_monitor import start_sl_tp_monitor
-        _asyncio_module.create_task(start_sl_tp_monitor())
-        LOGGER.info("sl_tp_monitor_started", extra={"component": "startup"})
-    except Exception as e:
-        LOGGER.error(f"sl_tp_monitor_failed: {e}", extra={"component": "startup"}, exc_info=False)
-
-    # Start order status sync background task
-    try:
-        import asyncio as _asyncio_module
-        from core.order_sync import start_order_sync
-        _asyncio_module.create_task(start_order_sync())
-        LOGGER.info("order_sync_started", extra={"component": "startup"})
-    except Exception as e:
-        LOGGER.error(f"order_sync_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    # BROKER FEATURES DISABLED - Ghost is an investment hunter, not a trading platform
+    # If you want broker features, set BROKER_ENABLED=1 in Railway Variables
+    # 
+    # # Start SL/TP monitoring background task
+    # try:
+    #     import asyncio as _asyncio_module
+    #     from core.sl_tp_monitor import start_sl_tp_monitor
+    #     _asyncio_module.create_task(start_sl_tp_monitor())
+    #     LOGGER.info("sl_tp_monitor_started", extra={"component": "startup"})
+    # except Exception as e:
+    #     LOGGER.error(f"sl_tp_monitor_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    # 
+    # # Start order status sync background task
+    # try:
+    #     import asyncio as _asyncio_module
+    #     from core.order_sync import start_order_sync
+    #     _asyncio_module.create_task(start_order_sync())
+    #     LOGGER.info("order_sync_started", extra={"component": "startup"})
+    # except Exception as e:
+    #     LOGGER.error(f"order_sync_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
+    LOGGER.info("🟣 Ghost Investment Hunter initialized - broker features disabled", extra={"component": "startup"})
 
     # Stage 5: Initialize Advanced Execution & Order Management
     if STAGE5_ENABLED:
