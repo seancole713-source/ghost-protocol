@@ -77,7 +77,7 @@ else
     echo -e "${COLOR_GREEN}✓ Compilation successful${COLOR_RESET}"
     
     echo -e "${COLOR_CYAN}→ Starting server...${COLOR_RESET}"
-    nohup python3 -m uvicorn wolf_app:APP --host 0.0.0.0 --port 8444 > server.log 2>&1 &
+    nohup python3 -m uvicorn wolf_app:APP --host 0.0.0.0 --port ${PORT:-8080} > server.log 2>&1 &
     SERVER_PID=$!
     echo -e "${COLOR_GREEN}✓ Server started (PID: $SERVER_PID)${COLOR_RESET}"
     sleep 5
@@ -88,7 +88,7 @@ echo ""
 echo -e "${COLOR_CYAN}→ Waiting for server readiness...${COLOR_RESET}"
 MAX_WAIT=30
 WAITED=0
-while ! curl -s http://127.0.0.1:8444/api/status > /dev/null; do
+while ! curl -s http://127.0.0.1:${PORT:-8080}/api/status > /dev/null; do
     sleep 1
     WAITED=$((WAITED + 1))
     if [[ $WAITED -ge $MAX_WAIT ]]; then

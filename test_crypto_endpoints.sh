@@ -10,7 +10,7 @@
 
 set -e
 
-BASE_URL="${1:-http://localhost:8444}"
+BASE_URL="${1:-http://localhost:${PORT:-8080}}"
 
 echo "🧪 Testing Crypto Endpoints"
 echo "Base URL: $BASE_URL"
