@@ -22365,6 +22365,41 @@ async def api_accuracy(period: str = "all"):
         }
 
 
+@APP.get("/api/opportunity/live")
+async def api_opportunity_live():
+    """
+    Fast cached endpoint for live opportunities.
+    Optimized for UI real-time updates (2s timeout max).
+    """
+    try:
+        from core.market_scanner import scan_all
+        from core.opportunity_scorer import rank_opportunities
+
+        # Use cached scan if available (within 5min)
+        results = await scan_all()
+        all_opportunities = results.get("stocks", []) + results.get("crypto", [])
+        
+        # Quick rank (top 5 only for speed)
+        ranked = rank_opportunities(all_opportunities)[:5]
+
+        return {
+            "ok": True,
+            "opportunities": ranked,
+            "count": len(ranked),
+            "cached": True,
+            "timestamp": int(time.time()),
+        }
+    except Exception as e:
+        LOGGER.error(f"Live opportunity failed: {e}")
+        return {
+            "ok": False,
+            "error": str(e),
+            "opportunities": [],
+            "count": 0,
+            "timestamp": int(time.time()),
+        }
+
+
 # ============================================================================
 # GHOST INVESTMENT HUNTER - UI DASHBOARD
 # ============================================================================

@@ -303,18 +303,11 @@ async def scan_crypto() -> list[dict[str, Any]]:
     """
     LOGGER.info("🔍 Starting crypto market scan...")
 
-    # Top crypto to scan
+    # Top crypto to scan (includes VIP coins)
     crypto_symbols = [
-        "BTC",
-        "ETH",
-        "SOL",
-        "BNB",
-        "XRP",
-        "ADA",
-        "DOGE",
-        "MATIC",
-        "DOT",
-        "AVAX",
+        "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "MATIC", "DOT", "AVAX",
+        "SHIB", "PEPE", "FLOKI",  # Meme coins
+        "WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"  # VIP coins
     ]
 
     opportunities = []
