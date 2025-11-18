@@ -1,0 +1,575 @@
+{% extends 'base.html' %}
+{% block title %}Ghost Investment Hunter{% endblock %}
+
+{% block styles %}
+<style>
+  .hunter-dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
+    padding: 1.5rem;
+  }
+  
+  .hunter-panel {
+    background: rgba(20, 20, 30, 0.95);
+    border: 1px solid rgba(138, 43, 226, 0.3);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 12px rgba(138, 43, 226, 0.1);
+  }
+  
+  .hunter-panel.highlight {
+    border-color: rgba(255, 69, 0, 0.6);
+    box-shadow: 0 4px 16px rgba(255, 69, 0, 0.2);
+  }
+  
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid rgba(138, 43, 226, 0.2);
+  }
+  
+  .panel-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #a855f7;
+  }
+  
+  .panel-badge {
+    background: rgba(138, 43, 226, 0.2);
+    color: #a855f7;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  
+  .opportunity-card {
+    background: rgba(30, 30, 45, 0.8);
+    border: 1px solid rgba(138, 43, 226, 0.15);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    transition: all 0.2s ease;
+  }
+  
+  .opportunity-card:hover {
+    border-color: rgba(138, 43, 226, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(138, 43, 226, 0.2);
+  }
+  
+  .opp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+  }
+  
+  .opp-symbol {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  
+  .opp-grade {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .grade-badge {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 1.25rem;
+    font-weight: 700;
+    min-width: 3rem;
+    text-align: center;
+  }
+  
+  .grade-S { background: linear-gradient(135deg, #ff4500 0%, #ff6347 100%); }
+  .grade-A { background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); }
+  .grade-B { background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); }
+  .grade-C { background: linear-gradient(135deg, #1abc9c 0%, #16a085 100%); }
+  .grade-D { background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%); }
+  .grade-F { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); }
+  
+  .opp-emoji {
+    font-size: 1.5rem;
+  }
+  
+  .opp-prediction {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .prediction-icon {
+    font-size: 1.25rem;
+  }
+  
+  .prediction-text {
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+  
+  .prediction-positive { color: #00ff88; }
+  .prediction-negative { color: #ff4444; }
+  
+  .opp-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(138, 43, 226, 0.15);
+  }
+  
+  .detail-item {
+    font-size: 0.875rem;
+    color: #aaa;
+  }
+  
+  .detail-label {
+    color: #888;
+  }
+  
+  .detail-value {
+    color: #fff;
+    font-weight: 500;
+  }
+  
+  .accuracy-stat {
+    background: rgba(138, 43, 226, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+  
+  .accuracy-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #a855f7;
+    margin-bottom: 0.25rem;
+  }
+  
+  .accuracy-label {
+    font-size: 0.875rem;
+    color: #aaa;
+  }
+  
+  .refresh-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    margin-top: 1rem;
+  }
+  
+  .refresh-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+  
+  .empty-state {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: #888;
+  }
+  
+  .empty-state-emoji {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+  }
+  
+  .loading {
+    text-align: center;
+    padding: 2rem;
+    color: #a855f7;
+  }
+  
+  .loading-spinner {
+    font-size: 2rem;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="hunter-dashboard">
+  <!-- High Confidence Alerts Panel -->
+  <div class="hunter-panel highlight">
+    <div class="panel-header">
+      <div class="panel-title">🔥 High Confidence Alerts</div>
+      <div class="panel-badge" id="alertCount">0</div>
+    </div>
+    <div id="highConfidenceAlerts" class="loading">
+      <div class="loading-spinner">⏳</div>
+      <div>Loading opportunities...</div>
+    </div>
+  </div>
+  
+  <!-- Top Movers Panel -->
+  <div class="hunter-panel">
+    <div class="panel-header">
+      <div class="panel-title">📈 Top Movers</div>
+      <div class="panel-badge" id="moversCount">0</div>
+    </div>
+    <div id="topMovers" class="loading">
+      <div class="loading-spinner">⏳</div>
+      <div>Scanning markets...</div>
+    </div>
+  </div>
+  
+  <!-- Detected Opportunities Panel -->
+  <div class="hunter-panel">
+    <div class="panel-header">
+      <div class="panel-title">🎯 Detected Opportunities</div>
+      <div class="panel-badge" id="oppsCount">0</div>
+    </div>
+    <div id="detectedOpportunities" class="loading">
+      <div class="loading-spinner">⏳</div>
+      <div>Finding opportunities...</div>
+    </div>
+  </div>
+  
+  <!-- Ghost Accuracy Panel -->
+  <div class="hunter-panel">
+    <div class="panel-header">
+      <div class="panel-title">📊 Ghost Accuracy</div>
+      <div class="panel-badge" id="accuracyPeriod">24h</div>
+    </div>
+    <div id="accuracyStats">
+      <div class="accuracy-stat">
+        <div class="accuracy-value" id="accuracyValue">--</div>
+        <div class="accuracy-label">Prediction Accuracy</div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+        <div style="background:rgba(138, 43, 226, 0.1); border-radius:8px; padding:0.75rem; text-align:center;">
+          <div style="font-size:1.5rem; font-weight:700; color:#a855f7;" id="totalPredictions">0</div>
+          <div style="font-size:0.75rem; color:#aaa;">Total Predictions</div>
+        </div>
+        <div style="background:rgba(138, 43, 226, 0.1); border-radius:8px; padding:0.75rem; text-align:center;">
+          <div style="font-size:1.5rem; font-weight:700; color:#00ff88;" id="correctPredictions">0</div>
+          <div style="font-size:0.75rem; color:#aaa;">Correct</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Refresh Button -->
+<div style="position:fixed; bottom:2rem; right:2rem; z-index:1000;">
+  <button class="refresh-btn" onclick="refreshAllPanels()" style="width:auto; padding:1rem 2rem; border-radius:50px;">
+    🔄 Refresh All
+  </button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Fetch high confidence alerts (score 80+)
+async function loadHighConfidenceAlerts() {
+  try {
+    const response = await fetch('/api/opportunities/top?limit=5&min_confidence=0.75');
+    const data = await response.json();
+    
+    const container = document.getElementById('highConfidenceAlerts');
+    document.getElementById('alertCount').textContent = data.length;
+    
+    if (data.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-emoji">🔍</div>
+          <div>No high confidence alerts right now</div>
+          <div style="font-size:0.875rem; margin-top:0.5rem;">Ghost is scanning markets...</div>
+        </div>
+      `;
+      return;
+    }
+    
+    container.innerHTML = data.map(opp => {
+      const score = opp.score || 0;
+      const grade = getGrade(score);
+      const emoji = getEmoji(score);
+      const isPredictionPositive = opp.predicted_pct > 0;
+      
+      return `
+        <div class="opportunity-card">
+          <div class="opp-header">
+            <div class="opp-symbol">${opp.symbol}</div>
+            <div class="opp-grade">
+              <div class="opp-emoji">${emoji}</div>
+              <div class="grade-badge grade-${grade}">${grade}</div>
+            </div>
+          </div>
+          <div class="opp-prediction">
+            <div class="prediction-icon">${isPredictionPositive ? '📈' : '📉'}</div>
+            <div class="prediction-text ${isPredictionPositive ? 'prediction-positive' : 'prediction-negative'}">
+              ${opp.action} ${opp.predicted_pct > 0 ? '+' : ''}${opp.predicted_pct.toFixed(1)}%
+            </div>
+          </div>
+          <div class="opp-details">
+            <div class="detail-item">
+              <span class="detail-label">Confidence:</span>
+              <span class="detail-value">${(opp.confidence * 100).toFixed(0)}%</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Score:</span>
+              <span class="detail-value">${score}/100</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Timeframe:</span>
+              <span class="detail-value">${formatTimeframe(opp.timeframe_hours)}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Volume:</span>
+              <span class="detail-value">${opp.volume_ratio?.toFixed(1) || '1.0'}x</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Error loading high confidence alerts:', error);
+    document.getElementById('highConfidenceAlerts').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-emoji">⚠️</div>
+        <div>Failed to load alerts</div>
+      </div>
+    `;
+  }
+}
+
+// Fetch top movers
+async function loadTopMovers() {
+  try {
+    const response = await fetch('/api/scan/stocks?limit=5');
+    const data = await response.json();
+    
+    const container = document.getElementById('topMovers');
+    document.getElementById('moversCount').textContent = data.length;
+    
+    if (data.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-emoji">😴</div>
+          <div>Market is quiet</div>
+        </div>
+      `;
+      return;
+    }
+    
+    container.innerHTML = data.slice(0, 5).map(opp => {
+      const score = opp.score || calculateScore(opp);
+      const grade = getGrade(score);
+      const emoji = getEmoji(score);
+      const isPredictionPositive = opp.predicted_pct > 0;
+      
+      return `
+        <div class="opportunity-card">
+          <div class="opp-header">
+            <div class="opp-symbol">${opp.symbol}</div>
+            <div class="opp-grade">
+              <div class="opp-emoji">${emoji}</div>
+              <div class="grade-badge grade-${grade}">${grade}</div>
+            </div>
+          </div>
+          <div class="opp-prediction">
+            <div class="prediction-icon">${isPredictionPositive ? '📈' : '📉'}</div>
+            <div class="prediction-text ${isPredictionPositive ? 'prediction-positive' : 'prediction-negative'}">
+              ${opp.action} ${opp.predicted_pct > 0 ? '+' : ''}${opp.predicted_pct.toFixed(1)}%
+            </div>
+          </div>
+          <div class="opp-details">
+            <div class="detail-item">
+              <span class="detail-label">Confidence:</span>
+              <span class="detail-value">${(opp.confidence * 100).toFixed(0)}%</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Score:</span>
+              <span class="detail-value">${score}/100</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Timeframe:</span>
+              <span class="detail-value">${formatTimeframe(opp.timeframe_hours)}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Volume:</span>
+              <span class="detail-value">${opp.volume_ratio?.toFixed(1) || '1.0'}x</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Error loading top movers:', error);
+    document.getElementById('topMovers').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-emoji">⚠️</div>
+        <div>Failed to load movers</div>
+      </div>
+    `;
+  }
+}
+
+// Fetch detected opportunities
+async function loadDetectedOpportunities() {
+  try {
+    const response = await fetch('/api/scan/all');
+    const data = await response.json();
+    
+    const allOpps = [...(data.stocks || []), ...(data.crypto || [])];
+    allOpps.sort((a, b) => (b.score || 0) - (a.score || 0));
+    
+    const container = document.getElementById('detectedOpportunities');
+    document.getElementById('oppsCount').textContent = allOpps.length;
+    
+    if (allOpps.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-emoji">🔍</div>
+          <div>No opportunities detected</div>
+        </div>
+      `;
+      return;
+    }
+    
+    container.innerHTML = allOpps.slice(0, 5).map(opp => {
+      const score = opp.score || calculateScore(opp);
+      const grade = getGrade(score);
+      const emoji = getEmoji(score);
+      const isPredictionPositive = opp.predicted_pct > 0;
+      
+      return `
+        <div class="opportunity-card">
+          <div class="opp-header">
+            <div class="opp-symbol">${opp.symbol}</div>
+            <div class="opp-grade">
+              <div class="opp-emoji">${emoji}</div>
+              <div class="grade-badge grade-${grade}">${grade}</div>
+            </div>
+          </div>
+          <div class="opp-prediction">
+            <div class="prediction-icon">${isPredictionPositive ? '📈' : '📉'}</div>
+            <div class="prediction-text ${isPredictionPositive ? 'prediction-positive' : 'prediction-negative'}">
+              ${opp.action} ${opp.predicted_pct > 0 ? '+' : ''}${opp.predicted_pct.toFixed(1)}%
+            </div>
+          </div>
+          <div class="opp-details">
+            <div class="detail-item">
+              <span class="detail-label">Confidence:</span>
+              <span class="detail-value">${(opp.confidence * 100).toFixed(0)}%</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Score:</span>
+              <span class="detail-value">${score}/100</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Timeframe:</span>
+              <span class="detail-value">${formatTimeframe(opp.timeframe_hours)}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Volume:</span>
+              <span class="detail-value">${opp.volume_ratio?.toFixed(1) || '1.0'}x</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Error loading detected opportunities:', error);
+    document.getElementById('detectedOpportunities').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-emoji">⚠️</div>
+        <div>Failed to load opportunities</div>
+      </div>
+    `;
+  }
+}
+
+// Fetch accuracy stats
+async function loadAccuracyStats() {
+  try {
+    const response = await fetch('/api/accuracy?period=24h');
+    const data = await response.json();
+    
+    const accuracy = data.accuracy_pct || 0;
+    const total = data.total_predictions || 0;
+    const correct = data.correct_predictions || 0;
+    
+    document.getElementById('accuracyValue').textContent = `${accuracy.toFixed(1)}%`;
+    document.getElementById('totalPredictions').textContent = total;
+    document.getElementById('correctPredictions').textContent = correct;
+  } catch (error) {
+    console.error('Error loading accuracy stats:', error);
+    document.getElementById('accuracyValue').textContent = '--';
+  }
+}
+
+// Helper functions
+function getGrade(score) {
+  if (score >= 90) return 'S';
+  if (score >= 80) return 'A';
+  if (score >= 70) return 'B';
+  if (score >= 60) return 'C';
+  if (score >= 50) return 'D';
+  return 'F';
+}
+
+function getEmoji(score) {
+  if (score >= 90) return '🔥';
+  if (score >= 80) return '⭐';
+  if (score >= 70) return '✨';
+  if (score >= 60) return '👍';
+  if (score >= 50) return '😐';
+  return '⚠️';
+}
+
+function formatTimeframe(hours) {
+  if (hours < 24) return `${Math.round(hours)}h`;
+  const days = Math.round(hours / 24);
+  return `${days}d`;
+}
+
+function calculateScore(opp) {
+  // Fallback score calculation if not provided by backend
+  let score = 0;
+  score += (opp.confidence || 0) * 40; // 40 points from confidence
+  score += Math.min((opp.volume_ratio || 1) / 5 * 20, 20); // 20 points from volume
+  // Simplified calculation
+  return Math.round(score);
+}
+
+// Refresh all panels
+async function refreshAllPanels() {
+  loadHighConfidenceAlerts();
+  loadTopMovers();
+  loadDetectedOpportunities();
+  loadAccuracyStats();
+}
+
+// Auto-refresh every 60 seconds
+setInterval(refreshAllPanels, 60000);
+
+// Initial load
+window.addEventListener('load', refreshAllPanels);
+</script>
+{% endblock %}

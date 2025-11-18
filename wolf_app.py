@@ -22365,6 +22365,46 @@ async def api_accuracy(period: str = "all"):
         }
 
 
+# ============================================================================
+# GHOST INVESTMENT HUNTER - UI DASHBOARD
+# ============================================================================
+
+@APP.get("/opportunities")
+async def opportunities_dashboard():
+    """
+    Serve Ghost Investment Hunter dashboard (opportunities UI).
+    Shows high-confidence alerts, top movers, detected opportunities, and accuracy.
+    """
+    from fastapi.templating import Jinja2Templates
+    from fastapi.requests import Request
+    
+    templates = Jinja2Templates(directory="templates")
+    
+    # Create a mock request object with empty headers
+    # FastAPI templates expect a Request object for rendering
+    class MockRequest:
+        def __init__(self):
+            self.headers = {}
+            self.path_params = {}
+    
+    try:
+        return templates.TemplateResponse(
+            "opportunities.html",
+            {"request": MockRequest(), "active": "opportunities"}
+        )
+    except Exception as e:
+        LOGGER.error(f"Opportunities dashboard failed: {e}")
+        return HTMLResponse(
+            content="""
+            <html><head><title>Ghost Investment Hunter</title></head>
+            <body><h1>Ghost Investment Hunter</h1>
+            <p>Dashboard temporarily unavailable</p>
+            <p><a href="/cockpit">Return to Cockpit</a></p></body></html>
+            """,
+            status_code=500
+        )
+
+
 # Alias for Railway/Uvicorn compatibility (expects lowercase 'app')
 app = APP
 
