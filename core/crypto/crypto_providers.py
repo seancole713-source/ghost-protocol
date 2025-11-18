@@ -225,44 +225,84 @@ class BinanceProvider:
     """
     Binance API - Secondary provider (Unlimited public data)
     Docs: https://binance-docs.github.io/apidocs/spot/en/
+    
+    Enhanced with:
+    - Exponential backoff for rate limits and 451 errors
+    - Automatic fallback to Binance US endpoint
+    - Retry logic for transient failures
     """
 
     REST_URL = "https://api.binance.com/api/v3"
+    REST_URL_US = "https://api.binance.us/api/v3"  # US fallback for Cloudflare blocks
 
     def __init__(self):
         self.symbol_suffix = "USDT"  # Trade against USDT
+        self.max_retries = 3
+        self.base_delay = 0.5  # Start with 500ms
 
     def get_price(self, symbol: str) -> dict[str, Any] | None:
         """
-        Get current price from Binance
+        Get current price from Binance with retry logic and US fallback
 
         Returns similar format to CoinGecko for consistency
         """
-        try:
-            binance_symbol = f"{symbol.upper()}{self.symbol_suffix}"
+        binance_symbol = f"{symbol.upper()}{self.symbol_suffix}"
+        
+        # Try primary endpoint first, then US fallback
+        urls = [self.REST_URL, self.REST_URL_US]
+        
+        for base_url in urls:
+            for attempt in range(self.max_retries):
+                try:
+                    # Get ticker with 24h stats
+                    url = f"{base_url}/ticker/24hr"
+                    params = {"symbol": binance_symbol}
 
-            # Get ticker with 24h stats
-            url = f"{self.REST_URL}/ticker/24hr"
-            params = {"symbol": binance_symbol}
+                    response = _session.get(url, params=params, timeout=10)
+                    response.raise_for_status()
 
-            response = _session.get(url, params=params, timeout=10)
-            response.raise_for_status()
+                    data = response.json()
 
-            data = response.json()
+                    return {
+                        "symbol": symbol.upper(),
+                        "price": float(data.get("lastPrice", 0)),
+                        "change_24h": float(data.get("priceChange", 0)),
+                        "change_24h_pct": float(data.get("priceChangePercent", 0)),
+                        "volume_24h": float(data.get("quoteVolume", 0)),
+                        "last_updated": int(data.get("closeTime", 0) / 1000),
+                        "provider": "binance",
+                    }
 
-            return {
-                "symbol": symbol.upper(),
-                "price": float(data.get("lastPrice", 0)),
-                "change_24h": float(data.get("priceChange", 0)),
-                "change_24h_pct": float(data.get("priceChangePercent", 0)),
-                "volume_24h": float(data.get("quoteVolume", 0)),
-                "last_updated": int(data.get("closeTime", 0) / 1000),
-                "provider": "binance",
-            }
-
-        except Exception as e:
-            LOGGER.warning(f"Binance fetch failed for {symbol}: {e}")
-            return None
+                except Exception as e:
+                    error_msg = str(e)
+                    status_code = getattr(getattr(e, 'response', None), 'status_code', 0)
+                    
+                    # Check for Cloudflare 451 or rate limiting (retryable)
+                    is_cloudflare_block = status_code == 451 or "451" in error_msg
+                    is_rate_limit = status_code == 429 or "429" in error_msg
+                    
+                    # Retry on temporary errors
+                    if (is_cloudflare_block or is_rate_limit) and attempt < self.max_retries - 1:
+                        delay = self.base_delay * (2 ** attempt)  # 0.5s, 1s, 2s
+                        LOGGER.debug(
+                            f"Binance blocked/rate-limited for {symbol} "
+                            f"(status {status_code}), retrying in {delay}s "
+                            f"(attempt {attempt + 1}/{self.max_retries}, url={base_url})"
+                        )
+                        time.sleep(delay)
+                        continue  # Retry same URL
+                    
+                    # If final attempt, try next URL
+                    if attempt == self.max_retries - 1:
+                        LOGGER.debug(
+                            f"Binance fetch failed for {symbol} after {self.max_retries} attempts "
+                            f"on {base_url}: {e}"
+                        )
+                        break  # Try alternative URL
+        
+        # All attempts and URLs exhausted
+        LOGGER.warning(f"Binance fetch failed for {symbol}: All endpoints exhausted")
+        return None
 
 
 class CoinbaseProvider:

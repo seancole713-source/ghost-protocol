@@ -8067,65 +8067,86 @@ def _fetch_price_polygon_intraday(symbol: str) -> tuple[float | None, float | No
 
 
 def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]:
-    try:
-        t0 = time.perf_counter()
-        import yfinance as yf
+    """Fetch price from yfinance with exponential backoff for JSON errors."""
+    max_retries = 3
+    base_delay = 0.5  # Start with 500ms
+    
+    for attempt in range(max_retries):
+        try:
+            t0 = time.perf_counter()
+            import yfinance as yf
 
-        # Increase timeout and add better JSON error handling
-        tkr = yf.Ticker(symbol.upper())
-        # Use timeout in session to prevent hanging on bad JSON responses
-        tkr.session.timeout = (5, 15)  # (connect, read) timeouts in seconds
-        hist = tkr.history(period="2d")
-        if not hist.empty:
-            close = float(hist["Close"].iloc[-1])
-            prev = float(hist["Close"].iloc[-2]) if len(hist["Close"]) > 1 else None
-            if close > 0:
+            # Increase timeout and add better JSON error handling
+            tkr = yf.Ticker(symbol.upper())
+            # Use timeout in session to prevent hanging on bad JSON responses
+            tkr.session.timeout = (5, 15)  # (connect, read) timeouts in seconds
+            hist = tkr.history(period="2d")
+            if not hist.empty:
+                close = float(hist["Close"].iloc[-1])
+                prev = float(hist["Close"].iloc[-2]) if len(hist["Close"]) > 1 else None
+                if close > 0:
+                    try:
+                        if _H_PROVIDER_FETCH is not None:
+                            _H_PROVIDER_FETCH.labels(provider="yfinance").observe(
+                                time.perf_counter() - t0
+                            )
+                        if _C_PROVIDER_FETCH is not None:
+                            _C_PROVIDER_FETCH.labels(provider="yfinance", result="ok").inc()
+                    except Exception:
+                        pass
+                    return close, prev, "yfinance"
+                    
+        except Exception as e:
+            msg = str(e)
+            low = msg.lower()
+            
+            # Check if it's a JSON parsing error (retryable)
+            is_json_error = "expecting value" in low or "json" in low
+            
+            # Retry on JSON errors with exponential backoff
+            if is_json_error and attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)  # 0.5s, 1s, 2s
+                LOGGER.debug(
+                    f"yfinance JSON error for {symbol}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
+                continue  # Retry
+            
+            # Not retryable or final attempt - log and fail
+            # Heuristics for delisted / no data conditions surfaced by yfinance
+            delisted_tokens = [
+                "no price data found",
+                "possibly delisted",
+                "delisted",
+                "no data",
+            ]
+            is_delisted = any(tok in low for tok in delisted_tokens)
+            # Only log warning once for delisted to reduce noise; subsequent occurrences debug
+            log_method = LOGGER.warning if not is_delisted or not PRICE_DIAG.get("delisted_hint") else LOGGER.debug
+            log_method(
+                "provider_error",
+                extra={
+                    "component": "provider",
+                    "provider": "yfinance",
+                    "error": msg,
+                    "delisted": bool(is_delisted),
+                    "json_error": is_json_error,
+                },
+            )
+            if is_delisted and not PRICE_DIAG.get("delisted_hint"):
                 try:
-                    if _H_PROVIDER_FETCH is not None:
-                        _H_PROVIDER_FETCH.labels(provider="yfinance").observe(
-                            time.perf_counter() - t0
-                        )
-                    if _C_PROVIDER_FETCH is not None:
-                        _C_PROVIDER_FETCH.labels(provider="yfinance", result="ok").inc()
+                    PRICE_DIAG["delisted_hint"] = True
+                    PRICE_DIAG["delisted_provider"] = "yfinance"
+                    PRICE_DIAG["delisted_reason"] = msg[:200]
                 except Exception:
                     pass
-                return close, prev, "yfinance"
-    except Exception as e:
-        msg = str(e)
-        low = msg.lower()
-        # Heuristics for delisted / no data conditions surfaced by yfinance
-        delisted_tokens = [
-            "no price data found",
-            "possibly delisted",
-            "delisted",
-            "no data",
-        ]
-        is_delisted = any(tok in low for tok in delisted_tokens)
-        # Only log warning once for delisted to reduce noise; subsequent occurrences debug
-        log_method = LOGGER.warning
-        if is_delisted and PRICE_DIAG.get("delisted_hint"):
-            log_method = LOGGER.debug
-        log_method(
-            "provider_error",
-            extra={
-                "component": "provider",
-                "provider": "yfinance",
-                "error": msg,
-                "delisted": bool(is_delisted),
-            },
-        )
-        if is_delisted and not PRICE_DIAG.get("delisted_hint"):
             try:
-                PRICE_DIAG["delisted_hint"] = True
-                PRICE_DIAG["delisted_provider"] = "yfinance"
-                PRICE_DIAG["delisted_reason"] = msg[:200]
+                if _C_PROVIDER_FETCH is not None:
+                    _C_PROVIDER_FETCH.labels(provider="yfinance", result="error").inc()
             except Exception:
                 pass
-        try:
-            if _C_PROVIDER_FETCH is not None:
-                _C_PROVIDER_FETCH.labels(provider="yfinance", result="error").inc()
-        except Exception:
-            pass
+            break  # Exit retry loop on non-retryable error
+            
     return None, None, ""
 
 
