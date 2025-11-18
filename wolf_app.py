@@ -3040,24 +3040,7 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                 )
                 price = decision.price
                 provider = decision.provider_label
-
-                # Log provider attempts for debugging (include all quotes)
-                if decision.quotes:
-                    quote_summary = [
-                        f"{q.provider}({'✓' if q.price else '✗'}:{q.error[:30] if q.error else 'ok'})"
-                        for q in decision.quotes
-                    ]
-                    LOGGER.debug(
-                        f"Provider results for {symbol}: {', '.join(quote_summary)}",
-                        extra={
-                            "symbol": symbol,
-                            "normalized": normalized_symbol,
-                            "provider_count": len(providers),
-                            "successful_provider": provider if price else None,
-                            "price": price
-                        }
-                    )
-
+                
                 # Log provider attempts for debugging
                 if price is None:
                     LOGGER.warning(
@@ -18119,8 +18102,6 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             return cached_result
     
     try:
-        import concurrent.futures
-
         results = {
             "stocks": [],
             "crypto": [],
@@ -18131,19 +18112,15 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "crypto": []
         }
         
-        # Helper function for parallel prediction generation
-        def _generate_single_prediction(symbol: str, symbol_type: str) -> tuple[str, dict | None, str | None]:
-            """
-            Generate prediction for single symbol with error handling.
-            Returns: (symbol, prediction_dict, error_message)
-            """
+        # Generate predictions for stock symbols
+        for symbol in STOCK_SYMBOLS:
             try:
                 forecast = _generate_48h_forecast(symbol)
                 if forecast.get("ok") is not False:
                     signal = _evaluate_signal(symbol)
                     prediction = {
                         "symbol": symbol,
-                        "type": symbol_type,
+                        "type": "stock",
                         "price_current": forecast.get("price_now"),
                         "price_pred_mid": forecast.get("price_pred_mid"),
                         "confidence": forecast.get("confidence", 0.5),
@@ -18151,73 +18128,55 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
                         "momentum": signal.get("fused_score", 0.0),
                         "timestamp": time.time()
                     }
-                    return (symbol, prediction, None)
+                    results["stocks"].append(prediction)
                 else:
+                    # Log detailed failure reason
                     error_msg = forecast.get("error") or forecast.get("message") or "unknown error"
-                    return (symbol, None, error_msg)
-            except Exception as e:
-                return (symbol, None, str(e))
-        
-        # Use ThreadPoolExecutor for parallel generation with timeout
-        # Limit to 10 concurrent workers to avoid overwhelming providers
-        max_workers = 10
-        prediction_timeout = 90.0  # 90 seconds max per symbol batch
-        
-        LOGGER.info(f"Starting parallel multi-symbol prediction with {max_workers} workers")
-        start_time = time.time()
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit stock predictions
-            stock_futures = {
-                executor.submit(_generate_single_prediction, sym, "stock"): sym
-                for sym in STOCK_SYMBOLS
-            }
-            
-            # Collect stock results with timeout
-            for future in concurrent.futures.as_completed(stock_futures, timeout=prediction_timeout):
-                symbol = stock_futures[future]
-                try:
-                    sym, pred, error = future.result(timeout=15.0)  # 15s per symbol
-                    if pred:
-                        results["stocks"].append(pred)
-                    else:
-                        failed_symbols["stocks"].append({
-                            "symbol": sym,
-                            "error": error or "forecast failed"
-                        })
-                        LOGGER.warning(f"Stock forecast failed for {sym}: {error}")
-                except Exception as e:
                     failed_symbols["stocks"].append({
                         "symbol": symbol,
-                        "error": f"timeout or exception: {e}"
+                        "error": error_msg if error_msg else "live price unavailable",
+                        "raw_forecast": forecast
                     })
-                    LOGGER.warning(f"Stock prediction timeout/error for {symbol}: {e}")
-            
-            # Submit crypto predictions
-            crypto_futures = {
-                executor.submit(_generate_single_prediction, sym, "crypto"): sym
-                for sym in CRYPTO_SYMBOLS
-            }
-            
-            # Collect crypto results with timeout
-            for future in concurrent.futures.as_completed(crypto_futures, timeout=prediction_timeout):
-                symbol = crypto_futures[future]
-                try:
-                    sym, pred, error = future.result(timeout=15.0)
-                    if pred:
-                        results["crypto"].append(pred)
-                    else:
-                        failed_symbols["crypto"].append({
-                            "symbol": sym,
-                            "error": error or "forecast failed"
-                        })
-                        LOGGER.warning(f"Crypto forecast failed for {sym}: {error}")
-                except Exception as e:
+                    LOGGER.warning(
+                        f"Stock forecast failed for {symbol}: {error_msg}",
+                        extra={"symbol": symbol, "error": error_msg, "forecast": forecast}
+                    )
+            except Exception as e:
+                LOGGER.warning(f"Multi-prediction failed for stock {symbol}: {e}")
+                continue
+        
+        # Generate predictions for crypto symbols
+        for symbol in CRYPTO_SYMBOLS:
+            try:
+                forecast = _generate_48h_forecast(symbol)
+                if forecast.get("ok") is not False:
+                    signal = _evaluate_signal(symbol)
+                    prediction = {
+                        "symbol": symbol,
+                        "type": "crypto",
+                        "price_current": forecast.get("price_now"),
+                        "price_pred_mid": forecast.get("price_pred_mid"),
+                        "confidence": forecast.get("confidence", 0.5),
+                        "direction": signal.get("action", "HOLD"),
+                        "momentum": signal.get("fused_score", 0.0),
+                        "timestamp": time.time()
+                    }
+                    results["crypto"].append(prediction)
+                else:
+                    # Log crypto failure
+                    error_reason = forecast.get("error") or forecast.get("message") or "unknown error"
                     failed_symbols["crypto"].append({
                         "symbol": symbol,
-                        "error": f"timeout or exception: {e}"
+                        "error": error_reason,
+                        "forecast_keys": list(forecast.keys()) if isinstance(forecast, dict) else None
                     })
-                    LOGGER.warning(f"Crypto prediction timeout/error for {symbol}: {e}")
+            except Exception as e:
+                LOGGER.warning(f"Multi-prediction failed for crypto {symbol}: {e}")
+                failed_symbols["crypto"].append({
+                    "symbol": symbol,
+                    "error": str(e)
+                })
+                continue
         
         # Generate predictions for VIP coins (using dedicated VIP provider)
         try:
@@ -18280,12 +18239,6 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             LOGGER.error(f"VIP provider module not available: {ie}")
             # Continue without VIP predictions if module missing
         
-        elapsed = time.time() - start_time
-        LOGGER.info(
-            f"Multi-symbol prediction completed in {elapsed:.1f}s: "
-            f"{len(results['stocks'])} stocks, {len(results['crypto'])} crypto, {len(results['vip'])} vip"
-        )
-        
         # Update tracking globals
         _LAST_MULTI_PREDICTION_TIME = time.time()
         _LAST_MULTI_PREDICTION_COUNTS = {
@@ -18301,8 +18254,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "total": sum(_LAST_MULTI_PREDICTION_COUNTS.values()),
             "failed_symbols": failed_symbols if (failed_symbols["stocks"] or failed_symbols["crypto"]) else None,
             "timestamp": _LAST_MULTI_PREDICTION_TIME,
-            "cached": False,
-            "generation_time_seconds": elapsed
+            "cached": False
         }
         
         # Cache result to prevent provider exhaustion
