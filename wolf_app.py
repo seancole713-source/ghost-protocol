@@ -3317,6 +3317,14 @@ async def _on_startup():
     Startup handler with comprehensive error protection.
     Each initialization step is wrapped in try/except to prevent cascading failures.
     """
+    # Railway debugging: Log immediately to confirm app is starting
+    print("[RAILWAY DEBUG] ==========================================")
+    print("[RAILWAY DEBUG] GHOST STARTING - Python import successful")
+    print(f"[RAILWAY DEBUG] PORT: {os.getenv('PORT', 'NOT_SET')}")
+    print(f"[RAILWAY DEBUG] RAILWAY_ENVIRONMENT: {os.getenv('RAILWAY_ENVIRONMENT', 'NOT_SET')}")
+    print(f"[RAILWAY DEBUG] REDIS_URL: {'SET' if os.getenv('REDIS_URL') else 'NOT_SET'}")
+    print("[RAILWAY DEBUG] ==========================================")
+    
     LOGGER.info("[GHOST STARTUP] Beginning initialization...")
     
     # Log critical environment configuration at boot
