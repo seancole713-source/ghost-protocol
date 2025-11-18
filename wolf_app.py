@@ -3321,19 +3321,18 @@ async def _on_startup():
     
     # Log critical environment configuration at boot
     try:
-        import os as _os
         env_config = {
-            "SIM_MODE": _os.getenv("SIM_MODE", "0"),
-            "STOCKS_ENABLED": _os.getenv("STOCKS_ENABLED", "1"),
-            "CRYPTO_ENABLED": _os.getenv("CRYPTO_ENABLED", "0"),
-            "PRICE_STRICT_LIVE": _os.getenv("PRICE_STRICT_LIVE", "0"),
-            "PRICE_REQUIRE_QUORUM": _os.getenv("PRICE_REQUIRE_QUORUM", "0"),
-            "PREDICT_REQUIRE_PRICE_QUORUM": _os.getenv("PREDICT_REQUIRE_PRICE_QUORUM", "0"),
-            "STOCK_PRICE_SOURCE": _os.getenv("STOCK_PRICE_SOURCE", "polygon"),
-            "CRYPTO_PRICE_SOURCE": _os.getenv("CRYPTO_PRICE_SOURCE", "coingecko"),
-            "REDIS_URL_SET": bool(_os.getenv("REDIS_URL")),
-            "OPENAI_KEY_SET": bool(_os.getenv("OPENAI_API_KEY")),
-            "TELEGRAM_TOKEN_SET": bool(_os.getenv("TELEGRAM_BOT_TOKEN")),
+            "SIM_MODE": os.getenv("SIM_MODE", "0"),
+            "STOCKS_ENABLED": os.getenv("STOCKS_ENABLED", "1"),
+            "CRYPTO_ENABLED": os.getenv("CRYPTO_ENABLED", "0"),
+            "PRICE_STRICT_LIVE": os.getenv("PRICE_STRICT_LIVE", "0"),
+            "PRICE_REQUIRE_QUORUM": os.getenv("PRICE_REQUIRE_QUORUM", "0"),
+            "PREDICT_REQUIRE_PRICE_QUORUM": os.getenv("PREDICT_REQUIRE_PRICE_QUORUM", "0"),
+            "STOCK_PRICE_SOURCE": os.getenv("STOCK_PRICE_SOURCE", "polygon"),
+            "CRYPTO_PRICE_SOURCE": os.getenv("CRYPTO_PRICE_SOURCE", "coingecko"),
+            "REDIS_URL_SET": bool(os.getenv("REDIS_URL")),
+            "OPENAI_KEY_SET": bool(os.getenv("OPENAI_API_KEY")),
+            "TELEGRAM_TOKEN_SET": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
         }
         LOGGER.info(f"[GHOST BOOT] Environment flags: {json.dumps(env_config)}")
     except Exception as e:
@@ -3762,9 +3761,6 @@ REDIS_URL = os.getenv("REDIS_URL", "")
 WOLF_SQLITE_PATH = os.getenv("WOLF_SQLITE_PATH", "data/wolf.db")
 WOLF_AUTOSAVE_S = int(os.getenv("WOLF_AUTOSAVE_S", "0"))  # 0 disables periodic autosave
 SQLITE_FALLBACK = False
-
-# Redis client instance (lazy initialization to avoid blocking startup)
-REDIS = None
 
 # ---------------------------------------------------------------------------
 # Background live price updater
