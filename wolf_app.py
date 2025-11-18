@@ -3763,16 +3763,8 @@ WOLF_SQLITE_PATH = os.getenv("WOLF_SQLITE_PATH", "data/wolf.db")
 WOLF_AUTOSAVE_S = int(os.getenv("WOLF_AUTOSAVE_S", "0"))  # 0 disables periodic autosave
 SQLITE_FALLBACK = False
 
-# Redis client instance (None if not configured)
+# Redis client instance (lazy initialization to avoid blocking startup)
 REDIS = None
-if REDIS_URL:
-    try:
-        import redis
-        REDIS = redis.Redis.from_url(REDIS_URL)
-        REDIS.ping()  # Test connection
-    except Exception as e:
-        LOGGER.warning(f"Redis connection failed: {e}. Continuing without Redis.")
-        REDIS = None
 
 # ---------------------------------------------------------------------------
 # Background live price updater
