@@ -376,12 +376,24 @@ async def market_scan_loop():
             # Run full scan
             results = await scan_all()
 
+            # Log summary
             LOGGER.info(
                 f"📊 Scan complete: {results['total']} opportunities "
                 f"(stocks={len(results['stocks'])}, crypto={len(results['crypto'])})"
             )
 
             # Store results (TODO: Save to database)
+
+            # Send instant alerts for high-scoring opportunities
+            try:
+                from core.telegram_hunter import send_instant_alert
+                
+                all_opportunities = results["stocks"] + results["crypto"]
+                for opp in all_opportunities:
+                    # send_instant_alert checks score threshold + cooldown internally
+                    await send_instant_alert(opp)
+            except Exception as e:
+                LOGGER.error(f"Error sending telegram alerts: {e}", exc_info=True)
 
             # Wait before next scan
             await asyncio.sleep(SCAN_INTERVAL)

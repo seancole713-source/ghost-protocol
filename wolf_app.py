@@ -3487,6 +3487,29 @@ async def _on_startup():
     # except Exception as e:
     #     LOGGER.error(f"order_sync_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
+    # Start Telegram daily report scheduler (Ghost Investment Hunter)
+    try:
+        import asyncio as _asyncio_module
+        from core.telegram_hunter import daily_report_loop
+        from core.market_scanner import scan_all
+        from core.prediction_tracker import calculate_accuracy
+        
+        async def get_top_opportunities():
+            """Get top opportunities for daily report"""
+            results = await scan_all()
+            all_opps = results["stocks"] + results["crypto"]
+            all_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
+            return all_opps[:10]
+        
+        async def get_accuracy_stats(period="24h"):
+            """Get accuracy stats for daily report"""
+            return calculate_accuracy(period)
+        
+        _asyncio_module.create_task(daily_report_loop(get_top_opportunities, get_accuracy_stats))
+        LOGGER.info("telegram_daily_reports_started", extra={"component": "startup"})
+    except Exception as e:
+        LOGGER.error(f"telegram_reports_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
     LOGGER.info("🟣 Ghost Investment Hunter initialized - broker features disabled", extra={"component": "startup"})
 
     # Stage 5: Initialize Advanced Execution & Order Management
