@@ -11,7 +11,7 @@ from pathlib import Path
 
 import requests
 
-BASE_URL = "http://localhost:8444"
+BASE_URL = os.getenv("GHOST_BASE_URL", "http://localhost:8080")
 OUTPUT_DIR = Path("healthcheck_out")
 OUTPUT_DIR.mkdir(exist_ok=True)
 

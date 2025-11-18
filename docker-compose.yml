@@ -32,16 +32,15 @@ services:
       - app-data:/data  # used if WOLF_PERSIST_MODE=file and WOLF_STATE_FILE is under /data
       - prom-mp:/tmp/prom_multiproc
     ports:
-      - "8444:8444"
-      - "80:8444"
+      - "${PORT:-8080}:${PORT:-8080}"
     restart: unless-stopped
     # Prometheus scrape example (add to your external prometheus.yml, not here):
     # scrape_configs:
     #   - job_name: ghost
     #     static_configs:
-    #       - targets: ['ghost:8444']
+    #       - targets: ['ghost:${PORT:-8080}']
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8444/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:${PORT:-8080}/health"]
       interval: 30s
       timeout: 5s
       retries: 5

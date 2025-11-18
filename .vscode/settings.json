@@ -1,29 +1,12 @@
 {
-  "python.languageServer": "Pylance",
-  "python.analysis.typeCheckingMode": "off",
-  "python.analysis.diagnosticMode": "workspace",
-  "python.analysis.diagnosticSeverityOverrides": {
-    "reportMissingImports": "none",
-    "reportMissingTypeStubs": "none",
-    "reportUnknownArgumentType": "none",
-    "reportUnknownVariableType": "none",
-    "reportOptionalMemberAccess": "none",
-    "reportGeneralTypeIssues": "none",
-    "reportUnknownMemberType": "none"
-  },
-  "python.linting.enabled": false,
-  "python.linting.pylintEnabled": false,
-  "python.linting.flake8Enabled": false,
-  "python.linting.mypyEnabled": false,
-  "ruff.enable": true,
-  "ruff.organizeImports": true,
-  
-  "cSpell.enabled": true,
-  "cSpell.import": ["cspell.json"],
-  
-  "markdownlint.config": {
-    "MD013": false,
-    "MD033": false,
-    "MD041": false
-  }
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.diagnosticMode": "openFilesOnly",
+    "html.validate.styles": false,
+    "css.validate": false,
+    "[html]": {
+        "editor.formatOnSave": false
+    },
+    "html.customData": [],
+    "css.lint.validProperties": [],
+    "html.trace.server": "off"
 }

@@ -338,7 +338,7 @@ class GhostSystemTest:
         try:
             import httpx
 
-            base_url = os.getenv("GHOST_SERVER_URL", "http://localhost:8444")
+            base_url = os.getenv("GHOST_SERVER_URL", "http://localhost:8080")
 
             # Test health endpoint
             async with httpx.AsyncClient(timeout=5.0) as client:

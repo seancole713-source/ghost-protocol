@@ -1,0 +1,10 @@
+{
+  "inline-style-disabled": false,
+  "style-disabled": false,
+  "tagname-lowercase": true,
+  "attr-lowercase": false,
+  "attr-value-double-quotes": false,
+  "doctype-first": true,
+  "tag-pair": true,
+  "id-unique": true
+}

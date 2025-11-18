@@ -6,7 +6,7 @@ Tests the prediction commands via Telegram
 
 import requests
 
-BASE_URL = "http://localhost:8444"
+BASE_URL = os.getenv("GHOST_BASE_URL", "http://localhost:8080")
 CHAT_ID = "940596997"
 
 
