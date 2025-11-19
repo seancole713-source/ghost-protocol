@@ -849,6 +849,8 @@ async def _security_headers_mw(request: Request, call_next):  # type: ignore[ove
                 or path.startswith("/assets")
                 or path.startswith("/static")
                 or path == "/index.html"
+                or path == "/cockpit"
+                or path == "/cockpit.html"
             ):
                 if "script-src" in csp and "'unsafe-inline'" not in csp:
                     csp = csp.replace("script-src ", "script-src 'unsafe-inline' ")
