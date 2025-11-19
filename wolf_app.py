@@ -738,6 +738,8 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         return await call_next(request)
     if request.url.path.startswith("/api/goals/"):
         return await call_next(request)
+    if request.url.path.startswith("/api/cockpit/"):  # All cockpit sub-endpoints (snapshot, stream, status)
+        return await call_next(request)
     
     # Check if path requires auth
     if request.url.path.startswith("/api/") and request.url.path not in public_paths:
