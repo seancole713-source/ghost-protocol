@@ -713,6 +713,18 @@ async def auth_fast_fail_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/price/"):
         return await call_next(request)
     
+    # Allow all Stage 1-5 endpoints (cockpit data feeds - read-only)
+    if request.url.path.startswith("/api/stage1/"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/stage2/"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/stage3/"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/stage4/"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/stage5/"):
+        return await call_next(request)
+    
     # Check if path requires auth
     if request.url.path.startswith("/api/") and request.url.path not in public_paths:
         auth_header = request.headers.get("Authorization", "")
