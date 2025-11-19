@@ -709,6 +709,10 @@ async def auth_fast_fail_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/predict/"):
         return await call_next(request)
     
+    # Also allow price endpoints (needed for predictions)
+    if request.url.path.startswith("/api/price/"):
+        return await call_next(request)
+    
     # Check if path requires auth
     if request.url.path.startswith("/api/") and request.url.path not in public_paths:
         auth_header = request.headers.get("Authorization", "")
