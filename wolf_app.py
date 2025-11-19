@@ -725,6 +725,20 @@ async def auth_fast_fail_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/stage5/"):
         return await call_next(request)
     
+    # Allow cockpit support endpoints (runtime config, watcher, crypto, scans, opportunities)
+    if request.url.path.startswith("/api/runtime/"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/watcher/"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/crypto/"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/scan"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/opportunit"):  # /api/opportunity or /api/opportunities
+        return await call_next(request)
+    if request.url.path.startswith("/api/goals/"):
+        return await call_next(request)
+    
     # Check if path requires auth
     if request.url.path.startswith("/api/") and request.url.path not in public_paths:
         auth_header = request.headers.get("Authorization", "")
