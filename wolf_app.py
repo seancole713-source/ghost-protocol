@@ -595,7 +595,11 @@ async def source_status():
 app = APP
 SECURITY_SCHEME = HTTPBearer(auto_error=False)
 # Ruff B008 workaround: use module-level singleton for dependency default
-AUTH_DEP = Security(SECURITY_SCHEME)
+# Allow disabling auth for prediction endpoints via environment variable
+if os.getenv("DISABLE_PREDICTION_AUTH", "0") == "1":
+    AUTH_DEP = None  # type: ignore
+else:
+    AUTH_DEP = Security(SECURITY_SCHEME)
 
 # Common literals/constants to reduce duplication
 HTML_INDEX = "index.html"
