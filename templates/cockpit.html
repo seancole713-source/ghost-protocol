@@ -2572,11 +2572,8 @@
             try {
                 let data;
                 if (currentAssetClass === 'stocks') {
-                    const res = await fetch(`/api/predict/run`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({symbol})
-                    });
+                    // Use GET to bypass POST model validation bug
+                    const res = await fetch(`/api/predict/run?symbol=${encodeURIComponent(symbol)}`);
                     data = await res.json();
                 } else {
                     const res = await fetch(`/api/crypto/predict/run?symbol=${symbol}`, {
