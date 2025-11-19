@@ -705,6 +705,10 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         "/api/cockpit"  # Cockpit snapshot is public
     ]
     
+    # Also allow prediction cockpit endpoints (read-only, no auth needed)
+    if request.url.path.startswith("/api/predict/"):
+        return await call_next(request)
+    
     # Check if path requires auth
     if request.url.path.startswith("/api/") and request.url.path not in public_paths:
         auth_header = request.headers.get("Authorization", "")
