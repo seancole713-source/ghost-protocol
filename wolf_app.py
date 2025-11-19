@@ -5722,21 +5722,12 @@ async def api_predict_run(
 async def api_predict_series(
     symbol: str,
     since_hours: int = 72,
-    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
 ):
     """
     Get prediction series data for chart: forecast + actual prices.
     Returns aligned time series for overlay visualization.
+    (Public read-only endpoint - no auth required)
     """
-    try:
-        _require_bearer(
-            (f"Bearer {credentials.credentials}")
-            if credentials and credentials.credentials
-            else None
-        )
-    except Exception:
-        pass
-
     symbol = symbol.upper().strip()
     if not symbol:
         raise HTTPException(400, "symbol required")
@@ -5784,21 +5775,12 @@ async def api_predict_series(
 async def api_predict_history(
     symbol: str,
     limit: int = 20,
-    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
 ):
     """
     Get prediction history with outcomes for scoreboard.
     Returns list of past predictions with accuracy metrics.
+    (Public read-only endpoint - no auth required)
     """
-    try:
-        _require_bearer(
-            (f"Bearer {credentials.credentials}")
-            if credentials and credentials.credentials
-            else None
-        )
-    except Exception:
-        pass
-
     symbol = symbol.upper().strip()
     if not symbol:
         raise HTTPException(400, "symbol required")
@@ -5839,21 +5821,12 @@ async def api_predict_history(
 async def api_predict_scoreboard(
     symbol: str,
     windows: str = "7,30",
-    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
 ):
     """
     Get aggregate accuracy scoreboard for a symbol.
     Returns overall + windowed statistics.
+    (Public read-only endpoint - no auth required)
     """
-    try:
-        _require_bearer(
-            (f"Bearer {credentials.credentials}")
-            if credentials and credentials.credentials
-            else None
-        )
-    except Exception:
-        pass
-
     symbol = symbol.upper().strip()
     if not symbol:
         raise HTTPException(400, "symbol required")
