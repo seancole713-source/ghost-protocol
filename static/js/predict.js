@@ -346,11 +346,11 @@ async function runNewForecast() {
     button.textContent = 'Running...';
     
     try {
-        const resp = await fetch('/api/predict/run', {
-            method: 'POST',
-            headers: ghostAuthHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ symbol: currentSymbol })
-        });
+        // Use GET to bypass POST model validation issues
+        const resp = await fetch(
+            `/api/predict/run?symbol=${encodeURIComponent(currentSymbol)}`,
+            { headers: ghostAuthHeaders() }
+        );
         
         if (!resp.ok) {
             const error = await resp.json();

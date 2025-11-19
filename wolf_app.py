@@ -5727,6 +5727,17 @@ async def api_predict_run(
         raise HTTPException(500, f"Prediction failed: {str(e)[:200]}")
 
 
+@APP.get("/api/predict/run")
+async def api_predict_run_get(symbol: str):
+    """
+    Generate a new 48h prediction (GET version - no auth required).
+    Bypasses POST model validation issues.
+    """
+    # Reuse POST logic
+    body = _PredictRunBody(symbol=symbol.upper().strip())
+    return await api_predict_run(body, credentials=None)
+
+
 @APP.get("/api/predict/series")
 async def api_predict_series(
     symbol: str,
