@@ -852,7 +852,8 @@ async def _security_headers_mw(request: Request, call_next):  # type: ignore[ove
                 or path == "/cockpit"
                 or path == "/cockpit.html"
             ):
-                if "script-src" in csp and "'unsafe-inline'" not in csp:
+                # Check if script-src specifically lacks 'unsafe-inline', not if it's anywhere in CSP
+                if "script-src" in csp and "script-src 'self' 'unsafe-inline'" not in csp and "script-src 'unsafe-inline'" not in csp:
                     csp = csp.replace("script-src ", "script-src 'unsafe-inline' ")
         except Exception as e:
             logging.getLogger("ghost").warning(f"Failed to adjust CSP for UI path: {e}")
