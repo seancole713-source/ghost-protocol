@@ -756,6 +756,10 @@ if IP_ALLOWLIST_ENABLED:
     @APP.middleware("http")
     async def ip_allowlist_middleware(request: Request, call_next):
         """Restrict API access by IP address."""
+        # Skip IP allowlist if not configured (local dev)
+        if not IP_ALLOWLIST:
+            return await call_next(request)
+        
         client_ip = request.client.host if request.client else None
 
         # Allow health checks

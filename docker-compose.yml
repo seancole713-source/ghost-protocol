@@ -4,6 +4,8 @@ services:
     build: .
     env_file: .env
     environment:
+      # Port configuration
+      - PORT=${PORT:-8080}
       # Persistence
       - WOLF_PERSIST_MODE=${WOLF_PERSIST_MODE:-auto}
       - WOLF_STATE_FILE=${WOLF_STATE_FILE:-/data/wolf_state.json}
@@ -24,6 +26,7 @@ services:
       - PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
       # Security
       - GHOST_API_TOKEN=${GHOST_API_TOKEN}
+      - IP_ALLOWLIST=${IP_ALLOWLIST:-127.0.0.1,::1}
       - ADMIN_IP_ALLOWLIST=${ADMIN_IP_ALLOWLIST:-}
       - IDEMPOTENCY_TTL_S=${IDEMPOTENCY_TTL_S:-300}
     depends_on:

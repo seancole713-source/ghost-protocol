@@ -1643,3 +1643,17 @@ def attach_agent(app: FastAPI):
     logging.info(
         "🔌 Ghost Analyst endpoints registered: /agent/health, /agent/state, /agent/outbox, /api/ai/decisions, /api/ai/monitor"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Stub for market_scanner.py compatibility
+# ──────────────────────────────────────────────────────────────────────────────
+async def agent_decide(symbol: str) -> dict[str, Any] | None:
+    """
+    Stub function for market_scanner.py compatibility.
+    Returns None to indicate no AI decision available.
+    
+    TODO: Implement proper AI-driven decision making when ready.
+    """
+    logging.debug(f"agent_decide stub called for {symbol} - returning None")
+    return None
