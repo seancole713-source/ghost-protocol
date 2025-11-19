@@ -2539,20 +2539,39 @@
                     // Use existing stock prediction endpoint
                     const res = await fetch(`/api/predict/series?symbol=${symbol}`);
                     data = await res.json();
+                    
+                    // Load history and scoreboard for stocks
+                    await loadStockScoreboard(symbol);
                 } else {
                     // Use new crypto prediction endpoint
                     const res = await fetch(`/api/crypto/predict/${symbol}`);
                     data = await res.json();
                 }
                 
-                if (data && data.path) {
-                    renderPredictionChart(data, symbol);
-                    updateSummary(data);
-                    statusBadge.textContent = '';
-                    statusBadge.className = 'badge live';
+                if (currentAssetClass === 'stocks') {
+                    // Stock data format: {forecast: [...], actual: [...], last_prediction: {...}}
+                    if (data && (data.forecast || data.actual || data.last_prediction)) {
+                        renderStockPredictionChart(data, symbol);
+                        if (data.last_prediction) {
+                            updateStockSummary(data.last_prediction);
+                        }
+                        statusBadge.textContent = '';
+                        statusBadge.className = 'badge live';
+                    } else {
+                        statusBadge.textContent = '';
+                        statusBadge.className = 'badge stopped';
+                    }
                 } else {
-                    statusBadge.textContent = '';
-                    statusBadge.className = 'badge stopped';
+                    // Crypto data format: {path: [...], ...}
+                    if (data && data.path) {
+                        renderPredictionChart(data, symbol);
+                        updateSummary(data);
+                        statusBadge.textContent = '';
+                        statusBadge.className = 'badge live';
+                    } else {
+                        statusBadge.textContent = '';
+                        statusBadge.className = 'badge stopped';
+                    }
                 }
             } catch (err) {
                 console.error('Failed to load prediction:', err);
@@ -2560,6 +2579,165 @@
                 statusBadge.className = 'badge stopped';
                 summaryDiv.innerHTML = '';
             }
+        }
+        
+        // Load stock scoreboard (history + accuracy)
+        async function loadStockScoreboard(symbol) {
+            try {
+                // Fetch history
+                const histRes = await fetch(`/api/predict/history?symbol=${symbol}&limit=10`);
+                const history = await histRes.json();
+                
+                // Fetch scoreboard
+                const scoreRes = await fetch(`/api/predict/scoreboard?symbol=${symbol}`);
+                const scores = await scoreRes.json();
+                
+                // Update table
+                if (!scoreboardBody) return;
+                
+                scoreboardBody.innerHTML = '';
+                
+                if (history.length === 0) {
+                    scoreboardBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:15px; color:#9ca3af">No predictions yet. Click "Run New Prediction" to start.</td></tr>';
+                    return;
+                }
+                
+                history.forEach(pred => {
+                    const row = document.createElement('tr');
+                    row.style.borderBottom = '1px solid #374151';
+                    
+                    const date = new Date(pred.run_at).toLocaleString();
+                    const dirIcon = pred.direction === 'UP' ? '↑' : pred.direction === 'DOWN' ? '↓' : '→';
+                    const conf = (pred.confidence * 100).toFixed(0);
+                    
+                    let statusCells = '';
+                    if (pred.closed) {
+                        const hitIcon = pred.hit_direction ? '✓' : '✗';
+                        const hitColor = pred.hit_direction ? '#00c853' : '#ff5252';
+                        statusCells = `
+                            <td style="padding:8px; color:${hitColor}">${hitIcon}</td>
+                            <td style="padding:8px">${pred.mae ? pred.mae.toFixed(4) : '-'}</td>
+                            <td style="padding:8px">${pred.map ? pred.map.toFixed(2) + '%' : '-'}</td>
+                            <td style="padding:8px">${pred.rmse ? pred.rmse.toFixed(4) : '-'}</td>
+                        `;
+                    } else {
+                        statusCells = `
+                            <td style="padding:8px; color:#ffc24b">Pending</td>
+                            <td style="padding:8px">-</td>
+                            <td style="padding:8px">-</td>
+                            <td style="padding:8px">-</td>
+                        `;
+                    }
+                    
+                    row.innerHTML = `
+                        <td style="padding:8px">${date}</td>
+                        <td style="padding:8px">${dirIcon} ${pred.direction}</td>
+                        <td style="padding:8px">${conf}%</td>
+                        ${statusCells}
+                    `;
+                    
+                    scoreboardBody.appendChild(row);
+                });
+                
+            } catch (err) {
+                console.error('Failed to load scoreboard:', err);
+            }
+        }
+        
+        // Render stock prediction chart (forecast + actual overlay)
+        function renderStockPredictionChart(data, symbol) {
+            if (!chartCanvas) return;
+            
+            const ctx = chartCanvas.getContext('2d');
+            
+            // Destroy existing chart
+            if (predictionChart) {
+                predictionChart.destroy();
+            }
+            
+            const actualData = (data.actual || []).map(p => ({x: p.ts, y: p.price}));
+            const forecastData = (data.forecast || []).map(p => ({x: p.ts, y: p.price}));
+            
+            predictionChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Actual Price',
+                            data: actualData,
+                            borderColor: '#00c853',
+                            backgroundColor: 'rgba(0, 200, 83, 0.1)',
+                            borderWidth: 2.5,
+                            pointRadius: 3,
+                            fill: false,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Forecast',
+                            data: forecastData,
+                            borderColor: '#5bd4ff',
+                            backgroundColor: 'rgba(91, 212, 255, 0.1)',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            pointRadius: 2,
+                            fill: false,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {display: true, labels: {color: '#dde7ef'}},
+                        title: {display: true, text: `${symbol} - 48h Forecast`, color: '#dde7ef'}
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {unit: 'hour', displayFormats: {hour: 'MMM d, ha'}},
+                            ticks: {color: '#9aa7b2'},
+                            grid: {color: 'rgba(255,255,255,0.05)'}
+                        },
+                        y: {
+                            ticks: {color: '#9aa7b2'},
+                            grid: {color: 'rgba(255,255,255,0.1)'}
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Update stock summary
+        function updateStockSummary(prediction) {
+            if (!summaryDiv) return;
+            
+            const direction = prediction.direction || '—';
+            const confidence = (prediction.confidence * 100) || 0;
+            const horizon = prediction.horizon_h || 48;
+            
+            const dirColor = direction === 'UP' ? '#00c853' : direction === 'DOWN' ? '#ff5252' : '#ffc24b';
+            
+            summaryDiv.innerHTML = `
+                <div style="display:flex; gap:20px; flex-wrap:wrap">
+                    <div>
+                        <span class="muted">Direction:</span>
+                        <strong style="color:${dirColor}; font-size:16px; margin-left:8px">${direction}</strong>
+                    </div>
+                    <div>
+                        <span class="muted">Confidence:</span>
+                        <strong style="font-size:16px; margin-left:8px">${confidence.toFixed(0)}%</strong>
+                    </div>
+                    <div>
+                        <span class="muted">Horizon:</span>
+                        <strong style="font-size:16px; margin-left:8px">${horizon}h</strong>
+                    </div>
+                    <div>
+                        <span class="muted">Run At:</span>
+                        <strong style="font-size:16px; margin-left:8px">${new Date(prediction.run_at).toLocaleTimeString()}</strong>
+                    </div>
+                </div>
+            `;
         }
         
         // Run new prediction
