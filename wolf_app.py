@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Clean WOLF-only FastAPI app (standalone module)
+# RAILWAY CACHE BUST - Build timestamp: 2025-11-18 19:30 UTC
 
 import asyncio
 import atexit
