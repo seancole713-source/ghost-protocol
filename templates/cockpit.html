@@ -1949,12 +1949,21 @@
                 el("portfolioMeta").innerHTML = `positions: 1 • NAV $${fmt((s.kpis?.nav||0),2)} • refreshed ${nowIso()}${staleDot}`;
                 // Update anomaly banner + forecast pause
                 updateAnomalyUI(s.flags || {});
-                // Lock inputs to WOLF/stock and hide symbol/market widgets
+                // Load focus symbol from runtime config (defaults to SPY)
                 const ps = el('posSym'); const pm = el('posMarket');
-                if (ps) { ps.value = 'WOLF'; ps.readOnly = true; ps.style.display = 'none'; }
-                if (pm) { pm.value = 'stock'; pm.disabled = true; pm.style.display = 'none'; }
-                const wl = el('watchlistCard'); if (wl) wl.style.display = 'none';
-                const fb = el('focusBadge'); if (fb) { fb.textContent = 'Focus: WOLF'; fb.style.display = 'inline-flex'; }
+                if (ps && pm) {
+                    fetch('/api/config')
+                        .then(r => r.json())
+                        .then(cfg => {
+                            ps.value = cfg.focus_symbol || 'SPY';
+                            ps.readOnly = false;
+                            pm.value = 'stock';
+                            pm.disabled = false;
+                        })
+                        .catch(() => { ps.value = 'SPY'; pm.value = 'stock'; });
+                }
+                const fb = el('focusBadge');
+                if (fb) fb.textContent = `Focus: ${ps?.value || 'SPY'}`;
                 // Provider unauthorized badge
                 try {
                     const unauth = (s.degraded_reasons||[]).includes('price:provider-unauthorized') || (s.reasons||[]).includes('price:provider-unauthorized');

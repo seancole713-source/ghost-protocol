@@ -320,7 +320,7 @@ def calculate_accuracy(period: str = "all") -> dict[str, Any]:
         cur.execute(
             f"""
             SELECT * FROM ghost_predictions
-            WHERE checked = 1 {time_filter}
+            WHERE checked = 1 AND confidence >= 0.10 {time_filter}
             ORDER BY predicted_at DESC
         """
         )

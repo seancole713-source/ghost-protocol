@@ -1310,8 +1310,8 @@ DEFAULT_STOCK_SYMBOLS = [
     "UNH", "JNJ",
     # Consumer
     "WMT", "HD",
-    # WOLF token
-    "WOLF"
+    # Market Index (Focus Default)
+    "SPY"
 ]
 
 DEFAULT_CRYPTO_SYMBOLS = [
@@ -1421,7 +1421,7 @@ PRICE_ANOMALY_NEWS_WINDOW_MIN = int(os.getenv("PRICE_ANOMALY_NEWS_WINDOW_MIN", "
 # Pause forecast when anomaly detected (manual override is always paused)
 FORECAST_PAUSE_ON_ANOMALY = int(os.getenv("FORECAST_PAUSE_ON_ANOMALY", "1"))
 # Focus mode: restrict UI and actions to WOLF-only by default
-FOCUS_WOLF_ONLY = os.getenv("FOCUS_WOLF_ONLY", "1").lower() in ("1", "true", "yes")
+FOCUS_WOLF_ONLY = os.getenv("FOCUS_WOLF_ONLY", "0").lower() in ("1", "true", "yes")
 HTTP_POOL_ENABLED = os.getenv("HTTP_POOL_ENABLED", "1").lower() not in (
     "0",
     "false",

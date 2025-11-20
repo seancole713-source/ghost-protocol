@@ -4,7 +4,6 @@ Handles dynamic runtime settings with defaults
 """
 
 import logging
-import os
 from typing import Any
 
 LOGGER = logging.getLogger(__name__)
@@ -17,22 +16,22 @@ _DEFAULT_CONFIG = {
     'news_ttl_s': 300,
     'yahoo_first': True,
     'price_max_deviation_open': 0.15,
-    
+
     # Data feeds
     'reuters_feeds_on': True,
     'overlay_enabled': True,
     'learning_enabled': True,
-    
+
     # Diagnostics
     'diag_collapse_dupes': True,
     'diag_ring_size': 100,
-    
+
     # Overlay
     'overlay_dt_minutes': 30,
-    
+
     # Bands
     'band_widen_factor': 1.5,
-    
+
     # Focus symbol
     'focus_symbol': 'SPY',  # Changed from WOLF to SPY (liquid, valid)
 }
@@ -44,10 +43,10 @@ _runtime_config = _DEFAULT_CONFIG.copy()
 def get_config(key: str = None) -> Any:
     """
     Get runtime configuration value
-    
+
     Args:
         key: Config key (if None, returns all config)
-    
+
     Returns:
         Config value or full config dict
     """
@@ -59,11 +58,11 @@ def get_config(key: str = None) -> Any:
 def set_config(key: str, value: Any) -> bool:
     """
     Set runtime configuration value
-    
+
     Args:
         key: Config key
         value: New value
-    
+
     Returns:
         True if successful
     """
@@ -80,10 +79,10 @@ def set_config(key: str, value: Any) -> bool:
 def update_config(updates: dict[str, Any]) -> dict[str, bool]:
     """
     Update multiple configuration values
-    
+
     Args:
         updates: Dict of key-value pairs to update
-    
+
     Returns:
         Dict of {key: success_status}
     """
@@ -108,10 +107,10 @@ def get_focus_symbol() -> str:
 def set_focus_symbol(symbol: str) -> bool:
     """
     Set focus symbol
-    
+
     Args:
         symbol: New focus symbol (should be valid and liquid)
-    
+
     Returns:
         True if successful
     """
@@ -119,5 +118,5 @@ def set_focus_symbol(symbol: str) -> bool:
     if not symbol:
         LOGGER.error("Cannot set empty focus symbol")
         return False
-    
+
     return set_config('focus_symbol', symbol)

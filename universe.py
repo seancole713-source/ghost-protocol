@@ -49,5 +49,5 @@ def focus_enabled() -> bool:
 
 
 def focus_ticker() -> str:
-    """Return the configured focus ticker (defaults to WOLF)."""
-    return (os.getenv("GHOST_FOCUS_TICKER", "WOLF") or "WOLF").strip().upper()
+    """Return the configured focus ticker (defaults to SPY)."""
+    return (os.getenv("GHOST_FOCUS_TICKER", "SPY") or "SPY").strip().upper()
