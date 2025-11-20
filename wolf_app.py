@@ -74,6 +74,15 @@ from pydantic import BaseModel
 from core.concurrency import AsyncRateLimiter
 from core.price_quorum import PriceDecision, PriceProvider, get_price_quorum
 
+# Ghost Hunter Phase 1 imports
+try:
+    from core.feature_diagnostics import diagnose_features, build_confidence_with_diagnostics
+    from core.price_reliability import get_price_with_fallback, get_provider_stats
+    GHOST_HUNTER_ENABLED = True
+except Exception as e:
+    GHOST_HUNTER_ENABLED = False
+    print(f"Ghost Hunter Phase 1 disabled: {e}")
+
 try:
     from core.research_blueprint import build_research_snapshot  # type: ignore
 
