@@ -19,8 +19,8 @@ LOGGER = None
 DEFAULT_TZ = "America/Chicago"
 
 # Alert style configuration
-ALERT_STYLE = os.getenv("ALERT_STYLE", "verbose")  # "simple" or "verbose"
-ALERT_SIMPLE_FORMAT = os.getenv("ALERT_SIMPLE_FORMAT", "balanced")  # "compact", "balanced", "context"
+ALERT_STYLE = os.getenv("ALERT_STYLE", "simple")  # Default to "simple" (Cash App style), was "verbose"
+ALERT_SIMPLE_FORMAT = os.getenv("ALERT_SIMPLE_FORMAT", "cashapp")  # "cashapp" (default), "compact", "balanced", "context"
 MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.60"))
 
 
@@ -60,51 +60,89 @@ class Alert:
 
 def format_simple_alert(alert: Alert) -> str:
     """
-    Format alert in Cash-App style (1-2 lines, max 180 chars)
+    Format alert in CASH APP STYLE - Ultra clean, 3 lines max
     
     Args:
         alert: Unified alert payload
         
     Returns:
-        Formatted alert string (Markdown compatible)
+        Clean formatted string (NO markdown, plain text)
         
-    Examples:
-        compact:  Ghost 🔮 WOLF — BUY (78%) | $17.51 (+5.2%)
-        balanced: WOLF up 5.2% to $17.51 — Ghost BUY (78% confidence)
-        context:  Ghost detected: WOLF +5.2% to $17.51 | BUY | 78% | 6h
+    Example:
+        📈 SoundHound +12.63%
+        Volume surge detected
+        Confidence: 78%
+        Action: BUY
     """
-    # Get style from env
-    style = ALERT_SIMPLE_FORMAT
-    
     # Format confidence as percentage
     conf_pct = int(alert.confidence * 100)
     
-    # Format change with sign
+    # Arrow based on direction
     if alert.change_pct >= 0:
-        change_str = f"up {alert.change_pct:.1f}%"
         arrow = "📈"
+        sign = "+"
     else:
-        change_str = f"down {abs(alert.change_pct):.1f}%"
         arrow = "📉"
+        sign = ""
     
-    # Direction indicator
-    direction_icon = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡", "WATCH": "👀"}
-    icon = direction_icon.get(alert.direction, "⚪")
+    # First line: Symbol + % change (CASH APP STYLE)
+    line1 = f"{arrow} {alert.symbol} {sign}{alert.change_pct:.2f}%"
     
-    # Format based on style
-    if style == "compact":
-        return f"Ghost 🔮 {alert.symbol} — {alert.direction} ({conf_pct}%) | ${alert.price_now:.2f} ({change_str:+}))"
+    # Second line: Key insight (volume, momentum, breakout, etc.)
+    if alert.volume_ratio and alert.volume_ratio >= 2.0:
+        line2 = "Volume surge detected"
+    elif abs(alert.change_pct) >= 10:
+        line2 = "Strong momentum"
+    elif alert.predicted_pct and abs(alert.predicted_pct) >= 5:
+        line2 = f"Predicted move: {alert.predicted_pct:+.1f}%"
+    elif alert.factors and len(alert.factors) > 0:
+        line2 = alert.factors[0][:50]  # First factor, truncated
+    else:
+        line2 = "Price action detected"
     
-    elif style == "context":
-        horizon_str = f"{alert.horizon_h}h" if alert.horizon_h else "N/A"
-        return f"Ghost detected: {alert.symbol} {change_str} to ${alert.price_now:.2f} | {alert.direction} | {conf_pct}% | {horizon_str}"
+    # Third line: Confidence
+    line3 = f"Confidence: {conf_pct}%"
     
-    else:  # balanced (default)
-        # Handle up/down wording
-        if alert.change_pct >= 0:
-            return f"{arrow} {alert.symbol} {change_str} to ${alert.price_now:.2f} — Ghost {alert.direction} ({conf_pct}% confidence)"
-        else:
-            return f"{arrow} {alert.symbol} {change_str} to ${alert.price_now:.2f} — Ghost {alert.direction} ({conf_pct}% confidence)"
+    # Fourth line: Action
+    line4 = f"Action: {alert.direction}"
+    
+    return f"{line1}\n{line2}\n{line3}\n{line4}"
+
+
+def format_prediction_alert_cashapp(
+    symbol: str, 
+    direction: str, 
+    confidence: float, 
+    price: float, 
+    change_pct: float,
+    horizon_h: int = 48
+) -> str:
+    """
+    Format prediction alert in Cash App style
+    
+    Example:
+        📈 WOLF +5.2%
+        Ghost predicts: BUY
+        Confidence: 78%
+        Next 48h
+    """
+    arrow = "📈" if change_pct >= 0 else "📉"
+    sign = "+" if change_pct >= 0 else ""
+    conf_pct = int(confidence * 100)
+    
+    # Line 1: Symbol + Change
+    line1 = f"{arrow} {symbol} {sign}{change_pct:.2f}%"
+    
+    # Line 2: Prediction
+    line2 = f"Ghost predicts: {direction}"
+    
+    # Line 3: Confidence
+    line3 = f"Confidence: {conf_pct}%"
+    
+    # Line 4: Horizon
+    line4 = f"Next {horizon_h}h"
+    
+    return f"{line1}\n{line2}\n{line3}\n{line4}"
 
 
 def render_alert(
@@ -403,6 +441,38 @@ def get_recent_alerts(limit: int = 20) -> list[dict[str, Any]]:
         return []
 
 
+def format_mover_alert_cashapp(symbol: str, price: float, change_pct: float, volume_mult: float = None) -> str:
+    """
+    Format mover alert in Cash App style
+    
+    Example:
+        📈 BTC +8.5%
+        Price: $43,251
+        Volume: 3.2x avg
+    """
+    arrow = "📈" if change_pct >= 0 else "📉"
+    sign = "+" if change_pct >= 0 else ""
+    
+    # Line 1: Symbol + Change
+    line1 = f"{arrow} {symbol} {sign}{change_pct:.2f}%"
+    
+    # Line 2: Price
+    if price >= 1000:
+        price_str = f"${price:,.0f}"
+    elif price >= 1:
+        price_str = f"${price:.2f}"
+    else:
+        price_str = f"${price:.4f}"
+    line2 = f"Price: {price_str}"
+    
+    # Line 3: Volume (if significant)
+    if volume_mult and volume_mult >= 1.5:
+        line3 = f"Volume: {volume_mult:.1f}x avg"
+        return f"{line1}\n{line2}\n{line3}"
+    else:
+        return f"{line1}\n{line2}"
+
+
 def send_mover_alert(kind: str, item: dict[str, Any]) -> bool:
     """
     Send a market mover alert to Telegram.
@@ -442,14 +512,12 @@ def send_mover_alert(kind: str, item: dict[str, Any]) -> bool:
         # Format volume multiplier
         vol_str = f"Vol×{vol_mult:.2f}" if vol_mult is not None else "Vol: N/A"
         
-        # Build message
-        kind_display = kind.upper()
-        message = (
-            f"📈 {kind_display} Mover • {symbol}\n"
-            f"Price ${price:.4f} ({pct_24h:+.2f}%, 1h {pct_1h:+.2f}%) • {vol_str}\n"
-            f"Provider {provider} • Age {age_s}s\n"
-            f"Tier {tier}\n"
-            f"Short-term: 48h window • Long-term: 30–180d"
+        # Use Cash App style format
+        message = format_mover_alert_cashapp(
+            symbol=symbol,
+            price=price,
+            change_pct=pct_24h,
+            volume_mult=vol_mult
         )
         
         # Send via Telegram
