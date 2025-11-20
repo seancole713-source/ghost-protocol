@@ -10,10 +10,17 @@ Configuration:
         - Covers entire market (all exchanges, all symbols)
         - Already filtered and sorted by Polygon server-side
     
-    USE_POLYGON_SNAPSHOTS=false
-        - Falls back to legacy mode: hardcoded 50-stock list
+    USE_SUPPORTED_TICKERS_CSV=false (alternative universe source)
+        - Loads 1000 pre-filtered stocks from app/core/data/supported_tickers.csv
+        - NASDAQ + NYSE listings, filtered to exclude ETFs/ETNs/ADRs/Funds
         - Individual price fetch per symbol
-        - Higher API cost, limited universe
+        - Higher API cost (1000 calls/scan) but uses curated universe
+        - Use this if you want specific ticker control vs snapshot API
+    
+    USE_POLYGON_SNAPSHOTS=false (legacy mode)
+        - Falls back to hardcoded 50-stock list
+        - Individual price fetch per symbol
+        - Lowest API cost, limited universe
     
     POLYGON_API_KEY=<your_key>
         - Required for both snapshot and legacy modes
@@ -53,6 +60,11 @@ def load_universe(redis_client=None) -> Tuple[List[str], List[str]]:
     """
     Load universe of symbols to scan.
     
+    Priority order:
+        1. USE_SUPPORTED_TICKERS_CSV=true - Load from supported_tickers.csv (1000 stocks)
+        2. USE_POLYGON_SNAPSHOTS=true - Use Polygon snapshot API (market-wide)
+        3. Fallback - Use hardcoded 50-stock list
+    
     Returns:
         (crypto_symbols, stock_symbols) - lists of symbols to scan
     """
@@ -69,6 +81,24 @@ def load_universe(redis_client=None) -> Tuple[List[str], List[str]]:
                 crypto_symbols.add(symbol.replace("USDT", "").replace("USD", ""))
             else:
                 stock_symbols.add(symbol)
+    
+    # Check if we should load from supported_tickers.csv
+    use_csv = os.getenv("USE_SUPPORTED_TICKERS_CSV", "false").lower() in ("1", "true", "yes")
+    if use_csv:
+        try:
+            import pandas as pd
+            from pathlib import Path
+            
+            # Find the CSV file
+            csv_path = Path(__file__).parent / "data" / "supported_tickers.csv"
+            if csv_path.exists():
+                df = pd.read_csv(csv_path)
+                csv_symbols = df["Symbol"].str.upper().tolist()
+                stock_symbols.update(csv_symbols)
+                return list(crypto_symbols), list(stock_symbols)
+        except Exception as e:
+            # Fall through to legacy mode if CSV loading fails
+            pass
     
     # Add top crypto by market cap (if coingecko available)
     try:
