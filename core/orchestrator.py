@@ -40,6 +40,7 @@ _START_TIME = 0
 _SYSTEM_STATUS = {
     "price_refresh": {"status": "stopped", "last_run": 0, "error": None},
     "movers_scanner": {"status": "stopped", "last_run": 0, "error": None},
+    "vip_scanner": {"status": "stopped", "last_run": 0, "error": None},
     "sl_tp_monitor": {"status": "stopped", "last_run": 0, "error": None},
     "scheduled_predictions": {"status": "stopped", "last_run": 0, "error": None},
     "context_engine": {"status": "stopped", "last_run": 0, "error": None},
@@ -98,6 +99,42 @@ async def start_all_background_services(
         _SYSTEM_STATUS["movers_scanner"]["status"] = "failed"
         _SYSTEM_STATUS["movers_scanner"]["error"] = str(e)
         LOGGER.error(f"❌ Movers Scanner FAILED: {e}", exc_info=True)
+
+    # ============================================================================
+    # PHASE 2B: VIP MICROCAP SCANNER (Priority 2: Cash-App Alerts for WEPE, LILPEPE, DORKL, SLOTH, APC)
+    # ============================================================================
+    vip_scanner_enabled = os.getenv("VIP_SCANNER_ENABLED", "1") == "1"
+
+    if vip_scanner_enabled:
+        try:
+            from core.vip_scanner import scan_vip_coins
+
+            async def _vip_scanner_loop():
+                """Background loop for VIP microcap scanning"""
+                from core.vip_scanner import VIP_SCAN_INTERVAL_S
+                while True:
+                    try:
+                        result = scan_vip_coins()
+                        _SYSTEM_STATUS["vip_scanner"]["last_run"] = int(time.time())
+                        LOGGER.info(
+                            f"VIP scan: {result['available']}/{result['scanned']} available, "
+                            f"{len(result['opportunities'])} opportunities, {result['alerts_sent']} alerts"
+                        )
+                    except Exception as e:
+                        LOGGER.error(f"VIP scanner error: {e}", exc_info=True)
+                    await asyncio.sleep(VIP_SCAN_INTERVAL_S)
+
+            _TASKS["vip_scanner"] = asyncio.create_task(_vip_scanner_loop())
+            _SYSTEM_STATUS["vip_scanner"]["status"] = "running"
+            _SYSTEM_STATUS["vip_scanner"]["last_run"] = int(time.time())
+            LOGGER.info("✅ VIP Microcap Scanner: STARTED (60s interval, Cash-App alerts)")
+        except Exception as e:
+            _SYSTEM_STATUS["vip_scanner"]["status"] = "failed"
+            _SYSTEM_STATUS["vip_scanner"]["error"] = str(e)
+            LOGGER.error(f"❌ VIP Scanner FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["vip_scanner"]["status"] = "disabled"
+        LOGGER.info("⚪ VIP Microcap Scanner: DISABLED (VIP_SCANNER_ENABLED=0)")
     
     # ============================================================================
     # PHASE 3: SL/TP MONITOR (Conditional - Only if Broker Enabled)
