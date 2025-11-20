@@ -3782,6 +3782,37 @@ async def _on_startup():
 
             scheduled_predictions.start_prediction_scheduler()
             LOGGER.info("Scheduled predictions enabled: 8:00 AM, 12:00 PM, 4:00 PM ET (multi-symbol)")
+            
+            # Phase 2: Bootstrap prediction counters from database
+            try:
+                stock_count = 0
+                crypto_count = 0
+                
+                # Count recent predictions for stocks
+                for sym in STOCK_SYMBOLS[:10]:  # Check first 10 stocks
+                    try:
+                        pred = predictor.get_latest_prediction(sym)
+                        if pred and (time.time() - pred.run_at) < 86400:  # Last 24h
+                            stock_count += 1
+                    except Exception:
+                        pass
+                
+                # Count recent predictions for crypto
+                for sym in CRYPTO_SYMBOLS[:10]:  # Check first 10 crypto
+                    try:
+                        pred = predictor.get_latest_prediction(sym)
+                        if pred and (time.time() - pred.run_at) < 86400:  # Last 24h
+                            crypto_count += 1
+                    except Exception:
+                        pass
+                
+                # Update global counters if we found predictions
+                if stock_count > 0 or crypto_count > 0:
+                    _LAST_MULTI_PREDICTION_COUNTS["stocks"] = stock_count
+                    _LAST_MULTI_PREDICTION_COUNTS["crypto"] = crypto_count
+                    LOGGER.info(f"Bootstrapped prediction counters from database: stocks={stock_count}, crypto={crypto_count}")
+            except Exception as e:
+                LOGGER.warning(f"Could not bootstrap prediction counters: {e}")
     except Exception:
         LOGGER.exception("scheduled_predictions_start_failed", extra={"component": "startup"})
 
@@ -10705,6 +10736,27 @@ async def api_cockpit_snapshot():
             LOGGER.warning(f"Could not get risk guard status: {e}")
             risk_guard_status = {"enabled": False, "error": str(e)}
         
+        # Get latest predictions from database (Phase 2 fix)
+        latest_predictions = {}
+        try:
+            # Query latest prediction for WOLF and other key symbols
+            key_symbols = ["WOLF"] + STOCK_SYMBOLS[:5]  # WOLF + top 5 stocks
+            for sym in key_symbols:
+                try:
+                    pred = predictor.get_latest_prediction(sym)
+                    if pred:
+                        latest_predictions[sym] = {
+                            "id": pred.id,
+                            "run_at": pred.run_at,
+                            "confidence": pred.confidence,
+                            "direction": pred.direction,
+                            "horizon_h": pred.horizon_h,
+                        }
+                except Exception as e:
+                    LOGGER.debug(f"Could not get prediction for {sym}: {e}")
+        except Exception as e:
+            LOGGER.warning(f"Could not query latest predictions: {e}")
+        
         # Build ghost_2x block
         ghost_2x = {
             "ok": True,
@@ -10716,6 +10768,7 @@ async def api_cockpit_snapshot():
             "last_telegram_send_time": _LAST_TELEGRAM_SEND_TIME,
             "last_telegram_status": _LAST_TELEGRAM_STATUS,
             "last_telegram_error": _LAST_TELEGRAM_ERROR,
+            "latest_predictions": latest_predictions,  # Phase 2: Show actual predictions from DB
         }
         
         return {
