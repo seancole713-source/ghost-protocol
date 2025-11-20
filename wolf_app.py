@@ -1197,13 +1197,24 @@ async def _ui_entrypoint():
 # This helps evidence collectors and manual checks access the cockpit when UI bundles
 # are not mounted or when running in minimal deployment environments.
 @APP.get("/cockpit", include_in_schema=False)
-async def _cockpit_page():
+async def _cockpit_page(request: Request):
     try:
-        path = os.path.join(TEMPLATES_DIR, "cockpit.html")
-        if os.path.exists(path):
-            return FileResponse(path, media_type=MEDIA_TEXT_HTML)
-    except Exception:
-        pass
+        # Use Jinja2 template rendering to process {{ GHOST_API_TOKEN }} variable
+        return _TEMPLATES.TemplateResponse(
+            "cockpit.html",
+            {
+                "request": request,
+                "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", "")
+            }
+        )
+    except Exception as e:
+        # Fallback to FileResponse if template rendering fails
+        try:
+            path = os.path.join(TEMPLATES_DIR, "cockpit.html")
+            if os.path.exists(path):
+                return FileResponse(path, media_type=MEDIA_TEXT_HTML)
+        except Exception:
+            pass
     # Fallbacks if cockpit template not found: serve legacy bundles directly to avoid redirect loop
     try:
         index_path = os.path.join(UI_DIR, HTML_INDEX)
@@ -1318,7 +1329,37 @@ _LAST_TELEGRAM_ERROR: str | None = None
 
 # In-memory predictions store (wires /api/predict/run → /api/cockpit)
 # Maps symbol → {prediction_id, run_at, confidence, direction, horizon_h, symbol}
+# Structure: flat dict where symbol is the key
+# Use _classify_symbol_category() to determine if stocks/crypto/vip
 _LATEST_PREDICTIONS: dict[str, dict[str, Any]] = {}
+
+# Ghost Hunter V1: Symbol universe for multi-symbol predictions
+# Stocks: WOLF + liquid US stocks for testing
+HUNTER_STOCK_SYMBOLS = ["WOLF", "AAPL", "MSFT", "NVDA"]
+# Crypto: VIP coins + test entry
+HUNTER_CRYPTO_SYMBOLS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC", "BTC"]
+
+def _classify_symbol_category(symbol: str) -> str:
+    """
+    Classify symbol into category: 'stocks', 'crypto', or 'vip'.
+    
+    Returns:
+        'stocks' for stock symbols
+        'crypto' for non-VIP crypto symbols  
+        'vip' for VIP coins (WEPE, LILPEPE, DORKL, SLOTH, APC)
+    """
+    symbol_upper = symbol.upper()
+    
+    # Check VIP first (highest priority)
+    if symbol_upper in ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]:
+        return "vip"
+    
+    # Check if in crypto symbols list
+    if symbol_upper in CRYPTO_SYMBOLS or symbol_upper in HUNTER_CRYPTO_SYMBOLS:
+        return "crypto"
+    
+    # Default to stocks
+    return "stocks"
 
 # ChatGPT Price Provider (for watchlist stocks)
 try:
@@ -3564,14 +3605,36 @@ async def _on_startup():
         from core.prediction_tracker import calculate_accuracy
         
         async def get_top_opportunities():
-            """Get top opportunities for daily report"""
-            results = await scan_all()
-            all_opps = results["stocks"] + results["crypto"]
-            all_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
-            return all_opps[:10]
+            """Get top opportunities from high-confidence predictions"""
+            # Try scanner first
+            try:
+                results = await scan_all()
+                all_opps = results["stocks"] + results["crypto"]
+                all_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
+                if all_opps:
+                    return all_opps[:10]
+            except Exception:
+                pass
+            
+            # Fallback: use _LATEST_PREDICTIONS with 70%+ confidence
+            opportunities = []
+            for sym, pred in _LATEST_PREDICTIONS.items():
+                confidence = pred.get("confidence", 0)
+                if confidence >= 0.70:  # 70%+ threshold for "high-quality"
+                    opportunities.append({
+                        "symbol": sym,
+                        "confidence": confidence,
+                        "predicted_pct": 0.0,  # TODO: Calculate from forecast
+                        "action": pred.get("direction", "HOLD"),
+                        "score": int(confidence * 100),  # Convert to 0-100 score
+                        "timeframe_hours": pred.get("horizon_h", 48),
+                    })
+            # Sort by confidence descending
+            opportunities.sort(key=lambda x: x["confidence"], reverse=True)
+            return opportunities[:10]  # Top 10
         
         async def get_accuracy_stats(period="24h"):
-            """Get accuracy stats for daily report"""
+            """Get accuracy stats for daily report from ghost_predictions table"""
             return calculate_accuracy(period)
         
         _asyncio_module.create_task(daily_report_loop(get_top_opportunities, get_accuracy_stats))
@@ -5762,6 +5825,23 @@ async def api_predict_run(
         current_price = float(price_data["price"])
         run_at = time.time()
 
+        # Diagnose feature extraction quality
+        feature_status = diagnose_features(
+            symbol=symbol,
+            price_data={
+                "price": current_price,
+                "timestamp": price_data.get("timestamp", run_at),
+                "provider": price_data.get("provider", "unknown")
+            },
+            volume_data=None,  # TODO: Wire volume data when available
+            momentum_data=None,  # TODO: Wire momentum data when available
+            context_data=None,  # TODO: Wire market context when available
+            sentiment_data=None  # TODO: Wire sentiment when available
+        )
+        
+        # Log feature status for diagnostics
+        LOGGER.info(f"[{symbol}] Feature status", extra={"feature_status": feature_status.to_dict()})
+
         # Generate 48h forecast using existing Ghost forecast engine
         # Use 2h steps (25 points for 48h)
         horizon_h = 48
@@ -5779,7 +5859,7 @@ async def api_predict_run(
 
         # Determine direction based on recent momentum (if available)
         direction = "FLAT"
-        confidence = 0.6
+        base_confidence = 0.6
 
         # Try to get recent price history for direction
         try:
@@ -5790,12 +5870,25 @@ async def api_predict_run(
                     recent_change_pct = (prices[-1] - prices[0]) / prices[0] * 100
                     if recent_change_pct > 2:
                         direction = "UP"
-                        confidence = min(0.75, 0.6 + abs(recent_change_pct) / 20)
+                        base_confidence = min(0.75, 0.6 + abs(recent_change_pct) / 20)
                     elif recent_change_pct < -2:
                         direction = "DOWN"
-                        confidence = min(0.75, 0.6 + abs(recent_change_pct) / 20)
+                        base_confidence = min(0.75, 0.6 + abs(recent_change_pct) / 20)
         except Exception:
             pass
+        
+        # Apply confidence policy based on feature diagnostics
+        confidence, confidence_metadata = build_confidence_with_diagnostics(
+            base_confidence,
+            feature_status
+        )
+        
+        # Log confidence adjustment if any
+        if confidence != base_confidence:
+            LOGGER.warning(
+                f"[{symbol}] Confidence adjusted: {base_confidence:.0%} → {confidence:.0%} "
+                f"({confidence_metadata.get('confidence_adjustment', 'unknown')})"
+            )
 
         # Create prediction
         prediction_id = predictor.create_prediction(
@@ -5817,6 +5910,10 @@ async def api_predict_run(
             "confidence": confidence,
             "direction": direction,
             "horizon_h": horizon_h,
+            "provider": price_data.get("provider", "unknown"),
+            "price_at_prediction": current_price,
+            "feature_status": feature_status.to_dict(),
+            "confidence_metadata": confidence_metadata,
         }
 
         return {
@@ -5845,6 +5942,130 @@ async def api_predict_run_get(symbol: str):
     # Reuse POST logic
     body = _PredictRunBody(symbol=symbol.upper().strip())
     return await api_predict_run(body, credentials=None)
+
+
+def _generate_multi_symbol_predictions():
+    """
+    Ghost Hunter V1: Generate predictions for all symbols in hunter universe.
+    
+    Called by scheduled_predictions scheduler (8am, 12pm, 4pm ET).
+    Loops through HUNTER_STOCK_SYMBOLS and HUNTER_CRYPTO_SYMBOLS,
+    calls api_predict_run for each symbol, updates _LATEST_PREDICTIONS.
+    
+    Returns:
+        dict with summary stats: {stocks: N, crypto: N, total: N, errors: []}
+    """
+    import asyncio
+    
+    stocks_success = 0
+    crypto_success = 0
+    errors = []
+    
+    # Generate predictions for stocks
+    for symbol in HUNTER_STOCK_SYMBOLS:
+        try:
+            body = _PredictRunBody(symbol=symbol)
+            result = asyncio.run(api_predict_run(body, credentials=None))
+            if result.get("ok"):
+                # Only count as success if confidence >= 10% (real prediction, not diagnostic)
+                confidence = result.get("confidence", 0)
+                if confidence >= 0.10:
+                    stocks_success += 1
+                    LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%})")
+                else:
+                    LOGGER.info(f"Hunter prediction skipped (0% confidence): {symbol}")
+            else:
+                errors.append(f"{symbol}: {result.get('error', 'unknown')}")
+        except Exception as e:
+            LOGGER.warning(f"Hunter prediction failed for {symbol}: {e}")
+            errors.append(f"{symbol}: {str(e)[:100]}")
+    
+    # Generate predictions for crypto
+    for symbol in HUNTER_CRYPTO_SYMBOLS:
+        try:
+            body = _PredictRunBody(symbol=symbol)
+            result = asyncio.run(api_predict_run(body, credentials=None))
+            if result.get("ok"):
+                # Only count as success if confidence >= 10% (real prediction, not diagnostic)
+                confidence = result.get("confidence", 0)
+                if confidence >= 0.10:
+                    crypto_success += 1
+                    LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%})")
+                else:
+                    LOGGER.info(f"Hunter prediction skipped (0% confidence): {symbol}")
+            else:
+                errors.append(f"{symbol}: {result.get('error', 'unknown')}")
+        except Exception as e:
+            LOGGER.warning(f"Hunter prediction failed for {symbol}: {e}")
+            errors.append(f"{symbol}: {str(e)[:100]}")
+    
+    total = stocks_success + crypto_success
+    LOGGER.info(f"Hunter multi-symbol predictions complete: {total} total ({stocks_success} stocks, {crypto_success} crypto)")
+    
+    return {
+        "stocks": stocks_success,
+        "crypto": crypto_success,
+        "total": total,
+        "errors": errors[:10],  # Limit error list to first 10
+    }
+
+
+def _send_multi_symbol_telegram_alert():
+    """
+    Ghost Hunter V1: Send Telegram alert with multi-symbol prediction summary.
+    
+    Called by scheduled_predictions scheduler after generating predictions.
+    Reads from _LATEST_PREDICTIONS to build summary message.
+    
+    Returns:
+        bool - True if sent successfully, False otherwise
+    """
+    try:
+        # Build summary from _LATEST_PREDICTIONS
+        stocks = []
+        crypto = []
+        
+        for sym, pred in _LATEST_PREDICTIONS.items():
+            category = _classify_symbol_category(sym)
+            pred_str = f"{sym}: {pred['direction']} @ {pred['confidence']:.0%}"
+            
+            if category == "stocks":
+                stocks.append(pred_str)
+            elif category in ("crypto", "vip"):
+                crypto.append(pred_str)
+        
+        # Build message
+        msg_lines = ["🔮 Ghost Hunter Predictions"]
+        
+        if stocks:
+            msg_lines.append(f"\n📈 Stocks ({len(stocks)}):")
+            msg_lines.extend(stocks[:5])  # Limit to first 5
+            if len(stocks) > 5:
+                msg_lines.append(f"   ... +{len(stocks)-5} more")
+        
+        if crypto:
+            msg_lines.append(f"\n💰 Crypto ({len(crypto)}):")
+            msg_lines.extend(crypto[:5])  # Limit to first 5
+            if len(crypto) > 5:
+                msg_lines.append(f"   ... +{len(crypto)-5} more")
+        
+        if not stocks and not crypto:
+            msg_lines.append("\n⚠️ No predictions available")
+        
+        message = "\n".join(msg_lines)
+        
+        # Send via Telegram (reuse existing helper if available)
+        try:
+            enqueue_alert_text(message)
+            LOGGER.info("Hunter Telegram alert sent")
+            return True
+        except Exception as e:
+            LOGGER.warning(f"Failed to send hunter Telegram alert: {e}")
+            return False
+    
+    except Exception as e:
+        LOGGER.exception(f"Failed to build hunter Telegram alert: {e}")
+        return False
 
 
 @APP.get("/api/predict/series")
@@ -14225,20 +14446,46 @@ async def telegram_webhook(update: TelegramUpdate):
             try:
                 if SCHEDULED_PREDICTIONS_ENABLED:
                     _tg_send_chat_message(chat_id, "🔮 Generating prediction now...")
-                    scheduled_predictions.force_premarket_prediction()
+                    scheduled_predictions.force_multi_prediction()
                 else:
                     _tg_send_chat_message(chat_id, "⚠️ Prediction scheduler not enabled")
             except Exception as e:
                 _tg_send_chat_message(chat_id, f"❌ Error: {str(e)[:100]}")
 
         elif text.lower().startswith("/check"):
-            # Manually trigger market open check (for testing)
+            # Manually check prediction accuracy
             try:
-                if SCHEDULED_PREDICTIONS_ENABLED:
-                    _tg_send_chat_message(chat_id, "📊 Checking prediction accuracy...")
-                    scheduled_predictions.force_market_open_check()
+                # Get latest prediction for WOLF from in-memory store
+                pred = _LATEST_PREDICTIONS.get("WOLF")
+                if not pred:
+                    _tg_send_chat_message(chat_id, "No recent prediction to check. Try /predict first.")
                 else:
-                    _tg_send_chat_message(chat_id, "⚠️ Prediction scheduler not enabled")
+                    # Get current price
+                    price, prev, provider = get_wolf_price()
+                    pred_price = pred.get("price_at_prediction", prev)
+                    pred_direction = pred.get("direction", "FLAT")
+                    pred_confidence = pred.get("confidence", 0) * 100
+                    
+                    # Calculate actual change
+                    change_pct = ((price - pred_price) / pred_price * 100) if pred_price else 0
+                    actual_direction = "UP" if change_pct > 1 else ("DOWN" if change_pct < -1 else "FLAT")
+                    
+                    # Determine correctness
+                    correct = actual_direction == pred_direction
+                    result_emoji = "✅" if correct else "❌"
+                    
+                    # Format message
+                    msg = f"⚠️ PREDICTION CHECK\n\n"
+                    msg += f"PREDICTED:\n"
+                    msg += f"  Direction: {pred_direction}\n"
+                    msg += f"  Price: ${pred_price:.2f}\n"
+                    msg += f"  Confidence: {pred_confidence:.0f}%\n\n"
+                    msg += f"ACTUAL:\n"
+                    msg += f"  Direction: {actual_direction}\n"
+                    msg += f"  Price: ${price:.2f} ({change_pct:+.2f}%)\n\n"
+                    msg += f"RESULT: {result_emoji} {'CORRECT' if correct else 'INCORRECT'}"
+                    
+                    _tg_send_chat_message(chat_id, msg)
             except Exception as e:
                 _tg_send_chat_message(chat_id, f"❌ Error: {str(e)[:100]}")
 
@@ -16314,21 +16561,36 @@ async def api_cockpit_legacy():
         "notes": (["news:polygon_key_missing"] if not POLYGON_KEY else []),
     }
     
-    # === Populate predictions from in-memory store ===
+    # === Populate predictions from in-memory store with classification ===
     try:
         stock_predictions = []
+        crypto_predictions = []
+        
         for sym, pred in _LATEST_PREDICTIONS.items():
-            stock_predictions.append({
+            pred_data = {
                 "symbol": pred["symbol"],
                 "prediction_id": pred["prediction_id"],
                 "run_at": int(pred["run_at"]),  # Unix timestamp in seconds
                 "confidence": pred["confidence"] * 100,  # Convert to percentage
                 "direction": pred["direction"],
                 "horizon_h": pred["horizon_h"],
-            })
+            }
+            
+            # Classify symbol into stocks/crypto/vip
+            category = _classify_symbol_category(sym)
+            if category == "stocks":
+                stock_predictions.append(pred_data)
+            elif category in ("crypto", "vip"):
+                crypto_predictions.append(pred_data)
+        
+        # Update snapshot with classified predictions
         if stock_predictions:
             snapshot["predictions"]["stocks"] = stock_predictions
-            # Update timestamp to latest prediction if available
+        if crypto_predictions:
+            snapshot["predictions"]["crypto"] = crypto_predictions
+        
+        # Update timestamp from latest prediction if available
+        if _LATEST_PREDICTIONS:
             latest_run_at = max(p["run_at"] for p in _LATEST_PREDICTIONS.values())
             snapshot["timestamp"] = int(latest_run_at)
     except Exception as e:
@@ -17411,6 +17673,64 @@ async def api_debug_predictions():
         "count": len(_LATEST_PREDICTIONS),
         "sample": list(_LATEST_PREDICTIONS.values())[:3] if _LATEST_PREDICTIONS else []
     }
+
+
+@APP.get("/api/hunter/snapshot")
+async def api_hunter_snapshot():
+    """
+    Ghost Hunter V1: Compact multi-symbol prediction view for UI.
+    
+    Returns classified predictions (stocks vs crypto) with essential fields:
+    - symbol, direction, confidence, horizon_h
+    
+    Omits symbols with no predictions (keeps response compact).
+    
+    Example response:
+    {
+      "timestamp": 1763647539,
+      "stocks": [
+        {"symbol": "WOLF", "direction": "FLAT", "confidence": 0.6, "horizon_h": 48},
+        {"symbol": "AAPL", "direction": "UP", "confidence": 0.72, "horizon_h": 48}
+      ],
+      "crypto": [
+        {"symbol": "WEPE", "direction": "UP", "confidence": 0.68, "horizon_h": 24},
+        {"symbol": "BTC", "direction": "DOWN", "confidence": 0.55, "horizon_h": 24}
+      ]
+    }
+    """
+    try:
+        stocks = []
+        crypto = []
+        
+        # Classify and format predictions
+        for sym, pred in _LATEST_PREDICTIONS.items():
+            pred_compact = {
+                "symbol": pred["symbol"],
+                "direction": pred["direction"],
+                "confidence": pred["confidence"],
+                "horizon_h": pred["horizon_h"],
+            }
+            
+            category = _classify_symbol_category(sym)
+            if category == "stocks":
+                stocks.append(pred_compact)
+            elif category in ("crypto", "vip"):
+                crypto.append(pred_compact)
+        
+        # Get latest timestamp
+        timestamp = None
+        if _LATEST_PREDICTIONS:
+            timestamp = int(max(p["run_at"] for p in _LATEST_PREDICTIONS.values()))
+        
+        return {
+            "timestamp": timestamp,
+            "stocks": stocks,
+            "crypto": crypto,
+        }
+    
+    except Exception as e:
+        LOGGER.exception(f"Failed to build hunter snapshot: {e}")
+        raise HTTPException(500, "Failed to build hunter snapshot")
 
 
 @APP.get("/api/system/ping")
