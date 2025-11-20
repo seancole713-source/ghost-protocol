@@ -3884,44 +3884,11 @@ async def _on_startup():
         LOGGER.warning(f"[REDIS] Initialization deferred: {e}", extra={"component": "startup"})
     
     # ============================================================================
-    # 🎭 MASTER ORCHESTRATOR - Consolidate all background services
+    # 🎭 MASTER ORCHESTRATOR - Start AFTER startup completes (avoid circular refs)
     # ============================================================================
-    try:
-        from core.orchestrator import start_all_background_services
-        
-        # Simplified wrappers - orchestrator doesn't actually call these during startup
-        # They're stored for potential future use by background tasks
-        def fetch_price_for_orchestrator(symbol: str, market: str):
-            """Orchestrator-compatible price fetcher"""
-            try:
-                # Stock price (already synchronous)
-                result = fetch_price_live(symbol)
-                return result if result else (None, None, None, True)
-            except Exception:
-                return (None, None, None, True)
-        
-        def run_prediction_for_orchestrator(symbol: str, market: str, horizon: str):
-            """Orchestrator-compatible prediction runner"""
-            # Placeholder - predictions triggered via beast_scheduler
-            return {
-                "ok": True,
-                "symbol": symbol,
-                "market": market,
-                "horizon": horizon
-            }
-        
-        # Start master orchestrator (consolidates all background tasks)
-        await start_all_background_services(
-            APP,
-            LOGGER,
-            _get_redis(),
-            fetch_price_for_orchestrator,
-            run_prediction_for_orchestrator,
-        )
-        
-        LOGGER.info("🎭 Master Orchestrator: All services wired and running")
-    except Exception as e:
-        LOGGER.error(f"❌ Master Orchestrator FAILED: {e}", exc_info=True)
+    # Note: Orchestrator will be started via lifespan event or separate async task
+    # after all wolf_app imports are complete and functions are available
+    LOGGER.info("🎭 Master Orchestrator: Will start after startup completes")
     
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
