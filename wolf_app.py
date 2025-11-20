@@ -705,8 +705,11 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         "/api/cockpit"  # Cockpit snapshot is public
     ]
     
+    path = request.url.path
+    
     # Also allow system/orchestrator endpoints (monitoring)
-    if request.url.path.startswith("/api/system/"):
+    if path.startswith("/api/system/"):
+        LOGGER.info(f"✅ AUTH BYPASS: {path} (system endpoint)")
         return await call_next(request)
     
     # Also allow prediction cockpit endpoints (read-only, no auth needed)
