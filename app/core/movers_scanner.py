@@ -1,11 +1,35 @@
 """
 Ghost Movers Scanner - Real-time market movers detection for crypto and stocks
+
+Configuration:
+    USE_POLYGON_SNAPSHOTS=true (default)
+        - Uses Polygon snapshot API for market-wide coverage
+        - /v2/snapshot/locale/us/markets/stocks/gainers (top 20 gainers)
+        - /v2/snapshot/locale/us/markets/stocks/losers (top 20 losers)
+        - Only 2 API calls instead of 50+ individual fetches
+        - Covers entire market (all exchanges, all symbols)
+        - Already filtered and sorted by Polygon server-side
+    
+    USE_POLYGON_SNAPSHOTS=false
+        - Falls back to legacy mode: hardcoded 50-stock list
+        - Individual price fetch per symbol
+        - Higher API cost, limited universe
+    
+    POLYGON_API_KEY=<your_key>
+        - Required for both snapshot and legacy modes
+        - Free tier: 5 calls/min = 7,200/day
+        - Snapshot mode uses only 2 calls/scan
+    
+    WATCH_SYMBOLS=TSLA,AAPL,NVDA
+        - Custom symbols to always include
+        - Comma-separated, case-insensitive
 """
 import asyncio
 import os
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
+import httpx
 
 # VIP Coins - always included
 VIP_COINS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC", "XRP"]
@@ -71,6 +95,133 @@ def load_universe(redis_client=None) -> Tuple[List[str], List[str]]:
         pass
     
     return list(crypto_symbols), list(stock_symbols)
+
+
+async def fetch_polygon_snapshots(
+    direction: str = "gainers",
+    redis_client=None
+) -> List[Dict]:
+    """
+    Fetch top movers from Polygon snapshot API.
+    
+    This provides market-wide coverage with minimal API calls:
+    - /v2/snapshot/locale/us/markets/stocks/gainers - Top 20 gainers
+    - /v2/snapshot/locale/us/markets/stocks/losers - Top 20 losers
+    
+    Args:
+        direction: "gainers" or "losers"
+        redis_client: Redis client for caching
+    
+    Returns:
+        List of mover dicts with: symbol, price, pct_24h, vol_mult, provider
+    """
+    polygon_key = os.getenv("POLYGON_API_KEY", "")
+    if not polygon_key:
+        return []
+    
+    # Check if snapshot mode is enabled
+    use_snapshots = os.getenv("USE_POLYGON_SNAPSHOTS", "true").lower() in ("1", "true", "yes")
+    if not use_snapshots:
+        return []
+    
+    try:
+        url = f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/{direction}?apiKey={polygon_key}"
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+        
+        tickers = data.get("tickers", [])
+        if not tickers:
+            return []
+        
+        movers = []
+        for ticker_data in tickers:
+            try:
+                ticker = ticker_data.get("ticker", "")
+                if not ticker:
+                    continue
+                
+                day = ticker_data.get("day", {})
+                prev_day = ticker_data.get("prevDay", {})
+                
+                # Current price
+                price = day.get("c") or day.get("vw") or 0.0
+                if price <= 0:
+                    continue
+                
+                # Previous close for % change calculation
+                prev_close = prev_day.get("c", 0.0)
+                if prev_close <= 0:
+                    continue
+                
+                # Calculate percentage change
+                pct_24h = ((price - prev_close) / prev_close) * 100.0
+                
+                # Volume multiplier
+                current_vol = day.get("v", 0.0)
+                prev_vol = prev_day.get("v", 0.0)
+                vol_mult = (current_vol / prev_vol) if prev_vol > 0 else None
+                
+                # Build mover dict
+                tier_info = tier(pct_24h)
+                
+                mover = {
+                    "symbol": ticker,
+                    "price": price,
+                    "pct_1h": 0.0,  # Not available in snapshot
+                    "pct_24h": pct_24h,
+                    "vol_mult": vol_mult,
+                    "age_s": 0,  # Real-time from Polygon
+                    "provider": "polygon_snapshot",
+                    "tier": tier_info["tier"],
+                    "emoji": tier_info["emoji"],
+                    "is_watch": ticker in os.getenv("WATCH_SYMBOLS", "").split(",")
+                }
+                movers.append(mover)
+                
+            except Exception as e:
+                continue
+        
+        return movers
+        
+    except Exception as e:
+        return []
+
+
+async def fetch_polygon_all_movers(redis_client=None) -> List[Dict]:
+    """
+    Fetch both gainers and losers from Polygon, merge and deduplicate.
+    
+    Returns:
+        Combined list of top movers sorted by abs(pct_24h)
+    """
+    # Fetch gainers and losers in parallel
+    gainers_task = fetch_polygon_snapshots("gainers", redis_client)
+    losers_task = fetch_polygon_snapshots("losers", redis_client)
+    
+    gainers, losers = await asyncio.gather(gainers_task, losers_task, return_exceptions=True)
+    
+    if isinstance(gainers, Exception):
+        gainers = []
+    if isinstance(losers, Exception):
+        losers = []
+    
+    # Merge and deduplicate
+    all_movers = []
+    seen_symbols = set()
+    
+    for mover in gainers + losers:
+        symbol = mover.get("symbol", "")
+        if symbol and symbol not in seen_symbols:
+            seen_symbols.add(symbol)
+            all_movers.append(mover)
+    
+    # Sort by abs(pct_24h) descending
+    all_movers.sort(key=lambda x: abs(x.get("pct_24h", 0.0)), reverse=True)
+    
+    return all_movers
 
 
 async def get_price_snapshot(
@@ -317,8 +468,11 @@ async def scan_stocks(
     """
     Scan stock universe for movers.
     
+    If USE_POLYGON_SNAPSHOTS=true (default), uses Polygon snapshot API
+    for market-wide coverage with 2 API calls instead of 50+ individual fetches.
+    
     Args:
-        fetch_price_func: Price fetcher
+        fetch_price_func: Price fetcher (fallback for non-snapshot mode)
         ohlcv_func: OHLCV fetcher
         redis_client: Redis client
         allow_extended_hours: Allow pre-market and after-hours moves
@@ -326,6 +480,29 @@ async def scan_stocks(
     Returns:
         List of mover dicts
     """
+    # Check if snapshot mode is enabled
+    use_snapshots = os.getenv("USE_POLYGON_SNAPSHOTS", "true").lower() in ("1", "true", "yes")
+    
+    if use_snapshots and os.getenv("POLYGON_API_KEY"):
+        # Use Polygon snapshot API for market-wide coverage
+        movers = await fetch_polygon_all_movers(redis_client)
+        
+        # Apply threshold filter
+        filtered = []
+        for mover in movers:
+            pct_24h = abs(mover.get("pct_24h", 0.0))
+            vol_mult = mover.get("vol_mult")
+            
+            meets_pct = pct_24h >= STOCK_PCT_THRESHOLD
+            meets_vol = vol_mult is None or vol_mult >= STOCK_VOL_MULT_THRESHOLD
+            is_watch = mover.get("is_watch", False)
+            
+            if meets_pct and meets_vol or is_watch:
+                filtered.append(mover)
+        
+        return filtered
+    
+    # Fallback: Use legacy individual symbol fetch
     _, stock_symbols = load_universe(redis_client)
     movers = []
     
