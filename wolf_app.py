@@ -8335,6 +8335,11 @@ def _fetch_price_alphavantage(symbol: str) -> tuple[float | None, float | None, 
 def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
     if not POLYGON_KEY:
         return None, None, ""
+    
+    # Check global provider backoff
+    if _provider_in_cooldown("polygon"):
+        return None, None, ""
+    
     try:
         t0 = time.perf_counter()
         # Use previous close as baseline; price may fall back to same close when no real-time
@@ -8350,6 +8355,8 @@ def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
         if results:
             c = float(results[0].get("c") or 0)
             if c > 0:
+                # Success: reset backoff
+                _note_provider_success("polygon")
                 try:
                     if _H_PROVIDER_FETCH is not None:
                         _H_PROVIDER_FETCH.labels(provider="polygon").observe(
@@ -8361,10 +8368,33 @@ def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
                     pass
                 return c, c, "polygon"
     except Exception as e:
-        LOGGER.warning(
-            "provider_error",
-            extra={"component": "provider", "provider": "polygon", "error": str(e)},
-        )
+        # Detect rate limits
+        status_code = None
+        is_rate_limit = False
+        
+        try:
+            if hasattr(e, "response") and e.response is not None:
+                status_code = getattr(e.response, "status_code", None)
+                if status_code in (429, 403):
+                    is_rate_limit = True
+        except Exception:
+            pass
+        
+        error_str = str(e).lower()
+        if "429" in error_str or "too many requests" in error_str or "403" in error_str or "forbidden" in error_str:
+            is_rate_limit = True
+        
+        if is_rate_limit:
+            _note_provider_429("polygon")
+            LOGGER.warning(
+                "provider_rate_limited",
+                extra={"component": "provider", "provider": "polygon", "error": str(e), "rate_limited": True},
+            )
+        else:
+            LOGGER.warning(
+                "provider_error",
+                extra={"component": "provider", "provider": "polygon", "error": str(e)},
+            )
         try:
             if _C_PROVIDER_FETCH is not None:
                 _C_PROVIDER_FETCH.labels(provider="polygon", result="error").inc()
@@ -8383,21 +8413,21 @@ def _fetch_polygon_intraday(symbol: str = "WOLF") -> dict:
     """
     if not POLYGON_KEY:
         return {}
-    # Basic provider-specific backoff state
+    
+    # Check global provider backoff state (shared with _note_provider_429)
+    if _provider_in_cooldown("polygon_intraday"):
+        return {}
+    
+    # Basic provider-specific backoff state for local rate limiting
     global _POLY_INTRADAY_STATE
     try:
         _POLY_INTRADAY_STATE
     except NameError:
         _POLY_INTRADAY_STATE = {  # type: ignore[var-annotated]
-            "failures": 0,
-            "next_allowed": 0.0,
             "last_call": 0.0,
         }
 
     now = time.time()
-    # Respect backoff window
-    if now < float(_POLY_INTRADAY_STATE.get("next_allowed", 0.0)):
-        return {}
     # Throttle to ~1 call per 12s (5/min free tier) with jitter
     min_interval = 12.0
     if (now - float(_POLY_INTRADAY_STATE.get("last_call", 0.0))) < min_interval:
@@ -8434,36 +8464,41 @@ def _fetch_polygon_intraday(symbol: str = "WOLF") -> dict:
                 extra={"component": "price", "provider": "polygon_intraday"},
             )
 
-            # Success: reset failures and set a small post-success throttle with jitter
-            try:
-                _POLY_INTRADAY_STATE["failures"] = 0
-                cool = 10.0 + random.uniform(0, 6.0)  # 10-16s
-                _POLY_INTRADAY_STATE["next_allowed"] = time.time() + cool
-            except Exception:
-                pass
-
+            # Success: reset global backoff state
+            _note_provider_success("polygon_intraday")
             return result
+            
     except Exception as e:
-        # On HTTP errors like 429/403, increase backoff window with jittered exponential
-        # Best-effort: determine status code if available
+        # Detect rate limit (429) or forbidden (403) responses
+        status_code = None
+        is_rate_limit = False
+        
         try:
             if hasattr(e, "response") and e.response is not None:
-                getattr(e.response, "status_code", None)
+                status_code = getattr(e.response, "status_code", None)
+                if status_code in (429, 403):
+                    is_rate_limit = True
         except Exception:
             pass
-        try:
-            _POLY_INTRADAY_STATE["failures"] = int(_POLY_INTRADAY_STATE.get("failures", 0)) + 1
-            n = _POLY_INTRADAY_STATE["failures"]
-            base = 12.0  # start around 1 request window
-            backoff = min(300.0, base * (2 ** (n - 1)))
-            jitter = random.uniform(0, backoff * 0.5)
-            _POLY_INTRADAY_STATE["next_allowed"] = time.time() + backoff + jitter
-        except Exception:
-            pass
-        LOGGER.warning(
-            f"Polygon intraday fetch failed: {e}",
-            extra={"component": "provider", "provider": "polygon_intraday", "error": str(e)},
-        )
+        
+        # Check if error message contains rate limit indicators
+        error_str = str(e).lower()
+        if "429" in error_str or "too many requests" in error_str or "403" in error_str or "forbidden" in error_str:
+            is_rate_limit = True
+        
+        # Apply exponential backoff for rate limits
+        if is_rate_limit:
+            _note_provider_429("polygon_intraday")
+            LOGGER.warning(
+                f"Polygon intraday rate limited (status={status_code}): {e}",
+                extra={"component": "provider", "provider": "polygon_intraday", "error": str(e), "rate_limited": True},
+            )
+        else:
+            # Non-rate-limit error, log but don't trigger aggressive backoff
+            LOGGER.warning(
+                f"Polygon intraday fetch failed: {e}",
+                extra={"component": "provider", "provider": "polygon_intraday", "error": str(e)},
+            )
 
     return {}
 
