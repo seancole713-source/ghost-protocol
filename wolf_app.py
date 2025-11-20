@@ -3876,6 +3876,67 @@ async def _on_startup():
     except Exception as e:
         LOGGER.warning(f"[REDIS] Initialization deferred: {e}", extra={"component": "startup"})
     
+    # ============================================================================
+    # 🎭 MASTER ORCHESTRATOR - Consolidate all background services
+    # ============================================================================
+    try:
+        from core.orchestrator import start_all_background_services
+        
+        # Wrap price fetch for orchestrator
+        def fetch_price_for_orchestrator(symbol: str, market: str):
+            """Orchestrator-compatible price fetcher"""
+            try:
+                if market == "crypto":
+                    # Crypto price (async, need sync wrapper)
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    result = loop.run_until_complete(api_crypto_price(symbol))
+                    if result and result.get("price"):
+                        return (
+                            result["price"],
+                            result.get("prev_close", result["price"]),
+                            result.get("provider", "unknown"),
+                            False,
+                        )
+                else:
+                    # Stock price
+                    result = fetch_price_live(symbol)
+                    return result if result else (None, None, None, True)
+            except Exception:
+                return (None, None, None, True)
+        
+        # Wrap prediction runner for orchestrator
+        def run_prediction_for_orchestrator(symbol: str, market: str, horizon: str):
+            """Orchestrator-compatible prediction runner"""
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                
+                # Map horizon to params
+                horizon_map = {"SHORT": "1d", "LONG": "5d"}
+                horizon_param = horizon_map.get(horizon, "1d")
+                
+                # Run prediction
+                result = loop.run_until_complete(
+                    api_predict_run(symbol, market=market, horizon=horizon_param)
+                )
+                return result if result and result.get("ok") else None
+            except Exception:
+                return None
+        
+        # Start master orchestrator (consolidates all background tasks)
+        await start_all_background_services(
+            APP,
+            LOGGER,
+            _get_redis(),
+            fetch_price_for_orchestrator,
+            run_prediction_for_orchestrator,
+        )
+        
+        LOGGER.info("🎭 Master Orchestrator: All services wired and running")
+    except Exception as e:
+        LOGGER.error(f"❌ Master Orchestrator FAILED: {e}", exc_info=True)
+    
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
 
@@ -17244,6 +17305,28 @@ async def api_status():
 async def api_health():
     """Simple health check endpoint for monitoring systems."""
     return {"ok": True, "ts": int(time.time() * 1000)}
+
+
+@APP.get("/api/system/orchestrator")
+async def api_system_orchestrator():
+    """
+    Get Master Orchestrator status - all background services health
+    Shows which systems are running, failed, disabled, or on-demand
+    """
+    try:
+        from core.orchestrator import get_system_status
+        return get_system_status()
+    except Exception as e:
+        LOGGER.error(f"Orchestrator status endpoint failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "uptime_seconds": 0,
+            "services": {},
+            "active_tasks": 0,
+            "total_services": 0,
+            "timestamp": int(time.time()),
+        }
 
 
 @APP.get("/api/tick")
