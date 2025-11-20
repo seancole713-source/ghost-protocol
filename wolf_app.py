@@ -1316,6 +1316,10 @@ _LAST_TELEGRAM_SEND_TIME: float | None = None
 _LAST_TELEGRAM_STATUS: str = "never_run"
 _LAST_TELEGRAM_ERROR: str | None = None
 
+# In-memory predictions store (wires /api/predict/run → /api/cockpit)
+# Maps symbol → {prediction_id, run_at, confidence, direction, horizon_h, symbol}
+_LATEST_PREDICTIONS: dict[str, dict[str, Any]] = {}
+
 # ChatGPT Price Provider (for watchlist stocks)
 try:
     CHATGPT_PRICE_PROVIDER = ChatGPTStockPriceProvider()
@@ -5804,6 +5808,16 @@ async def api_predict_run(
             params={"horizon_h": horizon_h, "step_s": step_s},
             tag="",
         )
+
+        # Wire to in-memory store for /api/cockpit consumption
+        _LATEST_PREDICTIONS[symbol] = {
+            "prediction_id": prediction_id,
+            "symbol": symbol,
+            "run_at": run_at,  # Store as float timestamp
+            "confidence": confidence,
+            "direction": direction,
+            "horizon_h": horizon_h,
+        }
 
         return {
             "ok": True,
@@ -10758,6 +10772,20 @@ async def api_cockpit_snapshot():
         except Exception as e:
             LOGGER.warning(f"Could not query latest predictions: {e}")
         
+        # Build predictions from in-memory store
+        predictions = {}
+        try:
+            for sym, pred in _LATEST_PREDICTIONS.items():
+                predictions[sym] = {
+                    "prediction_id": pred["prediction_id"],
+                    "run_at": pred["run_at"],
+                    "confidence": pred["confidence"],
+                    "direction": pred["direction"],
+                    "horizon_h": pred["horizon_h"],
+                }
+        except Exception as e:
+            LOGGER.warning(f"Failed to build predictions for /api/cockpit: {e}")
+        
         # Build ghost_2x block
         ghost_2x = {
             "ok": True,
@@ -10776,6 +10804,7 @@ async def api_cockpit_snapshot():
             "status": "ok",
             "system": system,
             "ghost_2x": ghost_2x,
+            "predictions": predictions if predictions else None,
             "timestamp": time.time()
         }
         
@@ -16257,6 +16286,7 @@ async def api_cockpit_legacy():
             "stocks": [],  # Populated by existing predict infrastructure
             "crypto": [],  # Will be populated if CRYPTO_ENABLED=1
         },
+        "timestamp": now_ts,  # Set non-null timestamp for cockpit
         "outlook": {"risk": "neutral", "confidence": 0.70, "action": "HOLD"},
         "news": {"ticker": WOLF, "items": news.get("items", []), "note": note},
         "news_signal": news.get("news_signal")
@@ -16283,6 +16313,26 @@ async def api_cockpit_legacy():
         "two_line_overlay": two_line_data,
         "notes": (["news:polygon_key_missing"] if not POLYGON_KEY else []),
     }
+    
+    # === Populate predictions from in-memory store ===
+    try:
+        stock_predictions = []
+        for sym, pred in _LATEST_PREDICTIONS.items():
+            stock_predictions.append({
+                "symbol": pred["symbol"],
+                "prediction_id": pred["prediction_id"],
+                "run_at": int(pred["run_at"]),  # Unix timestamp in seconds
+                "confidence": pred["confidence"] * 100,  # Convert to percentage
+                "direction": pred["direction"],
+                "horizon_h": pred["horizon_h"],
+            })
+        if stock_predictions:
+            snapshot["predictions"]["stocks"] = stock_predictions
+            # Update timestamp to latest prediction if available
+            latest_run_at = max(p["run_at"] for p in _LATEST_PREDICTIONS.values())
+            snapshot["timestamp"] = int(latest_run_at)
+    except Exception as e:
+        LOGGER.warning(f"Failed to populate predictions from store: {e}")
     
     # === Ghost 2.x Enhancements ===
     # Add provider health, Ghost Score V2, and risk guard status to snapshot
@@ -17347,6 +17397,20 @@ async def api_status():
 async def api_health():
     """Simple health check endpoint for monitoring systems."""
     return {"ok": True, "ts": int(time.time() * 1000)}
+
+
+@APP.get("/api/debug/predictions")
+async def api_debug_predictions():
+    """
+    Debug endpoint to inspect in-memory predictions store.
+    Shows what /api/predict/run writes and what /api/cockpit reads.
+    """
+    return {
+        "store": _LATEST_PREDICTIONS,
+        "keys": list(_LATEST_PREDICTIONS.keys()),
+        "count": len(_LATEST_PREDICTIONS),
+        "sample": list(_LATEST_PREDICTIONS.values())[:3] if _LATEST_PREDICTIONS else []
+    }
 
 
 @APP.get("/api/system/ping")
