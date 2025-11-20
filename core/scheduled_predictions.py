@@ -116,7 +116,7 @@ def _send_scheduled_prediction(time_label: str):
 
 
 def _prediction_loop():
-    """Main loop checking for scheduled prediction times"""
+    """Main loop checking for scheduled prediction times with catchup logic"""
     global _LAST_RUN_DATES
     
     print("[MULTI-PREDICTION SCHEDULER] Loop started, checking every 30 seconds...")
@@ -152,16 +152,22 @@ def _prediction_loop():
                 target_time = datetime.strptime(time_str, "%H:%M").time()
                 
                 # Calculate time difference
-                time_diff = abs(
-                    (
-                        datetime.combine(now.date(), current_time)
-                        - datetime.combine(now.date(), target_time)
-                    ).total_seconds()
-                )
+                time_diff = (
+                    datetime.combine(now.date(), current_time)
+                    - datetime.combine(now.date(), target_time)
+                ).total_seconds()
                 
-                # Run if within 2.5 minute window
-                if time_diff <= 150:
+                # Phase 5: Extended catchup window - run if:
+                # 1. Within 2.5 min window (normal trigger)
+                # 2. OR past scheduled time but less than 30 min late (catchup)
+                if -150 <= time_diff <= 150:
+                    # Normal trigger window
                     print(f"[MULTI-PREDICTION] 🔔 Triggering {label} prediction at {now.strftime('%H:%M')}")
+                    _send_scheduled_prediction(time_str)
+                    _LAST_RUN_DATES[time_str] = current_date
+                elif 150 < time_diff <= 1800:
+                    # Catchup window (missed by 2.5-30 min)
+                    print(f"[MULTI-PREDICTION] 🔄 Catchup: Running missed {label} prediction (missed by {int(time_diff/60)} min)")
                     _send_scheduled_prediction(time_str)
                     _LAST_RUN_DATES[time_str] = current_date
         

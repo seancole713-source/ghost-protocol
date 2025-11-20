@@ -3960,7 +3960,8 @@ _LAST_BG_PRICE_TS: float | None = None
 
 async def _auto_refresh_price():
     """Periodic task that attempts to refresh the live price.
-    It bypasses cache if provider == 'prev-close' or price older than PRICE_TTL_OPEN_S.
+    Phase 4: Runs 24/7 regardless of market hours for consistent updates.
+    Bypasses cache if provider == 'prev-close' or price older than PRICE_TTL_OPEN_S.
     Logs transitions between providers and records diagnostics.
     """
     global _LAST_BG_PRICE_TS
@@ -3974,39 +3975,39 @@ async def _auto_refresh_price():
             # Increment tick counter for SSE state change detection
             STATE["tick"] = STATE.get("tick", 0) + 1
 
-            is_open, _ = _is_market_open_now()
-            if is_open:
-                p, prev2, provider2 = get_wolf_price()
-                now = time.time()
-                stale_prev_only = provider2 == "prev-close"
-                if stale_prev_only:
-                    # Force fresh fetch by clearing cache and re-calling
-                    PRICE_CACHE.pop(WOLF, None)
-                    p2, prev3, provider3 = get_wolf_price()
-                    if provider3 != provider2 or p2 != p:
-                        LOGGER.info(
-                            "price_updater_live_refresh",
-                            extra={
-                                "component": "price_updater",
-                                "provider": provider3,
-                                "price": p2,
-                                "prev": prev3,
-                            },
-                        )
-                else:
-                    # Record occasional heartbeat
-                    if _LAST_BG_PRICE_TS is None or (now - _LAST_BG_PRICE_TS) > (
-                        PRICE_AUTO_REFRESH_S * 4
-                    ):
-                        LOGGER.debug(
-                            "price_updater_heartbeat",
-                            extra={
-                                "component": "price_updater",
-                                "provider": provider2,
-                                "price": p,
-                            },
-                        )
-                _LAST_BG_PRICE_TS = now
+            # Phase 4: Always refresh (removed market hours check)
+            # This ensures consistent 7s intervals 24/7
+            p, prev2, provider2 = get_wolf_price()
+            now = time.time()
+            stale_prev_only = provider2 == "prev-close"
+            if stale_prev_only:
+                # Force fresh fetch by clearing cache and re-calling
+                PRICE_CACHE.pop(WOLF, None)
+                p2, prev3, provider3 = get_wolf_price()
+                if provider3 != provider2 or p2 != p:
+                    LOGGER.info(
+                        "price_updater_live_refresh",
+                        extra={
+                            "component": "price_updater",
+                            "provider": provider3,
+                            "price": p2,
+                            "prev": prev3,
+                        },
+                    )
+            else:
+                # Record occasional heartbeat
+                if _LAST_BG_PRICE_TS is None or (now - _LAST_BG_PRICE_TS) > (
+                    PRICE_AUTO_REFRESH_S * 4
+                ):
+                    LOGGER.debug(
+                        "price_updater_heartbeat",
+                        extra={
+                            "component": "price_updater",
+                            "provider": provider2,
+                            "price": p,
+                        },
+                    )
+            _LAST_BG_PRICE_TS = now
         except Exception as e:
             try:
                 LOGGER.debug(
