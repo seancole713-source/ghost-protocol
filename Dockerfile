@@ -22,13 +22,16 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
-# Create data directories
-RUN mkdir -p /data /tmp/prom_multiproc
+# Create data directories with proper permissions for Railway volume
+# /app/data will be mounted as Railway persistent volume
+RUN mkdir -p /app/data /data /tmp/prom_multiproc && \
+    chmod -R 777 /app/data /data /tmp/prom_multiproc
 
 # Environment defaults
 ENV SIM_MODE=0 \
     PYTHONUNBUFFERED=1 \
-    PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc \
+    GHOST_PREDICT_DB=/app/data/ghost_predictions.db
 
 # Expose port (Railway assigns PORT dynamically)
 EXPOSE 8080
