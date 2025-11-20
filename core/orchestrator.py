@@ -137,6 +137,59 @@ async def start_all_background_services(
         LOGGER.info("⚪ VIP Microcap Scanner: DISABLED (VIP_SCANNER_ENABLED=0)")
     
     # ============================================================================
+    # PHASE 2.6: PRE-MARKET PREDICTOR
+    # ============================================================================
+    premarket_enabled = os.getenv("PREMARKET_ENABLED", "1") == "1"
+    
+    if premarket_enabled:
+        try:
+            from core.premarket_predictor import should_run_premarket, run_premarket_predictions
+            
+            _SYSTEM_STATUS["premarket_predictor"] = {
+                "status": "checking",
+                "enabled": True,
+                "last_run": 0,
+                "next_run": "7:00 AM CT weekdays"
+            }
+            
+            async def _premarket_check_loop():
+                """Check every 5 minutes if it's time to run pre-market predictions"""
+                while True:
+                    try:
+                        should_run, reason = should_run_premarket()
+                        
+                        if should_run:
+                            LOGGER.info("🌅 Starting pre-market predictions...")
+                            result = await run_premarket_predictions()
+                            _SYSTEM_STATUS["premarket_predictor"]["status"] = "completed"
+                            _SYSTEM_STATUS["premarket_predictor"]["last_run"] = result['run_at']
+                            LOGGER.info(
+                                f"🌅 Pre-market complete: {len(result['predictions'])} predictions, "
+                                f"{result['alerts_sent']} alerts sent"
+                            )
+                        else:
+                            _SYSTEM_STATUS["premarket_predictor"]["status"] = f"waiting ({reason})"
+                    
+                    except Exception as e:
+                        _SYSTEM_STATUS["premarket_predictor"]["status"] = "error"
+                        _SYSTEM_STATUS["premarket_predictor"]["error"] = str(e)
+                        LOGGER.error(f"Pre-market check error: {e}", exc_info=True)
+                    
+                    await asyncio.sleep(300)  # Check every 5 minutes
+            
+            _TASKS["premarket_predictor"] = asyncio.create_task(_premarket_check_loop())
+            _SYSTEM_STATUS["premarket_predictor"]["status"] = "waiting"
+            LOGGER.info("✅ Pre-market Predictor: STARTED (checks every 5min, runs 7:00 AM CT)")
+        
+        except Exception as e:
+            _SYSTEM_STATUS["premarket_predictor"]["status"] = "failed"
+            _SYSTEM_STATUS["premarket_predictor"]["error"] = str(e)
+            LOGGER.error(f"❌ Pre-market Predictor FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["premarket_predictor"] = {"status": "disabled", "enabled": False}
+        LOGGER.info("⚪ Pre-market Predictor: DISABLED (PREMARKET_ENABLED=0)")
+    
+    # ============================================================================
     # PHASE 3: SL/TP MONITOR (Conditional - Only if Broker Enabled)
     # ============================================================================
     broker_enabled = os.getenv("BROKER_ENABLED", "0") == "1"

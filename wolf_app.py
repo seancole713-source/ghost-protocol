@@ -23040,6 +23040,228 @@ async def opportunities_dashboard():
         )
 
 
+@APP.get("/mobile")
+async def mobile_cockpit():
+    """
+    Serve Ghost mobile cockpit (simplified mobile UI).
+    Shows goals, VIP coins, pre-market predictions, and recent alerts.
+    """
+    from fastapi.templating import Jinja2Templates
+    
+    templates = Jinja2Templates(directory="templates")
+    
+    class MockRequest:
+        def __init__(self):
+            self.headers = {}
+            self.path_params = {}
+    
+    try:
+        return templates.TemplateResponse(
+            "cockpit_mobile.html",
+            {"request": MockRequest()}
+        )
+    except Exception as e:
+        LOGGER.error(f"Mobile cockpit failed: {e}")
+        return HTMLResponse(
+            content="""
+            <html><head><title>Ghost Mobile</title></head>
+            <body><h1>Ghost Mobile</h1>
+            <p>Mobile dashboard temporarily unavailable</p></body></html>
+            """,
+            status_code=500
+        )
+
+
+# ============================================================================
+# GHOST MOBILE COCKPIT API ENDPOINTS
+# ============================================================================
+
+@APP.get("/api/goals")
+async def api_goals():
+    """
+    Get trading goals and YTD performance.
+    
+    Returns:
+        {
+            'ok': True,
+            'ytd_pnl': 15420.50,
+            'ytd_target': 50000.00,
+            'win_rate': 68.5,
+            'total_trades': 127,
+            'avg_gain': 4.2,
+            'avg_loss': -2.1
+        }
+    """
+    try:
+        from core.goal_tracker import get_ytd_stats
+        
+        stats = get_ytd_stats()
+        
+        return {
+            'ok': True,
+            **stats,
+            'timestamp': int(time.time())
+        }
+    except Exception as e:
+        LOGGER.error(f"Goals API failed: {e}")
+        return {
+            'ok': False,
+            'error': str(e),
+            'ytd_pnl': 0,
+            'ytd_target': 0,
+            'win_rate': 0,
+            'total_trades': 0,
+            'timestamp': int(time.time())
+        }
+
+
+@APP.get("/api/vip_status")
+async def api_vip_status():
+    """
+    Get VIP microcap coin status with real-time prices.
+    
+    Returns:
+        {
+            'ok': True,
+            'coins': [
+                {'symbol': 'WEPE', 'price': 0.000123, 'change_1h': 12.5, 'volume_24h': 1500000},
+                ...
+            ],
+            'last_scan': 1731654000,
+            'opportunities': 2
+        }
+    """
+    try:
+        from core.crypto.vip_providers import get_all_vip_prices
+        
+        vip_data = get_all_vip_prices()
+        
+        # Format for mobile UI
+        coins = []
+        for symbol, data in vip_data.items():
+            if data.get('ok'):
+                coins.append({
+                    'symbol': symbol,
+                    'price': data.get('price'),
+                    'change_1h': data.get('change_1h', 0),
+                    'volume_24h': data.get('volume_24h', 0),
+                    'market_cap': data.get('market_cap'),
+                    'provider': data.get('provider', 'unknown')
+                })
+        
+        return {
+            'ok': True,
+            'coins': coins,
+            'count': len(coins),
+            'last_scan': int(time.time()),
+            'timestamp': int(time.time())
+        }
+    except Exception as e:
+        LOGGER.error(f"VIP status API failed: {e}")
+        return {
+            'ok': False,
+            'error': str(e),
+            'coins': [],
+            'timestamp': int(time.time())
+        }
+
+
+@APP.get("/api/premarket_status")
+async def api_premarket_status():
+    """
+    Get pre-market predictor status and recent predictions.
+    
+    Returns:
+        {
+            'ok': True,
+            'enabled': True,
+            'last_run': 1731654000,
+            'last_run_ct': '7:00 AM CT 2024-11-15',
+            'predictions_count': 5,
+            'recent_predictions': [
+                {
+                    'symbol': 'WOLF',
+                    'direction': 'UP',
+                    'confidence': 0.78,
+                    'early_signal': True,
+                    'hours_before_open': 2.5
+                },
+                ...
+            ],
+            'next_run_ct': '7:00 AM CT 2024-11-16'
+        }
+    """
+    try:
+        from core.premarket_predictor import get_premarket_status
+        
+        status = get_premarket_status()
+        
+        return {
+            'ok': True,
+            **status,
+            'timestamp': int(time.time())
+        }
+    except Exception as e:
+        LOGGER.error(f"Pre-market status API failed: {e}")
+        return {
+            'ok': False,
+            'error': str(e),
+            'enabled': False,
+            'recent_predictions': [],
+            'timestamp': int(time.time())
+        }
+
+
+@APP.get("/api/recent_alerts")
+async def api_recent_alerts(limit: int = 10):
+    """
+    Get recent Cash-App style alerts from last 24h.
+    
+    Query params:
+        limit: Max alerts to return (default 10)
+    
+    Returns:
+        {
+            'ok': True,
+            'alerts': [
+                {
+                    'symbol': 'WEPE',
+                    'message': 'WEPE +12.5% (1h)\\nPrice: $0.000123\\nVolume: 3x surge',
+                    'timestamp': 1731654000,
+                    'tier': 'VIP'
+                },
+                ...
+            ],
+            'count': 10
+        }
+    """
+    try:
+        from core.telegram_alerts import get_recent_alerts
+        
+        alerts = get_recent_alerts(limit=limit)
+        
+        return {
+            'ok': True,
+            'alerts': alerts,
+            'count': len(alerts),
+            'timestamp': int(time.time())
+        }
+    except Exception as e:
+        LOGGER.error(f"Recent alerts API failed: {e}")
+        return {
+            'ok': False,
+            'error': str(e),
+            'alerts': [],
+            'count': 0,
+            'timestamp': int(time.time())
+        }
+
+
+# ============================================================================
+# GHOST INVESTMENT HUNTER - EXISTING MARKET SCANNER ENDPOINTS
+# ============================================================================
+
+
 # Alias for Railway/Uvicorn compatibility (expects lowercase 'app')
 app = APP
 

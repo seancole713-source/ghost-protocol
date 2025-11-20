@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <title>Ghost — Mobile Cockpit</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .header {
+            padding: 16px 0;
+            border-bottom: 1px solid #222;
+            margin-bottom: 16px;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        
+        .header .subtitle {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .card {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+        
+        .card-badge {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #2a2a2a;
+            color: #888;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        
+        .badge-success { background: #1a4d2e; color: #4ade80; }
+        .badge-warning { background: #4d3a1a; color: #fbbf24; }
+        .badge-danger { background: #4d1a1a; color: #f87171; }
+        .badge-early { background: #1a2a4d; color: #60a5fa; }
+        
+        .goal-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #222;
+        }
+        
+        .goal-item:last-child { border-bottom: none; }
+        
+        .goal-label {
+            font-size: 13px;
+            color: #aaa;
+        }
+        
+        .goal-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+        }
+        
+        .goal-progress {
+            width: 100%;
+            height: 6px;
+            background: #2a2a2a;
+            border-radius: 3px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        
+        .goal-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4ade80, #22c55e);
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+        
+        .vip-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #222;
+        }
+        
+        .vip-item:last-child { border-bottom: none; }
+        
+        .vip-symbol {
+            font-size: 15px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .vip-price {
+            font-size: 14px;
+            color: #aaa;
+        }
+        
+        .vip-change {
+            font-size: 14px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .vip-change.up { background: #1a4d2e; color: #4ade80; }
+        .vip-change.down { background: #4d1a1a; color: #f87171; }
+        
+        .pred-item {
+            padding: 12px;
+            background: #222;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        
+        .pred-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .pred-symbol {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .pred-confidence {
+            font-size: 12px;
+            font-weight: 600;
+            color: #4ade80;
+        }
+        
+        .pred-direction {
+            font-size: 14px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            display: inline-block;
+        }
+        
+        .pred-direction.up { background: #1a4d2e; color: #4ade80; }
+        .pred-direction.down { background: #4d1a1a; color: #f87171; }
+        
+        .pred-meta {
+            font-size: 11px;
+            color: #666;
+        }
+        
+        .alert-item {
+            padding: 12px;
+            background: #222;
+            border-radius: 6px;
+            border-left: 3px solid #4ade80;
+            margin-bottom: 10px;
+        }
+        
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        
+        .alert-symbol {
+            font-size: 14px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .alert-time {
+            font-size: 11px;
+            color: #666;
+        }
+        
+        .alert-message {
+            font-size: 13px;
+            color: #aaa;
+            line-height: 1.4;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 32px 16px;
+            color: #666;
+            font-size: 13px;
+        }
+        
+        .refresh-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: #4ade80;
+            border: none;
+            box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .refresh-btn:active { transform: scale(0.95); }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>👻 Ghost</h1>
+        <div class="subtitle">Mobile Cockpit · Real-time</div>
+    </div>
+    
+    <!-- Goals Section -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">💰 Goals</div>
+            <div class="card-badge">YTD</div>
+        </div>
+        <div id="goals-content" class="loading">Loading...</div>
+    </div>
+    
+    <!-- VIP Microcaps Section -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">💎 VIP Microcaps</div>
+            <div class="card-badge badge-early">Live</div>
+        </div>
+        <div id="vip-content" class="loading">Loading...</div>
+    </div>
+    
+    <!-- Predictions Section -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">🎯 Top Predictions</div>
+            <div class="card-badge badge-early">Pre-market</div>
+        </div>
+        <div id="predictions-content" class="loading">Loading...</div>
+    </div>
+    
+    <!-- Recent Alerts Section -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">🔔 Recent Alerts</div>
+            <div class="card-badge">Last 24h</div>
+        </div>
+        <div id="alerts-content" class="loading">Loading...</div>
+    </div>
+    
+    <button class="refresh-btn" onclick="refreshAll()">↻</button>
+    
+    <script>
+        // API endpoints
+        const API_BASE = window.location.origin;
+        
+        // Auto-refresh every 30 seconds
+        let refreshInterval;
+        
+        async function fetchData(endpoint) {
+            try {
+                const res = await fetch(`${API_BASE}${endpoint}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            } catch (err) {
+                console.error(`Failed to fetch ${endpoint}:`, err);
+                return null;
+            }
+        }
+        
+        async function loadGoals() {
+            const data = await fetchData('/api/goals');
+            const container = document.getElementById('goals-content');
+            
+            if (!data || !data.ok) {
+                container.innerHTML = '<div class="empty-state">No goals data</div>';
+                return;
+            }
+            
+            const { ytd_pnl, ytd_target, win_rate, total_trades } = data;
+            const progress = (ytd_pnl / ytd_target * 100).toFixed(1);
+            
+            container.innerHTML = `
+                <div class="goal-item">
+                    <div class="goal-label">YTD P&L</div>
+                    <div class="goal-value" style="color: ${ytd_pnl >= 0 ? '#4ade80' : '#f87171'}">
+                        ${ytd_pnl >= 0 ? '+' : ''}$${ytd_pnl.toLocaleString()}
+                    </div>
+                </div>
+                <div class="goal-item">
+                    <div class="goal-label">Target</div>
+                    <div class="goal-value">$${ytd_target.toLocaleString()}</div>
+                </div>
+                <div class="goal-progress">
+                    <div class="goal-progress-bar" style="width: ${Math.min(progress, 100)}%"></div>
+                </div>
+                <div class="goal-item" style="margin-top: 12px;">
+                    <div class="goal-label">Win Rate</div>
+                    <div class="goal-value">${win_rate}%</div>
+                </div>
+                <div class="goal-item">
+                    <div class="goal-label">Total Trades</div>
+                    <div class="goal-value">${total_trades}</div>
+                </div>
+            `;
+        }
+        
+        async function loadVIP() {
+            const data = await fetchData('/api/vip_status');
+            const container = document.getElementById('vip-content');
+            
+            if (!data || !data.coins || data.coins.length === 0) {
+                container.innerHTML = '<div class="empty-state">No VIP data</div>';
+                return;
+            }
+            
+            container.innerHTML = data.coins.map(coin => {
+                const changeClass = coin.change_1h >= 0 ? 'up' : 'down';
+                const changeSign = coin.change_1h >= 0 ? '+' : '';
+                
+                return `
+                    <div class="vip-item">
+                        <div>
+                            <div class="vip-symbol">${coin.symbol}</div>
+                            <div class="vip-price">$${coin.price?.toFixed(6) || '—'}</div>
+                        </div>
+                        <div class="vip-change ${changeClass}">
+                            ${changeSign}${coin.change_1h?.toFixed(2) || '0.00'}%
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        async function loadPredictions() {
+            const data = await fetchData('/api/premarket_status');
+            const container = document.getElementById('predictions-content');
+            
+            if (!data || !data.recent_predictions || data.recent_predictions.length === 0) {
+                container.innerHTML = '<div class="empty-state">No predictions yet</div>';
+                return;
+            }
+            
+            container.innerHTML = data.recent_predictions.map(pred => {
+                const direction = pred.direction || 'FLAT';
+                const directionClass = direction === 'UP' ? 'up' : direction === 'DOWN' ? 'down' : '';
+                const confidence = (pred.confidence * 100).toFixed(0);
+                const hoursEarly = pred.hours_before_open?.toFixed(1) || '—';
+                
+                return `
+                    <div class="pred-item">
+                        <div class="pred-header">
+                            <div class="pred-symbol">${pred.symbol || '—'}</div>
+                            <div class="pred-confidence">${confidence}%</div>
+                        </div>
+                        <div class="pred-direction ${directionClass}">${direction}</div>
+                        <div class="pred-meta">
+                            ${pred.early_signal ? `🌅 ${hoursEarly}h before open` : 'Intraday'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        async function loadAlerts() {
+            const data = await fetchData('/api/recent_alerts?limit=10');
+            const container = document.getElementById('alerts-content');
+            
+            if (!data || !data.alerts || data.alerts.length === 0) {
+                container.innerHTML = '<div class="empty-state">No recent alerts</div>';
+                return;
+            }
+            
+            container.innerHTML = data.alerts.map(alert => {
+                const timeAgo = formatTimeAgo(alert.timestamp);
+                
+                return `
+                    <div class="alert-item">
+                        <div class="alert-header">
+                            <div class="alert-symbol">${alert.symbol}</div>
+                            <div class="alert-time">${timeAgo}</div>
+                        </div>
+                        <div class="alert-message">${alert.message}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function formatTimeAgo(timestamp) {
+            const now = Date.now() / 1000;
+            const diff = now - timestamp;
+            
+            if (diff < 60) return 'Just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+            return `${Math.floor(diff / 86400)}d ago`;
+        }
+        
+        async function refreshAll() {
+            await Promise.all([
+                loadGoals(),
+                loadVIP(),
+                loadPredictions(),
+                loadAlerts()
+            ]);
+        }
+        
+        // Initial load
+        refreshAll();
+        
+        // Auto-refresh every 30 seconds
+        refreshInterval = setInterval(refreshAll, 30000);
+    </script>
+</body>
+</html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ghost — Cockpit</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #0a0e14;
+            color: #e6edf3;
+            font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            padding: 12px;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #21262d;
+        }
+        .header h1 {
+            font-size: 18px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status.live { background: #1a3a2a; color: #7ee787; }
+        .status.paused { background: #3a2a1a; color: #f0b87b; }
+        
+        .section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+        
+        /* Goals */
+        .goals {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .goal {
+            flex: 1;
+            min-width: 140px;
+            background: #0d1117;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #21262d;
+        }
+        .goal-label {
+            font-size: 11px;
+            color: #8b949e;
+            margin-bottom: 4px;
+        }
+        .goal-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #7ee787;
+        }
+        .goal-progress {
+            font-size: 12px;
+            color: #8b949e;
+            margin-top: 4px;
+        }
+        
+        /* VIP Coins */
+        .vip-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .vip-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px;
+            background: #0d1117;
+            border-radius: 8px;
+            border: 1px solid #21262d;
+        }
+        .vip-symbol {
+            font-weight: 700;
+            font-size: 15px;
+        }
+        .vip-price {
+            font-size: 14px;
+            color: #8b949e;
+        }
+        .vip-change {
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .vip-change.up { color: #7ee787; }
+        .vip-change.down { color: #ff7b72; }
+        
+        /* Predictions */
+        .pred-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .pred-item {
+            padding: 12px;
+            background: #0d1117;
+            border-radius: 8px;
+            border: 1px solid #21262d;
+        }
+        .pred-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .pred-symbol {
+            font-weight: 700;
+            font-size: 16px;
+        }
+        .pred-direction {
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .pred-direction.up { background: #1a3a2a; color: #7ee787; }
+        .pred-direction.down { background: #3a1a1a; color: #ff7b72; }
+        .pred-details {
+            display: flex;
+            gap: 12px;
+            font-size: 13px;
+            color: #8b949e;
+        }
+        .pred-confidence {
+            font-weight: 600;
+            color: #7ee787;
+        }
+        
+        /* Alerts */
+        .alert-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .alert-item {
+            padding: 10px;
+            background: #1a1f27;
+            border-left: 3px solid #7ee787;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .alert-time {
+            font-size: 11px;
+            color: #8b949e;
+            margin-bottom: 4px;
+        }
+        .alert-message {
+            font-weight: 500;
+        }
+        
+        /* Refresh button */
+        .refresh-btn {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #238636;
+            color: #fff;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .refresh-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 20px;
+            color: #8b949e;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔮 Ghost Cockpit</h1>
+        <span class="status live" id="status">LIVE</span>
+    </div>
+    
+    <!-- Goals Section -->
+    <div class="section">
+        <div class="section-title">Your Goals</div>
+        <div class="goals">
+            <div class="goal">
+                <div class="goal-label">Daily Target</div>
+                <div class="goal-value" id="daily-goal">$300</div>
+                <div class="goal-progress" id="daily-progress">$0 / $300</div>
+            </div>
+            <div class="goal">
+                <div class="goal-label">Weekly Target</div>
+                <div class="goal-value" id="weekly-goal">$2,000</div>
+                <div class="goal-progress" id="weekly-progress">$0 / $2,000</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- VIP Coins Section -->
+    <div class="section">
+        <div class="section-title">VIP Microcaps</div>
+        <div class="vip-list" id="vip-list">
+            <div class="empty-state">Loading VIP coins...</div>
+        </div>
+    </div>
+    
+    <!-- Top Predictions Section -->
+    <div class="section">
+        <div class="section-title">Top Predictions (24-48h)</div>
+        <div class="pred-list" id="pred-list">
+            <div class="empty-state">Loading predictions...</div>
+        </div>
+    </div>
+    
+    <!-- Recent Alerts Section -->
+    <div class="section">
+        <div class="section-title">Recent Alerts</div>
+        <div class="alert-list" id="alert-list">
+            <div class="empty-state">No recent alerts</div>
+        </div>
+    </div>
+    
+    <button class="refresh-btn" onclick="loadData()">↻</button>
+    
+    <script>
+        async function loadData() {
+            try {
+                // Load cockpit snapshot
+                const response = await fetch('/api/cockpit/snapshot');
+                const data = await response.json();
+                
+                // Update status
+                document.getElementById('status').className = 'status ' + (data.status === 'running' ? 'live' : 'paused');
+                document.getElementById('status').textContent = data.status.toUpperCase();
+                
+                // Load VIP coins
+                loadVIPCoins();
+                
+                // Load predictions
+                loadPredictions();
+                
+                // Load alerts
+                loadAlerts();
+                
+            } catch (e) {
+                console.error('Load error:', e);
+            }
+        }
+        
+        async function loadVIPCoins() {
+            try {
+                const vips = ['WEPE', 'LILPEPE', 'DORKL', 'SLOTH', 'APC'];
+                const vipList = document.getElementById('vip-list');
+                vipList.innerHTML = '';
+                
+                for (const symbol of vips) {
+                    try {
+                        const response = await fetch(`/api/crypto/price/${symbol}`);
+                        const data = await response.json();
+                        
+                        if (data.ok && data.price) {
+                            const change = data.change_24h_pct || 0;
+                            const changeClass = change >= 0 ? 'up' : 'down';
+                            const changeSign = change >= 0 ? '+' : '';
+                            
+                            const item = document.createElement('div');
+                            item.className = 'vip-item';
+                            item.innerHTML = `
+                                <div>
+                                    <div class="vip-symbol">${symbol}</div>
+                                    <div class="vip-price">$${data.price.toFixed(6)}</div>
+                                </div>
+                                <div class="vip-change ${changeClass}">
+                                    ${changeSign}${change.toFixed(2)}%
+                                </div>
+                            `;
+                            vipList.appendChild(item);
+                        }
+                    } catch (e) {
+                        console.error(`Error loading ${symbol}:`, e);
+                    }
+                }
+                
+                if (vipList.children.length === 0) {
+                    vipList.innerHTML = '<div class="empty-state">No VIP coins available</div>';
+                }
+            } catch (e) {
+                console.error('VIP load error:', e);
+            }
+        }
+        
+        async function loadPredictions() {
+            try {
+                const response = await fetch('/api/predict/history?limit=5');
+                const data = await response.json();
+                
+                const predList = document.getElementById('pred-list');
+                predList.innerHTML = '';
+                
+                if (data.predictions && data.predictions.length > 0) {
+                    data.predictions.forEach(pred => {
+                        const direction = pred.direction || 'FLAT';
+                        const directionClass = direction === 'UP' ? 'up' : 'down';
+                        const confidence = Math.round((pred.confidence || 0) * 100);
+                        
+                        const item = document.createElement('div');
+                        item.className = 'pred-item';
+                        item.innerHTML = `
+                            <div class="pred-header">
+                                <span class="pred-symbol">${pred.symbol}</span>
+                                <span class="pred-direction ${directionClass}">${direction}</span>
+                            </div>
+                            <div class="pred-details">
+                                <span class="pred-confidence">${confidence}% confidence</span>
+                                <span>•</span>
+                                <span>${pred.horizon_h || 48}h horizon</span>
+                            </div>
+                        `;
+                        predList.appendChild(item);
+                    });
+                } else {
+                    predList.innerHTML = '<div class="empty-state">No predictions yet</div>';
+                }
+            } catch (e) {
+                console.error('Predictions load error:', e);
+                document.getElementById('pred-list').innerHTML = '<div class="empty-state">Error loading predictions</div>';
+            }
+        }
+        
+        async function loadAlerts() {
+            try {
+                const response = await fetch('/logs/recent?limit=10');
+                const data = await response.json();
+                
+                const alertList = document.getElementById('alert-list');
+                alertList.innerHTML = '';
+                
+                // Filter for alert-related logs
+                const alerts = data.logs.filter(log => 
+                    log.message.toLowerCase().includes('alert') || 
+                    log.message.toLowerCase().includes('prediction') ||
+                    log.message.toLowerCase().includes('vip')
+                ).slice(0, 5);
+                
+                if (alerts.length > 0) {
+                    alerts.forEach(alert => {
+                        const item = document.createElement('div');
+                        item.className = 'alert-item';
+                        item.innerHTML = `
+                            <div class="alert-time">${new Date(alert.timestamp * 1000).toLocaleTimeString()}</div>
+                            <div class="alert-message">${alert.message.substring(0, 100)}</div>
+                        `;
+                        alertList.appendChild(item);
+                    });
+                } else {
+                    alertList.innerHTML = '<div class="empty-state">No recent alerts</div>';
+                }
+            } catch (e) {
+                console.error('Alerts load error:', e);
+            }
+        }
+        
+        // Load data on page load
+        loadData();
+        
+        // Refresh every 30 seconds
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>
