@@ -3,8 +3,10 @@ Ghost Telegram Alert Pipeline
 Single source of truth for alert formatting with deduplication
 """
 
+import os
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, Optional, List, Dict
 from zoneinfo import ZoneInfo
 
 # Redis client (will be set by wolf_app.py)
@@ -15,6 +17,94 @@ LOGGER = None
 
 # Timezone configuration
 DEFAULT_TZ = "America/Chicago"
+
+# Alert style configuration
+ALERT_STYLE = os.getenv("ALERT_STYLE", "verbose")  # "simple" or "verbose"
+ALERT_SIMPLE_FORMAT = os.getenv("ALERT_SIMPLE_FORMAT", "balanced")  # "compact", "balanced", "context"
+MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.60"))
+
+
+@dataclass
+class Alert:
+    """Unified alert payload for all Ghost signals"""
+    
+    # Core identification
+    symbol: str
+    market: str  # "stock" or "crypto"
+    
+    # Signal data
+    direction: Literal["BUY", "SELL", "HOLD", "WATCH"]
+    confidence: float  # 0.0-1.0
+    
+    # Price information
+    price_now: float
+    price_prev: float
+    change_pct: float
+    
+    # Prediction context
+    predicted_pct: Optional[float] = None
+    horizon_h: Optional[int] = None
+    
+    # Metadata
+    source: str = "hunter"
+    score: Optional[int] = None
+    volume_ratio: Optional[float] = None
+    provider: str = "polygon"
+    
+    # Factors
+    factors: List[str] = field(default_factory=list)
+    
+    # Timestamps
+    timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
+
+
+def format_simple_alert(alert: Alert) -> str:
+    """
+    Format alert in Cash-App style (1-2 lines, max 180 chars)
+    
+    Args:
+        alert: Unified alert payload
+        
+    Returns:
+        Formatted alert string (Markdown compatible)
+        
+    Examples:
+        compact:  Ghost 🔮 WOLF — BUY (78%) | $17.51 (+5.2%)
+        balanced: WOLF up 5.2% to $17.51 — Ghost BUY (78% confidence)
+        context:  Ghost detected: WOLF +5.2% to $17.51 | BUY | 78% | 6h
+    """
+    # Get style from env
+    style = ALERT_SIMPLE_FORMAT
+    
+    # Format confidence as percentage
+    conf_pct = int(alert.confidence * 100)
+    
+    # Format change with sign
+    if alert.change_pct >= 0:
+        change_str = f"up {alert.change_pct:.1f}%"
+        arrow = "📈"
+    else:
+        change_str = f"down {abs(alert.change_pct):.1f}%"
+        arrow = "📉"
+    
+    # Direction indicator
+    direction_icon = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡", "WATCH": "👀"}
+    icon = direction_icon.get(alert.direction, "⚪")
+    
+    # Format based on style
+    if style == "compact":
+        return f"Ghost 🔮 {alert.symbol} — {alert.direction} ({conf_pct}%) | ${alert.price_now:.2f} ({change_str:+}))"
+    
+    elif style == "context":
+        horizon_str = f"{alert.horizon_h}h" if alert.horizon_h else "N/A"
+        return f"Ghost detected: {alert.symbol} {change_str} to ${alert.price_now:.2f} | {alert.direction} | {conf_pct}% | {horizon_str}"
+    
+    else:  # balanced (default)
+        # Handle up/down wording
+        if alert.change_pct >= 0:
+            return f"{arrow} {alert.symbol} {change_str} to ${alert.price_now:.2f} — Ghost {alert.direction} ({conf_pct}% confidence)"
+        else:
+            return f"{arrow} {alert.symbol} {change_str} to ${alert.price_now:.2f} — Ghost {alert.direction} ({conf_pct}% confidence)"
 
 
 def render_alert(
@@ -199,19 +289,57 @@ def send_alert(
 ) -> bool:
     """
     Send alert via Telegram with deduplication
+    
+    Respects ALERT_STYLE env var: \"simple\" or \"verbose\" (default)
 
     Returns:
         True if alert was sent successfully
         False if skipped (duplicate) or failed
     """
+    # Filter out 0% confidence (diagnostic only, not real predictions)
+    confidence = prediction.get("confidence", 0)
+    if confidence < 0.10:
+        if LOGGER:
+            LOGGER.info(f"Skipping 0% confidence alert: {market}/{symbol}/{horizon_bucket}")
+        return False
+    
+    # Check minimum confidence threshold
+    if confidence < MIN_ALERT_CONFIDENCE:
+        if LOGGER:
+            LOGGER.info(f"Skipping low confidence alert ({confidence:.0%} < {MIN_ALERT_CONFIDENCE:.0%}): {market}/{symbol}")
+        return False
+    
     # Check deduplication
     if not should_send_alert(market, symbol, horizon_bucket):
         if LOGGER:
             LOGGER.info(f"Skipping duplicate alert: {market}/{symbol}/{horizon_bucket}")
         return False
 
-    # Render message
-    message = render_alert(symbol, market, horizon_bucket, prediction, price_meta, tz)
+    # Render message based on ALERT_STYLE
+    if ALERT_STYLE == "simple":
+        # Build Alert DTO
+        price = price_meta.get("price", 0.0)
+        prev_close = price_meta.get("prev_close", 0.0)
+        change_pct = ((price - prev_close) / prev_close * 100) if prev_close > 0 else 0.0
+        
+        alert = Alert(
+            symbol=symbol,
+            market=market,
+            direction=prediction.get("action", "HOLD"),
+            confidence=confidence,
+            price_now=price,
+            price_prev=prev_close,
+            change_pct=change_pct,
+            horizon_h=prediction.get("horizon_h", 48),
+            source="prediction",
+            provider=price_meta.get("provider", "unknown"),
+            factors=prediction.get("factors", [])
+        )
+        
+        message = format_simple_alert(alert)
+    else:
+        # Use verbose format (existing)
+        message = render_alert(symbol, market, horizon_bucket, prediction, price_meta, tz)
 
     # Send via Telegram
     if not TELEGRAM_SEND_FUNC or not TELEGRAM_CHAT_ID:
@@ -222,7 +350,7 @@ def send_alert(
     try:
         TELEGRAM_SEND_FUNC(TELEGRAM_CHAT_ID, message)
         if LOGGER:
-            LOGGER.info(f"Sent alert: {market}/{symbol}/{horizon_bucket}")
+            LOGGER.info(f"Sent alert: {market}/{symbol}/{horizon_bucket} (style={ALERT_STYLE})")
         return True
     except Exception as e:
         if LOGGER:
