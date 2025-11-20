@@ -5900,6 +5900,41 @@ async def api_predict_history(
         raise HTTPException(500, f"History fetch failed: {str(e)[:200]}")
 
 
+@APP.post("/api/predict/force")
+async def api_predict_force(
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Manually trigger multi-symbol prediction generation (bypasses scheduler).
+    Useful for testing or immediate prediction updates.
+    Requires authentication.
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        raise HTTPException(401, "Authentication required")
+
+    try:
+        from core import scheduled_predictions
+        
+        # Trigger manual prediction run
+        scheduled_predictions.force_multi_prediction()
+        
+        return {
+            "status": "triggered",
+            "message": "Multi-symbol prediction generation started",
+            "timestamp": time.time(),
+        }
+
+    except Exception as e:
+        LOGGER.error(f"Manual prediction trigger failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Trigger failed: {str(e)[:200]}")
+
+
 @APP.get("/api/predict/scoreboard")
 async def api_predict_scoreboard(
     symbol: str,
@@ -17261,9 +17296,15 @@ async def api_health():
 
 
 @APP.get("/api/system/ping")
-async def api_system_ping():
+async def api_system_ping(request: Request):
     """Simple ping endpoint to test /api/system/ auth bypass"""
-    return {"ok": True, "message": "system endpoint accessible", "ts": int(time.time())}
+    return {
+        "ok": True,
+        "message": "system endpoint accessible",
+        "request_path": str(request.url.path),
+        "request_url": str(request.url),
+        "ts": int(time.time())
+    }
 
 
 @APP.get("/api/system/orchestrator")

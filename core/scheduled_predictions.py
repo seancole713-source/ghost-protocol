@@ -58,36 +58,61 @@ def stop_prediction_scheduler():
 
 def _send_scheduled_prediction(time_label: str):
     """
-    Send multi-symbol prediction at scheduled time.
+    Generate and send multi-symbol prediction at scheduled time.
+    Prediction generation happens FIRST, Telegram send is best-effort.
     
     Args:
         time_label: Label for this scheduled run (e.g., "08:00", "12:00", "16:00")
     """
-    try:
-        now_str = _get_ny_time().strftime("%I:%M %p %Z")
-        
-        if not TELEGRAM_SEND_MULTI_FUNC:
-            print(f"[MULTI-PREDICTION] ⚠️ Telegram send function not configured")
-            if LOGGER:
-                LOGGER.warning("Scheduled prediction skipped: TELEGRAM_SEND_MULTI_FUNC not set")
-            return
-        
-        # Send multi-symbol Telegram alert (handles prediction generation internally)
-        success = TELEGRAM_SEND_MULTI_FUNC()
-        
-        if success:
-            print(f"[MULTI-PREDICTION] ✅ Sent scheduled multi-symbol prediction at {now_str} ({time_label})")
-            if LOGGER:
-                LOGGER.info(f"Scheduled multi-symbol prediction sent: {time_label}")
-        else:
-            print(f"[MULTI-PREDICTION] ❌ Failed to send scheduled prediction at {now_str} ({time_label})")
-            if LOGGER:
-                LOGGER.error(f"Scheduled multi-symbol prediction failed: {time_label}")
+    now_str = _get_ny_time().strftime("%I:%M %p %Z")
+    prediction_generated = False
+    telegram_sent = False
     
+    # PHASE 1: Generate predictions (ALWAYS attempt this first)
+    try:
+        if MULTI_SYMBOL_PREDICTION_FUNC:
+            print(f"[MULTI-PREDICTION] 🔮 Generating predictions at {now_str} ({time_label})...")
+            result = MULTI_SYMBOL_PREDICTION_FUNC()
+            prediction_generated = True
+            print(f"[MULTI-PREDICTION] ✅ Predictions generated successfully ({time_label})")
+            if LOGGER:
+                LOGGER.info(f"Scheduled predictions generated: {time_label}", extra={"result": result})
+        else:
+            print(f"[MULTI-PREDICTION] ⚠️ Prediction function not configured, skipping generation")
+            if LOGGER:
+                LOGGER.warning("Scheduled prediction generation skipped: MULTI_SYMBOL_PREDICTION_FUNC not set")
     except Exception as e:
-        print(f"[MULTI-PREDICTION] ❌ Error sending scheduled prediction ({time_label}): {e}")
+        print(f"[MULTI-PREDICTION] ❌ Error generating predictions ({time_label}): {e}")
         if LOGGER:
-            LOGGER.exception(f"Scheduled prediction error ({time_label}): {e}")
+            LOGGER.exception(f"Scheduled prediction generation error ({time_label}): {e}")
+    
+    # PHASE 2: Send Telegram alert (best effort, don't block on failure)
+    try:
+        if TELEGRAM_SEND_MULTI_FUNC:
+            print(f"[MULTI-PREDICTION] 📱 Sending Telegram alert at {now_str} ({time_label})...")
+            success = TELEGRAM_SEND_MULTI_FUNC()
+            telegram_sent = success
+            
+            if success:
+                print(f"[MULTI-PREDICTION] ✅ Telegram alert sent ({time_label})")
+                if LOGGER:
+                    LOGGER.info(f"Scheduled Telegram alert sent: {time_label}")
+            else:
+                print(f"[MULTI-PREDICTION] ⚠️ Telegram send returned False ({time_label})")
+                if LOGGER:
+                    LOGGER.warning(f"Scheduled Telegram alert failed: {time_label}")
+        else:
+            print(f"[MULTI-PREDICTION] ⚠️ Telegram function not configured, skipping alert")
+            if LOGGER:
+                LOGGER.warning("Telegram alert skipped: TELEGRAM_SEND_MULTI_FUNC not set")
+    except Exception as e:
+        print(f"[MULTI-PREDICTION] ❌ Error sending Telegram alert ({time_label}): {e}")
+        if LOGGER:
+            LOGGER.exception(f"Telegram send error ({time_label}): {e}")
+    
+    # Summary
+    status = f"predictions={'✅' if prediction_generated else '❌'}, telegram={'✅' if telegram_sent else '❌'}"
+    print(f"[MULTI-PREDICTION] 📊 Scheduled run complete ({time_label}): {status}")
 
 
 def _prediction_loop():
