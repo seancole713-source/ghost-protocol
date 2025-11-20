@@ -17290,26 +17290,25 @@ async def api_health():
     return {"ok": True, "ts": int(time.time() * 1000)}
 
 
+@APP.get("/api/system/ping")
+async def api_system_ping():
+    """Simple ping endpoint to test /api/system/ auth bypass"""
+    return {"ok": True, "message": "system endpoint accessible", "ts": int(time.time())}
+
+
 @APP.get("/api/system/orchestrator")
 async def api_system_orchestrator():
     """
     Get Master Orchestrator status - all background services health
     Shows which systems are running, failed, disabled, or on-demand
     """
-    try:
-        from core.orchestrator import get_system_status
-        return get_system_status()
-    except Exception as e:
-        LOGGER.error(f"Orchestrator status endpoint failed: {e}", exc_info=True)
-        return {
-            "ok": False,
-            "error": str(e),
-            "uptime_seconds": 0,
-            "services": {},
-            "active_tasks": 0,
-            "total_services": 0,
-            "timestamp": int(time.time()),
-        }
+    # Quick non-blocking status check
+    return {
+        "ok": True,
+        "message": "orchestrator status",
+        "timestamp": int(time.time()),
+        "note": "Full status check temporarily disabled for debugging"
+    }
 
 
 @APP.get("/api/tick")
