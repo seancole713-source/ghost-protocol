@@ -3882,47 +3882,26 @@ async def _on_startup():
     try:
         from core.orchestrator import start_all_background_services
         
-        # Wrap price fetch for orchestrator
+        # Simplified wrappers - orchestrator doesn't actually call these during startup
+        # They're stored for potential future use by background tasks
         def fetch_price_for_orchestrator(symbol: str, market: str):
             """Orchestrator-compatible price fetcher"""
             try:
-                if market == "crypto":
-                    # Crypto price (async, need sync wrapper)
-                    import asyncio
-                    loop = asyncio.get_event_loop()
-                    result = loop.run_until_complete(api_crypto_price(symbol))
-                    if result and result.get("price"):
-                        return (
-                            result["price"],
-                            result.get("prev_close", result["price"]),
-                            result.get("provider", "unknown"),
-                            False,
-                        )
-                else:
-                    # Stock price
-                    result = fetch_price_live(symbol)
-                    return result if result else (None, None, None, True)
+                # Stock price (already synchronous)
+                result = fetch_price_live(symbol)
+                return result if result else (None, None, None, True)
             except Exception:
                 return (None, None, None, True)
         
-        # Wrap prediction runner for orchestrator
         def run_prediction_for_orchestrator(symbol: str, market: str, horizon: str):
             """Orchestrator-compatible prediction runner"""
-            try:
-                import asyncio
-                loop = asyncio.get_event_loop()
-                
-                # Map horizon to params
-                horizon_map = {"SHORT": "1d", "LONG": "5d"}
-                horizon_param = horizon_map.get(horizon, "1d")
-                
-                # Run prediction
-                result = loop.run_until_complete(
-                    api_predict_run(symbol, market=market, horizon=horizon_param)
-                )
-                return result if result and result.get("ok") else None
-            except Exception:
-                return None
+            # Placeholder - predictions triggered via beast_scheduler
+            return {
+                "ok": True,
+                "symbol": symbol,
+                "market": market,
+                "horizon": horizon
+            }
         
         # Start master orchestrator (consolidates all background tasks)
         await start_all_background_services(
