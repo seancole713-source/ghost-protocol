@@ -1227,14 +1227,12 @@ async def _cockpit_page(request: Request):
             }
         )
     except Exception as e:
-        # Only error fallback - no more legacy version support
+        # Error fallback - return basic HTML error page
         LOGGER.error(f"Failed to render cockpit_v3.html: {e}")
-        pass
-    
-    from fastapi import Response as _Resp
-
-    return _Resp(
-        """
+        from fastapi import Response as _Resp
+        
+        return _Resp(
+            """
 <!DOCTYPE html>
 <html>
   <head><meta charset=\"utf-8\"><title>Ghost Cockpit V3</title></head>
@@ -1244,9 +1242,9 @@ async def _cockpit_page(request: Request):
   </body>
 </html>
 """,
-        media_type=MEDIA_TEXT_HTML,
-        status_code=200,
-    )
+            media_type=MEDIA_TEXT_HTML,
+            status_code=200,
+        )
 
 
 @APP.get("/cockpit.html", include_in_schema=False)
