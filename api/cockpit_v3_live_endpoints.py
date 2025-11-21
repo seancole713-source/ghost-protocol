@@ -31,17 +31,166 @@ def get_ghost_state():
         return {}
 
 
-def get_price_for_symbol(symbol: str) -> Dict[str, Any]:
-    """Get current price using Ghost's price quorum system"""
+def calculate_ghost_score_v1() -> Dict[str, Any]:
+    """
+    Ghost Score V1 - Transparent penalty-based scoring
+    
+    Base: 100
+    Penalties:
+    - Provider DOWN: -20, degraded: -10
+    - AI decisions (24h) == 0: -15
+    - Accuracy <50%: -20, 50-65%: -10, >65%: 0
+    - Data freshness stale: -15
+    
+    Returns:
+        {
+            "score": 0-100,
+            "grade": "A-F",
+            "breakdown": {
+                "base": 100,
+                "provider_penalty": -X,
+                "ai_activity_penalty": -X,
+                "accuracy_penalty": -X,
+                "freshness_penalty": -X
+            },
+            "components": {
+                "providers_healthy": N,
+                "providers_total": N,
+                "ai_decisions_24h": N,
+                "accuracy_pct": X.X,
+                "data_age_minutes": X
+            }
+        }
+    """
+    base_score = 100
+    penalties = {
+        "provider_penalty": 0,
+        "ai_activity_penalty": 0,
+        "accuracy_penalty": 0,
+        "freshness_penalty": 0
+    }
+    components = {
+        "providers_healthy": 0,
+        "providers_total": 0,
+        "ai_decisions_24h": 0,
+        "accuracy_pct": 0.0,
+        "data_age_minutes": 0
+    }
+    
+    # 1. Provider Health Check
     try:
-        from wolf_app import get_price
-        price_data = get_price(symbol)
-        if price_data:
+        from wolf_app import PRICE_PROVIDERS
+        providers_total = len(PRICE_PROVIDERS)
+        providers_healthy = 0
+        providers_degraded = 0
+        
+        for provider_name, provider_obj in PRICE_PROVIDERS.items():
+            # Check if provider has recent successful fetch
+            # Simplified: assume healthy if no errors
+            if hasattr(provider_obj, 'last_error') and provider_obj.last_error:
+                providers_degraded += 1
+            else:
+                providers_healthy += 1
+        
+        components["providers_healthy"] = providers_healthy
+        components["providers_total"] = providers_total
+        
+        if providers_healthy == 0:
+            penalties["provider_penalty"] = -20  # All DOWN
+        elif providers_degraded > 0:
+            penalties["provider_penalty"] = -10  # Some degraded
+    except Exception as e:
+        LOGGER.warning(f"Provider health check failed: {e}")
+        penalties["provider_penalty"] = -10  # Unknown = degraded
+    
+    # 2. AI Activity Check (24h)
+    try:
+        import sqlite3
+        conn = sqlite3.connect("data/ghost_predictions.db")
+        cursor = conn.cursor()
+        
+        # Count predictions in last 24h
+        cutoff = time.time() - (24 * 3600)
+        cursor.execute("SELECT COUNT(*) FROM predictions WHERE run_at >= ?", (cutoff,))
+        ai_decisions_24h = cursor.fetchone()[0] or 0
+        conn.close()
+        
+        components["ai_decisions_24h"] = ai_decisions_24h
+        
+        if ai_decisions_24h == 0:
+            penalties["ai_activity_penalty"] = -15
+    except Exception as e:
+        LOGGER.warning(f"AI activity check failed: {e}")
+        penalties["ai_activity_penalty"] = -15  # No data = penalty
+    
+    # 3. Prediction Accuracy Check
+    try:
+        from core.prediction_tracker import calculate_accuracy
+        stats = calculate_accuracy("24h")
+        accuracy_pct = stats.get("accuracy_pct", 0.0)
+        components["accuracy_pct"] = accuracy_pct
+        
+        if accuracy_pct < 50:
+            penalties["accuracy_penalty"] = -20
+        elif accuracy_pct < 65:
+            penalties["accuracy_penalty"] = -10
+        # else: 0 penalty
+    except Exception as e:
+        LOGGER.warning(f"Accuracy check failed: {e}")
+        penalties["accuracy_penalty"] = -10  # Unknown = moderate penalty
+    
+    # 4. Data Freshness Check
+    try:
+        # Check last price update time from STATE
+        state = get_ghost_state()
+        last_update = state.get("last_price_update", time.time())
+        data_age_minutes = (time.time() - last_update) / 60
+        components["data_age_minutes"] = int(data_age_minutes)
+        
+        if data_age_minutes > 15:  # Stale if >15 minutes old
+            penalties["freshness_penalty"] = -15
+    except Exception as e:
+        LOGGER.warning(f"Freshness check failed: {e}")
+        penalties["freshness_penalty"] = -10  # Unknown = moderate penalty
+    
+    # Calculate final score
+    total_penalty = sum(penalties.values())
+    final_score = max(0, min(100, base_score + total_penalty))
+    
+    # Determine grade
+    if final_score >= 90:
+        grade = "A"
+    elif final_score >= 80:
+        grade = "B"
+    elif final_score >= 70:
+        grade = "C"
+    elif final_score >= 60:
+        grade = "D"
+    else:
+        grade = "F"
+    
+    return {
+        "score": final_score,
+        "grade": grade,
+        "breakdown": {
+            "base": base_score,
+            **penalties
+        },
+        "components": components
+    }
+
+
+async def get_price_for_symbol(symbol: str) -> Dict[str, Any]:
+    """Get current price using Ghost's crypto price quorum system"""
+    try:
+        from core.crypto.crypto_providers import get_crypto_price_quorum
+        price_data = await get_crypto_price_quorum(symbol, use_cache=False)
+        if price_data and price_data.get("price"):
             return {
                 "symbol": symbol,
                 "price": price_data.get("price", 0.0),
                 "prev_close": price_data.get("prev_close", 0.0),
-                "change_pct": price_data.get("change_pct", 0.0),
+                "change_pct": price_data.get("change_24h_pct", 0.0),
                 "provider": price_data.get("provider", "unknown"),
                 "timestamp": price_data.get("timestamp", time.time())
             }
@@ -51,13 +200,13 @@ def get_price_for_symbol(symbol: str) -> Dict[str, Any]:
     return {"symbol": symbol, "price": 0.0, "change_pct": 0.0, "provider": "offline"}
 
 
-def get_vip_coin_prices() -> List[Dict[str, Any]]:
+async def get_vip_coin_prices() -> List[Dict[str, Any]]:
     """Get prices for all VIP coins"""
     try:
         from wolf_app import VIP_COINS
         prices = []
         for coin in VIP_COINS:
-            price_data = get_price_for_symbol(coin)
+            price_data = await get_price_for_symbol(coin)
             prices.append({
                 "symbol": coin,
                 "price": price_data.get("price", 0.0),
@@ -70,14 +219,14 @@ def get_vip_coin_prices() -> List[Dict[str, Any]]:
         return []
 
 
-def get_crypto_top_movers(limit: int = 10) -> List[Dict[str, Any]]:
+async def get_crypto_top_movers(limit: int = 10) -> List[Dict[str, Any]]:
     """Get top crypto movers using Ghost's data"""
     try:
         from wolf_app import CRYPTO_SYMBOLS
         movers = []
         
         for symbol in list(CRYPTO_SYMBOLS)[:limit]:
-            price_data = get_price_for_symbol(symbol)
+            price_data = await get_price_for_symbol(symbol)
             if price_data.get("price", 0) > 0:
                 movers.append({
                     "symbol": symbol,
@@ -128,17 +277,10 @@ async def get_cockpit_status():
     try:
         state = get_ghost_state()
         
-        # Calculate health score from Ghost Score V2
-        health_score = 0.0
-        health_grade = "F"
-        
-        try:
-            from core.metrics.ghost_score import compute_ghost_score_v2
-            score_result = compute_ghost_score_v2({}, {}, {})
-            health_score = score_result.get("overall_score", 0.0)
-            health_grade = score_result.get("grade", "F")
-        except:
-            pass
+        # Calculate Ghost Score V1
+        score_result = calculate_ghost_score_v1()
+        health_score = score_result["score"]
+        health_grade = score_result["grade"]
         
         return {
             "live": True,
@@ -147,7 +289,9 @@ async def get_cockpit_status():
             "ghost_health_grade": health_grade,
             "data_ok": True,
             "ai_ok": state.get("active", False),
-            "risk_ok": True
+            "risk_ok": True,
+            "score_breakdown": score_result["breakdown"],
+            "score_components": score_result["components"]
         }
     except Exception as e:
         LOGGER.error(f"Status error: {e}")
@@ -168,17 +312,12 @@ async def get_cockpit_status():
 async def get_goals_snapshot():
     """
     Get Ghost Score and goal progress (daily/weekly/monthly/yearly).
-    Uses Ghost's goal tracking system.
+    Uses Ghost Score V1 with transparent penalty breakdown.
     """
     try:
-        # Get Ghost Score V2
-        ghost_score = 0.0
-        try:
-            from core.metrics.ghost_score import compute_ghost_score_v2
-            score_result = compute_ghost_score_v2({}, {}, {})
-            ghost_score = score_result.get("overall_score", 0.0)
-        except:
-            pass
+        # Calculate Ghost Score V1
+        score_result = calculate_ghost_score_v1()
+        ghost_score = score_result["score"]
         
         # Get goal progress from state
         state = get_ghost_state()
@@ -186,6 +325,9 @@ async def get_goals_snapshot():
         
         return {
             "ghost_score": ghost_score,
+            "ghost_grade": score_result["grade"],
+            "score_breakdown": score_result["breakdown"],
+            "score_components": score_result["components"],
             "daily_goal_pct": goals.get("daily_progress", 0.0),
             "weekly_goal_pct": goals.get("weekly_progress", 0.0),
             "monthly_goal_pct": goals.get("monthly_progress", 0.0),
@@ -193,6 +335,14 @@ async def get_goals_snapshot():
         }
     except Exception as e:
         LOGGER.error(f"Goals snapshot error: {e}")
+        return {
+            "ghost_score": 0.0,
+            "ghost_grade": "F",
+            "daily_goal_pct": 0.0,
+            "weekly_goal_pct": 0.0,
+            "monthly_goal_pct": 0.0,
+            "yearly_goal_pct": 0.0
+        }
         return {
             "ghost_score": 0.0,
             "daily_goal_pct": 0.0,
@@ -215,7 +365,7 @@ async def get_hunter_feed():
         opportunities = []
         
         # Get crypto movers
-        crypto_movers = get_crypto_top_movers(limit=10)
+        crypto_movers = await get_crypto_top_movers(limit=10)
         opportunities.extend(crypto_movers)
         
         # If no data, show clear message
@@ -246,10 +396,10 @@ async def get_vip_snapshot():
     Uses Ghost's crypto provider stack.
     """
     try:
-        vip_prices = get_vip_coin_prices()
+        vip_prices = await get_vip_coin_prices()
         
         # Get XRP separately for "Bullish Eye" panel
-        xrp_data = get_price_for_symbol("XRP")
+        xrp_data = await get_price_for_symbol("XRP")
         
         return {
             "vip_coins": vip_prices,
@@ -1015,17 +1165,17 @@ async def get_daily_summary():
         # Get Ghost Score (will be real after Task Group C)
         ghost_score = 0.0
         try:
-            from api.cockpit_v3_live_endpoints import get_ghost_health_score
-            health = await get_ghost_health_score()
-            ghost_score = health.get("score", 0.0)
+            from core.metrics.ghost_score import compute_ghost_score_v2
+            score_result = compute_ghost_score_v2({}, {}, {})
+            ghost_score = score_result.get("overall_score", 0.0)
         except:
             pass
         
         # Count opportunities
         opportunities = 0
         try:
-            movers = await get_crypto_top_movers()
-            opportunities = len(movers.get("movers", []))
+            movers = await get_crypto_top_movers(limit=20)
+            opportunities = len(movers)
         except:
             pass
         
@@ -1059,8 +1209,7 @@ async def get_daily_summary():
         # Top movers
         top_movers = []
         try:
-            movers_data = await get_crypto_top_movers()
-            top_movers = movers_data.get("movers", [])[:5]  # Top 5
+            top_movers = await get_crypto_top_movers(limit=5)
         except:
             pass
         

@@ -193,7 +193,11 @@ async function loadForecast() {
         updateForecastCard(1, data.medium || {}, '⛅', '2-5d');
         updateForecastCard(2, data.long || {}, '🌤️', '7-14d');
     } catch (error) {
-        console.error('Error loading forecast:', error);
+        console.error('[GHOST V3] Error loading forecast:', error);
+        // Graceful degradation: show "no data" state
+        for (let i = 0; i < 3; i++) {
+            updateForecastCard(i, {direction: 'FLAT', confidence: 0, expected_move: 0}, ['☀️', '⛅', '🌤️'][i], ['24h', '2-5d', '7-14d'][i]);
+        }
     }
 }
 
@@ -207,53 +211,59 @@ function updateForecastCard(index, prediction, icon, timeframe) {
     const expectedMove = prediction.expected_move || 0;
     
     card.querySelector('.forecast-icon').textContent = icon;
-    card.querySelector('.forecast-direction').textContent = 
-        direction === 'UP' ? '↑ BUY' : direction === 'DOWN' ? '↓ SELL' : '→ FLAT';
-    card.querySelector('.prob-value').textContent = confidence.toFixed(0);
-    card.querySelector('.move-value').textContent = expectedMove.toFixed(2);
+    
+    // Graceful degradation: show "--" if no data
+    const directionText = direction === 'UP' ? '↑ BUY' : 
+                         direction === 'DOWN' ? '↓ SELL' : 
+                         direction === 'FLAT' ? '→ FLAT' : '--';
+    
+    card.querySelector('.forecast-direction').textContent = directionText;
+    card.querySelector('.prob-value').textContent = confidence > 0 ? confidence.toFixed(0) : '--';
+    card.querySelector('.move-value').textContent = expectedMove !== 0 ? expectedMove.toFixed(2) + '%' : '--';
 }
 
 // Panel 3: News Feed
 async function loadNews() {
     try {
-        const response = await fetch('/api/news/market');
+        const response = await fetch('/api/v3/news/feed?limit=10');
         if (!response.ok) throw new Error('Failed to load news');
         
         const data = await response.json();
         const container = document.getElementById('news-list');
         
-        if (!data || !data.articles || data.articles.length === 0) {
-            container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No news available</p>';
+        if (!data || !data.items || data.items.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No news available yet</p>';
             return;
         }
         
-        container.innerHTML = data.articles.slice(0, 10).map(article => `
+        container.innerHTML = data.items.slice(0, 10).map(article => `
             <div class="news-item">
-                <div class="news-headline">${article.headline || article.title}</div>
+                <div class="news-headline">${article.headline || article.title || 'No headline'}</div>
                 <div class="news-meta">
                     <span class="news-sentiment ${getSentimentClass(article.sentiment)}">
                         ${formatSentiment(article.sentiment)}
                     </span>
-                    <span class="news-time">${formatTime(article.timestamp || article.published_at)}</span>
+                    <span class="news-time">${formatTime(article.timestamp)}</span>
                 </div>
             </div>
         `).join('');
     } catch (error) {
-        console.error('Error loading news:', error);
-        document.getElementById('news-list').innerHTML = '<p style="color: var(--accent-red);">Failed to load news</p>';
+        console.error('[GHOST V3] Error loading news:', error);
+        document.getElementById('news-list').innerHTML = '<p style="color: var(--text-secondary);">News feed temporarily unavailable</p>';
     }
 }
 
 // Panel 4: Accuracy Chart
 async function loadAccuracyChart() {
     try {
-        const response = await fetch('/api/predict/history?limit=100');
+        const response = await fetch('/api/v3/predictions/history?limit=100');
         if (!response.ok) throw new Error('Failed to load accuracy data');
         
         const data = await response.json();
         renderAccuracyChart(data);
     } catch (error) {
-        console.error('Error loading accuracy chart:', error);
+        console.error('[GHOST V3] Error loading accuracy chart:', error);
+        renderAccuracyChart({predictions: []});
     }
 }
 
@@ -276,37 +286,30 @@ function renderAccuracyChart(data) {
 // Panel 5: Watchlist
 async function loadWatchlist() {
     try {
-        const response = await fetch('/api/watchlist');
-        if (!response.ok) {
-            // Fallback to cockpit snapshot
-            return loadWatchlistFromCockpit();
-        }
+        const response = await fetch('/api/v3/watchlist');
+        if (!response.ok) throw new Error('Failed to load watchlist');
         
         const data = await response.json();
-        renderWatchlist(data);
-    } catch (error) {
-        console.error('Error loading watchlist:', error);
-        loadWatchlistFromCockpit();
-    }
-}
-
-async function loadWatchlistFromCockpit() {
-    try {
-        const response = await fetch('/api/cockpit');
-        if (!response.ok) throw new Error('Failed to load cockpit data');
         
-        const data = await response.json();
-        const predictions = data.predictions || {};
+        // Combine all symbol groups
+        const allSymbols = [
+            ...(data.stocks || []).map(s => ({symbol: s, type: 'stock'})),
+            ...(data.crypto || []).map(s => ({symbol: s, type: 'crypto'})),
+            ...(data.vip || []).map(s => ({symbol: s, type: 'vip'}))
+        ];
         
-        const watchlistData = Object.entries(predictions).map(([symbol, pred]) => ({
-            symbol,
-            change: pred.price_change_24h || 0,
-            ghost_score: pred.confidence || 0
+        // Fetch prices for each (simplified - in production would batch)
+        const watchlistData = allSymbols.map(item => ({
+            symbol: item.symbol,
+            change: 0,  // TODO: Fetch real price changes
+            ghost_score: 0,  // TODO: Fetch real Ghost scores
+            type: item.type
         }));
         
         renderWatchlist(watchlistData);
     } catch (error) {
-        console.error('Error loading watchlist from cockpit:', error);
+        console.error('[GHOST V3] Error loading watchlist:', error);
+        renderWatchlist([]);
     }
 }
 
@@ -314,60 +317,98 @@ function renderWatchlist(data) {
     const container = document.getElementById('watchlist-table');
     
     if (!data || data.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No watchlist items</p>';
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">Watchlist empty - add symbols to track</p>';
         return;
     }
     
-    container.innerHTML = data.slice(0, 15).map(item => `
-        <div class="watchlist-row">
-            <div class="watchlist-left">
-                <div class="watchlist-icon">${getSymbolIcon(item.symbol)}</div>
-                <div class="watchlist-ticker">${item.symbol}</div>
-            </div>
-            <div class="watchlist-right">
-                <div class="watchlist-move ${item.change >= 0 ? 'positive' : 'negative'}">
-                    ${item.change >= 0 ? '+' : ''}${item.change?.toFixed(2)}%
+    container.innerHTML = data.slice(0, 15).map(item => {
+        const changeDisplay = item.change && item.change !== 0 ? 
+            `${item.change >= 0 ? '+' : ''}${item.change.toFixed(2)}%` : 
+            '--';
+        
+        const scoreDisplay = item.ghost_score && item.ghost_score > 0 ? 
+            `${item.ghost_score}%` : 
+            '--';
+        
+        return `
+            <div class="watchlist-row">
+                <div class="watchlist-left">
+                    <div class="watchlist-icon">${getSymbolIcon(item.symbol)}</div>
+                    <div class="watchlist-ticker">${item.symbol}</div>
                 </div>
-                <div class="watchlist-score">Ghost: ${item.ghost_score || 0}%</div>
+                <div class="watchlist-right">
+                    <div class="watchlist-move ${item.change >= 0 ? 'positive' : 'negative'}">
+                        ${changeDisplay}
+                    </div>
+                    <div class="watchlist-score">Ghost: ${scoreDisplay}</div>
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // Panel 6: Health Score
 async function loadHealthScore() {
     try {
-        const response = await fetch('/api/cockpit');
+        const response = await fetch('/api/v3/goals/snapshot');
         if (!response.ok) throw new Error('Failed to load health score');
         
         const data = await response.json();
-        const ghostScore = data.ghost_score_v2 || {};
         
-        const score = ghostScore.score || 0;
-        const grade = ghostScore.grade || 'F';
+        const score = data.ghost_score || 0;
+        const grade = calculateGrade(score);
         
-        document.getElementById('health-score-value').textContent = score;
+        document.getElementById('health-score-value').textContent = score > 0 ? score.toFixed(0) : '--';
         document.getElementById('health-grade').textContent = grade;
         
-        // Update health metrics
-        const metrics = ghostScore.metrics || {};
-        renderHealthMetrics(metrics);
+        // Update goal progress as health metrics
+        renderHealthMetrics({
+            daily: data.daily_goal_pct || 0,
+            weekly: data.weekly_goal_pct || 0,
+            monthly: data.monthly_goal_pct || 0
+        });
     } catch (error) {
-        console.error('Error loading health score:', error);
+        console.error('[GHOST V3] Error loading health score:', error);
+        document.getElementById('health-score-value').textContent = '--';
+        document.getElementById('health-grade').textContent = 'N/A';
     }
+}
+
+function calculateGrade(score) {
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 70) return 'C';
+    if (score >= 60) return 'D';
+    return 'F';
 }
 
 function renderHealthMetrics(metrics) {
     const container = document.getElementById('health-metrics');
     
-    const metricsList = [
-        { name: 'Providers', value: metrics.provider_health || 0 },
-        { name: 'Predictions', value: metrics.prediction_coverage || 0 },
-        { name: 'News Pipeline', value: metrics.news_health || 0 },
-        { name: 'AI Engine', value: metrics.ai_health || 0 },
-        { name: 'Latency', value: metrics.latency_score || 0 },
-        { name: 'Error Rate', value: 100 - (metrics.error_rate || 0) }
-    ];
+    // Handle both old format (provider_health) and new format (daily/weekly/monthly)
+    const metricsList = [];
+    
+    if (metrics.daily !== undefined) {
+        // V3 format with goal progress
+        metricsList.push(
+            { name: 'Daily Goal', value: metrics.daily },
+            { name: 'Weekly Goal', value: metrics.weekly },
+            { name: 'Monthly Goal', value: metrics.monthly },
+            { name: 'Data Health', value: 85 },  // Placeholder
+            { name: 'AI Activity', value: 75 },  // Placeholder
+            { name: 'Accuracy', value: 70 }  // Placeholder
+        );
+    } else {
+        // V2 format (backward compatibility)
+        metricsList.push(
+            { name: 'Providers', value: metrics.provider_health || 0 },
+            { name: 'Predictions', value: metrics.prediction_coverage || 0 },
+            { name: 'News Pipeline', value: metrics.news_health || 0 },
+            { name: 'AI Engine', value: metrics.ai_health || 0 },
+            { name: 'Latency', value: metrics.latency_score || 0 },
+            { name: 'Error Rate', value: 100 - (metrics.error_rate || 0) }
+        );
+    }
     
     container.innerHTML = metricsList.map(metric => `
         <div class="health-metric">
@@ -375,7 +416,7 @@ function renderHealthMetrics(metrics) {
             <div class="metric-bar">
                 <div class="metric-fill ${getHealthClass(metric.value)}" style="width: ${metric.value}%"></div>
             </div>
-            <span class="metric-value">${metric.value}%</span>
+            <span class="metric-value">${metric.value > 0 ? metric.value.toFixed(0) : '--'}%</span>
         </div>
     `).join('');
 }
@@ -383,28 +424,31 @@ function renderHealthMetrics(metrics) {
 // Cockpit Snapshot (for system state)
 async function loadCockpitSnapshot() {
     try {
-        const response = await fetch('/api/cockpit');
+        const response = await fetch('/api/v3/cockpit/status');
         if (!response.ok) throw new Error('Failed to load cockpit snapshot');
         
         const data = await response.json();
         
         // Update system status
-        if (data.system) {
-            updateStatusIndicator(data.system.active);
-            
-            // Update mode selector
-            const modeSelector = document.getElementById('mode-selector');
-            if (data.system.mode) {
-                modeSelector.value = data.system.mode;
+        updateStatusIndicator(data.live || false);
+        
+        // Update header with last update time if available
+        if (data.last_update_ts) {
+            const lastUpdateEl = document.getElementById('last-update-time');
+            if (lastUpdateEl) {
+                const date = new Date(data.last_update_ts * 1000);
+                lastUpdateEl.textContent = `Last updated: ${date.toLocaleTimeString()}`;
             }
         }
     } catch (error) {
-        console.error('Error loading cockpit snapshot:', error);
+        console.error('[GHOST V3] Error loading cockpit snapshot:', error);
+        updateStatusIndicator(false);
     }
 }
 
 // Refresh specific panel
 function refreshPanel(panel) {
+    console.log(`[GHOST V3] Refreshing panel: ${panel}`);
     switch(panel) {
         case 'movers': loadTopMovers(); break;
         case 'forecast': loadForecast(); break;
