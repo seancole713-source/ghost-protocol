@@ -198,8 +198,11 @@ API_KEYS_DB = {}  # Cached in-memory: {key_id: {key_hash: str, name: str, rate_l
 API_KEY_REQUESTS = {}  # Rate limiting tracker {key: deque(timestamps)}
 
 # IP Allowlisting
-IP_ALLOWLIST = set(os.getenv("IP_ALLOWLIST", "").split(",")) if os.getenv("IP_ALLOWLIST") else set()
+_allowlist_str = os.getenv("IP_ALLOWLIST", "").strip()
+IP_ALLOWLIST = set(ip.strip() for ip in _allowlist_str.split(",") if ip.strip()) if _allowlist_str else set()
 IP_ALLOWLIST_ENABLED = len(IP_ALLOWLIST) > 0
+
+print(f"🔒 IP_ALLOWLIST config: enabled={IP_ALLOWLIST_ENABLED}, ips={IP_ALLOWLIST}", flush=True)
 
 # Webhooks - Now database-backed
 WEBHOOK_SUBSCRIPTIONS = {}  # Cached in-memory: {webhook_id: {url: str, events: list[str], secret_hash: str}}
@@ -753,6 +756,8 @@ async def auth_fast_fail_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/goals/"):
         return await call_next(request)
     if request.url.path.startswith("/api/cockpit/"):  # All cockpit sub-endpoints (snapshot, stream, status)
+        return await call_next(request)
+    if request.url.path.startswith("/api/v3/"):  # All Cockpit V3 live endpoints (NO AUTH)
         return await call_next(request)
     if request.url.path.startswith("/api/config"):  # Runtime config endpoints
         return await call_next(request)
@@ -23308,11 +23313,19 @@ async def cockpit_v2_page(request: Request):
     )
 
 
-# Include Cockpit V2 API endpoints
+# Include Cockpit V3 LIVE endpoints (full data integration)
+try:
+    from api.cockpit_v3_live_endpoints import router as cockpit_v3_router
+    APP.include_router(cockpit_v3_router)
+    LOGGER.info("✅ Cockpit V3 LIVE endpoints registered - all panels wired to real data")
+except Exception as e:
+    LOGGER.warning(f"Cockpit V3 LIVE endpoints not loaded: {e}")
+
+# Cockpit V2 kept for fallback routes not in V3
 try:
     from api.cockpit_v2_endpoints import router as cockpit_v2_router
     APP.include_router(cockpit_v2_router)
-    LOGGER.info("✅ Cockpit V2 API endpoints registered")
+    LOGGER.info("✅ Cockpit V2 API endpoints registered (fallback)")
 except Exception as e:
     LOGGER.warning(f"Cockpit V2 API endpoints not loaded: {e}")
 

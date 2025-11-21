@@ -138,7 +138,7 @@ async function loadAllPanels() {
 // Panel 1: Top Movers
 async function loadTopMovers() {
     try {
-        const response = await fetch('/api/hunter/feed');
+        const response = await fetch('/api/v3/hunter/feed');
         if (!response.ok) throw new Error('Failed to load movers');
         
         const data = await response.json();

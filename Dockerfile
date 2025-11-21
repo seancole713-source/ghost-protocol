@@ -41,4 +41,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -fsS http://localhost:${PORT:-8080}/ui/health || exit 1
 
 # Run the application with uvicorn (Railway PORT)
-CMD uvicorn wolf_app:APP --host 0.0.0.0 --port ${PORT:-8080}
+CMD ["sh", "-c", "uvicorn wolf_app:APP --host 0.0.0.0 --port ${PORT:-8080}"]
