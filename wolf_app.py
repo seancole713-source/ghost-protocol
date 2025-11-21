@@ -1211,10 +1211,14 @@ async def _ui_entrypoint():
 # are not mounted or when running in minimal deployment environments.
 @APP.get("/cockpit", include_in_schema=False)
 async def _cockpit_page(request: Request):
+    """Serve Ghost v3 minimal cockpit (USE_COCKPIT_V3=1) or legacy cockpit."""
+    use_v3 = os.getenv("USE_COCKPIT_V3", "1").strip() == "1"
+    
     try:
         # Use Jinja2 template rendering to process {{ GHOST_API_TOKEN }} variable
+        template_name = "cockpit_v3.html" if use_v3 else "cockpit.html"
         return _TEMPLATES.TemplateResponse(
-            "cockpit.html",
+            template_name,
             {
                 "request": request,
                 "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", "")

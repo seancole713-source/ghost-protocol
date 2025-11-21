@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghost Protocol v3</title>
+    <link rel="stylesheet" href="/static/cockpit_v3.css">
+</head>
+<body>
+    <!-- 🟦 HEADER - Fixed Black Bar -->
+    <header id="ghost-header">
+        <div class="header-left">
+            <h1>GHOST PROTOCOL</h1>
+            <span class="status-dot" id="status-indicator"></span>
+            <span class="status-text" id="status-text">LIVE</span>
+        </div>
+        
+        <div class="header-center">
+            <span id="system-time">00:00:00</span>
+        </div>
+        
+        <div class="header-right">
+            <span class="version">Ghost v3.0</span>
+            <div class="controls">
+                <button id="btn-start" class="btn btn-success">START</button>
+                <button id="btn-stop" class="btn btn-danger">STOP</button>
+                <button id="btn-reset" class="btn btn-warning">RESET</button>
+            </div>
+            <select id="mode-selector" class="mode-select">
+                <option value="live">LIVE</option>
+                <option value="fixed">FIXED</option>
+                <option value="training">TRAINING</option>
+            </select>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main id="ghost-main">
+        
+        <!-- 🟩 PANEL 1 - Top Movers -->
+        <section class="panel" id="panel-movers">
+            <div class="panel-header">
+                <h2>Top Movers</h2>
+                <div class="tabs">
+                    <button class="tab active" data-tab="stocks">Stocks</button>
+                    <button class="tab" data-tab="crypto">Crypto</button>
+                    <button class="tab" data-tab="all">All</button>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div id="movers-list" class="movers-grid"></div>
+            </div>
+        </section>
+
+        <!-- 🟧 PANEL 2 - Ghost Forecast -->
+        <section class="panel" id="panel-forecast">
+            <div class="panel-header">
+                <h2>Ghost Forecast</h2>
+                <input type="text" id="forecast-symbol" class="search-input" placeholder="Enter symbol..." />
+            </div>
+            <div class="panel-body">
+                <div id="forecast-grid" class="forecast-container">
+                    <div class="forecast-card">
+                        <div class="forecast-time">Next 24h</div>
+                        <div class="forecast-icon">☀️</div>
+                        <div class="forecast-direction">↑ BUY</div>
+                        <div class="forecast-prob">Prob: <span class="prob-value">--</span>%</div>
+                        <div class="forecast-move">Move: <span class="move-value">--</span>%</div>
+                    </div>
+                    <div class="forecast-card">
+                        <div class="forecast-time">2-5 Days</div>
+                        <div class="forecast-icon">⛅</div>
+                        <div class="forecast-direction">→ FLAT</div>
+                        <div class="forecast-prob">Prob: <span class="prob-value">--</span>%</div>
+                        <div class="forecast-move">Move: <span class="move-value">--</span>%</div>
+                    </div>
+                    <div class="forecast-card">
+                        <div class="forecast-time">7-14 Days</div>
+                        <div class="forecast-icon">🌤️</div>
+                        <div class="forecast-direction">↑ BUY</div>
+                        <div class="forecast-prob">Prob: <span class="prob-value">--</span>%</div>
+                        <div class="forecast-move">Move: <span class="move-value">--</span>%</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 🟦 PANEL 3 - News Feed -->
+        <section class="panel" id="panel-news">
+            <div class="panel-header">
+                <h2>News Feed</h2>
+                <button class="refresh-btn" data-panel="news">↻</button>
+            </div>
+            <div class="panel-body">
+                <div id="news-list" class="news-container"></div>
+            </div>
+        </section>
+
+        <!-- 🟨 PANEL 4 - Prediction Accuracy -->
+        <section class="panel" id="panel-accuracy">
+            <div class="panel-header">
+                <h2>Prediction Accuracy</h2>
+            </div>
+            <div class="panel-body">
+                <canvas id="accuracy-chart"></canvas>
+            </div>
+        </section>
+
+        <!-- 🟦 PANEL 5 - Watchlist -->
+        <section class="panel" id="panel-watchlist">
+            <div class="panel-header">
+                <h2>Watchlist</h2>
+                <div class="tabs">
+                    <button class="tab active" data-tab="stocks">Stocks</button>
+                    <button class="tab" data-tab="crypto">Crypto</button>
+                    <button class="tab" data-tab="all">All</button>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div id="watchlist-table" class="watchlist-grid"></div>
+            </div>
+        </section>
+
+        <!-- 🟥 PANEL 6 - Ghost Health Score -->
+        <section class="panel" id="panel-health">
+            <div class="panel-header">
+                <h2>Ghost Health Score</h2>
+            </div>
+            <div class="panel-body">
+                <div class="health-container">
+                    <div class="health-score">
+                        <div class="score-circle">
+                            <span id="health-score-value">--</span>
+                        </div>
+                        <div class="score-grade" id="health-grade">-</div>
+                    </div>
+                    <div class="health-metrics" id="health-metrics">
+                        <!-- Sub-metrics will be dynamically inserted -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="/static/cockpit_v3.js"></script>
+</body>
+</html>
