@@ -11,7 +11,6 @@ import logging
 import math
 import os
 import queue as _queue
-import random
 import sqlite3
 import threading
 import time
@@ -77,8 +76,7 @@ from core.price_quorum import PriceDecision, PriceProvider, get_price_quorum
 # Ghost Hunter Phase 1 imports
 try:
     from core.feature_diagnostics import diagnose_features, build_confidence_with_diagnostics
-    from core.price_reliability import get_price_with_fallback, get_provider_stats
-    GHOST_HUNTER_ENABLED = True
+        GHOST_HUNTER_ENABLED = True
 except Exception as e:
     GHOST_HUNTER_ENABLED = False
     print(f"Ghost Hunter Phase 1 disabled: {e}")
@@ -230,13 +228,13 @@ async def with_cap(coro, sec=2.5, fallback=None):
         # Fallback if anyio not available - use asyncio.wait_for
         try:
             return await asyncio.wait_for(coro, timeout=sec)
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             LOGGER.warning(f"with_cap: timeout after {sec}s, returning fallback")
             return fallback
         except Exception as e:
             LOGGER.error(f"with_cap: error {e}, returning fallback")
             return fallback
-    
+
     try:
         with anyio.fail_after(sec):
             return await coro
@@ -713,22 +711,22 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         "/api/health/predictions",  # Prediction health check is public
         "/api/cockpit"  # Cockpit snapshot is public
     ]
-    
+
     path = request.url.path
-    
+
     # Also allow system/orchestrator endpoints (monitoring)
     if path.startswith("/api/system/"):
         LOGGER.info(f"✅ AUTH BYPASS: {path} (system endpoint)")
         return await call_next(request)
-    
+
     # Also allow prediction cockpit endpoints (read-only, no auth needed)
     if request.url.path.startswith("/api/predict/"):
         return await call_next(request)
-    
+
     # Also allow price endpoints (needed for predictions)
     if request.url.path.startswith("/api/price/"):
         return await call_next(request)
-    
+
     # Allow all Stage 1-5 endpoints (cockpit data feeds - read-only)
     if request.url.path.startswith("/api/stage1/"):
         return await call_next(request)
@@ -740,7 +738,7 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         return await call_next(request)
     if request.url.path.startswith("/api/stage5/"):
         return await call_next(request)
-    
+
     # Allow cockpit support endpoints (runtime config, watcher, crypto, scans, opportunities)
     if request.url.path.startswith("/api/runtime/"):
         return await call_next(request)
@@ -766,7 +764,7 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         return await call_next(request)
     if request.url.path.startswith("/alerts/"):  # Alert self-tests
         return await call_next(request)
-    
+
     # Check if path requires auth
     if request.url.path.startswith("/api/") and request.url.path not in public_paths:
         auth_header = request.headers.get("Authorization", "")
@@ -775,7 +773,7 @@ async def auth_fast_fail_middleware(request: Request, call_next):
                 status_code=401,
                 content={"error": "unauthorized", "message": "Bearer token required"}
             )
-    
+
     return await call_next(request)
 
 # IP Allowlisting Middleware
@@ -787,7 +785,7 @@ if IP_ALLOWLIST_ENABLED:
         # Skip IP allowlist if not configured (local dev)
         if not IP_ALLOWLIST:
             return await call_next(request)
-        
+
         client_ip = request.client.host if request.client else None
 
         # Allow health checks
@@ -1351,22 +1349,22 @@ HUNTER_CRYPTO_SYMBOLS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC", "BTC"]
 def _classify_symbol_category(symbol: str) -> str:
     """
     Classify symbol into category: 'stocks', 'crypto', or 'vip'.
-    
+
     Returns:
         'stocks' for stock symbols
-        'crypto' for non-VIP crypto symbols  
+        'crypto' for non-VIP crypto symbols
         'vip' for VIP coins (WEPE, LILPEPE, DORKL, SLOTH, APC)
     """
     symbol_upper = symbol.upper()
-    
+
     # Check VIP first (highest priority)
     if symbol_upper in ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]:
         return "vip"
-    
+
     # Check if in crypto symbols list
     if symbol_upper in CRYPTO_SYMBOLS or symbol_upper in HUNTER_CRYPTO_SYMBOLS:
         return "crypto"
-    
+
     # Default to stocks
     return "stocks"
 
@@ -3138,7 +3136,7 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
         elif normalized_symbol == "GOOGL":
             # GOOGL is correct, but some providers use GOOG
             normalized_symbol = "GOOGL"
-        
+
         # Get current price using price quorum for any symbol
         if symbol == WOLF:
             price, _, provider = get_wolf_price()
@@ -3148,7 +3146,7 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                 is_market_open, _ = _is_market_open_now()
             except Exception:
                 is_market_open = False
-            
+
             providers = _build_price_providers(normalized_symbol, is_market_open=is_market_open)
             if providers:
                 decision = get_price_quorum().get_price(
@@ -3160,7 +3158,7 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                 )
                 price = decision.price
                 provider = decision.provider_label
-                
+
                 # Log provider attempts for debugging
                 if price is None:
                     LOGGER.warning(
@@ -3438,7 +3436,7 @@ async def _on_startup():
     Each initialization step is wrapped in try/except to prevent cascading failures.
     """
     import os as _os_module  # Import locally to avoid UnboundLocalError
-    
+
     # Railway debugging: Log immediately to confirm app is starting
     print("[RAILWAY DEBUG] ==========================================")
     print("[RAILWAY DEBUG] GHOST STARTING - Python import successful")
@@ -3446,9 +3444,9 @@ async def _on_startup():
     print(f"[RAILWAY DEBUG] RAILWAY_ENVIRONMENT: {_os_module.getenv('RAILWAY_ENVIRONMENT', 'NOT_SET')}")
     print(f"[RAILWAY DEBUG] REDIS_URL: {'SET' if _os_module.getenv('REDIS_URL') else 'NOT_SET'}")
     print("[RAILWAY DEBUG] ==========================================")
-    
+
     LOGGER.info("[GHOST STARTUP] Beginning initialization...")
-    
+
     # Log critical environment configuration at boot
     try:
         env_config = {
@@ -3467,7 +3465,7 @@ async def _on_startup():
         LOGGER.info(f"[GHOST BOOT] Environment flags: {json.dumps(env_config)}")
     except Exception:
         LOGGER.warning("Failed to log env config", exc_info=False)
-    
+
     # Ensure Prometheus metrics registered
     try:
         _ensure_metrics_registered()
@@ -3494,7 +3492,7 @@ async def _on_startup():
     except Exception as e:
         LOGGER.error(f"startup_dirs_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Critical failure - but try to continue
-        
+
     # Initialize forecast tables
     try:
         _init_forecast_tables()
@@ -3559,7 +3557,7 @@ async def _on_startup():
         except Exception as e:
             LOGGER.error(f"stage3_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
             # Non-critical - continue startup
-    
+
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
 
@@ -3587,7 +3585,7 @@ async def _on_startup():
 
     # BROKER FEATURES DISABLED - Ghost is an investment hunter, not a trading platform
     # If you want broker features, set BROKER_ENABLED=1 in Railway Variables
-    # 
+    #
     # # Start SL/TP monitoring background task
     # try:
     #     import asyncio as _asyncio_module
@@ -3596,7 +3594,7 @@ async def _on_startup():
     #     LOGGER.info("sl_tp_monitor_started", extra={"component": "startup"})
     # except Exception as e:
     #     LOGGER.error(f"sl_tp_monitor_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    # 
+    #
     # # Start order status sync background task
     # try:
     #     import asyncio as _asyncio_module
@@ -3605,14 +3603,14 @@ async def _on_startup():
     #     LOGGER.info("order_sync_started", extra={"component": "startup"})
     # except Exception as e:
     #     LOGGER.error(f"order_sync_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    
+
     # Start Telegram daily report scheduler (Ghost Investment Hunter)
     try:
         import asyncio as _asyncio_module
         from core.telegram_hunter import daily_report_loop
         from core.market_scanner import scan_all
         from core.prediction_tracker import calculate_accuracy
-        
+
         async def get_top_opportunities():
             """Get top opportunities from high-confidence predictions"""
             # Try scanner first
@@ -3624,7 +3622,7 @@ async def _on_startup():
                     return all_opps[:10]
             except Exception:
                 pass
-            
+
             # Fallback: use _LATEST_PREDICTIONS with 70%+ confidence
             opportunities = []
             for sym, pred in _LATEST_PREDICTIONS.items():
@@ -3641,16 +3639,16 @@ async def _on_startup():
             # Sort by confidence descending
             opportunities.sort(key=lambda x: x["confidence"], reverse=True)
             return opportunities[:10]  # Top 10
-        
+
         async def get_accuracy_stats(period="24h"):
             """Get accuracy stats for daily report from ghost_predictions table"""
             return calculate_accuracy(period)
-        
+
         _asyncio_module.create_task(daily_report_loop(get_top_opportunities, get_accuracy_stats))
         LOGGER.info("telegram_daily_reports_started", extra={"component": "startup"})
     except Exception as e:
         LOGGER.error(f"telegram_reports_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    
+
     LOGGER.info("🟣 Ghost Investment Hunter initialized - broker features disabled", extra={"component": "startup"})
 
     # Stage 5: Initialize Advanced Execution & Order Management
@@ -3858,12 +3856,12 @@ async def _on_startup():
 
             scheduled_predictions.start_prediction_scheduler()
             LOGGER.info("Scheduled predictions enabled: 8:00 AM, 12:00 PM, 4:00 PM ET (multi-symbol)")
-            
+
             # Phase 2: Bootstrap prediction counters from database
             try:
                 stock_count = 0
                 crypto_count = 0
-                
+
                 # Count recent predictions for stocks
                 for sym in STOCK_SYMBOLS[:10]:  # Check first 10 stocks
                     try:
@@ -3872,7 +3870,7 @@ async def _on_startup():
                             stock_count += 1
                     except Exception:
                         pass
-                
+
                 # Count recent predictions for crypto
                 for sym in CRYPTO_SYMBOLS[:10]:  # Check first 10 crypto
                     try:
@@ -3881,7 +3879,7 @@ async def _on_startup():
                             crypto_count += 1
                     except Exception:
                         pass
-                
+
                 # Update global counters if we found predictions
                 if stock_count > 0 or crypto_count > 0:
                     _LAST_MULTI_PREDICTION_COUNTS["stocks"] = stock_count
@@ -3969,7 +3967,7 @@ async def _on_startup():
             "forecast_48h_background_tasks_started",
             extra={"component": "startup", "interval": "60min"},
         )
-        
+
         # Background movers scanner tasks
         if os.getenv("CRYPTO_ENABLED", "0") == "1" or os.getenv("STOCKS_ENABLED", "1") == "1":
             loop.create_task(_auto_scan_movers())
@@ -3983,20 +3981,20 @@ async def _on_startup():
             )
     except Exception:
         LOGGER.exception("forecast_background_tasks_failed", extra={"component": "startup"})
-    
+
     # Initialize REDIS connection (non-blocking)
     try:
         _get_redis()
     except Exception as e:
         LOGGER.warning(f"[REDIS] Initialization deferred: {e}", extra={"component": "startup"})
-    
+
     # ============================================================================
     # 🎭 MASTER ORCHESTRATOR - Start AFTER startup completes (avoid circular refs)
     # ============================================================================
     # Note: Orchestrator will be started via lifespan event or separate async task
     # after all wolf_app imports are complete and functions are available
     LOGGER.info("🎭 Master Orchestrator: Will start after startup completes")
-    
+
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
 
@@ -4108,10 +4106,10 @@ async def _auto_scan_movers():
     import asyncio
     from datetime import datetime
     from zoneinfo import ZoneInfo
-    
+
     # Crypto scan interval
     CRYPTO_SCAN_INTERVAL = 300  # 5 minutes
-    
+
     # Stock scan times (CT timezone)
     # 07:55, 09:35, then every 10m from 09:40 to 15:50, plus 15:58 summary
     STOCK_SCAN_TIMES = [
@@ -4122,17 +4120,17 @@ async def _auto_scan_movers():
         "14:40", "14:50", "15:00", "15:10", "15:20", "15:30", "15:40", "15:50",
         "15:58"
     ]
-    
+
     last_crypto_scan = 0
     last_stock_scan_minute = None
-    
+
     try:
         from app.core import movers_scanner
         from core import telegram_alerts
     except Exception as e:
         LOGGER.error(f"Failed to import movers scanner: {e}")
         return
-    
+
     # Price fetch wrapper
     async def fetch_price_wrapper(symbol: str, is_crypto: bool = False):
         try:
@@ -4148,7 +4146,7 @@ async def _auto_scan_movers():
                 }
         except Exception:
             return None
-    
+
     while True:
         try:
             now = time.time()
@@ -4156,7 +4154,7 @@ async def _auto_scan_movers():
             ct_now = datetime.now(ct_tz)
             current_time = ct_now.strftime("%H:%M")
             current_minute = ct_now.strftime("%H:%M")
-            
+
             # Crypto scan (every 5 minutes)
             if os.getenv("CRYPTO_ENABLED", "0") == "1":
                 if now - last_crypto_scan >= CRYPTO_SCAN_INTERVAL:
@@ -4167,24 +4165,24 @@ async def _auto_scan_movers():
                             None,
                             redis_client
                         )
-                        
+
                         # Persist stats
                         movers_scanner.persist_last_run(
                             "crypto",
                             {"count": len(crypto_movers), "ts": int(now), "error": "", "duration_ms": 0},
                             redis_client
                         )
-                        
+
                         # Send alerts for new tier breaches
                         for mover in crypto_movers:
                             telegram_alerts.send_mover_alert("crypto", mover)
-                        
+
                         LOGGER.info(f"Crypto movers scan complete: {len(crypto_movers)} movers")
                         last_crypto_scan = now
-                        
+
                     except Exception as e:
                         LOGGER.error(f"Crypto movers scan failed: {e}")
-            
+
             # Stock scan (scheduled times)
             if os.getenv("STOCKS_ENABLED", "1") == "1":
                 if current_minute in STOCK_SCAN_TIMES and current_minute != last_stock_scan_minute:
@@ -4194,27 +4192,27 @@ async def _auto_scan_movers():
                             None,
                             REDIS
                         )
-                        
+
                         # Persist stats
                         movers_scanner.persist_last_run(
                             "stocks",
                             {"count": len(stock_movers), "ts": int(now), "error": "", "duration_ms": 0},
                             REDIS
                         )
-                        
+
                         # Send alerts for new tier breaches
                         for mover in stock_movers:
                             telegram_alerts.send_mover_alert("stocks", mover)
-                        
+
                         LOGGER.info(f"Stock movers scan complete at {current_time} CT: {len(stock_movers)} movers")
                         last_stock_scan_minute = current_minute
-                        
+
                     except Exception as e:
                         LOGGER.error(f"Stock movers scan failed: {e}")
-            
+
         except Exception as e:
             LOGGER.error(f"Movers scanner error: {e}")
-        
+
         # Sleep 60 seconds (check every minute for stock schedule)
         await asyncio.sleep(60)
 
@@ -5240,7 +5238,7 @@ def _ensure_startup_dirs():
             os.makedirs(mp_dir, exist_ok=True)
     except Exception:
         pass
-    
+
     # Create /tmp/ghost_prom directory for metrics persistence (Railway fix)
     try:
         prom_dir = "/tmp/ghost_prom"
@@ -5847,7 +5845,7 @@ async def api_predict_run(
             context_data=None,  # TODO: Wire market context when available
             sentiment_data=None  # TODO: Wire sentiment when available
         )
-        
+
         # Log feature status for diagnostics
         LOGGER.info(f"[{symbol}] Feature status", extra={"feature_status": feature_status.to_dict()})
 
@@ -5885,13 +5883,13 @@ async def api_predict_run(
                         base_confidence = min(0.75, 0.6 + abs(recent_change_pct) / 20)
         except Exception:
             pass
-        
+
         # Apply confidence policy based on feature diagnostics
         confidence, confidence_metadata = build_confidence_with_diagnostics(
             base_confidence,
             feature_status
         )
-        
+
         # Log confidence adjustment if any
         if confidence != base_confidence:
             LOGGER.warning(
@@ -5956,20 +5954,20 @@ async def api_predict_run_get(symbol: str):
 def _generate_multi_symbol_predictions():
     """
     Ghost Hunter V1: Generate predictions for all symbols in hunter universe.
-    
+
     Called by scheduled_predictions scheduler (8am, 12pm, 4pm ET).
     Loops through HUNTER_STOCK_SYMBOLS and HUNTER_CRYPTO_SYMBOLS,
     calls api_predict_run for each symbol, updates _LATEST_PREDICTIONS.
-    
+
     Returns:
         dict with summary stats: {stocks: N, crypto: N, total: N, errors: []}
     """
     import asyncio
-    
+
     stocks_success = 0
     crypto_success = 0
     errors = []
-    
+
     # Generate predictions for stocks
     for symbol in HUNTER_STOCK_SYMBOLS:
         try:
@@ -5988,7 +5986,7 @@ def _generate_multi_symbol_predictions():
         except Exception as e:
             LOGGER.warning(f"Hunter prediction failed for {symbol}: {e}")
             errors.append(f"{symbol}: {str(e)[:100]}")
-    
+
     # Generate predictions for crypto
     for symbol in HUNTER_CRYPTO_SYMBOLS:
         try:
@@ -6007,10 +6005,10 @@ def _generate_multi_symbol_predictions():
         except Exception as e:
             LOGGER.warning(f"Hunter prediction failed for {symbol}: {e}")
             errors.append(f"{symbol}: {str(e)[:100]}")
-    
+
     total = stocks_success + crypto_success
     LOGGER.info(f"Hunter multi-symbol predictions complete: {total} total ({stocks_success} stocks, {crypto_success} crypto)")
-    
+
     return {
         "stocks": stocks_success,
         "crypto": crypto_success,
@@ -6022,10 +6020,10 @@ def _generate_multi_symbol_predictions():
 def _send_multi_symbol_telegram_alert():
     """
     Ghost Hunter V1: Send Telegram alert with multi-symbol prediction summary.
-    
+
     Called by scheduled_predictions scheduler after generating predictions.
     Reads from _LATEST_PREDICTIONS to build summary message.
-    
+
     Returns:
         bool - True if sent successfully, False otherwise
     """
@@ -6033,36 +6031,36 @@ def _send_multi_symbol_telegram_alert():
         # Build summary from _LATEST_PREDICTIONS
         stocks = []
         crypto = []
-        
+
         for sym, pred in _LATEST_PREDICTIONS.items():
             category = _classify_symbol_category(sym)
             pred_str = f"{sym}: {pred['direction']} @ {pred['confidence']:.0%}"
-            
+
             if category == "stocks":
                 stocks.append(pred_str)
             elif category in ("crypto", "vip"):
                 crypto.append(pred_str)
-        
+
         # Build message
         msg_lines = ["🔮 Ghost Hunter Predictions"]
-        
+
         if stocks:
             msg_lines.append(f"\n📈 Stocks ({len(stocks)}):")
             msg_lines.extend(stocks[:5])  # Limit to first 5
             if len(stocks) > 5:
                 msg_lines.append(f"   ... +{len(stocks)-5} more")
-        
+
         if crypto:
             msg_lines.append(f"\n💰 Crypto ({len(crypto)}):")
             msg_lines.extend(crypto[:5])  # Limit to first 5
             if len(crypto) > 5:
                 msg_lines.append(f"   ... +{len(crypto)-5} more")
-        
+
         if not stocks and not crypto:
             msg_lines.append("\n⚠️ No predictions available")
-        
+
         message = "\n".join(msg_lines)
-        
+
         # Send via Telegram (reuse existing helper if available)
         try:
             enqueue_alert_text(message)
@@ -6071,7 +6069,7 @@ def _send_multi_symbol_telegram_alert():
         except Exception as e:
             LOGGER.warning(f"Failed to send hunter Telegram alert: {e}")
             return False
-    
+
     except Exception as e:
         LOGGER.exception(f"Failed to build hunter Telegram alert: {e}")
         return False
@@ -6196,10 +6194,10 @@ async def api_predict_force(
 
     try:
         from core import scheduled_predictions
-        
+
         # Trigger manual prediction run
         scheduled_predictions.force_multi_prediction()
-        
+
         return {
             "status": "triggered",
             "message": "Multi-symbol prediction generation started",
@@ -8335,11 +8333,11 @@ def _fetch_price_alphavantage(symbol: str) -> tuple[float | None, float | None, 
 def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
     if not POLYGON_KEY:
         return None, None, ""
-    
+
     # Check global provider backoff
     if _provider_in_cooldown("polygon"):
         return None, None, ""
-    
+
     try:
         t0 = time.perf_counter()
         # Use previous close as baseline; price may fall back to same close when no real-time
@@ -8371,7 +8369,7 @@ def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
         # Detect rate limits
         status_code = None
         is_rate_limit = False
-        
+
         try:
             if hasattr(e, "response") and e.response is not None:
                 status_code = getattr(e.response, "status_code", None)
@@ -8379,11 +8377,11 @@ def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
                     is_rate_limit = True
         except Exception:
             pass
-        
+
         error_str = str(e).lower()
         if "429" in error_str or "too many requests" in error_str or "403" in error_str or "forbidden" in error_str:
             is_rate_limit = True
-        
+
         if is_rate_limit:
             _note_provider_429("polygon")
             LOGGER.warning(
@@ -8413,11 +8411,11 @@ def _fetch_polygon_intraday(symbol: str = "WOLF") -> dict:
     """
     if not POLYGON_KEY:
         return {}
-    
+
     # Check global provider backoff state (shared with _note_provider_429)
     if _provider_in_cooldown("polygon_intraday"):
         return {}
-    
+
     # Basic provider-specific backoff state for local rate limiting
     global _POLY_INTRADAY_STATE
     try:
@@ -8467,12 +8465,12 @@ def _fetch_polygon_intraday(symbol: str = "WOLF") -> dict:
             # Success: reset global backoff state
             _note_provider_success("polygon_intraday")
             return result
-            
+
     except Exception as e:
         # Detect rate limit (429) or forbidden (403) responses
         status_code = None
         is_rate_limit = False
-        
+
         try:
             if hasattr(e, "response") and e.response is not None:
                 status_code = getattr(e.response, "status_code", None)
@@ -8480,12 +8478,12 @@ def _fetch_polygon_intraday(symbol: str = "WOLF") -> dict:
                     is_rate_limit = True
         except Exception:
             pass
-        
+
         # Check if error message contains rate limit indicators
         error_str = str(e).lower()
         if "429" in error_str or "too many requests" in error_str or "403" in error_str or "forbidden" in error_str:
             is_rate_limit = True
-        
+
         # Apply exponential backoff for rate limits
         if is_rate_limit:
             _note_provider_429("polygon_intraday")
@@ -8518,7 +8516,7 @@ def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]
     """Fetch price from yfinance with exponential backoff for JSON errors."""
     max_retries = 3
     base_delay = 0.5  # Start with 500ms
-    
+
     for attempt in range(max_retries):
         try:
             t0 = time.perf_counter()
@@ -8543,14 +8541,14 @@ def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]
                     except Exception:
                         pass
                     return close, prev, "yfinance"
-                    
+
         except Exception as e:
             msg = str(e)
             low = msg.lower()
-            
+
             # Check if it's a JSON parsing error (retryable)
             is_json_error = "expecting value" in low or "json" in low
-            
+
             # Retry on JSON errors with exponential backoff
             if is_json_error and attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)  # 0.5s, 1s, 2s
@@ -8559,7 +8557,7 @@ def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]
                 )
                 time.sleep(delay)
                 continue  # Retry
-            
+
             # Not retryable or final attempt - log and fail
             # Heuristics for delisted / no data conditions surfaced by yfinance
             delisted_tokens = [
@@ -8594,7 +8592,7 @@ def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]
             except Exception:
                 pass
             break  # Exit retry loop on non-retryable error
-            
+
     return None, None, ""
 
 
@@ -8687,12 +8685,12 @@ def _build_price_providers(symbol: str, *, is_market_open: bool) -> list[PricePr
     provider_symbol = symbol
     if symbol.upper() in CRYPTO_SYMBOLS:
         provider_symbol = f"{symbol.upper()}-USD"
-    
+
     # PRIORITY 1: Free unlimited APIs (Yahoo, yfinance)
     # These have no rate limits, try them first to conserve paid API calls
     add_provider("yfinance", lambda s=provider_symbol: _fetch_price_yfinance(s), configured=True)
     add_provider("yahoo", lambda s=provider_symbol: _fetch_price_yahoo_http(s), configured=True)
-    
+
     # PRIORITY 2: Paid APIs with rate limits (AlphaVantage, Polygon)
     # Only use these as fallback when free APIs fail
     add_provider(
@@ -8700,13 +8698,13 @@ def _build_price_providers(symbol: str, *, is_market_open: bool) -> list[PricePr
         lambda: _fetch_price_alphavantage(symbol),
         configured=bool(ALPHAVANTAGE_KEY),
     )
-    
+
     add_provider(
         "polygon",
         lambda: _fetch_price_polygon(symbol),
         configured=bool(POLYGON_KEY),
     )
-    
+
     # PRIORITY 3: Polygon intraday (only during market hours)
     if is_market_open and POLYGON_KEY:
         add_provider(
@@ -9884,7 +9882,7 @@ def _rank_opportunities(predictions: list[dict]) -> dict[str, list[dict]]:
     """
     Rank predictions by potential gain and confidence.
     Filters out noise and returns only HIGH-CONVICTION opportunities.
-    
+
     Returns:
         {
             "short_term": [...],  # 48h-7 day quick gains (top 5)
@@ -9894,48 +9892,48 @@ def _rank_opportunities(predictions: list[dict]) -> dict[str, list[dict]]:
     """
     buys = []
     sells = []
-    
+
     for pred in predictions:
         # Skip if no price or no signal
         if not pred.get("price_current") or pred.get("direction") == "HOLD":
             continue
-        
+
         # Calculate potential gain percentage
         current_price = pred.get("price_current", 0)
         predicted_price = pred.get("price_pred_mid", 0)
-        
+
         if current_price and predicted_price:
             gain_pct = ((predicted_price - current_price) / current_price) * 100
         else:
             gain_pct = 0
-        
+
         confidence = pred.get("confidence", 0)
         momentum = abs(pred.get("momentum", 0))
-        
+
         # Calculate opportunity score (gain × confidence × momentum)
         # Higher score = better opportunity
         score = abs(gain_pct) * confidence * (1 + momentum)
-        
+
         pred_with_score = pred.copy()
         pred_with_score["gain_pct"] = gain_pct
         pred_with_score["score"] = score
-        
+
         if pred.get("direction") == "BUY":
             buys.append(pred_with_score)
         elif pred.get("direction") == "SELL":
             sells.append(pred_with_score)
-    
+
     # Sort by score (highest first)
     buys.sort(key=lambda x: x["score"], reverse=True)
     sells.sort(key=lambda x: x["score"], reverse=True)
-    
+
     # Filter for quality:
     # Short-term: High momentum + confidence >70% + gain >2%
     # Long-term: High confidence >75% + gain >5%
     short_term = [p for p in buys if p["confidence"] > 0.70 and abs(p["gain_pct"]) > 2.0 and p["momentum"] > 0.3][:5]
     long_term = [p for p in buys if p["confidence"] > 0.75 and abs(p["gain_pct"]) > 5.0][:5]
     urgent_sells = sells[:3]  # Top 3 sell signals
-    
+
     return {
         "short_term": short_term,
         "long_term": long_term,
@@ -9950,33 +9948,33 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
     - Top 5 short-term gains (48h-7 days)
     - Top 5 long-term holds (1-6 months)
     - Top 3 urgent sells
-    
+
     Args:
         predictions_data: Output from _generate_multi_symbol_predictions()
-    
+
     Returns:
         HTML-formatted Telegram message string
     """
     if not predictions_data.get("ok"):
         return "⚠️ <b>Multi-Symbol Predictions Failed</b>\n\nError: " + predictions_data.get("error", "Unknown error")
-    
+
     predictions = predictions_data.get("predictions", {})
-    
+
     # Combine stocks and crypto for unified ranking
     all_predictions = predictions.get("stocks", []) + predictions.get("crypto", [])
-    
+
     # Rank opportunities (filter noise)
     opportunities = _rank_opportunities(all_predictions)
-    
+
     # Build message header
     now_str = datetime.now(ZoneInfo("America/New_York") if ZoneInfo else None).strftime("%I:%M %p %Z") if ZoneInfo else datetime.now().strftime("%I:%M %p")
-    
+
     message = f"""🎯 <b>GHOST AI TRADING SIGNALS</b>
 ⏰ {now_str}
 🤖 85%+ Accuracy | Smart Filter Active
 
 """
-    
+
     # SHORT-TERM OPPORTUNITIES (48h-7 days)
     short_term = opportunities.get("short_term", [])
     if short_term:
@@ -9988,14 +9986,14 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
             gain_pct = pred.get("gain_pct", 0)
             confidence = pred.get("confidence", 0) * 100
             asset_type = "💎" if pred.get("type") == "crypto" else "📈"
-            
+
             message += f"{i}. {asset_type} <b>{symbol}</b>\n"
             message += f"   💰 ${price:.2f} → ${predicted:.2f} (+{gain_pct:.1f}%)\n"
             message += f"   ✅ Confidence: {confidence:.0f}%\n\n"
     else:
         message += "<b>⚡ SHORT-TERM GAINS</b>\n"
         message += "   No high-conviction short-term plays right now.\n\n"
-    
+
     # LONG-TERM OPPORTUNITIES (1-6 months)
     long_term = opportunities.get("long_term", [])
     if long_term:
@@ -10007,14 +10005,14 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
             gain_pct = pred.get("gain_pct", 0)
             confidence = pred.get("confidence", 0) * 100
             asset_type = "💎" if pred.get("type") == "crypto" else "📈"
-            
+
             message += f"{i}. {asset_type} <b>{symbol}</b>\n"
             message += f"   💰 ${price:.2f} → ${predicted:.2f} (+{gain_pct:.1f}%)\n"
             message += f"   ✅ Confidence: {confidence:.0f}%\n\n"
     else:
         message += "<b>🎯 LONG-TERM HOLDS</b>\n"
         message += "   No high-conviction long-term plays right now.\n\n"
-    
+
     # URGENT SELLS
     urgent_sells = opportunities.get("urgent_sells", [])
     if urgent_sells:
@@ -10026,19 +10024,19 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
             gain_pct = pred.get("gain_pct", 0)
             confidence = pred.get("confidence", 0) * 100
             asset_type = "💎" if pred.get("type") == "crypto" else "📈"
-            
+
             message += f"{i}. {asset_type} <b>{symbol}</b>\n"
             message += f"   ⚠️ ${price:.2f} → ${predicted:.2f} ({gain_pct:.1f}%)\n"
             message += f"   ✅ Confidence: {confidence:.0f}%\n\n"
-    
+
     # Footer
     total_opps = len(short_term) + len(long_term) + len(urgent_sells)
     if total_opps == 0:
         message += "💤 <b>Market Status: HOLDING PATTERN</b>\n"
         message += "No high-conviction signals. Wait for better setups.\n\n"
-    
+
     message += "💡 <i>Ghost AI filters out noise. Only see signals >70% confidence.</i>"
-    
+
     return message
 
 
@@ -10047,19 +10045,19 @@ def _format_multi_symbol_telegram_message_legacy(predictions_data: dict[str, Any
     """Legacy format showing all predictions (unfiltered)."""
     if not predictions_data.get("ok"):
         return "⚠️ <b>Multi-Symbol Predictions Failed</b>\n\nError: " + predictions_data.get("error", "Unknown error")
-    
+
     predictions = predictions_data.get("predictions", {})
     counts = predictions_data.get("counts", {})
-    
+
     # Build message header
     now_str = datetime.now(ZoneInfo("America/New_York") if ZoneInfo else None).strftime("%I:%M %p %Z") if ZoneInfo else datetime.now().strftime("%I:%M %p")
-    
+
     message = f"""📊 <b>GHOST MULTI-SYMBOL PREDICTIONS</b>
 ⏰ Time: {now_str}
 📈 Total: {counts.get('stocks', 0)} stocks, {counts.get('crypto', 0)} crypto, {counts.get('vip', 0)} VIP
 
 """
-    
+
     # Format STOCKS group
     stocks = predictions.get("stocks", [])
     if stocks:
@@ -10069,7 +10067,7 @@ def _format_multi_symbol_telegram_message_legacy(predictions_data: dict[str, Any
             direction = pred.get("direction", "HOLD")
             confidence = pred.get("confidence", 0) * 100
             price = pred.get("price_current")
-            
+
             # Direction emoji
             if direction == "BUY":
                 emoji = "🟢"
@@ -10077,13 +10075,13 @@ def _format_multi_symbol_telegram_message_legacy(predictions_data: dict[str, Any
                 emoji = "🔴"
             else:
                 emoji = "⚪"
-            
+
             if price:
                 message += f"{emoji} {symbol}: {direction} (${price:.2f}, {confidence:.0f}%)\n"
             else:
                 message += f"{emoji} {symbol}: {direction} (NO DATA, {confidence:.0f}%)\n"
         message += "\n"
-    
+
     # Format CRYPTO group
     crypto = predictions.get("crypto", [])
     if crypto:
@@ -10093,20 +10091,20 @@ def _format_multi_symbol_telegram_message_legacy(predictions_data: dict[str, Any
             direction = pred.get("direction", "HOLD")
             confidence = pred.get("confidence", 0) * 100
             price = pred.get("price_current")
-            
+
             if direction == "BUY":
                 emoji = "🟢"
             elif direction == "SELL":
                 emoji = "🔴"
             else:
                 emoji = "⚪"
-            
+
             if price:
                 message += f"{emoji} {symbol}: {direction} (${price:.2f}, {confidence:.0f}%)\n"
             else:
                 message += f"{emoji} {symbol}: {direction} (NO DATA, {confidence:.0f}%)\n"
         message += "\n"
-    
+
     # Format VIP group
     vip = predictions.get("vip", [])
     if vip:
@@ -10116,26 +10114,26 @@ def _format_multi_symbol_telegram_message_legacy(predictions_data: dict[str, Any
             direction = pred.get("direction", "HOLD")
             confidence = pred.get("confidence", 0) * 100
             price = pred.get("price_current")
-            
+
             if direction == "BUY":
                 emoji = "🟢"
             elif direction == "SELL":
                 emoji = "🔴"
             else:
                 emoji = "⚪"
-            
+
             if price:
                 message += f"{emoji} {symbol}: {direction} (${price:.2f}, {confidence:.0f}%)\n"
             else:
                 message += f"{emoji} {symbol}: {direction} (NO DATA, {confidence:.0f}%)\n"
         message += "\n"
-    
+
     # Add footer
     if not stocks and not crypto and not vip:
         message += "⚠️ No prediction data available (check API keys)\n"
     else:
         message += "💡 <i>Live predictions from Ghost Protocol</i>"
-    
+
     return message
 
 
@@ -10143,23 +10141,23 @@ def _send_multi_symbol_telegram_alert() -> bool:
     """
     Generate and send multi-symbol predictions via Telegram.
     Updates global tracking state.
-    
+
     Returns:
         True if send succeeded, False otherwise
     """
     global _LAST_TELEGRAM_SEND_TIME, _LAST_TELEGRAM_STATUS, _LAST_TELEGRAM_ERROR
-    
+
     try:
         # Generate predictions
         predictions_data = _generate_multi_symbol_predictions()
-        
+
         # Format message
         message = _format_multi_symbol_telegram_message(predictions_data)
-        
+
         # Send via Telegram
         if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
             success = _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
-            
+
             # Update tracking
             _LAST_TELEGRAM_SEND_TIME = time.time()
             if success:
@@ -10170,14 +10168,14 @@ def _send_multi_symbol_telegram_alert() -> bool:
                 _LAST_TELEGRAM_STATUS = "error"
                 _LAST_TELEGRAM_ERROR = "Telegram API returned failure"
                 LOGGER.warning("Multi-symbol Telegram alert failed")
-            
+
             return success
         else:
             _LAST_TELEGRAM_STATUS = "error"
             _LAST_TELEGRAM_ERROR = "Telegram credentials not configured"
             LOGGER.warning("Cannot send Telegram alert: credentials missing")
             return False
-    
+
     except Exception as e:
         _LAST_TELEGRAM_SEND_TIME = time.time()
         _LAST_TELEGRAM_STATUS = "error"
@@ -10868,33 +10866,32 @@ async def api_health_predictions():
     Returns current state, last run times, provider health, Ghost Score V2, and risk guard status.
     """
     # Get provider health data
-    crypto_provider_health = {}
     vip_provider_health = {}
-    
+
     try:
         from core.crypto.vip_providers import get_vip_provider_health
         vip_provider_health = get_vip_provider_health()
     except Exception as e:
         LOGGER.warning(f"Could not get VIP provider health: {e}")
-    
+
     # Compute Ghost Score V2
     ghost_score_v2 = {}
     try:
         from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
-        
+
         # Gather data quality metrics
         total_symbols = len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS)
         symbols_with_data = _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0) + \
                            _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0) + \
                            vip_provider_health.get("symbols_with_data", 0)
-        
+
         data_quality = {
             "symbols_with_data": symbols_with_data,
             "total_symbols": total_symbols,
             "provider_redundancy": 0.7,  # Conservative estimate (multiple providers active)
             "avg_confidence": 0.75  # Typical confidence for multi-provider data
         }
-        
+
         # Prediction coverage
         predictions_generated = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
         prediction_coverage = {
@@ -10902,10 +10899,10 @@ async def api_health_predictions():
             "total_expected": total_symbols,
             "success_rate_estimate": 0.5  # Neutral until historical tracking available
         }
-        
+
         # Risk status
         risk_status = get_current_risk_status()
-        
+
         # Compute score
         ghost_score_v2 = compute_ghost_score_v2(
             data_quality=data_quality,
@@ -10915,7 +10912,7 @@ async def api_health_predictions():
     except Exception as e:
         LOGGER.error(f"Could not compute Ghost Score V2: {e}")
         ghost_score_v2 = {"score": 0, "status": "error", "error": str(e)}
-    
+
     # Get risk guard status
     risk_guard_status = {}
     try:
@@ -10925,7 +10922,7 @@ async def api_health_predictions():
     except Exception as e:
         LOGGER.warning(f"Could not get risk guard status: {e}")
         risk_guard_status = {"enabled": False, "error": str(e)}
-    
+
     return {
         "ok": True,
         "last_multi_prediction_run_time": _LAST_MULTI_PREDICTION_TIME,
@@ -10955,36 +10952,35 @@ async def api_cockpit_snapshot():
         "version": getattr(app, "version", None),
         "uptime_seconds": int(time.time() - _START_TS) if "_START_TS" in globals() else 0,
     }
-    
+
     try:
         # Reuse the same logic as /api/health/predictions
-        crypto_provider_health = {}
         vip_provider_health = {}
-        
+
         try:
             from core.crypto.vip_providers import get_vip_provider_health
             vip_provider_health = get_vip_provider_health()
         except Exception as e:
             LOGGER.warning(f"Could not get VIP provider health: {e}")
-        
+
         # Compute Ghost Score V2
         ghost_score_v2 = {}
         try:
             from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
-            
+
             # Gather data quality metrics
             total_symbols = len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS)
             symbols_with_data = _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0) + \
                                _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0) + \
                                vip_provider_health.get("symbols_with_data", 0)
-            
+
             data_quality = {
                 "symbols_with_data": symbols_with_data,
                 "total_symbols": total_symbols,
                 "provider_redundancy": 0.7,
                 "avg_confidence": 0.75
             }
-            
+
             # Prediction coverage
             predictions_generated = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
             prediction_coverage = {
@@ -10992,10 +10988,10 @@ async def api_cockpit_snapshot():
                 "total_expected": total_symbols,
                 "success_rate_estimate": 0.5
             }
-            
+
             # Risk status
             risk_status = get_current_risk_status()
-            
+
             # Compute score
             ghost_score_v2 = compute_ghost_score_v2(
                 data_quality=data_quality,
@@ -11005,7 +11001,7 @@ async def api_cockpit_snapshot():
         except Exception as e:
             LOGGER.error(f"Could not compute Ghost Score V2: {e}")
             ghost_score_v2 = {"score": 0, "status": "error", "error": str(e)}
-        
+
         # Get risk guard status
         risk_guard_status = {}
         try:
@@ -11015,7 +11011,7 @@ async def api_cockpit_snapshot():
         except Exception as e:
             LOGGER.warning(f"Could not get risk guard status: {e}")
             risk_guard_status = {"enabled": False, "error": str(e)}
-        
+
         # Get latest predictions from database (Phase 2 fix)
         latest_predictions = {}
         try:
@@ -11036,7 +11032,7 @@ async def api_cockpit_snapshot():
                     LOGGER.debug(f"Could not get prediction for {sym}: {e}")
         except Exception as e:
             LOGGER.warning(f"Could not query latest predictions: {e}")
-        
+
         # Build predictions from in-memory store
         predictions = {}
         try:
@@ -11050,7 +11046,7 @@ async def api_cockpit_snapshot():
                 }
         except Exception as e:
             LOGGER.warning(f"Failed to build predictions for /api/cockpit: {e}")
-        
+
         # Build ghost_2x block
         ghost_2x = {
             "ok": True,
@@ -11064,7 +11060,7 @@ async def api_cockpit_snapshot():
             "last_telegram_error": _LAST_TELEGRAM_ERROR,
             "latest_predictions": latest_predictions,  # Phase 2: Show actual predictions from DB
         }
-        
+
         return {
             "status": "ok",
             "system": system,
@@ -11072,7 +11068,7 @@ async def api_cockpit_snapshot():
             "predictions": predictions if predictions else None,
             "timestamp": time.time()
         }
-        
+
     except Exception as exc:
         LOGGER.exception("cockpit snapshot failed", exc_info=exc)
         return {
@@ -11547,16 +11543,16 @@ async def api_cache_clear_get(cache_type: str = "all"):
 @APP.post("/api/cache/purge")
 async def api_cache_purge_keys(keys: list[str] | None = None):
     """Targeted purge of specific cache keys.
-    
+
     Args:
         keys: List of cache key patterns to delete (e.g., ['price:AAPL', 'diagnostics:*'])
-    
+
     Returns:
         {"ok": True, "deleted": [...], "count": N}
     """
     if not keys:
         return {"ok": False, "error": "keys parameter required"}
-    
+
     deleted = []
     try:
         # Handle PRICE_CACHE deletions
@@ -11583,7 +11579,7 @@ async def api_cache_purge_keys(keys: list[str] | None = None):
                 if key in PRICE_CACHE:
                     PRICE_CACHE.pop(key)
                     deleted.append(key)
-        
+
         return {"ok": True, "deleted": deleted, "count": len(deleted)}
     except Exception as e:
         return {"ok": False, "error": str(e), "deleted": deleted, "count": len(deleted)}
@@ -12324,7 +12320,7 @@ async def api_regime_current():
                     "confidence": float(regime_detector.confidence),
                     "source": "stage3_detector",
                 }
-            
+
             # Cap at 2.5s to prevent stalls
             result = await with_cap(
                 get_regime_fast(),
@@ -14509,26 +14505,26 @@ async def telegram_webhook(update: TelegramUpdate):
                     pred_price = pred.get("price_at_prediction", prev)
                     pred_direction = pred.get("direction", "FLAT")
                     pred_confidence = pred.get("confidence", 0) * 100
-                    
+
                     # Calculate actual change
                     change_pct = ((price - pred_price) / pred_price * 100) if pred_price else 0
                     actual_direction = "UP" if change_pct > 1 else ("DOWN" if change_pct < -1 else "FLAT")
-                    
+
                     # Determine correctness
                     correct = actual_direction == pred_direction
                     result_emoji = "✅" if correct else "❌"
-                    
+
                     # Format message
-                    msg = f"⚠️ PREDICTION CHECK\n\n"
-                    msg += f"PREDICTED:\n"
+                    msg = "⚠️ PREDICTION CHECK\n\n"
+                    msg += "PREDICTED:\n"
                     msg += f"  Direction: {pred_direction}\n"
                     msg += f"  Price: ${pred_price:.2f}\n"
                     msg += f"  Confidence: {pred_confidence:.0f}%\n\n"
-                    msg += f"ACTUAL:\n"
+                    msg += "ACTUAL:\n"
                     msg += f"  Direction: {actual_direction}\n"
                     msg += f"  Price: ${price:.2f} ({change_pct:+.2f}%)\n\n"
                     msg += f"RESULT: {result_emoji} {'CORRECT' if correct else 'INCORRECT'}"
-                    
+
                     _tg_send_chat_message(chat_id, msg)
             except Exception as e:
                 _tg_send_chat_message(chat_id, f"❌ Error: {str(e)[:100]}")
@@ -15289,7 +15285,7 @@ def _evaluate_signal(symbol: str = WOLF) -> dict[str, Any]:
             is_market_open, _ = _is_market_open_now()
         except Exception:
             is_market_open = False
-        
+
         providers = _build_price_providers(symbol, is_market_open=is_market_open)
         if providers:
             decision = get_price_quorum().get_price(
@@ -15304,9 +15300,8 @@ def _evaluate_signal(symbol: str = WOLF) -> dict[str, Any]:
             provider = decision.provider_label
         else:
             price = None
-            prev = None
             provider = "unavailable"
-    
+
     qty, avg = _get_portfolio_qty_and_avg()  # Use helper to read from positions array
     action = "HOLD"
     used_mode = ALERT_MODE
@@ -16604,12 +16599,12 @@ async def api_cockpit_legacy():
         "two_line_overlay": two_line_data,
         "notes": (["news:polygon_key_missing"] if not POLYGON_KEY else []),
     }
-    
+
     # === Populate predictions from in-memory store with classification ===
     try:
         stock_predictions = []
         crypto_predictions = []
-        
+
         for sym, pred in _LATEST_PREDICTIONS.items():
             pred_data = {
                 "symbol": pred["symbol"],
@@ -16619,41 +16614,41 @@ async def api_cockpit_legacy():
                 "direction": pred["direction"],
                 "horizon_h": pred["horizon_h"],
             }
-            
+
             # Classify symbol into stocks/crypto/vip
             category = _classify_symbol_category(sym)
             if category == "stocks":
                 stock_predictions.append(pred_data)
             elif category in ("crypto", "vip"):
                 crypto_predictions.append(pred_data)
-        
+
         # Update snapshot with classified predictions
         if stock_predictions:
             snapshot["predictions"]["stocks"] = stock_predictions
         if crypto_predictions:
             snapshot["predictions"]["crypto"] = crypto_predictions
-        
+
         # Update timestamp from latest prediction if available
         if _LATEST_PREDICTIONS:
             latest_run_at = max(p["run_at"] for p in _LATEST_PREDICTIONS.values())
             snapshot["timestamp"] = int(latest_run_at)
     except Exception as e:
         LOGGER.warning(f"Failed to populate predictions from store: {e}")
-    
+
     # === Ghost 2.x Enhancements ===
     # Add provider health, Ghost Score V2, and risk guard status to snapshot
     try:
         from core.crypto.vip_providers import get_vip_provider_health
         from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
         from core.risk.risk_guard import get_risk_guard
-        
+
         vip_health = get_vip_provider_health()
-        
+
         total_symbols = len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS)
         symbols_with_data = _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0) + \
                            _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0) + \
                            vip_health.get("symbols_with_data", 0)
-        
+
         ghost_score = compute_ghost_score_v2(
             data_quality={
                 "symbols_with_data": symbols_with_data,
@@ -16668,9 +16663,9 @@ async def api_cockpit_legacy():
             },
             risk_status=get_current_risk_status()
         )
-        
+
         risk_guard = get_risk_guard()
-        
+
         # Add Ghost 2.x fields to snapshot
         snapshot["ghost_2x"] = {
             "ghost_score_v2": ghost_score,
@@ -17723,12 +17718,12 @@ async def api_debug_predictions():
 async def api_hunter_snapshot():
     """
     Ghost Hunter V1: Compact multi-symbol prediction view for UI.
-    
+
     Returns classified predictions (stocks vs crypto) with essential fields:
     - symbol, direction, confidence, horizon_h
-    
+
     Omits symbols with no predictions (keeps response compact).
-    
+
     Example response:
     {
       "timestamp": 1763647539,
@@ -17745,7 +17740,7 @@ async def api_hunter_snapshot():
     try:
         stocks = []
         crypto = []
-        
+
         # Classify and format predictions
         for sym, pred in _LATEST_PREDICTIONS.items():
             pred_compact = {
@@ -17754,24 +17749,24 @@ async def api_hunter_snapshot():
                 "confidence": pred["confidence"],
                 "horizon_h": pred["horizon_h"],
             }
-            
+
             category = _classify_symbol_category(sym)
             if category == "stocks":
                 stocks.append(pred_compact)
             elif category in ("crypto", "vip"):
                 crypto.append(pred_compact)
-        
+
         # Get latest timestamp
         timestamp = None
         if _LATEST_PREDICTIONS:
             timestamp = int(max(p["run_at"] for p in _LATEST_PREDICTIONS.values()))
-        
+
         return {
             "timestamp": timestamp,
             "stocks": stocks,
             "crypto": crypto,
         }
-    
+
     except Exception as e:
         LOGGER.exception(f"Failed to build hunter snapshot: {e}")
         raise HTTPException(500, "Failed to build hunter snapshot")
@@ -17958,7 +17953,7 @@ async def api_alerts_test():
 async def api_scan_movers():
     """
     Get real-time market movers for crypto and stocks.
-    
+
     Returns:
         {
             "crypto": [...],
@@ -17971,7 +17966,7 @@ async def api_scan_movers():
     try:
         # Import movers scanner
         from app.core import movers_scanner
-        
+
         # Create price fetch wrapper for the scanner
         async def fetch_price_wrapper(symbol: str, is_crypto: bool = False):
             """Wrapper to use existing fetch_price_live function"""
@@ -17991,7 +17986,7 @@ async def api_scan_movers():
             except Exception as e:
                 LOGGER.debug(f"Price fetch error for {symbol}: {e}")
                 return None
-        
+
         # Run scans with timeout
         try:
             crypto_task = movers_scanner.scan_crypto(
@@ -18004,21 +17999,21 @@ async def api_scan_movers():
                 None,  # ohlcv_func not implemented yet
                 REDIS
             )
-            
+
             # Execute with timeout
             crypto_movers, stock_movers = await asyncio.wait_for(
                 asyncio.gather(crypto_task, stocks_task),
                 timeout=movers_scanner.SCAN_TIMEOUT
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return JSONResponse(
                 {"ok": False, "detail": "Scan timeout exceeded"},
                 status_code=504
             )
-        
+
         # Build payload
         payload = movers_scanner.build_payload(crypto_movers, stock_movers)
-        
+
         # Persist stats
         movers_scanner.persist_last_run(
             "crypto",
@@ -18040,9 +18035,9 @@ async def api_scan_movers():
             },
             REDIS
         )
-        
+
         return payload
-        
+
     except Exception as e:
         LOGGER.error(f"scan_movers_error: {e}", exc_info=True)
         return JSONResponse(
@@ -18055,7 +18050,7 @@ async def api_scan_movers():
 async def api_scan_health():
     """
     Get movers scanner health status.
-    
+
     Returns:
         {
             "last_crypto_ts": int,
@@ -18067,11 +18062,11 @@ async def api_scan_health():
     """
     try:
         from app.core import movers_scanner
-        
+
         # Get last run stats
         crypto_stats = movers_scanner.get_last_run_stats("crypto", REDIS)
         stocks_stats = movers_scanner.get_last_run_stats("stocks", REDIS)
-        
+
         # Get de-dup stats from Redis
         dedup_stats = {}
         if REDIS:
@@ -18079,7 +18074,7 @@ async def api_scan_health():
                 # Count active de-dup keys
                 date = datetime.now().strftime("%Y-%m-%d")
                 pattern = f"ghost:alert:mover:*:{date}"
-                
+
                 cursor = 0
                 dedup_count = 0
                 while True:
@@ -18087,14 +18082,14 @@ async def api_scan_health():
                     dedup_count += len(keys)
                     if cursor == 0:
                         break
-                
+
                 dedup_stats = {
                     "active_dedups_today": dedup_count,
                     "pattern": pattern
                 }
             except Exception as e:
                 dedup_stats = {"error": str(e)}
-        
+
         return {
             "last_crypto_ts": crypto_stats.get("ts") if crypto_stats else None,
             "last_stocks_ts": stocks_stats.get("ts") if stocks_stats else None,
@@ -18109,7 +18104,7 @@ async def api_scan_health():
             "redis_dedup_stats": dedup_stats,
             "ts": int(time.time() * 1000)
         }
-        
+
     except Exception as e:
         LOGGER.error(f"scan_health_error: {e}", exc_info=True)
         return JSONResponse(
@@ -18596,17 +18591,16 @@ async def api_price_diagnostics(symbol: str | None = None):
     """
     if not symbol:
         raise HTTPException(status_code=400, detail="symbol parameter is required")
-    
+
     sym = symbol.upper().strip()
-    
+
     # Use ensure_price_cached which handles the full provider chain
     # This ensures we get real-time data through the same path as normal API calls
     now = time.time()
     price = None
-    prev = None
     provider = None
     cache_age_s: float | None = None
-    
+
     try:
         # Call ensure_price_cached to force fresh fetch through provider chain
         result = await ensure_price_cached(sym, strict_live=False, max_age_seconds=None)
@@ -18619,7 +18613,7 @@ async def api_price_diagnostics(symbol: str | None = None):
         raise
     except Exception as e:
         LOGGER.debug(f"price_diagnostics_error for {sym}: {e}")
-    
+
     # Inspect cache directly if available
     try:
         cache_entry = PRICE_CACHE.get(sym)
@@ -18796,7 +18790,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
     """
     Internal function to generate multi-symbol predictions.
     Used by both the API endpoint and scheduled Telegram alerts.
-    
+
     Returns dict with structure:
     {
         "ok": True/False,
@@ -18808,7 +18802,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
     }
     """
     global _LAST_MULTI_PREDICTION_TIME, _LAST_MULTI_PREDICTION_COUNTS, _LAST_MULTI_PREDICTION_RESULT
-    
+
     # Check cache first to prevent provider exhaustion
     now = time.time()
     if _LAST_MULTI_PREDICTION_RESULT and _LAST_MULTI_PREDICTION_TIME:
@@ -18819,7 +18813,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             cached_result["cached"] = True
             cached_result["cache_age_seconds"] = cache_age
             return cached_result
-    
+
     try:
         results = {
             "stocks": [],
@@ -18830,7 +18824,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "stocks": [],
             "crypto": []
         }
-        
+
         # Generate predictions for stock symbols
         for symbol in STOCK_SYMBOLS:
             try:
@@ -18863,7 +18857,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             except Exception as e:
                 LOGGER.warning(f"Multi-prediction failed for stock {symbol}: {e}")
                 continue
-        
+
         # Generate predictions for crypto symbols
         for symbol in CRYPTO_SYMBOLS:
             try:
@@ -18896,16 +18890,16 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
                     "error": str(e)
                 })
                 continue
-        
+
         # Generate predictions for VIP coins (using dedicated VIP provider)
         try:
             from core.crypto.vip_providers import get_vip_price
-            
+
             for symbol in VIP_COINS:
                 try:
                     # Get VIP price (may return NO DATA)
                     vip_data = get_vip_price(symbol, use_cache=True)
-                    
+
                     if vip_data.get("available"):
                         # VIP coin has real data - generate forecast
                         forecast = _generate_48h_forecast(symbol)
@@ -18957,7 +18951,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
         except ImportError as ie:
             LOGGER.error(f"VIP provider module not available: {ie}")
             # Continue without VIP predictions if module missing
-        
+
         # Update tracking globals
         _LAST_MULTI_PREDICTION_TIME = time.time()
         _LAST_MULTI_PREDICTION_COUNTS = {
@@ -18965,7 +18959,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "crypto": len(results["crypto"]),
             "vip": len(results["vip"])
         }
-        
+
         result = {
             "ok": True,
             "predictions": results,
@@ -18975,10 +18969,10 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "timestamp": _LAST_MULTI_PREDICTION_TIME,
             "cached": False
         }
-        
+
         # Cache result to prevent provider exhaustion
         _LAST_MULTI_PREDICTION_RESULT = result.copy()
-        
+
         return result
     except Exception as e:
         LOGGER.exception("Multi-prediction generation failed")
@@ -18998,10 +18992,10 @@ async def api_predictions_multi_run():
 async def api_predictions_symbols():
     """
     Return list of supported symbols for predictions.
-    
+
     - Multi-symbol watchlist: Returns predictions for top 20-40 symbols (fast, cached)
     - Single-symbol API: Supports ANY stock/crypto symbol (on-demand, use /api/predictions/run?symbol=SYMBOL)
-    
+
     Ghost can predict 500+ stocks and 1000+ crypto via the single-symbol endpoint.
     """
     return {
@@ -19060,7 +19054,7 @@ async def api_price(symbol: str, force: int = 0, strict: int | None = None):
         response["force"] = bool(force)
         response["strict_live"] = strict_flag if strict_flag is not None else PRICE_STRICT_LIVE
         return response
-    
+
     # Apply 2.5s timeout
     return await with_cap(
         get_price_data(),
@@ -19083,7 +19077,7 @@ async def api_price_refresh_get(symbol: str = WOLF, strict: int | None = None):
         response["cache_cleared"] = True
         response["strict_live"] = strict_flag
         return response
-    
+
     return await with_cap(
         refresh_price(),
         sec=2.5,
@@ -19104,7 +19098,7 @@ async def api_price_refresh(symbol: str = WOLF):
         response["cache_cleared"] = True
         response["strict_live"] = True
         return response
-    
+
     return await with_cap(
         refresh_price(),
         sec=2.5,
@@ -19139,7 +19133,7 @@ async def api_portfolio():
             }
         ]
         return {"positions": positions, "cash": cash, "nav": round(qty * cur + cash, 2)}
-    
+
     # Apply 2.5s timeout to prevent proxy 499 errors
     return await with_cap(
         get_portfolio_data(),
@@ -22108,24 +22102,24 @@ async def trade_submit(
                 "submitted": False,
                 "error": f"Price lookup failed: {e}"
             }
-        
+
         # === RISK GUARD CHECK (Ghost 2.x) ===
         # Apply risk budget enforcement for paper trading
         try:
             from core.risk.risk_guard import get_risk_guard
             risk_guard = get_risk_guard()
-            
+
             if risk_guard.is_enabled():
                 # Determine quantity
                 trade_qty = request.qty if request.qty else 0
                 if not trade_qty and request.notional:
                     trade_qty = request.notional / current_price
-                
+
                 # Get current equity and P&L (approximations)
                 current_equity = portfolio_value
                 daily_pnl = 0.0  # TODO: Calculate from today's trades
                 total_pnl = current_equity - float(account.get("last_equity", current_equity))
-                
+
                 # Check risk limits
                 allowed, reason = risk_guard.check_order(
                     symbol=symbol,
@@ -22137,7 +22131,7 @@ async def trade_submit(
                     daily_pnl=daily_pnl,
                     total_pnl=total_pnl
                 )
-                
+
                 if not allowed:
                     LOGGER.warning(f"Risk guard blocked order: {symbol} {request.side} - {reason}")
                     return {
@@ -22147,7 +22141,7 @@ async def trade_submit(
                         "error": f"Risk limit exceeded: {reason}",
                         "risk_guard_reason": reason
                     }
-                
+
                 LOGGER.info(f"Risk guard approved order: {symbol} {request.side} {trade_qty}@${current_price:.2f}")
         except Exception as e:
             LOGGER.error(f"Risk guard check failed: {e}")
@@ -22942,7 +22936,7 @@ async def api_opportunities_top(limit: int = 10, min_confidence: float = 0.70):
 async def api_accuracy(period: str = "all"):
     """
     Get Ghost's prediction accuracy statistics.
-    
+
     Query params:
         period: 'all', '24h', '7d', '30d' (default 'all')
     """
@@ -22978,7 +22972,7 @@ async def api_opportunity_live():
         # Use cached scan if available (within 5min)
         results = await scan_all()
         all_opportunities = results.get("stocks", []) + results.get("crypto", [])
-        
+
         # Quick rank (top 5 only for speed)
         ranked = rank_opportunities(all_opportunities)[:5]
 
@@ -23011,17 +23005,16 @@ async def opportunities_dashboard():
     Shows high-confidence alerts, top movers, detected opportunities, and accuracy.
     """
     from fastapi.templating import Jinja2Templates
-    from fastapi.requests import Request
-    
+
     templates = Jinja2Templates(directory="templates")
-    
+
     # Create a mock request object with empty headers
     # FastAPI templates expect a Request object for rendering
     class MockRequest:
         def __init__(self):
             self.headers = {}
             self.path_params = {}
-    
+
     try:
         return templates.TemplateResponse(
             "opportunities.html",
@@ -23047,14 +23040,14 @@ async def mobile_cockpit():
     Shows goals, VIP coins, pre-market predictions, and recent alerts.
     """
     from fastapi.templating import Jinja2Templates
-    
+
     templates = Jinja2Templates(directory="templates")
-    
+
     class MockRequest:
         def __init__(self):
             self.headers = {}
             self.path_params = {}
-    
+
     try:
         return templates.TemplateResponse(
             "cockpit_mobile.html",
@@ -23080,7 +23073,7 @@ async def mobile_cockpit():
 async def api_goals():
     """
     Get trading goals and YTD performance.
-    
+
     Returns:
         {
             'ok': True,
@@ -23094,9 +23087,9 @@ async def api_goals():
     """
     try:
         from core.goal_tracker import get_ytd_stats
-        
+
         stats = get_ytd_stats()
-        
+
         return {
             'ok': True,
             **stats,
@@ -23119,7 +23112,7 @@ async def api_goals():
 async def api_vip_status():
     """
     Get VIP microcap coin status with real-time prices.
-    
+
     Returns:
         {
             'ok': True,
@@ -23133,9 +23126,9 @@ async def api_vip_status():
     """
     try:
         from core.crypto.vip_providers import get_all_vip_prices
-        
+
         vip_data = get_all_vip_prices()
-        
+
         # Format for mobile UI
         coins = []
         for symbol, data in vip_data.items():
@@ -23148,7 +23141,7 @@ async def api_vip_status():
                     'market_cap': data.get('market_cap'),
                     'provider': data.get('provider', 'unknown')
                 })
-        
+
         return {
             'ok': True,
             'coins': coins,
@@ -23170,7 +23163,7 @@ async def api_vip_status():
 async def api_premarket_status():
     """
     Get pre-market predictor status and recent predictions.
-    
+
     Returns:
         {
             'ok': True,
@@ -23193,9 +23186,9 @@ async def api_premarket_status():
     """
     try:
         from core.premarket_predictor import get_premarket_status
-        
+
         status = get_premarket_status()
-        
+
         return {
             'ok': True,
             **status,
@@ -23216,10 +23209,10 @@ async def api_premarket_status():
 async def api_recent_alerts(limit: int = 10):
     """
     Get recent Cash-App style alerts from last 24h.
-    
+
     Query params:
         limit: Max alerts to return (default 10)
-    
+
     Returns:
         {
             'ok': True,
@@ -23237,9 +23230,9 @@ async def api_recent_alerts(limit: int = 10):
     """
     try:
         from core.telegram_alerts import get_recent_alerts
-        
+
         alerts = get_recent_alerts(limit=limit)
-        
+
         return {
             'ok': True,
             'alerts': alerts,
