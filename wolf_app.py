@@ -1216,50 +1216,31 @@ async def _ui_entrypoint():
 # are not mounted or when running in minimal deployment environments.
 @APP.get("/cockpit", include_in_schema=False)
 async def _cockpit_page(request: Request):
-    """Serve Ghost v3 minimal cockpit (USE_COCKPIT_V3=1) or legacy cockpit."""
-    use_v3 = os.getenv("USE_COCKPIT_V3", "1").strip() == "1"
-    
+    """Serve Ghost v3 cockpit - ALWAYS V3, no fallback to legacy versions."""
     try:
-        # Use Jinja2 template rendering to process {{ GHOST_API_TOKEN }} variable
-        template_name = "cockpit_v3.html" if use_v3 else "cockpit.html"
+        # Always serve V3 cockpit with Jinja2 template rendering
         return _TEMPLATES.TemplateResponse(
-            template_name,
+            "cockpit_v3.html",
             {
                 "request": request,
                 "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", "")
             }
         )
     except Exception as e:
-        # Fallback to FileResponse if template rendering fails
-        try:
-            path = os.path.join(TEMPLATES_DIR, "cockpit.html")
-            if os.path.exists(path):
-                return FileResponse(path, media_type=MEDIA_TEXT_HTML)
-        except Exception:
-            pass
-    # Fallbacks if cockpit template not found: serve legacy bundles directly to avoid redirect loop
-    try:
-        index_path = os.path.join(UI_DIR, HTML_INDEX)
-        if os.path.isdir(UI_DIR) and os.path.exists(index_path):
-            return FileResponse(index_path, media_type=MEDIA_TEXT_HTML)
-    except Exception:
+        # Only error fallback - no more legacy version support
+        LOGGER.error(f"Failed to render cockpit_v3.html: {e}")
         pass
-    try:
-        static_index = os.path.join(STATIC_DIR, HTML_INDEX)
-        if os.path.isdir(STATIC_DIR) and os.path.exists(static_index):
-            return FileResponse(static_index, media_type=MEDIA_TEXT_HTML)
-    except Exception:
-        pass
+    
     from fastapi import Response as _Resp
 
     return _Resp(
         """
 <!DOCTYPE html>
 <html>
-  <head><meta charset=\"utf-8\"><title>Ghost Cockpit</title></head>
+  <head><meta charset=\"utf-8\"><title>Ghost Cockpit V3</title></head>
   <body>
-    <h1>Ghost Cockpit</h1>
-    <p>New cockpit template not found. Legacy UI is also unavailable. Please check deployment packaging for templates/ and static/.</p>
+    <h1>Ghost Cockpit V3</h1>
+    <p>Cockpit V3 template not found. Please check deployment packaging for templates/cockpit_v3.html and static/cockpit_v3.js/css.</p>
   </body>
 </html>
 """,
@@ -23271,46 +23252,9 @@ async def api_recent_alerts(limit: int = 10):
 
 @APP.get("/cockpit_v2", include_in_schema=False)
 async def cockpit_v2_page(request: Request):
-    """
-    Serve Ghost Hunter Cockpit V2 - Clean multi-asset dashboard.
-    Completely rebuilt UI with external CSS/JS, no hardcoded symbols.
-    """
-    try:
-        # Use Jinja2 template rendering matching original cockpit pattern
-        return _TEMPLATES.TemplateResponse(
-            "cockpit_v2.html",
-            {
-                "request": request,
-                "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", ""),
-                "active": "cockpit"
-            }
-        )
-    except Exception as e:
-        # Fallback to FileResponse if template rendering fails
-        LOGGER.error(f"Cockpit V2 template rendering failed: {e}")
-        try:
-            path = os.path.join(TEMPLATES_DIR, "cockpit_v2.html")
-            if os.path.exists(path):
-                return FileResponse(path, media_type=MEDIA_TEXT_HTML)
-        except Exception:
-            pass
-    
-    # Final fallback
-    from fastapi import Response as _Resp
-    return _Resp(
-        """
-<!DOCTYPE html>
-<html>
-  <head><meta charset="utf-8"><title>Ghost Hunter Cockpit V2</title></head>
-  <body>
-    <h1>Ghost Hunter Cockpit V2</h1>
-    <p>Dashboard template not found. <a href="/cockpit">Return to Legacy Cockpit</a></p>
-  </body>
-</html>
-""",
-        media_type=MEDIA_TEXT_HTML,
-        status_code=404
-    )
+    """Legacy V2 route - redirects to V3 cockpit."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/cockpit", status_code=301)
 
 
 # Include Cockpit V3 LIVE endpoints (full data integration)
