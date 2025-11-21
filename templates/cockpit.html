@@ -175,22 +175,23 @@
             }
         }
     </script>
+    <link rel="stylesheet" href="/static/cockpit_extracted.css">
 </head>
 <body>
-<div id="corpActionBanner" style="display:none; margin:0 0 12px 0; padding:10px 14px; border:1px solid #4a3755; background:linear-gradient(90deg,#2a1e33,#1c1824); border-radius:10px; font:14px/1.4 system-ui; position:relative;">
-    <strong style="color:#ffc24b;">Corporate Action Adjustment</strong>
-    <div id="corpActionText" style="margin-top:4px; color:#d9cfe2; font-size:13px;"></div>
-    <button id="corpBannerClose" style="position:absolute; top:6px; right:8px; background:#3a2d42; color:#e8dff2; border:1px solid #56425f; border-radius:6px; cursor:pointer; font-size:11px; padding:2px 6px;">Dismiss</button>
+<div id="corpActionBanner" class="gp-7db6a089">
+    <strong class="gp-ab4974dc">Corporate Action Adjustment</strong>
+    <div id="corpActionText" class="gp-c168beb0"></div>
+    <button id="corpBannerClose" class="gp-fc0c0350">Dismiss</button>
 </div>
     <div class="topbar">
     <h1>Ghost Intelligence Cockpit <span class="badge" id="version">v10.2</span>
             <span class="badge" id="modeBadge">mode: live</span>
-            <span class="badge" id="clockBadge" style="font-family: monospace;">00:00:00</span>
+            <span class="badge" id="clockBadge" class="gp-3bd72200">00:00:00</span>
             <span class="badge stopped" id="activeBadge">stopped</span>
-            <span class="badge" id="latencyBadge" style="display:none;">tick: n/a</span>
-            <span class="badge live" id="focusBadge" style="display:none;">Focus: —</span>
-            <span class="badge" id="delistedBadge" style="display:none; background:#3a2a16; border:1px solid #704b1c; color:#ffcf85;">DELISTED MODE</span>
-            <span class="badge badge-provider-unauth" id="providerUnauthBadge" style="display:none;">PROVIDER UNAUTHORIZED</span>
+            <span class="badge" id="latencyBadge" class="gp-93b8ea5b">tick: n/a</span>
+            <span class="badge live" id="focusBadge" class="gp-93b8ea5b">Focus: —</span>
+            <span class="badge" id="delistedBadge" class="gp-6845b878">DELISTED MODE</span>
+            <span class="badge badge-provider-unauth" id="providerUnauthBadge" class="gp-93b8ea5b">PROVIDER UNAUTHORIZED</span>
         </h1>
         <div class="controls">
             <button id="btnStart">Start</button>
@@ -199,14 +200,14 @@
         </div>
     </div>
 
-    <div id="anomalyBanner" class="badge" style="display:none; background:#2a2216; border:1px solid #4a3b1f; color:#ffcf66; margin: -6px 0 10px 0; gap:10px">
+    <div id="anomalyBanner" class="badge" class="gp-12e717cc">
         <span id="anomalyText">Corporate action/price anomaly — using safe price.</span>
-        <button id="btnOverlayResume" style="background:#3a2b16; border:1px solid #5a441e; color:#ffd88a; padding:4px 8px; border-radius:8px; font-weight:700; cursor:pointer">Resume overlay</button>
+        <button id="btnOverlayResume" class="gp-e8bae196">Resume overlay</button>
     </div>
 
     <div class="grid">
         <!-- Ghost‑AI v1 — Decision Preview (moved to top) -->
-        <section class="card" style="grid-column: span 4;">
+        <section class="card" class="gp-ccba4248">
             <div class="section-title">
                 <h2>Ghost‑AI v1 — Decision Preview</h2>
                 <button id="btnDecisionRefresh">Refresh Now</button>
@@ -215,59 +216,59 @@
         </section>
 
         <!-- Ghost‑AI v2 — Agent Monitor -->
-        <section class="card" style="grid-column: span 8;">
+        <section class="card" class="gp-9e6cffe3">
             <div class="section-title">
                 <h2>🤖 Ghost‑AI v2 — Agent Monitor</h2>
                 <button id="btnAgentRefresh">Refresh</button>
             </div>
             
             <!-- Agent Health Status -->
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 4px;">CONFIDENCE</div>
-                    <div id="agentConfidence" style="font-size: 24px; font-weight: 700; color: var(--accent);">—</div>
-                    <div id="agentConfidenceBar" style="height: 4px; background: var(--border); border-radius: 2px; margin-top: 6px; overflow: hidden;">
-                        <div id="agentConfidenceProgress" style="height: 100%; background: var(--accent); width: 0%; transition: width 0.3s ease;"></div>
+            <div class="gp-2df91498">
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-56c00b60">CONFIDENCE</div>
+                    <div id="agentConfidence" class="gp-bb69b147">—</div>
+                    <div id="agentConfidenceBar" class="gp-e5e1fb7f">
+                        <div id="agentConfidenceProgress" class="gp-fa78c8c9"></div>
                     </div>
                 </div>
                 
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 4px;">DECISIONS (24h)</div>
-                    <div id="agentDecisions24h" style="font-size: 24px; font-weight: 700; color: var(--accent);">—</div>
-                    <div class="small muted" style="margin-top: 4px;" id="agentAvgConfidence">Avg: —</div>
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-56c00b60">DECISIONS (24h)</div>
+                    <div id="agentDecisions24h" class="gp-bb69b147">—</div>
+                    <div class="small muted" class="gp-57eca19e" id="agentAvgConfidence">Avg: —</div>
                 </div>
                 
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 4px;">TOOL SUCCESS</div>
-                    <div id="agentToolSuccess" style="font-size: 24px; font-weight: 700; color: var(--accent);">—</div>
-                    <div class="small muted" style="margin-top: 4px;" id="agentToolCalls">— calls</div>
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-56c00b60">TOOL SUCCESS</div>
+                    <div id="agentToolSuccess" class="gp-bb69b147">—</div>
+                    <div class="small muted" class="gp-57eca19e" id="agentToolCalls">— calls</div>
                 </div>
                 
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 4px;">LAST DECISION</div>
-                    <div id="agentLastDecision" style="font-size: 16px; font-weight: 700; color: var(--accent);">—</div>
-                    <div class="small muted" style="margin-top: 4px;" id="agentLastAction">—</div>
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-56c00b60">LAST DECISION</div>
+                    <div id="agentLastDecision" class="gp-6ab4cb2f">—</div>
+                    <div class="small muted" class="gp-57eca19e" id="agentLastAction">—</div>
                 </div>
             </div>
             
             <!-- Recent Decisions Timeline -->
-            <div style="margin-bottom: 16px;">
-                <div class="small muted" style="margin-bottom: 8px; font-weight: 700;">RECENT DECISIONS (last 10)</div>
-                <div id="agentDecisionsTimeline" style="max-height: 200px; overflow-y: auto; padding: 8px; background: var(--bg-darker); border-radius: 8px; border: 1px solid var(--border);"></div>
+            <div class="gp-d3277930">
+                <div class="small muted" class="gp-8d4676f1">RECENT DECISIONS (last 10)</div>
+                <div id="agentDecisionsTimeline" class="gp-f4cdf447"></div>
             </div>
             
             <!-- Tool Performance Table -->
             <div>
-                <div class="small muted" style="margin-bottom: 8px; font-weight: 700;">TOOL PERFORMANCE (24h)</div>
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <div class="small muted" class="gp-8d4676f1">TOOL PERFORMANCE (24h)</div>
+                <div class="gp-b56181dc">
+                    <table class="gp-ca78bce4">
                         <thead>
-                            <tr style="border-bottom: 1px solid var(--border);">
-                                <th style="text-align: left; padding: 8px; color: var(--muted);">Tool</th>
-                                <th style="text-align: right; padding: 8px; color: var(--muted);">Calls</th>
-                                <th style="text-align: right; padding: 8px; color: var(--muted);">Success Rate</th>
-                                <th style="text-align: right; padding: 8px; color: var(--muted);">Avg Latency</th>
-                                <th style="text-align: left; padding: 8px; color: var(--muted);">Most Used Symbol</th>
+                            <tr class="gp-9459a2d0">
+                                <th class="gp-b49dcf17">Tool</th>
+                                <th class="gp-8514f4c0">Calls</th>
+                                <th class="gp-8514f4c0">Success Rate</th>
+                                <th class="gp-8514f4c0">Avg Latency</th>
+                                <th class="gp-b49dcf17">Most Used Symbol</th>
                             </tr>
                         </thead>
                         <tbody id="agentToolStatsBody"></tbody>
@@ -277,24 +278,24 @@
         </section>
 
         <!-- Stage 1: World Context & Market Mood -->
-        <section class="card" style="grid-column: span 8;">
+        <section class="card" class="gp-9e6cffe3">
             <div class="section-title">
                 <h2>🌍 World Context & Market Mood</h2>
                 <button id="btnContextRefresh">Refresh</button>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="gp-38f68199">
                 <!-- Market Mood -->
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 6px;">MARKET REGIME</div>
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <span id="moodIcon" style="font-size: 24px;">📊</span>
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-1015cafb">MARKET REGIME</div>
+                    <div class="gp-6751f8e3">
+                        <span id="moodIcon" class="gp-1551e6d7">📊</span>
                         <div>
-                            <div id="moodRegime" style="font-size: 18px; font-weight: 700; color: var(--accent);">—</div>
+                            <div id="moodRegime" class="gp-3638dee2">—</div>
                             <div id="moodSentiment" class="small muted">—</div>
                         </div>
                     </div>
-                    <div id="moodSummary" class="small" style="color: var(--muted); line-height: 1.4;">—</div>
-                    <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
+                    <div id="moodSummary" class="small" class="gp-72bb4b30">—</div>
+                    <div class="gp-51524cd6">
                         <span class="badge" id="moodSPY">SPY: —</span>
                         <span class="badge" id="moodVIX">VIX: —</span>
                         <span class="badge" id="moodConf">Confidence: —</span>
@@ -302,34 +303,34 @@
                 </div>
                 
                 <!-- World Context -->
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 6px;">NEWS CONTEXT (24H)</div>
-                    <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-1015cafb">NEWS CONTEXT (24H)</div>
+                    <div class="gp-e59b8fa7">
                         <div>
                             <div class="small muted">Articles</div>
-                            <div id="contextCount" style="font-size: 18px; font-weight: 700; color: var(--accent);">—</div>
+                            <div id="contextCount" class="gp-3638dee2">—</div>
                         </div>
                         <div>
                             <div class="small muted">Sentiment</div>
-                            <div id="contextSentiment" style="font-size: 18px; font-weight: 700;">—</div>
+                            <div id="contextSentiment" class="gp-c5e73a4a">—</div>
                         </div>
                     </div>
-                    <div class="small muted" style="margin-bottom: 4px;">TRENDING EVENTS</div>
-                    <div id="contextEvents" style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px;">
+                    <div class="small muted" class="gp-56c00b60">TRENDING EVENTS</div>
+                    <div id="contextEvents" class="gp-85f973a5">
                         <span class="badge">—</span>
                     </div>
-                    <div class="small muted" style="margin-bottom: 4px;">TOP HEADLINES</div>
-                    <div id="contextHeadlines" class="small" style="color: var(--muted); line-height: 1.4; max-height: 80px; overflow-y: auto;"></div>
+                    <div class="small muted" class="gp-56c00b60">TOP HEADLINES</div>
+                    <div id="contextHeadlines" class="small" class="gp-2c42eeb0"></div>
                 </div>
             </div>
         </section>
 
         <!-- Stage 2: Daily Accuracy Ledger & Self-Evaluation -->
-        <section class="card" style="grid-column: span 8;">
+        <section class="card" class="gp-9e6cffe3">
             <div class="section-title">
                 <h2>📊 Daily Accuracy Ledger</h2>
-                <div style="display: flex; gap: 8px;">
-                    <button id="btnTuneNow" style="background: var(--accent); padding: 6px 12px;">🔄 Run Auto-Tuning</button>
+                <div class="gp-13262f5a">
+                    <button id="btnTuneNow" class="gp-5b0d3265">🔄 Run Auto-Tuning</button>
                     <button id="btnLedgerRefresh">Refresh</button>
                 </div>
             </div>
@@ -352,14 +353,14 @@
                     <span class="accuracy-chip pending">⏳ Pending:</span>
                     <strong id="summaryPending">0</strong>
                 </div>
-                <div class="accuracy-summary-item" style="margin-left: auto;">
+                <div class="accuracy-summary-item" class="gp-dc310e06">
                     <span class="muted">MAP:</span>
                     <strong id="summaryMAPE">—</strong>
                 </div>
             </div>
 
             <!-- Forecast History Table -->
-            <div style="overflow-x: auto;">
+            <div class="gp-b56181dc">
                 <table class="accuracy-ledger">
                     <thead>
                         <tr>
@@ -378,9 +379,9 @@
             </div>
 
             <!-- Learning Stats -->
-            <div id="learningStats" style="margin-top: 12px; padding: 10px; background: var(--chip); border-radius: 6px; border: 1px solid var(--chip-border); display: none;">
-                <div class="small muted" style="margin-bottom: 4px;">AUTO-TUNING STATUS</div>
-                <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            <div id="learningStats" class="gp-83de9542">
+                <div class="small muted" class="gp-56c00b60">AUTO-TUNING STATUS</div>
+                <div class="gp-cffe6648">
                     <div>
                         <span class="muted small">Last Tune:</span>
                         <strong id="statsLastTune">Never</strong>
@@ -398,24 +399,24 @@
         </section>
 
         <!-- Stage 3: Continuous Improvement (Regime + Risk) -->
-        <section class="card" style="grid-column: span 4;">
+        <section class="card" class="gp-ccba4248">
             <div class="section-title">
                 <h2>🎯 Market Regime & Risk</h2>
                 <button id="btnRegimeRefresh">Refresh</button>
             </div>
             
             <!-- Current Regime -->
-            <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border); margin-bottom: 12px;">
-                <div class="small muted" style="margin-bottom: 6px;">CURRENT REGIME</div>
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                    <span id="regimeIcon" style="font-size: 24px;">📊</span>
+            <div class="gp-3b9d5160">
+                <div class="small muted" class="gp-1015cafb">CURRENT REGIME</div>
+                <div class="gp-6751f8e3">
+                    <span id="regimeIcon" class="gp-1551e6d7">📊</span>
                     <div>
-                        <div id="regimeType" style="font-size: 18px; font-weight: 700; color: var(--accent);">—</div>
+                        <div id="regimeType" class="gp-3638dee2">—</div>
                         <div id="regimeConfidence" class="small muted">—</div>
                     </div>
                 </div>
-                <div id="regimeStrategy" class="small" style="color: var(--muted); line-height: 1.4;">—</div>
-                <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
+                <div id="regimeStrategy" class="small" class="gp-72bb4b30">—</div>
+                <div class="gp-51524cd6">
                     <span class="badge" id="regimeRisk">Risk: —</span>
                     <span class="badge" id="regimePosition">Position: —</span>
                     <span class="badge" id="regimeStop">Stop: —</span>
@@ -423,19 +424,19 @@
             </div>
             
             <!-- Risk Dashboard -->
-            <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                <div class="small muted" style="margin-bottom: 6px;">RISK METRICS</div>
-                <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+            <div class="gp-6e05fbea">
+                <div class="small muted" class="gp-1015cafb">RISK METRICS</div>
+                <div class="gp-e59b8fa7">
                     <div>
                         <div class="small muted">Drawdown</div>
-                        <div id="riskDrawdown" style="font-size: 18px; font-weight: 700;">—</div>
+                        <div id="riskDrawdown" class="gp-c5e73a4a">—</div>
                     </div>
                     <div>
                         <div class="small muted">VaR (95%)</div>
-                        <div id="riskVaR" style="font-size: 18px; font-weight: 700;">—</div>
+                        <div id="riskVaR" class="gp-c5e73a4a">—</div>
                     </div>
                 </div>
-                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <div class="gp-e8afafb1">
                     <span class="badge" id="riskStatus">Status: —</span>
                     <span class="badge" id="riskMaxPos">Max Position: —</span>
                 </div>
@@ -443,45 +444,45 @@
         </section>
 
         <!-- Stage 4: Portfolio Optimization & Advanced Strategies -->
-        <section class="card" style="grid-column: span 4;">
+        <section class="card" class="gp-ccba4248">
             <div class="section-title">
                 <h2>🎲 Portfolio Optimization</h2>
                 <button id="btnPortfolioRefresh">Refresh</button>
             </div>
             
             <!-- Portfolio Optimizer -->
-            <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border); margin-bottom: 12px;">
-                <div class="small muted" style="margin-bottom: 6px;">OPTIMAL ALLOCATION</div>
-                <div id="portfolioAllocation" style="margin-bottom: 8px;">
+            <div class="gp-3b9d5160">
+                <div class="small muted" class="gp-1015cafb">OPTIMAL ALLOCATION</div>
+                <div id="portfolioAllocation" class="gp-ccd7dd3b">
                     <div class="small muted">No allocation calculated yet</div>
                 </div>
-                <div style="display: flex; gap: 12px; margin-top: 8px;">
+                <div class="gp-92c164f6">
                     <div>
                         <div class="small muted">Expected Return</div>
-                        <div id="portfolioReturn" style="font-size: 16px; font-weight: 700; color: var(--green);">—</div>
+                        <div id="portfolioReturn" class="gp-fda796a6">—</div>
                     </div>
                     <div>
                         <div class="small muted">Sharpe Ratio</div>
-                        <div id="portfolioSharpe" style="font-size: 16px; font-weight: 700; color: var(--accent);">—</div>
+                        <div id="portfolioSharpe" class="gp-6ab4cb2f">—</div>
                     </div>
                     <div>
                         <div class="small muted">Volatility</div>
-                        <div id="portfolioVol" style="font-size: 16px; font-weight: 700; color: var(--orange);">—</div>
+                        <div id="portfolioVol" class="gp-cb87265b">—</div>
                     </div>
                 </div>
             </div>
             
             <!-- Hedging & Backtest -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 6px;">HEDGING</div>
-                    <div id="hedgingSuggestion" style="font-size: 14px; line-height: 1.4;">
+            <div class="gp-38f68199">
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-1015cafb">HEDGING</div>
+                    <div id="hedgingSuggestion" class="gp-be7fa259">
                         <div class="small muted">No hedge calculated</div>
                     </div>
                 </div>
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 6px;">BACKTEST</div>
-                    <div id="backtestResult" style="font-size: 14px; line-height: 1.4;">
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-1015cafb">BACKTEST</div>
+                    <div id="backtestResult" class="gp-be7fa259">
                         <div class="small muted">No backtest run yet</div>
                     </div>
                 </div>
@@ -489,54 +490,54 @@
         </section>
 
         <!-- Stage 5: Advanced Execution & Order Management -->
-        <section class="card" style="grid-column: span 4;">
+        <section class="card" class="gp-ccba4248">
             <div class="section-title">
                 <h2>⚡ Smart Execution</h2>
                 <button id="btnExecutionRefresh">Refresh</button>
             </div>
             
             <!-- Execution Quality Dashboard -->
-            <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border); margin-bottom: 12px;">
-                <div class="small muted" style="margin-bottom: 6px;">EXECUTION QUALITY</div>
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-                    <div id="execQualityScore" style="font-size: 28px; font-weight: 700; color: var(--accent);">—</div>
-                    <div id="execQualityClass" class="badge" style="background: var(--chip-border);">N/A</div>
+            <div class="gp-3b9d5160">
+                <div class="small muted" class="gp-1015cafb">EXECUTION QUALITY</div>
+                <div class="gp-d5a4c4af">
+                    <div id="execQualityScore" class="gp-eaa00242">—</div>
+                    <div id="execQualityClass" class="badge" class="gp-ae1024df">N/A</div>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                <div class="gp-1c111cdf">
                     <div>
                         <div class="small muted">Avg Latency</div>
-                        <div id="execLatency" style="font-size: 14px; font-weight: 600;">—</div>
+                        <div id="execLatency" class="gp-d8331565">—</div>
                     </div>
                     <div>
                         <div class="small muted">Fill Rate</div>
-                        <div id="execFillRate" style="font-size: 14px; font-weight: 600;">—</div>
+                        <div id="execFillRate" class="gp-d8331565">—</div>
                     </div>
                     <div>
                         <div class="small muted">Total Orders</div>
-                        <div id="execTotalOrders" style="font-size: 14px; font-weight: 600;">—</div>
+                        <div id="execTotalOrders" class="gp-d8331565">—</div>
                     </div>
                 </div>
             </div>
             
             <!-- Risk Status & Active Orders -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 6px;">RISK STATUS</div>
-                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-                        <div id="killSwitchIndicator" style="width: 12px; height: 12px; border-radius: 50%; background: var(--green);"></div>
-                        <div id="killSwitchStatus" style="font-size: 13px; font-weight: 600;">TRADING ACTIVE</div>
+            <div class="gp-38f68199">
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-1015cafb">RISK STATUS</div>
+                    <div class="gp-bf7b66b8">
+                        <div id="killSwitchIndicator" class="gp-d68713bd"></div>
+                        <div id="killSwitchStatus" class="gp-515f0716">TRADING ACTIVE</div>
                     </div>
-                    <div id="killSwitchReason" class="small muted" style="margin-top: 4px; display: none;"></div>
+                    <div id="killSwitchReason" class="small muted" class="gp-d54f0bd5"></div>
                 </div>
-                <div style="padding: 12px; background: var(--chip); border-radius: 8px; border: 1px solid var(--chip-border);">
-                    <div class="small muted" style="margin-bottom: 6px;">ACTIVE ORDERS</div>
-                    <div id="activeOrdersCount" style="font-size: 24px; font-weight: 700; color: var(--accent); margin-top: 8px;">—</div>
+                <div class="gp-6e05fbea">
+                    <div class="small muted" class="gp-1015cafb">ACTIVE ORDERS</div>
+                    <div id="activeOrdersCount" class="gp-0192a97f">—</div>
                 </div>
             </div>
         </section>
 
         <!-- Heatmap -->
-        <section class="card" style="grid-column: span 4;">
+        <section class="card" class="gp-ccba4248">
             <div class="section-title">
                 <h2>Ghost Score Heatmap (GPS 0–10)</h2>
                 <span class="muted small" id="heatTs"></span>
@@ -545,17 +546,17 @@
         </section>
 
         <!-- Diagnostics -->
-        <section class="card" style="grid-column: span 3;">
+        <section class="card" class="gp-34cbac82">
             <div class="section-title">
                 <h2>Diagnostics</h2>
                 <span class="small muted" id="diagTs"></span>
             </div>
             <pre class="mono small" id="diagBox"></pre>
-            <div class="small muted" style="margin-top:6px">Showing last 50 unique events (client-deduped)</div>
+            <div class="small muted" class="gp-9e3c4ccb">Showing last 50 unique events (client-deduped)</div>
         </section>
 
         <!-- Research Snapshot -->
-        <section class="card" style="grid-column: span 9;">
+        <section class="card" class="gp-8fc0d7f1">
             <div class="section-title">
                 <h2>🔎 Research Snapshot</h2>
                 <button id="btnResearchRefresh">Refresh</button>
@@ -564,22 +565,22 @@
         </section>
 
     <!-- Ghost Predictions Panel -->
-        <section class="card" style="grid-column: span 12;">
+        <section class="card" class="gp-bacab152">
             <div class="section-title">
         <h2>Ghost Prediction</h2>
-                <div class="row" style="align-items:center; gap:10px">
+                <div class="row" class="gp-fcc24883">
                     <!-- Asset Class Tabs -->
-                    <div style="display:flex; gap:4px; margin-right:15px">
-                        <button id="tab-stocks" class="tab-btn active" style="padding:6px 16px; border:1px solid #374151; background:#1f2937; color:#fff; border-radius:6px; cursor:pointer; font-weight:600">
+                    <div class="gp-163e8a7d">
+                        <button id="tab-stocks" class="tab-btn active" class="gp-737550f8">
                             Stocks
                         </button>
-                        <button id="tab-crypto" class="tab-btn" style="padding:6px 16px; border:1px solid #374151; background:#0f1318; color:#9ca3af; border-radius:6px; cursor:pointer; font-weight:600">
+                        <button id="tab-crypto" class="tab-btn" class="gp-ae076f87">
                             Crypto
                         </button>
                     </div>
                     
                     <!-- Symbol Selector (dynamically updated based on tab) -->
-                    <select id="predict-symbol" class="input" style="max-width:120px; margin-right:10px">
+                    <select id="predict-symbol" class="input" class="gp-778b8d5d">
                         <!-- Stocks (default) -->
                         <option value="WOLF">WOLF</option>
                         <option value="AAPL">AAPL</option>
@@ -596,32 +597,32 @@
                         <option value="XRP">XRP</option>
                     </select>
                     <button id="predict-run-btn" class="btn-primary">Run New Prediction</button>
-                    <span class="badge" id="predict-status" style="margin-left:10px">Ready</span>
+                    <span class="badge" id="predict-status" class="gp-610601bf">Ready</span>
                 </div>
             </div>
             
             <!-- Chart -->
-            <div style="width:100%; height:300px; position:relative; margin:10px 0">
-                <canvas id="prediction-chart" style="width:100%; height:100%; display:block"></canvas>
+            <div class="gp-56cabc39">
+                <canvas id="prediction-chart" class="gp-07972588"></canvas>
             </div>
             
             <!-- Summary Stats -->
-            <div id="predict-summary" class="row" style="margin:15px 0">
+            <div id="predict-summary" class="row" class="gp-9d28d41e">
                 
             </div>
             
             <!-- Scoreboard Table -->
-            <div style="margin-top:15px; overflow-x:auto">
-                <table style="width:100%; border-collapse:collapse">
+            <div class="gp-4150979d">
+                <table class="gp-404f9ee6">
                     <thead>
-                        <tr style="border-bottom:2px solid #374151; text-align:left">
-                            <th style="padding:8px; font-weight:600">Date/Time</th>
-                            <th style="padding:8px; font-weight:600">Direction</th>
-                            <th style="padding:8px; font-weight:600">Conf%</th>
-                            <th style="padding:8px; font-weight:600">Hit?</th>
-                            <th style="padding:8px; font-weight:600">MAE</th>
-                            <th style="padding:8px; font-weight:600">MAP</th>
-                            <th style="padding:8px; font-weight:600">RMSE</th>
+                        <tr class="gp-80e90e30">
+                            <th class="gp-fa41d601">Date/Time</th>
+                            <th class="gp-fa41d601">Direction</th>
+                            <th class="gp-fa41d601">Conf%</th>
+                            <th class="gp-fa41d601">Hit?</th>
+                            <th class="gp-fa41d601">MAE</th>
+                            <th class="gp-fa41d601">MAP</th>
+                            <th class="gp-fa41d601">RMSE</th>
                         </tr>
                     </thead>
                     <tbody id="predict-scoreboard-body"></tbody>
@@ -630,55 +631,55 @@
         </section>
 
         <!-- Admin Toggles -->
-        <section class="card" style="grid-column: span 12;">
+        <section class="card" class="gp-bacab152">
             <div class="section-title">
                 <h2>Admin Toggles</h2>
                 <span class="small muted" id="adminHint">Uses /api/runtime/config</span>
             </div>
             <div class="row">
-                <label>price_ttl_s <input class="input" id="ttlPrice" style="max-width:140px" placeholder="30" /></label>
-                <label>price_ttl_open_s <input class="input" id="ttlPriceOpen" style="max-width:160px" placeholder="45" /></label>
-                <label>news_ttl_s <input class="input" id="ttlNews" style="max-width:140px" placeholder="300" /></label>
+                <label>price_ttl_s <input class="input" id="ttlPrice" class="gp-a497ea78" placeholder="30" /></label>
+                <label>price_ttl_open_s <input class="input" id="ttlPriceOpen" class="gp-844e0595" placeholder="45" /></label>
+                <label>news_ttl_s <input class="input" id="ttlNews" class="gp-a497ea78" placeholder="300" /></label>
                 <label>yahoo_first
-                    <select class="input" id="yahooFirst" style="max-width:140px">
+                    <select class="input" id="yahooFirst" class="gp-a497ea78">
                         <option value="0">false</option>
                         <option value="1">true</option>
                     </select>
                 </label>
-                <label>price_max_deviation_open <input class="input" id="maxDevOpen" style="max-width:180px" placeholder="0.15" /></label>
+                <label>price_max_deviation_open <input class="input" id="maxDevOpen" class="gp-74286440" placeholder="0.15" /></label>
                 <label>reuters_feeds_on
-                    <select class="input" id="reutersOn" style="max-width:140px">
+                    <select class="input" id="reutersOn" class="gp-a497ea78">
                         <option value="0">false</option>
                         <option value="1">true</option>
                     </select>
                 </label>
                 <label>diag_collapse_dupes
-                    <select class="input" id="diagCollapse" style="max-width:160px">
+                    <select class="input" id="diagCollapse" class="gp-844e0595">
                         <option value="1">true</option>
                         <option value="0">false</option>
                     </select>
                 </label>
-                <label>diag_ring_size <input class="input" id="diagRingSize" style="max-width:140px" placeholder="200" /></label>
+                <label>diag_ring_size <input class="input" id="diagRingSize" class="gp-a497ea78" placeholder="200" /></label>
                 <label>overlay_enabled
-                    <select class="input" id="overlayEnabled" style="max-width:160px">
+                    <select class="input" id="overlayEnabled" class="gp-844e0595">
                         <option value="1">true</option>
                         <option value="0">false</option>
                     </select>
                 </label>
-                <label>overlay_dt_minutes <input class="input" id="overlayDt" style="max-width:160px" placeholder="60" /></label>
+                <label>overlay_dt_minutes <input class="input" id="overlayDt" class="gp-844e0595" placeholder="60" /></label>
                 <label>learning_enabled
-                    <select class="input" id="learningEnabled" style="max-width:160px">
+                    <select class="input" id="learningEnabled" class="gp-844e0595">
                         <option value="1">true</option>
                         <option value="0">false</option>
                     </select>
                 </label>
-                <label>band_widen_factor <input class="input" id="bandWiden" style="max-width:160px" placeholder="1.0" /></label>
+                <label>band_widen_factor <input class="input" id="bandWiden" class="gp-844e0595" placeholder="1.0" /></label>
                 <button id="btnAdminSave">Apply</button>
             </div>
         </section>
 
     <!-- Top Movers -->
-    <section class="card" style="grid-column: span 5;" id="moversCard">
+    <section class="card" class="gp-525f0c7b" id="moversCard">
             <div class="section-title">
                 <h2>Top Movers</h2>
                 <span class="small muted" id="moversTs"></span>
@@ -687,7 +688,7 @@
         </section>
 
         <!-- Portfolio -->
-        <section class="card" style="grid-column: span 7;">
+        <section class="card" class="gp-7d29e551">
             <div class="section-title">
                 <h2>Personal Portfolio</h2>
                 <div class="row small muted" id="portfolioMeta"></div>
@@ -700,7 +701,7 @@
                 </thead>
                 <tbody></tbody>
             </table>
-            <div class="two" style="margin-top:10px">
+            <div class="two" class="gp-5371db16">
                 <div class="row">
                     <input class="input" id="posSym" placeholder="Symbol (e.g., AAPL or bitcoin)" />
                     <input class="input" id="posQty" placeholder="Qty" />
@@ -718,69 +719,69 @@
             </div>
         </section>
             <!-- News Feed -->
-            <section class="card" style="grid-column: span 12;">
+            <section class="card" class="gp-bacab152">
                 <div class="section-title">
                         <h2>News Feed</h2>
                     <span class="small muted" id="newsMeta"></span>
                 </div>
-                    <div class="row small" style="margin-bottom:8px">
-                        <label style="display:inline-flex; align-items:center; gap:6px">
+                    <div class="row small" class="gp-d51702bf">
+                        <label class="gp-7691c43d">
                             <input type="checkbox" id="newsAllToggle" /> include market-wide
                         </label>
                     </div>
-                    <div id="newsList" class="list small" style="max-height:260px; overflow:auto;"></div>
+                    <div id="newsList" class="list small" class="gp-c6ff91bb"></div>
             </section>
 
     <!-- Ghost 2.x Health Panel -->
-    <section class="card" style="grid-column: span 4;">
+    <section class="card" class="gp-ccba4248">
         <div class="section-title">
             <h2>Ghost 2.x Health</h2>
             <span class="small muted" id="ghost2-last-refresh"></span>
         </div>
-        <div class="row" style="gap:10px; margin-bottom:10px; flex-wrap:wrap;">
-            <div class="chip" style="flex:1; min-width:120px; display:flex; flex-direction:column; align-items:flex-start;">
+        <div class="row" class="gp-2f1fc01a">
+            <div class="chip" class="gp-73c3f993">
                 <span class="small muted">Score</span>
-                <span id="ghost2-score" style="font-size:18px; font-weight:700;">NO_DATA</span>
+                <span id="ghost2-score" class="gp-d6ef961f">NO_DATA</span>
             </div>
-            <div class="chip" style="flex:1; min-width:120px; display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="chip" class="gp-73c3f993">
                 <span class="small muted">Grade</span>
-                <span id="ghost2-grade" style="font-size:18px; font-weight:700;">NO_DATA</span>
+                <span id="ghost2-grade" class="gp-d6ef961f">NO_DATA</span>
             </div>
-            <div class="chip" style="flex:1; min-width:120px; display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="chip" class="gp-73c3f993">
                 <span class="small muted">Status</span>
-                <span id="ghost2-status" style="font-size:14px; font-weight:700;">critical</span>
+                <span id="ghost2-status" class="gp-020072bd">critical</span>
             </div>
         </div>
-        <div class="small muted" style="margin-bottom:4px;">VIP Health</div>
+        <div class="small muted" class="gp-29cb1148">VIP Health</div>
         <div id="ghost2-vip-summary" class="small">NO_DATA</div>
     </section>
 
     <!-- The Watchlist (hidden in Focus Mode) -->
-    <section class="card" style="grid-column: span 12;" id="watchlistCard">
+    <section class="card" class="gp-bacab152" id="watchlistCard">
             <div class="section-title">
                 <h2>The Watchlist</h2>
                 <button id="btnLoadCurrent">Load current</button>
             </div>
             <div class="two">
                 <div>
-                    <div class="small muted" style="margin-bottom:6px">US Stocks (tickers)</div>
+                    <div class="small muted" class="gp-2937bfc9">US Stocks (tickers)</div>
                     <textarea id="wlStocks" class="input" rows="4" placeholder="AAPL, MSFT, NVDA … or one per line"></textarea>
                 </div>
                 <div>
-                    <div class="small muted" style="margin-bottom:6px">Crypto (CoinGecko IDs)</div>
+                    <div class="small muted" class="gp-2937bfc9">Crypto (CoinGecko IDs)</div>
                     <textarea id="wlCrypto" class="input" rows="4" placeholder="bitcoin, ethereum, dogecoin …"></textarea>
                 </div>
             </div>
-            <div class="row" style="margin-top:8px">
+            <div class="row" class="gp-d4316970">
                 <button id="btnImportWatchlist">Import to Ghost</button>
                 <div class="small muted" id="wlHint">Examples: AAPL, MSFT, NVDA (auto uppercased) • bitcoin, ethereum (auto lowercased)</div>
             </div>
         </section>
 
         <!-- Provider & Rate Limit Diagnostics Panel -->
-        <section class="card" style="grid-column: span 4;">
+        <section class="card" class="gp-ccba4248">
             <div class="section-title"><h2>⏱ Provider Backoff</h2><button id="btnRateDiagRefresh">Refresh</button></div>
-            <div id="rateDiag" class="small" style="line-height:1.35; color:var(--muted);"></div>
+            <div id="rateDiag" class="small" class="gp-5237490a"></div>
         </section>
     </div>
 
@@ -1020,15 +1021,15 @@
                         else if (action === 'HOLD') actionColor = '#fbbf24'; // yellow
                         
                         html += `
-                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid var(--border);">
-                                <div style="flex: 1;">
-                                    <span style="font-weight: 700; color: ${actionColor};">${action}</span>
-                                    <span style="color: var(--accent); margin-left: 8px;">${symbol}</span>
-                                    <span class="small muted" style="margin-left: 8px;">${ts}</span>
+                            <div class="gp-0acc5b48">
+                                <div class="gp-49cdf874">
+                                    <span class="gp-fee71a15">${action}</span>
+                                    <span class="gp-8609867e">${symbol}</span>
+                                    <span class="small muted" class="gp-43ae80ab">${ts}</span>
                                 </div>
-                                <div style="text-align: right;">
-                                    <span class="small" style="color: var(--muted);">Confidence:</span>
-                                    <span style="font-weight: 700; margin-left: 4px;">${conf}%</span>
+                                <div class="gp-7851dbc0">
+                                    <span class="small" class="gp-8a3fc3e2">Confidence:</span>
+                                    <span class="gp-3c2f20b7">${conf}%</span>
                                 </div>
                             </div>
                         `;
@@ -1056,12 +1057,12 @@
                         else rateColor = '#f87171';
                         
                         html += `
-                            <tr style="border-bottom: 1px solid var(--border);">
-                                <td style="padding: 8px; font-weight: 600;">${name}</td>
-                                <td style="padding: 8px; text-align: right;">${calls}</td>
-                                <td style="padding: 8px; text-align: right; color: ${rateColor}; font-weight: 700;">${rate}%</td>
-                                <td style="padding: 8px; text-align: right;">${latency}ms</td>
-                                <td style="padding: 8px;">${symbol}</td>
+                            <tr class="gp-9459a2d0">
+                                <td class="gp-04595134">${name}</td>
+                                <td class="gp-3cf4216d">${calls}</td>
+                                <td class="gp-0851ced9">${rate}%</td>
+                                <td class="gp-3cf4216d">${latency}ms</td>
+                                <td class="gp-881f2ed2">${symbol}</td>
                             </tr>
                         `;
                     });
@@ -1196,7 +1197,7 @@
                     const headlines = context.top_headlines || [];
                     if (headlines.length > 0) {
                         el('contextHeadlines').innerHTML = headlines.slice(0, 3).map(h => 
-                            `<div style="margin-bottom: 4px;">• ${h.headline}</div>`
+                            `<div class="gp-56c00b60">• ${h.headline}</div>`
                         ).join('');
                     } else {
                         el('contextHeadlines').textContent = '';
@@ -1480,7 +1481,7 @@
                     let allocationHTML = '';
                     for (const [symbol, weight] of Object.entries(weights)) {
                         const pct = (weight * 100).toFixed(1);
-                        allocationHTML += `<span class="badge" style="background: var(--chip); border: 1px solid var(--chip-border);">${symbol}: ${pct}%</span> `;
+                        allocationHTML += `<span class="badge" class="gp-b07b87d3">${symbol}: ${pct}%</span> `;
                     }
                     el('portfolioAllocation').innerHTML = allocationHTML;
                     
@@ -1675,7 +1676,7 @@
                     div.innerHTML = `
                         <div class="sym">${(it.symbol || it.id || "—").toString().toUpperCase()}</div>
                         <div class="muted small">${it.type || it.market || "asset"}</div>
-                        <div class="row" style="margin-top:6px">
+                        <div class="row" class="gp-9e3c4ccb">
                             <span class="chip">$${fmt(it.price || it.current || 0)}</span>
                             <span class="chip gps">GPS ${fmt(it.gps ?? it.score ?? 5,1)}</span>
                         </div>`;
@@ -1713,7 +1714,7 @@
                 const item = document.createElement('div');
                 item.className = 'row';
                 item.innerHTML = `
-                    <span class="chip" style="min-width:80px">WOLF</span>
+                    <span class="chip" class="gp-f78c1ba9">WOLF</span>
                     <span class="${ch>=0 ? 'good' : 'bad'}">${pct(ch)}</span>
                     <span class="muted small">GPS ${fmt((snap.heatmap?.tiles?.[0]?.gps) ?? 7.2,1)}</span>`;
                 list.appendChild(item);
@@ -1747,8 +1748,8 @@
                 } : {bankruptcy:false, delisting:false, urgency:'—'};
                 const impColor = imp>0.15? 'var(--good)' : imp<-0.15? 'var(--bad)' : 'var(--warn)';
                 const flagBadges = [
-                    flags.bankruptcy? '<span class="badge" style="background:#3a1c1c;border-color:#5a2727;color:#ffb3b3">bankruptcy</span>' : '',
-                    flags.delisting? '<span class="badge" style="background:#3a2a16;border-color:#704b1c;color:#ffcf85">delisting</span>' : ''
+                    flags.bankruptcy? '<span class="badge" class="gp-75bae98f">bankruptcy</span>' : '',
+                    flags.delisting? '<span class="badge" class="gp-80d048cf">delisting</span>' : ''
                 ].filter(Boolean).join(' ');
                 const sector = yfInfo.sector || '—';
                 const industry = yfInfo.industry || '—';
@@ -1764,46 +1765,46 @@
                 const sources = llm && Array.isArray(llm.sources) ? llm.sources : [];
                 const llmConf = llm && typeof llm.confidence === 'number' ? llm.confidence : null;
                 panel.innerHTML = `
-                    <div class="row" style="gap:8px; margin-bottom:8px; flex-wrap:wrap;">
-                        <span class="badge">Agg Impact: <span style="color:${impColor};font-weight:800;margin-left:6px">${imp.toFixed ? imp.toFixed(2) : imp}</span></span>
+                    <div class="row" class="gp-2a373a4b">
+                        <span class="badge">Agg Impact: <span class="gp-c35e3f8d">${imp.toFixed ? imp.toFixed(2) : imp}</span></span>
                         <span class="badge">Confidence: ${conf}%</span>
                         ${flagBadges}
                         <span class="badge">8-K Urgency: ${flags.urgency}</span>
                     </div>
-                    <div class="two" style="gap:12px;">
-                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
-                            <div class="small muted" style="margin-bottom:6px;">Company</div>
+                    <div class="two" class="gp-26b82dcb">
+                        <div class="gp-4877783f">
+                            <div class="small muted" class="gp-25aea119">Company</div>
                             <div class="small">Sector: <strong>${sector}</strong></div>
                             <div class="small">Industry: <strong>${industry}</strong></div>
                             <div class="small">Market Cap: <strong>${mcap}</strong></div>
                         </div>
-                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
-                            <div class="small muted" style="margin-bottom:6px;">Technicals</div>
+                        <div class="gp-4877783f">
+                            <div class="small muted" class="gp-25aea119">Technicals</div>
                             <div class="small">RSI(14): <strong>${rsi}</strong></div>
                             <div class="small">MA20/50/200: <strong>${ma}</strong></div>
                         </div>
                     </div>
-                    <div style="margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
-                            <div class="small muted" style="margin-bottom:6px;">Executives</div>
+                    <div class="gp-cfbcf6b3">
+                        <div class="gp-4877783f">
+                            <div class="small muted" class="gp-25aea119">Executives</div>
                             <div class="small">${execs.length? execs.map(e=>`• ${typeof e==='string'? e : (e.name? e.name+ (e.title? ' — '+e.title:'') : JSON.stringify(e))}`).join('<br/>') : '—'}</div>
                         </div>
-                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
-                            <div class="small muted" style="margin-bottom:6px;">Guidance</div>
+                        <div class="gp-4877783f">
+                            <div class="small muted" class="gp-25aea119">Guidance</div>
                             <div class="small">${guidance}</div>
                         </div>
                     </div>
-                    <div style="margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
-                            <div class="small muted" style="margin-bottom:6px;">Competitors</div>
+                    <div class="gp-cfbcf6b3">
+                        <div class="gp-4877783f">
+                            <div class="small muted" class="gp-25aea119">Competitors</div>
                             <div class="small">${comps.length? comps.map(c=>`• ${c}`).join('<br/>') : '—'}</div>
                         </div>
-                        <div style="background:var(--chip);border:1px solid var(--chip-border);border-radius:8px;padding:10px;">
-                            <div class="small muted" style="margin-bottom:6px;">Sources</div>
+                        <div class="gp-4877783f">
+                            <div class="small muted" class="gp-25aea119">Sources</div>
                             <div class="small">${sources.length? sources.slice(0,4).map(u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`).join('<br/>') : '—'}</div>
                         </div>
                     </div>
-                    ${llmConf!=null? `<div class="small muted" style="margin-top:6px;">LLM confidence: ${llmConf}%</div>` : ''}
+                    ${llmConf!=null? `<div class="small muted" class="gp-ff6eee77">LLM confidence: ${llmConf}%</div>` : ''}
                 `;
             } catch(e){
                 panel.innerHTML = '';
@@ -1945,7 +1946,7 @@
                 const pnlAbs = (cur !== null && qty) ? (cur - avg) * qty : 0;
                 const pnlPct = (cur !== null && avg) ? ((cur - avg) / avg * 100) : 0;
                 renderPortfolioRows([{ symbol:"WOLF", type:"stock", qty, entry:avg, current:cur, pnl_abs: pnlAbs, pnl_pct: pnlPct, gps: s.gps, stale: s.flags?.any_stale }]);
-                const staleDot = s.flags && s.flags.any_stale ? ' • <span style="color:#ffcf66">stale prices</span>' : '';
+                const staleDot = s.flags && s.flags.any_stale ? ' • <span class="gp-a9af76d9">stale prices</span>' : '';
                 el("portfolioMeta").innerHTML = `positions: 1 • NAV $${fmt((s.kpis?.nav||0),2)} • refreshed ${nowIso()}${staleDot}`;
                 // Update anomaly banner + forecast pause
                 updateAnomalyUI(s.flags || {});
@@ -2034,15 +2035,15 @@
                         const ts = n.ts ? new Date(n.ts*1000).toISOString().slice(11,19) : '';
                         const syms = (n.syms||[]).slice(0,4).join(', ');
                         const tag = n.tag || (typeof n.sent === 'number' ? (n.sent>0?'\u2191 Bullish':n.sent<0?'\u2193 Bearish':'\u2022 Neutral') : '');
-                        const tagHtml = tag ? ` <span class="pill" style="background:#162030;border:1px solid #233044">${tag}</span>` : '';
-                        div.innerHTML = `<div><span class="mono" style="color:#7fc8ff">${ts}</span> <strong>${title}</strong> ${tagHtml} <span class="muted">${src}${syms? ' • '+syms:''}</span></div>`;
+                        const tagHtml = tag ? ` <span class="pill" class="gp-f9ad203e">${tag}</span>` : '';
+                        div.innerHTML = `<div><span class="mono" class="gp-a908216e">${ts}</span> <strong>${title}</strong> ${tagHtml} <span class="muted">${src}${syms? ' • '+syms:''}</span></div>`;
                         list.appendChild(div);
                     });
                     if(!news.length){
                         list.innerHTML = '';
                     }
                     const degraded = snap.flags && snap.flags.degraded;
-                    document.getElementById('newsMeta').innerHTML = `${news.length} relevant • ${all.length} all${degraded? ' • <span style="color:#ffc24b">degraded</span>' : ''}`;
+                    document.getElementById('newsMeta').innerHTML = `${news.length} relevant • ${all.length} all${degraded? ' • <span class="gp-1c604582">degraded</span>' : ''}`;
                 } catch(e){
                     const list = document.getElementById('newsList');
                     list.innerHTML = '';
@@ -2459,7 +2460,7 @@
                 const throttled = d.throttled_provider || '—';
                 const skips = (d.backoff_skip||[]).join(', ') || '—';
                 const failures = (d.failures||[]).slice(-5).map(f=>`${f.provider}${f.throttled?'(T)':''}:${f.ms}ms`).join(' · ') || '—';
-                let delisted = d.delisted_hint ? (`<span style="color:#ffcf85">delisted hint: ${(d.delisted_reason||'').slice(0,80)}</span>`) : '—';
+                let delisted = d.delisted_hint ? (`<span class="gp-77ee87fc">delisted hint: ${(d.delisted_reason||'').slice(0,80)}</span>`) : '—';
                 rateDiagEl.innerHTML = `
                     <div><strong>Throttled:</strong> ${throttled}</div>
                     <div><strong>Skip(backoff):</strong> ${skips}</div>
@@ -2607,7 +2608,7 @@
                 scoreboardBody.innerHTML = '';
                 
                 if (history.length === 0) {
-                    scoreboardBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:15px; color:#9ca3af">No predictions yet. Click "Run New Prediction" to start.</td></tr>';
+                    scoreboardBody.innerHTML = '<tr><td colspan="7" class="gp-f44a62c9">No predictions yet. Click "Run New Prediction" to start.</td></tr>';
                     return;
                 }
                 
@@ -2624,24 +2625,24 @@
                         const hitIcon = pred.hit_direction ? '✓' : '✗';
                         const hitColor = pred.hit_direction ? '#00c853' : '#ff5252';
                         statusCells = `
-                            <td style="padding:8px; color:${hitColor}">${hitIcon}</td>
-                            <td style="padding:8px">${pred.mae ? pred.mae.toFixed(4) : '-'}</td>
-                            <td style="padding:8px">${pred.map ? pred.map.toFixed(2) + '%' : '-'}</td>
-                            <td style="padding:8px">${pred.rmse ? pred.rmse.toFixed(4) : '-'}</td>
+                            <td class="gp-eda50491">${hitIcon}</td>
+                            <td class="gp-c2fec4e5">${pred.mae ? pred.mae.toFixed(4) : '-'}</td>
+                            <td class="gp-c2fec4e5">${pred.map ? pred.map.toFixed(2) + '%' : '-'}</td>
+                            <td class="gp-c2fec4e5">${pred.rmse ? pred.rmse.toFixed(4) : '-'}</td>
                         `;
                     } else {
                         statusCells = `
-                            <td style="padding:8px; color:#ffc24b">Pending</td>
-                            <td style="padding:8px">-</td>
-                            <td style="padding:8px">-</td>
-                            <td style="padding:8px">-</td>
+                            <td class="gp-e42846d7">Pending</td>
+                            <td class="gp-c2fec4e5">-</td>
+                            <td class="gp-c2fec4e5">-</td>
+                            <td class="gp-c2fec4e5">-</td>
                         `;
                     }
                     
                     row.innerHTML = `
-                        <td style="padding:8px">${date}</td>
-                        <td style="padding:8px">${dirIcon} ${pred.direction}</td>
-                        <td style="padding:8px">${conf}%</td>
+                        <td class="gp-c2fec4e5">${date}</td>
+                        <td class="gp-c2fec4e5">${dirIcon} ${pred.direction}</td>
+                        <td class="gp-c2fec4e5">${conf}%</td>
                         ${statusCells}
                     `;
                     
@@ -2728,22 +2729,22 @@
             const dirColor = direction === 'UP' ? '#00c853' : direction === 'DOWN' ? '#ff5252' : '#ffc24b';
             
             summaryDiv.innerHTML = `
-                <div style="display:flex; gap:20px; flex-wrap:wrap">
+                <div class="gp-fbdc9e93">
                     <div>
                         <span class="muted">Direction:</span>
-                        <strong style="color:${dirColor}; font-size:16px; margin-left:8px">${direction}</strong>
+                        <strong class="gp-2b4a0e19">${direction}</strong>
                     </div>
                     <div>
                         <span class="muted">Confidence:</span>
-                        <strong style="font-size:16px; margin-left:8px">${confidence.toFixed(0)}%</strong>
+                        <strong class="gp-6123eb9f">${confidence.toFixed(0)}%</strong>
                     </div>
                     <div>
                         <span class="muted">Horizon:</span>
-                        <strong style="font-size:16px; margin-left:8px">${horizon}h</strong>
+                        <strong class="gp-6123eb9f">${horizon}h</strong>
                     </div>
                     <div>
                         <span class="muted">Run At:</span>
-                        <strong style="font-size:16px; margin-left:8px">${new Date(prediction.run_at).toLocaleTimeString()}</strong>
+                        <strong class="gp-6123eb9f">${new Date(prediction.run_at).toLocaleTimeString()}</strong>
                     </div>
                 </div>
             `;
@@ -2889,22 +2890,22 @@
             const dirColor = direction === 'UP' ? '#00c853' : direction === 'DOWN' ? '#ff5252' : '#ffc24b';
             
             summaryDiv.innerHTML = `
-                <div style="display:flex; gap:20px; flex-wrap:wrap">
+                <div class="gp-fbdc9e93">
                     <div>
                         <span class="muted">Direction:</span>
-                        <strong style="color:${dirColor}; font-size:16px; margin-left:8px">${direction}</strong>
+                        <strong class="gp-2b4a0e19">${direction}</strong>
                     </div>
                     <div>
                         <span class="muted">Confidence:</span>
-                        <strong style="font-size:16px; margin-left:8px">${confidence.toFixed(1)}%</strong>
+                        <strong class="gp-6123eb9f">${confidence.toFixed(1)}%</strong>
                     </div>
                     <div>
                         <span class="muted">Volatility:</span>
-                        <strong style="font-size:16px; margin-left:8px">${(volatility * 100).toFixed(2)}%</strong>
+                        <strong class="gp-6123eb9f">${(volatility * 100).toFixed(2)}%</strong>
                     </div>
                     <div>
                         <span class="muted">Horizon:</span>
-                        <strong style="font-size:16px; margin-left:8px">${horizon}h</strong>
+                        <strong class="gp-6123eb9f">${horizon}h</strong>
                     </div>
                 </div>
             `;
