@@ -76,7 +76,7 @@ from core.price_quorum import PriceDecision, PriceProvider, get_price_quorum
 # Ghost Hunter Phase 1 imports
 try:
     from core.feature_diagnostics import diagnose_features, build_confidence_with_diagnostics
-        GHOST_HUNTER_ENABLED = True
+    GHOST_HUNTER_ENABLED = True
 except Exception as e:
     GHOST_HUNTER_ENABLED = False
     print(f"Ghost Hunter Phase 1 disabled: {e}")

@@ -19,6 +19,7 @@ services:
       # Ghost features
       - CRYPTO_ENABLED=${CRYPTO_ENABLED:-1}
       - USE_NEW_COCKPIT=${USE_NEW_COCKPIT:-1}
+      - USE_COCKPIT_V3=${USE_COCKPIT_V3:-1}
       - AGENTS_ENABLED=${AGENTS_ENABLED:-1}
       - AI_PROVIDER=${AI_PROVIDER:-openai}
       - POLYGON_API_KEY=${POLYGON_API_KEY}
