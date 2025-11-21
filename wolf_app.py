@@ -9197,7 +9197,7 @@ def _is_market_open_now() -> tuple[bool, int]:
         return False, int(time.time() + 24 * 3600)
 
 
-def _get_crypto_movers() -> list[dict[str, Any]]:
+async def _get_crypto_movers() -> list[dict[str, Any]]:
     """
     Get top crypto movers with 24h price changes.
     Returns sorted list by absolute percentage change.
@@ -9218,7 +9218,7 @@ def _get_crypto_movers() -> list[dict[str, Any]]:
 
             try:
                 # Get current price with 24h change
-                result = crypto_providers.get_crypto_price_quorum(sym)
+                result = await crypto_providers.get_crypto_price_quorum(sym)
                 if result and result.get("price") is not None:
                     price = result["price"]
                     change_24h = result.get("change_24h_pct", 0.0)
@@ -13128,7 +13128,7 @@ async def sse_cockpit_stream(request: Request):
 
         # Event 2: Send initial snapshot immediately
         try:
-            snap_resp = await api_cockpit()
+            snap_resp = await api_cockpit_snapshot()
             data = getattr(snap_resp, "body", None)
             if data is None:
                 # Extract the actual response content before serializing
@@ -13173,7 +13173,7 @@ async def sse_cockpit_stream(request: Request):
 
             # Event 4: Send snapshot if data changed
             try:
-                snap_resp = await api_cockpit()
+                snap_resp = await api_cockpit_snapshot()
                 raw = getattr(snap_resp, "body", None)
                 if raw is None:
                     raw = json.dumps(snap_resp).encode("utf-8")  # type: ignore[arg-type]
@@ -16560,7 +16560,7 @@ async def api_cockpit_legacy():
                     "gps": 7.2,
                 }
             ],
-            "crypto": _get_crypto_movers(),
+            "crypto": await _get_crypto_movers(),
         },
         "predictions": {
             "stocks": [],  # Populated by existing predict infrastructure
@@ -19365,7 +19365,7 @@ async def api_risk_status(symbol: str = "WOLF"):
     try:
         # Get portfolio data (use defaults if cockpit not available)
         try:
-            cockpit_resp = await api_cockpit()
+            cockpit_resp = await api_cockpit_snapshot()
             if hasattr(cockpit_resp, "body"):
                 import json
 
