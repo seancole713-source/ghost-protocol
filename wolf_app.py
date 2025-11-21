@@ -1250,8 +1250,8 @@ async def _cockpit_page(request: Request):
 
 
 @APP.get("/cockpit.html", include_in_schema=False)
-async def _cockpit_page_alias():
-    return await _cockpit_page()
+async def _cockpit_page_alias(request: Request):
+    return await _cockpit_page(request)
 
 
 @APP.get("/ui/health")
