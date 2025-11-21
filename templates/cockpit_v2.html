@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ghost Hunter Cockpit V2</title>
+    <link rel="stylesheet" href="/static/cockpit_v2.css" />
+</head>
+<body>
+    <!-- ROW 0: Header / Environment -->
+    <header class="ghost-header">
+        <div class="header-left">
+            <h1>
+                <span class="ghost-logo">👻</span>
+                <span class="ghost-title">GHOST HUNTER</span>
+            </h1>
+            <span class="badge" id="envBadge">LOADING</span>
+            <span class="header-time" id="lastUpdate">Last Update: --:--:--</span>
+        </div>
+        
+        <div class="header-center">
+            <div class="health-summary">
+                <div class="health-item">
+                    <span class="health-label">Ghost 2.x Health</span>
+                    <span class="health-value" id="ghostHealth">
+                        <span id="healthScore">--</span>
+                        <span id="healthGrade" class="grade-badge">-</span>
+                        <span id="healthStatus">Loading...</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="header-right">
+            <div class="status-indicators">
+                <div class="status-item" id="dataStatus">
+                    <span class="status-label">Data</span>
+                    <span class="status-dot"></span>
+                    <span class="status-text">--</span>
+                </div>
+                <div class="status-item" id="aiStatus">
+                    <span class="status-label">AI</span>
+                    <span class="status-dot"></span>
+                    <span class="status-text">--</span>
+                </div>
+                <div class="status-item" id="riskStatus">
+                    <span class="status-label">Risk</span>
+                    <span class="status-dot"></span>
+                    <span class="status-text">--</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ROW 1: Goals + Hunter Feed + VIP -->
+    <div class="grid-row row-1">
+        <!-- Column 1: Goals & Ghost Score -->
+        <div class="card col-3">
+            <div class="card-header">
+                <h2>GOALS + GHOST SCORE</h2>
+            </div>
+            <div class="card-body">
+                <div class="ghost-score-display">
+                    <div class="score-main">
+                        <div class="score-number" id="ghostScore">--</div>
+                        <div class="score-grade" id="ghostGrade">-</div>
+                    </div>
+                    <div class="score-label">Ghost Score</div>
+                </div>
+                
+                <div class="goals-grid">
+                    <div class="goal-item">
+                        <span class="goal-label">Daily Goal</span>
+                        <span class="goal-value" id="goalDaily">--%</span>
+                        <div class="goal-progress">
+                            <div class="goal-progress-bar" id="goalDailyBar"></div>
+                        </div>
+                    </div>
+                    <div class="goal-item">
+                        <span class="goal-label">Weekly Goal</span>
+                        <span class="goal-value" id="goalWeekly">--%</span>
+                        <div class="goal-progress">
+                            <div class="goal-progress-bar" id="goalWeeklyBar"></div>
+                        </div>
+                    </div>
+                    <div class="goal-item">
+                        <span class="goal-label">Monthly Goal</span>
+                        <span class="goal-value" id="goalMonthly">--%</span>
+                        <div class="goal-progress">
+                            <div class="goal-progress-bar" id="goalMonthlyBar"></div>
+                        </div>
+                    </div>
+                    <div class="goal-item">
+                        <span class="goal-label">Yearly Goal</span>
+                        <span class="goal-value" id="goalYearly">--%</span>
+                        <div class="goal-progress">
+                            <div class="goal-progress-bar" id="goalYearlyBar"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 2: Hunter Feed -->
+        <div class="card col-6">
+            <div class="card-header">
+                <h2>🎯 HUNTER FEED — TOP OPPORTUNITIES</h2>
+                <button class="btn-refresh" id="btnHunterRefresh">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="hunter-feed-container">
+                    <table class="hunter-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Market</th>
+                                <th>Price</th>
+                                <th>Δ%</th>
+                                <th>Volume</th>
+                                <th>Momentum</th>
+                                <th>GPS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hunterFeedBody">
+                            <tr><td colspan="7" class="loading-row">Loading opportunities...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 3: VIP + XRP + Presales -->
+        <div class="card col-3">
+            <div class="card-header">
+                <h2>💎 VIP COINS</h2>
+            </div>
+            <div class="card-body vip-section">
+                <div class="vip-grid" id="vipCoinsGrid">
+                    <div class="vip-coin" data-symbol="WEPE">
+                        <div class="vip-symbol">WEPE</div>
+                        <div class="vip-price" id="vipWEPE">$--</div>
+                        <div class="vip-change" id="vipWEPEChange">--%</div>
+                        <div class="vip-status" id="vipWEPEStatus">--</div>
+                    </div>
+                    <div class="vip-coin" data-symbol="LILPEPE">
+                        <div class="vip-symbol">LILPEPE</div>
+                        <div class="vip-price" id="vipLILPEPE">$--</div>
+                        <div class="vip-change" id="vipLILPEPEChange">--%</div>
+                        <div class="vip-status" id="vipLILPEPEStatus">--</div>
+                    </div>
+                    <div class="vip-coin" data-symbol="DORKL">
+                        <div class="vip-symbol">DORKL</div>
+                        <div class="vip-price" id="vipDORKL">$--</div>
+                        <div class="vip-change" id="vipDORKLChange">--%</div>
+                        <div class="vip-status" id="vipDORKLStatus">--</div>
+                    </div>
+                    <div class="vip-coin" data-symbol="SLOTH">
+                        <div class="vip-symbol">SLOTH</div>
+                        <div class="vip-price" id="vipSLOTH">$--</div>
+                        <div class="vip-change" id="vipSLOTHChange">--%</div>
+                        <div class="vip-status" id="vipSLOTHStatus">--</div>
+                    </div>
+                    <div class="vip-coin" data-symbol="APC">
+                        <div class="vip-symbol">APC</div>
+                        <div class="vip-price" id="vipAPC">$--</div>
+                        <div class="vip-change" id="vipAPCChange">--%</div>
+                        <div class="vip-status" id="vipAPCStatus">--</div>
+                    </div>
+                </div>
+                
+                <div class="xrp-tracker">
+                    <h3>XRP — BULLISH EYE</h3>
+                    <div class="xrp-data">
+                        <div class="xrp-price" id="xrpPrice">$--</div>
+                        <div class="xrp-change" id="xrpChange">--%</div>
+                        <div class="xrp-trend" id="xrpTrend">--</div>
+                    </div>
+                </div>
+                
+                <div class="presale-watch">
+                    <h3>PRESALE / MICROCAP WATCH</h3>
+                    <div class="presale-list" id="presaleList">
+                        <div class="presale-item">
+                            <span class="presale-name">Loading...</span>
+                            <span class="presale-status">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ROW 2: Macro + Risk + Portfolio -->
+    <div class="grid-row row-2">
+        <!-- Column 1: World Context & Macro -->
+        <div class="card col-3">
+            <div class="card-header">
+                <h2>🌍 WORLD CONTEXT</h2>
+                <button class="btn-refresh" id="btnMacroRefresh">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="macro-grid">
+                    <div class="macro-item">
+                        <span class="macro-symbol">SPY</span>
+                        <span class="macro-price" id="macroSPY">$--</span>
+                        <span class="macro-change" id="macroSPYChange">--%</span>
+                    </div>
+                    <div class="macro-item">
+                        <span class="macro-symbol">QQQ</span>
+                        <span class="macro-price" id="macroQQQ">$--</span>
+                        <span class="macro-change" id="macroQQQChange">--%</span>
+                    </div>
+                    <div class="macro-item">
+                        <span class="macro-symbol">VIX</span>
+                        <span class="macro-price" id="macroVIX">--</span>
+                        <span class="macro-change" id="macroVIXChange">--</span>
+                    </div>
+                    <div class="macro-item">
+                        <span class="macro-symbol">BTC</span>
+                        <span class="macro-price" id="macroBTC">$--</span>
+                        <span class="macro-change" id="macroBTCChange">--%</span>
+                    </div>
+                    <div class="macro-item">
+                        <span class="macro-symbol">DXY</span>
+                        <span class="macro-price" id="macroDXY">--</span>
+                        <span class="macro-change" id="macroDXYChange">--</span>
+                    </div>
+                </div>
+                
+                <div class="regime-display">
+                    <div class="regime-label">Market Regime</div>
+                    <div class="regime-value" id="marketRegime">--</div>
+                    <div class="regime-confidence">
+                        Confidence: <span id="regimeConfidence">--%</span>
+                    </div>
+                </div>
+                
+                <div class="news-headlines" id="newsHeadlines">
+                    <div class="headline-item">
+                        <span class="headline-text">Loading news...</span>
+                        <span class="headline-sentiment">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 2: Risk Engine -->
+        <div class="card col-5">
+            <div class="card-header">
+                <h2>⚠️ RISK ENGINE</h2>
+            </div>
+            <div class="card-body">
+                <div class="risk-grid">
+                    <div class="risk-metric">
+                        <span class="risk-label">Total NAV</span>
+                        <span class="risk-value large" id="riskNAV">$--</span>
+                    </div>
+                    <div class="risk-metric">
+                        <span class="risk-label">Open Risk</span>
+                        <span class="risk-value" id="riskOpen">--%</span>
+                    </div>
+                    <div class="risk-metric">
+                        <span class="risk-label">Max Position</span>
+                        <span class="risk-value" id="riskMaxPos">-- / --%</span>
+                    </div>
+                    <div class="risk-metric">
+                        <span class="risk-label">VaR (95%)</span>
+                        <span class="risk-value" id="riskVaR">$--</span>
+                    </div>
+                    <div class="risk-metric">
+                        <span class="risk-label">Drawdown</span>
+                        <span class="risk-value" id="riskDrawdown">--%</span>
+                    </div>
+                    <div class="risk-metric">
+                        <span class="risk-label">Risk Status</span>
+                        <span class="risk-status-indicator" id="riskStatusIndicator">
+                            <span class="status-dot"></span>
+                            <span class="status-text">--</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 3: Portfolio Snapshot -->
+        <div class="card col-4">
+            <div class="card-header">
+                <h2>💼 PORTFOLIO</h2>
+                <button class="btn-refresh" id="btnPortfolioRefresh">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="portfolio-summary">
+                    <div class="portfolio-total">
+                        <span class="portfolio-label">Market Value</span>
+                        <span class="portfolio-value" id="portfolioValue">$--</span>
+                    </div>
+                    <div class="portfolio-pnl">
+                        <span class="portfolio-label">P&L</span>
+                        <span class="portfolio-pnl-value" id="portfolioPnL">$-- (---%)</span>
+                    </div>
+                </div>
+                
+                <table class="portfolio-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Qty</th>
+                            <th>Avg Cost</th>
+                            <th>Price</th>
+                            <th>P&L %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portfolioBody">
+                        <tr><td colspan="5" class="loading-row">Loading positions...</td></tr>
+                    </tbody>
+                </table>
+                
+                <button class="btn-secondary" id="btnViewFullPortfolio">View Full Portfolio</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ROW 3: Predictions + AI Brain + Accuracy -->
+    <div class="grid-row row-3">
+        <!-- Column 1: Predictions -->
+        <div class="card col-4">
+            <div class="card-header">
+                <h2>🔮 GHOST PREDICTIONS</h2>
+            </div>
+            <div class="card-body">
+                <div class="prediction-controls">
+                    <label for="predictionSymbol">Select Symbol:</label>
+                    <select id="predictionSymbol" class="symbol-select">
+                        <option value="SPY">SPY</option>
+                        <option value="AAPL">AAPL</option>
+                        <option value="BTC">BTC</option>
+                        <option value="WEPE">WEPE</option>
+                        <option value="XRP">XRP</option>
+                    </select>
+                    <button class="btn-primary" id="btnRunPrediction">Run New Forecast</button>
+                </div>
+                
+                <div class="prediction-result" id="predictionResult">
+                    <div class="prediction-label">Last Prediction:</div>
+                    <div class="prediction-direction" id="predDirection">--</div>
+                    <div class="prediction-confidence">
+                        Confidence: <span id="predConfidence">--%</span>
+                    </div>
+                    <div class="prediction-horizon">
+                        Horizon: <span id="predHorizon">--</span>
+                    </div>
+                    <div class="prediction-timestamp">
+                        <span id="predTimestamp">--</span>
+                    </div>
+                </div>
+                
+                <div class="prediction-history">
+                    <h4>Recent Predictions</h4>
+                    <table class="prediction-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Direction</th>
+                                <th>Conf%</th>
+                                <th>Outcome</th>
+                            </tr>
+                        </thead>
+                        <tbody id="predictionHistoryBody">
+                            <tr><td colspan="4">No recent predictions</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 2: Ghost AI Activity -->
+        <div class="card col-4">
+            <div class="card-header">
+                <h2>🤖 GHOST AI BRAIN</h2>
+            </div>
+            <div class="card-body">
+                <div class="ai-stats-grid">
+                    <div class="ai-stat">
+                        <span class="ai-stat-label">Decisions (24h)</span>
+                        <span class="ai-stat-value" id="aiDecisions24h">--</span>
+                    </div>
+                    <div class="ai-stat">
+                        <span class="ai-stat-label">Tool Calls</span>
+                        <span class="ai-stat-value" id="aiToolCalls">--</span>
+                    </div>
+                    <div class="ai-stat">
+                        <span class="ai-stat-label">Success Rate</span>
+                        <span class="ai-stat-value" id="aiSuccessRate">--%</span>
+                    </div>
+                    <div class="ai-stat">
+                        <span class="ai-stat-label">Status</span>
+                        <span class="ai-status-indicator" id="aiStatusIndicator">
+                            <span class="status-dot"></span>
+                            <span class="status-text">--</span>
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="ai-recent-actions">
+                    <h4>Last 3 AI Actions</h4>
+                    <div class="ai-actions-list" id="aiActionsList">
+                        <div class="ai-action-item">
+                            <span class="action-symbol">--</span>
+                            <span class="action-type">--</span>
+                            <span class="action-time">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 3: Accuracy & Learning -->
+        <div class="card col-4">
+            <div class="card-header">
+                <h2>📊 ACCURACY & LEARNING</h2>
+            </div>
+            <div class="card-body">
+                <div class="accuracy-grid">
+                    <div class="accuracy-item">
+                        <span class="accuracy-label">Daily Accuracy</span>
+                        <span class="accuracy-value" id="accDaily">--%</span>
+                    </div>
+                    <div class="accuracy-item">
+                        <span class="accuracy-label">Weekly Accuracy</span>
+                        <span class="accuracy-value" id="accWeekly">--%</span>
+                    </div>
+                    <div class="accuracy-item">
+                        <span class="accuracy-label">Monthly Accuracy</span>
+                        <span class="accuracy-value" id="accMonthly">--%</span>
+                    </div>
+                </div>
+                
+                <div class="accuracy-breakdown">
+                    <div class="breakdown-row">
+                        <span class="breakdown-label">✓ Correct</span>
+                        <span class="breakdown-value correct" id="accCorrect">--</span>
+                    </div>
+                    <div class="breakdown-row">
+                        <span class="breakdown-label">⚠ Warning</span>
+                        <span class="breakdown-value warning" id="accWarning">--</span>
+                    </div>
+                    <div class="breakdown-row">
+                        <span class="breakdown-label">✗ Wrong</span>
+                        <span class="breakdown-value wrong" id="accWrong">--</span>
+                    </div>
+                    <div class="breakdown-row">
+                        <span class="breakdown-label">⏳ Pending</span>
+                        <span class="breakdown-value pending" id="accPending">--</span>
+                    </div>
+                </div>
+                
+                <div class="tuning-info">
+                    <div class="tuning-row">
+                        <span class="tuning-label">Last Tune:</span>
+                        <span class="tuning-value" id="lastTuneTime">--</span>
+                    </div>
+                    <div class="tuning-row">
+                        <span class="tuning-label">Config:</span>
+                        <span class="tuning-value" id="tuningConfig">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ROW 4: Providers + Logs + Config -->
+    <div class="grid-row row-4">
+        <!-- Provider Health Matrix -->
+        <div class="card col-6">
+            <div class="card-header">
+                <h2>🔌 PROVIDER HEALTH MATRIX</h2>
+                <button class="btn-refresh" id="btnProviderRefresh">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="provider-grid" id="providerGrid">
+                    <div class="provider-item">
+                        <span class="provider-name">Polygon</span>
+                        <span class="provider-status" id="providerPolygon">
+                            <span class="status-dot"></span>
+                            <span class="status-text">--</span>
+                        </span>
+                        <span class="provider-latency" id="providerPolygonLatency">-- ms</span>
+                    </div>
+                    <div class="provider-item">
+                        <span class="provider-name">Yahoo</span>
+                        <span class="provider-status" id="providerYahoo">
+                            <span class="status-dot"></span>
+                            <span class="status-text">--</span>
+                        </span>
+                        <span class="provider-latency" id="providerYahooLatency">-- ms</span>
+                    </div>
+                    <div class="provider-item">
+                        <span class="provider-name">AlphaVantage</span>
+                        <span class="provider-status" id="providerAlphaVantage">
+                            <span class="status-dot"></span>
+                            <span class="status-text">--</span>
+                        </span>
+                        <span class="provider-latency" id="providerAlphaVantageLatency">-- ms</span>
+                    </div>
+                    <div class="provider-item">
+                        <span class="provider-name">Binance</span>
+                        <span class="provider-status" id="providerBinance">
+                            <span class="status-dot"></span>
+                            <span class="status-text">--</span>
+                        </span>
+                        <span class="provider-latency" id="providerBinanceLatency">-- ms</span>
+                    </div>
+                    <div class="provider-item">
+                        <span class="provider-name">CoinGecko</span>
+                        <span class="provider-status" id="providerCoinGecko">
+                            <span class="status-dot"></span>
+                            <span class="status-text">--</span>
+                        </span>
+                        <span class="provider-latency" id="providerCoinGeckoLatency">-- ms</span>
+                    </div>
+                    <div class="provider-item">
+                        <span class="provider-name">Reuters</span>
+                        <span class="provider-status" id="providerReuters">
+                            <span class="status-dot"></span>
+                            <span class="status-text">--</span>
+                        </span>
+                        <span class="provider-latency" id="providerReutersLatency">-- ms</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Logs -->
+        <div class="card col-6">
+            <div class="card-header">
+                <h2>📋 SYSTEM LOGS</h2>
+                <button class="btn-refresh" id="btnLogsRefresh">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="logs-container" id="logsContainer">
+                    <div class="log-item">
+                        <span class="log-time">--:--:--</span>
+                        <span class="log-level">INFO</span>
+                        <span class="log-message">Loading system logs...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Runtime Config (Admin) -->
+        <div class="card col-12">
+            <div class="card-header">
+                <h2>⚙️ RUNTIME CONFIG</h2>
+                <button class="btn-refresh" id="btnConfigRefresh">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="config-grid" id="configGrid">
+                    <div class="config-item">
+                        <span class="config-key">Loading configuration...</span>
+                        <span class="config-value">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/cockpit_v2.js"></script>
+</body>
+</html>

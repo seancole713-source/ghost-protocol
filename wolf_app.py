@@ -1101,8 +1101,14 @@ if os.path.isdir(STATIC_DIR):
     except Exception as e:
         LOGGER.warning(f"Failed to mount /static directory: {e}")
 
-# Templates directory (served via explicit routes only; no template engine required)
+# Templates directory and Jinja2 template engine for rendering
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+try:
+    from fastapi.templating import Jinja2Templates
+    _TEMPLATES = Jinja2Templates(directory=TEMPLATES_DIR)
+except Exception as e:
+    LOGGER.warning(f"Failed to initialize Jinja2Templates: {e}")
+    _TEMPLATES = None  # type: ignore
 
 
 @APP.get("/", include_in_schema=False)
@@ -23248,6 +23254,63 @@ async def api_recent_alerts(limit: int = 10):
             'count': 0,
             'timestamp': int(time.time())
         }
+
+
+# ============================================================================
+# GHOST HUNTER COCKPIT V2 - MULTI-ASSET DASHBOARD
+# ============================================================================
+
+@APP.get("/cockpit_v2", include_in_schema=False)
+async def cockpit_v2_page(request: Request):
+    """
+    Serve Ghost Hunter Cockpit V2 - Clean multi-asset dashboard.
+    Completely rebuilt UI with external CSS/JS, no hardcoded symbols.
+    """
+    try:
+        # Use Jinja2 template rendering matching original cockpit pattern
+        return _TEMPLATES.TemplateResponse(
+            "cockpit_v2.html",
+            {
+                "request": request,
+                "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", ""),
+                "active": "cockpit"
+            }
+        )
+    except Exception as e:
+        # Fallback to FileResponse if template rendering fails
+        LOGGER.error(f"Cockpit V2 template rendering failed: {e}")
+        try:
+            path = os.path.join(TEMPLATES_DIR, "cockpit_v2.html")
+            if os.path.exists(path):
+                return FileResponse(path, media_type=MEDIA_TEXT_HTML)
+        except Exception:
+            pass
+    
+    # Final fallback
+    from fastapi import Response as _Resp
+    return _Resp(
+        """
+<!DOCTYPE html>
+<html>
+  <head><meta charset="utf-8"><title>Ghost Hunter Cockpit V2</title></head>
+  <body>
+    <h1>Ghost Hunter Cockpit V2</h1>
+    <p>Dashboard template not found. <a href="/cockpit">Return to Legacy Cockpit</a></p>
+  </body>
+</html>
+""",
+        media_type=MEDIA_TEXT_HTML,
+        status_code=404
+    )
+
+
+# Include Cockpit V2 API endpoints
+try:
+    from api.cockpit_v2_endpoints import router as cockpit_v2_router
+    APP.include_router(cockpit_v2_router)
+    LOGGER.info("✅ Cockpit V2 API endpoints registered")
+except Exception as e:
+    LOGGER.warning(f"Cockpit V2 API endpoints not loaded: {e}")
 
 
 # ============================================================================
