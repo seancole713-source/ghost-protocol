@@ -11027,7 +11027,15 @@ async def api_health_predictions():
     Health check endpoint for multi-symbol predictions and Telegram alerts.
     Returns current state, last run times, provider health, Ghost Score V2, and risk guard status.
     """
-    # Get provider health data
+    # Get crypto provider health data
+    crypto_provider_health = {}
+    try:
+        from core.crypto.crypto_providers import get_crypto_provider_health
+        crypto_provider_health = get_crypto_provider_health()
+    except Exception as e:
+        LOGGER.warning(f"Could not get crypto provider health: {e}")
+
+    # Get VIP provider health data
     vip_provider_health = {}
 
     try:
