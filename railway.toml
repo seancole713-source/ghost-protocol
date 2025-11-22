@@ -4,8 +4,8 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 # Healthcheck aligned with Ghost live endpoint
-healthcheckPath = "/ui/health"
-healthcheckTimeout = 300
+healthcheckPath = "/health"
+healthcheckTimeout = 100
 
 # Restart policy to auto-recover failed deployments
 restartPolicyType = "ON_FAILURE"

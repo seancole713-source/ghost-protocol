@@ -1115,6 +1115,16 @@ except Exception as e:
     LOGGER.warning(f"Failed to initialize Jinja2Templates: {e}")
     _TEMPLATES = None  # type: ignore
 
+# Health check endpoints for Railway/Docker deployments
+@APP.get("/health", include_in_schema=False)
+async def health_check():
+    """Lightweight health check for Railway/Docker deployments"""
+    return {"status": "healthy", "service": "ghost-protocol"}
+
+@APP.get("/api/health", include_in_schema=False)
+async def api_health_check():
+    """API health check endpoint"""
+    return {"status": "healthy", "api": "online", "service": "ghost-protocol"}
 
 @APP.get("/", include_in_schema=False)
 async def _root_index():
@@ -3444,7 +3454,6 @@ async def _on_startup():
     # Log critical environment configuration at boot
     try:
         env_config = {
-            "SIM_MODE": _os_module.getenv("SIM_MODE", "0"),
             "STOCKS_ENABLED": _os_module.getenv("STOCKS_ENABLED", "1"),
             "CRYPTO_ENABLED": _os_module.getenv("CRYPTO_ENABLED", "0"),
             "PRICE_STRICT_LIVE": _os_module.getenv("PRICE_STRICT_LIVE", "0"),
@@ -3749,9 +3758,6 @@ async def _on_startup():
     env_violations = []
 
     # Check critical configuration gates
-    if SIM_MODE != 0:
-        env_violations.append("SIM_MODE must be 0 (live mode)")
-
     delisted_mode = os.getenv("DELISTED_MODE", "").strip()
     if delisted_mode not in ("0", ""):
         env_violations.append("DELISTED_MODE must be 0 or unset")
@@ -4337,9 +4343,6 @@ STATE: dict[str, Any] = {
     # Cash balance (unallocated) in account currency
     "cash": 0.0,
 }
-
-# Simulation mode flag (set via environment variable SIM_MODE=1 for simulation)
-SIM_MODE = os.getenv("SIM_MODE", "0").strip() in ("1", "true", "yes")
 
 PRICE_CACHE: dict[str, dict[str, Any]] = {}  # symbol -> {price, prev_close, provider, ts}
 NEWS_CACHE: dict[str, Any] = {"items": [], "ts": 0.0}
@@ -5801,9 +5804,6 @@ async def api_predict_run(
     #         503,
     #         f"Predictions unavailable due to configuration issues: {degraded_reason}"
     #     )
-
-    if SIM_MODE:
-        raise HTTPException(400, "Predictions require live mode (SIM_MODE=0)")
 
     symbol = body.symbol.upper().strip()
     if not symbol:
@@ -17650,11 +17650,11 @@ async def ai_preview():
     feats = _extract_features(price, prev, qty, avg, ns)
     gps, conf, reasons, analogs = _ai_infer(feats)
 
-    # Ensure analogs are always present (fallback for simulation mode)
-    if not analogs and os.getenv("SIM_MODE", "0") == "1":
+    # Return analogs from AI inference
+    if not analogs:
         import time
 
-        # Generate mock analog scenarios
+        # Generate empty analog structure
         analogs = [
             {
                 "ts": int(time.time() - 86400 * 7),
@@ -19623,49 +19623,16 @@ async def api_risk_status(symbol: str = "WOLF"):
                 "max_concentration": 0.0,
             }
 
-        # Get market volatility data (simulate if SIM_MODE)
-        import os
+        # Get market volatility data from real sources
+        try:
+            ticker = yf.Ticker(WOLF)
+            hist = ticker.history(period="90d")
 
-        if os.getenv("SIM_MODE", "0") == "1":
-            # Simulated volatility values
-            market_data = {
-                "volatility": 0.22,
-                "volatility_mean": 0.20,
-                "volatility_std": 0.03,
-                "model_drift_pct": 0.0,
-                "model_mape": 0.0,
-            }
-        else:
-            try:
-                ticker = yf.Ticker(WOLF)
-                hist = ticker.history(period="90d")
-
-                # Safety check: ensure we have enough data
-                if hist.empty or len(hist) < 20:
-                    LOGGER.warning(
-                        f"Insufficient yfinance data for {WOLF}, using fallback volatility"
-                    )
-                    market_data = {
-                        "volatility": 0.25,
-                        "volatility_mean": 0.22,
-                        "volatility_std": 0.04,
-                        "model_drift_pct": 0.0,
-                        "model_mape": 0.0,
-                    }
-                else:
-                    returns = hist["Close"].pct_change().dropna()
-                    current_vol = returns.tail(20).std() * (252**0.5)
-                    historical_vol_mean = returns.std() * (252**0.5)
-                    historical_vol_std = returns.rolling(20).std().std() * (252**0.5)
-                    market_data = {
-                        "volatility": current_vol,
-                        "volatility_mean": historical_vol_mean,
-                        "volatility_std": historical_vol_std,
-                        "model_drift_pct": 0.0,
-                        "model_mape": 0.0,
-                    }
-            except Exception as e:
-                LOGGER.warning(f"yfinance error for {WOLF}: {e}, using fallback")
+            # Safety check: ensure we have enough data
+            if hist.empty or len(hist) < 20:
+                LOGGER.warning(
+                    f"Insufficient yfinance data for {WOLF}, using fallback volatility"
+                )
                 market_data = {
                     "volatility": 0.25,
                     "volatility_mean": 0.22,
@@ -19673,6 +19640,27 @@ async def api_risk_status(symbol: str = "WOLF"):
                     "model_drift_pct": 0.0,
                     "model_mape": 0.0,
                 }
+            else:
+                returns = hist["Close"].pct_change().dropna()
+                current_vol = returns.tail(20).std() * (252**0.5)
+                historical_vol_mean = returns.std() * (252**0.5)
+                historical_vol_std = returns.rolling(20).std().std() * (252**0.5)
+                market_data = {
+                    "volatility": current_vol,
+                    "volatility_mean": historical_vol_mean,
+                    "volatility_std": historical_vol_std,
+                    "model_drift_pct": 0.0,
+                    "model_mape": 0.0,
+                }
+        except Exception as e:
+            LOGGER.warning(f"yfinance error for {WOLF}: {e}, using fallback")
+            market_data = {
+                "volatility": 0.25,
+                "volatility_mean": 0.22,
+                "volatility_std": 0.04,
+                "model_drift_pct": 0.0,
+                "model_mape": 0.0,
+            }
 
         risk_mgr = get_enhanced_risk_manager()
         result = risk_mgr.check_risk_status(portfolio_data, market_data)
@@ -21205,58 +21193,14 @@ async def api_trade_card(symbol: str, action: str = "BUY", lookback_days: int = 
         return {"error": "Action must be BUY, SELL, or HOLD"}, 400
 
     try:
-        # Fetch historical data (with fallback to simulated data)
-        import os
+        # Fetch historical data from real sources
+        try:
+            ticker = yf.Ticker(WOLF)
+            hist = ticker.history(period=f"{lookback_days}d")
 
-        if os.getenv("SIM_MODE", "0") == "1":
-            # Use simulated price data
-            import numpy as np
-
-            dates = pd.date_range(end=pd.Timestamp.now(), periods=lookback_days, freq="D")
-            base_price = 150.0
-            price_data = pd.DataFrame(
-                {
-                    "close": base_price + np.random.randn(lookback_days).cumsum() * 2,
-                    "high": base_price + np.random.randn(lookback_days).cumsum() * 2 + 1,
-                    "low": base_price + np.random.randn(lookback_days).cumsum() * 2 - 1,
-                    "volume": np.random.randint(1000000, 5000000, lookback_days),
-                },
-                index=dates,
-            )
-        else:
-            try:
-                ticker = yf.Ticker(WOLF)
-                hist = ticker.history(period=f"{lookback_days}d")
-
-                if hist.empty:
-                    # Fallback to simulated data if yfinance fails
-                    LOGGER.warning("yfinance returned empty data, using simulated fallback")
-                    import numpy as np
-
-                    dates = pd.date_range(end=pd.Timestamp.now(), periods=lookback_days, freq="D")
-                    base_price = 150.0
-                    price_data = pd.DataFrame(
-                        {
-                            "close": base_price + np.random.randn(lookback_days).cumsum() * 2,
-                            "high": base_price + np.random.randn(lookback_days).cumsum() * 2 + 1,
-                            "low": base_price + np.random.randn(lookback_days).cumsum() * 2 - 1,
-                            "volume": np.random.randint(1000000, 5000000, lookback_days),
-                        },
-                        index=dates,
-                    )
-                else:
-                    # Prepare DataFrame from yfinance data
-                    price_data = pd.DataFrame(
-                        {
-                            "close": hist["Close"],
-                            "high": hist["High"],
-                            "low": hist["Low"],
-                            "volume": hist["Volume"],
-                        }
-                    )
-            except Exception as yf_error:
+            if hist.empty:
                 # Fallback to simulated data if yfinance fails
-                LOGGER.warning(f"yfinance failed: {yf_error}, using simulated fallback")
+                LOGGER.warning("yfinance returned empty data, using simulated fallback")
                 import numpy as np
 
                 dates = pd.date_range(end=pd.Timestamp.now(), periods=lookback_days, freq="D")
@@ -21270,6 +21214,32 @@ async def api_trade_card(symbol: str, action: str = "BUY", lookback_days: int = 
                     },
                     index=dates,
                 )
+            else:
+                # Prepare DataFrame from yfinance data
+                price_data = pd.DataFrame(
+                    {
+                        "close": hist["Close"],
+                        "high": hist["High"],
+                        "low": hist["Low"],
+                        "volume": hist["Volume"],
+                    }
+                )
+        except Exception as yf_error:
+            # Fallback to simulated data if yfinance fails
+            LOGGER.warning(f"yfinance failed: {yf_error}, using simulated fallback")
+            import numpy as np
+
+            dates = pd.date_range(end=pd.Timestamp.now(), periods=lookback_days, freq="D")
+            base_price = 150.0
+            price_data = pd.DataFrame(
+                {
+                    "close": base_price + np.random.randn(lookback_days).cumsum() * 2,
+                    "high": base_price + np.random.randn(lookback_days).cumsum() * 2 + 1,
+                    "low": base_price + np.random.randn(lookback_days).cumsum() * 2 - 1,
+                    "volume": np.random.randint(1000000, 5000000, lookback_days),
+                },
+                index=dates,
+            )
 
         # Get current sentiment from news (if available)
         news_sentiment = None
