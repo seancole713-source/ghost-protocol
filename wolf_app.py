@@ -10880,7 +10880,7 @@ def _orders_init():
         conn = sqlite3.connect(WOLF_SQLITE_PATH)
         cur = conn.cursor()
         cur.execute(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS {ORDERS_TABLE} (
                 id TEXT PRIMARY KEY,
                 ts INTEGER,
