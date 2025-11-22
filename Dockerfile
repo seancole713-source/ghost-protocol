@@ -40,5 +40,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -fsS http://localhost:${PORT:-8080}/ui/health || exit 1
 
-# Run the application with uvicorn (Railway PORT)
-CMD ["sh", "-c", "uvicorn wolf_app:APP --host 0.0.0.0 --port ${PORT:-8080}"]
+# Run the application with uvicorn
+# Use exec form to avoid double-shell invocation
+CMD ["uvicorn", "wolf_app:APP", "--host", "0.0.0.0", "--port", "8080"]
