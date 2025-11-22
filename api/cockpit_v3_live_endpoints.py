@@ -5,6 +5,7 @@ Fully wired to Ghost Protocol's real data infrastructure
 All endpoints return live data - no placeholders or mock responses
 """
 
+import json
 import logging
 import os
 import time
@@ -656,9 +657,79 @@ async def get_ai_metrics():
 
 @router.get("/accuracy/summary")
 async def get_accuracy_summary():
-    """Get prediction accuracy metrics"""
+    """Get prediction accuracy metrics from database"""
     try:
-        # TODO: Query accuracy ledger
+        import sqlite3
+        import time
+        from services import predictor
+        
+        conn = sqlite3.connect(predictor.DB_PATH)
+        
+        # Query predictions from last 1/7/30 days
+        now = time.time()
+        day_ago = now - (24 * 3600)
+        week_ago = now - (7 * 24 * 3600)
+        month_ago = now - (30 * 24 * 3600)
+        
+        # Get predictions with outcomes
+        predictions = conn.execute("""
+            SELECT 
+                p.id,
+                p.symbol,
+                p.run_at,
+                p.direction,
+                p.confidence,
+                o.hit_direction,
+                o.hit_ratio_window
+            FROM predictions p
+            LEFT JOIN outcomes o ON p.id = o.prediction_id
+            WHERE p.run_at >= ?
+            ORDER BY p.run_at DESC
+        """, (month_ago,)).fetchall()
+        
+        conn.close()
+        
+        # Calculate accuracy by time window
+        daily = [p for p in predictions if p[2] >= day_ago]
+        weekly = [p for p in predictions if p[2] >= week_ago]
+        monthly = predictions
+        
+        def calc_accuracy(preds):
+            if not preds:
+                return 0.0, 0, 0, 0
+            
+            with_outcomes = [p for p in preds if p[5] is not None]
+            if not with_outcomes:
+                return 0.0, 0, 0, len(preds)
+            
+            correct = sum(1 for p in with_outcomes if p[5] == 1)
+            wrong = sum(1 for p in with_outcomes if p[5] == 0)
+            pending = len(preds) - len(with_outcomes)
+            
+            accuracy = (correct / len(with_outcomes) * 100) if with_outcomes else 0.0
+            return accuracy, correct, wrong, pending
+        
+        daily_acc, daily_corr, daily_wrong, daily_pend = calc_accuracy(daily)
+        weekly_acc, weekly_corr, weekly_wrong, weekly_pend = calc_accuracy(weekly)
+        monthly_acc, monthly_corr, monthly_wrong, monthly_pend = calc_accuracy(monthly)
+        
+        # Get last tune timestamp (from latest prediction)
+        last_tune = max([p[2] for p in predictions]) if predictions else None
+        
+        return {
+            "daily_accuracy_pct": round(daily_acc, 1),
+            "weekly_accuracy_pct": round(weekly_acc, 1),
+            "monthly_accuracy_pct": round(monthly_acc, 1),
+            "correct": daily_corr,
+            "warning": 0,
+            "wrong": daily_wrong,
+            "pending": daily_pend,
+            "last_tune_ts": int(last_tune) if last_tune else None,
+            "config_name": "ghost-av1",
+            "total_predictions": len(daily)
+        }
+    except Exception as e:
+        LOGGER.error(f"Accuracy summary failed: {e}", exc_info=True)
         return {
             "daily_accuracy_pct": 0.0,
             "weekly_accuracy_pct": 0.0,
@@ -668,11 +739,184 @@ async def get_accuracy_summary():
             "wrong": 0,
             "pending": 0,
             "last_tune_ts": None,
-            "config_name": "default"
+            "config_name": "error",
+            "error": str(e)[:200]
         }
+
+
+@router.get("/predictions/latest")
+async def get_latest_predictions(limit: int = 10):
+    """
+    Get most recent predictions with outcomes for V3 UI
+    
+    Args:
+        limit: Maximum number of predictions to return (default 10)
+    
+    Returns:
+        {
+            "predictions": [
+                {
+                    "id": 123,
+                    "symbol": "WOLF",
+                    "run_at": 1700000000,
+                    "direction": "UP",
+                    "confidence": 0.72,
+                    "horizon_h": 48,
+                    "outcome": "correct" | "wrong" | "pending",
+                    "accuracy_pct": 95.5 (if completed)
+                },
+                ...
+            ],
+            "count": 10
+        }
+    """
+    try:
+        import sqlite3
+        import time
+        from services import predictor
+        
+        conn = sqlite3.connect(predictor.DB_PATH)
+        
+        # Get recent predictions with outcomes
+        predictions = conn.execute("""
+            SELECT 
+                p.id,
+                p.symbol,
+                p.run_at,
+                p.direction,
+                p.confidence,
+                p.horizon_h,
+                o.hit_direction,
+                o.hit_ratio_window,
+                o.mape
+            FROM predictions p
+            LEFT JOIN outcomes o ON p.id = o.prediction_id
+            ORDER BY p.run_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        
+        conn.close()
+        
+        result = []
+        for pred in predictions:
+            pred_obj = {
+                "id": pred[0],
+                "symbol": pred[1],
+                "run_at": int(pred[2]),
+                "direction": pred[3],
+                "confidence": round(pred[4], 2),
+                "horizon_h": pred[5]
+            }
+            
+            # Add outcome status
+            if pred[6] is not None:
+                # Has outcome
+                pred_obj["outcome"] = "correct" if pred[6] == 1 else "wrong"
+                pred_obj["accuracy_pct"] = round((1 - pred[8]) * 100, 1) if pred[8] else 0.0
+            else:
+                pred_obj["outcome"] = "pending"
+            
+            result.append(pred_obj)
+        
+        return {
+            "predictions": result,
+            "count": len(result),
+            "timestamp": int(time.time())
+        }
+    
     except Exception as e:
-        LOGGER.error(f"Accuracy summary error: {e}")
-        return None
+        LOGGER.error(f"Latest predictions failed: {e}", exc_info=True)
+        return {
+            "predictions": [],
+            "count": 0,
+            "error": str(e)[:200],
+            "timestamp": int(time.time())
+        }
+
+
+@router.get("/hunter/feed")
+async def get_hunter_feed():
+    """
+    Get Ghost Hunter feed with top stock and crypto movers
+    
+    Returns:
+        [
+            {
+                "symbol": "AAPL",
+                "name": "Apple Inc",
+                "type": "stock",
+                "price": 189.50,
+                "change": 5.3,
+                "volume": 50000000,
+                "confidence": 75,
+                "gps": 8.2
+            },
+            ...
+        ]
+    """
+    try:
+        import redis as redis_lib
+        
+        # Get Redis client to fetch cached movers
+        redis_client = None
+        try:
+            redis_url = os.getenv("REDIS_URL", "")
+            if redis_url:
+                redis_client = redis_lib.from_url(redis_url, decode_responses=True)
+        except:
+            pass
+        
+        stocks = []
+        crypto = []
+        
+        # Fetch stock movers from Redis cache
+        if redis_client:
+            try:
+                stocks_json = redis_client.get("movers:stocks:last")
+                if stocks_json:
+                    stock_movers = json.loads(stocks_json)
+                    for mover in stock_movers[:10]:
+                        stocks.append({
+                            "symbol": mover.get("symbol", ""),
+                            "name": mover.get("name", mover.get("symbol", "")),
+                            "type": "stock",
+                            "price": mover.get("price", 0),
+                            "change": mover.get("change_pct", 0),
+                            "volume": mover.get("volume", 0),
+                            "confidence": int(mover.get("confidence", 0) * 100) if isinstance(mover.get("confidence"), float) else mover.get("confidence", 0),
+                            "gps": mover.get("gps", 0)
+                        })
+            except:
+                pass
+            
+            # Fetch crypto movers from Redis cache
+            try:
+                crypto_json = redis_client.get("movers:crypto:last")
+                if crypto_json:
+                    crypto_movers = json.loads(crypto_json)
+                    for mover in crypto_movers[:10]:
+                        crypto.append({
+                            "symbol": mover.get("symbol", ""),
+                            "name": mover.get("name", mover.get("symbol", "")),
+                            "type": "crypto",
+                            "price": mover.get("price", 0),
+                            "change": mover.get("change_pct", 0),
+                            "volume": mover.get("volume", 0),
+                            "confidence": int(mover.get("confidence", 0) * 100) if isinstance(mover.get("confidence"), float) else mover.get("confidence", 0),
+                            "gps": mover.get("gps", 0)
+                        })
+            except:
+                pass
+        
+        # Combine and sort by absolute change
+        all_movers = stocks + crypto
+        all_movers.sort(key=lambda x: abs(x.get("change", 0)), reverse=True)
+        
+        return all_movers
+    
+    except Exception as e:
+        LOGGER.error(f"Hunter feed failed: {e}", exc_info=True)
+        return []
 
 
 # === PROVIDER HEALTH ===
@@ -680,40 +924,83 @@ async def get_accuracy_summary():
 @router.get("/providers/health")
 async def get_providers_health():
     """
-    Get provider health matrix with status and latency.
-    Shows real provider health from Ghost's monitoring.
+    Get provider health matrix with real-time status and latency.
+    Shows actual provider availability from Ghost's price quorum system.
     """
     try:
-        # Get provider health from Ghost's systems
+        import redis as redis_lib
+        
+        # Initialize provider status
         providers = {
-            "polygon": {"status": "unknown", "latency_ms": 0},
-            "yahoo": {"status": "unknown", "latency_ms": 0},
-            "alphavantage": {"status": "unknown", "latency_ms": 0},
-            "binance": {"status": "unknown", "latency_ms": 0},
-            "coingecko": {"status": "unknown", "latency_ms": 0},
-            "reuters": {"status": "unknown", "latency_ms": 0}
+            "polygon": {"status": "unknown", "latency_ms": 0, "success_rate": 0},
+            "yahoo": {"status": "unknown", "latency_ms": 0, "success_rate": 0},
+            "alphavantage": {"status": "unknown", "latency_ms": 0, "success_rate": 0},
+            "binance": {"status": "unknown", "latency_ms": 0, "success_rate": 0},
+            "coingecko": {"status": "unknown", "latency_ms": 0, "success_rate": 0},
+            "reuters": {"status": "unknown", "latency_ms": 0, "success_rate": 0}
         }
         
-        # Try to get VIP provider health
+        # Get Redis client for provider stats
+        redis_client = None
         try:
-            from core.crypto.vip_providers import get_vip_provider_health
-            vip_health = get_vip_provider_health()
-            if vip_health:
-                for provider, data in vip_health.get("providers", {}).items():
-                    if provider in providers:
-                        providers[provider] = {
-                            "status": "healthy" if data.get("healthy") else "degraded",
-                            "latency_ms": data.get("latency_ms", 0)
-                        }
+            redis_url = os.getenv("REDIS_URL", "")
+            if redis_url:
+                redis_client = redis_lib.from_url(redis_url, decode_responses=True)
         except:
             pass
+        
+        # Check Redis for provider stats
+        if redis_client:
+            try:
+                for provider_name in providers.keys():
+                    # Get provider stats from Redis
+                    stats_key = f"provider:{provider_name}:stats"
+                    stats_json = redis_client.get(stats_key)
+                    if stats_json:
+                        stats = json.loads(stats_json)
+                        success_count = stats.get("success_count", 0)
+                        total_count = stats.get("total_count", 0)
+                        avg_latency = stats.get("avg_latency_ms", 0)
+                        
+                        success_rate = (success_count / total_count * 100) if total_count > 0 else 0
+                        
+                        # Determine status based on success rate
+                        if success_rate >= 90:
+                            status = "healthy"
+                        elif success_rate >= 70:
+                            status = "degraded"
+                        else:
+                            status = "down"
+                        
+                        providers[provider_name] = {
+                            "status": status,
+                            "latency_ms": int(avg_latency),
+                            "success_rate": round(success_rate, 1)
+                        }
+            except Exception as e:
+                LOGGER.error(f"Failed to load provider stats from Redis: {e}")
+        
+        # If no Redis stats, try to get from price reliability module
+        if all(p["status"] == "unknown" for p in providers.values()):
+            try:
+                from core.price_reliability import get_provider_reliability
+                reliability = get_provider_reliability()
+                for provider_name, stats in reliability.items():
+                    if provider_name in providers:
+                        providers[provider_name] = {
+                            "status": stats.get("status", "unknown"),
+                            "latency_ms": stats.get("latency_ms", 0),
+                            "success_rate": stats.get("success_rate", 0)
+                        }
+            except:
+                pass
         
         return {
             "providers": providers,
             "timestamp": time.time()
         }
     except Exception as e:
-        LOGGER.error(f"Provider health error: {e}")
+        LOGGER.error(f"Provider health error: {e}", exc_info=True)
         return {"providers": {}, "timestamp": time.time()}
 
 

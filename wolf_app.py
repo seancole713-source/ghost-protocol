@@ -5945,6 +5945,49 @@ async def api_predict_run_get(symbol: str):
     return await api_predict_run(body, credentials=None)
 
 
+def run_prediction(symbol: str, market: str = "stock", horizon: str = "SHORT") -> dict:
+    """
+    Wrapper function for beast_scheduler and other scheduled prediction systems.
+    Calls the main prediction endpoint and returns standardized result.
+    
+    This function bridges scheduled systems (beast_scheduler, premarket_predictor)
+    with the core prediction engine (api_predict_run).
+    
+    Args:
+        symbol: Trading symbol (e.g. "WOLF", "BTC")
+        market: "stock" or "crypto" (informational only, symbol determines routing)
+        horizon: "SHORT" or "LONG" (informational only, all predictions are 48h)
+    
+    Returns:
+        {
+            'ok': True,
+            'prediction_id': int,
+            'symbol': str,
+            'direction': 'UP'|'DOWN'|'FLAT',
+            'confidence': float (0-1),
+            'horizon_h': 48,
+            'run_at': int (milliseconds),
+            'provider': str
+        }
+    """
+    import asyncio
+    
+    try:
+        # Call the async prediction endpoint
+        body = _PredictRunBody(symbol=symbol.upper().strip())
+        result = asyncio.run(api_predict_run(body, credentials=None))
+        
+        return result
+    
+    except Exception as e:
+        LOGGER.error(f"run_prediction failed for {symbol}: {e}")
+        return {
+            'ok': False,
+            'symbol': symbol,
+            'error': str(e)[:200]
+        }
+
+
 def _generate_multi_symbol_predictions():
     """
     Ghost Hunter V1: Generate predictions for all symbols in hunter universe.
