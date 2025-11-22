@@ -11173,12 +11173,12 @@ async def api_cockpit_snapshot():
             # Risk status
             risk_status = get_current_risk_status()
 
-        # Compute score
-        ghost_score_v2 = compute_ghost_score_v2(
-            data_quality=data_quality,
-            prediction_coverage=prediction_coverage,
-            risk_status=risk_status
-        )
+            # Compute score
+            ghost_score_v2 = compute_ghost_score_v2(
+                data_quality=data_quality,
+                prediction_coverage=prediction_coverage,
+                risk_status=risk_status
+            )
     except Exception as e:
         LOGGER.warning(f"Could not compute Ghost Score V2: {e}")
         # Provide basic fallback score
@@ -11192,15 +11192,17 @@ async def api_cockpit_snapshot():
                 "risk_behavior": 80.0
             },
             "note": "Fallback score - module unavailable"
-        }        # Get risk guard status
-        risk_guard_status = {}
-        try:
-            from core.risk.risk_guard import get_risk_guard
-            risk_guard = get_risk_guard()
-            risk_guard_status = risk_guard.get_status()
-        except Exception as e:
-            LOGGER.warning(f"Could not get risk guard status: {e}")
-            risk_guard_status = {"enabled": False, "error": str(e)}
+        }
+
+    # Get risk guard status
+    risk_guard_status = {}
+    try:
+        from core.risk.risk_guard import get_risk_guard
+        risk_guard = get_risk_guard()
+        risk_guard_status = risk_guard.get_status()
+    except Exception as e:
+        LOGGER.warning(f"Could not get risk guard status: {e}")
+        risk_guard_status = {"enabled": False, "error": str(e)}
 
         # Get latest predictions from database (Phase 2 fix)
         latest_predictions = {}
