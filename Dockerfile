@@ -36,10 +36,9 @@ ENV SIM_MODE=0 \
 # Expose port (Railway assigns PORT dynamically)
 EXPOSE 8080
 
-# Health check (use Railway's PORT)
+# Health check (Railway will use dynamic PORT, health check uses correct path)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -fsS http://localhost:${PORT:-8080}/ui/health || exit 1
+    CMD curl -fsS http://localhost:${PORT:-8080}/health || exit 1
 
-# Run the application with uvicorn
-# Use exec form to avoid double-shell invocation
-CMD ["uvicorn", "wolf_app:APP", "--host", "0.0.0.0", "--port", "8080"]
+# Run the application with uvicorn (MUST use shell form to expand $PORT)
+CMD sh -c "uvicorn wolf_app:APP --host 0.0.0.0 --port \${PORT:-8080}"
