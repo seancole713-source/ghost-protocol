@@ -11013,14 +11013,6 @@ async def orders_queue(limit: int = 100):
     return {"orders": items, "count": len(items)}
 
 
-@APP.get("/health")
-async def health():
-    """Fast health check - no expensive operations"""
-    import time
-
-    return {"ok": True, "ts": time.time()}
-
-
 @APP.get("/api/health/predictions")
 async def api_health_predictions():
     """
