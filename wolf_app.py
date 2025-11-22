@@ -5995,6 +5995,81 @@ async def api_predict_run_get(symbol: str):
     return await api_predict_run(body, credentials=None)
 
 
+@APP.get("/api/v3/accuracy/summary")
+async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
+    """
+    Get prediction accuracy summary.
+    
+    Shows:
+    - Total predictions reconciled
+    - Directional accuracy (% correct)
+    - Average confidence
+    - Performance by symbol
+    
+    Args:
+        symbol: Filter by symbol (optional)
+        days: Lookback period (default 30)
+    
+    Returns:
+        {
+            "ok": true,
+            "accuracy_pct": 65.5,
+            "total_predictions": 100,
+            "correct_predictions": 65,
+            "avg_confidence": 0.68,
+            "symbol": "SPY" or "ALL",
+            "period_days": 30
+        }
+    """
+    try:
+        from core.prediction_reconciliation import get_reconciliation
+        
+        reconciliation = get_reconciliation()
+        metrics = reconciliation.calculate_accuracy_metrics(symbol=symbol, period_days=days)
+        
+        return metrics
+    
+    except Exception as e:
+        LOGGER.error(f"Accuracy summary failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "symbol": symbol,
+            "days": days
+        }
+
+
+@APP.post("/api/v3/accuracy/reconcile")
+async def api_accuracy_reconcile():
+    """
+    Manually trigger prediction reconciliation.
+    
+    Finds all predictions with closed time windows and calculates outcomes.
+    
+    Returns:
+        {
+            "reconciled": 25,
+            "skipped": 5,
+            "errors": [],
+            "execution_time_s": 2.3
+        }
+    """
+    try:
+        from core.prediction_reconciliation import reconcile_predictions
+        
+        result = reconcile_predictions()
+        return result
+    
+    except Exception as e:
+        LOGGER.error(f"Reconciliation failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "reconciled": 0,
+            "skipped": 0
+        }
+
+
 def run_prediction(symbol: str, market: str = "stock", horizon: str = "SHORT") -> dict:
     """
     Wrapper function for beast_scheduler and other scheduled prediction systems.
