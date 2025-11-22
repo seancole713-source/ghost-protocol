@@ -23456,7 +23456,8 @@ try:
     APP.include_router(cockpit_v3_router)
     LOGGER.info("✅ Cockpit V3 LIVE endpoints registered - all panels wired to real data")
 except Exception as e:
-    LOGGER.warning(f"Cockpit V3 LIVE endpoints not loaded: {e}")
+    LOGGER.error(f"⚠️ Cockpit V3 LIVE endpoints not loaded: {e}", exc_info=True)
+    # Continue startup even if V3 endpoints fail to load
 
 # Cockpit V2 kept for fallback routes not in V3
 try:
@@ -23464,7 +23465,7 @@ try:
     APP.include_router(cockpit_v2_router)
     LOGGER.info("✅ Cockpit V2 API endpoints registered (fallback)")
 except Exception as e:
-    LOGGER.warning(f"Cockpit V2 API endpoints not loaded: {e}")
+    LOGGER.error(f"⚠️ Cockpit V2 API endpoints not loaded: {e}", exc_info=True)
 
 
 # ============================================================================
