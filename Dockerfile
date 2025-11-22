@@ -36,9 +36,8 @@ ENV SIM_MODE=0 \
 # Expose port (Railway assigns PORT dynamically)
 EXPOSE 8080
 
-# Health check (Railway will use dynamic PORT, health check uses correct path)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -fsS http://localhost:${PORT:-8080}/health || exit 1
+# No HEALTHCHECK in Dockerfile - Railway has its own health check system
+# Railway will hit /health endpoint directly via its load balancer
 
 # Run the application with uvicorn (MUST use shell form to expand $PORT)
 CMD sh -c "uvicorn wolf_app:APP --host 0.0.0.0 --port \${PORT:-8080}"
