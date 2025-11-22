@@ -11179,15 +11179,15 @@ async def api_cockpit_snapshot():
                 prediction_coverage=prediction_coverage,
                 risk_status=risk_status
             )
-    except Exception as e:
-        LOGGER.warning(f"Could not compute Ghost Score V2: {e}")
-        # Provide basic fallback score
-        ghost_score_v2 = {
-            "score": 72.5,
-            "status": "operational",
-            "grade": "B+",
-            "components": {
-                "data_quality": 75.0,
+        except Exception as e:
+            LOGGER.warning(f"Could not compute Ghost Score V2: {e}")
+            # Provide basic fallback score
+            ghost_score_v2 = {
+                "score": 72.5,
+                "status": "operational",
+                "grade": "B+",
+                "components": {
+                    "data_quality": 75.0,
                 "prediction_coverage": 65.0,
                 "risk_behavior": 80.0
             },
