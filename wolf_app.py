@@ -1116,10 +1116,12 @@ except Exception as e:
     _TEMPLATES = None  # type: ignore
 
 # Health check endpoints for Railway/Docker deployments
+# This endpoint responds immediately even during startup to pass Railway health checks
 @APP.get("/health", include_in_schema=False)
 async def health_check():
-    """Lightweight health check for Railway/Docker deployments"""
-    return {"status": "healthy", "service": "ghost-protocol"}
+    """Ultra-lightweight health check that responds immediately during startup.
+    Railway needs this to respond within 100s, but app startup can take longer."""
+    return {"status": "ok", "service": "ghost-protocol", "uptime": int(time.time() - _START_TS)}
 
 @APP.get("/api/health", include_in_schema=False)
 async def api_health_check():
