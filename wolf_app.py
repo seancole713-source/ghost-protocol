@@ -11188,21 +11188,21 @@ async def api_cockpit_snapshot():
                 "grade": "B+",
                 "components": {
                     "data_quality": 75.0,
-                "prediction_coverage": 65.0,
-                "risk_behavior": 80.0
-            },
-            "note": "Fallback score - module unavailable"
-        }
+                    "prediction_coverage": 65.0,
+                    "risk_behavior": 80.0
+                },
+                "note": "Fallback score - module unavailable"
+            }
 
-    # Get risk guard status
-    risk_guard_status = {}
-    try:
-        from core.risk.risk_guard import get_risk_guard
-        risk_guard = get_risk_guard()
-        risk_guard_status = risk_guard.get_status()
-    except Exception as e:
-        LOGGER.warning(f"Could not get risk guard status: {e}")
-        risk_guard_status = {"enabled": False, "error": str(e)}
+        # Get risk guard status
+        risk_guard_status = {}
+        try:
+            from core.risk.risk_guard import get_risk_guard
+            risk_guard = get_risk_guard()
+            risk_guard_status = risk_guard.get_status()
+        except Exception as e:
+            LOGGER.warning(f"Could not get risk guard status: {e}")
+            risk_guard_status = {"enabled": False, "error": str(e)}
 
         # Get latest predictions from database (Phase 2 fix)
         latest_predictions = {}
