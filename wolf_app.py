@@ -5826,7 +5826,21 @@ async def api_predict_run(
         current_price = float(price_data["price"])
         run_at = time.time()
 
-        # Diagnose feature extraction quality
+        # STEP 3: Extract features from all 6 data pillars
+        from core.data_pillars.feature_orchestrator import get_feature_orchestrator
+
+        orchestrator = get_feature_orchestrator()
+        feature_data = orchestrator.get_all_features(symbol, period=90)
+
+        # Log feature extraction results
+        LOGGER.info(
+            f"[{symbol}] Extracted {feature_data['available_count']}/{feature_data['feature_count']} features "
+            f"in {feature_data['execution_time_ms']:.0f}ms"
+        )
+
+        features = feature_data.get("features", {})
+
+        # Diagnose feature extraction quality (backward compat with Ghost Hunter)
         feature_status = diagnose_features(
             symbol=symbol,
             price_data={
@@ -5834,49 +5848,80 @@ async def api_predict_run(
                 "timestamp": price_data.get("timestamp", run_at),
                 "provider": price_data.get("provider", "unknown")
             },
-            volume_data=None,  # TODO: Wire volume data when available
-            momentum_data=None,  # TODO: Wire momentum data when available
-            context_data=None,  # TODO: Wire market context when available
-            sentiment_data=None  # TODO: Wire sentiment when available
+            volume_data={"spike": features.get("VOLUME_SPIKE", 0), "volatility": features.get("VOLATILITY_20D", 0)},
+            momentum_data={"rsi": features.get("RSI_14", 50), "macd": features.get("MACD_HISTOGRAM", 0)},
+            context_data={"spy_price": features.get("SPY_PRICE"), "vix": features.get("VIX_LEVEL")},
+            sentiment_data={"score": features.get("NEWS_SENTIMENT_SCORE", 0), "count": features.get("NEWS_COUNT_24H", 0)}
         )
 
         # Log feature status for diagnostics
         LOGGER.info(f"[{symbol}] Feature status", extra={"feature_status": feature_status.to_dict()})
 
-        # Generate 48h forecast using existing Ghost forecast engine
-        # Use 2h steps (25 points for 48h)
+        # Generate 48h forecast using ML prediction (enhanced logic)
         horizon_h = 48
         step_s = 7200  # 2 hours
         num_points = (horizon_h * 3600) // step_s
 
-        # Simple forecast: flat line with expanding confidence bands
-        # (Replace with actual Ghost forecast logic if available)
-        forecast_points = []
-        for i in range(num_points + 1):
-            ts = run_at + (i * step_s)
-            # Flat forecast at current price (conservative)
-            price = current_price
-            forecast_points.append((ts, price))
-
-        # Determine direction based on recent momentum (if available)
+        # Determine direction using real features
         direction = "FLAT"
-        base_confidence = 0.6
+        base_confidence = 0.55  # Start conservative
 
-        # Try to get recent price history for direction
+        # RSI-based direction signal
+        rsi = features.get("RSI_14")
+        if rsi is not None:
+            if rsi > 70:
+                direction = "DOWN"  # Overbought
+                base_confidence += 0.05
+            elif rsi < 30:
+                direction = "UP"  # Oversold
+                base_confidence += 0.05
+
+        # MACD histogram direction
+        macd_hist = features.get("MACD_HISTOGRAM")
+        if macd_hist is not None:
+            if macd_hist > 0:
+                direction = "UP" if direction != "DOWN" else direction
+                base_confidence += 0.03
+            elif macd_hist < 0:
+                direction = "DOWN" if direction != "UP" else direction
+                base_confidence += 0.03
+
+        # Sentiment boost
+        sentiment = features.get("NEWS_SENTIMENT_SCORE")
+        if sentiment is not None:
+            if sentiment > 0.3 and direction == "UP":
+                base_confidence += 0.05
+            elif sentiment < -0.3 and direction == "DOWN":
+                base_confidence += 0.05
+
+        # Price history momentum (fallback)
         try:
             hist = _get_price_history_cached(symbol, days=5)
             if hist and len(hist) >= 2:
                 prices = [h["price"] for h in hist if h.get("price")]
                 if prices:
                     recent_change_pct = (prices[-1] - prices[0]) / prices[0] * 100
-                    if recent_change_pct > 2:
+                    if recent_change_pct > 2 and direction != "DOWN":
                         direction = "UP"
-                        base_confidence = min(0.75, 0.6 + abs(recent_change_pct) / 20)
-                    elif recent_change_pct < -2:
+                        base_confidence += 0.05
+                    elif recent_change_pct < -2 and direction != "UP":
                         direction = "DOWN"
-                        base_confidence = min(0.75, 0.6 + abs(recent_change_pct) / 20)
+                        base_confidence += 0.05
         except Exception:
             pass
+
+        # Cap confidence at 0.85 (never claim certainty)
+        base_confidence = min(0.85, base_confidence)
+
+        # Generate forecast points (simple linear projection for now)
+        forecast_points = []
+        direction_multiplier = 1.01 if direction == "UP" else (0.99 if direction == "DOWN" else 1.0)
+
+        for i in range(num_points + 1):
+            ts = run_at + (i * step_s)
+            # Apply direction bias over time
+            price = current_price * (direction_multiplier ** i)
+            forecast_points.append((ts, price))
 
         # Apply confidence policy based on feature diagnostics
         confidence, confidence_metadata = build_confidence_with_diagnostics(
@@ -5891,14 +5936,19 @@ async def api_predict_run(
                 f"({confidence_metadata.get('confidence_adjustment', 'unknown')})"
             )
 
-        # Create prediction
+        # Create prediction with rich features
         prediction_id = predictor.create_prediction(
             symbol=symbol,
             forecast_points=forecast_points,
-            method="ghost-av1",
+            method="ghost-data-pillars-v1",
             confidence=confidence,
             direction=direction,
-            features={"current_price": current_price},
+            features={
+                "current_price": current_price,
+                "feature_count": feature_data["feature_count"],
+                "available_count": feature_data["available_count"],
+                **features  # Include all extracted features
+            },
             params={"horizon_h": horizon_h, "step_s": step_s},
             tag="",
         )
