@@ -599,7 +599,7 @@ async def get_hunter_feed():
                 _schedule_hunter_feed_refresh()
             except RuntimeError:
                 pass
-        return cached
+        return {"movers": cached, "timestamp": time.time()}
 
     try:
         _schedule_hunter_feed_refresh(force=True)
@@ -610,20 +610,23 @@ async def get_hunter_feed():
         await asyncio.sleep(0.4)
         cached = _get_cached_hunter_feed()
         if cached:
-            return cached
+            return {"movers": cached, "timestamp": time.time()}
 
-    return [
-        {
-            "symbol": "BTC",
-            "type": "crypto",
-            "name": "Bitcoin",
-            "price": 0.0,
-            "change": 0.0,
-            "volume": 0,
-            "confidence": 0,
-            "note": "Scanner warming up - check back in 60 seconds",
-        }
-    ]
+    return {
+        "movers": [
+            {
+                "symbol": "BTC",
+                "type": "crypto",
+                "name": "Bitcoin",
+                "price": 0.0,
+                "change": 0.0,
+                "volume": 0,
+                "confidence": 0,
+                "note": "Scanner warming up - check back in 60 seconds",
+            }
+        ],
+        "timestamp": time.time()
+    }
 
 
 # === VIP COINS + XRP ===
