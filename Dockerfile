@@ -39,5 +39,5 @@ EXPOSE 8080
 # No HEALTHCHECK in Dockerfile - Railway has its own health check system
 # Railway will hit /health endpoint directly via its load balancer
 
-# Run the application with uvicorn (MUST use shell form to expand $PORT)
-CMD sh -c "uvicorn wolf_app:APP --host 0.0.0.0 --port \${PORT:-8080}"
+# Run startup script which initializes databases then starts server
+CMD ["./start.sh"]
