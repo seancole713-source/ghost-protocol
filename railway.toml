@@ -20,4 +20,3 @@ startCommand = "sh -c 'uvicorn wolf_app:APP --host 0.0.0.0 --port ${PORT:-8080}'
 [[deploy.cron]]
 schedule = "0 3 * * *"
 command = "python scripts/railway_backup.py"
-pwd 
