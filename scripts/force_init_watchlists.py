@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FORCE initialize watchlists on Railway
+FORCE initialize all Ghost Protocol data systems on Railway
 Run this via Railway console: python3 scripts/force_init_watchlists.py
 """
 
@@ -100,18 +100,52 @@ def init_watchlist_manager():
         traceback.print_exc()
         return False
 
+def init_goals():
+    """Initialize default trading goals"""
+    try:
+        from core.goals_tracker import GoalsTracker
+        
+        goals = [
+            ("daily", 500.0),
+            ("weekly", 2500.0),
+            ("monthly", 10000.0),
+            ("yearly", 120000.0),
+        ]
+        
+        tracker = GoalsTracker()
+        existing = tracker.get_all_goals()
+        has_goals = any(g['target'] > 0 for g in existing.values())
+        
+        if has_goals:
+            print("Goals: Already configured (skipping)")
+            return True
+        
+        for period, target in goals:
+            tracker.set_goal(period, target)
+            print(f"  ✓ {period.capitalize()}: ${target:,.2f}")
+        
+        print("✅ Goals: 4 periods initialized")
+        return True
+    except Exception as e:
+        print(f"❌ Goals failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 if __name__ == "__main__":
-    print("🔥 FORCE initializing watchlists...")
+    print("🔥 FORCE initializing all Ghost Protocol data...")
     print("")
     
     sw_ok = init_smart_watcher()
     print("")
     wm_ok = init_watchlist_manager()
     print("")
+    goals_ok = init_goals()
+    print("")
     
-    if sw_ok and wm_ok:
-        print("✅ All watchlists initialized successfully!")
+    if sw_ok and wm_ok and goals_ok:
+        print("✅ All systems initialized successfully!")
         sys.exit(0)
     else:
-        print("⚠️  Some watchlists failed to initialize")
+        print("⚠️  Some systems failed to initialize")
         sys.exit(1)
