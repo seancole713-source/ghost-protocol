@@ -1130,72 +1130,13 @@ async def api_health_check():
 
 @APP.get("/", include_in_schema=False)
 async def _root_index():
-    """Serve the new cockpit by default; keep legacy UI at /ui.
-
-    Behavior order:
-    1) If USE_NEW_COCKPIT=0, serve legacy ui_dist if present.
-    2) Otherwise, serve templates/cockpit.html when available.
-    3) Fallback to legacy ui_dist index if present.
-    4) Fallback to /static/index.html if present.
-    5) Return a tiny inline page.
-    """
-    use_new = os.getenv("USE_NEW_COCKPIT", "1").strip() != "0"
-
-    # Prefer new cockpit when enabled: redirect to /cockpit to keep a single entrypoint
-    if use_new:
-        return RedirectResponse(url="/cockpit", status_code=307)
-
-    # Legacy ui_dist (root) when explicitly disabled or as fallback
-    try:
-        index_path = os.path.join(UI_DIR, HTML_INDEX)
-        if os.path.isdir(UI_DIR) and os.path.exists(index_path):
-            return FileResponse(index_path, media_type=MEDIA_TEXT_HTML)
-    except Exception:
-        pass
-
-    # Fallback: serve a static index.html if present
-    try:
-        static_index = os.path.join(STATIC_DIR, HTML_INDEX)
-        if os.path.isdir(STATIC_DIR) and os.path.exists(static_index):
-            return FileResponse(static_index, media_type=MEDIA_TEXT_HTML)
-    except Exception:
-        pass
-
-    # Last resort: tiny inline page with links
-    from fastapi import Response as _Resp
-
-    return _Resp(
-        """<!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="utf-8" />
-        <title>Ghost WOLF</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-    </head>
-    <body>
-        <h1>Ghost WOLF UI</h1>
-        <p>UI not found. Quick links:</p>
-        <ul>
-            <li><a href="/cockpit.html">/cockpit.html</a></li>
-            <li><a href="/ui">/ui</a></li>
-            <li><a href="/api/cockpit">/api/cockpit</a></li>
-            <li><a href="/metrics">/metrics</a></li>
-            <li><a href="/health">/health</a></li>
-        </ul>
-    </body>
-</html>""",
-        media_type=MEDIA_TEXT_HTML,
-        status_code=200,
-    )
+    """Single entrypoint: redirect root traffic to Cockpit V3."""
+    return RedirectResponse(url="/cockpit", status_code=307)
 
 
 @APP.head("/", include_in_schema=False)
 async def _root_head_redirect():
-    use_new = os.getenv("USE_NEW_COCKPIT", "1").strip() != "0"
-    if use_new:
-        return RedirectResponse(url="/cockpit", status_code=307)
-    # In legacy mode, return a minimal OK
-    return JSONResponse({"status": "ok"})
+    return RedirectResponse(url="/cockpit", status_code=307)
 
 
 @APP.get("/index.html", include_in_schema=False)
@@ -1349,8 +1290,9 @@ _LATEST_PREDICTIONS: dict[str, dict[str, Any]] = {}
 # Ghost Hunter V1: Symbol universe for multi-symbol predictions
 # Stocks: WOLF + liquid US stocks for testing
 HUNTER_STOCK_SYMBOLS = ["WOLF", "AAPL", "MSFT", "NVDA"]
-# Crypto: VIP coins + test entry
-HUNTER_CRYPTO_SYMBOLS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC", "BTC"]
+# Crypto: Only coins supported by major exchanges (removes unsupported meme tickers)
+# Removed: WEPE, LILPEPE, DORKL, SLOTH, APC (cause 404/429 provider storms)
+HUNTER_CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL", "DOGE", "ADA", "XRP"]
 
 def _classify_symbol_category(symbol: str) -> str:
     """
@@ -1359,13 +1301,12 @@ def _classify_symbol_category(symbol: str) -> str:
     Returns:
         'stocks' for stock symbols
         'crypto' for non-VIP crypto symbols
-        'vip' for VIP coins (WEPE, LILPEPE, DORKL, SLOTH, APC)
+        'vip' for VIP coins (legacy, no longer tracked)
     """
     symbol_upper = symbol.upper()
 
-    # Check VIP first (highest priority)
-    if symbol_upper in ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]:
-        return "vip"
+    # VIP coins removed (unsupported by exchanges, caused provider storms)
+    # Legacy VIP set: WEPE, LILPEPE, DORKL, SLOTH, APC
 
     # Check if in crypto symbols list
     if symbol_upper in CRYPTO_SYMBOLS or symbol_upper in HUNTER_CRYPTO_SYMBOLS:
