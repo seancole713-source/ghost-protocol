@@ -51,7 +51,7 @@
 
 ### **ABSOLUTE RULES**
 1. ❌ **NO SIMULATION** - SIM_MODE must be 0 or absent everywhere
-2. ❌ **NO PLACEHOLDERS** - No "your_key_here", "TODO", or fake data
+2. ❌ **NO PLACEHOLDERS** - No fake tokens (e.g., <sample-key>), no TODO stubs, no dummy data
 3. ❌ **NO AUTO-TRADING** - AUTO_TRADE_ENABLED=0 (brain only, no execution)
 4. ✅ **LIVE DATA ONLY** - All providers must use real API keys
 5. ✅ **REAL PREDICTIONS ONLY** - Every prediction must have real features

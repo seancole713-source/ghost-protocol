@@ -238,6 +238,8 @@ headers = {
 
 ```python
 # Verify webhook signature
+import os
+
 def verify_ghost_webhook(request):
     signature = request.headers.get("X-Ghost-Signature")
     timestamp = request.headers.get("X-Ghost-Timestamp")
@@ -249,11 +251,8 @@ def verify_ghost_webhook(request):
     
     # Recompute signature
     message = f"{timestamp}.".encode() + body
-    expected_sig = hmac.new(
-        YOUR_WEBHOOK_SECRET.encode(),
-        message,
-        hashlib.sha256
-    ).hexdigest()
+    secret = os.environ["GHOST_WEBHOOK_SECRET"].encode()
+    expected_sig = hmac.new(secret, message, hashlib.sha256).hexdigest()
     
     return hmac.compare_digest(signature, expected_sig)
 ```

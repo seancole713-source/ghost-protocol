@@ -31,49 +31,53 @@ echo ""
 # 1) Live env configuration
 echo -e "${BLUE}[1/6]${NC} Configuring environment..."
 
-# Check if .env file exists
-if [ ! -f ".env" ]; then
-    echo -e "${YELLOW}⚠️  No .env file found. Creating from template...${NC}"
-    cat > .env << 'EOL'
-# GHOST Environment Configuration
-SIM_MODE=0
-ALPHAVANTAGE_API_KEY=your_alphavantage_key_here
-POLYGON_API_KEY=your_polygon_key_here
-COINGECKO_API_KEY=your_coingecko_key_here
-GHOST_API_TOKEN=your_strong_token_here
-ALLOWED_ORIGINS=*
+ENV_FILE=".env.local"
+if [ -f "$ENV_FILE" ]; then
+    echo -e "${GREEN}✓ Using $ENV_FILE overrides${NC}"
+elif [ -f ".env" ]; then
+    ENV_FILE=".env"
+    echo -e "${YELLOW}⚠️  Using tracked .env file; prefer .env.local for secrets${NC}"
+else
+    cat <<'MSG'
+No environment file detected.
 
-# Optional configurations
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-PRICE_TTL_OPEN_S=60
-PRICE_TTL_S=30
-EOL
-    echo -e "${YELLOW}⚠️  Please edit .env file with your actual API keys${NC}"
-    echo -e "${YELLOW}   Then run this script again${NC}"
+Fetch the canonical values directly from Railway (Project "tender-benevolence" → Service "ghost-protocol")
+and write only the overrides you need to `.env.local`:
+
+  railway variables --service ghost-protocol --json > /tmp/ghost_env.json
+  # copy the values you actually need into .env.local (which stays ignored)
+
+Then re-run this script.
+MSG
     exit 1
 fi
 
-# Load environment variables
-export $(grep -v '^#' .env | xargs)
+# Load environment variables (bash will ignore comments)
+set -a
+source "$ENV_FILE"
+set +a
 
 # Validate critical env vars
-if [ "$ALPHAVANTAGE_API_KEY" = "your_alphavantage_key_here" ] || [ -z "$ALPHAVANTAGE_API_KEY" ]; then
-    echo -e "${RED}❌ ALPHAVANTAGE_API_KEY not configured in .env${NC}"
-    echo -e "${YELLOW}   Get free key from: https://www.alphavantage.co/support/#api-key${NC}"
+if [ -z "${ALPHAVANTAGE_API_KEY:-}" ]; then
+    echo -e "${RED}❌ ALPHAVANTAGE_API_KEY missing. Pull it from Railway Variables.${NC}"
     exit 1
 fi
 
-if [ -z "$GHOST_API_TOKEN" ] || [ "$GHOST_API_TOKEN" = "your_strong_token_here" ]; then
-    echo -e "${YELLOW}⚠️  Generating random GHOST_API_TOKEN...${NC}"
+if [ -z "${POLYGON_API_KEY:-}" ]; then
+    echo -e "${RED}❌ POLYGON_API_KEY missing. Pull it from Railway Variables.${NC}"
+    exit 1
+fi
+
+if [ -z "${GHOST_API_TOKEN:-}" ]; then
+    echo -e "${YELLOW}⚠️  Generating temporary GHOST_API_TOKEN for local use...${NC}"
     export GHOST_API_TOKEN=$(openssl rand -hex 32)
-    echo "GHOST_API_TOKEN=$GHOST_API_TOKEN" >> .env
 fi
 
 echo -e "${GREEN}✅ Environment configured${NC}"
-echo "   SIM_MODE: $SIM_MODE"
-echo "   ALPHAVANTAGE_API_KEY: ${ALPHAVANTAGE_API_KEY:0:10}..."
-echo "   POLYGON_API_KEY: ${POLYGON_API_KEY:0:10}..."
+echo "   ENV_FILE: $ENV_FILE"
+echo "   SIM_MODE: ${SIM_MODE:-unset}"
+echo "   ALPHAVANTAGE_API_KEY: ${ALPHAVANTAGE_API_KEY:0:6}***"
+echo "   POLYGON_API_KEY: ${POLYGON_API_KEY:0:6}***"
 echo "   PRICE_TTL_OPEN_S: ${PRICE_TTL_OPEN_S:-60}"
 echo ""
 

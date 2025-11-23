@@ -64,14 +64,14 @@ In Railway dashboard, add these variables:
 
 ```bash
 # Required
-GHOST_API_TOKEN=your_secret_token_here
-POLYGON_API_KEY=your_polygon_key
-ALPHAVANTAGE_API_KEY=your_alphavantage_key
+GHOST_API_TOKEN=<Railway:GHOST_API_TOKEN>
+POLYGON_API_KEY=<Railway:POLYGON_API_KEY>
+ALPHAVANTAGE_API_KEY=<Railway:ALPHAVANTAGE_API_KEY>
 
 # Optional
 GHOST_FOCUS_TICKER=WOLF
-TELEGRAM_BOT_TOKEN=your_telegram_token
-TELEGRAM_CHAT_ID=your_chat_id
+TELEGRAM_BOT_TOKEN=<Railway:TELEGRAM_BOT_TOKEN>
+TELEGRAM_CHAT_ID=<Railway:TELEGRAM_CHAT_ID>
 WOLF_PERSIST_MODE=sqlite
 ```
 
@@ -229,12 +229,12 @@ cd GHOST
 
 ```bash
 cat > .env.production << 'EOF'
-GHOST_API_TOKEN=your_secret_token
-POLYGON_API_KEY=your_polygon_key
-ALPHAVANTAGE_API_KEY=your_alphavantage_key
+GHOST_API_TOKEN=<Railway:GHOST_API_TOKEN>
+POLYGON_API_KEY=<Railway:POLYGON_API_KEY>
+ALPHAVANTAGE_API_KEY=<Railway:ALPHAVANTAGE_API_KEY>
 GHOST_FOCUS_TICKER=WOLF
-TELEGRAM_BOT_TOKEN=your_telegram_token
-TELEGRAM_CHAT_ID=your_chat_id
+TELEGRAM_BOT_TOKEN=<Railway:TELEGRAM_BOT_TOKEN>
+TELEGRAM_CHAT_ID=<Railway:TELEGRAM_CHAT_ID>
 WOLF_PERSIST_MODE=sqlite
 WOLF_SQLITE_PATH=/app/data/wolf.db
 EOF
@@ -392,8 +392,8 @@ Use AWS ECS/Fargate for automatic scaling based on traffic.
 ```bash
 # .env.production (add to .gitignore)
 GHOST_API_TOKEN=$(openssl rand -hex 32)
-POLYGON_API_KEY=your_key_here
-ALPHAVANTAGE_API_KEY=your_key_here
+POLYGON_API_KEY=<Railway:POLYGON_API_KEY>
+ALPHAVANTAGE_API_KEY=<Railway:ALPHAVANTAGE_API_KEY>
 ```
 
 ### 2. Firewall Configuration

@@ -202,7 +202,12 @@ echo "============================================"
 echo ""
 echo "Next steps:"
 echo "1. If position is missing, run:"
-echo "   curl -X POST $GHOST_URL/api/positions/import -H 'Authorization: Bearer \$GHOST_API_TOKEN' -H 'Content-Type: application/json' --data '{\"reset\":true,\"set_focus\":true,\"positions\":[{\"symbol\":\"WOLF\",\"qty\":YOUR_QTY,\"avg_cost\":YOUR_COST}]}'"
+echo "   LIVE_QTY=\$(railway variables get WOLF_QTY)"
+echo "   LIVE_AVG=\$(railway variables get WOLF_AVG_COST)"
+echo "   curl -X POST $GHOST_URL/api/positions/import \\\
+    -H 'Authorization: Bearer \$GHOST_API_TOKEN' \\\
+    -H 'Content-Type: application/json' \\\
+    --data '{\"reset\":true,\"set_focus\":true,\"positions\":[{\"symbol\":\"WOLF\",\"qty\":'\"\$LIVE_QTY\"',\"avg_cost\":'\"\$LIVE_AVG\"'}]}'"
 echo ""
 echo "2. Monitor at market open (9:30 AM ET) to verify live prices"
 echo ""

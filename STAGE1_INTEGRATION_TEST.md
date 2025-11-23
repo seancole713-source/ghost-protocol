@@ -319,7 +319,7 @@ ______________________________________________________________________
 ```bash
 # Request an AI decision (requires auth token)
 curl -s -X POST http://localhost:5000/api/ai/decide \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer $(railway variables get GHOST_API_TOKEN)" \
   -H "Content-Type: application/json" | jq
 ```
 

@@ -47,14 +47,16 @@ ______________________________________________________________________
 # Follow prompts, get token like: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 
 # Set webhook (after deploying to Railway)
-curl "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://your-app.railway.app/telegram/webhook"
+TELEGRAM_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
+RAILWAY_URL="https://ghost-production-xxxx.up.railway.app"
+curl "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${RAILWAY_URL}/telegram/webhook"
 ```
 
 ### 2. Get Your Chat ID
 
 ```bash
 # Send a message to your bot, then:
-curl "https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates" | jq
+curl "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates" | jq
 # Look for "chat": {"id": 123456789}
 ```
 

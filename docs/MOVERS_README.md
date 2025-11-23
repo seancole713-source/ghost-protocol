@@ -151,8 +151,8 @@ SIM_MODE="0"
 DELISTED_MODE="0"
 PRICE_STRICT_LIVE="1"
 DATA_FRESHNESS_SEC="60"
-TELEGRAM_BOT_TOKEN="your_bot_token"
-TELEGRAM_CHAT_ID="your_chat_id"
+TELEGRAM_BOT_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
+TELEGRAM_CHAT_ID="$(railway variables get TELEGRAM_CHAT_ID)"
 ```
 
 ### Providers
@@ -160,8 +160,8 @@ TELEGRAM_CHAT_ID="your_chat_id"
 CRYPTO_PRICE_SOURCE="coingecko"
 CRYPTO_QUORUM="coingecko,binance,coinbase"
 STOCK_PRICE_SOURCE="polygon"
-POLYGON_API_KEY="your_key"
-ALPHAVANTAGE_API_KEY="your_key"
+POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
+ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 ```
 
 ### Scanner Tuning

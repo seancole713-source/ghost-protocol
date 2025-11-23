@@ -184,13 +184,13 @@ DATA_FRESHNESS_SEC="60"
 PRICE_MIN_PROVIDERS="1"
 PRICE_REQUIRE_QUORUM="0"
 
-# Telegram
-TELEGRAM_BOT_TOKEN="your_bot_token"
-TELEGRAM_CHAT_ID="your_chat_id"
+# Telegram (pull from Railway → Variables)
+TELEGRAM_BOT_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
+TELEGRAM_CHAT_ID="$(railway variables get TELEGRAM_CHAT_ID)"
 
-# API Keys
-POLYGON_API_KEY="your_key"
-ALPHAVANTAGE_API_KEY="your_key"
+# API Keys (also stored in Railway)
+POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
+ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 ```
 
 ### Startup Validation (Implemented)

@@ -20,22 +20,28 @@ ______________________________________________________________________
 
 ## 🔧 Setup (First Time Only)
 
-### 1. Edit your API keys in .env file:
+### 1. Pull secrets from Railway into `.env.local`
+
+All production-safe values already live in Railway → **tender-benevolence / ghost-protocol / Variables**. Copy only the
+keys you need into a local override file (which stays ignored):
 
 ```bash
-nano .env
+# Inspect current values (never commit this output)
+railway variables --service ghost-protocol --environment production --json > /tmp/ghost-env.json
 ```
 
-Add your real keys:
+Create `.env.local` (gitignored) and paste the fields you actually need:
 
 ```env
-ALPHAVANTAGE_API_KEY=your_real_key_here
-POLYGON_API_KEY=your_polygon_key_here
-TELEGRAM_BOT_TOKEN=optional_for_notifications
-TELEGRAM_CHAT_ID=optional_for_notifications
+# .env.local — fill these with Railway values
+ALPHAVANTAGE_API_KEY=
+POLYGON_API_KEY=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
-**Get free Alpha Vantage key:** https://www.alphavantage.co/support/#api-key
+Fill those blanks with the dashboard or run `railway variables get <NAME>` and copy the response. If you need to issue new
+keys (e.g., Alpha Vantage), rotate them in Railway afterward.
 
 ______________________________________________________________________
 
@@ -55,9 +61,9 @@ pip install -r requirements.txt
 
 ```bash
 export SIM_MODE=0
-export ALPHAVANTAGE_API_KEY="your_key"
-export POLYGON_API_KEY="your_key"
-export GHOST_API_TOKEN="strong_random_token"
+export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY 2>/dev/null)"
+export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY 2>/dev/null)"
+export GHOST_API_TOKEN="$(railway variables get GHOST_API_TOKEN 2>/dev/null)"
 export ALLOWED_ORIGINS="*"
 export PRICE_TTL_OPEN_S=60
 ```
@@ -257,8 +263,8 @@ docker build -t ghost:v10.2 .
 docker run -d \
   --name ghost \
   -p 5000:5000 \
-  -e ALPHAVANTAGE_API_KEY="your_key" \
-  -e POLYGON_API_KEY="your_key" \
+  -e ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)" \
+  -e POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)" \
   -v $(pwd)/data:/app/data \
   ghost:v10.2
 

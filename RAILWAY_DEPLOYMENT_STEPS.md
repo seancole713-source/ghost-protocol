@@ -64,31 +64,24 @@ railway init
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-STEP 5: SET ENVIRONMENT VARIABLES
+STEP 5: SYNC ENVIRONMENT VARIABLES
 
-Railway needs your API keys. Set them one by one:
-
-```bash
-# Required variables
-railway variables set GHOST_API_TOKEN="supersecret123jamaica713"
-railway variables set POLYGON_API_KEY="your_polygon_key_here"
-railway variables set ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK"
-
-# Optional (but recommended)
-railway variables set GHOST_FOCUS_TICKER="WOLF"
-railway variables set WOLF_PERSIST_MODE="sqlite"
-
-# If you have Telegram configured
-railway variables set TELEGRAM_BOT_TOKEN="your_telegram_bot_token"
-railway variables set TELEGRAM_CHAT_ID="your_telegram_chat_id"
-```
-
-💡 TIP: Get your current keys:
+All canonical secrets already live inside Railway → **tender-benevolence / ghost-protocol / Variables**.
+Do **not** paste placeholder strings into the repo—pull the real values from that screen (or via CLI) and
+reapply them to the new service:
 
 ```bash
-echo "POLYGON_API_KEY: $(printenv POLYGON_API_KEY)"
-echo "ALPHAVANTAGE_API_KEY: $(printenv ALPHAVANTAGE_API_KEY)"
+# Export the production env to JSON (safe locally, never commit)
+railway variables --service ghost-protocol --environment production --json > prod-env.json
+
+# Reapply only the fields you actually need (example)
+railway variables set POLYGON_API_KEY "$(jq -r '.POLYGON_API_KEY' prod-env.json)"
+railway variables set ALPHAVANTAGE_API_KEY "$(jq -r '.ALPHAVANTAGE_API_KEY' prod-env.json)"
+railway variables set GHOST_API_TOKEN "$(jq -r '.GHOST_API_TOKEN' prod-env.json)"
 ```
+
+Use the dashboard if you prefer a GUI: Settings → Variables → “Copy value”. Never invent stand-in strings;
+the zero-placeholder gate will block deploys if those appear anywhere in the repo.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -185,16 +185,8 @@ ______________________________________________________________________
 - [ ] **Environment variable documentation**: Create `ENV_VARS.md` listing all required
   vars
 
-- [ ] **Template file**: Create `secrets.env.template` with placeholder values:
-
-  ```bash
-  # secrets.env.template (safe to commit)
-  POLYGON_API_KEY=your_polygon_key_here
-  ALPHAVANTAGE_API_KEY=your_alphavantage_key_here
-  GHOST_API_TOKEN=generate_with_openssl_rand_hex_32
-  TELEGRAM_BOT_TOKEN=get_from_botfather
-  TELEGRAM_CHAT_ID=your_telegram_chat_id
-  ```
+- [ ] **Template file**: Create `secrets.env.template` that lists required keys with empty values plus a comment pointing
+  engineers back to Railway → Variables. Never embed sample secrets in version control.
 
 - [ ] **Railway-only secrets**: Document that production should ONLY use Railway
   environment variables, never local files

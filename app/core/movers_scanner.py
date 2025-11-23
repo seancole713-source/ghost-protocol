@@ -22,7 +22,7 @@ Configuration:
         - Individual price fetch per symbol
         - Lowest API cost, limited universe
     
-    POLYGON_API_KEY=<your_key>
+    POLYGON_API_KEY=<set via Railway Variables>
         - Required for both snapshot and legacy modes
         - Free tier: 5 calls/min = 7,200/day
         - Snapshot mode uses only 2 calls/scan

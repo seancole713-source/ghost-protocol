@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "${REPO_ROOT}"
+
+echo "🔍 Running Ghost pre-push smoke test (local)..."
+bash scripts/ghost_smoke.sh local || {
+  echo "❌ Pre-push smoke test failed. Push blocked."
+  exit 1
+}
+
+echo "✅ Pre-push smoke test passed. Proceeding with push."

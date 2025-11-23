@@ -328,7 +328,7 @@ pip install -r requirements.txt
 ### 2. Set API Keys (Optional)
 
 ```bash
-export POLYGON_API_KEY="your_polygon_key"  # For real-time data
+export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"  # For real-time data
 # EDGAR requires no API key (100% free)
 ```
 
@@ -650,10 +650,10 @@ ______________________________________________________________________
 
 ```bash
 # Required for real-time data (optional)
-export POLYGON_API_KEY="your_key_here"
+export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
 
 # Optional for enhanced sentiment
-export ALPHAVANTAGE_API_KEY="your_key"
+export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 
 # SEC EDGAR requires User-Agent (set in code)
 # User-Agent: GHOST Trading Platform info@ghosttrading.ai

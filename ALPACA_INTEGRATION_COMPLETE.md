@@ -31,8 +31,8 @@ Comprehensive test suite that validates:
 ```bash
 # Configure environment
 export BROKER=alpaca
-export ALPACA_KEY_ID=your_key
-export ALPACA_SECRET_KEY=your_secret
+export ALPACA_KEY_ID="$(railway variables get ALPACA_KEY_ID)"
+export ALPACA_SECRET_KEY="$(railway variables get ALPACA_SECRET_KEY)"
 export ALPACA_PAPER=1
 
 # Run tests
@@ -120,8 +120,8 @@ ALPACA_PAPER | 1 (default) | 0 | **Critical: 0 = LIVE** | | APCA_API_BASE_URL | 
 5. **Update environment:**
    ```bash
    export ALPACA_PAPER=0
-   export ALPACA_KEY_ID=live_key_xxx
-   export ALPACA_SECRET_KEY=live_secret_xxx
+    export ALPACA_KEY_ID="<paste-live-key-from-Alpaca>"
+    export ALPACA_SECRET_KEY="<paste-live-secret-from-Alpaca>"
    ```
 6. **Restart Ghost:**
    ```bash
@@ -430,8 +430,8 @@ ______________________________________________________________________
 
    ```bash
    export BROKER=alpaca
-   export ALPACA_KEY_ID=your_paper_key
-   export ALPACA_SECRET_KEY=your_paper_secret
+    export ALPACA_KEY_ID="$(railway variables get ALPACA_KEY_ID)"
+    export ALPACA_SECRET_KEY="$(railway variables get ALPACA_SECRET_KEY)"
    export ALPACA_PAPER=1
 
    python test_alpaca_broker.py
@@ -452,6 +452,9 @@ ______________________________________________________________________
      }'
 
    # Real paper order
+    ```
+
+    ```bash
    curl -X POST http://localhost:8444/api/trade/submit \
      -H "Content-Type: application/json" \
      -d '{
@@ -463,6 +466,9 @@ ______________________________________________________________________
      }'
    ```
 
+    ```
+
+    ```bash
 5. **Monitor Execution**
 
    ```bash

@@ -31,9 +31,10 @@ print(f"ALPHAVANTAGE_API_KEY: {'SET' if alpha else 'MISSING'}")
 
 if not polygon or not alpha:
     print("\n⚠️  WARNING: API keys not found in secrets.env!")
-    print("Add these to secrets.env:")
-    print("POLYGON_API_KEY=your_key_here")
-    print("ALPHAVANTAGE_API_KEY=your_key_here\n")
+    print("Pull them from Railway → Variables and add to secrets.env or export them before launch.")
+    print("Example:")
+    print("POLYGON_API_KEY=\"$(railway variables get POLYGON_API_KEY)\"")
+    print("ALPHAVANTAGE_API_KEY=\"$(railway variables get ALPHAVANTAGE_API_KEY)\"\n")
 
 # Start uvicorn (without --reload to preserve environment)
 print("\nStarting Ghost server...\n")

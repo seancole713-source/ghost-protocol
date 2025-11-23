@@ -130,7 +130,7 @@ Add to your `.env` or export:
 ```bash
 export AGENTS_ENABLED=1
 export AI_PROVIDER=openai
-export OPENAI_API_KEY="sk-proj-YOUR_KEY_HERE"
+export OPENAI_API_KEY="$(railway variables get OPENAI_API_KEY)"
 export AGENT_MODEL="gpt-4o-mini"
 ```
 
@@ -173,8 +173,8 @@ curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates" | jq '.resul
 **Configure:**
 
 ```bash
-export TELEGRAM_BOT_TOKEN="your-token"
-export TELEGRAM_CHAT_ID="your-chat-id"
+export TELEGRAM_BOT_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
+export TELEGRAM_CHAT_ID="$(railway variables get TELEGRAM_CHAT_ID)"
 ```
 
 **Set Webhook (if public):**

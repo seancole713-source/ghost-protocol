@@ -283,7 +283,7 @@ ______________________________________________________________________
 
    ```bash
    curl -X POST http://localhost:5000/api/bank/add_position \
-     -d '{"symbol":"WOLF","quantity":YOUR_SHARES,"price":YOUR_AVG}'
+      -d '{"symbol":"WOLF","quantity":'"$(railway variables get WOLF_QTY)"',"price":'"$(railway variables get WOLF_AVG_COST)"'}'
    ```
 
 4. **Update macro and fetch news**:

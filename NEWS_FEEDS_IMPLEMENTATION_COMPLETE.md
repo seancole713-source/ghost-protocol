@@ -360,8 +360,8 @@ ______________________________________________________________________
 ### **Adding More Symbols**
 
 ```bash
-# Edit secrets.env
-REUTERS_SYMBOLS=WOLF,NVDA,PLTR,TSLA,AMD,YOUR_STOCK_HERE
+# Edit secrets.env (example adds MSFT)
+REUTERS_SYMBOLS=WOLF,NVDA,PLTR,TSLA,AMD,MSFT
 
 # Restart server
 pkill -f uvicorn && uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload
@@ -371,7 +371,7 @@ pkill -f uvicorn && uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload
 
 ```bash
 # Edit secrets.env
-REUTERS_KEYWORDS=bankruptcy,chapter 11,YOUR_KEYWORD_HERE
+REUTERS_KEYWORDS=bankruptcy,chapter 11,chip shortage
 
 # Example for crypto:
 REUTERS_KEYWORDS=bankruptcy,chapter 11,bitcoin,ethereum,crypto crash

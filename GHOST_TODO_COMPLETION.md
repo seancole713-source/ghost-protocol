@@ -297,8 +297,8 @@ curl https://web-production-8e9a0.up.railway.app/health/detailed | jq
 ### View AI Memory:
 
 ```bash
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  https://web-production-8e9a0.up.railway.app/ai/memory/stats
+curl -H "Authorization: Bearer $(railway variables get GHOST_API_TOKEN)" \
+   https://web-production-8e9a0.up.railway.app/ai/memory/stats
 ```
 
 ______________________________________________________________________

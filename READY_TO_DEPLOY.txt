@@ -104,10 +104,10 @@ If script doesn't work, do it manually:
    → Choose "Create new project"
    → Name: ghost-trading
 
-3. Set variables:
-   railway variables set GHOST_API_TOKEN="supersecret123jamaica713"
-   railway variables set POLYGON_API_KEY="your_key"
-   railway variables set ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK"
+3. Set variables (copy the production values directly from Railway → Variables):
+  railway variables set GHOST_API_TOKEN "$(openssl rand -hex 32)"
+  railway variables set POLYGON_API_KEY "$(railway variables get POLYGON_API_KEY --environment production)"
+  railway variables set ALPHAVANTAGE_API_KEY "$(railway variables get ALPHAVANTAGE_API_KEY --environment production)"
 
 4. Deploy:
    railway up

@@ -19,7 +19,7 @@ os.environ["POLYGON_API_KEY"] = os.getenv("POLYGON_API_KEY", "")
 
 if not os.environ["POLYGON_API_KEY"]:
     print("❌ ERROR: POLYGON_API_KEY not set")
-    print("   Set it with: export POLYGON_API_KEY=your_key_here")
+    print("   Set it with: export POLYGON_API_KEY=\"$(railway variables get POLYGON_API_KEY)\"")
     sys.exit(1)
 
 from app.core.movers_scanner import (

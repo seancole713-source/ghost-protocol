@@ -89,7 +89,7 @@ ______________________________________________________________________
 
 ## 🗑️ WHAT WAS REMOVED (Placeholders)
 
-### Removed from secrets.env:
+### Removed from secrets.env
 
 ```bash
 # ❌ REMOVED - Never implemented
@@ -127,7 +127,7 @@ DATA_FRESHNESS_SEC              # Use specific TTLs
 ALERT_CHANNEL                   # Use TELEGRAM_BOT_TOKEN/ALERT_WEBHOOK_URLS
 ```
 
-### Cleaned Code Comments:
+### Cleaned Code Comments
 
 - ✅ Removed "currently not implemented" comment from ChatGPT provider
 - ✅ Removed "placeholder" comments from wolf_app.py
@@ -138,15 +138,15 @@ ______________________________________________________________________
 
 ## 📊 REAL VARIABLES YOU NEED
 
-### Required (Railway):
+### Required (Railway)
 
 ```bash
 # Authentication & Security
-GHOST_API_TOKEN=your_token
-POLYGON_API_KEY=your_key
-ALPHAVANTAGE_API_KEY=your_key
-TELEGRAM_BOT_TOKEN=your_token
-TELEGRAM_CHAT_ID=your_id
+GHOST_API_TOKEN="$(railway variables get GHOST_API_TOKEN)"
+POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
+ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
+TELEGRAM_BOT_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
+TELEGRAM_CHAT_ID="$(railway variables get TELEGRAM_CHAT_ID)"
 
 # OpenAI (for agent & research)
 OPENAI_API_KEY=sk-...
@@ -168,14 +168,14 @@ WOLF_PERSIST_MODE=sqlite
 
 # Security
 CSP_MODE=prod
-ALLOWED_ORIGINS=https://your-railway-url
+ALLOWED_ORIGINS=https://ghost-production-xxxx.up.railway.app
 
 # Mode
 SIM_MODE=0
 GHOST_FOCUS_TICKER=WOLF
 ```
 
-### Optional (Nice to Have):
+### Optional (Nice to Have)
 
 ```bash
 NEWS_SENTIMENT_ON=1
@@ -191,7 +191,7 @@ ______________________________________________________________________
 
 ## 🔄 HOW TO USE AGENTKIT
 
-### In Code:
+### In Code
 
 ```python
 from llm.agent import run_once
@@ -223,14 +223,14 @@ print(decision)
 # }
 ```
 
-### Railway Setup:
+### Railway Setup
 
 1. Set `AGENTKIT_ENABLED=true`
 2. Set `OPENAI_AGENT_API_KEY=sk-...` (or use `OPENAI_API_KEY`)
 3. Redeploy
 4. Agent will use persistent Assistants API
 
-### To Disable AgentKit:
+### To Disable AgentKit
 
 - Set `AGENTKIT_ENABLED=false` → Falls back to simple chat completions
 - Still works, just no persistent threads/memory
@@ -302,7 +302,7 @@ ______________________________________________________________________
 
 ## ❌ WHAT'S NOT BUILT (and never will be with placeholders)
 
-### Never Implemented:
+### Never Implemented
 
 - ❌ Vector database integration
 - ❌ Model failover chains
@@ -311,7 +311,7 @@ ______________________________________________________________________
 - ❌ Agent roles/policies framework
 - ❌ OPENAI_ORG_ID usage
 
-### Why They're Not Needed:
+### Why They're Not Needed
 
 - SQLite handles persistence fine
 - OpenAI rate limits are handled with retry
@@ -323,7 +323,7 @@ ______________________________________________________________________
 
 ## 📋 MIGRATION CHECKLIST
 
-### If You Had Placeholder Vars in Railway:
+### If You Had Placeholder Vars in Railway
 
 - [ ] Remove `VECTOR_DB_URL`
 - [ ] Remove `VECTOR_DB_API_KEY`
@@ -343,13 +343,13 @@ ______________________________________________________________________
 - [ ] Remove `DATA_FRESHNESS_SEC`
 - [ ] Remove `ALERT_CHANNEL`
 
-### Add These (if missing):
+### Add These (if missing)
 
 - [ ] `AGENTKIT_ENABLED=true`
 - [ ] `RESEARCH_LLM_ON=1`
 - [ ] `RESEARCH_LLM_MODEL=gpt-4o-mini`
-- [ ] `WOLF_QTY=your_quantity`
-- [ ] `WOLF_AVG_COST=your_avg`
+- [ ] `railway variables set WOLF_QTY <live_quantity>`
+- [ ] `railway variables set WOLF_AVG_COST <live_avg_cost>`
 - [ ] `WOLF_PERSIST_MODE=sqlite`
 - [ ] `CSP_MODE=prod`
 - [ ] `ALLOWED_ORIGINS=https://your-url`

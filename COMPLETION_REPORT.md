@@ -386,8 +386,8 @@ pip install -r requirements.txt
 
 # 3. Set environment variables
 export GHOST_API_TOKEN=$(openssl rand -hex 12)
-export POLYGON_API_KEY="your_key"
-export ALPHAVANTAGE_API_KEY="your_key"
+export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
+export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 export REUTERS_FEEDS_ON=0  # Disable if DNS issues
 
 # 4. Start Ghost

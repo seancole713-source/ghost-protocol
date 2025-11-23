@@ -34,11 +34,12 @@ pip install -r requirements.txt
 
 # 6. Configure secrets
 cat > secrets.env << 'EOF'
-GHOST_API_TOKEN=supersecret123jamaica713
-POLYGON_API_KEY=your_polygon_key
-ALPHAVANTAGE_API_KEY=your_alpha_key
-TELEGRAM_BOT_TOKEN=your_telegram_token
-TELEGRAM_CHAT_ID=your_chat_id
+# Copy the production values from Railway → Variables
+GHOST_API_TOKEN=<Railway:GHOST_API_TOKEN>
+POLYGON_API_KEY=<Railway:POLYGON_API_KEY>
+ALPHAVANTAGE_API_KEY=<Railway:ALPHAVANTAGE_API_KEY>
+TELEGRAM_BOT_TOKEN=<Railway:TELEGRAM_BOT_TOKEN>
+TELEGRAM_CHAT_ID=<Railway:TELEGRAM_CHAT_ID>
 EOF
 
 # 7. Run with systemd (auto-restart on crash)
@@ -136,16 +137,20 @@ CMD ["uvicorn", "wolf_app:app", "--host", "0.0.0.0", "--port", "5000"]
 #### B. Deploy to Cloud Run (Google)
 ```bash
 # 1. Build and push to Google Container Registry
-gcloud builds submit --tag gcr.io/YOUR_PROJECT/ghost
+GCP_PROJECT_ID="$(gcloud config get-value project)"
+gcloud builds submit --tag "gcr.io/${GCP_PROJECT_ID}/ghost"
 
 # 2. Deploy to Cloud Run
+export GHOST_API_TOKEN=$(openssl rand -hex 32)
+export POLYGON_API_KEY=$(railway variables get POLYGON_API_KEY)
+export ALPHAVANTAGE_API_KEY=$(railway variables get ALPHAVANTAGE_API_KEY)
+
 gcloud run deploy ghost \
-  --image gcr.io/YOUR_PROJECT/ghost \
+  --image "gcr.io/${GCP_PROJECT_ID}/ghost" \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars GHOST_API_TOKEN=your_token \
-  --set-env-vars POLYGON_API_KEY=your_key \
+  --set-env-vars GHOST_API_TOKEN=$GHOST_API_TOKEN,POLYGON_API_KEY=$POLYGON_API_KEY,ALPHAVANTAGE_API_KEY=$ALPHAVANTAGE_API_KEY \
   --min-instances 1
 ```
 
@@ -158,8 +163,11 @@ gcloud run deploy ghost \
 # 1. Push to ECR
 aws ecr create-repository --repository-name ghost
 docker build -t ghost .
-docker tag ghost:latest YOUR_ECR_URL/ghost:latest
-docker push YOUR_ECR_URL/ghost:latest
+AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+AWS_REGION="us-east-1"
+ECR_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ghost"
+docker tag ghost:latest "$ECR_URL:latest"
+docker push "$ECR_URL:latest"
 
 # 2. Create ECS task definition and service
 # (Use AWS Console or Terraform)
@@ -183,9 +191,9 @@ railway login
 railway init
 
 # 4. Set environment variables
-railway variables set GHOST_API_TOKEN=supersecret123jamaica713
-railway variables set POLYGON_API_KEY=your_key
-railway variables set ALPHAVANTAGE_API_KEY=your_key
+railway variables set GHOST_API_TOKEN "$(openssl rand -hex 32)"
+railway variables set POLYGON_API_KEY "$(railway variables get POLYGON_API_KEY --environment production)"
+railway variables set ALPHAVANTAGE_API_KEY "$(railway variables get ALPHAVANTAGE_API_KEY --environment production)"
 
 # 5. Deploy
 railway up
@@ -231,8 +239,8 @@ flyctl auth login
 flyctl launch
 
 # 4. Set secrets
-flyctl secrets set GHOST_API_TOKEN=supersecret123jamaica713
-flyctl secrets set POLYGON_API_KEY=your_key
+flyctl secrets set GHOST_API_TOKEN="$(openssl rand -hex 32)"
+flyctl secrets set POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
 
 # 5. Deploy
 flyctl deploy
@@ -292,8 +300,8 @@ railway init
 
 # 3. Set environment variables
 railway variables set GHOST_API_TOKEN=supersecret123jamaica713
-railway variables set POLYGON_API_KEY=YOUR_POLYGON_KEY
-railway variables set ALPHAVANTAGE_API_KEY=YOUR_ALPHA_KEY
+railway variables set POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
+railway variables set ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 railway variables set GHOST_FOCUS_TICKER=WOLF
 railway variables set WOLF_SQLITE_PATH=/data/wolf.db
 
@@ -336,8 +344,8 @@ pip install -r requirements.txt
 # Create secrets
 cat > secrets.env << EOF
 GHOST_API_TOKEN=supersecret123jamaica713
-POLYGON_API_KEY=YOUR_KEY_HERE
-ALPHAVANTAGE_API_KEY=YOUR_KEY_HERE
+POLYGON_API_KEY=$(railway variables get POLYGON_API_KEY)
+ALPHAVANTAGE_API_KEY=$(railway variables get ALPHAVANTAGE_API_KEY)
 EOF
 
 # Create systemd service

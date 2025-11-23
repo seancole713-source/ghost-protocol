@@ -1,4 +1,4 @@
-P# 🚀 Railway Deployment Guide for GHOST
+# 🚀 Railway Deployment Guide for GHOST
 
 ## Quick Deploy (Manual - Recommended for First Deploy)
 
@@ -15,7 +15,7 @@ git push origin main
 
 ### Step 2: Deploy via Railway Dashboard
 
-1. **Go to Railway**: https://railway.app/dashboard
+1. **Go to Railway**: [railway.app/dashboard](https://railway.app/dashboard)
 2. **New Project** → **Deploy from GitHub repo**
 3. **Select**: `seancole713-source/GHOST`
 4. **Branch**: `main`
@@ -35,7 +35,7 @@ Go to **Variables** tab and confirm these exist (already configured):
 - ✅ TELEGRAM_BOT_TOKEN (if using alerts)
 - ✅ TELEGRAM_CHAT_ID (if using alerts)
 
-### Step 4: Deploy!
+### Step 4: Deploy
 
 Railway will:
 
@@ -54,11 +54,11 @@ After deployment completes:
 ### Step 6: Test Live
 
 ```bash
-# Replace with your actual Railway URL
-RAILWAY_URL="https://your-app.up.railway.app"
+# Replace with the domain shown under Settings → Networking
+RAILWAY_URL="https://ghost-production-xxxx.up.railway.app"
 
-curl $RAILWAY_URL/health
-curl $RAILWAY_URL/api/cockpit
+curl "$RAILWAY_URL/health"
+curl "$RAILWAY_URL/api/cockpit"
 curl "$RAILWAY_URL/api/top_movers?threshold=7.0"
 ```
 
@@ -66,13 +66,13 @@ ______________________________________________________________________
 
 ## Alternative: CLI Deploy (if you have Railway token)
 
-If you have a `RAILWAY_TOKEN`:
+If you have CLI access configured:
 
 ```bash
-export RAILWAY_TOKEN="your_token_here"
-railway link  # Link to existing project
-railway up    # Deploy
-railway open  # Open dashboard
+railway login   # Interactive auth, stores token securely
+railway link    # Link to existing project
+railway up      # Deploy
+railway open    # Open dashboard
 ```
 
 ______________________________________________________________________
@@ -91,19 +91,19 @@ Once deployed, verify:
 
 ```bash
 # Health
-curl https://your-app.up.railway.app/health
+curl "$RAILWAY_URL/health"
 
 # Price provider (should NOT be "prev-close" during market hours)
-curl https://your-app.up.railway.app/api/price/diagnostics | jq .provider
+curl "$RAILWAY_URL/api/price/diagnostics" | jq .provider
 
 # Trigger forecast generation
-curl -X POST https://your-app.up.railway.app/api/advisor_refresh
+curl -X POST "$RAILWAY_URL/api/advisor_refresh"
 
 # Scan watchlist for movers
-curl -X POST "https://your-app.up.railway.app/api/watchlist/scan?threshold=7.0&limit=30"
+curl -X POST "$RAILWAY_URL/api/watchlist/scan?threshold=7.0&limit=30"
 
 # Check top movers
-curl https://your-app.up.railway.app/api/top_movers
+curl "$RAILWAY_URL/api/top_movers"
 ```
 
 ______________________________________________________________________

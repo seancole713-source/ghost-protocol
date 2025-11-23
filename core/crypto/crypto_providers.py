@@ -4,6 +4,7 @@ Multi-source quorum system for reliable crypto prices
 Supports environment-driven provider selection via CRYPTO_QUORUM
 """
 
+import asyncio
 import logging
 import os
 import time
@@ -417,7 +418,7 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
 
     for name, provider in providers:
         try:
-            price_data = provider.get_price(symbol)
+            price_data = await asyncio.to_thread(provider.get_price, symbol)
             if price_data and price_data.get("price", 0) > 0:
                 results.append((name, price_data["price"], price_data))
                 LOGGER.debug(f"{name}: {symbol} = ${price_data['price']:.2f}")

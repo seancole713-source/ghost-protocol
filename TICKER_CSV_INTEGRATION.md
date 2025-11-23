@@ -359,7 +359,7 @@ USE_SUPPORTED_TICKERS_CSV=false  # Default
 ```bash
 USE_SUPPORTED_TICKERS_CSV=true
 USE_POLYGON_SNAPSHOTS=false
-POLYGON_API_KEY=your_premium_key
+POLYGON_API_KEY=$(railway variables get POLYGON_API_KEY)
 ```
 
 ### For Development/Testing

@@ -15,7 +15,11 @@ if [ "$PROVIDER" = "openai" ]; then
         echo "❌ ERROR: OPENAI_API_KEY not set"
         echo ""
         echo "Set your OpenAI API key:"
-        echo "  export OPENAI_API_KEY='sk-proj-YOUR_KEY_HERE'"
+        if command -v railway >/dev/null 2>&1; then
+            echo "  export OPENAI_API_KEY=\"$(railway variables get OPENAI_API_KEY)\""
+        else
+            echo "  export OPENAI_API_KEY='<paste the live key from the OpenAI dashboard>'"
+        fi
         echo ""
         exit 1
     fi

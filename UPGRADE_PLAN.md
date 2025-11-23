@@ -360,15 +360,16 @@ def test_debug_price_diag_requires_auth(client):
 
 ```bash
 # Without token (should fail)
-curl -X POST https://your-ghost-url/debug/telegram_test \
+RAILWAY_URL="https://ghost-production-xxxx.up.railway.app"
+curl -X POST "$RAILWAY_URL/debug/telegram_test" \
   -H "Content-Type: application/json" \
   -d '{"msg":"test"}'
 # Expected: {"detail":"Unauthorized"}, status 401
 
 # With token (should succeed)
-curl -X POST https://your-ghost-url/debug/telegram_test \
+curl -X POST "$RAILWAY_URL/debug/telegram_test" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+    -H "Authorization: Bearer $(railway variables get GHOST_API_TOKEN)" \
   -d '{"msg":"test"}'
 # Expected: {"ok":true,"sent":"test"}, status 200
 ```
@@ -1158,27 +1159,27 @@ This document catalogs all environment variables used by Ghost, their purpose, d
 ### Minimum Viable (Local Dev)
 ```bash
 export GHOST_API_TOKEN="$(openssl rand -hex 32)"
-export ALPHAVANTAGE_API_KEY="your_free_key"
+export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 # Ghost will run without Telegram; logs to console
-````
+```
 
 ### Production (Railway)
 
 ```bash
 railway variables set \
-  GHOST_API_TOKEN="$(openssl rand -hex 32)" \
-  POLYGON_API_KEY="your_polygon_key" \
-  ALPHAVANTAGE_API_KEY="your_alphavantage_key" \
-  TELEGRAM_BOT_TOKEN="your_bot_token" \
-  TELEGRAM_CHAT_ID="your_chat_id" \
-  TELEGRAM_WEBHOOK_SECRET="$(openssl rand -base64 32)" \
-  SECURE_HEADERS=1 \
-  CSP_MODE=strict \
-  RATE_LIMIT_WRITE_RPM=60 \
-  WOLF_PERSIST_MODE=sqlite \
-  WOLF_AUTOSAVE_S=300 \
-  LOG_LEVEL=INFO \
-  LOG_JSON=1
+    GHOST_API_TOKEN "$(openssl rand -hex 32)" \
+    POLYGON_API_KEY "$(railway variables get POLYGON_API_KEY)" \
+    ALPHAVANTAGE_API_KEY "$(railway variables get ALPHAVANTAGE_API_KEY)" \
+    TELEGRAM_BOT_TOKEN "$(railway variables get TELEGRAM_BOT_TOKEN)" \
+    TELEGRAM_CHAT_ID "$(railway variables get TELEGRAM_CHAT_ID)" \
+    TELEGRAM_WEBHOOK_SECRET "$(openssl rand -base64 32)" \
+    SECURE_HEADERS 1 \
+    CSP_MODE strict \
+    RATE_LIMIT_WRITE_RPM 60 \
+    WOLF_PERSIST_MODE sqlite \
+    WOLF_AUTOSAVE_S 300 \
+    LOG_LEVEL INFO \
+    LOG_JSON 1
 ```
 
 ______________________________________________________________________

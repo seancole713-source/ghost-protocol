@@ -298,10 +298,10 @@ curl -s http://localhost:5000/diagnostics/summary | jq '.price_diag'
 
    - Check: `curl -s http://localhost:5000/api/secrets/health | jq`
    - **Fix**: Set environment variables:
-     ```bash
-     export POLYGON_API_KEY="your_key"
-     export ALPHAVANTAGE_API_KEY="your_key"
-     ```
+    ```bash
+    export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
+    export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
+    ```
 
 ### Problem: Forecast Metrics Still Null
 

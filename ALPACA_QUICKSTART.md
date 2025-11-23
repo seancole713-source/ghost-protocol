@@ -5,8 +5,8 @@
 ```bash
 # 1. Configure environment
 export BROKER=alpaca
-export ALPACA_KEY_ID=your_key
-export ALPACA_SECRET_KEY=your_secret
+export ALPACA_KEY_ID="$(railway variables get ALPACA_KEY_ID)"
+export ALPACA_SECRET_KEY="$(railway variables get ALPACA_SECRET_KEY)"
 export ALPACA_PAPER=1  # 1=paper, 0=LIVE
 
 # 2. Test connection
@@ -174,10 +174,10 @@ balance, reduce position size | | "Market closed" | Wait for market open or use
 
 ## 🔗 Links
 
-- **Alpaca Dashboard**: https://app.alpaca.markets/
-- **API Docs**: https://alpaca.markets/docs/
-- **Market Hours**: https://www.alpaca.markets/support/market-hours/
-- **API Status**: https://status.alpaca.markets/
+- **Alpaca Dashboard**: [app.alpaca.markets](https://app.alpaca.markets/)
+- **API Docs**: [alpaca.markets/docs](https://alpaca.markets/docs/)
+- **Market Hours**: [alpaca.markets/support/market-hours](https://www.alpaca.markets/support/market-hours/)
+- **API Status**: [status.alpaca.markets](https://status.alpaca.markets/)
 
 ## ⚡ Example Workflow
 

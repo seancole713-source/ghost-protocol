@@ -14,8 +14,8 @@ covers configuration, safety measures, and operational procedures.
 BROKER=alpaca
 
 # API Credentials
-ALPACA_KEY_ID=your_api_key_id
-ALPACA_SECRET_KEY=your_secret_key
+ALPACA_KEY_ID=<Railway:ALPACA_KEY_ID>
+ALPACA_SECRET_KEY=<Railway:ALPACA_SECRET_KEY>
 
 # Trading Mode
 ALPACA_PAPER=1              # 1 = Paper trading (default), 0 = LIVE trading
@@ -279,8 +279,8 @@ Stop price trails market price by percentage or dollar amount:
 ```bash
 # Set environment variables
 export BROKER=alpaca
-export ALPACA_KEY_ID=your_paper_key
-export ALPACA_SECRET_KEY=your_paper_secret
+export ALPACA_KEY_ID="$(railway variables get ALPACA_KEY_ID)"
+export ALPACA_SECRET_KEY="$(railway variables get ALPACA_SECRET_KEY)"
 export ALPACA_PAPER=1
 
 # Run connection test
@@ -347,8 +347,8 @@ curl https://your-ghost-instance/api/broker/positions
 ```bash
 # DANGER: Real money at risk!
 export ALPACA_PAPER=0
-export ALPACA_KEY_ID=your_live_key
-export ALPACA_SECRET_KEY=your_live_secret
+export ALPACA_KEY_ID="$(railway variables get ALPACA_KEY_ID)"
+export ALPACA_SECRET_KEY="$(railway variables get ALPACA_SECRET_KEY)"
 
 # Restart Ghost
 ./scripts/restart_ghost.sh

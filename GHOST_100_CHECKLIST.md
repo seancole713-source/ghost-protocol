@@ -183,8 +183,8 @@ cd /workspaces/GHOST
 cat secrets.env | grep TELEGRAM
 
 # 2. If not set, add them:
-echo "TELEGRAM_BOT_TOKEN=your_bot_token_here" >> secrets.env
-echo "TELEGRAM_CHAT_ID=your_chat_id_here" >> secrets.env
+echo "TELEGRAM_BOT_TOKEN=$(railway variables get TELEGRAM_BOT_TOKEN)" >> secrets.env
+echo "TELEGRAM_CHAT_ID=$(railway variables get TELEGRAM_CHAT_ID)" >> secrets.env
 
 # 3. Source the file
 source secrets.env

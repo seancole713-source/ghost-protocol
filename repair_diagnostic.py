@@ -48,7 +48,6 @@ env_vars = {
     "SIM_MODE": os.getenv("SIM_MODE"),
     "PORT": os.getenv("PORT"),
     "CRYPTO_ENABLED": os.getenv("CRYPTO_ENABLED"),
-    "USE_NEW_COCKPIT": os.getenv("USE_NEW_COCKPIT"),
     "OPENAI_API_KEY": "SET" if os.getenv("OPENAI_API_KEY") else "NOT_SET",
     "POLYGON_API_KEY": "SET" if os.getenv("POLYGON_API_KEY") else "NOT_SET",
     "REDIS_URL": os.getenv("REDIS_URL"),

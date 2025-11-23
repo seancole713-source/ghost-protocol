@@ -1,6 +1,6 @@
 # 👻 GHOST Protocol v10.2 (FastAPI, Live-First)
 
-![CI](https://github.com/seancole713-source/GHOST/actions/workflows/ci.yml/badge.svg)
+![Smoke Gate](https://github.com/seancole713-source/GHOST/actions/workflows/ghost_smoke.yml/badge.svg)
 
 Ghost is a FastAPI app with a clean cockpit UI for live quotes/signals, advisor
 allocations, goals, and diagnostics. It runs live by default; a lightweight SIM mode is
@@ -140,6 +140,24 @@ Notes
   fail).
 - Alerts test uses dry-run and respects Bearer auth when `GHOST_API_TOKEN` is set.
 - Freshness threshold adapts to `TICK_INTERVAL_S` (defaults to 5s).
+
+## ✅ Zero-placeholder + smoke gate
+
+Ghost now enforces a single gate for placeholder scanning and cockpit health:
+
+```
+scripts/check_no_placeholders.sh
+```
+
+- Fails if any banned tokens (see `GHOST_NO_PLACEHOLDER_ENFORCEMENT.md` for patterns) appear in
+   runtime files.
+- Hits `/health`, `/cockpit`, and `/api/v3/cockpit/version` on the active target
+   (local by default, `RAILWAY_URL` when set) to guarantee Cockpit V3 is the only UI.
+- Runs automatically via `.githooks/pre-push` (install with `scripts/install_hooks.sh`)
+   and in CI (`.github/workflows/ghost_smoke.yml`).
+
+For production verification, run `scripts/check_railway_service.sh <railway-url>` right
+after a deploy to confirm the live service matches the cockpit contract.
 
 ### UI Baseline (Frozen)
 

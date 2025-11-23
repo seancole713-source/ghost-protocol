@@ -64,12 +64,13 @@ ______________________________________________________________________
 ## Required Environment Variables
 
 ```bash
-GHOST_API_TOKEN=your_secret_token       # Required
-POLYGON_API_KEY=your_polygon_key        # Required
-ALPHAVANTAGE_API_KEY=your_alphavantage  # Required
-GHOST_FOCUS_TICKER=WOLF                 # Optional (default: WOLF)
-TELEGRAM_BOT_TOKEN=your_telegram_token  # Optional (for alerts)
-TELEGRAM_CHAT_ID=your_chat_id           # Optional (for alerts)
+# Copy these from Railway → tender-benevolence / ghost-protocol / Variables
+GHOST_API_TOKEN=<Railway:GHOST_API_TOKEN>
+POLYGON_API_KEY=<Railway:POLYGON_API_KEY>
+ALPHAVANTAGE_API_KEY=<Railway:ALPHAVANTAGE_API_KEY>
+GHOST_FOCUS_TICKER=WOLF  # Optional (default: WOLF)
+TELEGRAM_BOT_TOKEN=<Railway:TELEGRAM_BOT_TOKEN>
+TELEGRAM_CHAT_ID=<Railway:TELEGRAM_CHAT_ID>
 ```
 
 ______________________________________________________________________

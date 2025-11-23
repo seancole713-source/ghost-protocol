@@ -84,7 +84,7 @@ curl -X POST http://localhost:5000/api/state/reset
 
 # 3. Add real WOLF position
 curl -X POST http://localhost:5000/api/bank/add_position \
-  -d '{"symbol":"WOLF","quantity":YOUR_SHARES,"price":YOUR_AVG}'
+  -d '{"symbol":"WOLF","quantity":'"$(railway variables get WOLF_QTY)"',"price":'"$(railway variables get WOLF_AVG_COST)"'}'
 
 # 4. Update data
 curl -X POST http://localhost:5000/api/watcher/update_macro

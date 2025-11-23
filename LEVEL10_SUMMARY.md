@@ -603,7 +603,7 @@ ______________________________________________________________________
 ### Immediate (This Week)
 
 1. ✅ **Test Suite:** Run `python test_level10.py` to verify all features
-2. ✅ **Set Polygon API Key:** `export POLYGON_API_KEY="your_key"`
+2. ✅ **Set Polygon API Key:** `export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"`
 3. ✅ **Populate Watchlist:** Add 10-25 tickers via `/api/watcher/add_ticker`
 4. ✅ **Start Server:** `python -m uvicorn wolf_app:app --host 0.0.0.0 --port 5000`
 

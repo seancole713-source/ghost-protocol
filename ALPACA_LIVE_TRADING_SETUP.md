@@ -51,7 +51,7 @@
 # Broker Configuration
 BROKER=alpaca
 ALPACA_KEY_ID=PKXXXXXXXXXXXXXXXX
-ALPACA_SECRET_KEY=your_secret_key_here
+ALPACA_SECRET_KEY=<copy-from-Railway ALPACA_SECRET_KEY>
 
 # Paper Trading Mode (SAFE - no real money)
 ALPACA_PAPER=1
@@ -82,27 +82,19 @@ RISK_TP_PCT=6.0                 # Take profit at +6%
 
 ### **Railway Deployment:**
 
-Add these variables in Railway dashboard under **Variables** tab:
+Add these variables in Railway (Project **tender-benevolence → ghost-protocol → Variables**) instead of pasting sample keys:
 
+```bash
+# Example: copy each value straight from Railway CLI
+railway variables get ALPACA_KEY_ID
+railway variables get ALPACA_SECRET_KEY
+railway variables set BROKER alpaca
+railway variables set ALPACA_PAPER 1
+railway variables set APCA_API_BASE_URL https://paper-api.alpaca.markets/v2
 ```
-BROKER=alpaca
-ALPACA_KEY_ID=<your_paper_key_id>
-ALPACA_SECRET_KEY=<your_paper_secret>
-ALPACA_PAPER=1
-APCA_API_BASE_URL=https://paper-api.alpaca.markets/v2
-ALPACA_ORDER_RATE=30
-ALPACA_ORDER_WINDOW_S=60
-RISK_GUARD_ENABLED=1
-RISK_MAX_POSITION_PCT=20.0
-RISK_MAX_PORTFOLIO_RISK=10.0
-RISK_MAX_DAILY_LOSS_PCT=5.0
-RISK_MAX_TOTAL_LOSS_PCT=15.0
-RISK_ALLOW_SHORTS=0
-SL_TP_MONITOR_ENABLED=1
-SL_TP_CHECK_INTERVAL=60
-RISK_SL_PCT=3.0
-RISK_TP_PCT=6.0
-```
+
+Keep the remaining risk/rate settings aligned with production via that same Variables screen—never drop fake values into
+the repo.
 
 ---
 
@@ -121,7 +113,7 @@ python3 test_alpaca_broker.py
 
 # 2. Test dry run order
 curl -X POST http://localhost:8080/api/trade/submit \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -133,7 +125,7 @@ curl -X POST http://localhost:8080/api/trade/submit \
 
 # 3. Test REAL paper trade
 curl -X POST http://localhost:8080/api/trade/submit \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -380,7 +372,7 @@ curl https://ghost-protocol-production.up.railway.app/api/broker/health
 
 # 4. Place first paper trade:
 curl -X POST https://ghost-protocol-production.up.railway.app/api/trade/submit \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer $(railway variables get GHOST_API_TOKEN)" \
   -H "Content-Type: application/json" \
   -d '{"symbol":"AAPL","qty":1,"side":"buy","type":"market"}'
 

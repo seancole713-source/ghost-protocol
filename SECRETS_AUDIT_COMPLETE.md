@@ -181,10 +181,10 @@ ______________________________________________________________________
 
    ```bash
    # Test AlphaVantage
-   curl "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=WOLF&apikey=YOUR_KEY"
+   curl "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=WOLF&apikey=$(railway variables get ALPHAVANTAGE_API_KEY)"
 
    # Test Polygon
-   curl "https://api.polygon.io/v2/aggs/ticker/WOLF/prev?apiKey=YOUR_KEY"
+   curl "https://api.polygon.io/v2/aggs/ticker/WOLF/prev?apiKey=$(railway variables get POLYGON_API_KEY)"
    ```
 
 2. **Check Rate Limits**:

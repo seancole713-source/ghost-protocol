@@ -136,7 +136,7 @@ ______________________________________________________________________
 
    ```bash
    curl -X POST http://localhost:5000/api/position \
-     -H "Authorization: Bearer YOUR_TOKEN" \
+      -H "Authorization: Bearer $(railway variables get GHOST_API_TOKEN)" \
      -H "Content-Type: application/json" \
      -d '{"qty": 100, "avg_cost": 1.20}'
    ```

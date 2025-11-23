@@ -412,7 +412,7 @@ SIM_MODE=0  # Must be live mode for predictions
 
 **Optional:**
 ```bash
-GHOST_API_TOKEN=your_token  # Bearer auth for POST endpoints
+GHOST_API_TOKEN=$(railway variables get GHOST_API_TOKEN)  # Bearer auth for POST endpoints
 ```
 
 ---

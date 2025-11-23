@@ -12,7 +12,7 @@ Add a Railway persistent volume for the `/data` directory.
 
 ### Option 1: Railway Dashboard (Recommended)
 
-1. **Open your Railway project**: https://railway.app/project/YOUR_PROJECT_ID
+1. **Open your Railway project**: [railway.app/dashboard](https://railway.app/dashboard) → select the Ghost service
 
 2. **Go to your service** (Ghost Sniper Bot)
 
@@ -63,10 +63,11 @@ git push origin main
 After deployment with volume mounted:
 
 1. **Trigger a prediction**:
-   ```bash
-   curl -X POST https://YOUR_APP.up.railway.app/api/predict/force \
-     -H "Authorization: Bearer YOUR_TOKEN"
-   ```
+    ```bash
+    RAILWAY_URL="https://ghost-production-xxxx.up.railway.app"
+    curl -X POST "$RAILWAY_URL/api/predict/force" \
+       -H "Authorization: Bearer $(railway variables get GHOST_API_TOKEN)"
+    ```
 
 2. **Check logs** for database write:
    ```
@@ -80,7 +81,7 @@ After deployment with volume mounted:
 
 4. **Verify predictions survived**:
    ```bash
-   curl https://YOUR_APP.up.railway.app/api/cockpit | jq '.ghost_2x.latest_predictions'
+   curl "$RAILWAY_URL/api/cockpit" | jq '.ghost_2x.latest_predictions'
    ```
 
 5. **Expected**: Should show predictions with timestamps from BEFORE redeploy

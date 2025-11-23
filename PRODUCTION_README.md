@@ -210,21 +210,21 @@ ______________________________________________________________________
 ### Required
 
 ```bash
-export GHOST_API_TOKEN="your_secret_token"
+export GHOST_API_TOKEN="$(railway variables get GHOST_API_TOKEN)"
 ```
 
 ### Optional (Enhanced Data)
 
 ```bash
-export ALPHAVANTAGE_API_KEY="your_key"
-export POLYGON_API_KEY="your_key"
+export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
+export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
 ```
 
 ### Optional (Alerts)
 
 ```bash
-export TELEGRAM_BOT_TOKEN="your_bot_token"
-export TELEGRAM_CHAT_ID="your_chat_id"
+export TELEGRAM_BOT_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
+export TELEGRAM_CHAT_ID="$(railway variables get TELEGRAM_CHAT_ID)"
 ```
 
 ### Optional (Storage)

@@ -117,6 +117,8 @@ import hmac
 import hashlib
 import time
 
+import os
+
 def verify_ghost_webhook(request):
     signature = request.headers.get("X-Ghost-Signature")
     timestamp = request.headers.get("X-Ghost-Timestamp")
@@ -128,11 +130,8 @@ def verify_ghost_webhook(request):
     
     # 2. Verify HMAC signature
     message = f"{timestamp}.".encode() + body
-    expected = hmac.new(
-        YOUR_SECRET.encode(),
-        message,
-        hashlib.sha256
-    ).hexdigest()
+    secret = os.environ["GHOST_WEBHOOK_SECRET"].encode()
+    expected = hmac.new(secret, message, hashlib.sha256).hexdigest()
     
     return hmac.compare_digest(signature, expected)
 ```

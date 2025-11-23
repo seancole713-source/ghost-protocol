@@ -292,8 +292,8 @@ async def start_price_updater():
 
 ```bash
 # Add to secrets.env
-ALPHAVANTAGE_API_KEY=your_key_here
-POLYGON_API_KEY=your_key_here
+ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
+POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
 ```
 
 **Option 3: Manual Refresh**

@@ -29,7 +29,7 @@ ______________________________________________________________________
 - **Security Status:** 🔴 API keys in `secrets.env` (USER MUST ROTATE)
 - **Code Quality:** 🟢 Clean (no placeholder comments, no fake endpoints)
 - **Test Coverage:** 🟢 Comprehensive (58 test files with proper mocking)
-- **Documentation:** 🟡 Good (some examples use "your_key" placeholder text)
+- **Documentation:** 🟡 Good (a few samples still show generic placeholder wording—swap to Railway commands)
 
 ______________________________________________________________________
 
@@ -69,7 +69,7 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-#### **Issue 4: "your_key" Placeholder in Docs**
+#### **Issue 4: Placeholder Keys in Docs**
 
 **Files:** 16 markdown files
 
@@ -77,13 +77,13 @@ ______________________________________________________________________
 
 ```bash
 # COMPLETION_REPORT.md, START_GUIDE_V10.2.md, etc.
-export POLYGON_API_KEY="your_key"
-export ALPHAVANTAGE_API_KEY="your_key"
+export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
+export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 ```
 
 **Problem:** Users might copy-paste literally\
-**Recommendation:** Change to `export POLYGON_API_KEY="sk-..."` (clearly invalid
-format)\
+**Recommendation:** Show commands that call `railway variables get <NAME>` instead of fake
+values\
 **Impact:** Low - obvious to most users\
 **Fix Time:** ~20 minutes (find/replace)\
 **Action Required:** Optional cleanup pass
@@ -162,13 +162,13 @@ ______________________________________________________________________
 
 3. **Update Railway (production):**
 
-   ```bash
-   railway variables set OPENAI_API_KEY=new_key_here
-   railway variables set POLYGON_API_KEY=new_key_here
-   railway variables set ALPHAVANTAGE_API_KEY=new_key_here
-   railway variables set TELEGRAM_BOT_TOKEN=new_token_here
-   railway variables set GHOST_API_TOKEN=$(openssl rand -hex 32)
-   ```
+  ```bash
+  railway variables set OPENAI_API_KEY "<rotated-openai-secret>"
+  railway variables set POLYGON_API_KEY "<rotated-polygon-secret>"
+  railway variables set ALPHAVANTAGE_API_KEY "<rotated-alphavantage-secret>"
+  railway variables set TELEGRAM_BOT_TOKEN "<rotated-telegram-token>"
+  railway variables set GHOST_API_TOKEN "$(openssl rand -hex 32)"
+  ```
 
 4. **Update local secrets.env** (NEVER commit)
 
@@ -227,7 +227,7 @@ ______________________________________________________________________
 
 ### **Priority 3: Documentation (OPTIONAL - 30 min)**
 
-1. Change "your_key" → "sk-..." (clearly invalid format)
+1. Replace remaining placeholder-style examples with `railway variables get <NAME>` commands
 2. Add warnings about not using placeholder keys
 3. Reference `.env.example` in all setup docs
 

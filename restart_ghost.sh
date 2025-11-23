@@ -30,7 +30,6 @@ cd /workspaces/GHOST
 source .venv/bin/activate
 
 export SIM_MODE=0
-export USE_PLACEHOLDERS=0
 export PORTFOLIO_PERSISTENCE_ENABLED=1
 export ALERT_SCHEDULE_OPEN_CLOSE=1
 export PROMETHEUS_MULTIPROC_DIR=/tmp/ghost_prom

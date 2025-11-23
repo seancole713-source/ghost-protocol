@@ -85,12 +85,12 @@ ______________________________________________________________________
 ### ✅ REQUIRED (Core Functionality):
 
 ```bash
-# Security & Auth
-GHOST_API_TOKEN=your_token
-POLYGON_API_KEY=8VIvELVXiLG30K2l1348RzSurffLM0jR
-ALPHAVANTAGE_API_KEY=3WNNLA81KS7BG4AK
-TELEGRAM_BOT_TOKEN=8229069551:AAE...
-TELEGRAM_CHAT_ID=940596997
+# Security & Auth (managed in Railway → Variables)
+GHOST_API_TOKEN=<Railway:GHOST_API_TOKEN>
+POLYGON_API_KEY=<Railway:POLYGON_API_KEY>
+ALPHAVANTAGE_API_KEY=<Railway:ALPHAVANTAGE_API_KEY>
+TELEGRAM_BOT_TOKEN=<Railway:TELEGRAM_BOT_TOKEN>
+TELEGRAM_CHAT_ID=<Railway:TELEGRAM_CHAT_ID>
 
 # OpenAI (Agent & Research)
 OPENAI_API_KEY=sk-proj-...
@@ -112,7 +112,7 @@ WOLF_PERSIST_MODE=sqlite
 
 # Security
 CSP_MODE=prod
-ALLOWED_ORIGINS=https://your-railway-domain.railway.app
+ALLOWED_ORIGINS=https://ghost-sniper-bot-seancole713-production.up.railway.app
 
 # Mode
 SIM_MODE=0

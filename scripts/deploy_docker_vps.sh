@@ -69,24 +69,25 @@ fi
 
 # Create production environment file
 echo "⚙️  Creating production environment file..."
-cat > .env.production << 'EOF'
-# Copy your secrets here
-GHOST_API_TOKEN=REPLACE_WITH_YOUR_TOKEN
-POLYGON_API_KEY=REPLACE_WITH_YOUR_KEY
-ALPHAVANTAGE_API_KEY=REPLACE_WITH_YOUR_KEY
+read -r -p "Enter GHOST_API_TOKEN (required): " GHOST_API_TOKEN
+read -r -p "Enter POLYGON_API_KEY (press Enter to skip): " POLYGON_API_KEY
+read -r -p "Enter ALPHAVANTAGE_API_KEY (press Enter to skip): " ALPHAVANTAGE_API_KEY
+read -r -p "Enter TELEGRAM_BOT_TOKEN (optional): " TELEGRAM_BOT_TOKEN
+read -r -p "Enter TELEGRAM_CHAT_ID (optional): " TELEGRAM_CHAT_ID
+
+cat > .env.production <<EOF
+GHOST_API_TOKEN=$GHOST_API_TOKEN
+POLYGON_API_KEY=$POLYGON_API_KEY
+ALPHAVANTAGE_API_KEY=$ALPHAVANTAGE_API_KEY
 GHOST_FOCUS_TICKER=WOLF
 WOLF_PERSIST_MODE=sqlite
 WOLF_SQLITE_PATH=/app/data/wolf.db
-TELEGRAM_BOT_TOKEN=REPLACE_IF_USING_TELEGRAM
-TELEGRAM_CHAT_ID=REPLACE_IF_USING_TELEGRAM
+TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
 EOF
 
 echo
-echo "⚠️  IMPORTANT: Edit /opt/GHOST/.env.production with your secrets!"
-echo "   Run: nano /opt/GHOST/.env.production"
-echo
-echo "Press ENTER after editing the file..."
-read
+echo "✅ Secrets written to /opt/GHOST/.env.production"
 
 # Create docker-compose.yml if not exists
 if [ ! -f "docker-compose.yml" ]; then

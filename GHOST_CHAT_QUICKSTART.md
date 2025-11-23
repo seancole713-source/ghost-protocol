@@ -22,7 +22,7 @@ ______________________________________________________________________
 ### Step 1: Set Your OpenAI Key
 
 ```bash
-export OPENAI_API_KEY="sk-proj-YOUR_KEY_HERE"
+export OPENAI_API_KEY="$(railway variables get OPENAI_API_KEY)"
 ```
 
 ### Step 2: Run This Script
@@ -41,7 +41,7 @@ ______________________________________________________________________
 # 1. Export environment variables
 export AGENTS_ENABLED=1
 export AI_PROVIDER=openai
-export OPENAI_API_KEY="sk-proj-YOUR_KEY_HERE"
+export OPENAI_API_KEY="$(railway variables get OPENAI_API_KEY)"
 export AGENT_MODEL="gpt-4o-mini"
 
 # 2. Restart Ghost with env vars

@@ -131,7 +131,7 @@ The message appears because:
 
 ```bash
 # Test Polygon API directly
-curl -s "https://api.polygon.io/v2/aggs/ticker/WOLF/prev?apiKey=YOUR_KEY"
+curl -s "https://api.polygon.io/v2/aggs/ticker/WOLF/prev?apiKey=$(railway variables get POLYGON_API_KEY)"
 
 # Check Ghost diagnostics
 curl -s http://localhost:8444/api/price/diagnostics

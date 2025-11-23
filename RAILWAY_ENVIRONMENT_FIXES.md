@@ -254,7 +254,7 @@ Look for:
 ### Check 2: API Key Validity
 Test Polygon key directly:
 ```bash
-curl "https://api.polygon.io/v2/aggs/ticker/AAPL/prev?apiKey=YOUR_KEY"
+curl "https://api.polygon.io/v2/aggs/ticker/AAPL/prev?apiKey=$(railway variables get POLYGON_API_KEY)"
 ```
 Should return data, not `{"error":"unauthorized"}`
 

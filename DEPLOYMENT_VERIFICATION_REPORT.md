@@ -236,10 +236,10 @@ ______________________________________________________________________
 ### Post-Deploy (Monitor These)
 
 - [ ] Railway build completes successfully
-- [ ] Health endpoint returns 200: `https://your-app.up.railway.app/health`
-- [ ] Corporate action banner visible: `https://your-app.up.railway.app/cockpit.html`
-- [ ] Test endpoint works: `POST https://your-app.up.railway.app/api/telegram/test`
-- [ ] Metrics populate: `https://your-app.up.railway.app/metrics`
+- [ ] Health endpoint returns 200: `$RAILWAY_URL/health`
+- [ ] Corporate action banner visible: `$RAILWAY_URL/cockpit.html`
+- [ ] Test endpoint works: `POST $RAILWAY_URL/api/telegram/test`
+- [ ] Metrics populate: `$RAILWAY_URL/metrics`
 - [ ] Check Railway logs for:
   - `delisted_hint` warnings (if WOLF data stale)
   - `throttled_provider` messages (if 429s occur)
@@ -248,11 +248,11 @@ ______________________________________________________________________
 ### Environment Variables Required
 
 ```bash
-TELEGRAM_BOT_TOKEN=8229069551:AAEBHMpX8TkaPFD2hhGL_Wgo2J8k5Sr3gYw
-TELEGRAM_CHAT_ID=940596997
-ALPHAVANTAGE_API_KEY=<your_key>
-POLYGON_API_KEY=<your_key>
-GHOST_API_TOKEN=<optional_auth_token>
+TELEGRAM_BOT_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
+TELEGRAM_CHAT_ID="$(railway variables get TELEGRAM_CHAT_ID)"
+ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
+POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
+GHOST_API_TOKEN="$(railway variables get GHOST_API_TOKEN)"
 ```
 
 ______________________________________________________________________
@@ -278,21 +278,21 @@ ______________________________________________________________________
 
 1. **Monitor Railway Deployment**:
 
-   - Wait ~2-3 minutes for build/deploy
-   - Check `https://your-app.up.railway.app/health`
+  - Wait ~2-3 minutes for build/deploy
+  - Check `$RAILWAY_URL/health`
    - Verify corporate action banner visible in production
 
 2. **Pre-Market Verification** (Before 9:30 AM ET):
 
    ```bash
-   curl -X POST https://your-app.up.railway.app/api/telegram/test \
+  curl -X POST "$RAILWAY_URL/api/telegram/test" \
      -H 'Content-Type: application/json' \
      -d '{"action":"HOLD","send":true}'
    ```
 
-   - Check Telegram for test message
-   - Confirm -93.39% PnL appears
-   - Verify reverse split note included
+  - Check Telegram for test message
+  - Confirm -93.39% PnL appears
+  - Verify reverse split note included
 
 3. **Monitor During Market Hours**:
 

@@ -37,8 +37,8 @@ Each endpoint returns the top 20 stocks by percentage change, pre-calculated and
 # Enable snapshot mode (default: true)
 USE_POLYGON_SNAPSHOTS=true
 
-# Your Polygon API key (required)
-POLYGON_API_KEY=your_key_here
+# Polygon API key (copy from Railway → Variables)
+POLYGON_API_KEY=$(railway variables get POLYGON_API_KEY)
 
 # Optional: Custom symbols to always include
 WATCH_SYMBOLS=TSLA,AAPL,NVDA
@@ -132,9 +132,9 @@ Stock scans run during market hours (Central Time):
 ```bash
 cd /Users/studio713/ghost-protocol
 
-# Set environment variables
+# Set environment variables (fetch keys directly from Railway)
 export USE_POLYGON_SNAPSHOTS=true
-export POLYGON_API_KEY=your_key_here
+export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
 
 # Run Ghost
 python wolf_app.py
@@ -144,10 +144,10 @@ python wolf_app.py
 
 ```bash
 # Test gainers endpoint
-curl "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/gainers?apiKey=YOUR_KEY"
+curl "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/gainers?apiKey=$(railway variables get POLYGON_API_KEY)"
 
 # Test losers endpoint
-curl "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/losers?apiKey=YOUR_KEY"
+curl "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/losers?apiKey=$(railway variables get POLYGON_API_KEY)"
 ```
 
 ### Expected Response

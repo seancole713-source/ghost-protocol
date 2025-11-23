@@ -77,8 +77,8 @@ Modify `secrets.env` to contain valid API keys, then start server with:
 
 ```bash
 # In your terminal, before starting Ghost:
-export POLYGON_API_KEY="your_actual_polygon_key_here"
-export ALPHAVANTAGE_API_KEY="your_actual_alphavantage_key_here"
+export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
+export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 export PROMETHEUS_MULTIPROC_DIR=/tmp/ghost_prom
 
 # Then start:

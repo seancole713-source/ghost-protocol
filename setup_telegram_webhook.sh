@@ -10,20 +10,22 @@ echo ""
 
 # Check if token is provided
 if [ -z "$1" ]; then
-    echo "❌ Error: Please provide your Telegram bot token"
-    echo ""
-    echo "Usage:"
-    echo "  ./setup_telegram_webhook.sh YOUR_BOT_TOKEN"
-    echo ""
-    echo "Example:"
-    echo "  ./setup_telegram_webhook.sh 123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-    echo ""
-    echo "Get your token from:"
-    echo "  Railway Dashboard → Variables → TELEGRAM_BOT_TOKEN"
-    exit 1
+    if command -v railway >/dev/null 2>&1; then
+        echo "ℹ️  No token argument provided. Pulling TELEGRAM_BOT_TOKEN from Railway..."
+        TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
+    else
+        echo "❌ Error: Please provide the Telegram bot token"
+        echo ""
+        echo "Usage:"
+        echo "  ./setup_telegram_webhook.sh <bot-token-from-Railway>"
+        echo ""
+        echo "Retrieve it from the Railway dashboard under Variables → TELEGRAM_BOT_TOKEN"
+        exit 1
+    fi
+else
+    TOKEN="$1"
 fi
 
-TOKEN="$1"
 WEBHOOK_URL="https://web-production-8e9a0.up.railway.app/telegram/webhook"
 
 echo "🔧 Setting webhook..."

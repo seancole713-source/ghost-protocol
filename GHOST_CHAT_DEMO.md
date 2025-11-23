@@ -21,20 +21,20 @@ are **indirect correlations** to monitor:
 
 2. **Your Current Position**
 
-   - Holdings: [YOUR_SHARES] @ $[AVG_COST]
-   - Current Price: $[CURRENT_PRICE]
+   - Holdings: `$(railway variables get WOLF_QTY)` shares @ `$$(railway variables get WOLF_AVG_COST)`
+   - Current Price: value from `curl -s http://localhost:5000/api/price/WOLF | jq .price`
    - If Bitcoin triggers broader market selloff, WOLF could see 3-5% pullback
 
 3. **News Sentiment Context**
 
-   - Recent WOLF news: [SENTIMENT_SCORE]
+   - Recent WOLF news: `curl -s http://localhost:5000/api/news/latest | jq '.items[0].score'`
    - Company fundamentals remain separate from crypto markets
    - Focus on semiconductor demand, not Bitcoin price
 
 4. **Trading Signal**
 
-   - Current action: [SIGNAL]
-   - Confidence: [CONFIDENCE]%
+   - Current action: `curl -s -X POST http://localhost:5000/ai/decide | jq -r .action`
+   - Confidence: `curl -s -X POST http://localhost:5000/ai/decide | jq -r .confidence`
    - Recommendation: Monitor broader tech sector, not just Bitcoin
 
 ### ⚠️ Risks to Watch:
@@ -90,7 +90,7 @@ Add these to your environment:
 # Enable AI
 export AGENTS_ENABLED=1
 export AI_PROVIDER=openai
-export OPENAI_API_KEY="sk-proj-YOUR_KEY_HERE"
+export OPENAI_API_KEY="$(railway variables get OPENAI_API_KEY)"
 export AGENT_MODEL="gpt-4o-mini"
 
 # Restart Ghost

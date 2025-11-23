@@ -385,16 +385,16 @@ class NewsShockStrategy(BaseStrategy):
 
 class PairsTradingStrategy(BaseStrategy):
     """
-    Statistical arbitrage via pairs trading (PLACEHOLDER for multi-asset)
+    Statistical arbitrage via pairs trading (reserved for multi-asset rollout)
 
-    Currently returns HOLD until multi-asset support added
+    Currently returns HOLD until multi-asset support is finalized
     """
 
     def __init__(self):
         super().__init__("PairsTrading")
 
     def evaluate(self, symbol: str, market_data: dict[str, Any]) -> StrategyVote:
-        # Placeholder - requires correlation analysis with other assets
+        # Pending correlation analysis with cross-asset data
         return StrategyVote(
             strategy_name=self.name,
             action="HOLD",
@@ -415,7 +415,7 @@ class StrategyEnsemble:
         self.strategies = [
             MomentumStrategy(),
             NewsShockStrategy(),
-            PairsTradingStrategy(),  # Placeholder for now
+            PairsTradingStrategy(),  # Multi-asset vote reserved until wired
         ]
 
         # Default weights (equal)

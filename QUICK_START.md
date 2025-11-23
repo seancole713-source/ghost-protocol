@@ -21,7 +21,7 @@ mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
 uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload
 ```
 
-Server will be available at: **http://localhost:5000**
+Server will be available at: **[http://localhost:5000](http://localhost:5000)**
 
 ______________________________________________________________________
 
@@ -31,15 +31,15 @@ Create `secrets.env`:
 
 ```bash
 # API Keys (optional for enhanced data)
-export ALPHAVANTAGE_API_KEY="your_key_here"
-export POLYGON_API_KEY="your_key_here"
+export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
+export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
 
 # Security (recommended)
-export GHOST_API_TOKEN="your_secret_token_here"
+export GHOST_API_TOKEN="$(railway variables get GHOST_API_TOKEN)"
 
 # Alerts (optional)
-export TELEGRAM_BOT_TOKEN="your_bot_token"
-export TELEGRAM_CHAT_ID="your_chat_id"
+export TELEGRAM_BOT_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
+export TELEGRAM_CHAT_ID="$(railway variables get TELEGRAM_CHAT_ID)"
 
 # Storage (optional, defaults to SQLite)
 export REDIS_URL="redis://localhost:6379/0"
@@ -76,7 +76,7 @@ curl -X POST http://localhost:5000/api/positions/import \
 
 ### Via CSV Upload (UI)
 
-1. Navigate to **http://localhost:5000/cockpit**
+1. Navigate to **[http://localhost:5000/cockpit](http://localhost:5000/cockpit)**
 2. Click "Import Positions"
 3. Paste CSV or JSON
 4. Click "Apply"
@@ -134,7 +134,7 @@ ______________________________________________________________________
 
 ## 5. Access the Cockpit
 
-Open in browser: **http://localhost:5000/cockpit**
+Open in browser: **[http://localhost:5000/cockpit](http://localhost:5000/cockpit)**
 
 ### Key Panels
 

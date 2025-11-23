@@ -104,7 +104,7 @@ Ghost reports this because:
 
 - Check during market hours (9:30 AM - 4:00 PM ET Monday-Friday)
 - Test endpoint: `curl http://localhost:8444/api/price/diagnostics`
-- Polygon API test: `https://api.polygon.io/v2/aggs/ticker/WOLF/prev?apiKey=YOUR_KEY`
+- Polygon API test: ``RAILWAY_KEY=$(railway variables get POLYGON_API_KEY); curl "https://api.polygon.io/v2/aggs/ticker/WOLF/prev?apiKey=${RAILWAY_KEY}"``
 
 **This is NOT a bug** - it's Ghost being honest about data availability.
 

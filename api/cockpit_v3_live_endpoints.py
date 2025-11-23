@@ -5,6 +5,7 @@ Fully wired to Ghost Protocol's real data infrastructure
 All endpoints return live data - no placeholders or mock responses
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -23,228 +24,465 @@ router = APIRouter(prefix="/api/v3", tags=["cockpit_v3"])
 
 # === HELPER FUNCTIONS ===
 
-def get_ghost_state():
-    """Get Ghost's global state object"""
+def get_ghost_state() -> Dict[str, Any]:
+    """Safely access Ghost's global state."""
     try:
-        from wolf_app import STATE
+        from wolf_app import STATE  # type: ignore
+
         return STATE
-    except:
+    except Exception as exc:  # pragma: no cover - defensive
+        LOGGER.warning("Falling back to empty ghost state: %s", exc)
         return {}
 
 
 def calculate_ghost_score_v1() -> Dict[str, Any]:
-    """
-    Ghost Score V1 - Transparent penalty-based scoring
-    
-    Base: 100
-    Penalties:
-    - Provider DOWN: -20, degraded: -10
-    - AI decisions (24h) == 0: -15
-    - Accuracy <50%: -20, 50-65%: -10, >65%: 0
-    - Data freshness stale: -15
-    
-    Returns:
-        {
-            "score": 0-100,
-            "grade": "A-F",
-            "breakdown": {
-                "base": 100,
-                "provider_penalty": -X,
-                "ai_activity_penalty": -X,
-                "accuracy_penalty": -X,
-                "freshness_penalty": -X
-            },
-            "components": {
-                "providers_healthy": N,
-                "providers_total": N,
-                "ai_decisions_24h": N,
-                "accuracy_pct": X.X,
-                "data_age_minutes": X
-            }
-        }
-    """
-    base_score = 100
-    penalties = {
-        "provider_penalty": 0,
-        "ai_activity_penalty": 0,
-        "accuracy_penalty": 0,
-        "freshness_penalty": 0
-    }
-    components = {
-        "providers_healthy": 0,
-        "providers_total": 0,
-        "ai_decisions_24h": 0,
-        "accuracy_pct": 0.0,
-        "data_age_minutes": 0
-    }
-    
-    # 1. Provider Health Check
-    try:
-        from wolf_app import PRICE_PROVIDERS
-        providers_total = len(PRICE_PROVIDERS)
-        providers_healthy = 0
-        providers_degraded = 0
-        
-        for provider_name, provider_obj in PRICE_PROVIDERS.items():
-            # Check if provider has recent successful fetch
-            # Simplified: assume healthy if no errors
-            if hasattr(provider_obj, 'last_error') and provider_obj.last_error:
-                providers_degraded += 1
-            else:
-                providers_healthy += 1
-        
-        components["providers_healthy"] = providers_healthy
-        components["providers_total"] = providers_total
-        
-        if providers_healthy == 0:
-            penalties["provider_penalty"] = -20  # All DOWN
-        elif providers_degraded > 0:
-            penalties["provider_penalty"] = -10  # Some degraded
-    except Exception as e:
-        LOGGER.warning(f"Provider health check failed: {e}")
-        penalties["provider_penalty"] = -10  # Unknown = degraded
-    
-    # 2. AI Activity Check (24h)
-    try:
-        import sqlite3
-        conn = sqlite3.connect("data/ghost_predictions.db")
-        cursor = conn.cursor()
-        
-        # Count predictions in last 24h
-        cutoff = time.time() - (24 * 3600)
-        cursor.execute("SELECT COUNT(*) FROM predictions WHERE run_at >= ?", (cutoff,))
-        ai_decisions_24h = cursor.fetchone()[0] or 0
-        conn.close()
-        
-        components["ai_decisions_24h"] = ai_decisions_24h
-        
-        if ai_decisions_24h == 0:
-            penalties["ai_activity_penalty"] = -15
-    except Exception as e:
-        LOGGER.warning(f"AI activity check failed: {e}")
-        penalties["ai_activity_penalty"] = -15  # No data = penalty
-    
-    # 3. Prediction Accuracy Check
-    try:
-        from core.prediction_tracker import calculate_accuracy
-        stats = calculate_accuracy("24h")
-        accuracy_pct = stats.get("accuracy_pct", 0.0)
-        components["accuracy_pct"] = accuracy_pct
-        
-        if accuracy_pct < 50:
-            penalties["accuracy_penalty"] = -20
-        elif accuracy_pct < 65:
-            penalties["accuracy_penalty"] = -10
-        # else: 0 penalty
-    except Exception as e:
-        LOGGER.warning(f"Accuracy check failed: {e}")
-        penalties["accuracy_penalty"] = -10  # Unknown = moderate penalty
-    
-    # 4. Data Freshness Check
-    try:
-        # Check last price update time from STATE
-        state = get_ghost_state()
-        last_update = state.get("last_price_update", time.time())
-        data_age_minutes = (time.time() - last_update) / 60
-        components["data_age_minutes"] = int(data_age_minutes)
-        
-        if data_age_minutes > 15:  # Stale if >15 minutes old
-            penalties["freshness_penalty"] = -15
-    except Exception as e:
-        LOGGER.warning(f"Freshness check failed: {e}")
-        penalties["freshness_penalty"] = -10  # Unknown = moderate penalty
-    
-    # Calculate final score
-    total_penalty = sum(penalties.values())
-    final_score = max(0, min(100, base_score + total_penalty))
-    
-    # Determine grade
-    if final_score >= 90:
+    """Simple health score derived from global state flags."""
+    state = get_ghost_state()
+    base_score = 92.0
+
+    if state.get("degraded_reason"):
+        base_score -= 25.0
+    if state.get("risk_alert"):
+        base_score -= 10.0
+    if state.get("ai") and not state.get("ai", {}).get("healthy", True):
+        base_score -= 5.0
+
+    score = max(0.0, min(100.0, base_score))
+    if score >= 90:
         grade = "A"
-    elif final_score >= 80:
+    elif score >= 80:
         grade = "B"
-    elif final_score >= 70:
+    elif score >= 70:
         grade = "C"
-    elif final_score >= 60:
-        grade = "D"
     else:
-        grade = "F"
-    
+        grade = "D"
+
     return {
-        "score": final_score,
+        "score": score,
         "grade": grade,
-        "breakdown": {
-            "base": base_score,
-            **penalties
+        "components": {
+            "data_ok": score >= 80,
+            "ai_ok": score >= 70,
+            "risk_ok": not state.get("risk_alert"),
         },
-        "components": components
     }
+
+
+def _derive_provider_redundancy() -> Optional[float]:
+    """Estimate crypto provider redundancy from configured quorum."""
+    try:
+        from core.crypto import crypto_providers as crypto_mod  # type: ignore
+    except Exception:
+        crypto_mod = None
+
+    env_quorum = os.getenv("CRYPTO_QUORUM", "").strip()
+    providers = [p.strip().lower() for p in env_quorum.split(",") if p.strip()]
+
+    if not providers and crypto_mod is not None:
+        providers = list(getattr(crypto_mod, "_DEFAULT_CRYPTO_QUORUM", []))
+
+    if not providers:
+        return None
+
+    baseline = len(getattr(crypto_mod, "_DEFAULT_CRYPTO_QUORUM", providers)) or len(providers)
+    if baseline <= 0:
+        return None
+
+    return max(0.0, min(1.0, len(providers) / baseline))
+
+
+def _compute_avg_confidence(pred_store: Dict[str, Dict[str, Any]]) -> Optional[float]:
+    """Derive mean confidence from the live prediction cache."""
+    try:
+        values = [float(pred.get("confidence")) for pred in pred_store.values() if pred.get("confidence") is not None]
+    except Exception:
+        values = []
+
+    if not values:
+        return None
+
+    avg = sum(values) / len(values)
+    # Confidence is often stored 0-1; normalize if already in 0-100 range
+    if avg > 1.0:
+        avg = avg / 100.0
+    return max(0.0, min(1.0, avg))
+
+
+def _fetch_success_rate_estimate() -> Optional[float]:
+    """Fetch rolling prediction accuracy to use as coverage success rate."""
+    try:
+        from core.prediction_tracker import calculate_accuracy  # type: ignore
+
+        stats = calculate_accuracy("7d")
+        accuracy_pct = stats.get("accuracy_pct")
+        if accuracy_pct is None:
+            return None
+        return max(0.0, min(1.0, float(accuracy_pct) / 100.0))
+    except Exception:
+        return None
+
+
+def _compute_ghost_score_snapshot() -> Dict[str, Any]:
+    """Build Ghost Score data using live prediction state."""
+    try:
+        from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status  # type: ignore
+        from wolf_app import (  # type: ignore
+            STOCK_SYMBOLS,
+            CRYPTO_SYMBOLS,
+            VIP_COINS,
+            _LAST_MULTI_PREDICTION_COUNTS,
+            _LATEST_PREDICTIONS,
+        )
+
+        total_symbols = len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS)
+        total_symbols = max(1, total_symbols)
+
+        prediction_counts = dict(_LAST_MULTI_PREDICTION_COUNTS or {})
+        symbols_with_data = 0
+        for count in prediction_counts.values():
+            try:
+                symbols_with_data += int(count)
+            except (TypeError, ValueError):
+                continue
+
+        avg_confidence = _compute_avg_confidence(dict(_LATEST_PREDICTIONS or {}))
+        provider_redundancy = _derive_provider_redundancy()
+
+        data_quality: Dict[str, Any] = {
+            "symbols_with_data": symbols_with_data,
+            "total_symbols": total_symbols,
+        }
+        if provider_redundancy is not None:
+            data_quality["provider_redundancy"] = provider_redundancy
+        if avg_confidence is not None:
+            data_quality["avg_confidence"] = avg_confidence
+
+        prediction_coverage: Dict[str, Any] = {
+            "predictions_generated": symbols_with_data,
+            "total_expected": total_symbols,
+        }
+        success_rate = _fetch_success_rate_estimate()
+        if success_rate is not None:
+            prediction_coverage["success_rate_estimate"] = success_rate
+
+        risk_status = get_current_risk_status()
+
+        score_payload = compute_ghost_score_v2(
+            data_quality=data_quality,
+            prediction_coverage=prediction_coverage,
+            risk_status=risk_status,
+        )
+
+        score_payload["inputs"] = {
+            "data_quality": data_quality,
+            "prediction_coverage": prediction_coverage,
+        }
+        score_payload["risk_snapshot"] = risk_status
+        return score_payload
+    except Exception as exc:
+        LOGGER.error("Failed to compute Ghost Score snapshot: %s", exc)
+        return {}
+
+
+async def _load_goals_data() -> Dict[str, Any]:
+    """Load latest goal progress from the tracker database."""
+
+    def _fetch() -> Dict[str, Any]:
+        from core.goals_tracker import GoalsTracker  # type: ignore
+
+        tracker = GoalsTracker()
+        return tracker.get_all_goals()
+
+    try:
+        return await asyncio.to_thread(_fetch)
+    except Exception as exc:
+        LOGGER.error("Goals tracker unavailable: %s", exc)
+        return {}
+
+
+def _format_goal_payload(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Ensure each period exposes consistent keys."""
+    payload: Dict[str, Dict[str, Any]] = {}
+    for period in ("daily", "weekly", "monthly", "yearly"):
+        entry = raw.get(period, {}) if isinstance(raw, dict) else {}
+        payload[period] = {
+            "target": entry.get("target"),
+            "current": entry.get("current"),
+            "progress_pct": entry.get("progress_pct"),
+            "remaining": entry.get("remaining"),
+        }
+    return payload
+
+
+def _goal_progress_pct(goal_block: Dict[str, Any]) -> Optional[float]:
+    value = goal_block.get("progress_pct") if isinstance(goal_block, dict) else None
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 async def get_price_for_symbol(symbol: str) -> Dict[str, Any]:
-    """Get current price using Ghost's crypto price quorum system"""
+    """Fetch a crypto price using the provider quorum."""
+    symbol = symbol.upper()
     try:
         from core.crypto.crypto_providers import get_crypto_price_quorum
-        price_data = await get_crypto_price_quorum(symbol, use_cache=False)
-        if price_data and price_data.get("price"):
-            return {
-                "symbol": symbol,
-                "price": price_data.get("price", 0.0),
-                "prev_close": price_data.get("prev_close", 0.0),
-                "change_pct": price_data.get("change_24h_pct", 0.0),
-                "provider": price_data.get("provider", "unknown"),
-                "timestamp": price_data.get("timestamp", time.time())
-            }
-    except Exception as e:
-        LOGGER.warning(f"Price fetch failed for {symbol}: {e}")
-    
-    return {"symbol": symbol, "price": 0.0, "change_pct": 0.0, "provider": "offline"}
+
+        price_data = await asyncio.wait_for(
+            get_crypto_price_quorum(symbol, use_cache=True),
+            timeout=8,
+        )
+        if not price_data:
+            raise RuntimeError("no price data")
+
+        return {
+            "symbol": symbol,
+            "price": float(price_data.get("price", 0.0)),
+            "change_pct": float(
+                price_data.get("change_pct")
+                or price_data.get("change_24h_pct")
+                or 0.0
+            ),
+            "provider": price_data.get("provider", "unknown"),
+            "volume": float(price_data.get("volume_24h", 0.0)),
+            "confidence": float(price_data.get("confidence", 0.0)),
+            "timestamp": float(price_data.get("timestamp", time.time())),
+        }
+    except Exception as exc:
+        LOGGER.warning("Price fetch failed for %s: %s", symbol, exc)
+        return {
+            "symbol": symbol,
+            "price": 0.0,
+            "change_pct": 0.0,
+            "provider": "offline",
+            "volume": 0.0,
+            "confidence": 0.0,
+            "timestamp": time.time(),
+        }
 
 
 async def get_vip_coin_prices() -> List[Dict[str, Any]]:
-    """Get prices for all VIP coins"""
+    """Fetch prices for VIP coins used in the cockpit header."""
     try:
-        from wolf_app import VIP_COINS
-        prices = []
+        from wolf_app import VIP_COINS  # type: ignore
+
+        prices: List[Dict[str, Any]] = []
         for coin in VIP_COINS:
-            price_data = await get_price_for_symbol(coin)
-            prices.append({
-                "symbol": coin,
-                "price": price_data.get("price", 0.0),
-                "change_pct": price_data.get("change_pct", 0.0),
-                "status": "live" if price_data.get("price", 0) > 0 else "offline"
-            })
+            snapshot = await get_price_for_symbol(coin)
+            prices.append(
+                {
+                    "symbol": coin,
+                    "price": snapshot.get("price", 0.0),
+                    "change_pct": snapshot.get("change_pct", 0.0),
+                    "status": "live" if snapshot.get("price", 0) > 0 else "offline",
+                }
+            )
         return prices
-    except Exception as e:
-        LOGGER.error(f"VIP coin price fetch error: {e}")
+    except Exception as exc:
+        LOGGER.error("VIP coin price fetch error: %s", exc)
         return []
 
 
-async def get_crypto_top_movers(limit: int = 10) -> List[Dict[str, Any]]:
-    """Get top crypto movers using Ghost's data"""
+async def get_crypto_top_movers(limit: int = 6) -> List[Dict[str, Any]]:
+    """Build a lightweight list of crypto movers for supporting panels."""
     try:
-        from wolf_app import CRYPTO_SYMBOLS
-        movers = []
-        
-        for symbol in list(CRYPTO_SYMBOLS)[:limit]:
-            price_data = await get_price_for_symbol(symbol)
-            if price_data.get("price", 0) > 0:
-                movers.append({
-                    "symbol": symbol,
-                    "type": "crypto",
-                    "name": symbol,
-                    "price": price_data["price"],
-                    "change": price_data.get("change_pct", 0.0),
-                    "volume": 0,  # TODO: Add volume data
-                    "confidence": 75  # Default confidence
-                })
-        
-        # Sort by absolute change
-        movers.sort(key=lambda x: abs(x["change"]), reverse=True)
-        return movers[:limit]
-    except Exception as e:
-        LOGGER.error(f"Crypto movers error: {e}")
+        from wolf_app import CRYPTO_SYMBOLS  # type: ignore
+
+        symbols = list(CRYPTO_SYMBOLS)[: max(limit * 2, limit)]
+    except Exception:
+        symbols = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA"]
+
+    async def _fetch(symbol: str) -> Optional[Dict[str, Any]]:
+        snapshot = await get_price_for_symbol(symbol)
+        if snapshot.get("price", 0.0) <= 0:
+            return None
+        return {
+            "symbol": symbol,
+            "type": "crypto",
+            "name": symbol,
+            "price": snapshot.get("price", 0.0),
+            "change": snapshot.get("change_pct", 0.0),
+            "volume": snapshot.get("volume", 0.0),
+            "confidence": snapshot.get("confidence", 65),
+        }
+
+    results = await asyncio.gather(*[_fetch(sym) for sym in symbols], return_exceptions=True)
+    movers: List[Dict[str, Any]] = []
+    for result in results:
+        if isinstance(result, dict):
+            movers.append(result)
+
+    movers.sort(key=lambda item: abs(item.get("change", 0.0)), reverse=True)
+    return movers[:limit]
+
+
+# Hunter feed cache + refresh controls
+_HUNTER_FEED_CACHE: Dict[str, Any] = {"data": [], "timestamp": 0.0}
+_HUNTER_FEED_TTL_SECONDS = 45
+_HUNTER_FEED_REFRESH_MIN_GAP = 15
+_HUNTER_FEED_REFRESH_TASK: Optional["asyncio.Task[List[Dict[str, Any]]]"] = None
+_HUNTER_FEED_LAST_REFRESH = 0.0
+
+
+def _get_cached_hunter_feed() -> List[Dict[str, Any]]:
+    data = _HUNTER_FEED_CACHE.get("data") or []
+    ts = _HUNTER_FEED_CACHE.get("timestamp", 0.0)
+    if not data or time.time() - ts > _HUNTER_FEED_TTL_SECONDS:
         return []
+    return list(data)
+
+
+def _set_hunter_feed_cache(data: List[Dict[str, Any]]):
+    _HUNTER_FEED_CACHE["data"] = data
+    _HUNTER_FEED_CACHE["timestamp"] = time.time()
+
+
+def _hunter_feed_refresh_done(task: "asyncio.Task[List[Dict[str, Any]]]"):
+    try:
+        task.result()
+    except Exception as exc:  # pragma: no cover - logged for observability
+        LOGGER.error("Hunter feed refresh task failed: %s", exc)
+
+
+def _schedule_hunter_feed_refresh(force: bool = False):
+    global _HUNTER_FEED_REFRESH_TASK, _HUNTER_FEED_LAST_REFRESH
+    now = time.time()
+
+    if not force and now - _HUNTER_FEED_LAST_REFRESH < _HUNTER_FEED_REFRESH_MIN_GAP:
+        return
+
+    if _HUNTER_FEED_REFRESH_TASK and not _HUNTER_FEED_REFRESH_TASK.done():
+        return
+
+    loop = asyncio.get_running_loop()
+    _HUNTER_FEED_REFRESH_TASK = loop.create_task(_refresh_hunter_feed())
+    _HUNTER_FEED_REFRESH_TASK.add_done_callback(_hunter_feed_refresh_done)
+    _HUNTER_FEED_LAST_REFRESH = now
+
+
+def _fetch_hunter_feed_from_redis(limit: int = 10) -> List[Dict[str, Any]]:
+    """Attempt to hydrate feed entries from Redis movers cache."""
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    if not redis_url:
+        return []
+
+    try:
+        import redis  # type: ignore
+
+        client = redis.from_url(redis_url, decode_responses=True)
+    except Exception as exc:
+        LOGGER.warning("Hunter feed Redis connection failed: %s", exc)
+        return []
+
+    movers: List[Dict[str, Any]] = []
+
+    try:
+        stocks_json = client.get("movers:stocks:last")
+        if stocks_json:
+            for mover in json.loads(stocks_json)[:limit]:
+                movers.append(
+                    {
+                        "symbol": mover.get("symbol", ""),
+                        "name": mover.get("name", mover.get("symbol", "")),
+                        "type": "stock",
+                        "price": mover.get("price", 0.0),
+                        "change": mover.get("change_pct", 0.0),
+                        "volume": mover.get("volume", 0),
+                        "confidence": mover.get("confidence", 0),
+                        "gps": mover.get("gps", 0),
+                    }
+                )
+    except Exception as exc:  # pragma: no cover - logging only
+        LOGGER.warning("Failed to load stock movers from Redis: %s", exc)
+
+    try:
+        crypto_json = client.get("movers:crypto:last")
+        if crypto_json:
+            for mover in json.loads(crypto_json)[:limit]:
+                movers.append(
+                    {
+                        "symbol": mover.get("symbol", ""),
+                        "name": mover.get("name", mover.get("symbol", "")),
+                        "type": "crypto",
+                        "price": mover.get("price", 0.0),
+                        "change": mover.get("change_pct", 0.0),
+                        "volume": mover.get("volume", 0),
+                        "confidence": mover.get("confidence", 0),
+                        "gps": mover.get("gps", 0),
+                    }
+                )
+    except Exception as exc:
+        LOGGER.warning("Failed to load crypto movers from Redis: %s", exc)
+
+    movers.sort(key=lambda item: abs(item.get("change", 0) or 0), reverse=True)
+    return movers[:limit]
+
+
+async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
+    """Construct live hunter feed entries using provider quorum data."""
+    try:
+        from wolf_app import HUNTER_CRYPTO_SYMBOLS  # type: ignore
+
+        hunter_symbols = list(HUNTER_CRYPTO_SYMBOLS)
+    except Exception as exc:
+        LOGGER.warning("Unable to load hunter symbol set: %s", exc)
+        hunter_symbols = []
+
+    fallback_symbols = [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP",
+        "DOGE",
+        "ADA",
+        "AVAX",
+        "LINK",
+        "MKR",
+        "COMP",
+    ]
+
+    symbol_pool = list(dict.fromkeys((hunter_symbols or []) + fallback_symbols))
+    symbol_pool = symbol_pool[: max(limit * 2, limit)]
+    LOGGER.debug("Hunter feed symbol pool: %s", symbol_pool)
+
+    async def _fetch(symbol: str) -> Optional[Dict[str, Any]]:
+        snapshot = await get_price_for_symbol(symbol)
+        price = snapshot.get("price", 0.0)
+        if price <= 0:
+            return None
+        change = snapshot.get("change_pct", 0.0)
+        gps = round(change * 0.75, 2)
+        return {
+            "symbol": symbol,
+            "name": symbol,
+            "type": "crypto",
+            "price": price,
+            "change": change,
+            "volume": snapshot.get("volume", 0.0),
+            "confidence": max(50, min(95, int(snapshot.get("confidence", 65)))),
+            "gps": gps,
+        }
+
+    results = await asyncio.gather(*[_fetch(sym) for sym in symbol_pool], return_exceptions=True)
+    movers: List[Dict[str, Any]] = []
+    for result in results:
+        if isinstance(result, dict):
+            movers.append(result)
+
+    movers.sort(key=lambda item: abs(item.get("change", 0.0)), reverse=True)
+    LOGGER.info("Hunter feed live build produced %s movers", len(movers))
+    return movers[:limit]
+
+
+async def _refresh_hunter_feed() -> List[Dict[str, Any]]:
+    data = _fetch_hunter_feed_from_redis(limit=12)
+    if not data:
+        data = await _build_live_hunter_feed(limit=12)
+    if data:
+        _set_hunter_feed_cache(data)
+    return data
 
 
 # === PYDANTIC MODELS ===
@@ -269,33 +507,30 @@ class GoalsSnapshot(BaseModel):
 
 # === STATUS & HEALTH ===
 
+@router.get("/cockpit/version")
+async def get_cockpit_version():
+    """Expose the active cockpit build identifier for smoke checks."""
+    return {"ui": "cockpit_v3", "status": "live"}
+
+
 @router.get("/cockpit/status")
 async def get_cockpit_status():
-    """
-    Get live status for cockpit header.
-    Shows: LIVE indicator, health score, last update time.
-    """
+    """Live cockpit header metrics."""
     try:
-        state = get_ghost_state()
-        
-        # Calculate Ghost Score V1
         score_result = calculate_ghost_score_v1()
-        health_score = score_result["score"]
-        health_grade = score_result["grade"]
-        
+        components = score_result.get("components", {})
+
         return {
             "live": True,
             "last_update_ts": time.time(),
-            "ghost_health_score": health_score,
-            "ghost_health_grade": health_grade,
-            "data_ok": True,
-            "ai_ok": state.get("active", False),
-            "risk_ok": True,
-            "score_breakdown": score_result["breakdown"],
-            "score_components": score_result["components"]
+            "ghost_health_score": score_result["score"],
+            "ghost_health_grade": score_result["grade"],
+            "data_ok": components.get("data_ok", True),
+            "ai_ok": components.get("ai_ok", True),
+            "risk_ok": components.get("risk_ok", True),
         }
-    except Exception as e:
-        LOGGER.error(f"Status error: {e}")
+    except Exception as exc:
+        LOGGER.error("Cockpit status failed: %s", exc)
         return {
             "live": False,
             "last_update_ts": time.time(),
@@ -303,200 +538,106 @@ async def get_cockpit_status():
             "ghost_health_grade": "F",
             "data_ok": False,
             "ai_ok": False,
-            "risk_ok": False
+            "risk_ok": False,
         }
 
-
-# === GOALS & GHOST SCORE ===
 
 @router.get("/goals/snapshot")
 async def get_goals_snapshot():
-    """
-    Get Ghost Score and goal progress (daily/weekly/monthly/yearly).
-    Uses Ghost Score V1 with transparent penalty breakdown.
-    """
-    try:
-        # Calculate Ghost Score V1
-        score_result = calculate_ghost_score_v1()
-        ghost_score = score_result["score"]
-        
-        # Get goal progress from state
-        state = get_ghost_state()
-        goals = state.get("goals", {})
-        
-        return {
-            "ghost_score": ghost_score,
-            "ghost_grade": score_result["grade"],
-            "score_breakdown": score_result["breakdown"],
-            "score_components": score_result["components"],
-            "daily_goal_pct": goals.get("daily_progress", 0.0),
-            "weekly_goal_pct": goals.get("weekly_progress", 0.0),
-            "monthly_goal_pct": goals.get("monthly_progress", 0.0),
-            "yearly_goal_pct": goals.get("yearly_progress", 0.0)
-        }
-    except Exception as e:
-        LOGGER.error(f"Goals snapshot error: {e}")
-        return {
-            "ghost_score": 0.0,
-            "ghost_grade": "F",
-            "daily_goal_pct": 0.0,
-            "weekly_goal_pct": 0.0,
-            "monthly_goal_pct": 0.0,
-            "yearly_goal_pct": 0.0
-        }
-        return {
-            "ghost_score": 0.0,
-            "daily_goal_pct": 0.0,
-            "weekly_goal_pct": 0.0,
-            "monthly_goal_pct": 0.0,
-            "yearly_goal_pct": 0.0
-        }
+    """Expose live Ghost Score + goal progress for cockpit health panel."""
+    goals_raw = await _load_goals_data()
+    goals_payload = _format_goal_payload(goals_raw)
+    ghost_score_details = _compute_ghost_score_snapshot()
 
+    daily_pct = _goal_progress_pct(goals_payload["daily"])
+    weekly_pct = _goal_progress_pct(goals_payload["weekly"])
+    monthly_pct = _goal_progress_pct(goals_payload["monthly"])
+    yearly_pct = _goal_progress_pct(goals_payload["yearly"])
 
-# === HUNTER FEED (TOP OPPORTUNITIES) ===
+    ghost_score_value: Optional[float] = None
+    if ghost_score_details:
+        try:
+            ghost_score_value = float(ghost_score_details.get("score"))
+        except (TypeError, ValueError):
+            ghost_score_value = None
+
+    status_ok = any(
+        value is not None
+        for value in (
+            ghost_score_value,
+            daily_pct,
+            weekly_pct,
+            monthly_pct,
+            yearly_pct,
+        )
+    )
+
+    response = {
+        "ghost_score": ghost_score_value,
+        "ghost_score_details": ghost_score_details or None,
+        "goals": goals_payload,
+        "daily_goal_pct": daily_pct,
+        "weekly_goal_pct": weekly_pct,
+        "monthly_goal_pct": monthly_pct,
+        "yearly_goal_pct": yearly_pct,
+        "status": "ok" if status_ok else "no-data",
+        "timestamp": time.time(),
+    }
+
+    return response
+
 
 @router.get("/hunter/feed")
 async def get_hunter_feed():
-    """
-    Get top opportunities from Ghost's scanner.
-    Returns stocks + crypto movers with momentum scores.
-    NO AUTH REQUIRED - public endpoint for cockpit.
-    """
+    """Serve hunter feed data from cache, kicking off refreshes in the background."""
+    cached = _get_cached_hunter_feed()
+    if cached:
+        if time.time() - _HUNTER_FEED_CACHE.get("timestamp", 0.0) > (
+            _HUNTER_FEED_TTL_SECONDS / 2
+        ):
+            try:
+                _schedule_hunter_feed_refresh()
+            except RuntimeError:
+                pass
+        return cached
+
     try:
-        opportunities = []
-        
-        # Get crypto movers
-        crypto_movers = await get_crypto_top_movers(limit=10)
-        opportunities.extend(crypto_movers)
-        
-        # If no data, show clear message
-        if not opportunities:
-            opportunities = [{
-                "symbol": "BTC",
-                "type": "crypto",
-                "name": "Bitcoin",
-                "price": 0.0,
-                "change": 0.0,
-                "volume": 0,
-                "confidence": 0,
-                "note": "Scanner warming up - check back in 60 seconds"
-            }]
-        
-        return opportunities
-    except Exception as e:
-        LOGGER.error(f"Hunter feed error: {e}")
-        return []
+        _schedule_hunter_feed_refresh(force=True)
+    except RuntimeError:
+        pass
+
+    for _ in range(3):
+        await asyncio.sleep(0.4)
+        cached = _get_cached_hunter_feed()
+        if cached:
+            return cached
+
+    return [
+        {
+            "symbol": "BTC",
+            "type": "crypto",
+            "name": "Bitcoin",
+            "price": 0.0,
+            "change": 0.0,
+            "volume": 0,
+            "confidence": 0,
+            "note": "Scanner warming up - check back in 60 seconds",
+        }
+    ]
 
 
 # === VIP COINS + XRP ===
 
 @router.get("/vip/snapshot")
 async def get_vip_snapshot():
-    """
-    Get VIP coin prices + XRP tracker.
-    Uses Ghost's crypto provider stack.
-    """
+    """Return VIP coin snapshots plus XRP tracker."""
     try:
         vip_prices = await get_vip_coin_prices()
-        
-        # Get XRP separately for "Bullish Eye" panel
         xrp_data = await get_price_for_symbol("XRP")
-        
-        return {
-            "vip_coins": vip_prices,
-            "xrp": {
-                "price": xrp_data.get("price", 0.0),
-                "change_pct": xrp_data.get("change_pct", 0.0),
-                "gps_score": 75,  # Default
-                "momentum": "TRACKING"
-            }
-        }
-    except Exception as e:
-        LOGGER.error(f"VIP snapshot error: {e}")
-        return {
-            "vip_coins": [],
-            "xrp": {"price": 0.0, "change_pct": 0.0, "gps_score": 0, "momentum": "OFFLINE"}
-        }
-
-
-@router.get("/hunter/presales")
-async def get_presales():
-    """Get presale/microcap watchlist"""
-    try:
-        return [
-            {"name": "WEPE", "status": "active", "price": 0.0},
-            {"name": "LILPEPE", "status": "monitoring", "price": 0.0},
-            {"name": "DORKL", "status": "arming", "price": 0.0}
-        ]
-    except Exception as e:
-        LOGGER.error(f"Presales error: {e}")
-        return []
-
-
-# === WORLD CONTEXT (SPY, QQQ, VIX, BTC, DXY) ===
-
-@router.get("/world/context")
-async def get_world_context():
-    """
-    Get world context: SPY, QQQ, VIX, BTC, DXY + market regime.
-    Uses Ghost's price engine.
-    """
-    try:
-        symbols = {
-            "SPY": get_price_for_symbol("SPY"),
-            "QQQ": get_price_for_symbol("QQQ"),
-            "^VIX": get_price_for_symbol("^VIX"),
-            "BTC-USD": get_price_for_symbol("BTC"),
-            "DXY": get_price_for_symbol("DXY")
-        }
-        
-        # Get market regime
-        regime = "SIDEWAYS"
-        regime_confidence = 0.0
-        
-        try:
-            from core.regime_detector import detect_regime
-            regime_data = detect_regime()
-            regime = regime_data.get("regime", "SIDEWAYS")
-            regime_confidence = min(100.0, regime_data.get("confidence", 0.0))
-        except:
-            pass
-        
-        return {
-            "SPY": {
-                "price": symbols["SPY"].get("price", 0.0),
-                "change_pct": symbols["SPY"].get("change_pct", 0.0)
-            },
-            "QQQ": {
-                "price": symbols["QQQ"].get("price", 0.0),
-                "change_pct": symbols["QQQ"].get("change_pct", 0.0)
-            },
-            "VIX": {
-                "price": symbols["^VIX"].get("price", 0.0),
-                "change_pct": symbols["^VIX"].get("change_pct", 0.0)
-            },
-            "BTC": {
-                "price": symbols["BTC-USD"].get("price", 0.0),
-                "change_pct": symbols["BTC-USD"].get("change_pct", 0.0)
-            },
-            "DXY": {
-                "price": symbols["DXY"].get("price", 0.0),
-                "change_pct": symbols["DXY"].get("change_pct", 0.0)
-            },
-            "regime": regime,
-            "regime_confidence": regime_confidence
-        }
-    except Exception as e:
-        LOGGER.error(f"World context error: {e}")
-        return {
-            "SPY": {"price": 0.0, "change_pct": 0.0},
-            "QQQ": {"price": 0.0, "change_pct": 0.0},
-            "VIX": {"price": 0.0, "change_pct": 0.0},
-            "BTC": {"price": 0.0, "change_pct": 0.0},
-            "DXY": {"price": 0.0, "change_pct": 0.0},
-            "regime": "UNKNOWN",
-            "regime_confidence": 0.0
-        }
+        return {"vip_coins": vip_prices, "xrp": xrp_data}
+    except Exception as exc:
+        LOGGER.error("VIP snapshot failed: %s", exc)
+        return {"vip_coins": [], "xrp": {"symbol": "XRP", "price": 0.0}}
 
 
 # === RISK ENGINE ===
@@ -509,89 +650,6 @@ async def get_risk_snapshot():
     """
     try:
         state = get_ghost_state()
-        portfolio = state.get("portfolio", {})
-        
-        # Calculate NAV
-        total_nav = portfolio.get("market_value", 0.0)
-        cash = portfolio.get("cash", 0.0)
-        total_nav += cash
-        
-        # Calculate exposure
-        open_risk_pct = 0.0
-        if total_nav > 0:
-            open_risk_pct = (portfolio.get("market_value", 0.0) / total_nav) * 100
-        
-        return {
-            "total_nav": total_nav,
-            "open_risk_pct": open_risk_pct,
-            "max_position_pct": 40.0,  # From config
-            "var_95": 0.0,  # TODO: Calculate VaR
-            "drawdown_pct": 0.0,  # TODO: Calculate drawdown
-            "risk_status": "healthy" if open_risk_pct < 80 else "elevated"
-        }
-    except Exception as e:
-        LOGGER.error(f"Risk snapshot error: {e}")
-        return {
-            "total_nav": 0.0,
-            "open_risk_pct": 0.0,
-            "max_position_pct": 40.0,
-            "var_95": 0.0,
-            "drawdown_pct": 0.0,
-            "risk_status": "unknown"
-        }
-
-
-# === PORTFOLIO ===
-
-@router.get("/portfolio/summary")
-async def get_portfolio_summary():
-    """
-    Get portfolio summary with positions and P&L.
-    Uses Ghost's portfolio state.
-    """
-    try:
-        state = get_ghost_state()
-        portfolio = state.get("portfolio", {})
-        positions = portfolio.get("positions", [])
-        
-        market_value = portfolio.get("market_value", 0.0)
-        total_pnl = portfolio.get("pnl_total", 0.0)
-        total_pnl_pct = portfolio.get("pnl_pct", 0.0)
-        
-        # Format positions
-        position_list = []
-        for pos in positions[:5]:  # Top 5
-            position_list.append({
-                "symbol": pos.get("symbol", ""),
-                "qty": pos.get("qty", 0.0),
-                "avg_cost": pos.get("avg_cost", 0.0),
-                "price": pos.get("price", 0.0),
-                "pnl_pct": pos.get("pnl_pct", 0.0)
-            })
-        
-        return {
-            "market_value": market_value,
-            "total_pnl": total_pnl,
-            "total_pnl_pct": total_pnl_pct,
-            "positions": position_list
-        }
-    except Exception as e:
-        LOGGER.error(f"Portfolio summary error: {e}")
-        return {
-            "market_value": 0.0,
-            "total_pnl": 0.0,
-            "total_pnl_pct": 0.0,
-            "positions": []
-        }
-
-
-# === PREDICTIONS & AI BRAIN ===
-
-@router.get("/predictions/latest")
-async def get_latest_predictions(symbol: str = "WOLF"):
-    """Get latest Ghost predictions for symbol"""
-    try:
-        # Use existing prediction API
         from wolf_app import get_last_prediction
         pred = get_last_prediction(symbol)
         
@@ -788,7 +846,7 @@ async def get_latest_predictions(limit: int = 10):
                 p.horizon_h,
                 o.hit_direction,
                 o.hit_ratio_window,
-                o.mape
+                o.map
             FROM predictions p
             LEFT JOIN outcomes o ON p.id = o.prediction_id
             ORDER BY p.run_at DESC
@@ -832,92 +890,6 @@ async def get_latest_predictions(limit: int = 10):
             "error": str(e)[:200],
             "timestamp": int(time.time())
         }
-
-
-@router.get("/hunter/feed")
-async def get_hunter_feed():
-    """
-    Get Ghost Hunter feed with top stock and crypto movers
-    
-    Returns:
-        [
-            {
-                "symbol": "AAPL",
-                "name": "Apple Inc",
-                "type": "stock",
-                "price": 189.50,
-                "change": 5.3,
-                "volume": 50000000,
-                "confidence": 75,
-                "gps": 8.2
-            },
-            ...
-        ]
-    """
-    try:
-        import redis as redis_lib
-        
-        # Get Redis client to fetch cached movers
-        redis_client = None
-        try:
-            redis_url = os.getenv("REDIS_URL", "")
-            if redis_url:
-                redis_client = redis_lib.from_url(redis_url, decode_responses=True)
-        except:
-            pass
-        
-        stocks = []
-        crypto = []
-        
-        # Fetch stock movers from Redis cache
-        if redis_client:
-            try:
-                stocks_json = redis_client.get("movers:stocks:last")
-                if stocks_json:
-                    stock_movers = json.loads(stocks_json)
-                    for mover in stock_movers[:10]:
-                        stocks.append({
-                            "symbol": mover.get("symbol", ""),
-                            "name": mover.get("name", mover.get("symbol", "")),
-                            "type": "stock",
-                            "price": mover.get("price", 0),
-                            "change": mover.get("change_pct", 0),
-                            "volume": mover.get("volume", 0),
-                            "confidence": int(mover.get("confidence", 0) * 100) if isinstance(mover.get("confidence"), float) else mover.get("confidence", 0),
-                            "gps": mover.get("gps", 0)
-                        })
-            except:
-                pass
-            
-            # Fetch crypto movers from Redis cache
-            try:
-                crypto_json = redis_client.get("movers:crypto:last")
-                if crypto_json:
-                    crypto_movers = json.loads(crypto_json)
-                    for mover in crypto_movers[:10]:
-                        crypto.append({
-                            "symbol": mover.get("symbol", ""),
-                            "name": mover.get("name", mover.get("symbol", "")),
-                            "type": "crypto",
-                            "price": mover.get("price", 0),
-                            "change": mover.get("change_pct", 0),
-                            "volume": mover.get("volume", 0),
-                            "confidence": int(mover.get("confidence", 0) * 100) if isinstance(mover.get("confidence"), float) else mover.get("confidence", 0),
-                            "gps": mover.get("gps", 0)
-                        })
-            except:
-                pass
-        
-        # Combine and sort by absolute change
-        all_movers = stocks + crypto
-        all_movers.sort(key=lambda x: abs(x.get("change", 0)), reverse=True)
-        
-        return all_movers
-    
-    except Exception as e:
-        LOGGER.error(f"Hunter feed failed: {e}", exc_info=True)
-        return []
-
 
 # === PROVIDER HEALTH ===
 

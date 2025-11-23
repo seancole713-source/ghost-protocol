@@ -70,7 +70,7 @@ ______________________________________________________________________
 ```bash
 # Core
 SIM_MODE=0
-GHOST_API_TOKEN=your_token
+GHOST_API_TOKEN="$(railway variables get GHOST_API_TOKEN)"
 GHOST_FOCUS_TICKER=WOLF
 
 # API Keys
@@ -107,7 +107,7 @@ ______________________________________________________________________
 
 ## 📋 QUICK RAILWAY COMMANDS
 
-### Add Missing Variables:
+### Add Missing Variables
 
 ```bash
 railway variables set AGENTKIT_ENABLED=true
@@ -119,10 +119,10 @@ railway variables set WOLF_QTY=8.41959051
 railway variables set WOLF_AVG_COST=359.28
 railway variables set WOLF_PERSIST_MODE=sqlite
 railway variables set CSP_MODE=prod
-railway variables set ALLOWED_ORIGINS=https://your-domain.railway.app
+railway variables set ALLOWED_ORIGINS=https://ghost-production-xxxx.up.railway.app
 ```
 
-### Delete Placeholders:
+### Delete Placeholders
 
 ```bash
 railway variables delete AGENT_ROLE
@@ -148,7 +148,7 @@ railway variables delete AUTO_RESTART_COOLDOWN_SEC
 railway variables delete ALERT_CHANNEL
 ```
 
-### Verify:
+### Verify
 
 ```bash
 railway variables

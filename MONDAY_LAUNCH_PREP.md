@@ -46,31 +46,31 @@ ______________________________________________________________________
 
 ### Available UI Panels
 
-1. **Cockpit** - http://localhost:5000/cockpit.html
+1. **Cockpit** - [Cockpit panel](http://localhost:5000/cockpit.html)
 
    - Real-time status
    - Position summary
    - AI signals
 
-2. **Portfolio/Bank** - http://localhost:5000/bank.html
+2. **Portfolio/Bank** - [Portfolio/Bank panel](http://localhost:5000/bank.html)
 
    - Position management
    - Cash tracking
    - P&L history
 
-3. **Markets** - http://localhost:5000/markets.html
+3. **Markets** - [Markets panel](http://localhost:5000/markets.html)
 
    - Watchlist view
    - Top movers
    - Market status
 
-4. **Engine** - http://localhost:5000/engine.html
+4. **Engine** - [Engine panel](http://localhost:5000/engine.html)
 
    - Ghost-AI v1 preview
    - Feature importance
    - Signal confidence
 
-5. **Main Dashboard** - http://localhost:5000/
+5. **Main Dashboard** - [Main dashboard](http://localhost:5000/)
 
    - Overview of all systems
    - Quick actions
@@ -115,24 +115,26 @@ curl -X POST http://localhost:5000/api/mode \
 curl -X POST http://localhost:5000/api/state/reset
 
 # Add your actual WOLF position
+WOLF_QTY="$(railway variables get WOLF_QTY)"
+WOLF_AVG_COST="$(railway variables get WOLF_AVG_COST)"
 curl -X POST http://localhost:5000/api/bank/add_position \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "WOLF",
-    "quantity": YOUR_ACTUAL_SHARES,
-    "price": YOUR_AVG_COST,
+    "quantity": '"$WOLF_QTY"',
+    "price": '"$WOLF_AVG_COST"',
     "type": "stock"
   }'
 ```
 
-**C. Update Watchlist**
+#### C. Update Watchlist
 
 ```bash
 # Add real tickers you want to track
 curl -X POST "http://localhost:5000/api/watcher/add_ticker?symbol=TICKER"
 ```
 
-**D. Fetch Pre-Market Data**
+#### D. Fetch Pre-Market Data
 
 ```bash
 # Update macro conditions
@@ -147,7 +149,7 @@ curl "http://localhost:5000/api/edgar/recent_filings?hours_back=72&limit=20"
 
 ### Step 2: MARKET OPEN (9:30 AM ET)
 
-**A. Verify Real-Time Data**
+#### A. Verify Real-Time Data
 
 ```bash
 # Check WOLF price is live
@@ -157,13 +159,13 @@ curl "http://localhost:5000/api/price/WOLF?force=1" | jq .
 curl http://localhost:5000/api/polygon/market_status | jq '.market_status.market'
 ```
 
-**B. Monitor Panels**
+#### B. Monitor Panels
 
-- Open Cockpit: http://localhost:5000/cockpit.html
-- Check Portfolio updates
-- Verify Ghost-AI v1 signals
+- Open [Cockpit](http://localhost:5000/cockpit.html)
+- Check [Portfolio panel](http://localhost:5000/bank.html) updates
+- Verify Ghost-AI v1 signals in [Engine](http://localhost:5000/engine.html)
 
-**C. Enable Alert System (if ready)**
+#### C. Enable Alert System (if ready)
 
 ```bash
 # Check alert configuration
@@ -175,7 +177,7 @@ curl -X POST "http://localhost:5000/api/alerts/dispatch?dry_run=1"
 
 ### Step 3: THROUGHOUT DAY
 
-**Monitor:**
+#### Monitor
 
 - [ ] Smart Watcher signals (proactive alerts)
 - [ ] Ghost-AI v1 GPS scores
@@ -184,11 +186,11 @@ curl -X POST "http://localhost:5000/api/alerts/dispatch?dry_run=1"
 - [ ] Macro risk changes (VIX spikes)
 - [ ] Algo pattern detection (HFT activity)
 
-**Key URLs:**
+#### Key URLs
 
-- Health: http://localhost:5000/health
-- Diagnostics: http://localhost:5000/diagnostics/summary
-- Portfolio: http://localhost:5000/api/portfolio
+- [Health](http://localhost:5000/health)
+- [Diagnostics](http://localhost:5000/diagnostics/summary)
+- [Portfolio API](http://localhost:5000/api/portfolio)
 
 ______________________________________________________________________
 
@@ -283,7 +285,7 @@ ______________________________________________________________________
 
 ## 🎉 CURRENT STATUS SUMMARY
 
-```
+```text
 ╔════════════════════════════════════════════════════════════╗
 ║              ✅ GHOST SIMULATION MODE ACTIVE               ║
 ╠════════════════════════════════════════════════════════════╣
@@ -292,7 +294,7 @@ ______________________________________________________________________
 ║  NAV:            $48,740                                   ║
 ║  Watchlist:      5/25 tickers                              ║
 ║  Data Sources:   7 active (Level 10 + APEX)               ║
-║  Server:         http://localhost:5000 ✅ RUNNING          ║
+║  Server:         localhost:5000 ✅ RUNNING                ║
 ║                                                            ║
 ║  🧪 Test all UI panels TODAY                               ║
 ║  🚀 Switch to LIVE mode MONDAY 8:00 AM                     ║
@@ -304,11 +306,11 @@ ______________________________________________________________________
 
 ## 🎯 TODAY'S TESTING CHECKLIST
 
-- [ ] Open http://localhost:5000 and verify main dashboard
-- [ ] Test Cockpit panel (http://localhost:5000/cockpit.html)
-- [ ] Test Portfolio panel (http://localhost:5000/bank.html)
-- [ ] Test Markets panel (http://localhost:5000/markets.html)
-- [ ] Test Engine panel (http://localhost:5000/engine.html)
+- [ ] Open [main dashboard](http://localhost:5000) and verify status
+- [ ] Test [Cockpit panel](http://localhost:5000/cockpit.html)
+- [ ] Test [Portfolio panel](http://localhost:5000/bank.html)
+- [ ] Test [Markets panel](http://localhost:5000/markets.html)
+- [ ] Test [Engine panel](http://localhost:5000/engine.html)
 - [ ] Verify Ghost-AI v1 GPS scores showing
 - [ ] Check Smart Watcher has 5 tickers
 - [ ] Confirm portfolio shows 2000 WOLF shares
@@ -319,21 +321,21 @@ ______________________________________________________________________
 
 ## 🚀 MONDAY MORNING STEPS (TL;DR)
 
-**8:00 AM - Pre-Market:**
+### 8:00 AM - Pre-Market
 
 1. Switch to LIVE mode
 2. Reset position to real holdings
 3. Update watchlist with real tickers
 4. Fetch pre-market data
 
-**9:30 AM - Market Open:**
+### 9:30 AM - Market Open
 
 1. Verify real-time prices flowing
 2. Open cockpit panel
 3. Monitor Ghost-AI v1 signals
 4. Watch for SEC 8-K filings
 
-**Throughout Day:**
+### Throughout Day
 
 - Monitor Smart Watcher proactive signals
 - Check portfolio P&L updates
@@ -342,7 +344,7 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-**Next Steps:**
+### Next Steps
 
 1. ✅ Test all UI panels tonight
 2. ✅ Verify data flows correctly
@@ -350,4 +352,4 @@ ______________________________________________________________________
 4. 🚀 Monday 8 AM: Run pre-market checklist
 5. 🎯 Monday 9:30 AM: Switch to LIVE, monitor closely
 
-**Good luck on launch day! 🚀**
+Good luck on launch day! 🚀

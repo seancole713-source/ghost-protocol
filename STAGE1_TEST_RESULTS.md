@@ -113,7 +113,7 @@ ______________________________________________________________________
 
    ```bash
    curl -X POST http://localhost:5000/ai/decide \
-     -H "Authorization: Bearer YOUR_TOKEN" | jq '.world_context, .market_mood'
+      -H "Authorization: Bearer $(railway variables get GHOST_API_TOKEN)" | jq '.world_context, .market_mood'
    ```
 
 ### Week 2: UI & Telegram Enhancements
