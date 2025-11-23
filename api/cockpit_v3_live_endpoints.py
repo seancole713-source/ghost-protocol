@@ -1263,19 +1263,36 @@ async def get_watchlist():
             watcher = get_smart_watcher()
             tickers = watcher.get_watchlist()
             
+            # If watchlist is empty, auto-initialize with defaults
+            if not tickers or len(tickers) == 0:
+                LOGGER.warning("Smart Watcher empty - auto-initializing with 25 default symbols")
+                default_symbols = [
+                    "WOLF",  # VIP
+                    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",  # Stocks
+                    "AMD", "NFLX", "DIS", "BA", "JPM", "V", "MA",
+                    "BTC", "ETH", "SOL", "BNB", "XRP",  # Crypto
+                    "ADA", "AVAX", "DOT", "MATIC", "LINK"
+                ]
+                for sym in default_symbols:
+                    try:
+                        watcher.add_ticker(sym)
+                    except:
+                        pass
+                tickers = watcher.get_watchlist()
+            
             # Group by type
             stocks = []
             crypto = []
             vip = []
             
-            VIP_COINS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
+            VIP_COINS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC", "WOLF"]
             
             for ticker in tickers:
                 symbol = ticker.symbol if hasattr(ticker, 'symbol') else ticker.get('symbol', '')
                 # Determine type
                 if symbol in VIP_COINS:
                     vip.append(symbol)
-                elif symbol.endswith('-USD') or symbol in ['BTC', 'ETH', 'SOL', 'DOGE', 'XRP']:
+                elif symbol.endswith('-USD') or symbol in ['BTC', 'ETH', 'SOL', 'DOGE', 'XRP', 'BNB', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK']:
                     crypto.append(symbol)
                 else:
                     stocks.append(symbol)
