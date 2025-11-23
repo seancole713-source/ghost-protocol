@@ -144,17 +144,20 @@ async function loadTopMovers() {
         const data = await response.json();
         const container = document.getElementById('movers-list');
         
-        if (!data || data.length === 0) {
+        // V3 format: {movers: [...], timestamp: N}
+        const movers = data.movers || [];
+        
+        if (!movers || movers.length === 0) {
             container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No data available</p>';
             return;
         }
         
         // Filter by current tab
-        let filtered = data;
+        let filtered = movers;
         if (currentTab === 'stocks') {
-            filtered = data.filter(item => item.type === 'stock');
+            filtered = movers.filter(item => item.type === 'stock');
         } else if (currentTab === 'crypto') {
-            filtered = data.filter(item => item.type === 'crypto');
+            filtered = movers.filter(item => item.type === 'crypto');
         }
         
         container.innerHTML = filtered.slice(0, 10).map(item => `
@@ -183,15 +186,19 @@ async function loadTopMovers() {
 // Panel 2: Forecast
 async function loadForecast() {
     try {
-        const response = await fetch(`/api/predict/run?symbol=${currentForecastSymbol}`);
+        const response = await fetch(`/api/v3/predictions/latest?symbol=${currentForecastSymbol}`);
         if (!response.ok) throw new Error('Failed to load forecast');
         
         const data = await response.json();
         
-        // Update forecast cards with real data
-        updateForecastCard(0, data.short || {}, '☀️', '24h');
-        updateForecastCard(1, data.medium || {}, '⛅', '2-5d');
-        updateForecastCard(2, data.long || {}, '🌤️', '7-14d');
+        // V3 format: {predictions: [{direction, confidence, horizon_h}]}
+        const predictions = data.predictions || [];
+        const pred = predictions[0] || {};
+        
+        // Map single prediction to all timeframes (simplified)
+        updateForecastCard(0, pred, '☀️', '24h');
+        updateForecastCard(1, pred, '⛅', '2-5d');
+        updateForecastCard(2, pred, '🌤️', '7-14d');
     } catch (error) {
         console.error('[GHOST V3] Error loading forecast:', error);
         // Graceful degradation: show "no data" state
