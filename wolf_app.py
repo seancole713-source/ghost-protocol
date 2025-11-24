@@ -6127,6 +6127,90 @@ async def api_predict_run_get(symbol: str):
     return await api_predict_run(body, credentials=None)
 
 
+@APP.get("/api/dev/features/diagnostic")
+async def api_features_diagnostic(symbol: str):
+    """
+    DEVELOPER DIAGNOSTIC: Feature extraction health check.
+    
+    Shows which features are being extracted successfully and which are failing.
+    Useful for debugging the prediction pipeline.
+    
+    Args:
+        symbol: Stock/crypto ticker (e.g., MSFT, BTC)
+    
+    Returns:
+        {
+            "ok": True,
+            "symbol": "MSFT",
+            "feature_count": 40,
+            "available_count": 35,
+            "unavailable_count": 5,
+            "availability_pct": 87.5,
+            "feature_availability": {
+                "price_engine": "2/8",
+                "technical_engine": "12/15",
+                "volume_engine": "4/5",
+                "sentiment_engine": "2/3",
+                "world_context_engine": "3/4",
+                "flow_engine": "0/4"
+            },
+            "available_features": {
+                "PRICE": 185.25,
+                "RSI_14": 67.5,
+                "MACD_HISTOGRAM": 0.45,
+                ...
+            },
+            "missing_features": [
+                "BID_ASK_SPREAD",
+                "SMA_200",
+                ...
+            ],
+            "errors": [
+                "Insufficient historical data for MSFT",
+                ...
+            ],
+            "execution_time_ms": 234.5
+        }
+    """
+    try:
+        symbol = symbol.upper().strip()
+        
+        # Get feature orchestrator
+        from core.data_pillars.feature_orchestrator import get_feature_orchestrator
+        
+        orchestrator = get_feature_orchestrator()
+        feature_data = orchestrator.get_all_features(symbol, period=90)
+        
+        # Extract available vs unavailable features
+        features = feature_data.get("features", {})
+        available_features = {k: v for k, v in features.items() if v is not None}
+        missing_features = [k for k, v in features.items() if v is None]
+        
+        # Calculate availability percentage
+        feature_count = feature_data.get("feature_count", 0)
+        available_count = feature_data.get("available_count", 0)
+        availability_pct = (available_count / feature_count * 100) if feature_count > 0 else 0.0
+        
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "timestamp": feature_data.get("timestamp", time.time()),
+            "feature_count": feature_count,
+            "available_count": available_count,
+            "unavailable_count": feature_data.get("unavailable_count", 0),
+            "availability_pct": round(availability_pct, 1),
+            "feature_availability": feature_data.get("feature_availability", {}),
+            "available_features": available_features,
+            "missing_features": missing_features,
+            "errors": feature_data.get("errors", []),
+            "execution_time_ms": feature_data.get("execution_time_ms", 0.0),
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Feature diagnostic failed for {symbol}: {e}", exc_info=True)
+        raise HTTPException(500, f"Diagnostic failed: {str(e)}")
+
+
 @APP.get("/api/v3/accuracy/summary")
 async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
     """

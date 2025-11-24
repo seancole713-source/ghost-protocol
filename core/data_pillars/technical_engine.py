@@ -106,7 +106,12 @@ class TechnicalEngine(BasePillar):
 
     def _fetch_historical_data(self, symbol: str, days: int) -> pd.DataFrame | None:
         """
-        Fetch historical OHLCV data using yfinance.
+        Fetch historical OHLCV data with fallback providers.
+        
+        Provider priority:
+        1. yfinance (free, good coverage)
+        2. Alpha Vantage (fallback if yfinance fails)
+        3. Polygon (fallback for stocks)
         
         Args:
             symbol: Ticker symbol
@@ -115,12 +120,41 @@ class TechnicalEngine(BasePillar):
         Returns:
             DataFrame with columns: timestamp, open, high, low, close, volume
         """
+        # Try yfinance first (primary provider)
+        df = self._fetch_yfinance(symbol, days)
+        if df is not None and len(df) >= 20:
+            return df
+        
+        logger.warning(f"yfinance failed for {symbol}, trying fallbacks...")
+        
+        # Try Polygon for stocks
+        if not self._is_crypto_symbol(symbol):
+            df = self._fetch_polygon_historical(symbol, days)
+            if df is not None and len(df) >= 20:
+                return df
+        
+        # Try crypto-specific providers
+        if self._is_crypto_symbol(symbol):
+            df = self._fetch_crypto_historical(symbol, days)
+            if df is not None and len(df) >= 20:
+                return df
+        
+        logger.error(f"All providers failed for {symbol}")
+        return None
+
+    def _fetch_yfinance(self, symbol: str, days: int) -> pd.DataFrame | None:
+        """Fetch historical data using yfinance"""
         try:
             import yfinance as yf
             from datetime import datetime, timedelta
             
+            # Crypto symbols need -USD suffix for yfinance
+            yf_symbol = symbol
+            if self._is_crypto_symbol(symbol):
+                yf_symbol = f"{symbol}-USD"
+            
             # Fetch data using yfinance
-            ticker = yf.Ticker(symbol)
+            ticker = yf.Ticker(yf_symbol)
             end_date = datetime.now()
             start_date = end_date - timedelta(days=days)
             
@@ -128,7 +162,7 @@ class TechnicalEngine(BasePillar):
             hist = ticker.history(start=start_date, end=end_date)
             
             if hist is None or len(hist) < 20:
-                logger.warning(f"Insufficient yfinance data for {symbol}: {len(hist) if hist is not None else 0} bars")
+                logger.warning(f"Insufficient yfinance data for {yf_symbol}: {len(hist) if hist is not None else 0} bars")
                 return None
             
             # Rename columns to match expected format
@@ -144,7 +178,7 @@ class TechnicalEngine(BasePillar):
             
             # Convert timestamp to unix time
             if "timestamp" in df.columns:
-                df["timestamp"] = df["timestamp"].astype(int) // 10**9
+                df["timestamp"] = pd.to_datetime(df["timestamp"]).astype(int) // 10**9
             
             # Ensure required columns
             for col in ["open", "high", "low", "close"]:
@@ -154,16 +188,139 @@ class TechnicalEngine(BasePillar):
             if "volume" not in df.columns:
                 df["volume"] = 0
             
-            logger.info(f"Fetched {len(df)} bars for {symbol} using yfinance")
+            logger.info(f"yfinance: Fetched {len(df)} bars for {yf_symbol}")
             return df
             
         except Exception as e:
-            logger.error(f"yfinance fetch failed for {symbol}: {e}")
+            logger.warning(f"yfinance fetch failed for {symbol}: {e}")
             return None
+
+    def _fetch_polygon_historical(self, symbol: str, days: int) -> pd.DataFrame | None:
+        """Fetch historical data from Polygon (stocks only)"""
+        try:
+            import os
+            import requests
+            from datetime import datetime, timedelta
+            
+            api_key = os.getenv("POLYGON_API_KEY")
+            if not api_key:
+                return None
+            
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            
+            # Polygon aggregates API
+            url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}"
+            params = {"adjusted": "true", "sort": "asc", "limit": 500, "apiKey": api_key}
+            
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code != 200:
+                return None
+            
+            data = response.json()
+            if not data.get("results"):
+                return None
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(data["results"])
+            df = df.rename(columns={
+                "t": "timestamp",
+                "o": "open",
+                "h": "high",
+                "l": "low",
+                "c": "close",
+                "v": "volume"
+            })
+            
+            # Timestamp already in milliseconds, convert to seconds
+            df["timestamp"] = df["timestamp"] // 1000
+            
+            logger.info(f"Polygon: Fetched {len(df)} bars for {symbol}")
+            return df
+            
+        except Exception as e:
+            logger.warning(f"Polygon fetch failed for {symbol}: {e}")
+            return None
+
+    def _fetch_crypto_historical(self, symbol: str, days: int) -> pd.DataFrame | None:
+        """Fetch historical data for crypto from CoinGecko"""
+        try:
+            import requests
+            from datetime import datetime, timedelta
+            
+            # CoinGecko symbol mapping
+            symbol_map = {
+                "BTC": "bitcoin",
+                "ETH": "ethereum",
+                "SOL": "solana",
+                "BNB": "binancecoin",
+                "XRP": "ripple",
+                "ADA": "cardano",
+                "DOGE": "dogecoin",
+                "AVAX": "avalanche-2",
+                "DOT": "polkadot",
+                "MATIC": "matic-network",
+            }
+            
+            coin_id = symbol_map.get(symbol.upper())
+            if not coin_id:
+                return None
+            
+            # CoinGecko market chart API (OHLC data)
+            url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+            params = {
+                "vs_currency": "usd",
+                "days": days,
+                "interval": "daily"
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code != 200:
+                return None
+            
+            data = response.json()
+            prices = data.get("prices", [])
+            volumes = data.get("total_volumes", [])
+            
+            if not prices or len(prices) < 20:
+                return None
+            
+            # Build DataFrame (CoinGecko doesn't provide OHLC, only close prices)
+            df = pd.DataFrame(prices, columns=["timestamp", "close"])
+            df["timestamp"] = df["timestamp"] // 1000  # Convert ms to seconds
+            df["open"] = df["close"]  # Approximate
+            df["high"] = df["close"]
+            df["low"] = df["close"]
+            
+            # Add volume if available
+            if volumes:
+                vol_df = pd.DataFrame(volumes, columns=["timestamp", "volume"])
+                vol_df["timestamp"] = vol_df["timestamp"] // 1000
+                df = df.merge(vol_df, on="timestamp", how="left")
+            
+            if "volume" not in df.columns:
+                df["volume"] = 0
+            
+            logger.info(f"CoinGecko: Fetched {len(df)} bars for {symbol}")
+            return df
+            
+        except Exception as e:
+            logger.warning(f"CoinGecko fetch failed for {symbol}: {e}")
+            return None
+
+    def _is_crypto_symbol(self, symbol: str) -> bool:
+        """Detect if symbol is cryptocurrency"""
+        CRYPTO_SYMBOLS = {
+            "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX",
+            "DOT", "MATIC", "LINK", "UNI", "AAVE", "MKR", "CRV"
+        }
+        return symbol.upper() in CRYPTO_SYMBOLS
 
     def _calculate_indicators(self, df: pd.DataFrame, symbol: str) -> list[DataSignal]:
         """
         Calculate all technical indicators from OHLCV data.
+        
+        Each indicator wrapped in try/except to ensure one failure doesn't kill entire pillar.
         
         Args:
             df: DataFrame with OHLCV data
@@ -175,10 +332,15 @@ class TechnicalEngine(BasePillar):
         signals = []
         ts = time.time()
 
+        if len(df) < 20:
+            logger.warning(f"Insufficient bars for {symbol}: {len(df)} (need 20+)")
+            return self._create_unavailable_signals()
+
         try:
             close = df["close"]
             high = df["high"]
             low = df["low"]
+            current_price = float(close.iloc[-1])
 
             # RSI (14-period)
             try:
@@ -195,6 +357,8 @@ class TechnicalEngine(BasePillar):
                             metadata={"period": 14, "symbol": symbol},
                         )
                     )
+                else:
+                    logger.debug(f"RSI calculation returned NaN for {symbol}")
             except Exception as e:
                 logger.warning(f"RSI calculation failed for {symbol}: {e}")
 
@@ -229,12 +393,18 @@ class TechnicalEngine(BasePillar):
                                 metadata={"period": 9},
                             )
                         )
+                else:
+                    logger.debug(f"MACD calculation returned empty for {symbol}")
             except Exception as e:
                 logger.warning(f"MACD calculation failed for {symbol}: {e}")
 
             # Moving Averages
             for period in [20, 50, 200]:
                 try:
+                    if len(close) < period:
+                        logger.debug(f"Insufficient data for SMA_{period} on {symbol}: {len(close)} < {period}")
+                        continue
+                    
                     ma = sma(close, period=period)
                     if not ma.empty and not np.isnan(ma.iloc[-1]):
                         signals.append(
@@ -254,6 +424,9 @@ class TechnicalEngine(BasePillar):
             # EMAs
             for period in [12, 26]:
                 try:
+                    if len(close) < period:
+                        continue
+                    
                     ma = ema(close, period=period)
                     if not ma.empty and not np.isnan(ma.iloc[-1]):
                         signals.append(
@@ -270,18 +443,23 @@ class TechnicalEngine(BasePillar):
                 except Exception as e:
                     logger.warning(f"EMA_{period} calculation failed for {symbol}: {e}")
 
-            # Bollinger Bands
+            # Bollinger Bands + POSITION
             try:
                 bb = bollinger_bands(close, period=20, std_dev=2)
                 if not bb.empty and len(bb) > 0:
                     last_row = bb.iloc[-1]
                     
+                    bb_upper = None
+                    bb_middle = None
+                    bb_lower = None
+                    
                     for band_name in ["upper", "middle", "lower"]:
                         if band_name in last_row and not np.isnan(last_row[band_name]):
+                            value = round(float(last_row[band_name]), 2)
                             signals.append(
                                 DataSignal(
                                     name=f"BB_{band_name.upper()}",
-                                    value=round(float(last_row[band_name]), 2),
+                                    value=value,
                                     confidence=1.0,
                                     data_available=True,
                                     source="calculated",
@@ -289,6 +467,38 @@ class TechnicalEngine(BasePillar):
                                     metadata={"period": 20, "std_dev": 2},
                                 )
                             )
+                            
+                            # Store for position calculation
+                            if band_name == "upper":
+                                bb_upper = value
+                            elif band_name == "middle":
+                                bb_middle = value
+                            elif band_name == "lower":
+                                bb_lower = value
+                    
+                    # Calculate Bollinger Band Position (0.0 = at lower, 1.0 = at upper)
+                    if bb_upper is not None and bb_lower is not None and bb_upper != bb_lower:
+                        bb_position = (current_price - bb_lower) / (bb_upper - bb_lower)
+                        bb_position = max(0.0, min(1.0, bb_position))  # Clamp to 0-1
+                        
+                        signals.append(
+                            DataSignal(
+                                name="BOLLINGER_POSITION",
+                                value=round(bb_position, 3),
+                                confidence=1.0,
+                                data_available=True,
+                                source="calculated",
+                                timestamp=ts,
+                                metadata={
+                                    "current_price": current_price,
+                                    "bb_upper": bb_upper,
+                                    "bb_lower": bb_lower,
+                                    "interpretation": "0.0=lower band, 0.5=middle, 1.0=upper band"
+                                },
+                            )
+                        )
+                else:
+                    logger.debug(f"Bollinger Bands calculation returned empty for {symbol}")
             except Exception as e:
                 logger.warning(f"Bollinger Bands calculation failed for {symbol}: {e}")
 
@@ -365,6 +575,10 @@ class TechnicalEngine(BasePillar):
         except Exception as e:
             logger.error(f"Indicator calculation failed for {symbol}: {e}")
 
+        if not signals:
+            logger.warning(f"No technical indicators calculated for {symbol}")
+            return self._create_unavailable_signals()
+
         return signals
 
     def _create_unavailable_signals(self) -> list[DataSignal]:
@@ -389,6 +603,7 @@ class TechnicalEngine(BasePillar):
             "BB_UPPER",
             "BB_MIDDLE",
             "BB_LOWER",
+            "BOLLINGER_POSITION",  # NEW: Position within bands (0.0-1.0)
             "ATR_14",
             "STOCH_K",
             "STOCH_D",
