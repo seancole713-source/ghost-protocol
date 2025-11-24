@@ -31,3 +31,18 @@ def get_stock_price(symbol: str) -> dict:
     
     result = _get_price_quorum(symbol, asset_type="stock")
     return result or {"price": None, "prev_close": None, "provider": "none"}
+
+
+def get_stock_providers(symbol: str) -> list:
+    """
+    Get list of stock price providers for world_context.py compatibility.
+    
+    Args:
+        symbol: Stock ticker (e.g., "SPY", "VIX")
+    
+    Returns:
+        Empty list (price quorum handles provider selection internally)
+    """
+    # world_context.py expects this function to exist
+    # Price quorum internally handles provider selection
+    return []

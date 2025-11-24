@@ -192,11 +192,19 @@ class PriceEngine(BasePillar):
 
             crypto_quorum = self._get_crypto_quorum_func()
 
-            # Run async function
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(crypto_quorum(symbol))
-            loop.close()
+            # Run async function, checking if event loop already running
+            try:
+                loop = asyncio.get_running_loop()
+                # Loop already running (e.g., in Jupyter/async context)
+                import nest_asyncio
+                nest_asyncio.apply()
+                result = asyncio.run(crypto_quorum(symbol))
+            except RuntimeError:
+                # No running loop, create new one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(crypto_quorum(symbol))
+                loop.close()
 
             if result and result.get("ok"):
                 price = result.get("price")
