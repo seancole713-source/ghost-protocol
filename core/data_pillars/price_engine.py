@@ -127,76 +127,45 @@ class PriceEngine(BasePillar):
         errors = []
 
         try:
-            from core.providers.stock_providers import get_stock_providers
+            from core.providers.stock_providers import get_stock_price
 
-            quorum = self._get_quorum()
-            providers = get_stock_providers(symbol)
-            is_market_open = options.get("is_market_open", True)
+            # Get price from quorum system
+            price_data = get_stock_price(symbol)
 
-            # Get price decision from quorum
-            decision = quorum.get_price(symbol, providers, is_market_open=is_market_open)
-
-            if decision and decision.price is not None:
+            if price_data and price_data.get("price") is not None:
+                price = price_data.get("price")
+                prev_close = price_data.get("prev_close")
+                provider = price_data.get("provider", "unknown")
+                
                 # Primary price signal
                 signals.append(
                     DataSignal(
                         name="PRICE",
-                        value=decision.price,
-                        confidence=decision.confidence,
+                        value=float(price),
+                        confidence=0.85,  # Good confidence from quorum
                         data_available=True,
-                        source=decision.provider_label,
+                        source=provider,
                         timestamp=time.time(),
                         metadata={
-                            "quorum_met": decision.quorum_met,
-                            "providers_used": decision.providers_used,
-                            "market_open": is_market_open,
+                            "provider": provider,
+                            "symbol": symbol,
                         },
                     )
                 )
 
                 # Previous close signal
-                if decision.prev_close:
+                if prev_close is not None:
                     signals.append(
                         DataSignal(
                             name="PREV_CLOSE",
-                            value=decision.prev_close,
-                            confidence=decision.confidence,
+                            value=float(prev_close),
+                            confidence=0.85,
                             data_available=True,
-                            source=decision.provider_label,
+                            source=provider,
                             timestamp=time.time(),
-                            metadata={"quorum_met": decision.quorum_met},
+                            metadata={"provider": provider},
                         )
                     )
-
-                # Provider quality score (based on confidence)
-                quality_score = decision.confidence * 100
-                signals.append(
-                    DataSignal(
-                        name="PROVIDER_QUALITY",
-                        value=quality_score,
-                        confidence=1.0,
-                        data_available=True,
-                        source="calculated",
-                        timestamp=time.time(),
-                        metadata={
-                            "providers_used": decision.providers_used,
-                            "quorum_met": decision.quorum_met,
-                        },
-                    )
-                )
-
-                # Staleness (data age) - assume 0 for real-time quotes
-                signals.append(
-                    DataSignal(
-                        name="STALENESS_SECONDS",
-                        value=0.0,
-                        confidence=1.0,
-                        data_available=True,
-                        source="calculated",
-                        timestamp=time.time(),
-                        metadata={"provider": decision.provider_label},
-                    )
-                )
 
             else:
                 errors.append(f"No price available for {symbol} from any provider")

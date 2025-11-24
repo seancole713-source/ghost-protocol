@@ -71,21 +71,32 @@ class VolumeEngine(BasePillar):
         )
 
     def _fetch_historical_data(self, symbol: str, days: int) -> pd.DataFrame | None:
-        """Fetch historical price/volume data"""
+        """Fetch historical price/volume data using yfinance"""
         try:
-            import os
-            import sys
-
-            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-            from wolf_app import _get_price_history_cached
-
-            hist = _get_price_history_cached(symbol, days=days)
-            if not hist or len(hist) < 20:
+            import yfinance as yf
+            from datetime import datetime, timedelta
+            
+            ticker = yf.Ticker(symbol)
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            
+            hist = ticker.history(start=start_date, end=end_date)
+            
+            if hist is None or len(hist) < 20:
                 return None
 
-            df = pd.DataFrame(hist)
-            if "close" not in df.columns and "price" in df.columns:
-                df["close"] = df["price"]
+            df = hist.reset_index()
+            df = df.rename(columns={
+                "Date": "timestamp",
+                "Close": "close",
+                "Volume": "volume"
+            })
+            
+            if "timestamp" in df.columns:
+                df["timestamp"] = df["timestamp"].astype(int) // 10**9
+            
+            if "close" not in df.columns:
+                df["close"] = 0
             if "volume" not in df.columns:
                 df["volume"] = 0
 

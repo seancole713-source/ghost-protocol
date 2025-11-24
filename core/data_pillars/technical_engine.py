@@ -106,7 +106,7 @@ class TechnicalEngine(BasePillar):
 
     def _fetch_historical_data(self, symbol: str, days: int) -> pd.DataFrame | None:
         """
-        Fetch historical OHLCV data from wolf_app cache.
+        Fetch historical OHLCV data using yfinance.
         
         Args:
             symbol: Ticker symbol
@@ -116,45 +116,49 @@ class TechnicalEngine(BasePillar):
             DataFrame with columns: timestamp, open, high, low, close, volume
         """
         try:
-            # Import wolf_app function to fetch historical data
-            import sys
-            import os
-            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            import yfinance as yf
+            from datetime import datetime, timedelta
             
-            # Try to use existing wolf_app cache function
-            from wolf_app import _get_price_history_cached
+            # Fetch data using yfinance
+            ticker = yf.Ticker(symbol)
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
             
-            hist = _get_price_history_cached(symbol, days=days)
-            if not hist or len(hist) < 20:
+            # Download historical data
+            hist = ticker.history(start=start_date, end=end_date)
+            
+            if hist is None or len(hist) < 20:
+                logger.warning(f"Insufficient yfinance data for {symbol}: {len(hist) if hist is not None else 0} bars")
                 return None
             
-            # Convert to DataFrame
-            df = pd.DataFrame(hist)
+            # Rename columns to match expected format
+            df = hist.reset_index()
+            df = df.rename(columns={
+                "Date": "timestamp",
+                "Open": "open",
+                "High": "high",
+                "Low": "low",
+                "Close": "close",
+                "Volume": "volume"
+            })
+            
+            # Convert timestamp to unix time
+            if "timestamp" in df.columns:
+                df["timestamp"] = df["timestamp"].astype(int) // 10**9
             
             # Ensure required columns
-            required_cols = ["timestamp", "price"]
-            if not all(col in df.columns for col in required_cols):
-                logger.warning(f"Historical data missing required columns for {symbol}")
-                return None
+            for col in ["open", "high", "low", "close"]:
+                if col not in df.columns:
+                    df[col] = df.get("close", 0)
             
-            # Rename 'price' to 'close' if needed
-            if "close" not in df.columns and "price" in df.columns:
-                df["close"] = df["price"]
-            
-            # Fill missing OHLV if not present (use close as proxy)
-            if "open" not in df.columns:
-                df["open"] = df["close"]
-            if "high" not in df.columns:
-                df["high"] = df["close"]
-            if "low" not in df.columns:
-                df["low"] = df["close"]
             if "volume" not in df.columns:
                 df["volume"] = 0
             
+            logger.info(f"Fetched {len(df)} bars for {symbol} using yfinance")
             return df
             
         except Exception as e:
-            logger.error(f"Historical data fetch failed for {symbol}: {e}")
+            logger.error(f"yfinance fetch failed for {symbol}: {e}")
             return None
 
     def _calculate_indicators(self, df: pd.DataFrame, symbol: str) -> list[DataSignal]:
