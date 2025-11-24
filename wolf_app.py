@@ -5784,6 +5784,12 @@ async def api_predict_run(
         features = feature_data.get("features", {})
 
         # Diagnose feature extraction quality (backward compat with Ghost Hunter)
+        # Map orchestrator features to diagnostic function expected fields
+        rsi_value = features.get("RSI_14")
+        macd_value = features.get("MACD_HISTOGRAM", 0)
+        volume_spike = features.get("VOLUME_SPIKE", 0)
+        volatility = features.get("VOLATILITY_20D", 0)
+        
         feature_status = diagnose_features(
             symbol=symbol,
             price_data={
@@ -5791,10 +5797,22 @@ async def api_predict_run(
                 "timestamp": price_data.get("timestamp", run_at),
                 "provider": price_data.get("provider", "unknown")
             },
-            volume_data={"volume": features.get("VOLUME_SPIKE", 0), "avg_volume": features.get("VOLATILITY_20D", 0)},
-            momentum_data={"momentum_score": features.get("RSI_14", 50) if features.get("RSI_14") else None, "trend": "up" if features.get("MACD_HISTOGRAM", 0) > 0 else "down"},
-            context_data={"market_regime": features.get("MARKET_REGIME", "neutral"), "sector_health": 0.5},
-            sentiment_data={"sentiment_score": features.get("NEWS_SENTIMENT_SCORE", 0), "news_count": features.get("NEWS_COUNT_24H", 0)}
+            volume_data={
+                "volume": volume_spike if volume_spike is not None else 0, 
+                "avg_volume": volatility if volatility is not None else 0
+            },
+            momentum_data={
+                "momentum_score": rsi_value if rsi_value is not None else 50.0, 
+                "trend": "up" if macd_value and macd_value > 0 else "down"
+            },
+            context_data={
+                "market_regime": features.get("MARKET_REGIME", "neutral"), 
+                "sector_health": 0.5
+            },
+            sentiment_data={
+                "sentiment_score": features.get("NEWS_SENTIMENT_SCORE", 0), 
+                "news_count": features.get("NEWS_COUNT_24H", 0)
+            }
         )
 
         # Log feature status for diagnostics
