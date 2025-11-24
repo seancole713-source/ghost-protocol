@@ -802,11 +802,12 @@ async def get_accuracy_summary():
 
 
 @router.get("/predictions/latest")
-async def get_latest_predictions(limit: int = 10):
+async def get_latest_predictions(symbol: Optional[str] = None, limit: int = 10):
     """
     Get most recent predictions with outcomes for V3 UI
     
     Args:
+        symbol: Optional ticker to filter by (e.g., "AAPL", "BTC")
         limit: Maximum number of predictions to return (default 10)
     
     Returns:
@@ -835,22 +836,43 @@ async def get_latest_predictions(limit: int = 10):
         conn = sqlite3.connect(predictor.DB_PATH)
         
         # Get recent predictions with outcomes
-        predictions = conn.execute("""
-            SELECT 
-                p.id,
-                p.symbol,
-                p.run_at,
-                p.direction,
-                p.confidence,
-                p.horizon_h,
-                o.hit_direction,
-                o.hit_ratio_window,
-                o.map
-            FROM predictions p
-            LEFT JOIN outcomes o ON p.id = o.prediction_id
-            ORDER BY p.run_at DESC
-            LIMIT ?
-        """, (limit,)).fetchall()
+        if symbol:
+            # Filter by specific symbol
+            predictions = conn.execute("""
+                SELECT 
+                    p.id,
+                    p.symbol,
+                    p.run_at,
+                    p.direction,
+                    p.confidence,
+                    p.horizon_h,
+                    o.hit_direction,
+                    o.hit_ratio_window,
+                    o.map
+                FROM predictions p
+                LEFT JOIN outcomes o ON p.id = o.prediction_id
+                WHERE p.symbol = ?
+                ORDER BY p.run_at DESC
+                LIMIT ?
+            """, (symbol.upper(), limit)).fetchall()
+        else:
+            # Get all predictions
+            predictions = conn.execute("""
+                SELECT 
+                    p.id,
+                    p.symbol,
+                    p.run_at,
+                    p.direction,
+                    p.confidence,
+                    p.horizon_h,
+                    o.hit_direction,
+                    o.hit_ratio_window,
+                    o.map
+                FROM predictions p
+                LEFT JOIN outcomes o ON p.id = o.prediction_id
+                ORDER BY p.run_at DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
         
         conn.close()
         
