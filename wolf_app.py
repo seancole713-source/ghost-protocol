@@ -5831,8 +5831,33 @@ async def api_predict_run(
         raise HTTPException(400, "symbol required")
 
     try:
+        # Detect asset type (crypto vs stock)
+        is_crypto = symbol in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(symbol) == "crypto"
+        
         # Fetch current price for starting point
-        price_data = _get_price_quorum(symbol, "stock")
+        if is_crypto:
+            # Use async crypto price quorum
+            from core.crypto.crypto_providers import get_crypto_price_quorum
+            crypto_data = await get_crypto_price_quorum(symbol, use_cache=False)
+            if not crypto_data or not crypto_data.get("price"):
+                try:
+                    _add_event(
+                        "price_quorum.predict_miss",
+                        symbol,
+                        {"symbol": symbol, "crypto_data": crypto_data},
+                    )
+                except Exception:
+                    pass
+                raise HTTPException(404, f"Unable to fetch live crypto price for {symbol}")
+            price_data = {
+                "price": crypto_data["price"],
+                "timestamp": time.time(),
+                "provider": crypto_data.get("provider", "crypto_quorum")
+            }
+        else:
+            # Use stock price quorum
+            price_data = _get_price_quorum(symbol, "stock")
+        
         if not price_data or not price_data.get("price"):
             try:
                 _add_event(
