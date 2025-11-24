@@ -130,22 +130,18 @@ def _compute_ghost_score_snapshot() -> Dict[str, Any]:
             STOCK_SYMBOLS,
             CRYPTO_SYMBOLS,
             VIP_COINS,
-            _LAST_MULTI_PREDICTION_COUNTS,
             _LATEST_PREDICTIONS,
         )
 
         total_symbols = len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS)
         total_symbols = max(1, total_symbols)
 
-        prediction_counts = dict(_LAST_MULTI_PREDICTION_COUNTS or {})
-        symbols_with_data = 0
-        for count in prediction_counts.values():
-            try:
-                symbols_with_data += int(count)
-            except (TypeError, ValueError):
-                continue
+        # Count individual predictions from _LATEST_PREDICTIONS (V3 prediction store)
+        # Each key in _LATEST_PREDICTIONS represents one symbol with a prediction
+        latest_predictions_dict = dict(_LATEST_PREDICTIONS or {})
+        symbols_with_data = len(latest_predictions_dict)
 
-        avg_confidence = _compute_avg_confidence(dict(_LATEST_PREDICTIONS or {}))
+        avg_confidence = _compute_avg_confidence(latest_predictions_dict)
         provider_redundancy = _derive_provider_redundancy()
 
         data_quality: Dict[str, Any] = {
@@ -1037,7 +1033,37 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
         }
     """
     try:
-        # Try to use existing news routes
+        # PRIMARY: Try core news_sentiment module with Alpha Vantage
+        try:
+            from core.news_sentiment import fetch_news_sentiment
+            
+            # If symbol specified, fetch news for that symbol
+            if symbol:
+                news_data = fetch_news_sentiment(symbol, limit=limit)
+                
+                if news_data.get("ok") and news_data.get("articles"):
+                    items = []
+                    for article in news_data["articles"]:
+                        items.append({
+                            "headline": article.get("title", ""),
+                            "timestamp": article.get("published", ""),
+                            "source": article.get("source", "Alpha Vantage"),
+                            "sentiment": article.get("sentiment_score", 0.0),
+                            "url": article.get("url", ""),
+                            "symbols": [symbol]
+                        })
+                    
+                    return {
+                        "items": items,
+                        "count": len(items),
+                        "timestamp": time.time(),
+                        "provider": "alpha_vantage"
+                    }
+            
+        except Exception as e:
+            LOGGER.warning(f"Core news_sentiment failed: {e}")
+        
+        # FALLBACK 1: Try to use existing news routes
         try:
             from routes.news_routes import get_news_feed as get_news_data
             news_data = await get_news_data(symbol=symbol, limit=limit)

@@ -8213,6 +8213,19 @@ def _get_provider_fetchers(
 ) -> list[tuple[str, Callable[[], tuple[float | None, float | None, str]]]]:
     sym = symbol.upper()
     fetchers: list[tuple[str, callable]] = []
+    
+    # Strategy: Always include yfinance and yahoo as free fallbacks
+    # Only add paid providers if keys are present
+    has_polygon = bool(POLYGON_KEY)
+    has_alphavantage = bool(ALPHAVANTAGE_KEY)
+    
+    # If no paid keys, prioritize free sources first
+    if not has_polygon and not has_alphavantage:
+        fetchers.append(("yfinance", lambda sym=sym: _fetch_price_yfinance(sym)))
+        fetchers.append(("yahoo", lambda sym=sym: _fetch_price_yahoo_http(sym)))
+        return fetchers
+    
+    # Build provider list based on configured order
     for name in _resolve_stock_provider_order():
         if name == "polygon":
             if not POLYGON_KEY:
@@ -8230,6 +8243,11 @@ def _get_provider_fetchers(
             fetchers.append((name, lambda sym=sym: _fetch_price_yfinance(sym)))
         elif name == "yahoo":
             fetchers.append((name, lambda sym=sym: _fetch_price_yahoo_http(sym)))
+    
+    # Always ensure yfinance is available as ultimate fallback
+    if not any(name == "yfinance" for name, _ in fetchers):
+        fetchers.append(("yfinance", lambda sym=sym: _fetch_price_yfinance(sym)))
+    
     return fetchers
 
 
