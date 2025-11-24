@@ -1753,18 +1753,18 @@ async def get_system_diagnostics():
         
         # Check feature stats
         try:
-            from core.feature_orchestrator import FeatureOrchestrator
-            orchestrator = FeatureOrchestrator()
+            from core.data_pillars.feature_orchestrator import get_feature_orchestrator
+            orchestrator = get_feature_orchestrator()
             
             # Test with AAPL
-            features = orchestrator.get_all_features("AAPL", period=90)
-            total_features = len(features)
-            working_features = len([f for f in features.values() if f is not None and f != 0.0])
+            result = orchestrator.get_all_features("AAPL", period=90)
             
             diagnostics["feature_stats"] = {
-                "total_features": total_features,
-                "working_features": working_features,
-                "success_rate": round(working_features / max(1, total_features), 2)
+                "total_features": result["feature_count"],
+                "working_features": result["available_count"],
+                "success_rate": round(result["available_count"] / max(1, result["feature_count"]), 2),
+                "execution_time_ms": result["execution_time_ms"],
+                "pillar_stats": result["pillar_stats"]
             }
         except Exception as e:
             diagnostics["feature_stats"] = {"error": str(e)}
