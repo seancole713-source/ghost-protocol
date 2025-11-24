@@ -10256,9 +10256,31 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
     # Build message header
     now_str = datetime.now(ZoneInfo("America/New_York") if ZoneInfo else None).strftime("%I:%M %p %Z") if ZoneInfo else datetime.now().strftime("%I:%M %p")
 
+    # Get REAL accuracy from database (no lies!)
+    try:
+        import sqlite3
+        from services import predictor
+        conn = sqlite3.connect(predictor.DB_PATH)
+        total_predictions = conn.execute("SELECT COUNT(*) FROM predictions WHERE run_at >= ?", (time.time() - 30*24*3600,)).fetchone()[0]
+        correct_predictions = conn.execute(
+            "SELECT COUNT(*) FROM outcomes o JOIN predictions p ON o.prediction_id = p.id WHERE p.run_at >= ? AND o.hit_direction = 1",
+            (time.time() - 30*24*3600,)
+        ).fetchone()[0]
+        conn.close()
+        
+        if total_predictions > 0 and correct_predictions > 0:
+            accuracy_pct = int((correct_predictions / total_predictions) * 100)
+            accuracy_status = f"🎯 {accuracy_pct}% Accuracy ({correct_predictions}/{total_predictions} correct)"
+        elif total_predictions > 0:
+            accuracy_status = f"📊 Evaluating ({total_predictions} predictions pending outcome)"
+        else:
+            accuracy_status = "🔄 Building prediction history (no evaluations yet)"
+    except Exception:
+        accuracy_status = "🤖 Smart Filter Active"
+
     message = f"""🎯 <b>GHOST AI TRADING SIGNALS</b>
 ⏰ {now_str}
-🤖 85%+ Accuracy | Smart Filter Active
+{accuracy_status}
 
 """
 
