@@ -450,6 +450,20 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
             return None
         change = snapshot.get("change_pct", 0.0)
         gps = round(change * 0.75, 2)
+        
+        # Get real prediction confidence from _LATEST_PREDICTIONS
+        real_confidence = 50  # Default if no prediction exists
+        try:
+            from wolf_app import _LATEST_PREDICTIONS
+            latest_preds = dict(_LATEST_PREDICTIONS or {})
+            if symbol in latest_preds:
+                pred = latest_preds[symbol]
+                # Confidence is stored as 0.0-1.0, convert to 0-100
+                pred_confidence = pred.get("confidence", 0.5)
+                real_confidence = int(pred_confidence * 100)
+        except Exception as e:
+            LOGGER.debug(f"Could not fetch prediction confidence for {symbol}: {e}")
+        
         return {
             "symbol": symbol,
             "name": symbol,
@@ -457,7 +471,7 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
             "price": price,
             "change": change,
             "volume": snapshot.get("volume", 0.0),
-            "confidence": max(50, min(95, int(snapshot.get("confidence", 65)))),
+            "confidence": max(30, min(95, real_confidence)),
             "gps": gps,
         }
 
