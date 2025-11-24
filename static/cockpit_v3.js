@@ -149,7 +149,14 @@ async function loadTopMovers() {
         const movers = data.movers || [];
         
         if (!movers || movers.length === 0) {
-            container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No data available</p>';
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                    <div style="font-size: 48px; margin-bottom: 20px;">👁️</div>
+                    <div style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">No High-Quality Opportunities</div>
+                    <div style="font-size: 14px; opacity: 0.7;">Ghost filters out noise. Only 20%+ gains with 70%+ confidence appear here.</div>
+                    <div style="font-size: 14px; opacity: 0.7; margin-top: 10px;">Market is quiet. Ghost is watching.</div>
+                </div>
+            `;
             return;
         }
         

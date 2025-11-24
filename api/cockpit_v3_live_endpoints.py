@@ -449,6 +449,12 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
         if price <= 0:
             return None
         change = snapshot.get("change_pct", 0.0)
+        
+        # GHOST PROTOCOL: Filter for minimum 20% gains (24-48h window)
+        # Only show TRUE top movers, not noise
+        if abs(change) < 20.0:
+            return None
+        
         gps = round(change * 0.75, 2)
         
         # Get real prediction confidence from _LATEST_PREDICTIONS
@@ -464,6 +470,11 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
         except Exception as e:
             LOGGER.debug(f"Could not fetch prediction confidence for {symbol}: {e}")
         
+        # GHOST PROTOCOL: Only show signals with 70%+ confidence
+        # Filter out low-confidence noise
+        if real_confidence < 70:
+            return None
+        
         return {
             "symbol": symbol,
             "name": symbol,
@@ -471,7 +482,7 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
             "price": price,
             "change": change,
             "volume": snapshot.get("volume", 0.0),
-            "confidence": max(30, min(95, real_confidence)),
+            "confidence": max(70, min(95, real_confidence)),
             "gps": gps,
         }
 
@@ -481,8 +492,10 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
         if isinstance(result, dict):
             movers.append(result)
 
+    # Sort by absolute change (biggest movers first)
     movers.sort(key=lambda item: abs(item.get("change", 0.0)), reverse=True)
-    LOGGER.info("Hunter feed live build produced %s movers", len(movers))
+    
+    LOGGER.info(f"Hunter feed: {len(movers)} high-quality movers (20%+ gain, 70%+ confidence)")
     return movers[:limit]
 
 
