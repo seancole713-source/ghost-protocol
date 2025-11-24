@@ -125,6 +125,7 @@ async function loadAllPanels() {
         await Promise.all([
             loadCockpitSnapshot(),
             loadTopMovers(),
+            loadVIPCoins(),
             loadForecast(),
             loadNews(),
             loadWatchlist(),
@@ -160,26 +161,93 @@ async function loadTopMovers() {
             filtered = movers.filter(item => item.type === 'crypto');
         }
         
-        container.innerHTML = filtered.slice(0, 10).map(item => `
-            <div class="mover-card">
-                <div class="mover-left">
-                    <div class="mover-icon">${getSymbolIcon(item.symbol)}</div>
-                    <div class="mover-info">
-                        <div class="mover-name">${item.symbol}</div>
-                        <div class="mover-symbol">${item.name || item.symbol}</div>
+        container.innerHTML = filtered.slice(0, 10).map(item => {
+            // Show confidence only if it's meaningful (not default 50%)
+            const hasRealPrediction = item.confidence && item.confidence !== 50;
+            const confidenceDisplay = hasRealPrediction ? 
+                `Ghost: ${item.confidence}%` : 
+                `Ghost: --`;
+            
+            return `
+                <div class="mover-card">
+                    <div class="mover-left">
+                        <div class="mover-icon">${getSymbolIcon(item.symbol)}</div>
+                        <div class="mover-info">
+                            <div class="mover-name">${item.symbol}</div>
+                            <div class="mover-symbol">${item.name || item.symbol}</div>
+                        </div>
+                    </div>
+                    <div class="mover-right">
+                        <div class="mover-change ${item.change >= 0 ? 'positive' : 'negative'}">
+                            ${item.change >= 0 ? '+' : ''}${item.change?.toFixed(2)}%
+                        </div>
+                        <div class="mover-confidence">${confidenceDisplay}</div>
                     </div>
                 </div>
-                <div class="mover-right">
-                    <div class="mover-change ${item.change >= 0 ? 'positive' : 'negative'}">
-                        ${item.change >= 0 ? '+' : ''}${item.change?.toFixed(2)}%
-                    </div>
-                    <div class="mover-confidence">Ghost: ${item.confidence || 0}%</div>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     } catch (error) {
         console.error('Error loading movers:', error);
         document.getElementById('movers-list').innerHTML = '<p style="color: var(--accent-red);">Failed to load movers</p>';
+    }
+}
+
+// Panel VIP: VIP Coins + XRP
+async function loadVIPCoins() {
+    try {
+        const response = await fetch('/api/v3/vip/snapshot');
+        if (!response.ok) throw new Error('Failed to load VIP coins');
+        
+        const data = await response.json();
+        const container = document.getElementById('vip-list');
+        
+        // Get VIP coins and XRP
+        const vipCoins = data.vip_coins || [];
+        const xrp = data.xrp || null;
+        
+        // Combine VIP + XRP
+        const allCoins = [...vipCoins];
+        if (xrp) {
+            allCoins.push({
+                symbol: xrp.symbol,
+                price: xrp.price,
+                change_pct: xrp.change_pct,
+                status: xrp.provider !== 'offline' ? 'online' : 'offline'
+            });
+        }
+        
+        if (allCoins.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">VIP data loading...</p>';
+            return;
+        }
+        
+        container.innerHTML = allCoins.map(coin => {
+            const isOffline = coin.status === 'offline' || coin.price === 0;
+            const priceDisplay = isOffline ? '--' : `$${coin.price.toFixed(6)}`;
+            const changeDisplay = isOffline ? '--' : 
+                `${coin.change_pct >= 0 ? '+' : ''}${coin.change_pct.toFixed(2)}%`;
+            
+            return `
+                <div class="mover-card vip-card ${isOffline ? 'offline' : ''}">
+                    <div class="mover-left">
+                        <div class="mover-icon">${getSymbolIcon(coin.symbol)}</div>
+                        <div class="mover-info">
+                            <div class="mover-name">${coin.symbol}</div>
+                            <div class="mover-symbol">${priceDisplay}</div>
+                        </div>
+                    </div>
+                    <div class="mover-right">
+                        <div class="mover-change ${coin.change_pct >= 0 ? 'positive' : 'negative'}">
+                            ${changeDisplay}
+                        </div>
+                        <div class="mover-confidence">${isOffline ? 'Offline' : 'Live'}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('[GHOST V3] Error loading VIP coins:', error);
+        document.getElementById('vip-list').innerHTML = '<p style="color: var(--accent-red);">VIP data unavailable</p>';
     }
 }
 
@@ -305,11 +373,27 @@ async function loadWatchlist() {
             ...(data.vip || []).map(s => ({symbol: s, type: 'vip'}))
         ];
         
-        // Fetch prices for each (simplified - in production would batch)
+        // Fetch predictions for all symbols
+        const predResponse = await fetch('/api/v3/predictions/latest?limit=100');
+        const predData = await predResponse.json();
+        
+        // Create lookup map for predictions
+        const predMap = {};
+        if (predData && predData.predictions) {
+            predData.predictions.forEach(pred => {
+                predMap[pred.symbol] = {
+                    confidence: pred.confidence * 100,  // Convert 0.45 to 45
+                    direction: pred.direction
+                };
+            });
+        }
+        
+        // Enrich watchlist with prediction data
         const watchlistData = allSymbols.map(item => ({
             symbol: item.symbol,
-            change: 0,  // TODO: Fetch real price changes
-            ghost_score: 0,  // TODO: Fetch real Ghost scores
+            change: 0,  // Price change not available yet
+            ghost_score: predMap[item.symbol]?.confidence || 0,
+            direction: predMap[item.symbol]?.direction || 'FLAT',
             type: item.type
         }));
         
@@ -334,8 +418,13 @@ function renderWatchlist(data) {
             '--';
         
         const scoreDisplay = item.ghost_score && item.ghost_score > 0 ? 
-            `${item.ghost_score}%` : 
+            `${item.ghost_score.toFixed(0)}%` : 
             '--';
+        
+        // Direction emoji
+        const directionEmoji = item.direction === 'UP' ? '↑' : 
+                              item.direction === 'DOWN' ? '↓' : 
+                              item.direction === 'FLAT' ? '→' : '';
         
         return `
             <div class="watchlist-row">
@@ -347,7 +436,7 @@ function renderWatchlist(data) {
                     <div class="watchlist-move ${item.change >= 0 ? 'positive' : 'negative'}">
                         ${changeDisplay}
                     </div>
-                    <div class="watchlist-score">Ghost: ${scoreDisplay}</div>
+                    <div class="watchlist-score">${directionEmoji} Ghost: ${scoreDisplay}</div>
                 </div>
             </div>
         `;
