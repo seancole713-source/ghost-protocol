@@ -5791,10 +5791,10 @@ async def api_predict_run(
                 "timestamp": price_data.get("timestamp", run_at),
                 "provider": price_data.get("provider", "unknown")
             },
-            volume_data={"spike": features.get("VOLUME_SPIKE", 0), "volatility": features.get("VOLATILITY_20D", 0)},
-            momentum_data={"rsi": features.get("RSI_14", 50), "macd": features.get("MACD_HISTOGRAM", 0)},
-            context_data={"spy_price": features.get("SPY_PRICE"), "vix": features.get("VIX_LEVEL")},
-            sentiment_data={"score": features.get("NEWS_SENTIMENT_SCORE", 0), "count": features.get("NEWS_COUNT_24H", 0)}
+            volume_data={"volume": features.get("VOLUME_SPIKE", 0), "avg_volume": features.get("VOLATILITY_20D", 0)},
+            momentum_data={"momentum_score": features.get("RSI_14", 50) if features.get("RSI_14") else None, "trend": "up" if features.get("MACD_HISTOGRAM", 0) > 0 else "down"},
+            context_data={"market_regime": features.get("MARKET_REGIME", "neutral"), "sector_health": 0.5},
+            sentiment_data={"sentiment_score": features.get("NEWS_SENTIMENT_SCORE", 0), "news_count": features.get("NEWS_COUNT_24H", 0)}
         )
 
         # Log feature status for diagnostics
