@@ -1288,11 +1288,41 @@ _LAST_TELEGRAM_ERROR: str | None = None
 _LATEST_PREDICTIONS: dict[str, dict[str, Any]] = {}
 
 # Ghost Hunter V1: Symbol universe for multi-symbol predictions
-# Stocks: WOLF + liquid US stocks for testing
-HUNTER_STOCK_SYMBOLS = ["WOLF", "AAPL", "MSFT", "NVDA"]
-# Crypto: Only coins supported by major exchanges (removes unsupported meme tickers)
-# Removed: WEPE, LILPEPE, DORKL, SLOTH, APC (cause 404/429 provider storms)
-HUNTER_CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL", "DOGE", "ADA", "XRP"]
+# EXPANDED WATCHLIST: 25+ symbols for comprehensive coverage
+# Stocks: WOLF + liquid US stocks across sectors (tech, finance, energy, etc.)
+HUNTER_STOCK_SYMBOLS = [
+    "WOLF",   # Primary
+    "AAPL",   # Tech giants
+    "MSFT",
+    "NVDA",
+    "GOOGL",
+    "META",
+    "TSLA",   # High volatility
+    "AMD",
+    "AMZN",
+    "NFLX",
+    "JPM",    # Finance
+    "BAC",
+    "V",
+    "MA",
+    "XOM",    # Energy
+    "CVX",
+]
+
+# Crypto: Only coins supported by major exchanges (removed unsupported meme tickers)
+# Focused on liquid, tradeable assets with reliable price feeds
+HUNTER_CRYPTO_SYMBOLS = [
+    "BTC",    # Major caps
+    "ETH",
+    "SOL",
+    "BNB",
+    "XRP",    # Established coins
+    "ADA",
+    "DOGE",
+    "AVAX",
+    "DOT",
+    "MATIC",
+]
 
 def _classify_symbol_category(symbol: str) -> str:
     """
@@ -3864,6 +3894,23 @@ async def _on_startup():
     except Exception:
         LOGGER.exception("scheduled_predictions_start_failed", extra={"component": "startup"})
 
+    # Start Auto-Prediction Loop (5-min interval for all watchlist symbols)
+    try:
+        from core import auto_prediction_loop
+        
+        # Inject dependencies
+        auto_prediction_loop.LOGGER = LOGGER
+        auto_prediction_loop.RUN_PREDICTION_FUNC = run_prediction
+        auto_prediction_loop.HUNTER_STOCK_SYMBOLS = HUNTER_STOCK_SYMBOLS
+        auto_prediction_loop.HUNTER_CRYPTO_SYMBOLS = HUNTER_CRYPTO_SYMBOLS
+        
+        # Start the loop
+        auto_prediction_loop.start_auto_prediction_loop()
+        
+        LOGGER.info("✅ Auto-Prediction Loop: STARTED (5-min interval, 26 symbols)")
+    except Exception as e:
+        LOGGER.exception("auto_prediction_loop_start_failed", extra={"component": "startup", "error": str(e)})
+
     # Optional heartbeat (skip price fetch to avoid blocking startup)
     try:
         if TELEGRAM_HEARTBEAT_ON_START:
@@ -5854,56 +5901,100 @@ async def api_predict_run(
         step_s = 7200  # 2 hours
         num_points = (horizon_h * 3600) // step_s
 
-        # Determine direction using real features
+        # Determine direction using real features with DYNAMIC CONFIDENCE (40-85%)
         direction = "FLAT"
-        base_confidence = 0.55  # Start conservative
+        base_confidence = 0.45  # Start at 45% (conservative baseline)
+        signal_strength = 0  # Track how many signals align
 
-        # RSI-based direction signal
+        # RSI-based direction signal (strong indicator)
         rsi = features.get("RSI_14")
         if rsi is not None:
             if rsi > 70:
                 direction = "DOWN"  # Overbought
-                base_confidence += 0.05
+                base_confidence += 0.08
+                signal_strength += 1
             elif rsi < 30:
                 direction = "UP"  # Oversold
-                base_confidence += 0.05
+                base_confidence += 0.08
+                signal_strength += 1
+            elif 45 <= rsi <= 55:
+                # Neutral zone - reduce confidence
+                base_confidence -= 0.05
 
-        # MACD histogram direction
+        # MACD histogram direction (momentum confirmation)
         macd_hist = features.get("MACD_HISTOGRAM")
         if macd_hist is not None:
             if macd_hist > 0:
-                direction = "UP" if direction != "DOWN" else direction
-                base_confidence += 0.03
+                if direction == "UP" or direction == "FLAT":
+                    direction = "UP"
+                    base_confidence += 0.06
+                    signal_strength += 1
             elif macd_hist < 0:
-                direction = "DOWN" if direction != "UP" else direction
-                base_confidence += 0.03
+                if direction == "DOWN" or direction == "FLAT":
+                    direction = "DOWN"
+                    base_confidence += 0.06
+                    signal_strength += 1
 
-        # Sentiment boost
+        # Bollinger Bands (volatility + extremes)
+        bb_position = features.get("BOLLINGER_POSITION")
+        if bb_position is not None:
+            if bb_position > 0.9:  # Near upper band
+                if direction == "DOWN":
+                    base_confidence += 0.05
+                    signal_strength += 1
+            elif bb_position < 0.1:  # Near lower band
+                if direction == "UP":
+                    base_confidence += 0.05
+                    signal_strength += 1
+
+        # Volume confirmation (high volume = higher confidence)
+        volume_spike = features.get("VOLUME_SPIKE")
+        if volume_spike and volume_spike > 1.5:  # 50% above average
+            base_confidence += 0.05
+            signal_strength += 1
+
+        # Sentiment boost (news alignment)
         sentiment = features.get("NEWS_SENTIMENT_SCORE")
         if sentiment is not None:
             if sentiment > 0.3 and direction == "UP":
-                base_confidence += 0.05
+                base_confidence += 0.07
+                signal_strength += 1
             elif sentiment < -0.3 and direction == "DOWN":
-                base_confidence += 0.05
+                base_confidence += 0.07
+                signal_strength += 1
 
-        # Price history momentum (fallback)
+        # Price history momentum (trend confirmation)
         try:
             hist = _get_price_history_cached(symbol, days=5)
             if hist and len(hist) >= 2:
                 prices = [h["price"] for h in hist if h.get("price")]
                 if prices:
                     recent_change_pct = (prices[-1] - prices[0]) / prices[0] * 100
-                    if recent_change_pct > 2 and direction != "DOWN":
-                        direction = "UP"
-                        base_confidence += 0.05
-                    elif recent_change_pct < -2 and direction != "UP":
-                        direction = "DOWN"
-                        base_confidence += 0.05
+                    if recent_change_pct > 3:
+                        if direction == "UP" or direction == "FLAT":
+                            direction = "UP"
+                            base_confidence += 0.06
+                            signal_strength += 1
+                    elif recent_change_pct < -3:
+                        if direction == "DOWN" or direction == "FLAT":
+                            direction = "DOWN"
+                            base_confidence += 0.06
+                            signal_strength += 1
         except Exception:
             pass
 
-        # Cap confidence at 0.85 (never claim certainty)
-        base_confidence = min(0.85, base_confidence)
+        # If multiple signals align, boost confidence further
+        if signal_strength >= 4:
+            base_confidence += 0.05  # Strong convergence bonus
+        elif signal_strength >= 3:
+            base_confidence += 0.03  # Moderate convergence
+        elif signal_strength <= 1:
+            base_confidence -= 0.05  # Weak signal penalty
+
+        # Apply confidence bounds: 40% minimum, 85% maximum (never claim certainty)
+        base_confidence = max(0.40, min(0.85, base_confidence))
+        
+        LOGGER.info(f"[{symbol}] Direction: {direction}, Confidence: {base_confidence:.1%}, Signals: {signal_strength}")
 
         # Generate forecast points (simple linear projection for now)
         forecast_points = []
@@ -5958,6 +6049,21 @@ async def api_predict_run(
             "feature_status": feature_status.to_dict(),
             "confidence_metadata": confidence_metadata,
         }
+
+        # Register prediction for accuracy tracking (48h evaluation)
+        try:
+            from core.accuracy_tracker import get_accuracy_tracker
+            tracker = get_accuracy_tracker()
+            tracker.record_forecast(
+                symbol=symbol,
+                predicted_price=current_price,
+                confidence=confidence,
+                horizon_hours=horizon_h,
+                model="ghost_v3_pillars"
+            )
+            LOGGER.debug(f"[{symbol}] Registered for accuracy tracking (48h evaluation)")
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Accuracy tracking registration failed: {e}")
 
         return {
             "ok": True,

@@ -15,10 +15,20 @@ function initializeApp() {
     updateSystemTime();
     loadAllPanels();
     
-    // Set update intervals
-    updateInterval = setInterval(() => {
-        loadAllPanels();
-    }, 5000); // Refresh every 5 seconds
+    // OPTIMIZED: Set smart update intervals (reduced from 5s to prevent hammering)
+    // Goals/Stats: 30s (slow-changing data)
+    // Predictions/Forecast: 15s (medium-priority)
+    // Top Movers/Hunter: 10s (fast-moving opportunities)
+    // Time display: 1s (real-time clock)
+    
+    setInterval(() => updateSystemTime(), 1000);  // Clock: every 1s
+    setInterval(() => loadGoals(), 30000);  // Goals: every 30s
+    setInterval(() => loadStats(), 30000);  // Stats: every 30s
+    setInterval(() => loadForecast(), 15000);  // Forecast: every 15s
+    setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s
+    setInterval(() => loadHunterFeed(), 10000);  // Hunter Feed: every 10s
+    setInterval(() => loadWatchlist(), 15000);  // Watchlist: every 15s
+    setInterval(() => loadVIPCoins(), 15000);  // VIP Coins: every 15s
 }
 
 // Event Listeners
