@@ -1574,5 +1574,185 @@ async def get_daily_summary():
         }
 
 
+@router.get("/system/diagnostics")
+async def get_system_diagnostics():
+    """
+    Comprehensive system diagnostics endpoint
+    
+    Returns:
+        {
+            "providers": {
+                "polygon": {"configured": bool, "working": bool},
+                "alphavantage": {"configured": bool, "working": bool},
+                "yfinance": {"configured": bool, "working": bool},
+                "yahoo": {"configured": bool, "working": bool}
+            },
+            "databases": {
+                "predictions": {"exists": bool, "row_count": int},
+                "watchlist": {"exists": bool, "row_count": int},
+                "smart_watcher": {"exists": bool, "row_count": int}
+            },
+            "api_keys": {
+                "POLYGON_KEY": bool,
+                "ALPHAVANTAGE_KEY": bool,
+                "ALPHA_VANTAGE_API_KEY": bool
+            },
+            "prediction_stats": {
+                "total_symbols": int,
+                "symbols_with_predictions": int,
+                "success_rate": float,
+                "failing_symbols": [str]
+            },
+            "feature_stats": {
+                "total_features": int,
+                "working_features": int
+            },
+            "ghost_score": {
+                "score": float,
+                "grade": str,
+                "components": dict
+            }
+        }
+    """
+    try:
+        diagnostics = {
+            "providers": {},
+            "databases": {},
+            "api_keys": {},
+            "prediction_stats": {},
+            "feature_stats": {},
+            "ghost_score": {},
+            "timestamp": time.time()
+        }
+        
+        # Check API keys
+        try:
+            from wolf_app import POLYGON_KEY, ALPHAVANTAGE_KEY
+            diagnostics["api_keys"]["POLYGON_KEY"] = bool(POLYGON_KEY)
+            diagnostics["api_keys"]["ALPHAVANTAGE_KEY"] = bool(ALPHAVANTAGE_KEY)
+            diagnostics["api_keys"]["ALPHA_VANTAGE_API_KEY"] = bool(os.getenv("ALPHA_VANTAGE_API_KEY"))
+        except:
+            diagnostics["api_keys"]["POLYGON_KEY"] = False
+            diagnostics["api_keys"]["ALPHAVANTAGE_KEY"] = False
+            diagnostics["api_keys"]["ALPHA_VANTAGE_API_KEY"] = False
+        
+        # Check providers
+        diagnostics["providers"]["polygon"] = {
+            "configured": diagnostics["api_keys"]["POLYGON_KEY"],
+            "working": False  # Would need to test API call
+        }
+        diagnostics["providers"]["alphavantage"] = {
+            "configured": diagnostics["api_keys"]["ALPHAVANTAGE_KEY"],
+            "working": False
+        }
+        diagnostics["providers"]["yfinance"] = {
+            "configured": True,  # Always available
+            "working": True  # Assume working
+        }
+        diagnostics["providers"]["yahoo"] = {
+            "configured": True,
+            "working": True
+        }
+        
+        # Check databases
+        import sqlite3
+        
+        try:
+            conn = sqlite3.connect("ghost_predictions.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM predictions")
+            count = cursor.fetchone()[0]
+            conn.close()
+            diagnostics["databases"]["predictions"] = {"exists": True, "row_count": count}
+        except:
+            diagnostics["databases"]["predictions"] = {"exists": False, "row_count": 0}
+        
+        try:
+            conn = sqlite3.connect("watchlist.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM symbols")
+            count = cursor.fetchone()[0]
+            conn.close()
+            diagnostics["databases"]["watchlist"] = {"exists": True, "row_count": count}
+        except:
+            diagnostics["databases"]["watchlist"] = {"exists": False, "row_count": 0}
+        
+        try:
+            conn = sqlite3.connect("data/smart_watcher.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM symbols")
+            count = cursor.fetchone()[0]
+            conn.close()
+            diagnostics["databases"]["smart_watcher"] = {"exists": True, "row_count": count}
+        except:
+            diagnostics["databases"]["smart_watcher"] = {"exists": False, "row_count": 0}
+        
+        # Check prediction stats
+        try:
+            from wolf_app import (
+                _LATEST_PREDICTIONS,
+                STOCK_SYMBOLS,
+                CRYPTO_SYMBOLS,
+                VIP_COINS
+            )
+            
+            total_symbols = len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS)
+            latest_predictions_dict = dict(_LATEST_PREDICTIONS or {})
+            symbols_with_predictions = len(latest_predictions_dict)
+            success_rate = symbols_with_predictions / max(1, total_symbols)
+            
+            # Get failing symbols (in watchlist but no prediction)
+            all_symbols = set(STOCK_SYMBOLS + CRYPTO_SYMBOLS + VIP_COINS)
+            predicted_symbols = set(latest_predictions_dict.keys())
+            failing_symbols = sorted(list(all_symbols - predicted_symbols))
+            
+            diagnostics["prediction_stats"] = {
+                "total_symbols": total_symbols,
+                "symbols_with_predictions": symbols_with_predictions,
+                "success_rate": round(success_rate, 2),
+                "failing_symbols": failing_symbols
+            }
+        except Exception as e:
+            diagnostics["prediction_stats"] = {"error": str(e)}
+        
+        # Check feature stats
+        try:
+            from core.feature_orchestrator import FeatureOrchestrator
+            orchestrator = FeatureOrchestrator()
+            
+            # Test with AAPL
+            features = orchestrator.get_all_features("AAPL", period=90)
+            total_features = len(features)
+            working_features = len([f for f in features.values() if f is not None and f != 0.0])
+            
+            diagnostics["feature_stats"] = {
+                "total_features": total_features,
+                "working_features": working_features,
+                "success_rate": round(working_features / max(1, total_features), 2)
+            }
+        except Exception as e:
+            diagnostics["feature_stats"] = {"error": str(e)}
+        
+        # Get Ghost Score
+        try:
+            ghost_score_data = _compute_ghost_score_snapshot()
+            diagnostics["ghost_score"] = {
+                "score": ghost_score_data.get("score", 0.0),
+                "grade": ghost_score_data.get("grade", "F"),
+                "components": ghost_score_data.get("components", {})
+            }
+        except Exception as e:
+            diagnostics["ghost_score"] = {"error": str(e)}
+        
+        return diagnostics
+        
+    except Exception as e:
+        LOGGER.error(f"System diagnostics error: {e}")
+        return {
+            "error": str(e),
+            "timestamp": time.time()
+        }
+
+
 # Export router
 __all__ = ["router"]
