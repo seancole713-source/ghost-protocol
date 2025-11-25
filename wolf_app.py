@@ -6153,6 +6153,9 @@ async def api_predict_run(
             "horizon_h": horizon_h,
             "confidence": confidence,
             "direction": direction,
+            "current_price": current_price,
+            "feature_count": feature_data["feature_count"],
+            "available_count": feature_data["available_count"],
         }
 
     except HTTPException:
