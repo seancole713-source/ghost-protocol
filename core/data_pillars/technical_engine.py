@@ -108,10 +108,11 @@ class TechnicalEngine(BasePillar):
         """
         Fetch historical OHLCV data with fallback providers.
         
-        Provider priority:
-        1. yfinance (free, good coverage)
-        2. Alpha Vantage (fallback if yfinance fails)
-        3. Polygon (fallback for stocks)
+        Provider priority (INVERTED):
+        1. Polygon (API key required, reliable)
+        2. Yahoo Finance (free, rate-limited)
+        3. yfinance (library fallback)
+        4. CoinGecko (crypto only)
         
         Args:
             symbol: Ticker symbol
@@ -120,26 +121,34 @@ class TechnicalEngine(BasePillar):
         Returns:
             DataFrame with columns: timestamp, open, high, low, close, volume
         """
-        # Try yfinance first (primary provider)
-        df = self._fetch_yfinance(symbol, days)
-        if df is not None and len(df) >= 20:
-            return df
+        failed_providers = []
         
-        logger.warning(f"yfinance failed for {symbol}, trying fallbacks...")
-        
-        # Try Polygon for stocks
+        # PRIMARY: Polygon for stocks
         if not self._is_crypto_symbol(symbol):
             df = self._fetch_polygon_historical(symbol, days)
             if df is not None and len(df) >= 20:
+                logger.info(f"[TECH] {symbol}: Polygon returned {len(df)} bars")
                 return df
+            failed_providers.append("polygon")
+            logger.warning(f"[TECH] {symbol}: Polygon failed, trying Yahoo")
         
-        # Try crypto-specific providers
+        # SECONDARY: Yahoo Finance / yfinance
+        df = self._fetch_yfinance(symbol, days)
+        if df is not None and len(df) >= 20:
+            logger.info(f"[TECH] {symbol}: Yahoo/yfinance returned {len(df)} bars")
+            return df
+        failed_providers.append("yahoo")
+        
+        # TERTIARY: Crypto providers
         if self._is_crypto_symbol(symbol):
+            logger.warning(f"[TECH] {symbol}: Yahoo failed, trying CoinGecko")
             df = self._fetch_crypto_historical(symbol, days)
             if df is not None and len(df) >= 20:
+                logger.info(f"[TECH] {symbol}: CoinGecko returned {len(df)} bars")
                 return df
+            failed_providers.append("coingecko")
         
-        logger.error(f"All providers failed for {symbol}")
+        logger.error(f"[TECH] {symbol}: ALL PROVIDERS FAILED - {failed_providers}")
         return None
 
     def _fetch_yfinance(self, symbol: str, days: int) -> pd.DataFrame | None:

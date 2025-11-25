@@ -83,19 +83,29 @@ class VolumeEngine(BasePillar):
         
         logger.warning(f"yfinance failed for {symbol}, trying fallbacks...")
         
-        # Try Polygon for stocks
+        # PRIMARY: Polygon for stocks
         if not self._is_crypto_symbol(symbol):
             df = self._fetch_polygon_historical(symbol, days)
             if df is not None and len(df) >= 20:
+                logger.info(f"[VOL] {symbol}: Polygon returned {len(df)} bars")
                 return df
+            logger.warning(f"[VOL] {symbol}: Polygon failed, trying Yahoo")
         
-        # Try crypto-specific providers
+        # SECONDARY: Yahoo Finance / yfinance
+        df = self._fetch_yfinance(symbol, days)
+        if df is not None and len(df) >= 20:
+            logger.info(f"[VOL] {symbol}: Yahoo/yfinance returned {len(df)} bars")
+            return df
+        
+        # TERTIARY: Crypto providers
         if self._is_crypto_symbol(symbol):
+            logger.warning(f"[VOL] {symbol}: Yahoo failed, trying CoinGecko")
             df = self._fetch_crypto_historical(symbol, days)
             if df is not None and len(df) >= 20:
+                logger.info(f"[VOL] {symbol}: CoinGecko returned {len(df)} bars")
                 return df
         
-        logger.error(f"All providers failed for {symbol}")
+        logger.error(f"[VOL] {symbol}: ALL PROVIDERS FAILED")
         return None
 
     def _fetch_yfinance(self, symbol: str, days: int) -> pd.DataFrame | None:

@@ -5878,10 +5878,20 @@ async def api_predict_run(
         orchestrator = get_feature_orchestrator()
         feature_data = orchestrator.get_all_features(symbol, period=90)
 
-        # Log feature extraction results
+        # Log feature extraction results with ENHANCED DIAGNOSTICS
+        feature_avail_pct = (feature_data['available_count'] / feature_data['feature_count'] * 100) if feature_data['feature_count'] > 0 else 0
         LOGGER.info(
-            f"[{symbol}] Extracted {feature_data['available_count']}/{feature_data['feature_count']} features "
-            f"in {feature_data['execution_time_ms']:.0f}ms"
+            f"[{symbol}] Feature Extraction Complete",
+            extra={
+                "symbol": symbol,
+                "available_features": feature_data['available_count'],
+                "total_features": feature_data['feature_count'],
+                "availability_pct": round(feature_avail_pct, 1),
+                "execution_ms": round(feature_data['execution_time_ms'], 1),
+                "pillar_breakdown": feature_data.get('feature_availability', {}),
+                "live_price": current_price,
+                "price_provider": price_data.get("provider", "unknown"),
+            }
         )
 
         features = feature_data.get("features", {})
@@ -10858,7 +10868,7 @@ def _reconciler_loop():
 
 
 def _get_price_quorum(symbol: str, asset_type: str = "stock") -> dict[str, Any] | None:
-    """Lightweight price fetcher used by prediction reconciler."""
+    """Lightweight price fetcher with Polygon-first priority and Redis fallback."""
     sym = symbol.upper().strip()
     if asset_type != "stock":
         return None
@@ -10869,52 +10879,56 @@ def _get_price_quorum(symbol: str, asset_type: str = "stock") -> dict[str, Any] 
         if price is None:
             return None
         return {"symbol": sym, "price": float(price), "prev_close": prev, "provider": provider}
+    
+    # PRIORITY INVERSION: Polygon → Yahoo → yfinance
     providers: list[tuple[str, Any]] = []
+    
+    # PRIMARY: Polygon (requires API key)
     if POLYGON_KEY:
         providers.append(("polygon", lambda: _fetch_price_polygon(sym)))
-
-    base_sequence: list[tuple[str, Any, bool]] = [
-        ("alphavantage", lambda: _fetch_price_alphavantage(sym), bool(ALPHAVANTAGE_KEY)),
-        ("yahoo", lambda: _fetch_price_yahoo_http(sym), True),
-    ]
-    if PRICE_YAHOO_FIRST:
-        base_sequence.reverse()
-
-    for name, fn, enabled in base_sequence:
-        if enabled:
-            providers.append((name, fn))
-
+    
+    # SECONDARY: Yahoo Finance (free, rate-limited)
+    providers.append(("yahoo", lambda: _fetch_price_yahoo_http(sym)))
+    
+    # TERTIARY: AlphaVantage (if configured)
+    if ALPHAVANTAGE_KEY:
+        providers.append(("alphavantage", lambda: _fetch_price_alphavantage(sym)))
+    
+    # LAST RESORT: yfinance library
     providers.append(("yfinance", lambda: _fetch_price_yfinance(sym)))
 
+    failed_providers = []
     for name, fetcher in providers:
         try:
             price, prev, provider = fetcher()
         except Exception as e:  # noqa: BLE001
-            LOGGER.debug(
-                "price_quorum_failed",
-                extra={"symbol": sym, "provider": name, "error": str(e)},
+            error_msg = str(e)
+            failed_providers.append({"provider": name, "error": error_msg})
+            LOGGER.warning(
+                "price_provider_failed",
+                extra={"symbol": sym, "provider": name, "error": error_msg, "failed_count": len(failed_providers)},
             )
             try:
                 _add_event(
                     "price_quorum.error",
                     f"{sym}:{name}",
-                    {"symbol": sym, "provider": name, "error": str(e)},
+                    {"symbol": sym, "provider": name, "error": error_msg},
                 )
             except Exception:
                 pass
             continue
         if price and price > 0:
-            try:
-                LOGGER.info(
-                    "price_quorum_provider",
-                    extra={
-                        "component": "price",
-                        "symbol": sym,
-                        "provider": provider or name,
-                    },
-                )
-            except Exception:
-                pass
+            LOGGER.info(
+                "price_quorum_success",
+                extra={
+                    "component": "price",
+                    "symbol": sym,
+                    "provider": provider or name,
+                    "price": float(price),
+                    "prev_close": float(prev) if prev else None,
+                    "failed_providers": len(failed_providers),
+                },
+            )
             return {
                 "symbol": sym,
                 "price": float(price),
@@ -10922,24 +10936,78 @@ def _get_price_quorum(symbol: str, asset_type: str = "stock") -> dict[str, Any] 
                 "provider": provider or name,
             }
         if prev and prev > 0:
-            try:
-                LOGGER.info(
-                    "price_quorum_provider",
-                    extra={
-                        "component": "price",
-                        "symbol": sym,
-                        "provider": f"{provider or name}:prev",
-                    },
-                )
-            except Exception:
-                pass
+            LOGGER.info(
+                "price_quorum_success_prev",
+                extra={
+                    "component": "price",
+                    "symbol": sym,
+                    "provider": f"{provider or name}:prev",
+                    "price": float(prev),
+                    "failed_providers": len(failed_providers),
+                },
+            )
             return {
                 "symbol": sym,
                 "price": float(prev),
                 "prev_close": float(prev),
                 "provider": f"{provider or name}:prev",
             }
-
+    
+    # ALL PROVIDERS FAILED - Try Polygon 3 more times with backoff
+    if POLYGON_KEY:
+        LOGGER.warning(
+            "price_all_failed_retrying_polygon",
+            extra={"symbol": sym, "failed_providers": len(failed_providers)},
+        )
+        import time
+        for retry in range(3):
+            try:
+                time.sleep(0.5 * (retry + 1))  # 0.5s, 1s, 1.5s backoff
+                price, prev, provider = _fetch_price_polygon(sym)
+                if price and price > 0:
+                    LOGGER.info(
+                        "price_polygon_retry_success",
+                        extra={"symbol": sym, "retry_attempt": retry + 1, "price": float(price)},
+                    )
+                    return {
+                        "symbol": sym,
+                        "price": float(price),
+                        "prev_close": (None if prev is None else float(prev)),
+                        "provider": f"polygon:retry{retry+1}",
+                    }
+            except Exception as e:
+                LOGGER.debug(
+                    "price_polygon_retry_failed",
+                    extra={"symbol": sym, "retry_attempt": retry + 1, "error": str(e)},
+                )
+    
+    # LAST RESORT: Check Redis cache for last valid price
+    try:
+        redis_key = f"ghost:price:last:{sym}"
+        if _REDIS and _REDIS.exists(redis_key):
+            cached_data = _REDIS.get(redis_key)
+            if cached_data:
+                import json
+                cache = json.loads(cached_data)
+                cached_price = cache.get("price")
+                if cached_price and cached_price > 0:
+                    LOGGER.warning(
+                        "price_using_redis_cache",
+                        extra={"symbol": sym, "price": cached_price, "cache_age_seconds": cache.get("age", 0)},
+                    )
+                    return {
+                        "symbol": sym,
+                        "price": float(cached_price),
+                        "prev_close": float(cache.get("prev_close", cached_price)),
+                        "provider": "redis:cache",
+                    }
+    except Exception as e:
+        LOGGER.debug("redis_cache_check_failed", extra={"symbol": sym, "error": str(e)})
+    
+    LOGGER.error(
+        "price_total_failure",
+        extra={"symbol": sym, "failed_providers": failed_providers},
+    )
     LOGGER.debug(
         "price_quorum_failed", extra={"symbol": sym, "provider": "all", "error": "no_price"}
     )
