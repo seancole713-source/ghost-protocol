@@ -21,7 +21,9 @@ import time
 from typing import Any, Callable, Optional
 import redis
 import os
-from loguru import logger as LOGGER
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 
 class CacheUtils:

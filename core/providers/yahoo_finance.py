@@ -17,8 +17,10 @@ import requests
 import time
 from typing import Optional, List
 from dataclasses import dataclass
-from loguru import logger as LOGGER
+import logging
 from datetime import datetime, timedelta
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass

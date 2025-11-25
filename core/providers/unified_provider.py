@@ -21,7 +21,9 @@ Cache TTLs:
 from dataclasses import dataclass
 from typing import Optional, List, Callable
 import time
-from loguru import logger as LOGGER
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 from core.providers.cache_utils import get_cache, cache_spot_price, cache_ohlcv
 from core.providers.binance_ohlcv import BinanceOHLCVProvider, OHLCVBar

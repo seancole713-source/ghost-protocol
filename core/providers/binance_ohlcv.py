@@ -19,8 +19,10 @@ Supported Intervals:
 import requests
 from typing import Optional, List
 from dataclasses import dataclass
-from loguru import logger as LOGGER
+import logging
 import time
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
