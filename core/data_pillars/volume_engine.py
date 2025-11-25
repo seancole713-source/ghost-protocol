@@ -74,38 +74,76 @@ class VolumeEngine(BasePillar):
         """
         Fetch historical price/volume data with fallback providers.
         
-        Shares fallback strategy with Technical Engine for consistency.
+        Provider priority (FREE-TIER FIRST - Nov 24, 2025):
+        STOCKS: Yahoo → yfinance → cache (100% FREE)
+        CRYPTO: Binance → CoinGecko → cache (100% FREE)
+        
+        NO PAID APIs - Ghost must work on free tier!
         """
-        # Try yfinance first
-        df = self._fetch_yfinance(symbol, days)
-        if df is not None and len(df) >= 20:
-            return df
+        failed_providers = []
         
-        logger.warning(f"yfinance failed for {symbol}, trying fallbacks...")
+        # PRIMARY: Unified Provider (NEW - Nov 24, 2025)
+        try:
+            from core.providers.unified_provider import get_unified_provider
+            
+            provider = get_unified_provider()
+            interval = "1d"  # Daily bars for volume analysis
+            lookback = max(days + 10, 100)  # Buffer for calculations
+            
+            ohlcv = provider.get_ohlcv(symbol, interval=interval, lookback=lookback)
+            
+            if ohlcv and ohlcv.bars and len(ohlcv.bars) >= 20:
+                # Convert to DataFrame
+                df = pd.DataFrame([
+                    {
+                        "timestamp": bar.timestamp,
+                        "close": bar.close,
+                        "volume": bar.volume
+                    }
+                    for bar in ohlcv.bars
+                ])
+                
+                logger.info(
+                    f"[VOL] ✅ {symbol}: Unified provider ({ohlcv.provider}) "
+                    f"returned {len(df)} bars (cache_hit={ohlcv.cache_hit})"
+                )
+                return df
+            else:
+                logger.warning(f"[VOL] {symbol}: Unified provider returned insufficient data")
+                failed_providers.append("unified")
         
-        # PRIMARY: Polygon for stocks
+        except ImportError:
+            logger.debug(f"[VOL] {symbol}: Unified provider not available, using legacy")
+        except Exception as e:
+            logger.warning(f"[VOL] {symbol}: Unified provider failed: {e}")
+            failed_providers.append("unified")
+        
+        # FALLBACK 1: Polygon for stocks
         if not self._is_crypto_symbol(symbol):
             df = self._fetch_polygon_historical(symbol, days)
             if df is not None and len(df) >= 20:
                 logger.info(f"[VOL] {symbol}: Polygon returned {len(df)} bars")
                 return df
+            failed_providers.append("polygon")
             logger.warning(f"[VOL] {symbol}: Polygon failed, trying Yahoo")
         
-        # SECONDARY: Yahoo Finance / yfinance
+        # FALLBACK 2: Yahoo Finance / yfinance
         df = self._fetch_yfinance(symbol, days)
         if df is not None and len(df) >= 20:
             logger.info(f"[VOL] {symbol}: Yahoo/yfinance returned {len(df)} bars")
             return df
+        failed_providers.append("yahoo")
         
-        # TERTIARY: Crypto providers
+        # FALLBACK 3: Crypto providers (deprecated)
         if self._is_crypto_symbol(symbol):
             logger.warning(f"[VOL] {symbol}: Yahoo failed, trying CoinGecko")
             df = self._fetch_crypto_historical(symbol, days)
             if df is not None and len(df) >= 20:
                 logger.info(f"[VOL] {symbol}: CoinGecko returned {len(df)} bars")
                 return df
+            failed_providers.append("coingecko")
         
-        logger.error(f"[VOL] {symbol}: ALL PROVIDERS FAILED")
+        logger.error(f"[VOL] {symbol}: ALL PROVIDERS FAILED - {failed_providers}")
         return None
 
     def _fetch_yfinance(self, symbol: str, days: int) -> pd.DataFrame | None:

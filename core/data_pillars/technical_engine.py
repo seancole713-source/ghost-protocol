@@ -108,11 +108,11 @@ class TechnicalEngine(BasePillar):
         """
         Fetch historical OHLCV data with fallback providers.
         
-        Provider priority (INVERTED):
-        1. Polygon (API key required, reliable)
-        2. Yahoo Finance (free, rate-limited)
-        3. yfinance (library fallback)
-        4. CoinGecko (crypto only)
+        Provider priority (FREE-TIER FIRST - Nov 24, 2025):
+        STOCKS: Yahoo → yfinance → cache (100% FREE)
+        CRYPTO: Binance → CoinGecko → cache (100% FREE)
+        
+        NO PAID APIs - Ghost must work on free tier!
         
         Args:
             symbol: Ticker symbol
@@ -123,7 +123,48 @@ class TechnicalEngine(BasePillar):
         """
         failed_providers = []
         
-        # PRIMARY: Polygon for stocks
+        # PRIMARY: Unified Provider (FREE-TIER ONLY)
+        # Crypto: Binance OHLCV (FREE, no key)
+        # Stocks: Yahoo Finance (FREE, rate-limited)
+        try:
+            from core.providers.unified_provider import get_unified_provider
+            
+            provider = get_unified_provider()
+            interval = "1d"  # Daily bars for technical indicators
+            lookback = max(days + 10, 100)  # Add buffer for indicator calculations
+            
+            ohlcv = provider.get_ohlcv(symbol, interval=interval, lookback=lookback)
+            
+            if ohlcv and ohlcv.bars and len(ohlcv.bars) >= 20:
+                # Convert to DataFrame
+                df = pd.DataFrame([
+                    {
+                        "timestamp": bar.timestamp,
+                        "open": bar.open,
+                        "high": bar.high,
+                        "low": bar.low,
+                        "close": bar.close,
+                        "volume": bar.volume
+                    }
+                    for bar in ohlcv.bars
+                ])
+                
+                logger.info(
+                    f"[TECH] ✅ {symbol}: Unified provider ({ohlcv.provider}) "
+                    f"returned {len(df)} bars (cache_hit={ohlcv.cache_hit})"
+                )
+                return df
+            else:
+                logger.warning(f"[TECH] {symbol}: Unified provider returned insufficient data")
+                failed_providers.append("unified")
+        
+        except ImportError:
+            logger.debug(f"[TECH] {symbol}: Unified provider not available, using legacy")
+        except Exception as e:
+            logger.warning(f"[TECH] {symbol}: Unified provider failed: {e}")
+            failed_providers.append("unified")
+        
+        # FALLBACK 1: Polygon for stocks
         if not self._is_crypto_symbol(symbol):
             df = self._fetch_polygon_historical(symbol, days)
             if df is not None and len(df) >= 20:
@@ -132,14 +173,14 @@ class TechnicalEngine(BasePillar):
             failed_providers.append("polygon")
             logger.warning(f"[TECH] {symbol}: Polygon failed, trying Yahoo")
         
-        # SECONDARY: Yahoo Finance / yfinance
+        # FALLBACK 2: Yahoo Finance / yfinance
         df = self._fetch_yfinance(symbol, days)
         if df is not None and len(df) >= 20:
             logger.info(f"[TECH] {symbol}: Yahoo/yfinance returned {len(df)} bars")
             return df
         failed_providers.append("yahoo")
         
-        # TERTIARY: Crypto providers
+        # FALLBACK 3: Crypto providers (CoinGecko - deprecated)
         if self._is_crypto_symbol(symbol):
             logger.warning(f"[TECH] {symbol}: Yahoo failed, trying CoinGecko")
             df = self._fetch_crypto_historical(symbol, days)
