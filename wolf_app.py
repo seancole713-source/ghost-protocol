@@ -10430,8 +10430,9 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
             accuracy_status = f"📊 Evaluating ({total_predictions} predictions pending outcome)"
         else:
             accuracy_status = "🔄 Building prediction history (no evaluations yet)"
-    except Exception:
-        accuracy_status = "🤖 Smart Filter Active"
+    except Exception as e:
+        LOGGER.error(f"Accuracy query failed: {e}", exc_info=True)
+        accuracy_status = "⚠️ Accuracy unavailable (0 predictions evaluated yet)"
 
     message = f"""🎯 <b>GHOST AI TRADING SIGNALS</b>
 ⏰ {now_str}
