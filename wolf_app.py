@@ -6109,6 +6109,42 @@ async def api_predict_run(
         except Exception as e:
             LOGGER.warning(f"[{symbol}] Accuracy tracking registration failed: {e}")
 
+        # ALSO write to ghost_predictions table for Telegram accuracy display
+        try:
+            import sqlite3
+            db_path = "data/wolf.db"
+            conn = sqlite3.connect(db_path)
+            
+            # Calculate predicted price based on direction
+            if direction == "UP":
+                predicted_price = current_price * 1.025  # +2.5%
+            elif direction == "DOWN":
+                predicted_price = current_price * 0.975  # -2.5%
+            else:
+                predicted_price = current_price  # FLAT
+            
+            conn.execute("""
+                INSERT INTO ghost_predictions (
+                    symbol, predicted_at, check_at, predicted_price, 
+                    predicted_direction, confidence, timeframe_hours, 
+                    current_price, checked
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """, (
+                symbol,
+                int(run_at),
+                int(run_at + (horizon_h * 3600)),
+                predicted_price,
+                direction,
+                confidence,
+                horizon_h,
+                current_price
+            ))
+            conn.commit()
+            conn.close()
+            LOGGER.info(f"[{symbol}] Stored in ghost_predictions table (ID={prediction_id}, direction={direction}, confidence={confidence:.1%})")
+        except Exception as e:
+            LOGGER.error(f"[{symbol}] Failed to write to ghost_predictions table: {e}")
+
         return {
             "ok": True,
             "prediction_id": prediction_id,
