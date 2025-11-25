@@ -10920,22 +10920,23 @@ def _get_price_quorum(symbol: str, asset_type: str = "stock") -> dict[str, Any] 
             return None
         return {"symbol": sym, "price": float(price), "prev_close": prev, "provider": provider}
     
-    # PRIORITY INVERSION: Polygon → Yahoo → yfinance
+    # PRIORITY INVERSION: yfinance → Yahoo → Polygon → AlphaVantage
+    # yfinance FIRST since it's most reliable and uses different endpoints
     providers: list[tuple[str, Any]] = []
     
-    # PRIMARY: Polygon (requires API key)
+    # PRIMARY: yfinance library (most reliable, FREE)
+    providers.append(("yfinance", lambda: _fetch_price_yfinance(sym)))
+    
+    # SECONDARY: Yahoo Finance HTTP (free, rate-limited)
+    providers.append(("yahoo", lambda: _fetch_price_yahoo_http(sym)))
+    
+    # TERTIARY: Polygon (requires API key, only if configured)
     if POLYGON_KEY:
         providers.append(("polygon", lambda: _fetch_price_polygon(sym)))
     
-    # SECONDARY: Yahoo Finance (free, rate-limited)
-    providers.append(("yahoo", lambda: _fetch_price_yahoo_http(sym)))
-    
-    # TERTIARY: AlphaVantage (if configured)
+    # QUATERNARY: AlphaVantage (if configured)
     if ALPHAVANTAGE_KEY:
         providers.append(("alphavantage", lambda: _fetch_price_alphavantage(sym)))
-    
-    # LAST RESORT: yfinance library
-    providers.append(("yfinance", lambda: _fetch_price_yfinance(sym)))
 
     failed_providers = []
     for name, fetcher in providers:
