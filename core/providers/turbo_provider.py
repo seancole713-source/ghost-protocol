@@ -116,7 +116,7 @@ class TurboProvider:
 
         # Import stock providers
         try:
-            from wolf_app import _fetch_price_yfinance, _fetch_price_yahoo_http
+            from wolf_app import _fetch_price_yfinance, _fetch_price_yahoo_http, _fetch_price_alphavantage
         except ImportError as e:
             LOGGER.error(f"Failed to import stock providers: {e}")
             return self._error_response(
@@ -125,10 +125,11 @@ class TurboProvider:
                 time.monotonic() - start,
             )
 
-        # Define provider chain (yfinance → Yahoo HTTP)
+        # Define provider chain (yfinance → Yahoo HTTP → AlphaVantage)
         providers: List[Tuple[str, Callable[[], Any]]] = [
             ("yfinance", lambda: _fetch_price_yfinance(symbol_upper)),
             ("yahoo_http", lambda: _fetch_price_yahoo_http(symbol_upper)),
+            ("alphavantage", lambda: _fetch_price_alphavantage(symbol_upper)),
         ]
 
         # Try each provider with timeout
