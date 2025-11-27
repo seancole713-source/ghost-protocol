@@ -5801,78 +5801,132 @@ class _PredictRunBody(BaseModel):
 
 
 @APP.post("/api/predict/run")
-async def api_predict_run(
-    body: _PredictRunBody,
-    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
-):
+def run_single_prediction(symbol: str) -> dict[str, Any]:
     """
-    Generate a new 48h prediction for a stock symbol using live data.
-    Returns prediction metadata.
+    Core synchronous prediction function with turbo provider architecture.
+    
+    This function is the HEART OF THE GHOST TURBO SURGERY.
+    - Hard 4 second budget (3s price + 1s features)
+    - Uses turbo_stock_price/turbo_crypto_price with fast-fail
+    - Always returns dict (never raises exceptions)
+    - Returns structured error on any failure
+    
+    Args:
+        symbol: Trading symbol (e.g., "PACS", "BTC")
+    
+    Returns:
+        {
+            "ok": bool,
+            "prediction_id": int or None,
+            "symbol": str,
+            "direction": str,
+            "confidence": float,
+            "current_price": float or None,
+            "feature_count": int,
+            "available_count": int,
+            "duration_ms": int,
+            "error": str or None
+        }
     """
-    try:
-        _require_bearer(
-            (f"Bearer {credentials.credentials}")
-            if credentials and credentials.credentials
-            else None
-        )
-    except Exception:
-        pass
-
-    # Skip degradation check - Railway has valid provider keys
-    # degraded_reason = STATE.get("degraded_reason")
-    # if degraded_reason:
-    #     raise HTTPException(
-    #         503,
-    #         f"Predictions unavailable due to configuration issues: {degraded_reason}"
-    #     )
-
-    symbol = body.symbol.upper().strip()
+    # Import turbo providers
+    from core.providers.turbo_provider import turbo_stock_price, turbo_crypto_price
+    
+    start = time.monotonic()
+    BUDGET_S = 4.0  # Hard budget: <=4s for PACS/BTC
+    
+    symbol = symbol.upper().strip()
     if not symbol:
-        raise HTTPException(400, "symbol required")
-
+        return {
+            "ok": False,
+            "symbol": symbol,
+            "direction": "ERROR",
+            "confidence": 0.0,
+            "current_price": None,
+            "feature_count": 0,
+            "available_count": 0,
+            "duration_ms": int((time.monotonic() - start) * 1000),
+            "error": "symbol required"
+        }
+    
     try:
         # Detect asset type (crypto vs stock)
         is_crypto = symbol in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(symbol) == "crypto"
         
-        # Fetch current price for starting point
+        # TURBO PRICE FETCH: Use fast-fail provider with 3s budget
+        price_budget_s = 3.0
         if is_crypto:
-            # Use async crypto price quorum
-            from core.crypto.crypto_providers import get_crypto_price_quorum
-            crypto_data = await get_crypto_price_quorum(symbol, use_cache=False)
-            if not crypto_data or not crypto_data.get("price"):
-                try:
-                    _add_event(
-                        "price_quorum.predict_miss",
-                        symbol,
-                        {"symbol": symbol, "crypto_data": crypto_data},
-                    )
-                except Exception:
-                    pass
-                raise HTTPException(404, f"Unable to fetch live crypto price for {symbol}")
-            price_data = {
-                "price": crypto_data["price"],
-                "timestamp": time.time(),
-                "provider": crypto_data.get("provider", "crypto_quorum")
-            }
+            # Use turbo crypto provider
+            price_result = turbo_crypto_price(symbol, max_budget_s=price_budget_s)
         else:
-            # Use stock price quorum
-            price_data = _get_price_quorum(symbol, "stock")
+            # Use turbo stock provider
+            price_result = turbo_stock_price(symbol, max_budget_s=price_budget_s)
         
-        if not price_data or not price_data.get("price"):
-            try:
-                _add_event(
-                    "price_quorum.predict_miss",
-                    symbol,
-                    {"symbol": symbol, "price_data": price_data},
-                )
-            except Exception:
-                pass
-            raise HTTPException(404, f"Unable to fetch live price for {symbol}")
+        # Check if price fetch succeeded
+        if not price_result.get("ok") or not price_result.get("price"):
+            duration_ms = int((time.monotonic() - start) * 1000)
+            error_msg = price_result.get("error", "Unable to fetch price")
+            LOGGER.warning(
+                f"[{symbol}] Price fetch failed: {error_msg}",
+                extra={
+                    "symbol": symbol,
+                    "duration_ms": duration_ms,
+                    "turbo_logs": price_result.get("logs", []),
+                    "provider": price_result.get("provider")
+                }
+            )
+            return {
+                "ok": False,
+                "symbol": symbol,
+                "direction": "ERROR",
+                "confidence": 0.0,
+                "current_price": None,
+                "feature_count": 0,
+                "available_count": 0,
+                "duration_ms": duration_ms,
+                "error": error_msg
+            }
+        
+        # Extract price and metadata from turbo result
+        current_price = float(price_result["price"])
+        price_provider = price_result.get("provider", "unknown")
+        price_duration_s = price_result.get("duration_s", 0)
+        
+        LOGGER.info(
+            f"[{symbol}] Turbo price: ${current_price:.2f} via {price_provider} ({price_duration_s*1000:.0f}ms)",
+            extra={
+                "symbol": symbol,
+                "price": current_price,
+                "provider": price_provider,
+                "duration_ms": int(price_duration_s * 1000),
+                "cached": price_result.get("cached", False)
+            }
+        )
 
-        current_price = float(price_data["price"])
         run_at = time.time()
+        
+        # Check remaining budget for feature extraction
+        elapsed = time.monotonic() - start
+        remaining = BUDGET_S - elapsed
+        
+        if remaining <= 0.5:  # Need at least 500ms for features
+            duration_ms = int((time.monotonic() - start) * 1000)
+            LOGGER.warning(
+                f"[{symbol}] Budget exhausted after price fetch ({elapsed:.2f}s)",
+                extra={"symbol": symbol, "duration_ms": duration_ms}
+            )
+            return {
+                "ok": False,
+                "symbol": symbol,
+                "direction": "ERROR",
+                "confidence": 0.0,
+                "current_price": current_price,
+                "feature_count": 0,
+                "available_count": 0,
+                "duration_ms": duration_ms,
+                "error": f"Timeout: price fetch took {elapsed:.1f}s (budget: {BUDGET_S}s)"
+            }
 
-        # STEP 3: Extract features from all 6 data pillars
+        # STEP 3: Extract features from all 6 data pillars (with remaining budget)
         from core.data_pillars.feature_orchestrator import get_feature_orchestrator
 
         orchestrator = get_feature_orchestrator()
@@ -5890,7 +5944,7 @@ async def api_predict_run(
                 "execution_ms": round(feature_data['execution_time_ms'], 1),
                 "pillar_breakdown": feature_data.get('feature_availability', {}),
                 "live_price": current_price,
-                "price_provider": price_data.get("provider", "unknown"),
+                "price_provider": price_provider,
             }
         )
 
@@ -5907,8 +5961,8 @@ async def api_predict_run(
             symbol=symbol,
             price_data={
                 "price": current_price,
-                "timestamp": price_data.get("timestamp", run_at),
-                "provider": price_data.get("provider", "unknown")
+                "timestamp": run_at,
+                "provider": price_provider
             },
             volume_data={
                 "volume": volume_spike if volume_spike is not None else 0, 
@@ -6088,7 +6142,7 @@ async def api_predict_run(
             "confidence": confidence,
             "direction": direction,
             "horizon_h": horizon_h,
-            "provider": price_data.get("provider", "unknown"),
+            "provider": price_provider,
             "price_at_prediction": current_price,
             "feature_status": feature_status.to_dict(),
             "confidence_metadata": confidence_metadata,
@@ -6144,6 +6198,9 @@ async def api_predict_run(
             LOGGER.info(f"[{symbol}] Stored in ghost_predictions table (ID={prediction_id}, direction={direction}, confidence={confidence:.1%})")
         except Exception as e:
             LOGGER.error(f"[{symbol}] Failed to write to ghost_predictions table: {e}")
+        
+        # Calculate total duration
+        duration_ms = int((time.monotonic() - start) * 1000)
 
         return {
             "ok": True,
@@ -6156,13 +6213,64 @@ async def api_predict_run(
             "current_price": current_price,
             "feature_count": feature_data["feature_count"],
             "available_count": feature_data["available_count"],
+            "duration_ms": duration_ms,
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
+        # Catch ALL exceptions and return structured error (never hang)
+        duration_ms = int((time.monotonic() - start) * 1000)
         LOGGER.error(f"Prediction run failed for {symbol}: {e}", exc_info=True)
-        raise HTTPException(500, f"Prediction failed: {str(e)[:200]}")
+        
+        return {
+            "ok": False,
+            "symbol": symbol,
+            "direction": "ERROR",
+            "confidence": 0.0,
+            "current_price": None,
+            "feature_count": 0,
+            "available_count": 0,
+            "duration_ms": duration_ms,
+            "error": str(e)[:200]
+        }
+
+
+async def api_predict_run(
+    body: _PredictRunBody,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Generate a new 48h prediction for a stock symbol using live data.
+    Returns prediction metadata.
+    
+    This is the HTTP handler that wraps run_single_prediction.
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+
+    symbol = body.symbol.upper().strip()
+    if not symbol:
+        raise HTTPException(400, "symbol required")
+    
+    # Call synchronous core function
+    result = run_single_prediction(symbol)
+    
+    # If prediction failed, raise HTTP error
+    if not result.get("ok"):
+        error = result.get("error", "Unknown error")
+        duration_ms = result.get("duration_ms", 0)
+        LOGGER.error(
+            f"[{symbol}] Prediction failed: {error} ({duration_ms}ms)",
+            extra={"symbol": symbol, "error": error, "duration_ms": duration_ms}
+        )
+        raise HTTPException(500, f"Prediction failed: {error}")
+    
+    return result
 
 
 @APP.get("/api/predict/run")
@@ -6338,10 +6446,10 @@ async def api_accuracy_reconcile():
 def run_prediction(symbol: str, market: str = "stock", horizon: str = "SHORT") -> dict:
     """
     Wrapper function for beast_scheduler and other scheduled prediction systems.
-    Calls the main prediction endpoint and returns standardized result.
+    Calls the synchronous prediction core.
     
     This function bridges scheduled systems (beast_scheduler, premarket_predictor)
-    with the core prediction engine (api_predict_run).
+    with the core prediction engine (run_single_prediction).
     
     Args:
         symbol: Trading symbol (e.g. "WOLF", "BTC")
@@ -6357,16 +6465,13 @@ def run_prediction(symbol: str, market: str = "stock", horizon: str = "SHORT") -
             'confidence': float (0-1),
             'horizon_h': 48,
             'run_at': int (milliseconds),
-            'provider': str
+            'provider': str,
+            'duration_ms': int
         }
     """
-    import asyncio
-    
     try:
-        # Call the async prediction endpoint
-        body = _PredictRunBody(symbol=symbol.upper().strip())
-        result = asyncio.run(api_predict_run(body, credentials=None))
-        
+        # Call synchronous prediction core (no async needed)
+        result = run_single_prediction(symbol.upper().strip())
         return result
     
     except Exception as e:
@@ -6374,6 +6479,9 @@ def run_prediction(symbol: str, market: str = "stock", horizon: str = "SHORT") -
         return {
             'ok': False,
             'symbol': symbol,
+            'direction': 'ERROR',
+            'confidence': 0.0,
+            'duration_ms': 0,
             'error': str(e)[:200]
         }
 
@@ -6384,13 +6492,11 @@ def _generate_multi_symbol_predictions():
 
     Called by scheduled_predictions scheduler (8am, 12pm, 4pm ET).
     Loops through HUNTER_STOCK_SYMBOLS and HUNTER_CRYPTO_SYMBOLS,
-    calls api_predict_run for each symbol, updates _LATEST_PREDICTIONS.
+    calls run_single_prediction for each symbol, updates _LATEST_PREDICTIONS.
 
     Returns:
         dict with summary stats: {stocks: N, crypto: N, total: N, errors: []}
     """
-    import asyncio
-
     stocks_success = 0
     crypto_success = 0
     errors = []
@@ -6398,16 +6504,16 @@ def _generate_multi_symbol_predictions():
     # Generate predictions for stocks
     for symbol in HUNTER_STOCK_SYMBOLS:
         try:
-            body = _PredictRunBody(symbol=symbol)
-            result = asyncio.run(api_predict_run(body, credentials=None))
+            result = run_single_prediction(symbol)
             if result.get("ok"):
                 # Only count as success if confidence >= 10% (real prediction, not diagnostic)
                 confidence = result.get("confidence", 0)
                 if confidence >= 0.10:
                     stocks_success += 1
-                    LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%})")
+                    duration_ms = result.get("duration_ms", 0)
+                    LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%}, {duration_ms}ms)")
                 else:
-                    LOGGER.info(f"Hunter prediction skipped (0% confidence): {symbol}")
+                    LOGGER.info(f"Hunter prediction skipped (low confidence): {symbol}")
             else:
                 errors.append(f"{symbol}: {result.get('error', 'unknown')}")
         except Exception as e:
@@ -6417,16 +6523,16 @@ def _generate_multi_symbol_predictions():
     # Generate predictions for crypto
     for symbol in HUNTER_CRYPTO_SYMBOLS:
         try:
-            body = _PredictRunBody(symbol=symbol)
-            result = asyncio.run(api_predict_run(body, credentials=None))
+            result = run_single_prediction(symbol)
             if result.get("ok"):
                 # Only count as success if confidence >= 10% (real prediction, not diagnostic)
                 confidence = result.get("confidence", 0)
                 if confidence >= 0.10:
                     crypto_success += 1
-                    LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%})")
+                    duration_ms = result.get("duration_ms", 0)
+                    LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%}, {duration_ms}ms)")
                 else:
-                    LOGGER.info(f"Hunter prediction skipped (0% confidence): {symbol}")
+                    LOGGER.info(f"Hunter prediction skipped (low confidence): {symbol}")
             else:
                 errors.append(f"{symbol}: {result.get('error', 'unknown')}")
         except Exception as e:

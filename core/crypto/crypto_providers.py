@@ -535,3 +535,90 @@ def get_all_supported_symbols() -> list[str]:
 
     provider = CoinGeckoProvider()
     return sorted(provider.SYMBOL_MAP.keys())
+# ---- Turbo-friendly crypto price wrappers (sync, single-asset) ----
+import logging
+import time
+import requests
+
+logger = logging.getLogger("core.crypto.crypto_providers")
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _binance_symbol(symbol: str) -> str:
+    s = symbol.upper()
+    if s.endswith("USDT"):
+        return s
+    return s + "USDT"
+
+
+def get_price_binance(symbol: str) -> dict:
+    """
+    Sync wrapper for Binance spot price.
+    Returns: {"provider": "binance", "symbol": "BTC", "price": float, "ts": ms}
+    """
+    pair = _binance_symbol(symbol)
+    url = f"https://api.binance.com/api/v3/ticker/price?symbol={pair}"
+    resp = requests.get(url, timeout=3)
+    resp.raise_for_status()
+    data = resp.json()
+    price = float(data["price"])
+    return {
+        "provider": "binance",
+        "symbol": symbol.upper(),
+        "price": price,
+        "ts": _now_ms(),
+    }
+
+
+_COINGECKO_IDS = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+}
+
+
+def get_price_coingecko(symbol: str) -> dict:
+    """
+    Sync wrapper for CoinGecko simple price API.
+    Only supports a small set of majors; raises for others.
+    """
+    sid = _COINGECKO_IDS.get(symbol.upper())
+    if not sid:
+        raise ValueError(f"CoinGecko wrapper does not support symbol: {symbol}")
+    url = (
+        "https://api.coingecko.com/api/v3/simple/price"
+        f"?ids={sid}&vs_currencies=usd"
+    )
+    resp = requests.get(url, timeout=3)
+    resp.raise_for_status()
+    data = resp.json()
+    price = float(data[sid]["usd"])
+    return {
+        "provider": "coingecko",
+        "symbol": symbol.upper(),
+        "price": price,
+        "ts": _now_ms(),
+    }
+
+
+def get_price_coinbase(symbol: str) -> dict:
+    """
+    Sync wrapper for Coinbase spot price.
+    Uses /v2/prices/<SYMBOL>-USD/spot
+    """
+    pair = f"{symbol.upper()}-USD"
+    url = f"https://api.coinbase.com/v2/prices/{pair}/spot"
+    resp = requests.get(url, timeout=3)
+    resp.raise_for_status()
+    data = resp.json()
+    amount = data["data"]["amount"]
+    price = float(amount)
+    return {
+        "provider": "coinbase",
+        "symbol": symbol.upper(),
+        "price": price,
+        "ts": _now_ms(),
+    }
