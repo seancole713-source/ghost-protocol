@@ -23962,6 +23962,22 @@ try:
     from api.cockpit_v3_live_endpoints import router as cockpit_v3_router
     APP.include_router(cockpit_v3_router)
     LOGGER.info("✅ Cockpit V3 LIVE endpoints registered - all panels wired to real data")
+    
+    # Add alias routes for frontend compatibility (legacy /api/cockpit/v3 paths)
+    @APP.post("/api/cockpit/v3/goals")
+    async def cockpit_v3_goals_alias(period: str, target_amount: float):
+        """Alias for /api/v3/goals/set - maintains frontend compatibility"""
+        from api.cockpit_v3_live_endpoints import set_goal
+        return await set_goal(period, target_amount)
+    
+    @APP.get("/api/cockpit/v3/goals")
+    async def cockpit_v3_goals_get_alias():
+        """Alias for /api/v3/goals/snapshot - maintains frontend compatibility"""
+        from api.cockpit_v3_live_endpoints import get_goals_snapshot
+        return await get_goals_snapshot()
+    
+    LOGGER.info("✅ Cockpit V3 legacy route aliases registered (/api/cockpit/v3/*)")
+    
 except Exception as e:
     LOGGER.error(f"⚠️ Cockpit V3 LIVE endpoints not loaded: {e}", exc_info=True)
     # Continue startup even if V3 endpoints fail to load
