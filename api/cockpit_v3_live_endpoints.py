@@ -1611,6 +1611,93 @@ async def update_watchlist(body: WatchlistUpdateBody):
         }
 
 
+@router.get("/watchlist/enriched")
+async def get_watchlist_enriched():
+    """
+    Get watchlist with live prices and % changes.
+    Fetches real-time data for all watchlist symbols.
+    
+    Returns:
+        {
+            "items": [
+                {
+                    "symbol": "AAPL",
+                    "price": 190.50,
+                    "change_pct": 2.34,
+                    "type": "stock"
+                },
+                ...
+            ],
+            "count": N,
+            "timestamp": float
+        }
+    """
+    try:
+        # Get base watchlist
+        watchlist_data = await get_watchlist()
+        stocks = watchlist_data.get("stocks", [])
+        crypto = watchlist_data.get("crypto", [])
+        vip = watchlist_data.get("vip", [])
+        
+        all_symbols = stocks + crypto + vip
+        enriched_items = []
+        
+        # Fetch prices for each symbol
+        for symbol in all_symbols:
+            try:
+                # Determine asset type
+                if symbol in crypto or symbol in vip:
+                    # Fetch crypto price
+                    price_data = await get_price_for_symbol(symbol)
+                    enriched_items.append({
+                        "symbol": symbol,
+                        "price": price_data.get("price", 0),
+                        "change_pct": price_data.get("change_pct", 0),
+                        "type": "crypto" if symbol in crypto else "vip"
+                    })
+                else:
+                    # Fetch stock price using Ghost's stock providers
+                    try:
+                        from core.stocks.stock_providers import get_stock_price_quorum
+                        stock_data = await asyncio.wait_for(
+                            get_stock_price_quorum(symbol, use_cache=True),
+                            timeout=5
+                        )
+                        if stock_data:
+                            enriched_items.append({
+                                "symbol": symbol,
+                                "price": float(stock_data.get("price", 0)),
+                                "change_pct": float(stock_data.get("change_pct", 0)),
+                                "type": "stock"
+                            })
+                    except Exception as e:
+                        LOGGER.warning(f"Stock price fetch failed for {symbol}: {e}")
+                        enriched_items.append({
+                            "symbol": symbol,
+                            "price": 0,
+                            "change_pct": 0,
+                            "type": "stock"
+                        })
+            except Exception as e:
+                LOGGER.warning(f"Price fetch failed for {symbol}: {e}")
+                continue
+        
+        return {
+            "items": enriched_items,
+            "count": len(enriched_items),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        LOGGER.error(f"Enriched watchlist error: {e}", exc_info=True)
+        return {
+            "items": [],
+            "count": 0,
+            "timestamp": time.time(),
+            "error": str(e)
+        }
+
+
+
 # === DAILY SUMMARY ===
 
 @router.get("/daily/summary")

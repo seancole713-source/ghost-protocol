@@ -387,17 +387,12 @@ function renderAccuracyChart(data) {
 // Panel 5: Watchlist
 async function loadWatchlist() {
     try {
-        const response = await fetch('/api/v3/watchlist');
+        // Use enriched watchlist endpoint that includes live prices
+        const response = await fetch('/api/v3/watchlist/enriched');
         if (!response.ok) throw new Error('Failed to load watchlist');
         
         const data = await response.json();
-        
-        // Combine all symbol groups
-        const allSymbols = [
-            ...(data.stocks || []).map(s => ({symbol: s, type: 'stock'})),
-            ...(data.crypto || []).map(s => ({symbol: s, type: 'crypto'})),
-            ...(data.vip || []).map(s => ({symbol: s, type: 'vip'}))
-        ];
+        const watchlistItems = data.items || [];
         
         // Fetch predictions for all symbols
         const predResponse = await fetch('/api/v3/predictions/latest?limit=100');
@@ -414,24 +409,11 @@ async function loadWatchlist() {
             });
         }
         
-        // Fetch hunter feed for price data (contains live crypto prices)
-        let priceMap = {};
-        try {
-            const hunterResponse = await fetch('/api/v3/hunter/feed');
-            const hunterData = await hunterResponse.json();
-            if (hunterData && hunterData.movers) {
-                hunterData.movers.forEach(mover => {
-                    priceMap[mover.symbol] = mover.change || 0;
-                });
-            }
-        } catch (e) {
-            console.warn('Could not fetch price data:', e);
-        }
-        
-        // Enrich watchlist with prediction and price data
-        const watchlistData = allSymbols.map(item => ({
+        // Enrich watchlist with prediction data
+        const watchlistData = watchlistItems.map(item => ({
             symbol: item.symbol,
-            change: priceMap[item.symbol] || 0,  // Use real price change from hunter feed
+            change: item.change_pct || 0,  // Real price change from enriched endpoint
+            price: item.price || 0,         // Real price
             ghost_score: predMap[item.symbol]?.confidence || 0,
             direction: predMap[item.symbol]?.direction || 'FLAT',
             type: item.type
