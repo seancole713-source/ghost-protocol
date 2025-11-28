@@ -25,8 +25,7 @@ function initializeApp() {
     setInterval(() => loadGoals(), 30000);  // Goals: every 30s
     setInterval(() => loadStats(), 30000);  // Stats: every 30s
     setInterval(() => loadForecast(), 15000);  // Forecast: every 15s
-    setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s
-    setInterval(() => loadHunterFeed(), 10000);  // Hunter Feed: every 10s
+    setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s (includes hunter feed)
     setInterval(() => loadWatchlist(), 15000);  // Watchlist: every 15s
     setInterval(() => loadVIPCoins(), 15000);  // VIP Coins: every 15s
 }
