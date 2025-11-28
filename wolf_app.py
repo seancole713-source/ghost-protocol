@@ -3654,11 +3654,12 @@ async def _on_startup():
             except Exception:
                 pass
 
-            # Fallback: use _LATEST_PREDICTIONS with 70%+ confidence
+            # Fallback: use _LATEST_PREDICTIONS with configurable confidence
+            min_conf = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.55"))
             opportunities = []
             for sym, pred in _LATEST_PREDICTIONS.items():
                 confidence = pred.get("confidence", 0)
-                if confidence >= 0.70:  # 70%+ threshold for "high-quality"
+                if confidence >= min_conf:  # Use Railway env var threshold
                     opportunities.append({
                         "symbol": sym,
                         "confidence": confidence,
@@ -23575,14 +23576,18 @@ async def api_scan_all():
 
 
 @APP.get("/api/opportunities/top")
-async def api_opportunities_top(limit: int = 10, min_confidence: float = 0.70):
+async def api_opportunities_top(limit: int = 10, min_confidence: float = None):
     """
     Get top-ranked opportunities across all markets with scoring.
 
     Query params:
         limit: Max opportunities to return (default 10)
-        min_confidence: Minimum confidence threshold (default 0.70)
+        min_confidence: Minimum confidence threshold (default from MIN_ALERT_CONFIDENCE env)
     """
+    # Use Railway env var if not specified
+    if min_confidence is None:
+        min_confidence = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.55"))
+    
     try:
         from core.market_scanner import scan_all
         from core.opportunity_scorer import rank_opportunities

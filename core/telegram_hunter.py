@@ -47,7 +47,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # Alert thresholds
 INSTANT_ALERT_THRESHOLD = 80  # Score 80+ sends instant alert
-HIGH_CONFIDENCE_THRESHOLD = 0.75  # 75%+ AI confidence
+HIGH_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.55"))  # Use Railway env var
 
 # Cooldown settings (prevent spam)
 SYMBOL_COOLDOWN_HOURS = 4  # Don't alert same symbol within 4 hours
