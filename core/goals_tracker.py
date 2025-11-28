@@ -7,7 +7,7 @@ import json
 import logging
 import sqlite3
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -65,8 +65,10 @@ class GoalsTracker:
             end_date = now.replace(hour=23, minute=59, second=59)
         elif period == "weekly":
             days_until_sunday = (6 - now.weekday()) % 7
-            end_date = now.replace(hour=23, minute=59, second=59)
-            end_date = end_date.replace(day=end_date.day + days_until_sunday)
+            # Add a delta rather than bumping the day to avoid month-end rollover errors
+            end_date = (now + timedelta(days=days_until_sunday)).replace(
+                hour=23, minute=59, second=59
+            )
         elif period == "monthly":
             # Last day of current month
             if now.month == 12:
