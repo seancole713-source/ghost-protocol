@@ -669,7 +669,7 @@ async function saveGoals() {
         const monthly = parseFloat(document.getElementById('goal-monthly').value) || 0;
         const yearly = parseFloat(document.getElementById('goal-yearly').value) || 0;
         
-        // Save each goal
+        // Save each goal using v3 API endpoint
         const periods = [
             { period: 'daily', amount: daily },
             { period: 'weekly', amount: weekly },
@@ -679,9 +679,13 @@ async function saveGoals() {
         
         for (const goal of periods) {
             if (goal.amount > 0) {
-                await fetch(`/api/goals/set?period=${goal.period}&target_amount=${goal.amount}`, {
+                const response = await fetch(`/api/v3/goals/set?period=${goal.period}&target_amount=${goal.amount}`, {
                     method: 'POST'
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to set ${goal.period} goal`);
+                }
             }
         }
         

@@ -657,6 +657,39 @@ async def get_goals_snapshot():
     return response
 
 
+@router.post("/goals/set")
+async def set_goal(period: str, target_amount: float):
+    """
+    Set a trading goal for a specific period.
+    
+    Args:
+        period: 'daily', 'weekly', 'monthly', or 'yearly'
+        target_amount: Target profit amount in USD
+    
+    Returns:
+        {
+            "ok": bool,
+            "id": goal_id,
+            "period": str,
+            "target_amount": float,
+            "start_date": str,
+            "end_date": str
+        }
+    """
+    try:
+        from core.goals_tracker import GoalsTracker
+        
+        tracker = GoalsTracker()
+        result = tracker.set_goal(period, target_amount)
+        
+        LOGGER.info(f"Goal set: {period} = ${target_amount:,.0f}")
+        
+        return {"ok": True, **result}
+    except Exception as e:
+        LOGGER.error(f"Goal set failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
 @router.get("/hunter/feed")
 async def get_hunter_feed():
     """Serve hunter feed data from cache, kicking off refreshes in the background."""
