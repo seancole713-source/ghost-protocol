@@ -1150,11 +1150,72 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
         }
     """
     try:
-        # PRIMARY: Try core news_sentiment module with Alpha Vantage
+        # FAST FALLBACK: Use Ghost AI predictions as primary news source
+        # This ensures news feed always has content even when external APIs fail
+        try:
+            import sqlite3
+            db_path = "data/ghost_predictions.db"
+            
+            # Try to read from predictions database
+            conn = sqlite3.connect(db_path, timeout=3)
+            cursor = conn.cursor()
+            
+            # Get recent predictions (last 48 hours for more content)
+            cutoff_ts = int(time.time()) - (48 * 3600)
+            
+            if symbol:
+                cursor.execute("""
+                    SELECT symbol, direction, confidence, run_at
+                    FROM predictions
+                    WHERE run_at > ? AND symbol = ?
+                    ORDER BY run_at DESC
+                    LIMIT ?
+                """, (cutoff_ts, symbol.upper(), limit))
+            else:
+                cursor.execute("""
+                    SELECT symbol, direction, confidence, run_at
+                    FROM predictions
+                    WHERE run_at > ?
+                    ORDER BY run_at DESC
+                    LIMIT ?
+                """, (cutoff_ts, limit))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            if rows:
+                items = []
+                for row in rows:
+                    symbol_name, direction, confidence, run_at = row
+                    confidence_pct = int(float(confidence) * 100) if confidence <= 1.0 else int(confidence)
+                    
+                    # Generate varied headlines
+                    direction_emoji = "🟢" if direction == "UP" else "🔴" if direction == "DOWN" else "⚪"
+                    headline = f"{direction_emoji} Ghost predicts {symbol_name} {direction} movement ({confidence_pct}% confidence)"
+                    
+                    items.append({
+                        "headline": headline,
+                        "timestamp": run_at,
+                        "source": "Ghost AI",
+                        "sentiment": 1.0 if direction == "UP" else -1.0 if direction == "DOWN" else 0.0,
+                        "url": "",
+                        "symbols": [symbol_name]
+                    })
+                
+                LOGGER.info(f"News feed: Generated {len(items)} items from Ghost predictions")
+                return {
+                    "items": items,
+                    "count": len(items),
+                    "timestamp": time.time(),
+                    "provider": "ghost_ai"
+                }
+        except Exception as e:
+            LOGGER.warning(f"Ghost AI news fallback failed: {e}")
+        
+        # If Ghost AI fallback failed, try external sources
         try:
             from core.news_sentiment import fetch_news_sentiment
             
-            # If symbol specified, fetch news for that symbol
             if symbol:
                 news_data = fetch_news_sentiment(symbol, limit=limit)
                 
