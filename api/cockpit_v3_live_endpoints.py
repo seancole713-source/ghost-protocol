@@ -1750,18 +1750,28 @@ async def get_watchlist_enriched():
                         "type": "crypto" if symbol in crypto else "vip"
                     })
                 else:
-                    # Fetch stock price using Ghost's stock providers
+                    # Fetch stock price using TurboProvider
                     try:
-                        from core.stocks.stock_providers import get_stock_price_quorum
-                        stock_data = await asyncio.wait_for(
-                            get_stock_price_quorum(symbol, use_cache=True),
-                            timeout=5
+                        from core.providers.turbo_provider import turbo_stock_price
+                        stock_result = await asyncio.to_thread(
+                            turbo_stock_price,
+                            symbol,
+                            max_budget_s=3.0
                         )
-                        if stock_data:
+                        if stock_result.get("ok") and stock_result.get("price"):
                             enriched_items.append({
                                 "symbol": symbol,
-                                "price": float(stock_data.get("price", 0)),
-                                "change_pct": float(stock_data.get("change_pct", 0)),
+                                "price": float(stock_result.get("price", 0)),
+                                "change_pct": 0.0,  # TurboProvider doesn't return change_pct yet
+                                "type": "stock",
+                                "provider": stock_result.get("provider", "unknown")
+                            })
+                        else:
+                            LOGGER.warning(f"Stock price fetch returned no data for {symbol}")
+                            enriched_items.append({
+                                "symbol": symbol,
+                                "price": 0,
+                                "change_pct": 0,
                                 "type": "stock"
                             })
                     except Exception as e:
@@ -1790,6 +1800,80 @@ async def get_watchlist_enriched():
             "error": str(e)
         }
 
+
+
+# === FORECAST ===
+
+@router.get("/forecast/enhanced")
+async def get_forecast_enhanced(limit: int = Query(10, ge=1, le=50)):
+    """
+    Get enhanced forecast with predictions from _LATEST_PREDICTIONS.
+    
+    Returns:
+        {
+            "forecasts": [
+                {
+                    "symbol": "BTC",
+                    "direction": "up",
+                    "confidence": 75.0,
+                    "expected_move": 2.5,
+                    "current_price": 91000.0,
+                    "target_price": 93275.0,
+                    "timestamp": float
+                },
+                ...
+            ],
+            "count": N,
+            "timestamp": float
+        }
+    """
+    try:
+        from wolf_app import _LATEST_PREDICTIONS  # type: ignore
+        
+        forecasts = []
+        for symbol, pred in _LATEST_PREDICTIONS.items():
+            confidence = pred.get("confidence", 0)
+            if confidence < 70:  # Only show high-confidence predictions
+                continue
+                
+            direction = pred.get("direction", "neutral").lower()
+            current_price = pred.get("current_price", 0)
+            expected_move = pred.get("expected_move_pct", 0)
+            
+            # Calculate target price
+            target_price = current_price
+            if expected_move and current_price:
+                if direction == "up":
+                    target_price = current_price * (1 + expected_move / 100)
+                elif direction == "down":
+                    target_price = current_price * (1 - expected_move / 100)
+            
+            forecasts.append({
+                "symbol": symbol,
+                "direction": direction,
+                "confidence": float(confidence),
+                "expected_move": float(expected_move) if expected_move else 0.0,
+                "current_price": float(current_price) if current_price else 0.0,
+                "target_price": float(target_price),
+                "timestamp": float(pred.get("run_at", time.time()))
+            })
+        
+        # Sort by confidence descending
+        forecasts.sort(key=lambda x: x["confidence"], reverse=True)
+        
+        return {
+            "forecasts": forecasts[:limit],
+            "count": len(forecasts),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        LOGGER.error(f"Forecast enhanced error: {e}", exc_info=True)
+        return {
+            "forecasts": [],
+            "count": 0,
+            "timestamp": time.time(),
+            "error": str(e)
+        }
 
 
 # === DAILY SUMMARY ===
