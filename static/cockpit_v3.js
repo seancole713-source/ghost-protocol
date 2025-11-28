@@ -305,9 +305,11 @@ function updateForecastCard(index, prediction, icon, timeframe) {
         confidence = confidence * 100;
     }
     
-    // Calculate expected move from confidence (rough estimate)
-    // Higher confidence = higher expected move
-    const expectedMove = prediction.expected_move || (confidence > 0 ? (confidence * 0.15) : 0);
+    // Use backend expected_move if available, otherwise calculate from confidence
+    // Backend provides: confidence (0-1) * base_volatility * direction
+    const expectedMove = prediction.expected_move !== undefined 
+        ? prediction.expected_move 
+        : (confidence > 0 ? (confidence * 0.15) : 0);
     
     card.querySelector('.forecast-icon').textContent = icon;
     
@@ -318,7 +320,7 @@ function updateForecastCard(index, prediction, icon, timeframe) {
     
     card.querySelector('.forecast-direction').textContent = directionText;
     card.querySelector('.prob-value').textContent = confidence > 0 ? confidence.toFixed(0) : '--';
-    card.querySelector('.move-value').textContent = expectedMove !== 0 ? expectedMove.toFixed(2) + '%' : '--';
+    card.querySelector('.move-value').textContent = expectedMove !== 0 ? Math.abs(expectedMove).toFixed(2) + '%' : '--';
 }
 
 // Panel 3: News Feed

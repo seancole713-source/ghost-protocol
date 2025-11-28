@@ -961,6 +961,27 @@ async def get_latest_predictions(symbol: Optional[str] = None, limit: int = 10):
                 "horizon_h": pred[5]
             }
             
+            # Calculate expected_move based on confidence and asset volatility
+            # Formula: expected_move = confidence * base_volatility * direction_multiplier
+            confidence = pred[4]
+            direction = pred[3]
+            symbol = pred[1]
+            
+            # Base expected volatility by asset class (% per 48h)
+            if symbol in ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "DOT", "MATIC"]:
+                # Crypto: higher volatility
+                base_volatility = 8.0  # 8% base move for crypto
+            else:
+                # Stocks: lower volatility
+                base_volatility = 4.0  # 4% base move for stocks
+            
+            # Scale by confidence: 50% confidence = 50% of base move
+            # Scale by direction: UP = positive, DOWN = negative
+            direction_multiplier = 1.0 if direction == "UP" else -1.0
+            expected_move = confidence * base_volatility * direction_multiplier
+            
+            pred_obj["expected_move"] = round(expected_move, 2)
+            
             # Add outcome status
             if pred[6] is not None:
                 # Has outcome
