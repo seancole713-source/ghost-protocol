@@ -190,10 +190,43 @@ class AIMemory:
 
     def _init_faiss(self):
         """Initialize FAISS vector index."""
-        # TODO: Implement FAISS initialization
-        # Load existing index or create new one
-        LOGGER.warning("FAISS support not yet implemented, falling back to SQLite")
-        self.vector_store = None
+        try:
+            # FIXED: Implement FAISS initialization
+            import faiss
+            import numpy as np
+            import pickle
+            from pathlib import Path
+            
+            index_path = Path("data/faiss_index.bin")
+            metadata_path = Path("data/faiss_metadata.pkl")
+            
+            # Vector dimension (for feature embeddings)
+            vector_dim = 512
+            
+            if index_path.exists() and metadata_path.exists():
+                # Load existing index
+                self.vector_store = faiss.read_index(str(index_path))
+                with open(metadata_path, "rb") as f:
+                    self.faiss_metadata = pickle.load(f)
+                LOGGER.info(f"Loaded FAISS index with {self.vector_store.ntotal} vectors")
+            else:
+                # Create new index (L2 distance)
+                self.vector_store = faiss.IndexFlatL2(vector_dim)
+                self.faiss_metadata = []
+                LOGGER.info(f"Created new FAISS index (dimension={vector_dim})")
+            
+            # Store paths for saving later
+            self.index_path = index_path
+            self.metadata_path = metadata_path
+            
+        except ImportError:
+            LOGGER.warning("FAISS library not installed: pip install faiss-cpu")
+            LOGGER.warning("Falling back to SQLite-only mode")
+            self.vector_store = None
+        except Exception as e:
+            LOGGER.error(f"FAISS init failed: {e}")
+            LOGGER.warning("Falling back to SQLite-only mode")
+            self.vector_store = None
 
     def _load_cache(self):
         """Load recent decisions into cache."""

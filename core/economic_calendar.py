@@ -54,31 +54,62 @@ def fetch_economic_calendar(
         return cached["data"]
     
     try:
-        # TODO: Implement Trading Economics API or Fred API integration
-        # Requires TRADING_ECONOMICS_API_KEY or FRED_API_KEY
+        # FIXED: Implement Trading Economics API integration
+        import requests
         
-        api_key = os.getenv("TRADING_ECONOMICS_API_KEY") or os.getenv("FRED_API_KEY")
+        api_key = os.getenv("TRADING_ECONOMICS_API_KEY")
         if not api_key:
-            logger.warning("Economic calendar API not configured")
-            return {
-                "ok": False,
-                "error": "Economic calendar API not configured",
-                "events": []
+            # Fallback to Fred API
+            fred_key = os.getenv("FRED_API_KEY")
+            if not fred_key:
+                logger.warning("Economic calendar API not configured (need TRADING_ECONOMICS_API_KEY or FRED_API_KEY)")
+                return {"ok": False, "error": "Economic calendar API not configured", "events": []}
+            
+            # Use Fred API for economic indicators
+            url = "https://api.stlouisfed.org/fred/releases/dates"
+            params = {"api_key": fred_key, "file_type": "json", "limit": 100}
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code != 200:
+                return {"ok": False, "error": f"Fred API error: {response.status_code}", "events": []}
+            
+            data = response.json()
+            events = []
+            for release in data.get("release_dates", [])[:20]:
+                events.append({
+                    "name": release.get("release_name", "Unknown"),
+                    "date": release.get("date", ""),
+                    "importance": "high",
+                    "country": "US"
+                })
+        else:
+            # Use Trading Economics API
+            url = f"https://api.tradingeconomics.com/calendar"
+            params = {
+                "c": api_key,
+                "f": "json",
+                "importance": importance if importance != "all" else ""
             }
-        
-        # Real implementation would fetch:
-        # - FOMC meetings (Federal Reserve)
-        # - CPI reports (Consumer Price Index)
-        # - Jobs reports (Nonfarm Payrolls, Unemployment)
-        # - GDP releases
-        # - Earnings calls
-        # - Economic indicators
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code != 200:
+                return {"ok": False, "error": f"Trading Economics error: {response.status_code}", "events": []}
+            
+            data = response.json()
+            events = []
+            for item in data[:50]:
+                events.append({
+                    "name": item.get("Event", ""),
+                    "date": item.get("Date", ""),
+                    "importance": item.get("Importance", "medium").lower(),
+                    "country": item.get("Country", "")
+                })
         
         result = {
             "ok": True,
-            "events": [],
+            "events": events,
             "timestamp": datetime.now(UTC).isoformat(),
-            "source": "economic_calendar"
+            "source": "fred" if not api_key else "trading_economics"
         }
         
         CALENDAR_CACHE[cache_key] = {
@@ -90,14 +121,99 @@ def fetch_economic_calendar(
         
     except Exception as e:
         logger.error(f"Failed to fetch economic calendar: {e}")
-        return {
-            "ok": False,
-            "error": str(e),
-            "events": []
-        }
+        return {"ok": False, "error": str(e), "events": []}
 
 
 def fetch_earnings_calendar(symbol: str | None = None, days_ahead: int = 14) -> dict[str, Any]:
+    """
+    Fetch upcoming earnings announcements.
+    
+    Args:
+        symbol: Optional stock ticker to filter (e.g., 'AAPL')
+        days_ahead: Number of days to look ahead
+        
+    Returns:
+        Dict with earnings events
+    """
+    cache_key = f"earnings_{symbol}_{days_ahead}"
+    cached = CALENDAR_CACHE.get(cache_key)
+    
+    if cached and (time.time() - cached["timestamp"]) < CACHE_TTL_SECONDS:
+        return cached["data"]
+    
+    try:
+        # FIXED: Implement earnings calendar API (Polygon.io or AlphaVantage)
+        import requests
+        
+        # Try Polygon.io first
+        polygon_key = os.getenv("POLYGON_API_KEY")
+        if polygon_key:
+            url = f"https://api.polygon.io/v2/reference/earnings"
+            params = {"apiKey": polygon_key, "limit": 100}
+            if symbol:
+                params["ticker"] = symbol
+            
+            response = requests.get(url, params=params, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                earnings = []
+                for item in data.get("results", [])[:50]:
+                    earnings.append({
+                        "symbol": item.get("ticker", ""),
+                        "date": item.get("fiscalDate", ""),
+                        "eps_estimate": item.get("epsEstimate"),
+                        "eps_actual": item.get("epsActual"),
+                        "source": "polygon"
+                    })
+                
+                result = {
+                    "ok": True,
+                    "earnings": earnings,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "source": "polygon"
+                }
+                
+                CALENDAR_CACHE[cache_key] = {"data": result, "timestamp": time.time()}
+                return result
+        
+        # Fallback to AlphaVantage
+        alpha_key = os.getenv("ALPHAVANTAGE_API_KEY")
+        if alpha_key and symbol:
+            url = "https://www.alphavantage.co/query"
+            params = {
+                "function": "EARNINGS",
+                "symbol": symbol,
+                "apikey": alpha_key
+            }
+            response = requests.get(url, params=params, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                earnings = []
+                for item in data.get("quarterlyEarnings", [])[:10]:
+                    earnings.append({
+                        "symbol": symbol,
+                        "date": item.get("reportedDate", ""),
+                        "eps_estimate": item.get("estimatedEPS"),
+                        "eps_actual": item.get("reportedEPS"),
+                        "source": "alphavantage"
+                    })
+                
+                result = {
+                    "ok": True,
+                    "earnings": earnings,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "source": "alphavantage"
+                }
+                
+                CALENDAR_CACHE[cache_key] = {"data": result, "timestamp": time.time()}
+                return result
+        
+        logger.warning("Earnings calendar API not configured (need POLYGON_API_KEY or ALPHAVANTAGE_API_KEY)")
+        return {"ok": False, "error": "Earnings API not configured", "earnings": []}
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch earnings calendar: {e}")
+        return {"ok": False, "error": str(e), "earnings": []}
     """
     Fetch upcoming earnings announcements.
     

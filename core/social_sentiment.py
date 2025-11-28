@@ -48,9 +48,8 @@ def fetch_twitter_sentiment(symbol: str, limit: int = 20) -> dict[str, Any]:
         return cached["data"]
     
     try:
-        # TODO: Implement Twitter API v2 integration
-        # Requires TWITTER_BEARER_TOKEN environment variable
-        # For now, return placeholder structure
+        # FIXED: Implement Twitter API v2 integration
+        import requests
         
         twitter_token = os.getenv("TWITTER_BEARER_TOKEN")
         if not twitter_token:
@@ -62,19 +61,45 @@ def fetch_twitter_sentiment(symbol: str, limit: int = 20) -> dict[str, Any]:
                 "mention_count": 0
             }
         
-        # Real implementation would:
-        # 1. Search tweets with query: f"${symbol} OR {company_name}"
-        # 2. Analyze sentiment of each tweet (positive/negative/neutral)
-        # 3. Calculate weighted average based on engagement (likes, retweets)
-        # 4. Detect trending status (spike in mentions vs baseline)
+        # Real Twitter API v2 implementation
+        url = "https://api.twitter.com/2/tweets/search/recent"
+        headers = {"Authorization": f"Bearer {twitter_token}"}
+        params = {
+            "query": f"${symbol} OR #{symbol}",
+            "max_results": min(limit, 100),
+            "tweet.fields": "public_metrics,created_at"
+        }
+        
+        response = requests.get(url, headers=headers, params=params, timeout=5)
+        
+        if response.status_code != 200:
+            logger.error(f"Twitter API error: {response.status_code}")
+            return {"ok": False, "error": f"HTTP {response.status_code}", "sentiment_score": 0.0, "mention_count": 0}
+        
+        data = response.json()
+        tweets = data.get("data", [])
+        
+        # Simple sentiment analysis (positive/negative word counting)
+        positive_words = ["bullish", "buy", "moon", "rocket", "up", "gain"]
+        negative_words = ["bearish", "sell", "down", "crash", "loss", "drop"]
+        
+        sentiment_scores = []
+        for tweet in tweets:
+            text = tweet.get("text", "").lower()
+            pos_count = sum(1 for word in positive_words if word in text)
+            neg_count = sum(1 for word in negative_words if word in text)
+            score = (pos_count - neg_count) / max(pos_count + neg_count, 1)
+            sentiment_scores.append(score)
+        
+        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.0
         
         result = {
             "ok": True,
             "symbol": symbol,
-            "sentiment_score": 0.0,  # -1.0 (bearish) to +1.0 (bullish)
-            "mention_count": 0,
-            "trending": False,
-            "top_tweets": [],
+            "sentiment_score": avg_sentiment,
+            "mention_count": len(tweets),
+            "trending": len(tweets) > 50,
+            "top_tweets": tweets[:5],
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "source": "twitter"
         }
@@ -97,6 +122,99 @@ def fetch_twitter_sentiment(symbol: str, limit: int = 20) -> dict[str, Any]:
 
 
 def fetch_reddit_sentiment(symbol: str, subreddit: str = "wallstreetbets") -> dict[str, Any]:
+    """
+    Fetch Reddit sentiment for a stock symbol from specified subreddit.
+    
+    Args:
+        symbol: Stock ticker (e.g., 'GME')
+        subreddit: Subreddit name (default: wallstreetbets)
+        
+    Returns:
+        Dict with sentiment_score, mention_count, top_posts
+    """
+    cache_key = f"reddit_{symbol}_{subreddit}"
+    cached = SENTIMENT_CACHE.get(cache_key)
+    
+    if cached and (time.time() - cached["timestamp"]) < CACHE_TTL_SECONDS:
+        return cached["data"]
+    
+    try:
+        # FIXED: Implement Reddit API (PRAW) integration
+        import praw
+        
+        reddit_client_id = os.getenv("REDDIT_CLIENT_ID")
+        reddit_secret = os.getenv("REDDIT_CLIENT_SECRET")
+        reddit_user_agent = os.getenv("REDDIT_USER_AGENT", "GhostProtocol/1.0")
+        
+        if not reddit_client_id or not reddit_secret:
+            logger.warning("Reddit API credentials not set")
+            return {
+                "ok": False,
+                "error": "Reddit API not configured",
+                "sentiment_score": 0.0,
+                "mention_count": 0
+            }
+        
+        # Initialize PRAW Reddit client
+        reddit = praw.Reddit(
+            client_id=reddit_client_id,
+            client_secret=reddit_secret,
+            user_agent=reddit_user_agent
+        )
+        
+        # Search for posts mentioning the symbol
+        subreddit_obj = reddit.subreddit(subreddit)
+        posts = list(subreddit_obj.search(symbol, limit=50, time_filter="day"))
+        
+        # Sentiment analysis
+        positive_words = ["calls", "moon", "bullish", "buy", "rocket", "gains"]
+        negative_words = ["puts", "bearish", "sell", "crash", "loss", "rip"]
+        
+        sentiment_scores = []
+        top_posts = []
+        
+        for post in posts:
+            title = post.title.lower()
+            body = post.selftext.lower() if post.selftext else ""
+            full_text = title + " " + body
+            
+            pos = sum(1 for word in positive_words if word in full_text)
+            neg = sum(1 for word in negative_words if word in full_text)
+            score = (pos - neg) / max(pos + neg, 1)
+            sentiment_scores.append(score)
+            
+            top_posts.append({
+                "title": post.title,
+                "score": post.score,
+                "url": f"https://reddit.com{post.permalink}",
+                "created": datetime.fromtimestamp(post.created_utc, tz=timezone.utc).isoformat()
+            })
+        
+        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.0
+        
+        result = {
+            "ok": True,
+            "symbol": symbol,
+            "sentiment_score": avg_sentiment,
+            "mention_count": len(posts),
+            "top_posts": sorted(top_posts, key=lambda x: x["score"], reverse=True)[:5],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": "reddit"
+        }
+        
+        SENTIMENT_CACHE[cache_key] = {
+            "data": result,
+            "timestamp": time.time()
+        }
+        
+        return result
+        
+    except ImportError:
+        logger.error("PRAW library not installed: pip install praw")
+        return {"ok": False, "error": "PRAW not installed", "sentiment_score": 0.0, "mention_count": 0}
+    except Exception as e:
+        logger.error(f"Failed to fetch Reddit sentiment for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "sentiment_score": 0.0, "mention_count": 0}
     """
     Fetch Reddit sentiment from WallStreetBets and other trading subreddits.
     
@@ -272,3 +390,24 @@ def adjust_confidence_with_social(
     
     else:
         return base_confidence, "Neutral social sentiment"
+
+
+# NEW: Market sentiment overview function for cockpit integration
+def get_market_sentiment_overview():
+    """Get overview of market sentiment from multiple sources."""
+    try:
+        headlines = []
+        symbols = ["SPY", "QQQ", "AAPL", "TSLA", "NVDA"]
+        for symbol in symbols:
+            twitter_data = fetch_twitter_sentiment(symbol, limit=10)
+            if twitter_data.get("ok"):
+                headlines.append({
+                    "symbol": symbol,
+                    "source": "twitter",
+                    "sentiment": twitter_data.get("sentiment_score", 0.0),
+                    "mentions": twitter_data.get("mention_count", 0)
+                })
+        return {"ok": True, "headlines": headlines, "timestamp": datetime.now(timezone.utc).isoformat()}
+    except Exception as e:
+        logger.error(f"Failed to get market sentiment overview: {e}")
+        return {"ok": False, "headlines": [], "error": str(e)}
