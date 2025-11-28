@@ -3565,6 +3565,30 @@ async def _on_startup():
             LOGGER.error(f"stage3_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
             # Non-critical - continue startup
 
+    # Stage 3.5: Start Accuracy Evaluator Background Task (Issue #2 fix)
+    try:
+        import asyncio as _asyncio_module
+        from core.prediction_evaluator import evaluate_pending_predictions
+        
+        async def _accuracy_evaluator_loop():
+            """Background task to evaluate prediction outcomes every hour"""
+            while True:
+                try:
+                    await _asyncio_module.sleep(3600)  # Run every hour
+                    LOGGER.info("[ACCURACY] Running prediction evaluator...")
+                    # Run in thread pool to avoid blocking asyncio
+                    loop = _asyncio_module.get_event_loop()
+                    await loop.run_in_executor(None, evaluate_pending_predictions)
+                    LOGGER.info("[ACCURACY] Prediction evaluation complete")
+                except Exception as eval_err:
+                    LOGGER.error(f"[ACCURACY] Evaluator error: {eval_err}", exc_info=False)
+        
+        _asyncio_module.create_task(_accuracy_evaluator_loop())
+        LOGGER.info("[GHOST STARTUP] ✅ Accuracy evaluator scheduled (hourly)")
+    except Exception as e:
+        LOGGER.error(f"accuracy_evaluator_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
 
@@ -5851,6 +5875,19 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
     try:
         # Detect asset type (crypto vs stock)
         is_crypto = symbol in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(symbol) == "crypto"
+        
+        # Check market hours for stocks (Issue #3 fix)
+        if not is_crypto:
+            is_market_open, next_open_ts = _is_market_open_now()
+            if not is_market_open:
+                LOGGER.warning(
+                    f"[{symbol}] Stock market closed, prediction may use stale data (next open: {next_open_ts})",
+                    extra={
+                        "symbol": symbol,
+                        "market_closed": True,
+                        "next_open_utc": next_open_ts,
+                    }
+                )
         
         # TURBO PRICE FETCH: Use fast-fail provider with 3s budget
         price_budget_s = 3.0
@@ -8843,9 +8880,9 @@ def _fetch_price_alphavantage(symbol: str) -> tuple[float | None, float | None, 
         url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol.upper()}&apikey={ALPHAVANTAGE_KEY}"
         if _OTEL_TRACER is not None:
             with _OTEL_TRACER.start_as_current_span("provider.alphavantage.get"):  # type: ignore[attr-defined]
-                r = _http_get(url, timeout=10)
+                r = _http_get(url, timeout=2)
         else:
-            r = _http_get(url, timeout=10)
+            r = _http_get(url, timeout=2)
         r.raise_for_status()
         data = r.json() or {}
         gq = data.get("Global Quote") or data.get("GlobalQuote") or {}
@@ -8895,9 +8932,9 @@ def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
         url = f"https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/prev?adjusted=true&limit=1&apiKey={POLYGON_KEY}"
         if _OTEL_TRACER is not None:
             with _OTEL_TRACER.start_as_current_span("provider.polygon.get"):  # type: ignore[attr-defined]
-                r = _http_get(url, timeout=30)
+                r = _http_get(url, timeout=2)
         else:
-            r = _http_get(url, timeout=30)
+            r = _http_get(url, timeout=2)
         r.raise_for_status()
         data = r.json() or {}
         results = data.get("results") or []

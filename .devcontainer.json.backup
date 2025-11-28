@@ -1,6 +1,7 @@
 {
   "name": "GHOST Dev Container",
   "build": {
+    // Use the correct key name per devcontainer schema
     "dockerfile": "Dockerfile",
     "context": ".",
     "args": {}
@@ -24,8 +25,9 @@
   "portsAttributes": {
     "5000": {
       "label": "Ghost",
-      "onAutoForward": "notify",
+      "onAutoForward": "openBrowser",
       "protocol": "http"
     }
-  }
+  },
+  "postStartCommand": "pkill -f 'python3 -u main.py' || true; PORT=5000 SIM_MODE=0 nohup python3 -u main.py > /tmp/ghost_server.log 2>&1 &"
 }

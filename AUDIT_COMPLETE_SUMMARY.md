@@ -23,9 +23,11 @@
 ## 📚 GENERATED REPORTS
 
 ### 1. COMPREHENSIVE_AUDIT_REPORT.md
-**Full 600+ line detailed audit report**
+
+#### Full 600+ line detailed audit report
 
 Contents:
+
 - Executive summary
 - Critical findings (mock data in Cockpit V2)
 - Moderate findings (unimplemented APIs)
@@ -38,9 +40,11 @@ Contents:
 **Read this for**: Complete understanding of all issues
 
 ### 2. AUDIT_ACTION_CHECKLIST.md
-**Quick reference action checklist**
+
+#### Quick reference action checklist
 
 Contents:
+
 - Immediate actions (do first)
 - TODO cleanup by file
 - Fix recommendations (3 approaches)
@@ -55,6 +59,7 @@ Contents:
 ## 🚨 TOP 3 PRIORITIES
 
 ### 1. 🔴 COCKPIT V2 MOCK DATA (CRITICAL)
+
 **File**: `api/cockpit_v2_endpoints.py`  
 **Issue**: 13 endpoints returning fake data to users  
 **Impact**: Users see hardcoded BTC prices, fake GPS scores, mock portfolios  
@@ -62,6 +67,7 @@ Contents:
 **Time**: 8-12 hours
 
 ### 2. 🟡 UNIMPLEMENTED APIS (HIGH)
+
 **Files**: `core/social_sentiment.py`, `core/economic_calendar.py`  
 **Issue**: Twitter, Reddit, economic calendar APIs are stubs  
 **Impact**: Features shown in UI but don't work  
@@ -69,6 +75,7 @@ Contents:
 **Time**: 28-36 hours
 
 ### 3. 🟢 TODO CLEANUP (MEDIUM)
+
 **Files**: Multiple across codebase  
 **Issue**: 38 TODO comments indicating incomplete work  
 **Impact**: Technical debt, unclear implementation status  
@@ -96,18 +103,21 @@ No action needed for these:
 ### Option B: Clean MVP (10-14 hours) ⭐ RECOMMENDED
 
 **Why this approach?**
+
 - Fastest path to production-ready
 - Eliminates all fake data shown to users
 - Keeps working features working
 - Clearly documents future features
 
 **Steps:**
+
 1. Replace Cockpit V2 mock data with real data (8-12 hrs)
 2. Document unimplemented features as "coming soon" (1-2 hrs)
 3. Test all endpoints (1 hr)
 4. Deploy to Railway (auto)
 
 **Result:**
+
 - Zero fake data in production
 - Clear communication about what works
 - Solid foundation for future features
@@ -142,18 +152,21 @@ No action needed for these:
 ## 🎯 SUCCESS CRITERIA
 
 **Current State (Before Fixes):**
+
 - ❌ 38 TODOs in production code
 - ❌ 13 mock endpoints
 - ❌ 3 unimplemented APIs
 - ✅ Core functionality working
 
 **Target State (After Fixes):**
+
 - ✅ 0 TODOs in production endpoints
 - ✅ 0 mock data returned to users
 - ✅ All features work OR clearly marked unavailable
 - ✅ Documentation matches implementation
 
 **Zero Placeholders Compliance:**
+
 - Must achieve: No fake data in production
 - Must achieve: No TODO comments in user-facing code
 - Must achieve: Clear communication about feature status
@@ -163,18 +176,21 @@ No action needed for these:
 ## 💡 KEY INSIGHTS
 
 ### What We Found
+
 1. **Solid foundation** - Core systems work well
 2. **Cleanup needed** - Mock data in wrong places
 3. **Incomplete features** - Started but not finished
 4. **Good structure** - Well-organized codebase
 
 ### What This Means
+
 - Ghost is **functional** but has **technical debt**
 - Most issues are **fixable in 10-80 hours**
 - No **critical blockers** or **major rewrites needed**
 - Clear path to **production-ready** state
 
 ### What You Should Do
+
 1. **Don't panic** - Core systems work fine
 2. **Prioritize** - Fix user-facing issues first
 3. **Document** - Make feature status clear
@@ -186,16 +202,19 @@ No action needed for these:
 ## 📞 GET HELP
 
 ### If You Need Clarification
+
 - Review full report: `COMPREHENSIVE_AUDIT_REPORT.md`
 - Check action items: `AUDIT_ACTION_CHECKLIST.md`
 - Review test results: `TURBO_PROVIDER_STATUS.md`
 
 ### If You Need Examples
+
 - Working provider: `core/providers/turbo_provider.py`
 - Test suite: `test_endpoints.py`
 - Database access: Check `data/` directory
 
 ### If You're Stuck
+
 - Start with smallest fix first (one endpoint)
 - Test incrementally (don't fix everything at once)
 - Deploy often (Railway auto-deploys)
@@ -206,12 +225,14 @@ No action needed for these:
 ## 🚀 DEPLOYMENT
 
 **Current Setup:**
+
 - Branch: `main`
 - Platform: Railway
 - Auto-deploy: ✅ Enabled
 - Status: Committed and pushed (commit 0f05bc7)
 
 **What Happens Next:**
+
 1. Reports are now in Git repository
 2. Railway sees push to main branch
 3. Railway auto-builds and deploys
@@ -219,6 +240,7 @@ No action needed for these:
 5. Audit reports available in codebase
 
 **To Deploy Fixes:**
+
 1. Edit files locally
 2. Test with `python3 test_endpoints.py`
 3. Commit changes: `git add . && git commit -m "fix: ..."`

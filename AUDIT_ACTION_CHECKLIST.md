@@ -32,6 +32,7 @@
 ### By File Priority
 
 #### api/cockpit_v2_endpoints.py (13 TODOs)
+
 - [ ] Line 76 - Integrate hunter algorithm
 - [ ] Line 131 - Integrate price_quorum.py
 - [ ] Lines 181-196 - Add world context calculations
@@ -45,22 +46,27 @@
 - [ ] Line 489 - Integrate logging system
 
 #### core/social_sentiment.py (3 TODOs)
+
 - [ ] Line 51 - Implement Twitter API v2
 - [ ] Line 119 - Implement Reddit API (PRAW)
 - [ ] Line 228 - Implement trending detection
 
 #### core/ai_memory.py (1 TODO)
+
 - [ ] Line 193 - Implement FAISS vector store
 
 #### core/economic_calendar.py (2 TODOs)
+
 - [ ] Line 57 - Implement Trading Economics/Fred API
 - [ ] Line 120 - Implement earnings calendar API
 
 #### core/providers/unified_provider.py (3 TODOs)
+
 - [ ] Lines 193, 204 - Implement provider chain logic
 - [ ] Line 310 - Implement yfinance fallback
 
 #### wolf_app.py (2 TODOs)
+
 - [ ] Line 3641 - Calculate predicted_pct from forecast
 - [ ] Line 22781 - Calculate daily_pnl from trades
 
@@ -71,6 +77,7 @@
 ## 🔧 FIX RECOMMENDATIONS
 
 ### Option A: Full Implementation (60-80 hours)
+
 ✅ Implement all TODOs  
 ✅ Add Twitter/Reddit APIs  
 ✅ Add economic calendar APIs  
@@ -78,12 +85,14 @@
 ✅ Complete unified provider  
 
 ### Option B: Clean MVP (10-14 hours) ⭐ RECOMMENDED
+
 ✅ Replace Cockpit V2 mock data with real data  
 ✅ Remove unimplemented features from UI  
 ✅ Document TODOs clearly as "coming soon"  
 ✅ Keep core functionality working  
 
 ### Option C: Hybrid Approach (28-36 hours)
+
 ✅ Replace Cockpit V2 mock data  
 ✅ Implement social sentiment APIs  
 ✅ Implement economic calendar APIs  
@@ -94,11 +103,13 @@
 ## 📊 PLACEHOLDER REMOVAL TARGETS
 
 ### Production Code (MUST FIX)
+
 - [ ] `api/cockpit_v2_endpoints.py` - All mock responses
 - [ ] `core/social_sentiment.py` - Stub functions
 - [ ] `core/economic_calendar.py` - Stub functions
 
 ### Test Code (OK TO KEEP)
+
 - [x] `generate_simulation_data.py` - Test mock data (acceptable)
 - [x] `test_agentkit_integration.py` - Test placeholder keys (acceptable)
 - [x] Test files with mock data (acceptable)
@@ -146,6 +157,7 @@ After fixes, verify:
 4. Update API documentation
 
 **Suggested approach**:
+
 - Return HTTP 501 "Not Implemented" instead of mock data
 - Add `"available": false` flag in response
 - Provide clear error messages
@@ -155,18 +167,21 @@ After fixes, verify:
 ## 📞 HUMAN DECISIONS NEEDED
 
 ### Product Decisions
+
 - [ ] Keep Cockpit V2 or deprecate in favor of V3?
 - [ ] Implement social sentiment or remove from roadmap?
 - [ ] Implement economic calendar or mark as future feature?
 - [ ] FAISS integration priority? (AI memory semantic search)
 
 ### API Key Procurement
+
 - [ ] Twitter API v2 developer account
 - [ ] Reddit API credentials (PRAW)
 - [ ] Trading Economics API key
 - [ ] Fred API key (economic data)
 
 ### Architecture Decisions
+
 - [ ] Complete unified provider abstraction or use turbo provider?
 - [ ] SQLite-only AI memory vs FAISS vector store?
 - [ ] Refactor cockpit_v2_endpoints.py or rewrite?
@@ -176,6 +191,7 @@ After fixes, verify:
 ## 📈 SUCCESS METRICS
 
 ### Before (Current State)
+
 - ❌ 38 TODO comments
 - ❌ 13 mock endpoints
 - ❌ 3 unimplemented APIs
@@ -183,6 +199,7 @@ After fixes, verify:
 - ⚠️ 52 lint violations
 
 ### After (Target State)
+
 - ✅ 0 TODO comments in production
 - ✅ 0 mock endpoints
 - ✅ All APIs work OR marked unavailable
@@ -198,7 +215,7 @@ After fixes, verify:
 - **Test Suite**: `test_endpoints.py`
 - **Main App**: `wolf_app.py`
 - **Cockpit V2 API**: `api/cockpit_v2_endpoints.py`
-- **Railway Dashboard**: https://railway.app
+- **Railway Dashboard**: <https://railway.app>
 
 ---
 
