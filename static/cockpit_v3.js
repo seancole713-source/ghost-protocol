@@ -299,12 +299,15 @@ function updateForecastCard(index, prediction, icon, timeframe) {
     const card = cards[index];
     const direction = prediction.direction || 'FLAT';
     let confidence = prediction.confidence || 0;
-    const expectedMove = prediction.expected_move || 0;
     
     // Convert confidence from 0-1 scale to percentage (0-100)
     if (confidence > 0 && confidence <= 1) {
         confidence = confidence * 100;
     }
+    
+    // Calculate expected move from confidence (rough estimate)
+    // Higher confidence = higher expected move
+    const expectedMove = prediction.expected_move || (confidence > 0 ? (confidence * 0.15) : 0);
     
     card.querySelector('.forecast-icon').textContent = icon;
     
