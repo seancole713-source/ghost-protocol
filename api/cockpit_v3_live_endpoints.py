@@ -1230,30 +1230,47 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
             except Exception as e:
                 LOGGER.warning(f"World feed fallback failed: {e}")
                 
-                # FINAL FALLBACK: Generate news-like items from recent predictions
+                # FINAL FALLBACK: Generate news-like items from recent predictions database
                 try:
-                    from wolf_app import _LATEST_PREDICTIONS
+                    import sqlite3
+                    db_path = "data/ghost_predictions.db"
+                    
+                    # Try to read from predictions database
+                    conn = sqlite3.connect(db_path, timeout=5)
+                    cursor = conn.cursor()
+                    
+                    # Get recent predictions (last 24 hours)
+                    cutoff_ts = int(time.time()) - (24 * 3600)
+                    
+                    cursor.execute("""
+                        SELECT symbol, direction, confidence, run_at
+                        FROM predictions
+                        WHERE run_at > ?
+                        ORDER BY run_at DESC
+                        LIMIT ?
+                    """, (cutoff_ts, limit))
+                    
+                    rows = cursor.fetchall()
+                    conn.close()
                     
                     items = []
-                    latest_preds = dict(_LATEST_PREDICTIONS or {})
-                    
-                    # Convert recent predictions to news-like format
-                    for sym, pred in list(latest_preds.items())[:limit]:
-                        direction = pred.get("direction", "FLAT")
-                        confidence = int(pred.get("confidence", 0.5) * 100)
+                    for row in rows:
+                        symbol, direction, confidence, run_at = row
+                        confidence_pct = int(float(confidence) * 100) if confidence <= 1.0 else int(confidence)
                         
-                        headline = f"Ghost Analysis: {sym} showing {direction} signal ({confidence}% confidence)"
+                        headline = f"Ghost Analysis: {symbol} showing {direction} signal ({confidence_pct}% confidence)"
                         
                         items.append({
                             "headline": headline,
-                            "timestamp": pred.get("run_at", time.time()),
+                            "timestamp": run_at,
                             "source": "Ghost AI",
                             "sentiment": 1.0 if direction == "UP" else -1.0 if direction == "DOWN" else 0.0,
                             "url": "",
-                            "symbols": [sym]
+                            "symbols": [symbol]
                         })
                     
                     if items:
+                        LOGGER.info(f"News fallback: Generated {len(items)} items from predictions")
                         return {
                             "items": items,
                             "count": len(items),
@@ -1261,9 +1278,10 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
                             "provider": "ghost_ai_fallback"
                         }
                 except Exception as fallback_error:
-                    LOGGER.warning(f"Prediction fallback failed: {fallback_error}")
+                    LOGGER.warning(f"Prediction DB fallback failed: {fallback_error}")
                 
                 # Ultimate fallback: Empty state
+                LOGGER.info("News feed: All sources failed, returning empty")
                 return {
                     "items": [],
                     "count": 0,
