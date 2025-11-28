@@ -1230,7 +1230,40 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
             except Exception as e:
                 LOGGER.warning(f"World feed fallback failed: {e}")
                 
-                # Final fallback: Empty state
+                # FINAL FALLBACK: Generate news-like items from recent predictions
+                try:
+                    from wolf_app import _LATEST_PREDICTIONS
+                    
+                    items = []
+                    latest_preds = dict(_LATEST_PREDICTIONS or {})
+                    
+                    # Convert recent predictions to news-like format
+                    for sym, pred in list(latest_preds.items())[:limit]:
+                        direction = pred.get("direction", "FLAT")
+                        confidence = int(pred.get("confidence", 0.5) * 100)
+                        
+                        headline = f"Ghost Analysis: {sym} showing {direction} signal ({confidence}% confidence)"
+                        
+                        items.append({
+                            "headline": headline,
+                            "timestamp": pred.get("run_at", time.time()),
+                            "source": "Ghost AI",
+                            "sentiment": 1.0 if direction == "UP" else -1.0 if direction == "DOWN" else 0.0,
+                            "url": "",
+                            "symbols": [sym]
+                        })
+                    
+                    if items:
+                        return {
+                            "items": items,
+                            "count": len(items),
+                            "timestamp": time.time(),
+                            "provider": "ghost_ai_fallback"
+                        }
+                except Exception as fallback_error:
+                    LOGGER.warning(f"Prediction fallback failed: {fallback_error}")
+                
+                # Ultimate fallback: Empty state
                 return {
                     "items": [],
                     "count": 0,

@@ -299,8 +299,13 @@ function updateForecastCard(index, prediction, icon, timeframe) {
     
     const card = cards[index];
     const direction = prediction.direction || 'FLAT';
-    const confidence = prediction.confidence || 0;
+    let confidence = prediction.confidence || 0;
     const expectedMove = prediction.expected_move || 0;
+    
+    // Convert confidence from 0-1 scale to percentage (0-100)
+    if (confidence > 0 && confidence <= 1) {
+        confidence = confidence * 100;
+    }
     
     card.querySelector('.forecast-icon').textContent = icon;
     
@@ -405,10 +410,24 @@ async function loadWatchlist() {
             });
         }
         
-        // Enrich watchlist with prediction data
+        // Fetch hunter feed for price data (contains live crypto prices)
+        let priceMap = {};
+        try {
+            const hunterResponse = await fetch('/api/v3/hunter/feed');
+            const hunterData = await hunterResponse.json();
+            if (hunterData && hunterData.movers) {
+                hunterData.movers.forEach(mover => {
+                    priceMap[mover.symbol] = mover.change || 0;
+                });
+            }
+        } catch (e) {
+            console.warn('Could not fetch price data:', e);
+        }
+        
+        // Enrich watchlist with prediction and price data
         const watchlistData = allSymbols.map(item => ({
             symbol: item.symbol,
-            change: 0,  // Price change not available yet
+            change: priceMap[item.symbol] || 0,  // Use real price change from hunter feed
             ghost_score: predMap[item.symbol]?.confidence || 0,
             direction: predMap[item.symbol]?.direction || 'FLAT',
             type: item.type
