@@ -38,6 +38,19 @@ function setupEventListeners() {
     document.getElementById('btn-reset').addEventListener('click', () => controlAction('reset'));
     document.getElementById('mode-selector').addEventListener('change', handleModeChange);
     
+    // Goals Settings Modal
+    document.getElementById('btn-settings').addEventListener('click', openGoalsModal);
+    document.getElementById('modal-close').addEventListener('click', closeGoalsModal);
+    document.getElementById('cancel-goals').addEventListener('click', closeGoalsModal);
+    document.getElementById('save-goals').addEventListener('click', saveGoals);
+    
+    // Close modal on outside click
+    document.getElementById('goals-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'goals-modal') {
+            closeGoalsModal();
+        }
+    });
+    
     // Tabs
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
@@ -619,6 +632,71 @@ function getHealthClass(value) {
     if (value >= 80) return 'healthy';
     if (value >= 50) return 'warning';
     return 'critical';
+}
+
+// Goals Settings Modal Functions
+async function openGoalsModal() {
+    try {
+        // Fetch current goals
+        const response = await fetch('/api/v3/goals/snapshot');
+        const data = await response.json();
+        
+        // Populate input fields with current goals
+        if (data.goals) {
+            document.getElementById('goal-daily').value = data.goals.daily?.target || 500;
+            document.getElementById('goal-weekly').value = data.goals.weekly?.target || 2500;
+            document.getElementById('goal-monthly').value = data.goals.monthly?.target || 10000;
+            document.getElementById('goal-yearly').value = data.goals.yearly?.target || 120000;
+        }
+        
+        // Show modal
+        document.getElementById('goals-modal').classList.add('active');
+    } catch (error) {
+        console.error('Error loading goals:', error);
+        // Show modal anyway with defaults
+        document.getElementById('goals-modal').classList.add('active');
+    }
+}
+
+function closeGoalsModal() {
+    document.getElementById('goals-modal').classList.remove('active');
+}
+
+async function saveGoals() {
+    try {
+        const daily = parseFloat(document.getElementById('goal-daily').value) || 0;
+        const weekly = parseFloat(document.getElementById('goal-weekly').value) || 0;
+        const monthly = parseFloat(document.getElementById('goal-monthly').value) || 0;
+        const yearly = parseFloat(document.getElementById('goal-yearly').value) || 0;
+        
+        // Save each goal
+        const periods = [
+            { period: 'daily', amount: daily },
+            { period: 'weekly', amount: weekly },
+            { period: 'monthly', amount: monthly },
+            { period: 'yearly', amount: yearly }
+        ];
+        
+        for (const goal of periods) {
+            if (goal.amount > 0) {
+                await fetch(`/api/goals/set?period=${goal.period}&target_amount=${goal.amount}`, {
+                    method: 'POST'
+                });
+            }
+        }
+        
+        // Close modal
+        closeGoalsModal();
+        
+        // Refresh goals panel
+        await loadGoals();
+        
+        // Show success message (simple alert for now)
+        console.log('✅ Goals saved successfully!');
+    } catch (error) {
+        console.error('Error saving goals:', error);
+        alert('Failed to save goals. Please try again.');
+    }
 }
 
 // Cleanup on unload
