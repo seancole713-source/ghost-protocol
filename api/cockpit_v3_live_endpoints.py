@@ -275,6 +275,25 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
                     "status": "live" if snapshot.get("price", 0) > 0 else "offline",
                 }
             )
+        
+        # If all VIP coins are offline (meme coins not on major exchanges),
+        # fallback to showing mainstream cryptos
+        online_count = sum(1 for p in prices if p["status"] == "live")
+        if online_count == 0:
+            LOGGER.info("All VIP meme coins offline, showing mainstream cryptos instead")
+            mainstream = ["BTC", "ETH", "SOL", "BNB", "XRP"]
+            prices = []
+            for coin in mainstream:
+                snapshot = await get_price_for_symbol(coin)
+                prices.append(
+                    {
+                        "symbol": coin,
+                        "price": snapshot.get("price", 0.0),
+                        "change_pct": snapshot.get("change_pct", 0.0),
+                        "status": "live" if snapshot.get("price", 0) > 0 else "offline",
+                    }
+                )
+        
         return prices
     except Exception as exc:
         LOGGER.error("VIP coin price fetch error: %s", exc)
@@ -450,9 +469,9 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
             return None
         change = snapshot.get("change_pct", 0.0)
         
-        # GHOST PROTOCOL: Filter for minimum 20% gains (24-48h window)
-        # Only show TRUE top movers, not noise
-        if abs(change) < 20.0:
+        # GHOST PROTOCOL: Filter for meaningful moves (5%+ gain/loss)
+        # Reduced from 20% to show more market activity
+        if abs(change) < 5.0:
             return None
         
         gps = round(change * 0.75, 2)
@@ -470,9 +489,9 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
         except Exception as e:
             LOGGER.debug(f"Could not fetch prediction confidence for {symbol}: {e}")
         
-        # GHOST PROTOCOL: Only show signals with 70%+ confidence
-        # Filter out low-confidence noise
-        if real_confidence < 70:
+        # GHOST PROTOCOL: Show signals with 50%+ confidence
+        # Reduced from 70% to display more opportunities
+        if real_confidence < 50:
             return None
         
         return {
@@ -495,7 +514,35 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
     # Sort by absolute change (biggest movers first)
     movers.sort(key=lambda item: abs(item.get("change", 0.0)), reverse=True)
     
-    LOGGER.info(f"Hunter feed: {len(movers)} high-quality movers (20%+ gain, 70%+ confidence)")
+    # If no movers found after filtering, return mainstream cryptos as fallback
+    if not movers:
+        LOGGER.info("No movers met filter criteria, returning mainstream cryptos")
+        fallback_symbols = ["BTC", "ETH", "SOL", "XRP", "BNB"]
+        async def _fetch_fallback(symbol: str) -> Optional[Dict[str, Any]]:
+            snapshot = await get_price_for_symbol(symbol)
+            price = snapshot.get("price", 0.0)
+            if price <= 0:
+                return None
+            change = snapshot.get("change_pct", 0.0)
+            
+            return {
+                "symbol": symbol,
+                "name": symbol,
+                "type": "crypto",
+                "price": price,
+                "change": change,
+                "volume": snapshot.get("volume", 0.0),
+                "confidence": 50,
+                "gps": round(change * 0.75, 2),
+            }
+        
+        fallback_results = await asyncio.gather(*[_fetch_fallback(sym) for sym in fallback_symbols], return_exceptions=True)
+        for result in fallback_results:
+            if isinstance(result, dict):
+                movers.append(result)
+        movers.sort(key=lambda item: abs(item.get("change", 0.0)), reverse=True)
+    
+    LOGGER.info(f"Hunter feed: {len(movers)} movers returned (5%+ change, 50%+ confidence)")
     return movers[:limit]
 
 
