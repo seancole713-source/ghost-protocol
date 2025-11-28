@@ -263,18 +263,38 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
     """Fetch prices for VIP coins used in the cockpit header."""
     try:
         from wolf_app import VIP_COINS  # type: ignore
+        from core.providers.turbo_provider import turbo_crypto_price
 
         prices: List[Dict[str, Any]] = []
         for coin in VIP_COINS:
-            snapshot = await get_price_for_symbol(coin)
-            prices.append(
-                {
+            try:
+                result = await asyncio.to_thread(
+                    turbo_crypto_price,
+                    coin,
+                    max_budget_s=3.0
+                )
+                if result.get("ok") and result.get("price"):
+                    prices.append({
+                        "symbol": coin,
+                        "price": float(result.get("price", 0.0)),
+                        "change_pct": 0.0,
+                        "status": "live",
+                    })
+                else:
+                    prices.append({
+                        "symbol": coin,
+                        "price": 0.0,
+                        "change_pct": 0.0,
+                        "status": "offline",
+                    })
+            except Exception as e:
+                LOGGER.warning(f"VIP price fetch failed for {coin}: {e}")
+                prices.append({
                     "symbol": coin,
-                    "price": snapshot.get("price", 0.0),
-                    "change_pct": snapshot.get("change_pct", 0.0),
-                    "status": "live" if snapshot.get("price", 0) > 0 else "offline",
-                }
-            )
+                    "price": 0.0,
+                    "change_pct": 0.0,
+                    "status": "offline",
+                })
         
         # If all VIP coins are offline (meme coins not on major exchanges),
         # fallback to showing mainstream cryptos
@@ -284,15 +304,34 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
             mainstream = ["BTC", "ETH", "SOL", "BNB", "XRP"]
             prices = []
             for coin in mainstream:
-                snapshot = await get_price_for_symbol(coin)
-                prices.append(
-                    {
+                try:
+                    result = await asyncio.to_thread(
+                        turbo_crypto_price,
+                        coin,
+                        max_budget_s=3.0
+                    )
+                    if result.get("ok") and result.get("price"):
+                        prices.append({
+                            "symbol": coin,
+                            "price": float(result.get("price", 0.0)),
+                            "change_pct": 0.0,
+                            "status": "live",
+                        })
+                    else:
+                        prices.append({
+                            "symbol": coin,
+                            "price": 0.0,
+                            "change_pct": 0.0,
+                            "status": "offline",
+                        })
+                except Exception as e:
+                    LOGGER.warning(f"Mainstream crypto price fetch failed for {coin}: {e}")
+                    prices.append({
                         "symbol": coin,
-                        "price": snapshot.get("price", 0.0),
-                        "change_pct": snapshot.get("change_pct", 0.0),
-                        "status": "live" if snapshot.get("price", 0) > 0 else "offline",
-                    }
-                )
+                        "price": 0.0,
+                        "change_pct": 0.0,
+                        "status": "offline",
+                    })
         
         return prices
     except Exception as exc:
@@ -304,24 +343,36 @@ async def get_crypto_top_movers(limit: int = 6) -> List[Dict[str, Any]]:
     """Build a lightweight list of crypto movers for supporting panels."""
     try:
         from wolf_app import CRYPTO_SYMBOLS  # type: ignore
+        from core.providers.turbo_provider import turbo_crypto_price
 
         symbols = list(CRYPTO_SYMBOLS)[: max(limit * 2, limit)]
     except Exception:
         symbols = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA"]
 
     async def _fetch(symbol: str) -> Optional[Dict[str, Any]]:
-        snapshot = await get_price_for_symbol(symbol)
-        if snapshot.get("price", 0.0) <= 0:
+        try:
+            result = await asyncio.to_thread(
+                turbo_crypto_price,
+                symbol,
+                max_budget_s=3.0
+            )
+            if not result.get("ok") or not result.get("price"):
+                return None
+            price = float(result.get("price", 0.0))
+            if price <= 0:
+                return None
+            return {
+                "symbol": symbol,
+                "type": "crypto",
+                "name": symbol,
+                "price": price,
+                "change": 0.0,
+                "volume": 0.0,
+                "confidence": 65,
+            }
+        except Exception as e:
+            LOGGER.warning(f"Top mover fetch failed for {symbol}: {e}")
             return None
-        return {
-            "symbol": symbol,
-            "type": "crypto",
-            "name": symbol,
-            "price": snapshot.get("price", 0.0),
-            "change": snapshot.get("change_pct", 0.0),
-            "volume": snapshot.get("volume", 0.0),
-            "confidence": snapshot.get("confidence", 65),
-        }
 
     results = await asyncio.gather(*[_fetch(sym) for sym in symbols], return_exceptions=True)
     movers: List[Dict[str, Any]] = []
@@ -1741,14 +1792,38 @@ async def get_watchlist_enriched():
             try:
                 # Determine asset type
                 if symbol in crypto or symbol in vip:
-                    # Fetch crypto price
-                    price_data = await get_price_for_symbol(symbol)
-                    enriched_items.append({
-                        "symbol": symbol,
-                        "price": price_data.get("price", 0),
-                        "change_pct": price_data.get("change_pct", 0),
-                        "type": "crypto" if symbol in crypto else "vip"
-                    })
+                    # Fetch crypto price using TurboProvider
+                    try:
+                        from core.providers.turbo_provider import turbo_crypto_price
+                        crypto_result = await asyncio.to_thread(
+                            turbo_crypto_price,
+                            symbol,
+                            max_budget_s=3.0
+                        )
+                        if crypto_result.get("ok") and crypto_result.get("price"):
+                            enriched_items.append({
+                                "symbol": symbol,
+                                "price": float(crypto_result.get("price", 0)),
+                                "change_pct": 0.0,  # TurboProvider doesn't return change_pct yet
+                                "type": "crypto" if symbol in crypto else "vip",
+                                "provider": crypto_result.get("provider", "unknown")
+                            })
+                        else:
+                            LOGGER.warning(f"Crypto price fetch returned no data for {symbol}")
+                            enriched_items.append({
+                                "symbol": symbol,
+                                "price": 0,
+                                "change_pct": 0,
+                                "type": "crypto" if symbol in crypto else "vip"
+                            })
+                    except Exception as e:
+                        LOGGER.warning(f"Crypto price fetch failed for {symbol}: {e}")
+                        enriched_items.append({
+                            "symbol": symbol,
+                            "price": 0,
+                            "change_pct": 0,
+                            "type": "crypto" if symbol in crypto else "vip"
+                        })
                 else:
                     # Fetch stock price using TurboProvider
                     try:
