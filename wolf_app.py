@@ -1172,11 +1172,14 @@ async def _cockpit_page(request: Request):
     """Serve Ghost v3 cockpit - ALWAYS V3, no fallback to legacy versions."""
     try:
         # Always serve V3 cockpit with Jinja2 template rendering
+        import time
+        cache_bust = str(int(time.time()))  # Unix timestamp for aggressive cache busting
         return _TEMPLATES.TemplateResponse(
             "cockpit_v3.html",
             {
                 "request": request,
-                "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", "")
+                "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", ""),
+                "cache_bust": cache_bust
             }
         )
     except Exception as e:
