@@ -6192,10 +6192,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             tracker = get_accuracy_tracker()
             tracker.record_forecast(
                 symbol=symbol,
-                predicted_price=current_price,
+                forecast_price=current_price,
+                forecast_horizon_hours=horizon_h,
                 confidence=confidence,
-                horizon_hours=horizon_h,
-                model="ghost_v3_pillars"
+                model_version="ghost_v3_pillars"
             )
             LOGGER.debug(f"[{symbol}] Registered for accuracy tracking (48h evaluation)")
         except Exception as e:
