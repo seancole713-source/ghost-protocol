@@ -23,7 +23,6 @@ function initializeApp() {
     
     setInterval(() => updateSystemTime(), 1000);  // Clock: every 1s
     setInterval(() => loadHealthScore(), 30000);  // Goals/Health: every 30s
-    setInterval(() => loadStats(), 30000);  // Stats: every 30s
     setInterval(() => loadForecast(), 15000);  // Forecast: every 15s
     setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s (includes hunter feed)
     setInterval(() => loadWatchlist(), 15000);  // Watchlist: every 15s
