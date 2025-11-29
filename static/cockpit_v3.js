@@ -679,12 +679,17 @@ async function saveGoals() {
         
         for (const goal of periods) {
             if (goal.amount > 0) {
+                console.log(`Saving ${goal.period} goal: $${goal.amount}`);
                 const response = await fetch(`/api/v3/goals/set?period=${goal.period}&target_amount=${goal.amount}`, {
                     method: 'POST'
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`Failed to set ${goal.period} goal`);
+                const data = await response.json();
+                console.log(`Response for ${goal.period}:`, data);
+                
+                if (!response.ok || !data.ok) {
+                    const errorMsg = data.error || `HTTP ${response.status}`;
+                    throw new Error(`Failed to set ${goal.period} goal: ${errorMsg}`);
                 }
             }
         }
@@ -699,7 +704,7 @@ async function saveGoals() {
         console.log('✅ Goals saved successfully!');
     } catch (error) {
         console.error('Error saving goals:', error);
-        alert('Failed to save goals. Please try again.');
+        alert(`Failed to save goals: ${error.message}\n\nCheck browser console for details.`);
     }
 }
 
