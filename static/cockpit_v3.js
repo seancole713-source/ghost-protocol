@@ -699,7 +699,12 @@ async function saveGoals() {
         // Refresh goals panel
         await loadHealthScore();
         
-        // Show success message (simple alert for now)
+        // Show success message with visual confirmation
+        alert('✅ Goals saved successfully!\n\nYour new targets:\n' +
+              `Daily: $${daily}\n` +
+              `Weekly: $${weekly}\n` +
+              `Monthly: $${monthly}\n` +
+              `Yearly: $${yearly}`);
         console.log('✅ Goals saved successfully!');
     } catch (error) {
         console.error('Error saving goals:', error);
