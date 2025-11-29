@@ -56,8 +56,21 @@ def _run_all_predictions():
     crypto_success = 0
     errors = []
     
-    # Run stock predictions
+    # Check market hours for stocks
+    is_market_open = _is_market_hours()
+    
+    # Run stock predictions (ONLY during market hours)
+    if is_market_open:
+        if LOGGER:
+            LOGGER.info(f"[AUTO-PREDICT] Market OPEN - running {len(HUNTER_STOCK_SYMBOLS)} stock predictions")
+    else:
+        if LOGGER:
+            LOGGER.info(f"[AUTO-PREDICT] Market CLOSED - skipping {len(HUNTER_STOCK_SYMBOLS)} stock predictions")
+    
     for symbol in HUNTER_STOCK_SYMBOLS:
+        # Skip stocks if market is closed
+        if not is_market_open:
+            continue
         try:
             result = RUN_PREDICTION_FUNC(symbol, "stock", "SHORT")
             if result and result.get("ok"):
@@ -77,14 +90,17 @@ def _run_all_predictions():
         # Small delay to avoid API rate limits
         time.sleep(0.5)
     
-    # Run crypto predictions
+    # Run crypto predictions (24/7 - crypto markets never close)
+    if LOGGER:
+        LOGGER.info(f"[AUTO-PREDICT] Running {len(HUNTER_CRYPTO_SYMBOLS)} crypto predictions (24/7)")
+    
     for symbol in HUNTER_CRYPTO_SYMBOLS:
         try:
             result = RUN_PREDICTION_FUNC(symbol, "crypto", "SHORT")
             if result and result.get("ok"):
                 crypto_success += 1
                 if LOGGER:
-                    LOGGER.debug(f"[AUTO-PREDICT] {symbol} → {result.get('direction')} @ {result.get('confidence', 0)*100:.0f}%")
+                    LOGGER.debug(f"[AUTO-PREDICT] {symbol} (crypto) → {result.get('direction')} @ {result.get('confidence', 0)*100:.0f}%")
             else:
                 error_msg = result.get("error", "unknown") if result else "no result"
                 errors.append(f"{symbol}: {error_msg}")
@@ -104,10 +120,14 @@ def _run_all_predictions():
     # Log summary
     total = stocks_success + crypto_success
     duration = time.time() - start_time
+    stock_total = len(HUNTER_STOCK_SYMBOLS) if is_market_open else 0
+    crypto_total = len(HUNTER_CRYPTO_SYMBOLS)
+    market_status = "OPEN" if is_market_open else "CLOSED"
+    
     if LOGGER:
         LOGGER.info(
-            f"[AUTO-PREDICT] Batch complete: {total}/{len(HUNTER_STOCK_SYMBOLS) + len(HUNTER_CRYPTO_SYMBOLS)} "
-            f"({stocks_success} stocks, {crypto_success} crypto) in {duration:.1f}s"
+            f"[AUTO-PREDICT] Batch complete: {total}/{stock_total + crypto_total} "
+            f"({stocks_success}/{stock_total} stocks [Market {market_status}], {crypto_success}/{crypto_total} crypto) in {duration:.1f}s"
         )
     
     if errors:

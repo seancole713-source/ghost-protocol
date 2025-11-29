@@ -29,6 +29,7 @@ from typing import Any, Callable, Optional, Dict, List, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import threading
+from collections import defaultdict
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +43,25 @@ class ProviderResult:
     duration_s: float = 0.0
     error: Optional[str] = None
     logs: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ProviderHealth:
+    """Track provider success/failure rates"""
+    success_count: int = 0
+    failure_count: int = 0
+    last_success: Optional[datetime] = None
+    last_failure: Optional[datetime] = None
+    consecutive_failures: int = 0
+    
+    def success_rate(self) -> float:
+        """Calculate success rate (0.0 to 1.0)"""
+        total = self.success_count + self.failure_count
+        return self.success_count / total if total > 0 else 0.0
+    
+    def is_healthy(self, max_consecutive_failures: int = 5) -> bool:
+        """Check if provider is considered healthy"""
+        return self.consecutive_failures < max_consecutive_failures
 
 
 @dataclass
@@ -69,7 +89,12 @@ class TurboProvider:
         """Initialize turbo provider with cache"""
         self._price_cache: Dict[str, CachedPrice] = {}
         self._cache_lock = threading.Lock()
-        LOGGER.info("✅ TurboProvider initialized")
+        
+        # Provider health tracking
+        self._provider_health: Dict[str, ProviderHealth] = defaultdict(ProviderHealth)
+        self._health_lock = threading.Lock()
+        
+        LOGGER.info("✅ TurboProvider initialized with health monitoring")
 
     def turbo_stock_price(
         self,
@@ -152,7 +177,9 @@ class TurboProvider:
             logs.extend(result.logs)
 
             if result.ok and result.price and result.price > 0:
-                # Success! Cache and return
+                # Success! Record health and cache
+                self._record_provider_success(provider_name)
+                
                 self._cache_price(
                     symbol_upper,
                     result.price,
@@ -169,6 +196,9 @@ class TurboProvider:
                     "error": None,
                     "cached": False,
                 }
+            else:
+                # Record failure for health tracking
+                self._record_provider_failure(provider_name)
 
         # All providers failed - check cache again (stale is better than nothing)
         stale_cached = self._get_cached_price(symbol_upper, allow_stale=True)
@@ -284,7 +314,9 @@ class TurboProvider:
             logs.extend(result.logs)
 
             if result.ok and result.price and result.price > 0:
-                # Success! Cache and return
+                # Success! Record health and cache
+                self._record_provider_success(provider_name)
+                
                 self._cache_price(
                     symbol_upper,
                     result.price,
@@ -301,6 +333,9 @@ class TurboProvider:
                     "error": None,
                     "cached": False,
                 }
+            else:
+                # Record failure for health tracking
+                self._record_provider_failure(provider_name)
 
         # All providers failed - check stale cache
         stale_cached = self._get_cached_price(symbol_upper, allow_stale=True)
@@ -566,6 +601,43 @@ class TurboProvider:
                 "stale_entries": stale,
                 "symbols": list(self._price_cache.keys()),
             }
+
+    def _record_provider_success(self, provider_name: str):
+        """Record a successful provider call"""
+        with self._health_lock:
+            health = self._provider_health[provider_name]
+            health.success_count += 1
+            health.consecutive_failures = 0
+            health.last_success = datetime.now()
+    
+    def _record_provider_failure(self, provider_name: str):
+        """Record a failed provider call"""
+        with self._health_lock:
+            health = self._provider_health[provider_name]
+            health.failure_count += 1
+            health.consecutive_failures += 1
+            health.last_failure = datetime.now()
+    
+    def get_provider_health_report(self) -> Dict[str, Any]:
+        """
+        Get comprehensive provider health report.
+        
+        Returns:
+            Dict with health stats for each provider
+        """
+        with self._health_lock:
+            report = {}
+            for provider_name, health in self._provider_health.items():
+                report[provider_name] = {
+                    "success_count": health.success_count,
+                    "failure_count": health.failure_count,
+                    "success_rate": health.success_rate(),
+                    "consecutive_failures": health.consecutive_failures,
+                    "is_healthy": health.is_healthy(),
+                    "last_success": health.last_success.isoformat() if health.last_success else None,
+                    "last_failure": health.last_failure.isoformat() if health.last_failure else None,
+                }
+            return report
 
 
 # Global singleton instance
