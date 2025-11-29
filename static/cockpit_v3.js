@@ -22,7 +22,7 @@ function initializeApp() {
     // Time display: 1s (real-time clock)
     
     setInterval(() => updateSystemTime(), 1000);  // Clock: every 1s
-    setInterval(() => loadGoals(), 30000);  // Goals: every 30s
+    setInterval(() => loadHealthScore(), 30000);  // Goals/Health: every 30s
     setInterval(() => loadStats(), 30000);  // Stats: every 30s
     setInterval(() => loadForecast(), 15000);  // Forecast: every 15s
     setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s (includes hunter feed)
@@ -698,7 +698,7 @@ async function saveGoals() {
         closeGoalsModal();
         
         // Refresh goals panel
-        await loadGoals();
+        await loadHealthScore();
         
         // Show success message (simple alert for now)
         console.log('✅ Goals saved successfully!');
