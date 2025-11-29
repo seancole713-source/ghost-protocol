@@ -23981,20 +23981,38 @@ try:
         
         from api.cockpit_v3_live_endpoints import set_goal
         
-        # Try JSON body first (common frontend pattern)
-        if period is None or target_amount is None:
-            try:
-                body = await request.json()
-                period = period or body.get("period")
-                target_amount = target_amount or body.get("target_amount") or body.get("targetAmount")
-            except Exception:
-                pass
-        
-        # Validate we have required params
-        if not period or target_amount is None:
-            raise HTTPException(400, "Missing required parameters: period and target_amount")
-        
-        return await set_goal(period, target_amount)
+        try:
+            # Log incoming request for debugging
+            LOGGER.info(f"Goals POST: query_params={dict(request.query_params)}")
+            
+            # Try JSON body first (common frontend pattern)
+            if period is None or target_amount is None:
+                try:
+                    body = await request.json()
+                    LOGGER.info(f"Goals POST: body={body}")
+                    period = period or body.get("period")
+                    target_amount = target_amount or body.get("target_amount") or body.get("targetAmount")
+                except Exception as e:
+                    LOGGER.warning(f"Goals POST: Failed to parse JSON body: {e}")
+            
+            # Validate we have required params
+            if not period or target_amount is None:
+                LOGGER.error(f"Goals POST: Missing params - period={period}, target_amount={target_amount}")
+                return JSONResponse(
+                    status_code=400,
+                    content={"ok": False, "error": "Missing required parameters: period and target_amount"}
+                )
+            
+            result = await set_goal(period, target_amount)
+            LOGGER.info(f"Goals POST: Success - {result}")
+            return result
+            
+        except Exception as e:
+            LOGGER.error(f"Goals POST: Exception - {e}", exc_info=True)
+            return JSONResponse(
+                status_code=500,
+                content={"ok": False, "error": str(e)}
+            )
     
     @APP.get("/api/cockpit/v3/goals")
     async def cockpit_v3_goals_get_alias():
