@@ -23964,7 +23964,7 @@ try:
     LOGGER.info("✅ Cockpit V3 LIVE endpoints registered - all panels wired to real data")
     
     # Add alias routes for frontend compatibility (legacy /api/cockpit/v3 paths)
-    @APP.post("/api/cockpit/v3/goals")
+    @APP.api_route("/api/cockpit/v3/goals", methods=["POST", "OPTIONS"])
     async def cockpit_v3_goals_alias(
         request: Request,
         period: str | None = None,
@@ -23973,7 +23973,12 @@ try:
         """
         Alias for /api/v3/goals/set - maintains frontend compatibility
         Supports both query params AND JSON body
+        Handles OPTIONS for CORS preflight
         """
+        # Handle CORS preflight
+        if request.method == "OPTIONS":
+            return Response(status_code=200)
+        
         from api.cockpit_v3_live_endpoints import set_goal
         
         # Try JSON body first (common frontend pattern)
