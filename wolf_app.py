@@ -23965,9 +23965,30 @@ try:
     
     # Add alias routes for frontend compatibility (legacy /api/cockpit/v3 paths)
     @APP.post("/api/cockpit/v3/goals")
-    async def cockpit_v3_goals_alias(period: str, target_amount: float):
-        """Alias for /api/v3/goals/set - maintains frontend compatibility"""
+    async def cockpit_v3_goals_alias(
+        request: Request,
+        period: str | None = None,
+        target_amount: float | None = None
+    ):
+        """
+        Alias for /api/v3/goals/set - maintains frontend compatibility
+        Supports both query params AND JSON body
+        """
         from api.cockpit_v3_live_endpoints import set_goal
+        
+        # Try JSON body first (common frontend pattern)
+        if period is None or target_amount is None:
+            try:
+                body = await request.json()
+                period = period or body.get("period")
+                target_amount = target_amount or body.get("target_amount") or body.get("targetAmount")
+            except Exception:
+                pass
+        
+        # Validate we have required params
+        if not period or target_amount is None:
+            raise HTTPException(400, "Missing required parameters: period and target_amount")
+        
         return await set_goal(period, target_amount)
     
     @APP.get("/api/cockpit/v3/goals")
