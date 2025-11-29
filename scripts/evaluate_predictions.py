@@ -68,7 +68,7 @@ class PredictionEvaluator:
         """)
         self.conn.commit()
     
-    def get_expired_predictions(self, lookback_hours: int = 48) -> List[Dict]:
+    def get_expired_predictions(self, lookback_hours: int = 72) -> List[Dict]:
         """
         Get predictions that have expired (horizon passed) but not yet evaluated.
         
@@ -79,33 +79,43 @@ class PredictionEvaluator:
             List of prediction dicts ready for evaluation
         """
         cursor = self.conn.cursor()
-        now_ms = int(time.time() * 1000)
-        lookback_ms = now_ms - (lookback_hours * 3600 * 1000)
+        now_sec = time.time()
+        lookback_sec = now_sec - (lookback_hours * 3600)
         
         # Get predictions where:
         # 1. Created > lookback_hours ago
-        # 2. Horizon has expired (created_at + horizon_h * 3600 * 1000 < now)
+        # 2. Horizon has expired (run_at + horizon_h * 3600 < now)
         # 3. Not yet evaluated (no outcome record)
         cursor.execute("""
-            SELECT p.*
+            SELECT p.id, p.symbol, p.direction, p.confidence, p.run_at, p.horizon_h,
+                   pp.price as original_price
             FROM predictions p
             LEFT JOIN outcomes o ON p.id = o.prediction_id
+            LEFT JOIN prediction_points pp ON p.id = pp.prediction_id AND pp.kind = 'forecast'
             WHERE p.run_at > ?
-              AND p.run_at + (p.horizon_h * 3600 * 1000) < ?
+              AND p.run_at + (p.horizon_h * 3600) < ?
               AND o.id IS NULL
+              AND pp.ts = (SELECT MIN(ts) FROM prediction_points WHERE prediction_id = p.id AND kind = 'forecast')
+            GROUP BY p.id
             ORDER BY p.run_at ASC
             LIMIT 100
-        """, (lookback_ms, now_ms))
+        """, (lookback_sec, now_sec))
         
         predictions = []
+        # Crypto symbols list for type detection
+        crypto_symbols = {'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC', 'LINK', 'UNI', 'AAVE', 'COMP', 'MKR'}
+        
         for row in cursor.fetchall():
+            # Infer asset type from symbol
+            asset_type = 'crypto' if row["symbol"] in crypto_symbols else 'stock'
+            
             predictions.append({
                 "id": row["id"],
                 "symbol": row["symbol"],
-                "asset_type": row["asset_type"],
+                "asset_type": asset_type,
                 "direction": row["direction"],
                 "confidence": row["confidence"],
-                "current_price": row["current_price"],
+                "original_price": row["original_price"],
                 "run_at": row["run_at"],
                 "horizon_h": row["horizon_h"],
             })
@@ -124,10 +134,19 @@ class PredictionEvaluator:
             Current price or None if fetch failed
         """
         try:
-            if asset_type == "crypto" and turbo_crypto_price:
-                result = turbo_crypto_price(symbol, max_budget_s=3.0)
-                if result["ok"]:
-                    return result["price"]
+            if asset_type == "crypto":
+                if turbo_crypto_price:
+                    result = turbo_crypto_price(symbol, max_budget_s=3.0)
+                    if result["ok"]:
+                        return result["price"]
+                else:
+                    # Fallback to Coinbase API in standalone mode
+                    import requests
+                    url = f"https://api.coinbase.com/v2/prices/{symbol}-USD/spot"
+                    response = requests.get(url, timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        return float(data["data"]["amount"])
             elif asset_type == "stock" and turbo_stock_price:
                 result = turbo_stock_price(symbol, max_budget_s=3.0)
                 if result["ok"]:
@@ -158,7 +177,10 @@ class PredictionEvaluator:
             return None
         
         # Calculate actual price change
-        original_price = prediction["current_price"]
+        original_price = prediction["original_price"]
+        if original_price is None or original_price <= 0:
+            print(f"⚠️  Invalid original price for {prediction['symbol']}, skipping")
+            return None
         price_change_pct = ((current_price - original_price) / original_price) * 100
         
         # Determine actual direction
