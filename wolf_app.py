@@ -6567,6 +6567,64 @@ async def api_evaluate_predictions():
         }
 
 
+@APP.post("/api/v3/predictions/migrate-outcomes-table")
+async def api_migrate_outcomes_table():
+    """
+    One-time migration: Drop old outcomes table and let evaluator recreate it.
+    
+    WARNING: This will delete all existing outcomes data.
+    Only run this once during the schema migration.
+    
+    Returns:
+        {
+            "ok": true,
+            "message": "Outcomes table dropped and recreated",
+            "old_records": 0
+        }
+    """
+    try:
+        from pathlib import Path
+        import sqlite3
+        
+        db_path = Path(__file__).parent / "data" / "ghost_predictions.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Count existing records before dropping
+        try:
+            cursor.execute("SELECT COUNT(*) FROM outcomes")
+            old_count = cursor.fetchone()[0]
+        except:
+            old_count = 0
+        
+        # Drop old table
+        cursor.execute("DROP TABLE IF EXISTS outcomes")
+        conn.commit()
+        conn.close()
+        
+        LOGGER.info(f"Dropped old outcomes table ({old_count} records)")
+        
+        return {
+            "ok": True,
+            "message": "Outcomes table dropped successfully. It will be recreated on next evaluation.",
+            "old_records": old_count
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Migration failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+        }
+    except Exception as e:
+        LOGGER.error(f"Evaluation failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
 def run_prediction(symbol: str, market: str = "stock", horizon: str = "SHORT") -> dict:
     """
     Wrapper function for beast_scheduler and other scheduled prediction systems.
