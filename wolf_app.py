@@ -6685,24 +6685,31 @@ async def api_v3_watchlist_enriched():
                 change_pct = 0.0
                 
                 # Try to get price from various sources
-                if symbol in CRYPTO_SYMBOLS:
-                    try:
-                        import yfinance as yf
+                try:
+                    import yfinance as yf
+                    
+                    if symbol in CRYPTO_SYMBOLS:
                         ticker = yf.Ticker(f"{symbol}-USD")
-                        info = ticker.info
-                        price = info.get('regularMarketPrice') or info.get('currentPrice')
-                        change_pct = info.get('regularMarketChangePercent', 0.0)
-                    except:
-                        pass
-                else:
-                    try:
-                        import yfinance as yf
+                    else:
                         ticker = yf.Ticker(symbol)
+                    
+                    # Try fast_info first (much faster)
+                    try:
+                        price = ticker.fast_info.last_price
+                        # Get 1-day history for change
+                        hist = ticker.history(period="1d", interval="1d")
+                        if len(hist) > 0:
+                            open_price = hist['Open'].iloc[0]
+                            close_price = hist['Close'].iloc[-1]
+                            change_pct = ((close_price - open_price) / open_price) * 100 if open_price else 0.0
+                    except:
+                        # Fallback to info
                         info = ticker.info
                         price = info.get('regularMarketPrice') or info.get('currentPrice')
                         change_pct = info.get('regularMarketChangePercent', 0.0)
-                    except:
-                        pass
+                except Exception as e:
+                    LOGGER.debug(f"yfinance failed for {symbol}: {e}")
+                    pass
                 
                 # Get latest prediction
                 pred = _LATEST_PREDICTIONS.get(symbol)
@@ -6716,7 +6723,7 @@ async def api_v3_watchlist_enriched():
                 watchlist_data.append({
                     "symbol": symbol,
                     "price": price,
-                    "change_pct": change_pct,
+                    "change_pct": round(change_pct, 2) if change_pct else 0.0,
                     "ghost_confidence": ghost_confidence,
                     "ghost_direction": ghost_direction,
                 })
@@ -6956,11 +6963,41 @@ async def api_v3_hunter_feed(limit: int = 10):
 @APP.get("/api/v3/news/feed")
 async def api_v3_news_feed(limit: int = 10):
     """
-    Get general news feed for cockpit.
+    Get general news feed for cockpit news panel.
     
-    Alias for hunter feed.
+    Returns feed items with 'items' key for UI compatibility.
     """
-    return await api_v3_hunter_feed(limit=limit)
+    # Get hunter feed data
+    hunter_data = await api_v3_hunter_feed(limit=limit)
+    
+    # Reformat for news panel (UI expects 'items' key)
+    if hunter_data.get("ok"):
+        feed_items = hunter_data.get("feed", [])
+        # Format items for news panel
+        news_items = []
+        for item in feed_items:
+            news_items.append({
+                "headline": item.get("title"),
+                "title": item.get("title"),
+                "sentiment": item.get("sentiment", "neutral"),
+                "timestamp": item.get("timestamp"),
+                "source": item.get("source", "Ghost AI"),
+                "symbol": item.get("symbol")
+            })
+        
+        return {
+            "ok": True,
+            "items": news_items,  # UI expects 'items' key
+            "feed": news_items,   # Keep for compatibility
+            "count": len(news_items)
+        }
+    else:
+        return {
+            "ok": False,
+            "items": [],
+            "feed": [],
+            "error": hunter_data.get("error", "Failed to load news")
+        }
 
 
 @APP.get("/api/v3/predictions/history")

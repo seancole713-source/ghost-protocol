@@ -2,7 +2,7 @@
 
 // State
 let currentTab = 'stocks';
-let currentForecastSymbol = 'WOLF';
+let currentForecastSymbol = 'BTC';  // Default to BTC (has active predictions)
 let updateInterval = null;
 
 // Initialize on DOM load
