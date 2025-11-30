@@ -207,7 +207,7 @@ class PostgresMigrator:
                         try:
                             # Insert prediction
                             pg_cursor.execute("""
-                                INSERT INTO ghost_predictions 
+                                INSERT INTO ghost_predictions
                                 (symbol, direction, confidence, horizon_h, run_at, created_at, model_version, provider)
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                                 RETURNING id
@@ -218,8 +218,8 @@ class PostgresMigrator:
                                 pred["horizon_h"],
                                 pred["run_at"],
                                 pred["run_at"],  # created_at = run_at
-                                pred.get("model_version", "v1"),
-                                pred.get("provider", "ghost")
+                                pred["model_version"] if "model_version" in pred.keys() else "v1",
+                                pred["provider"] if "provider" in pred.keys() else "ghost"
                             ))
                             
                             new_pred_id = pg_cursor.fetchone()[0]
@@ -235,13 +235,13 @@ class PostgresMigrator:
                             for point in points:
                                 pg_cursor.execute("""
                                     INSERT INTO prediction_points
-                                    (prediction_id, ts, price, kind)
+                                    (prediction_id, timepoint, value, kind)
                                     VALUES (%s, %s, %s, %s)
                                 """, (
                                     new_pred_id,
-                                    point["ts"],
-                                    point["price"],
-                                    point.get("kind", "forecast")
+                                    point["timepoint"],
+                                    point["value"],
+                                    point["kind"] if "kind" in point.keys() else "forecast"
                                 ))
                             
                         except Exception as e:
@@ -328,7 +328,7 @@ class PostgresMigrator:
                                     last_updated = EXCLUDED.last_updated
                             """, (
                                 symbol["symbol"],
-                                symbol.get("name", ""),
+                                symbol["name"] if "name" in symbol.keys() else "",
                                 "stock",  # Default to stock
                                 1,
                                 int(time.time())
@@ -358,11 +358,14 @@ class PostgresMigrator:
                 tables = ["ghost_predictions", "outcomes", "symbol_universe"]
                 for table in tables:
                     cursor.execute(f"SELECT COUNT(*) as count FROM {table}")
-                    count = cursor.fetchone()[0] if IS_POSTGRES else cursor.fetchone()[0]
+                    row = cursor.fetchone()
+                    # Handle both dict (PostgreSQL RealDictCursor) and tuple (SQLite)
+                    count = row["count"] if isinstance(row, dict) else (row[0] if row else 0)
                     LOGGER.info(f"   ✅ {table}: {count} records")
         
         except Exception as e:
             LOGGER.error(f"   ❌ Validation failed: {e}")
+            raise
             raise
 
 
