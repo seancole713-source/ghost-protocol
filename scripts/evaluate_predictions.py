@@ -17,6 +17,7 @@ Runs automatically or on-demand to populate outcomes table.
 import sys
 import sqlite3
 import time
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
@@ -24,10 +25,24 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Setup logging
+log_dir = Path("./logs")
+log_dir.mkdir(exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_dir / "evaluator.log"),
+        logging.StreamHandler()
+    ]
+)
+LOGGER = logging.getLogger(__name__)
+
 try:
     from core.providers.turbo_provider import turbo_stock_price, turbo_crypto_price
 except ImportError:
-    print("⚠️  Could not import turbo providers, running in standalone mode")
+    LOGGER.warning("Could not import turbo providers, running in standalone mode")
     turbo_stock_price = None
     turbo_crypto_price = None
 
@@ -102,8 +117,18 @@ class PredictionEvaluator:
         """, (lookback_sec, now_sec))
         
         predictions = []
-        # Crypto symbols list for type detection
-        crypto_symbols = {'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC', 'LINK', 'UNI', 'AAVE', 'COMP', 'MKR'}
+        # Expanded crypto symbols list from DEFAULT_CRYPTO_SYMBOLS (52 coins)
+        crypto_symbols = {
+            'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AVAX',
+            'DOT', 'MATIC', 'SHIB', 'LTC', 'UNI', 'LINK', 'ATOM', 'ETC',
+            'PEPE', 'ARB', 'OP', 'INJ', 'TIA', 'SUI', 'APT', 'SEI',
+            'FTM', 'NEAR', 'ALGO', 'VET', 'FIL', 'AAVE', 'MKR', 'SNX',
+            'COMP', 'CRV', '1INCH', 'BAL', 'SUSHI', 'YFI', 'LDO', 'RPL',
+            'IMX', 'SAND', 'MANA', 'AXS', 'GALA', 'ENJ', 'CHZ', 'FLOW',
+            'ICP', 'HBAR', 'QNT', 'RUNE',
+            # Legacy VIP coins
+            'WEPE', 'LILPEPE', 'DORKL', 'SLOTH', 'APC'
+        }
         
         for row in cursor.fetchall():
             # Infer asset type from symbol
@@ -120,11 +145,12 @@ class PredictionEvaluator:
                 "horizon_h": row["horizon_h"],
             })
         
+        LOGGER.info(f"Found {len(predictions)} expired predictions to evaluate")
         return predictions
     
-    def get_current_price(self, symbol: str, asset_type: str) -> Optional[float]:
+    def get_live_price(self, symbol: str, asset_type: str) -> Optional[float]:
         """
-        Fetch current price for symbol.
+        Fetch current live price for symbol with robust error handling.
         
         Args:
             symbol: Ticker symbol
@@ -135,37 +161,98 @@ class PredictionEvaluator:
         """
         try:
             if asset_type == "crypto":
+                # Try turbo provider first
                 if turbo_crypto_price:
                     result = turbo_crypto_price(symbol, max_budget_s=3.0)
                     if result["ok"]:
+                        LOGGER.debug(f"Fetched {symbol} crypto price: ${result['price']:.2f} (turbo)")
                         return result["price"]
+                
+                # Fallback to Coinbase API
+                import requests
+                url = f"https://api.coinbase.com/v2/prices/{symbol}-USD/spot"
+                response = requests.get(url, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    price = float(data["data"]["amount"])
+                    LOGGER.debug(f"Fetched {symbol} crypto price: ${price:.2f} (Coinbase)")
+                    return price
                 else:
-                    # Fallback to Coinbase API in standalone mode
-                    import requests
-                    url = f"https://api.coinbase.com/v2/prices/{symbol}-USD/spot"
-                    response = requests.get(url, timeout=5)
-                    if response.status_code == 200:
-                        data = response.json()
-                        return float(data["data"]["amount"])
+                    LOGGER.warning(f"Coinbase API returned {response.status_code} for {symbol}")
+                    
             elif asset_type == "stock":
+                # Try turbo provider first
                 if turbo_stock_price:
                     result = turbo_stock_price(symbol, max_budget_s=3.0)
                     if result["ok"]:
+                        LOGGER.debug(f"Fetched {symbol} stock price: ${result['price']:.2f} (turbo)")
                         return result["price"]
-                else:
-                    # Fallback to Yahoo Finance in standalone mode
-                    import requests
-                    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-                    headers = {"User-Agent": "Mozilla/5.0"}
-                    response = requests.get(url, headers=headers, timeout=5)
-                    if response.status_code == 200:
-                        data = response.json()
-                        price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
-                        return float(price)
+                
+                # Fallback to yfinance with retry/backoff (robust pattern from wolf_app.py)
+                price = self._fetch_yfinance_with_retry(symbol)
+                if price:
+                    LOGGER.debug(f"Fetched {symbol} stock price: ${price:.2f} (yfinance)")
+                    return price
+                    
             return None
+            
         except Exception as e:
-            print(f"❌ Failed to fetch price for {symbol}: {e}")
+            LOGGER.error(f"Failed to fetch price for {symbol} ({asset_type}): {e}")
             return None
+    
+    def _fetch_yfinance_with_retry(self, symbol: str, max_retries: int = 3) -> Optional[float]:
+        """
+        Fetch stock price from yfinance with exponential backoff for JSON errors.
+        Pattern from wolf_app.py line 9235.
+        
+        Args:
+            symbol: Stock ticker symbol
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            Current stock price or None if fetch failed
+        """
+        base_delay = 0.5  # Start with 500ms
+        
+        for attempt in range(max_retries):
+            try:
+                import yfinance as yf
+                
+                # Increase timeout and add better JSON error handling
+                tkr = yf.Ticker(symbol.upper())
+                tkr.session.timeout = (5, 15)  # (connect, read) timeouts
+                
+                # Get recent price data
+                hist = tkr.history(period="1d")
+                if not hist.empty:
+                    close = float(hist["Close"].iloc[-1])
+                    if close > 0:
+                        return close
+                        
+                LOGGER.warning(f"yfinance returned empty data for {symbol}")
+                return None
+                
+            except Exception as e:
+                msg = str(e)
+                low = msg.lower()
+                
+                # Check if it's a JSON parsing error (retryable)
+                is_json_error = "expecting value" in low or "json" in low
+                
+                # Retry on JSON errors with exponential backoff
+                if is_json_error and attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)  # 0.5s, 1s, 2s
+                    LOGGER.debug(
+                        f"yfinance JSON error for {symbol}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(delay)
+                    continue  # Retry
+                
+                # Not retryable or final attempt - log and fail
+                LOGGER.warning(f"yfinance failed for {symbol} after {attempt + 1} attempts: {msg}")
+                return None
+        
+        return None
     
     def evaluate_prediction(self, prediction: Dict) -> Optional[Dict]:
         """
@@ -178,19 +265,25 @@ class PredictionEvaluator:
             Outcome dict or None if evaluation failed
         """
         # Get current price
-        current_price = self.get_current_price(
+        current_price = self.get_live_price(
             prediction["symbol"],
             prediction["asset_type"]
         )
         
         if current_price is None:
-            print(f"⚠️  Could not fetch current price for {prediction['symbol']}, skipping")
+            LOGGER.warning(
+                f"⚠️  {prediction['symbol']}: No live price available from any provider. "
+                f"Asset type: {prediction['asset_type']}. Skipping evaluation."
+            )
             return None
         
         # Calculate actual price change
         original_price = prediction["original_price"]
         if original_price is None or original_price <= 0:
-            print(f"⚠️  Invalid original price for {prediction['symbol']}, skipping")
+            LOGGER.warning(
+                f"⚠️  {prediction['symbol']}: Invalid original price ({original_price}). "
+                f"Skipping evaluation."
+            )
             return None
         price_change_pct = ((current_price - original_price) / original_price) * 100
         
@@ -251,16 +344,21 @@ class PredictionEvaluator:
         predictions = self.get_expired_predictions()
         
         if not predictions:
+            LOGGER.info("No expired predictions to evaluate")
             return {
                 "evaluated": 0,
                 "message": "No expired predictions to evaluate"
             }
         
         evaluated = 0
+        skipped = 0
         correct = 0
+        incorrect = 0
         total_confidence_error = 0.0
         
-        print(f"\n🔍 Evaluating {len(predictions)} expired predictions...")
+        LOGGER.info(f"\n{'='*60}")
+        LOGGER.info(f"🔍 EVALUATING {len(predictions)} EXPIRED PREDICTIONS")
+        LOGGER.info(f"{'='*60}\n")
         
         for i, pred in enumerate(predictions, 1):
             outcome = self.evaluate_prediction(pred)
@@ -268,14 +366,29 @@ class PredictionEvaluator:
             if outcome:
                 self.save_outcome(outcome)
                 evaluated += 1
-                correct += outcome["was_correct"]
+                
+                if outcome["was_correct"]:
+                    correct += 1
+                    status = "✅ CORRECT"
+                else:
+                    incorrect += 1
+                    status = "❌ INCORRECT"
+                    
                 total_confidence_error += outcome["confidence_error"]
                 
-                status = "✅" if outcome["was_correct"] else "❌"
-                print(f"{status} [{i}/{len(predictions)}] {pred['symbol']}: "
-                      f"Predicted {pred['direction']}, "
-                      f"Actual {outcome['actual_direction']} "
-                      f"({outcome['actual_price_change_pct']:+.2f}%)")
+                LOGGER.info(
+                    f"{status} [{i}/{len(predictions)}] {pred['symbol']} ({pred['asset_type']}): "
+                    f"Predicted {pred['direction']}, "
+                    f"Actual {outcome['actual_direction']} "
+                    f"({outcome['actual_price_change_pct']:+.2f}%) | "
+                    f"Confidence: {pred['confidence']:.2%}"
+                )
+            else:
+                skipped += 1
+                LOGGER.warning(
+                    f"⏭️  SKIPPED [{i}/{len(predictions)}] {pred['symbol']} ({pred['asset_type']}): "
+                    f"Could not fetch live price (see warnings above)"
+                )
             
             # Sleep briefly to avoid rate limits
             time.sleep(0.5)
@@ -284,16 +397,25 @@ class PredictionEvaluator:
         avg_confidence_error = (total_confidence_error / evaluated) if evaluated > 0 else 0
         
         summary = {
+            "total_expired": len(predictions),
             "evaluated": evaluated,
+            "skipped": skipped,
             "correct": correct,
+            "incorrect": incorrect,
             "accuracy": accuracy,
             "avg_confidence_error": avg_confidence_error,
         }
         
-        print(f"\n📊 Evaluation Complete:")
-        print(f"   Evaluated: {evaluated}/{len(predictions)}")
-        print(f"   Correct: {correct}/{evaluated} ({accuracy:.1f}%)")
-        print(f"   Avg Confidence Error: {avg_confidence_error:.3f}")
+        LOGGER.info(f"\n{'='*60}")
+        LOGGER.info("📊 EVALUATION COMPLETE")
+        LOGGER.info(f"{'='*60}")
+        LOGGER.info(f"   Total Expired Predictions: {len(predictions)}")
+        LOGGER.info(f"   Successfully Evaluated: {evaluated}")
+        LOGGER.info(f"   Skipped (no price data): {skipped}")
+        LOGGER.info(f"   Correct: {correct}/{evaluated} ({accuracy:.1f}%)")
+        LOGGER.info(f"   Incorrect: {incorrect}/{evaluated}")
+        LOGGER.info(f"   Avg Confidence Error: {avg_confidence_error:.3f}")
+        LOGGER.info(f"{'='*60}\n")
         
         return summary
     
@@ -360,9 +482,14 @@ class PredictionEvaluator:
 
 def main():
     """Run prediction evaluation"""
-    print("=" * 60)
-    print("GHOST PROTOCOL PREDICTION EVALUATOR")
-    print("=" * 60)
+    from datetime import datetime
+    
+    LOGGER.info("="*60)
+    LOGGER.info("GHOST PROTOCOL PREDICTION EVALUATOR")
+    LOGGER.info("="*60)
+    LOGGER.info(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    LOGGER.info("Database: ./data/ghost_predictions.db")
+    LOGGER.info("Log file: ./logs/evaluator.log\n")
     
     evaluator = PredictionEvaluator()
     
@@ -371,17 +498,24 @@ def main():
     
     # Show accuracy report
     if summary["evaluated"] > 0:
-        print("\n" + "=" * 60)
+        LOGGER.info("\n" + "="*60)
         report = evaluator.get_accuracy_report(days=7)
-        print(f"\n📈 7-Day Accuracy Report:")
-        print(f"   Overall: {report['overall']['correct']}/{report['overall']['total']} "
-              f"({report['overall']['accuracy']:.1f}%)")
+        LOGGER.info("📈 7-DAY ACCURACY REPORT")
+        LOGGER.info("="*60)
+        LOGGER.info(f"   Overall: {report['overall']['correct']}/{report['overall']['total']} "
+                   f"({report['overall']['accuracy']:.1f}%)")
+        LOGGER.info(f"   Avg Confidence Error: {report['overall']['avg_confidence_error']:.3f}")
         
         if report['by_symbol']:
-            print(f"\n   Top Symbols:")
-            for sym in report['by_symbol'][:10]:
-                print(f"   - {sym['symbol']}: {sym['correct']}/{sym['total']} "
-                      f"({sym['accuracy']:.1f}%)")
+            LOGGER.info("\n   📊 Top Symbols by Volume:")
+            for sym in report['by_symbol'][:15]:
+                LOGGER.info(f"      {sym['symbol']}: {sym['correct']}/{sym['total']} "
+                          f"({sym['accuracy']:.1f}%) | Error: {sym['avg_confidence_error']:.3f}")
+    
+    LOGGER.info(f"\n✅ Evaluation complete at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Return summary for programmatic use
+    return summary
 
 
 if __name__ == "__main__":
