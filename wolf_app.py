@@ -6611,6 +6611,400 @@ async def api_migrate_outcomes_table():
         }
 
 
+# ============================================================================
+# V3 COCKPIT ENDPOINTS - For cockpit_v3.html UI
+# ============================================================================
+
+@APP.get("/api/v3/predictions/latest")
+async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
+    """
+    Get latest predictions for cockpit forecast panel.
+    
+    Returns predictions with confidence, direction, and expected_move for UI.
+    """
+    try:
+        predictions_list = []
+        
+        # If symbol specified, get just that one
+        if symbol:
+            pred = _LATEST_PREDICTIONS.get(symbol.upper())
+            if pred:
+                predictions_list.append({
+                    "symbol": symbol.upper(),
+                    "direction": pred.get("direction", "FLAT"),
+                    "confidence": pred.get("confidence", 0),
+                    "expected_move": pred.get("confidence", 0) * 5,  # Estimate 5% move at full confidence
+                    "horizon_h": pred.get("horizon_h", 48),
+                    "run_at": pred.get("run_at", 0),
+                })
+        else:
+            # Get latest N predictions from in-memory store
+            for sym, pred in list(_LATEST_PREDICTIONS.items())[:limit]:
+                predictions_list.append({
+                    "symbol": sym,
+                    "direction": pred.get("direction", "FLAT"),
+                    "confidence": pred.get("confidence", 0),
+                    "expected_move": pred.get("confidence", 0) * 5,
+                    "horizon_h": pred.get("horizon_h", 48),
+                    "run_at": pred.get("run_at", 0),
+                })
+        
+        return {
+            "ok": True,
+            "predictions": predictions_list,
+            "count": len(predictions_list)
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to get predictions: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "predictions": [],
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/watchlist/enriched")
+async def api_v3_watchlist_enriched():
+    """
+    Get watchlist with current prices and latest predictions.
+    
+    Used by cockpit watchlist panel.
+    """
+    try:
+        watchlist_data = []
+        
+        # Get top 20 symbols (mix of stocks and crypto)
+        symbols_to_check = STOCK_SYMBOLS[:10] + CRYPTO_SYMBOLS[:10]
+        
+        for symbol in symbols_to_check:
+            try:
+                # Get current price
+                price = None
+                change_pct = 0.0
+                
+                # Try to get price from various sources
+                if symbol in CRYPTO_SYMBOLS:
+                    try:
+                        import yfinance as yf
+                        ticker = yf.Ticker(f"{symbol}-USD")
+                        info = ticker.info
+                        price = info.get('regularMarketPrice') or info.get('currentPrice')
+                        change_pct = info.get('regularMarketChangePercent', 0.0)
+                    except:
+                        pass
+                else:
+                    try:
+                        import yfinance as yf
+                        ticker = yf.Ticker(symbol)
+                        info = ticker.info
+                        price = info.get('regularMarketPrice') or info.get('currentPrice')
+                        change_pct = info.get('regularMarketChangePercent', 0.0)
+                    except:
+                        pass
+                
+                # Get latest prediction
+                pred = _LATEST_PREDICTIONS.get(symbol)
+                ghost_confidence = 0
+                ghost_direction = "FLAT"
+                
+                if pred:
+                    ghost_confidence = pred.get("confidence", 0)
+                    ghost_direction = pred.get("direction", "FLAT")
+                
+                watchlist_data.append({
+                    "symbol": symbol,
+                    "price": price,
+                    "change_pct": change_pct,
+                    "ghost_confidence": ghost_confidence,
+                    "ghost_direction": ghost_direction,
+                })
+            
+            except Exception as e:
+                LOGGER.debug(f"Failed to enrich {symbol}: {e}")
+                continue
+        
+        return {
+            "ok": True,
+            "watchlist": watchlist_data,
+            "count": len(watchlist_data)
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Watchlist enrichment failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "watchlist": [],
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/vip/snapshot")
+async def api_v3_vip_snapshot():
+    """
+    Get VIP coins snapshot with prices and changes.
+    
+    Used by cockpit VIP panel.
+    """
+    try:
+        vip_data = []
+        
+        # VIP coins list (remove duplicates)
+        vip_symbols = list(dict.fromkeys(VIP_COINS))  # Remove duplicates
+        
+        for symbol in vip_symbols:
+            try:
+                import yfinance as yf
+                
+                # For crypto, append -USD
+                if symbol in CRYPTO_SYMBOLS or symbol in ["BTC", "ETH", "SOL", "BNB", "XRP"]:
+                    ticker_symbol = f"{symbol}-USD"
+                else:
+                    ticker_symbol = symbol
+                
+                ticker = yf.Ticker(ticker_symbol)
+                
+                # Try fast_info first (faster), then fall back to info
+                try:
+                    price = ticker.fast_info.last_price
+                    # Calculate change from history (last 2 days)
+                    hist = ticker.history(period="2d")
+                    if len(hist) >= 2:
+                        prev_close = hist['Close'].iloc[-2]
+                        curr_price = hist['Close'].iloc[-1]
+                        change_pct = ((curr_price - prev_close) / prev_close) * 100
+                    else:
+                        change_pct = 0.0
+                except:
+                    # Fallback to info
+                    info = ticker.info
+                    price = info.get('regularMarketPrice') or info.get('currentPrice', 0)
+                    change_pct = info.get('regularMarketChangePercent', 0.0)
+                
+                vip_data.append({
+                    "symbol": symbol,
+                    "price": price,
+                    "change_pct": round(change_pct, 2),
+                    "status": "Live"
+                })
+            
+            except Exception as e:
+                LOGGER.debug(f"Failed to get VIP data for {symbol}: {e}")
+                # Add placeholder
+                vip_data.append({
+                    "symbol": symbol,
+                    "price": 0,
+                    "change_pct": 0.0,
+                    "status": "Error"
+                })
+        
+        return {
+            "ok": True,
+            "vip_coins": vip_data,
+            "count": len(vip_data)
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"VIP snapshot failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "vip_coins": [],
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/goals/snapshot")
+async def api_v3_goals_snapshot():
+    """
+    Get current goals configuration.
+    
+    Returns daily, weekly, monthly, yearly goals.
+    """
+    try:
+        # For now, return default goals (later can be stored in DB)
+        goals = {
+            "daily": STATE.get("goal_daily", 0),
+            "weekly": STATE.get("goal_weekly", 0),
+            "monthly": STATE.get("goal_monthly", 0),
+            "yearly": STATE.get("goal_yearly", 0),
+        }
+        
+        return {
+            "ok": True,
+            "goals": goals
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Goals snapshot failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "goals": {},
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/goals/set")
+async def api_v3_goals_set(period: str, target_amount: float):
+    """
+    Set a goal for a specific period.
+    
+    Args:
+        period: 'daily', 'weekly', 'monthly', or 'yearly'
+        target_amount: Target amount in dollars
+    """
+    try:
+        valid_periods = ["daily", "weekly", "monthly", "yearly"]
+        if period not in valid_periods:
+            return {
+                "ok": False,
+                "error": f"Invalid period. Must be one of: {valid_periods}"
+            }
+        
+        # Store in STATE
+        STATE[f"goal_{period}"] = target_amount
+        
+        LOGGER.info(f"Goal set: {period} = ${target_amount}")
+        
+        return {
+            "ok": True,
+            "period": period,
+            "amount": target_amount,
+            "message": f"{period.capitalize()} goal set to ${target_amount}"
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Set goal failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/cockpit/status")
+async def api_v3_cockpit_status():
+    """
+    Get system status for cockpit header.
+    
+    Returns mode, active status, uptime, etc.
+    """
+    try:
+        return {
+            "ok": True,
+            "mode": str(STATE.get("mode", "live")),
+            "active": bool(STATE.get("active", True)),
+            "uptime_seconds": int(time.time() - _START_TS) if "_START_TS" in globals() else 0,
+            "version": "3.0",
+            "ghost_health": 72.5,  # Placeholder
+            "predictions_today": sum(_LAST_MULTI_PREDICTION_COUNTS.values()),
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Cockpit status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/hunter/feed")
+async def api_v3_hunter_feed(limit: int = 10):
+    """
+    Get Hunter news feed for cockpit movers/news panel.
+    
+    Returns recent prediction news/alerts as both 'movers' and 'feed'.
+    """
+    try:
+        # Get recent predictions as news items
+        feed_items = []
+        
+        for symbol, pred in list(_LATEST_PREDICTIONS.items())[:limit]:
+            direction = pred.get("direction", "FLAT")
+            confidence = pred.get("confidence", 0)
+            expected_move = pred.get("expected_move", 0)
+            
+            # Create mover item (compatible with movers panel)
+            feed_items.append({
+                "symbol": symbol,
+                "title": f"Ghost predicts {symbol} {direction} movement ({int(confidence * 100)}%)",
+                "sentiment": "bullish" if direction == "UP" else "bearish" if direction == "DOWN" else "neutral",
+                "timestamp": pred.get("run_at", int(time.time() * 1000)),
+                "source": "Ghost AI",
+                "type": "crypto" if symbol in CRYPTO_SYMBOLS else "stock",  # For movers filtering
+                "change_pct": expected_move,  # Expected price change
+                "confidence": confidence
+            })
+        
+        return {
+            "ok": True,
+            "movers": feed_items,  # For movers panel
+            "feed": feed_items,    # For news panel
+            "count": len(feed_items),
+            "timestamp": int(time.time())
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Hunter feed failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "movers": [],
+            "feed": [],
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/news/feed")
+async def api_v3_news_feed(limit: int = 10):
+    """
+    Get general news feed for cockpit.
+    
+    Alias for hunter feed.
+    """
+    return await api_v3_hunter_feed(limit=limit)
+
+
+@APP.get("/api/v3/predictions/history")
+async def api_v3_predictions_history(limit: int = 100):
+    """
+    Get prediction history for accuracy calculations.
+    
+    Returns recent predictions with outcomes.
+    """
+    try:
+        # Return predictions from in-memory store
+        history = []
+        
+        for symbol, pred in list(_LATEST_PREDICTIONS.items())[:limit]:
+            history.append({
+                "symbol": symbol,
+                "prediction_id": pred.get("prediction_id"),
+                "direction": pred.get("direction", "FLAT"),
+                "confidence": pred.get("confidence", 0),
+                "run_at": pred.get("run_at", 0),
+                "horizon_h": pred.get("horizon_h", 48),
+            })
+        
+        return {
+            "ok": True,
+            "predictions": history,  # UI expects 'predictions' key
+            "history": history,      # Keep for compatibility
+            "count": len(history)
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Prediction history failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "predictions": [],
+            "history": [],
+            "error": str(e)
+        }
+
+
+# ============================================================================
+# END V3 COCKPIT ENDPOINTS
+# ============================================================================
+
+
 def run_prediction(symbol: str, market: str = "stock", horizon: str = "SHORT") -> dict:
     """
     Wrapper function for beast_scheduler and other scheduled prediction systems.
