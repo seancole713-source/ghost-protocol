@@ -1291,7 +1291,8 @@ DEFAULT_CRYPTO_SYMBOLS = [
 STOCK_SYMBOLS = os.getenv("STOCK_SYMBOLS", ",".join(DEFAULT_STOCK_SYMBOLS)).split(",")
 CRYPTO_SYMBOLS = os.getenv("CRYPTO_SYMBOLS", ",".join(DEFAULT_CRYPTO_SYMBOLS)).split(",")
 
-VIP_COINS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
+# VIP COINS — Major crypto tracked on cockpit
+VIP_COINS = ["BTC", "ETH", "SOL", "BNB", "XRP"]
 
 # Multi-symbol prediction health tracking
 _LAST_MULTI_PREDICTION_TIME: float | None = None
@@ -6785,7 +6786,7 @@ async def api_v3_vip_snapshot():
                     "symbol": symbol,
                     "price": price,
                     "change_pct": round(change_pct, 2),
-                    "status": "Live"
+                    "status": "online"
                 })
             
             except Exception as e:
@@ -6795,7 +6796,7 @@ async def api_v3_vip_snapshot():
                     "symbol": symbol,
                     "price": 0,
                     "change_pct": 0.0,
-                    "status": "Error"
+                    "status": "offline"
                 })
         
         return {
