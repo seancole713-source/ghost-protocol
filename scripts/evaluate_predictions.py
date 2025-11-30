@@ -68,7 +68,7 @@ class PredictionEvaluator:
         """)
         self.conn.commit()
     
-    def get_expired_predictions(self, lookback_hours: int = 72) -> List[Dict]:
+    def get_expired_predictions(self, lookback_hours: int = 168) -> List[Dict]:
         """
         Get predictions that have expired (horizon passed) but not yet evaluated.
         
@@ -147,10 +147,21 @@ class PredictionEvaluator:
                     if response.status_code == 200:
                         data = response.json()
                         return float(data["data"]["amount"])
-            elif asset_type == "stock" and turbo_stock_price:
-                result = turbo_stock_price(symbol, max_budget_s=3.0)
-                if result["ok"]:
-                    return result["price"]
+            elif asset_type == "stock":
+                if turbo_stock_price:
+                    result = turbo_stock_price(symbol, max_budget_s=3.0)
+                    if result["ok"]:
+                        return result["price"]
+                else:
+                    # Fallback to Yahoo Finance in standalone mode
+                    import requests
+                    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+                    headers = {"User-Agent": "Mozilla/5.0"}
+                    response = requests.get(url, headers=headers, timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+                        return float(price)
             return None
         except Exception as e:
             print(f"❌ Failed to fetch price for {symbol}: {e}")
