@@ -74,8 +74,9 @@ class WatchlistManager:
         conn.close()
 
     def _load_default_watchlist(self):
-        """Load default watchlist symbols from user data."""
+        """Load expanded default watchlist - NO LIMITS on symbol tracking."""
         default_symbols = [
+            # Original watchlist (preserved for continuity)
             ("WFC", "Wells Fargo & Company"),
             ("SLB", "Schlumberger Limited"),
             ("HLN", "Haleon plc"),
@@ -128,6 +129,92 @@ class WatchlistManager:
             ("MDLZ", "Mondelez International, Inc."),
             ("USB", "U.S. Bancorp"),
             ("CRDO", "Credo Technology Group Holding Ltd"),
+            # Expanded coverage - Mega caps
+            ("AAPL", "Apple Inc."),
+            ("MSFT", "Microsoft Corporation"),
+            ("GOOGL", "Alphabet Inc."),
+            ("AMZN", "Amazon.com Inc."),
+            ("META", "Meta Platforms Inc."),
+            ("TSLA", "Tesla, Inc."),
+            ("NVDA", "NVIDIA Corporation"),
+            ("BRK.B", "Berkshire Hathaway Inc."),
+            # Tech sector expansion
+            ("ORCL", "Oracle Corporation"),
+            ("ADBE", "Adobe Inc."),
+            ("NFLX", "Netflix Inc."),
+            ("INTC", "Intel Corporation"),
+            ("AMD", "Advanced Micro Devices Inc."),
+            ("CSCO", "Cisco Systems Inc."),
+            ("IBM", "International Business Machines"),
+            ("QCOM", "QUALCOMM Incorporated"),
+            ("TXN", "Texas Instruments Incorporated"),
+            ("AVGO", "Broadcom Inc."),
+            # Finance expansion
+            ("JPM", "JPMorgan Chase & Co."),
+            ("BAC", "Bank of America Corporation"),
+            ("GS", "The Goldman Sachs Group Inc."),
+            ("MS", "Morgan Stanley"),
+            ("C", "Citigroup Inc."),
+            ("BLK", "BlackRock Inc."),
+            ("COF", "Capital One Financial Corporation"),
+            ("AXP", "American Express Company"),
+            ("PNC", "The PNC Financial Services Group"),
+            # Healthcare expansion
+            ("UNH", "UnitedHealth Group Incorporated"),
+            ("JNJ", "Johnson & Johnson"),
+            ("PFE", "Pfizer Inc."),
+            ("ABBV", "AbbVie Inc."),
+            ("TMO", "Thermo Fisher Scientific Inc."),
+            ("ABT", "Abbott Laboratories"),
+            ("MRK", "Merck & Co. Inc."),
+            ("LLY", "Eli Lilly and Company"),
+            ("AMGN", "Amgen Inc."),
+            ("GILD", "Gilead Sciences Inc."),
+            ("BMY", "Bristol-Myers Squibb Company"),
+            # Consumer & Retail
+            ("WMT", "Walmart Inc."),
+            ("HD", "The Home Depot Inc."),
+            ("MCD", "McDonald's Corporation"),
+            ("NKE", "NIKE Inc."),
+            ("TGT", "Target Corporation"),
+            ("LOW", "Lowe's Companies Inc."),
+            ("DIS", "The Walt Disney Company"),
+            ("BKNG", "Booking Holdings Inc."),
+            ("ABNB", "Airbnb Inc."),
+            # Energy sector
+            ("XOM", "Exxon Mobil Corporation"),
+            ("CVX", "Chevron Corporation"),
+            ("COP", "ConocoPhillips"),
+            ("EOG", "EOG Resources Inc."),
+            ("PXD", "Pioneer Natural Resources Company"),
+            ("MPC", "Marathon Petroleum Corporation"),
+            ("PSX", "Phillips 66"),
+            ("VLO", "Valero Energy Corporation"),
+            ("OXY", "Occidental Petroleum Corporation"),
+            # Industrials
+            ("BA", "The Boeing Company"),
+            ("CAT", "Caterpillar Inc."),
+            ("GE", "General Electric Company"),
+            ("HON", "Honeywell International Inc."),
+            ("UPS", "United Parcel Service Inc."),
+            ("LMT", "Lockheed Martin Corporation"),
+            ("RTX", "Raytheon Technologies Corporation"),
+            ("MMM", "3M Company"),
+            ("DE", "Deere & Company"),
+            ("UNP", "Union Pacific Corporation"),
+            # High momentum/volatility
+            ("WOLF", "Wolfspeed Inc."),
+            ("GME", "GameStop Corp."),
+            ("AMC", "AMC Entertainment Holdings Inc."),
+            ("PLTR", "Palantir Technologies Inc."),
+            ("SOFI", "SoFi Technologies Inc."),
+            ("RIVN", "Rivian Automotive Inc."),
+            ("LCID", "Lucid Group Inc."),
+            ("NIO", "NIO Inc."),
+            ("SNAP", "Snap Inc."),
+            ("PINS", "Pinterest Inc."),
+            ("UBER", "Uber Technologies Inc."),
+            ("LYFT", "Lyft Inc."),
         ]
 
         conn = sqlite3.connect(str(self.db_path))

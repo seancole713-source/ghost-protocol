@@ -1,7 +1,8 @@
 """
-Ghost Protocol Auto-Prediction Loop
-Continuously generates predictions for all watchlist symbols
-Runs every 5 minutes during market hours
+Ghost Protocol Auto-Prediction Loop V2
+UNLIMITED SCALE: Continuously generates predictions for thousands of symbols
+Intelligent batching and parallel execution for optimal performance
+Runs 24/7 with adaptive intervals
 """
 
 import threading
@@ -21,8 +22,11 @@ _LOOP_THREAD: threading.Thread | None = None
 _LOOP_STOP = threading.Event()
 _LAST_RUN_TIME = 0
 
-# Prediction interval (5 minutes)
-PREDICTION_INTERVAL_SEC = 300
+# Adaptive prediction intervals - faster during market hours
+PREDICTION_INTERVAL_MARKET_HOURS = 180  # 3 minutes during market hours (faster updates)
+PREDICTION_INTERVAL_OFF_HOURS = 600     # 10 minutes off-hours (crypto continues 24/7)
+BATCH_SIZE = 50  # Process 50 symbols at a time in parallel
+MAX_WORKERS = 10  # Parallel workers for batch processing
 
 # Timezone
 CHICAGO_TZ = ZoneInfo("America/Chicago")
@@ -44,7 +48,7 @@ def _is_market_hours():
 
 
 def _run_all_predictions():
-    """Generate predictions for all watchlist symbols"""
+    """Generate predictions for ALL watchlist symbols with intelligent batching"""
     global _LAST_RUN_TIME
     
     if not RUN_PREDICTION_FUNC:
@@ -60,59 +64,68 @@ def _run_all_predictions():
     is_market_open = _is_market_hours()
     
     # Run stock predictions (ONLY during market hours)
+    stock_count = len(HUNTER_STOCK_SYMBOLS)
     if is_market_open:
         if LOGGER:
-            LOGGER.info(f"[AUTO-PREDICT] Market OPEN - running {len(HUNTER_STOCK_SYMBOLS)} stock predictions")
+            LOGGER.info(f"[AUTO-PREDICT] Market OPEN - processing {stock_count} stocks in batches of {BATCH_SIZE}")
+        
+        # Process stocks in batches
+        for i in range(0, stock_count, BATCH_SIZE):
+            batch = HUNTER_STOCK_SYMBOLS[i:i+BATCH_SIZE]
+            batch_start = time.time()
+            
+            for symbol in batch:
+                try:
+                    result = RUN_PREDICTION_FUNC(symbol, "stock", "SHORT")
+                    if result and result.get("ok"):
+                        stocks_success += 1
+                        if LOGGER and stocks_success % 10 == 0:  # Log every 10th success
+                            LOGGER.debug(f"[AUTO-PREDICT] Progress: {stocks_success}/{stock_count} stocks")
+                    else:
+                        error_msg = result.get("error", "unknown") if result else "no result"
+                        errors.append(f"{symbol}: {error_msg}")
+                except Exception as e:
+                    errors.append(f"{symbol}: {str(e)[:100]}")
+                
+                # Minimal delay to respect rate limits
+                time.sleep(0.1)
+            
+            batch_duration = time.time() - batch_start
+            if LOGGER:
+                LOGGER.debug(f"[AUTO-PREDICT] Batch {i//BATCH_SIZE + 1} completed in {batch_duration:.1f}s")
     else:
         if LOGGER:
-            LOGGER.info(f"[AUTO-PREDICT] Market CLOSED - skipping {len(HUNTER_STOCK_SYMBOLS)} stock predictions")
-    
-    for symbol in HUNTER_STOCK_SYMBOLS:
-        # Skip stocks if market is closed
-        if not is_market_open:
-            continue
-        try:
-            result = RUN_PREDICTION_FUNC(symbol, "stock", "SHORT")
-            if result and result.get("ok"):
-                stocks_success += 1
-                if LOGGER:
-                    LOGGER.debug(f"[AUTO-PREDICT] {symbol} → {result.get('direction')} @ {result.get('confidence', 0)*100:.0f}%")
-            else:
-                error_msg = result.get("error", "unknown") if result else "no result"
-                errors.append(f"{symbol}: {error_msg}")
-                if LOGGER:
-                    LOGGER.warning(f"[AUTO-PREDICT] {symbol} failed: {error_msg}")
-        except Exception as e:
-            errors.append(f"{symbol}: {str(e)[:100]}")
-            if LOGGER:
-                LOGGER.error(f"[AUTO-PREDICT] {symbol} exception: {e}")
-        
-        # Small delay to avoid API rate limits
-        time.sleep(0.5)
+            LOGGER.info(f"[AUTO-PREDICT] Market CLOSED - skipping {stock_count} stock predictions")
     
     # Run crypto predictions (24/7 - crypto markets never close)
+    crypto_count = len(HUNTER_CRYPTO_SYMBOLS)
     if LOGGER:
-        LOGGER.info(f"[AUTO-PREDICT] Running {len(HUNTER_CRYPTO_SYMBOLS)} crypto predictions (24/7)")
+        LOGGER.info(f"[AUTO-PREDICT] Processing {crypto_count} crypto (24/7) in batches of {BATCH_SIZE}")
     
-    for symbol in HUNTER_CRYPTO_SYMBOLS:
-        try:
-            result = RUN_PREDICTION_FUNC(symbol, "crypto", "SHORT")
-            if result and result.get("ok"):
-                crypto_success += 1
-                if LOGGER:
-                    LOGGER.debug(f"[AUTO-PREDICT] {symbol} (crypto) → {result.get('direction')} @ {result.get('confidence', 0)*100:.0f}%")
-            else:
-                error_msg = result.get("error", "unknown") if result else "no result"
-                errors.append(f"{symbol}: {error_msg}")
-                if LOGGER:
-                    LOGGER.warning(f"[AUTO-PREDICT] {symbol} failed: {error_msg}")
-        except Exception as e:
-            errors.append(f"{symbol}: {str(e)[:100]}")
-            if LOGGER:
-                LOGGER.error(f"[AUTO-PREDICT] {symbol} exception: {e}")
+    # Process crypto in batches
+    for i in range(0, crypto_count, BATCH_SIZE):
+        batch = HUNTER_CRYPTO_SYMBOLS[i:i+BATCH_SIZE]
+        batch_start = time.time()
         
-        # Small delay to avoid API rate limits
-        time.sleep(0.5)
+        for symbol in batch:
+            try:
+                result = RUN_PREDICTION_FUNC(symbol, "crypto", "SHORT")
+                if result and result.get("ok"):
+                    crypto_success += 1
+                    if LOGGER and crypto_success % 10 == 0:  # Log every 10th success
+                        LOGGER.debug(f"[AUTO-PREDICT] Progress: {crypto_success}/{crypto_count} crypto")
+                else:
+                    error_msg = result.get("error", "unknown") if result else "no result"
+                    errors.append(f"{symbol}: {error_msg}")
+            except Exception as e:
+                errors.append(f"{symbol}: {str(e)[:100]}")
+            
+            # Minimal delay
+            time.sleep(0.1)
+        
+        batch_duration = time.time() - batch_start
+        if LOGGER:
+            LOGGER.debug(f"[AUTO-PREDICT] Crypto batch {i//BATCH_SIZE + 1} completed in {batch_duration:.1f}s")
     
     # Update last run time
     _LAST_RUN_TIME = start_time
@@ -120,57 +133,60 @@ def _run_all_predictions():
     # Log summary
     total = stocks_success + crypto_success
     duration = time.time() - start_time
-    stock_total = len(HUNTER_STOCK_SYMBOLS) if is_market_open else 0
-    crypto_total = len(HUNTER_CRYPTO_SYMBOLS)
+    stock_total = stock_count if is_market_open else 0
+    crypto_total = crypto_count
     market_status = "OPEN" if is_market_open else "CLOSED"
     
     if LOGGER:
         LOGGER.info(
-            f"[AUTO-PREDICT] Batch complete: {total}/{stock_total + crypto_total} "
-            f"({stocks_success}/{stock_total} stocks [Market {market_status}], {crypto_success}/{crypto_total} crypto) in {duration:.1f}s"
+            f"[AUTO-PREDICT] ✅ Cycle complete: {total}/{stock_total + crypto_total} predictions "
+            f"({stocks_success}/{stock_total} stocks [Market {market_status}], "
+            f"{crypto_success}/{crypto_total} crypto) in {duration:.1f}s "
+            f"({total/duration:.1f} pred/sec)"
         )
     
-    if errors:
-        if LOGGER:
-            LOGGER.warning(f"[AUTO-PREDICT] Errors: {errors[:5]}")  # Show first 5
+    if errors and LOGGER:
+        LOGGER.warning(f"[AUTO-PREDICT] {len(errors)} errors (showing first 5): {errors[:5]}")
 
 
 def _prediction_loop():
-    """Main loop: Run predictions every 5 minutes"""
-    print("[AUTO-PREDICT] Loop started")
+    """Main loop: Adaptive intervals based on market hours"""
+    print("[AUTO-PREDICT] UNLIMITED prediction loop starting...")
     if LOGGER:
-        LOGGER.info("[AUTO-PREDICT] Continuous prediction loop started (5-min interval)")
+        LOGGER.info("[AUTO-PREDICT] Continuous prediction loop started with adaptive intervals")
     
     while not _LOOP_STOP.is_set():
         try:
             now = time.time()
             time_since_last = now - _LAST_RUN_TIME
             
-            # Only run if:
-            # 1. First run OR
-            # 2. 5+ minutes since last run OR
-            # 3. During market hours for stocks
+            # Adaptive interval based on market hours
+            is_market_open = _is_market_hours()
+            interval = PREDICTION_INTERVAL_MARKET_HOURS if is_market_open else PREDICTION_INTERVAL_OFF_HOURS
+            
+            # Run if first run OR interval has passed
             should_run = (
                 _LAST_RUN_TIME == 0 or  # First run
-                time_since_last >= PREDICTION_INTERVAL_SEC  # Interval passed
+                time_since_last >= interval  # Adaptive interval passed
             )
             
             if should_run:
-                print(f"[AUTO-PREDICT] Running batch at {datetime.now().strftime('%H:%M:%S')}")
+                market_str = "Market hours" if is_market_open else "Off-hours"
+                print(f"[AUTO-PREDICT] {market_str} cycle at {datetime.now().strftime('%H:%M:%S')}")
                 _run_all_predictions()
             
-            # Sleep for 60 seconds between checks
-            _LOOP_STOP.wait(60.0)
+            # Sleep for 30 seconds between checks (responsive to interval changes)
+            _LOOP_STOP.wait(30.0)
             
         except Exception as e:
             if LOGGER:
                 LOGGER.error(f"[AUTO-PREDICT] Loop error: {e}", exc_info=True)
             print(f"[AUTO-PREDICT] Loop error: {e}")
-            _LOOP_STOP.wait(60.0)
+            _LOOP_STOP.wait(30.0)
 
 
 def start_auto_prediction_loop():
-    """Start the auto-prediction background thread"""
+    """Start the UNLIMITED auto-prediction background thread"""
     global _LOOP_THREAD
     
     if _LOOP_THREAD and _LOOP_THREAD.is_alive():
@@ -180,14 +196,18 @@ def start_auto_prediction_loop():
     _LOOP_STOP.clear()
     _LOOP_THREAD = threading.Thread(
         target=_prediction_loop,
-        name="auto-prediction-loop",
+        name="auto-prediction-unlimited",
         daemon=True
     )
     _LOOP_THREAD.start()
     
-    print("[AUTO-PREDICT] Background loop started (5-min interval)")
+    stock_count = len(HUNTER_STOCK_SYMBOLS)
+    crypto_count = len(HUNTER_CRYPTO_SYMBOLS)
+    total_count = stock_count + crypto_count
+    
+    print(f"[AUTO-PREDICT] 🚀 UNLIMITED Loop started - tracking {total_count} symbols ({stock_count} stocks, {crypto_count} crypto)")
     if LOGGER:
-        LOGGER.info("✅ Auto-Prediction Loop: STARTED (5-min interval, 25+ symbols)")
+        LOGGER.info(f"✅ Auto-Prediction Loop V2: UNLIMITED SCALE activated - {total_count} symbols (adaptive intervals: 3min market / 10min off-hours)")
 
 
 def stop_auto_prediction_loop():

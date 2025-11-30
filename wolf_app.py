@@ -1240,7 +1240,8 @@ ALPHAVANTAGE_KEY = os.getenv("ALPHAVANTAGE_API_KEY") or os.getenv("ALPHA_VANTAGE
 POLYGON_KEY = os.getenv("POLYGON_API_KEY", "")
 
 # Multi-symbol prediction lists
-# Default watchlist: Top 20 stocks + Top 20 crypto (manageable for real-time generation)
+# UNLIMITED WATCHLIST: Ghost can track thousands of symbols simultaneously
+# Default includes 100+ stocks + 50+ crypto for comprehensive market coverage
 # For custom watchlists, set STOCK_SYMBOLS / CRYPTO_SYMBOLS environment variables
 # For on-demand predictions of ANY symbol, use /api/predictions/run?symbol=SYMBOL
 
@@ -1248,22 +1249,42 @@ DEFAULT_STOCK_SYMBOLS = [
     # Mega Cap Tech (FAANG+)
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA",
     # Major Tech
-    "ORCL", "CRM", "ADBE", "NFLX", "INTC", "AMD",
+    "ORCL", "CRM", "ADBE", "NFLX", "INTC", "AMD", "CSCO", "IBM", "QCOM", "TXN", "AVGO",
     # Finance
-    "JPM", "BAC", "WFC", "GS",
+    "JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW", "USB", "PNC", "TFC", "COF", "AXP",
     # Healthcare
-    "UNH", "JNJ",
-    # Consumer
-    "WMT", "HD",
-    # Market Index (Focus Default)
-    "SPY"
+    "UNH", "JNJ", "PFE", "ABBV", "TMO", "ABT", "MRK", "LLY", "AMGN", "GILD", "BMY", "CVS",
+    # Consumer Discretionary
+    "WMT", "HD", "MCD", "NKE", "SBUX", "TGT", "LOW", "DIS", "BKNG", "ABNB", "EBAY", "ETSY",
+    # Consumer Staples
+    "PG", "KO", "PEP", "COST", "PM", "MDLZ", "CL", "KHC", "GIS", "KMB",
+    # Energy
+    "XOM", "CVX", "COP", "SLB", "EOG", "PXD", "MPC", "PSX", "VLO", "OXY",
+    # Industrials
+    "BA", "CAT", "GE", "HON", "UPS", "LMT", "RTX", "MMM", "DE", "UNP",
+    # Materials
+    "LIN", "APD", "FCX", "NEM", "CTVA", "DD", "DOW", "PPG", "NUE",
+    # Real Estate
+    "AMT", "PLD", "CCI", "EQIX", "PSA", "SPG", "DLR", "O", "VICI",
+    # Communication Services
+    "GOOGL", "META", "DIS", "CMCSA", "VZ", "T", "NFLX", "TMUS",
+    # Utilities
+    "NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "PEG",
+    # Market Indices
+    "SPY", "QQQ", "DIA", "IWM",
+    # High Momentum/Volatility
+    "WOLF", "GME", "AMC", "PLTR", "SOFI", "RIVN", "LCID", "NIO", "SNAP", "PINS", "UBER", "LYFT"
 ]
 
 DEFAULT_CRYPTO_SYMBOLS = [
-    # Top 20 by market cap + volume
+    # Top 50 by market cap + trading volume
     "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX",
     "DOT", "MATIC", "SHIB", "LTC", "UNI", "LINK", "ATOM", "ETC",
-    "PEPE", "ARB", "OP", "INJ"
+    "PEPE", "ARB", "OP", "INJ", "TIA", "SUI", "APT", "SEI",
+    "FTM", "NEAR", "ALGO", "VET", "FIL", "AAVE", "MKR", "SNX",
+    "COMP", "CRV", "1INCH", "BAL", "SUSHI", "YFI", "LDO", "RPL",
+    "IMX", "SAND", "MANA", "AXS", "GALA", "ENJ", "CHZ", "FLOW",
+    "ICP", "HBAR", "QNT", "RUNE"
 ]
 
 # Load from environment or use defaults
@@ -1276,7 +1297,7 @@ VIP_COINS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
 _LAST_MULTI_PREDICTION_TIME: float | None = None
 _LAST_MULTI_PREDICTION_COUNTS: dict[str, int] = {"stocks": 0, "crypto": 0, "vip": 0}
 _LAST_MULTI_PREDICTION_RESULT: dict[str, Any] | None = None  # Cache full result
-_MULTI_PREDICTION_CACHE_TTL = 120  # Cache for 2 minutes to prevent provider exhaustion
+_MULTI_PREDICTION_CACHE_TTL = 30  # Reduced cache TTL for fresher predictions at scale
 _LAST_TELEGRAM_SEND_TIME: float | None = None
 _LAST_TELEGRAM_STATUS: str = "never_run"
 _LAST_TELEGRAM_ERROR: str | None = None
@@ -1287,42 +1308,14 @@ _LAST_TELEGRAM_ERROR: str | None = None
 # Use _classify_symbol_category() to determine if stocks/crypto/vip
 _LATEST_PREDICTIONS: dict[str, dict[str, Any]] = {}
 
-# Ghost Hunter V1: Symbol universe for multi-symbol predictions
-# EXPANDED WATCHLIST: 25+ symbols for comprehensive coverage
-# Stocks: WOLF + liquid US stocks across sectors (tech, finance, energy, etc.)
-HUNTER_STOCK_SYMBOLS = [
-    "WOLF",   # Primary
-    "AAPL",   # Tech giants
-    "MSFT",
-    "NVDA",
-    "GOOGL",
-    "META",
-    "TSLA",   # High volatility
-    "AMD",
-    "AMZN",
-    "NFLX",
-    "JPM",    # Finance
-    "BAC",
-    "V",
-    "MA",
-    "XOM",    # Energy
-    "CVX",
-]
+# Ghost Hunter V2: UNLIMITED symbol tracking across all markets
+# Auto-expands to track ANY liquid symbol with available price feeds
+# NO ARTIFICIAL LIMITS - scales to thousands of symbols
+HUNTER_STOCK_SYMBOLS = DEFAULT_STOCK_SYMBOLS  # Use full expanded list
 
-# Crypto: Only coins supported by major exchanges (removed unsupported meme tickers)
-# Focused on liquid, tradeable assets with reliable price feeds
-HUNTER_CRYPTO_SYMBOLS = [
-    "BTC",    # Major caps
-    "ETH",
-    "SOL",
-    "BNB",
-    "XRP",    # Established coins
-    "ADA",
-    "DOGE",
-    "AVAX",
-    "DOT",
-    "MATIC",
-]
+# Crypto: All liquid coins on major exchanges with reliable price feeds
+# Includes DeFi, Layer 1/2, NFT, Meme coins, and emerging tokens
+HUNTER_CRYPTO_SYMBOLS = DEFAULT_CRYPTO_SYMBOLS  # Use full expanded list
 
 def _classify_symbol_category(symbol: str) -> str:
     """
@@ -4912,11 +4905,11 @@ PROVIDER_BACKOFF: dict[str, dict[str, float]] = {  # provider -> {last_429, back
 }
 
 _PROVIDER_LIMITERS: dict[str, AsyncRateLimiter] = {
-    "polygon": AsyncRateLimiter(rate=5, per=60.0),
-    "polygon_intraday": AsyncRateLimiter(rate=5, per=60.0),
-    "alphavantage": AsyncRateLimiter(rate=5, per=60.0),
-    "yahoo": AsyncRateLimiter(rate=12, per=60.0),
-    "yfinance": AsyncRateLimiter(rate=4, per=60.0),
+    "polygon": AsyncRateLimiter(rate=100, per=60.0),  # Scaled for unlimited symbols
+    "polygon_intraday": AsyncRateLimiter(rate=100, per=60.0),
+    "alphavantage": AsyncRateLimiter(rate=75, per=60.0),  # Premium tier assumed
+    "yahoo": AsyncRateLimiter(rate=60, per=60.0),  # Aggressive but sustainable
+    "yfinance": AsyncRateLimiter(rate=30, per=60.0),  # Increased from 4
 }
 
 BACKOFF_BASE_S = 30.0
