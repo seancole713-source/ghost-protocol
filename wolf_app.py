@@ -6481,6 +6481,89 @@ async def api_accuracy_reconcile():
         }
 
 
+@APP.post("/api/v3/predictions/evaluate")
+async def api_evaluate_predictions():
+    """
+    Manually trigger prediction evaluation.
+    
+    Evaluates all expired predictions (horizon has passed) and writes outcomes.
+    This is the same logic as the daily cron job.
+    
+    Returns:
+        {
+            "ok": true,
+            "evaluated": 12,
+            "correct": 9,
+            "accuracy": 0.75,
+            "skipped": 3,
+            "execution_time_s": 5.2
+        }
+    """
+    try:
+        import subprocess
+        import time as time_module
+        
+        start_time = time_module.time()
+        
+        # Run the evaluator script
+        result = subprocess.run(
+            ["python3", "scripts/evaluate_predictions.py"],
+            cwd="/app",  # Railway app directory
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        execution_time = time_module.time() - start_time
+        
+        # Parse output for metrics
+        evaluated = 0
+        correct = 0
+        accuracy = 0.0
+        
+        if result.returncode == 0:
+            # Try to extract metrics from output
+            for line in result.stdout.split('\n'):
+                if 'Evaluated:' in line:
+                    parts = line.split('Evaluated:')[1].strip().split('/')
+                    if len(parts) == 2:
+                        evaluated = int(parts[0])
+                if 'Correct:' in line and '(' in line:
+                    parts = line.split('Correct:')[1].strip().split('/')
+                    if len(parts) >= 2:
+                        correct = int(parts[0])
+                        pct_str = parts[1].split('(')[1].split('%')[0]
+                        accuracy = float(pct_str) / 100.0
+            
+            return {
+                "ok": True,
+                "evaluated": evaluated,
+                "correct": correct,
+                "accuracy": accuracy,
+                "execution_time_s": round(execution_time, 2),
+                "output": result.stdout[-500:] if len(result.stdout) > 500 else result.stdout  # Last 500 chars
+            }
+        else:
+            return {
+                "ok": False,
+                "error": f"Evaluator script failed with code {result.returncode}",
+                "stderr": result.stderr[-500:] if result.stderr else "",
+                "execution_time_s": round(execution_time, 2)
+            }
+    
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "error": "Evaluation timed out (>60s)"
+        }
+    except Exception as e:
+        LOGGER.error(f"Evaluation failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
 def run_prediction(symbol: str, market: str = "stock", horizon: str = "SHORT") -> dict:
     """
     Wrapper function for beast_scheduler and other scheduled prediction systems.
