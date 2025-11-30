@@ -6502,13 +6502,16 @@ async def api_evaluate_predictions():
     try:
         import subprocess
         import time as time_module
+        from pathlib import Path
         
         start_time = time_module.time()
         
+        # Determine script path (works both locally and on Railway)
+        script_path = Path(__file__).parent / "scripts" / "evaluate_predictions.py"
+        
         # Run the evaluator script
         result = subprocess.run(
-            ["python3", "scripts/evaluate_predictions.py"],
-            cwd="/app",  # Railway app directory
+            ["python3", str(script_path)],
             capture_output=True,
             text=True,
             timeout=60
