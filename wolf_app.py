@@ -6609,13 +6609,6 @@ async def api_migrate_outcomes_table():
             "ok": False,
             "error": str(e)
         }
-        }
-    except Exception as e:
-        LOGGER.error(f"Evaluation failed: {e}", exc_info=True)
-        return {
-            "ok": False,
-            "error": str(e)
-        }
 
 
 def run_prediction(symbol: str, market: str = "stock", horizon: str = "SHORT") -> dict:
