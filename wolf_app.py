@@ -6914,6 +6914,57 @@ async def api_v3_cockpit_status():
         }
 
 
+@APP.post("/api/cockpit/start")
+async def api_cockpit_start():
+    """Start the Ghost prediction engine."""
+    try:
+        STATE["active"] = True
+        _add_event("control", "Engine started via cockpit", {"active": True})
+        return {
+            "ok": True,
+            "active": True,
+            "message": "Engine started"
+        }
+    except Exception as e:
+        LOGGER.error(f"Cockpit start failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/cockpit/stop")
+async def api_cockpit_stop():
+    """Stop the Ghost prediction engine."""
+    try:
+        STATE["active"] = False
+        _add_event("control", "Engine stopped via cockpit", {"active": False})
+        return {
+            "ok": True,
+            "active": False,
+            "message": "Engine stopped"
+        }
+    except Exception as e:
+        LOGGER.error(f"Cockpit stop failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/cockpit/reset")
+async def api_cockpit_reset():
+    """Reset the Ghost state (clear positions)."""
+    try:
+        STATE["qty"] = 0.0
+        STATE["avg_cost"] = 0.0
+        _persist_save()
+        _add_event("state.reset", "State reset via cockpit", {"qty": 0.0, "avg_cost": 0.0})
+        return {
+            "ok": True,
+            "active": bool(STATE.get("active", True)),
+            "reset": True,
+            "message": "State reset"
+        }
+    except Exception as e:
+        LOGGER.error(f"Cockpit reset failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/api/v3/hunter/feed")
 async def api_v3_hunter_feed(limit: int = 10):
     """
