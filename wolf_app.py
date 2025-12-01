@@ -6675,8 +6675,11 @@ async def api_v3_watchlist_enriched():
     try:
         watchlist_data = []
         
-        # Get top 20 symbols (mix of stocks and crypto)
-        symbols_to_check = STOCK_SYMBOLS[:10] + CRYPTO_SYMBOLS[:10]
+        # Get symbols from latest predictions if available, otherwise use defaults
+        if _LATEST_PREDICTIONS:
+            symbols_to_check = list(_LATEST_PREDICTIONS.keys())[:20]
+        else:
+            symbols_to_check = STOCK_SYMBOLS[:10] + CRYPTO_SYMBOLS[:10]
         
         for symbol in symbols_to_check:
             try:
@@ -6896,14 +6899,32 @@ async def api_v3_cockpit_status():
     Returns mode, active status, uptime, etc.
     """
     try:
+        # Calculate health score from recent predictions
+        total_predictions = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
+        health_score = min(100, total_predictions * 5)  # 5 points per prediction, max 100
+        
+        # Calculate grade based on score
+        if health_score >= 90:
+            grade = "A"
+        elif health_score >= 80:
+            grade = "B"
+        elif health_score >= 70:
+            grade = "C"
+        elif health_score >= 60:
+            grade = "D"
+        else:
+            grade = "F"
+        
         return {
             "ok": True,
             "mode": str(STATE.get("mode", "live")),
             "active": bool(STATE.get("active", True)),
             "uptime_seconds": int(time.time() - _START_TS) if "_START_TS" in globals() else 0,
             "version": "3.0",
-            "ghost_health": 72.5,  # Placeholder
-            "predictions_today": sum(_LAST_MULTI_PREDICTION_COUNTS.values()),
+            "ghost_health": health_score,
+            "ghost_health_score": health_score,
+            "ghost_health_grade": grade,
+            "predictions_today": total_predictions,
         }
     
     except Exception as e:
@@ -6989,7 +7010,7 @@ async def api_v3_hunter_feed(limit: int = 10):
                 "timestamp": pred.get("run_at", int(time.time() * 1000)),
                 "source": "Ghost AI",
                 "type": "crypto" if symbol in CRYPTO_SYMBOLS else "stock",  # For movers filtering
-                "change_pct": expected_move,  # Expected price change
+                "change_pct": round(expected_move * 100, 2) if expected_move else round(confidence * 2, 2),  # Convert to percentage
                 "confidence": confidence
             })
         
