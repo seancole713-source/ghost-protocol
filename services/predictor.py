@@ -190,18 +190,27 @@ def append_actual_points(prediction_id: int, actual_points: list[tuple[float, fl
 
 
 def get_prediction(prediction_id: int) -> Prediction | None:
-    """Get prediction metadata by ID."""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        row = conn.execute(
-            "SELECT id, symbol, run_at, horizon_h, method, confidence, direction, features_json, params_json, tag FROM predictions WHERE id=?",
-            (prediction_id,),
-        ).fetchone()
-        if not row:
-            return None
-        return Prediction(*row)
-    finally:
-        conn.close()
+    """
+    Get prediction metadata by ID.
+    
+    Uses PredictionStore abstraction (supports SQLite or PostgreSQL).
+    """
+    pred_dict = _PREDICTION_STORE.get_prediction(prediction_id)
+    if not pred_dict:
+        return None
+    
+    return Prediction(
+        id=pred_dict["id"],
+        symbol=pred_dict["symbol"],
+        run_at=pred_dict["run_at"],
+        horizon_h=pred_dict["horizon_h"],
+        method=pred_dict["method"],
+        confidence=pred_dict["confidence"],
+        direction=pred_dict["direction"],
+        features_json=pred_dict["features_json"],
+        params_json=pred_dict["params_json"],
+        tag=pred_dict["tag"],
+    )
 
 
 def get_prediction_points(prediction_id: int, kind: str | None = None) -> list[PredictionPoint]:
@@ -224,18 +233,27 @@ def get_prediction_points(prediction_id: int, kind: str | None = None) -> list[P
 
 
 def get_latest_prediction(symbol: str) -> Prediction | None:
-    """Get most recent prediction for a symbol."""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        row = conn.execute(
-            "SELECT id, symbol, run_at, horizon_h, method, confidence, direction, features_json, params_json, tag FROM predictions WHERE symbol=? ORDER BY run_at DESC LIMIT 1",
-            (symbol,),
-        ).fetchone()
-        if not row:
-            return None
-        return Prediction(*row)
-    finally:
-        conn.close()
+    """
+    Get most recent prediction for a symbol.
+    
+    Uses PredictionStore abstraction (supports SQLite or PostgreSQL).
+    """
+    pred_dict = _PREDICTION_STORE.get_latest_prediction(symbol)
+    if not pred_dict:
+        return None
+    
+    return Prediction(
+        id=pred_dict["id"],
+        symbol=pred_dict["symbol"],
+        run_at=pred_dict["run_at"],
+        horizon_h=pred_dict["horizon_h"],
+        method=pred_dict["method"],
+        confidence=pred_dict["confidence"],
+        direction=pred_dict["direction"],
+        features_json=pred_dict["features_json"],
+        params_json=pred_dict["params_json"],
+        tag=pred_dict["tag"],
+    )
 
 
 def get_prediction_history(symbol: str, limit: int = 20) -> list[dict[str, Any]]:
