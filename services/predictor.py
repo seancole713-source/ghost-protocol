@@ -17,10 +17,16 @@ from typing import Any
 
 import numpy as np
 
+# Import prediction store abstraction
+from core.prediction_store import get_prediction_store
+
 LOGGER = logging.getLogger("ghost.predictor")
 
-# Database path
+# Database path (legacy, now used by prediction_store)
 DB_PATH = os.getenv("GHOST_PREDICT_DB", "./data/ghost_predictions.db")
+
+# Global prediction store instance
+_PREDICTION_STORE = get_prediction_store()
 
 
 @dataclass
@@ -156,47 +162,19 @@ def create_prediction(
     Returns:
         prediction_id
     """
-    run_at = time.time()
-    horizon_h = 48
-
-    features_json = json.dumps(features or {})
-    params_json = json.dumps(params or {})
-
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        cursor = conn.execute(
-            """
-            INSERT INTO predictions (symbol, run_at, horizon_h, method, confidence, direction, features_json, params_json, tag)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                symbol,
-                run_at,
-                horizon_h,
-                method,
-                confidence,
-                direction,
-                features_json,
-                params_json,
-                tag,
-            ),
-        )
-        prediction_id = cursor.lastrowid
-
-        # Insert forecast points
-        for ts, price in forecast_points:
-            conn.execute(
-                "INSERT INTO prediction_points (prediction_id, ts, kind, price) VALUES (?, ?, 'forecast', ?)",
-                (prediction_id, ts, price),
-            )
-
-        conn.commit()
-        LOGGER.info(
-            f"Created prediction {prediction_id} for {symbol} with {len(forecast_points)} forecast points"
-        )
-        return prediction_id
-    finally:
-        conn.close()
+    # Use PredictionStore abstraction (handles SQLite or PostgreSQL)
+    prediction_id = _PREDICTION_STORE.save_prediction(
+        symbol=symbol,
+        forecast_points=forecast_points,
+        method=method,
+        confidence=confidence,
+        direction=direction,
+        features=features or {},
+        params=params or {"horizon_h": 48},
+        tag=tag,
+    )
+    
+    return prediction_id
 
 
 def append_actual_points(prediction_id: int, actual_points: list[tuple[float, float]]):
@@ -207,23 +185,8 @@ def append_actual_points(prediction_id: int, actual_points: list[tuple[float, fl
         prediction_id: Prediction ID
         actual_points: List of (timestamp, price) tuples
     """
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        for ts, price in actual_points:
-            # Check if point already exists
-            existing = conn.execute(
-                "SELECT 1 FROM prediction_points WHERE prediction_id=? AND ts=? AND kind='actual'",
-                (prediction_id, ts),
-            ).fetchone()
-            if not existing:
-                conn.execute(
-                    "INSERT INTO prediction_points (prediction_id, ts, kind, price) VALUES (?, ?, 'actual', ?)",
-                    (prediction_id, ts, price),
-                )
-        conn.commit()
-        LOGGER.debug(f"Appended {len(actual_points)} actual points to prediction {prediction_id}")
-    finally:
-        conn.close()
+    # Use PredictionStore abstraction
+    _PREDICTION_STORE.append_actual_points(prediction_id, actual_points)
 
 
 def get_prediction(prediction_id: int) -> Prediction | None:

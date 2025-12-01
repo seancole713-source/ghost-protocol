@@ -7026,13 +7026,23 @@ async def api_v3_hunter_feed(limit: int = 10):
             direction = pred.get("direction", "FLAT")
             confidence = pred.get("confidence", 0) or 0
             confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
+            
+            # Calculate expected move as percentage directly
             expected_move = pred.get("expected_move")
             if expected_move is None:
-                direction_multiplier = 1 if direction == "UP" else -1 if direction == "DOWN" else 0
-                expected_move = ((confidence_pct - 50) * 0.4 * direction_multiplier) / 100
-
-            change_pct = expected_move * 100 if expected_move is not None else 0.0
-            change_pct = round(change_pct or 0.0, 2)
+                # For UP/DOWN: scale confidence to expected move (40-85% confidence → 1-5% move)
+                # For FLAT: minimal move
+                if direction == "UP":
+                    change_pct = ((confidence_pct - 40) / 10) + 1.0  # 40% → 1%, 85% → 5.5%
+                elif direction == "DOWN":
+                    change_pct = -(((confidence_pct - 40) / 10) + 1.0)  # Negative
+                else:
+                    change_pct = 0.5 if confidence_pct > 50 else -0.5  # Small flat move
+            else:
+                # If expected_move exists, assume it's already a decimal (0.02 = 2%)
+                change_pct = expected_move * 100
+            
+            change_pct = round(change_pct, 2)
 
             feed_items.append({
                 "symbol": symbol,
@@ -7126,13 +7136,19 @@ async def api_v3_predictions_history(limit: int = 100):
                 "confidence": pred.get("confidence", 0),
                 "run_at": pred.get("run_at", 0),
                 "horizon_h": pred.get("horizon_h", 48),
+                "price_at_prediction": pred.get("price_at_prediction"),
+                "provider": pred.get("provider", "unknown"),
+                # Add mock outcome for now (will be replaced with real tracking later)
+                "closed": False,
+                "accuracy": None
             })
         
         return {
             "ok": True,
             "predictions": history,  # UI expects 'predictions' key
             "history": history,      # Keep for compatibility
-            "count": len(history)
+            "count": len(history),
+            "timestamp": int(time.time())
         }
     
     except Exception as e:
