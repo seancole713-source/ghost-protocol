@@ -221,10 +221,21 @@ async def get_user_watchlist(request: Request, x_api_token: Optional[str] = Head
     try:
         from core.personal_watchlist import get_personal_watchlist_manager
         import time
+        import asyncio
 
         pwm = get_personal_watchlist_manager()
 
-        enriched_items = pwm.get_enriched_watchlist()
+        # Add 5-second timeout to prevent indefinite hangs
+        # If enrichment takes too long, return basic list without predictions
+        try:
+            enriched_items = await asyncio.wait_for(
+                asyncio.to_thread(pwm.get_enriched_watchlist),
+                timeout=5.0
+            )
+        except asyncio.TimeoutError:
+            LOGGER.warning("⚠️ Watchlist enrichment timeout (5s), returning basic list")
+            # Fallback: return unenriched watchlist
+            enriched_items = pwm.get_watchlist()
 
         return {"items": enriched_items, "count": len(enriched_items), "timestamp": time.time()}
 

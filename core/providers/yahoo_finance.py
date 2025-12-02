@@ -77,6 +77,17 @@ class YahooFinanceProvider:
         Returns:
             List of OHLCV bars or None on failure
         """
+        # Skip crypto symbols - Yahoo doesn't support crypto price lookups
+        # Common crypto symbols that appear in logs with 404 errors
+        CRYPTO_SYMBOLS = {'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOT', 'MATIC', 
+                         'AVAX', 'SHIB', 'DOGE', 'LTC', '1INCH', 'AAVE', 'UNI', 'LINK',
+                         'WEPE', 'LILPEPE', 'DORKL', 'SLOTH', 'APC'}  # Ghost VIP coins
+        
+        symbol_upper = symbol.upper().replace('-USD', '').replace('USD', '')
+        if symbol_upper in CRYPTO_SYMBOLS:
+            LOGGER.debug(f"[YAHOO] Skipping crypto symbol {symbol} (not supported)")
+            return None
+        
         # Map interval to Yahoo format
         yahoo_interval = self._map_interval(interval)
         

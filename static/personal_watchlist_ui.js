@@ -8,7 +8,8 @@
 let personalWatchlistState = {
     items: [],
     showAddForm: false,
-    editingSymbol: null
+    editingSymbol: null,
+    activeTab: 'all'  // Default to showing all symbols
 };
 
 // ============================================================================
@@ -31,7 +32,7 @@ async function loadPersonalWatchlist() {
         const data = await response.json();
         personalWatchlistState.items = data.items || [];
         
-        renderPersonalWatchlist(personalWatchlistState.items);
+        renderPersonalWatchlist(getFilteredWatchlistItems());
         
         console.log(`[PERSONAL WATCHLIST] Loaded ${personalWatchlistState.items.length} symbols`);
     } catch (error) {
@@ -64,11 +65,35 @@ async function loadWatchlistFallback() {
             }
         }));
         
-        renderPersonalWatchlist(personalWatchlistState.items);
+        renderPersonalWatchlist(getFilteredWatchlistItems());
     } catch (error) {
         console.error('[PERSONAL WATCHLIST] Fallback error:', error);
         renderPersonalWatchlist([]);
     }
+}
+
+/**
+ * Get filtered watchlist items based on active tab
+ */
+function getFilteredWatchlistItems() {
+    const tab = personalWatchlistState.activeTab;
+    
+    if (tab === 'all') {
+        return personalWatchlistState.items;
+    }
+    
+    // Filter by asset_type: 'stocks' tab => 'stock', 'crypto' tab => 'crypto'
+    const assetType = tab === 'stocks' ? 'stock' : 'crypto';
+    return personalWatchlistState.items.filter(item => item.asset_type === assetType);
+}
+
+/**
+ * Update active tab (called by cockpit_v3.js tab handler)
+ * This function is exposed globally so tab clicks can filter the watchlist
+ */
+function updateWatchlistTab(tabName) {
+    personalWatchlistState.activeTab = tabName;
+    renderPersonalWatchlist(getFilteredWatchlistItems());
 }
 
 // ============================================================================
@@ -524,19 +549,14 @@ function showNotification(message, type = 'info') {
 // ============================================================================
 
 /**
- * Override loadWatchlist from cockpit_v3.js
- * Call this in DOMContentLoaded after cockpit_v3.js is loaded
+ * Personal watchlist module initialization
+ * Works alongside cockpit_v3.js dual-mode watchlist system
  */
 function initPersonalWatchlist() {
-    // Replace basic loadWatchlist with personal watchlist version
-    if (typeof window.loadWatchlist === 'function') {
-        window.loadWatchlist = loadPersonalWatchlist;
-    }
+    // DO NOT override loadWatchlist - let cockpit_v3.js handle mode switching
+    // This module provides loadPersonalWatchlist() which is called by cockpit_v3.js
     
-    // Load initial data
-    loadPersonalWatchlist();
-    
-    console.log('[PERSONAL WATCHLIST] UI module initialized');
+    console.log('[PERSONAL WATCHLIST] UI module initialized and ready');
 }
 
 // Auto-initialize if DOM already loaded
@@ -548,3 +568,4 @@ if (document.readyState === 'loading') {
 } else {
     setTimeout(initPersonalWatchlist, 500);
 }
+

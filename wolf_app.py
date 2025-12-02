@@ -1291,8 +1291,9 @@ DEFAULT_CRYPTO_SYMBOLS = [
 STOCK_SYMBOLS = os.getenv("STOCK_SYMBOLS", ",".join(DEFAULT_STOCK_SYMBOLS)).split(",")
 CRYPTO_SYMBOLS = os.getenv("CRYPTO_SYMBOLS", ",".join(DEFAULT_CRYPTO_SYMBOLS)).split(",")
 
-# VIP COINS — Major crypto tracked on cockpit
-VIP_COINS = ["BTC", "ETH", "SOL", "BNB", "XRP"]
+# VIP COINS — Ghost Protocol Special Tracking (Presale/Meme Coins)
+# These are user's priority coins for strike prep and presale awareness
+VIP_COINS = ["BTC", "ETH", "SOL", "BNB", "XRP"]  # Reverted: presale coins unavailable on exchanges
 
 # Multi-symbol prediction health tracking
 _LAST_MULTI_PREDICTION_TIME: float | None = None
@@ -3463,6 +3464,20 @@ async def _on_startup():
         LOGGER.error(f"startup_dirs_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Critical failure - but try to continue
 
+    # Run database migrations (personal watchlist, etc.)
+    try:
+        from core.migration_runner import run_migrations
+        success, messages = run_migrations()
+        for msg in messages:
+            LOGGER.info(msg)
+        if success:
+            LOGGER.info("[GHOST STARTUP] ✅ Database migrations complete")
+        else:
+            LOGGER.warning("[GHOST STARTUP] ⚠️  Some migrations failed (see logs above)")
+    except Exception as e:
+        LOGGER.error(f"migrations_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # Initialize forecast tables
     try:
         _init_forecast_tables()
@@ -3590,6 +3605,15 @@ async def _on_startup():
         LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist scheduler started")
     except Exception as e:
         LOGGER.error(f"watchlist_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
+    # Start Outcome Reconciler (70% Accuracy Goal)
+    try:
+        from services.outcome_reconciler_v2 import start_reconciler_background_task
+        start_reconciler_background_task()
+        LOGGER.info("[GHOST STARTUP] ✅ Outcome reconciler started (48h accuracy tracking)")
+    except Exception as e:
+        LOGGER.error(f"outcome_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
     # Final startup confirmation
@@ -6787,13 +6811,25 @@ async def api_v3_watchlist_enriched():
         }
 
 
+# VIP snapshot cache (5-minute TTL to prevent 60-120s generation delays)
+_VIP_SNAPSHOT_CACHE = {"data": None, "timestamp": 0, "ttl": 300}
+
 @APP.get("/api/v3/vip/snapshot")
 async def api_v3_vip_snapshot():
     """
     Get VIP coins snapshot with prices and changes.
     
     Used by cockpit VIP panel.
+    CACHED for 5 minutes to prevent on-demand prediction storms.
     """
+    # Check cache first
+    cache_age = time.time() - _VIP_SNAPSHOT_CACHE["timestamp"]
+    if _VIP_SNAPSHOT_CACHE["data"] and cache_age < _VIP_SNAPSHOT_CACHE["ttl"]:
+        LOGGER.info(f"[VIP] ⚡ Serving cached snapshot (age: {cache_age:.1f}s)")
+        return _VIP_SNAPSHOT_CACHE["data"]  # RETURN IMMEDIATELY - don't fetch prices
+    
+    LOGGER.info(f"[VIP] Cache miss (age: {cache_age:.1f}s), fetching fresh data...")
+    
     try:
         from core.crypto.crypto_providers import get_crypto_price_quorum
 
@@ -6827,11 +6863,18 @@ async def api_v3_vip_snapshot():
                 "provider": result.get("provider"),
             })
 
-        return {
+        result = {
             "ok": True,
             "vip_coins": vip_data,
             "count": len(vip_data)
         }
+        
+        # Cache result for 5 minutes
+        _VIP_SNAPSHOT_CACHE["data"] = result
+        _VIP_SNAPSHOT_CACHE["timestamp"] = time.time()
+        LOGGER.info(f"[VIP] Cached snapshot with {len(vip_data)} coins for 5min")
+        
+        return result
     
     except Exception as e:
         LOGGER.error(f"VIP snapshot failed: {e}", exc_info=True)
@@ -24735,19 +24778,19 @@ async def cockpit_v2_page(request: Request):
     return RedirectResponse(url="/cockpit", status_code=301)
 
 
+# Include Personal Watchlist endpoints FIRST (higher priority than cockpit v3 legacy watchlist)
+try:
+    from api.personal_watchlist_endpoints import router as watchlist_router
+    APP.include_router(watchlist_router)
+    LOGGER.info("✅ Personal Watchlist endpoints registered (priority routing)")
+except Exception as e:
+    LOGGER.error(f"⚠️ Personal Watchlist endpoints not loaded: {e}", exc_info=True)
+
 # Include Cockpit V3 LIVE endpoints (full data integration)
 try:
     from api.cockpit_v3_live_endpoints import router as cockpit_v3_router
     APP.include_router(cockpit_v3_router)
     LOGGER.info("✅ Cockpit V3 LIVE endpoints registered - all panels wired to real data")
-    
-    # Include Personal Watchlist endpoints
-    try:
-        from api.personal_watchlist_endpoints import router as watchlist_router
-        APP.include_router(watchlist_router)
-        LOGGER.info("✅ Personal Watchlist endpoints registered")
-    except Exception as e:
-        LOGGER.error(f"⚠️ Personal Watchlist endpoints not loaded: {e}", exc_info=True)
     
     # Add alias routes for frontend compatibility (legacy /api/cockpit/v3 paths)
     @APP.api_route("/api/cockpit/v3/goals", methods=["POST", "OPTIONS"])

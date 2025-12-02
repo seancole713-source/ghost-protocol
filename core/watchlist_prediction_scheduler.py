@@ -140,7 +140,11 @@ class WatchlistPredictionScheduler:
             LOGGER.info(f"✅ Market open predictions complete ({len(stock_symbols)} stocks)")
 
         except Exception as e:
-            LOGGER.error(f"❌ Market open predictions failed: {e}", exc_info=True)
+            # Gracefully handle missing tables (fresh Postgres instance)
+            if "does not exist" in str(e) or "relation" in str(e):
+                LOGGER.warning(f"⚠️  Watchlist tables not yet created - skipping market open predictions")
+            else:
+                LOGGER.error(f"❌ Market open predictions failed: {e}", exc_info=True)
 
     def _run_market_close_predictions(self):
         """Generate predictions for all watchlist stocks at market close."""
@@ -163,7 +167,11 @@ class WatchlistPredictionScheduler:
             LOGGER.info(f"✅ Market close predictions complete ({len(stock_symbols)} stocks)")
 
         except Exception as e:
-            LOGGER.error(f"❌ Market close predictions failed: {e}", exc_info=True)
+            # Gracefully handle missing tables (fresh Postgres instance)
+            if "does not exist" in str(e) or "relation" in str(e):
+                LOGGER.warning(f"⚠️  Watchlist tables not yet created - skipping market close predictions")
+            else:
+                LOGGER.error(f"❌ Market close predictions failed: {e}", exc_info=True)
 
     def _run_big_move_detection(self):
         """Detect big price moves and generate predictions for affected symbols."""
@@ -203,7 +211,11 @@ class WatchlistPredictionScheduler:
                         LOGGER.error(f"❌ Big move prediction failed for {symbol}: {e}")
 
         except Exception as e:
-            LOGGER.error(f"❌ Big move detection failed: {e}", exc_info=True)
+            # Gracefully handle missing tables (fresh Postgres instance)
+            if "does not exist" in str(e) or "relation" in str(e):
+                LOGGER.debug("⚠️  Watchlist tables not yet created - skipping big move detection")
+            else:
+                LOGGER.error(f"❌ Big move detection failed: {e}", exc_info=True)
 
     def _record_price_snapshot(self, watchlist_item: Dict[str, Any]):
         """

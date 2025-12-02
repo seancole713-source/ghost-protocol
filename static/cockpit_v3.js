@@ -4,6 +4,8 @@
 let currentTab = 'stocks';
 let currentForecastSymbol = 'BTC';  // Default to BTC (has active predictions)
 let updateInterval = null;
+let watchlistMode = 'personal';  // 'personal' or 'market'
+let watchlistFilter = 'all';     // 'all', 'stocks', 'crypto'
 
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => {
@@ -25,7 +27,7 @@ function initializeApp() {
     setInterval(() => loadHealthScore(), 30000);  // Goals/Health: every 30s
     setInterval(() => loadForecast(), 15000);  // Forecast: every 15s
     setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s (includes hunter feed)
-    setInterval(() => loadWatchlist(), 15000);  // Watchlist: every 15s
+    setInterval(() => loadWatchlistByMode(), 15000);  // Watchlist: every 15s (mode-aware)
     setInterval(() => loadVIPCoins(), 15000);  // VIP Coins: every 15s
 }
 
@@ -50,11 +52,19 @@ function setupEventListeners() {
         }
     });
     
-    // Tabs
+    // Tabs - handle both mode tabs (data-mode) and filter tabs (data-tab)
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
+            const mode = e.target.dataset.mode;
             const tabType = e.target.dataset.tab;
-            switchTab(e.target.closest('.tabs'), tabType);
+            
+            if (mode) {
+                // Mode tab (Personal/Market)
+                switchTab(e.target.closest('.tabs'), mode);
+            } else if (tabType) {
+                // Filter tab (Stocks/Crypto/All)
+                switchTab(e.target.closest('.tabs'), tabType);
+            }
         });
     });
     
@@ -129,14 +139,41 @@ function updateStatusIndicator(isActive) {
 function switchTab(tabsContainer, tabType) {
     const tabs = tabsContainer.querySelectorAll('.tab');
     tabs.forEach(t => t.classList.remove('active'));
-    tabsContainer.querySelector(`[data-tab="${tabType}"]`).classList.add('active');
-    currentTab = tabType;
     
-    // Reload relevant panel
-    if (tabsContainer.closest('#panel-movers')) {
-        loadTopMovers();
-    } else if (tabsContainer.closest('#panel-watchlist')) {
-        loadWatchlist();
+    // Handle mode tabs (Personal/Market) vs filter tabs (Stocks/Crypto/All)
+    if (tabsContainer.id === 'watchlist-mode-tabs') {
+        // Switching between Personal and Market watchlist
+        const modeButton = tabsContainer.querySelector(`[data-mode="${tabType}"]`);
+        if (modeButton) {
+            modeButton.classList.add('active');
+            watchlistMode = tabType;
+            loadWatchlistByMode();
+        }
+    } else if (tabsContainer.id === 'watchlist-filter-tabs') {
+        // Switching between Stocks/Crypto/All filters
+        const filterButton = tabsContainer.querySelector(`[data-tab="${tabType}"]`);
+        if (filterButton) {
+            filterButton.classList.add('active');
+            watchlistFilter = tabType;
+            // Update filter in personal watchlist OR reload market watchlist
+            if (watchlistMode === 'personal' && typeof updateWatchlistTab === 'function') {
+                updateWatchlistTab(tabType);
+            } else {
+                loadWatchlistByMode();
+            }
+        }
+    } else {
+        // Other panels (top movers, etc.)
+        const button = tabsContainer.querySelector(`[data-tab="${tabType}"]`);
+        if (button) {
+            button.classList.add('active');
+            currentTab = tabType;
+        }
+        
+        // Reload relevant panel
+        if (tabsContainer.closest('#panel-movers')) {
+            loadTopMovers();
+        }
     }
 }
 
@@ -149,7 +186,7 @@ async function loadAllPanels() {
             loadVIPCoins(),
             loadForecast(),
             loadNews(),
-            loadWatchlist(),
+            loadWatchlistByMode(),  // Use mode-aware watchlist loader
             loadHealthScore()
         ]);
     } catch (error) {
@@ -280,6 +317,8 @@ async function loadVIPCoins() {
 }
 
 // Panel 2: Forecast
+let currentForecastSymbol = 'BTC';  // Default symbol
+
 async function loadForecast() {
     try {
         const response = await fetch(`/api/v3/predictions/latest?symbol=${currentForecastSymbol}`);
@@ -290,6 +329,8 @@ async function loadForecast() {
         // V3 format: {predictions: [{direction, confidence, horizon_h}]}
         const predictions = data.predictions || [];
         const pred = predictions[0] || {};
+        
+        console.log(`[GHOST V3] Loaded forecast for ${currentForecastSymbol}:`, pred);
         
         // Generate differentiated forecasts for each timeframe
         // 24h: Full confidence
@@ -395,35 +436,148 @@ async function loadNews() {
 // Panel 4: Accuracy Chart
 async function loadAccuracyChart() {
     try {
-        const response = await fetch('/api/v3/predictions/history?limit=100');
+        const response = await fetch('/api/v3/accuracy/summary');
         if (!response.ok) throw new Error('Failed to load accuracy data');
         
         const data = await response.json();
         renderAccuracyChart(data);
     } catch (error) {
         console.error('[GHOST V3] Error loading accuracy chart:', error);
-        renderAccuracyChart({predictions: []});
+        renderAccuracyChart(null);
     }
 }
 
-function renderAccuracyChart(data) {
+function renderAccuracyChart(accuracyData) {
     const canvas = document.getElementById('accuracy-chart');
     const ctx = canvas.getContext('2d');
     
-    // Simple line chart (can be replaced with Chart.js later)
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = 'var(--accent-green)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
+    // Set canvas size
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
     
-    // Draw placeholder line
-    ctx.moveTo(0, canvas.height / 2);
-    ctx.lineTo(canvas.width, canvas.height / 2);
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (!accuracyData) {
+        // Show error message
+        ctx.fillStyle = 'var(--text-secondary)';
+        ctx.font = '14px var(--font-mono)';
+        ctx.textAlign = 'center';
+        ctx.fillText('No accuracy data available', rect.width / 2, rect.height / 2);
+        return;
+    }
+    
+    // Extract metrics
+    const dailyAcc = accuracyData.daily_accuracy_pct || 0;
+    const weeklyAcc = accuracyData.weekly_accuracy_pct || 0;
+    const monthlyAcc = accuracyData.monthly_accuracy_pct || 0;
+    const status = accuracyData.accuracy_status || 'NO_DATA';
+    const meetsThreshold = accuracyData.meets_70pct_threshold || false;
+    
+    // Draw 70% threshold line
+    const thresholdY = rect.height * 0.3;  // 70% from top = 30% from top (inverted)
+    ctx.strokeStyle = 'rgba(255, 193, 7, 0.3)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(40, thresholdY);
+    ctx.lineTo(rect.width - 20, thresholdY);
     ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Draw threshold label
+    ctx.fillStyle = 'rgba(255, 193, 7, 0.6)';
+    ctx.font = '11px var(--font-mono)';
+    ctx.textAlign = 'left';
+    ctx.fillText('70% TARGET', 45, thresholdY - 5);
+    
+    // Draw bars for Daily / Weekly / Monthly
+    const barWidth = 50;
+    const spacing = 90;
+    const startX = rect.width / 2 - (spacing * 1.5);
+    
+    const bars = [
+        { label: '24h', value: dailyAcc, x: startX + spacing * 0 },
+        { label: '7d', value: weeklyAcc, x: startX + spacing * 1 },
+        { label: '30d', value: monthlyAcc, x: startX + spacing * 2 }
+    ];
+    
+    bars.forEach(bar => {
+        const barHeight = (bar.value / 100) * (rect.height - 80);
+        const barY = rect.height - 40 - barHeight;
+        
+        // Choose color based on value
+        let barColor = 'var(--accent-red)';  // <50%
+        if (bar.value >= 70) barColor = 'var(--accent-green)';  // >=70%
+        else if (bar.value >= 50) barColor = 'var(--accent-yellow)';  // 50-70%
+        
+        // Draw bar
+        ctx.fillStyle = barColor;
+        ctx.fillRect(bar.x, barY, barWidth, barHeight);
+        
+        // Draw value on top
+        ctx.fillStyle = 'var(--text-primary)';
+        ctx.font = 'bold 16px var(--font-mono)';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${bar.value.toFixed(1)}%`, bar.x + barWidth / 2, barY - 10);
+        
+        // Draw label at bottom
+        ctx.fillStyle = 'var(--text-secondary)';
+        ctx.font = '12px var(--font-mono)';
+        ctx.fillText(bar.label, bar.x + barWidth / 2, rect.height - 20);
+    });
+    
+    // Draw status badge
+    ctx.font = 'bold 14px var(--font-mono)';
+    ctx.textAlign = 'center';
+    
+    let statusText = status;
+    let statusColor = 'var(--accent-red)';
+    if (status === 'ACCURATE') {
+        statusText = '✅ ACCURATE';
+        statusColor = 'var(--accent-green)';
+    } else if (status === 'BELOW_TARGET') {
+        statusText = '⚠️ BELOW TARGET';
+        statusColor = 'var(--accent-yellow)';
+    } else {
+        statusText = '❌ NO DATA';
+        statusColor = 'var(--text-secondary)';
+    }
+    
+    ctx.fillStyle = statusColor;
+    ctx.fillText(statusText, rect.width / 2, 25);
+    
+    // Draw prediction count
+    const totalPreds = accuracyData.total_predictions || 0;
+    const correct = accuracyData.correct || 0;
+    const wrong = accuracyData.wrong || 0;
+    
+    ctx.font = '11px var(--font-mono)';
+    ctx.fillStyle = 'var(--text-secondary)';
+    ctx.fillText(`${correct}W / ${wrong}L / ${totalPreds} Total`, rect.width / 2, 45);
 }
 
-// Panel 5: Watchlist
-async function loadWatchlist() {
+// Panel 5: Watchlist - Master loader
+async function loadWatchlistByMode() {
+    if (watchlistMode === 'personal') {
+        // Use personal watchlist from personal_watchlist_ui.js
+        if (typeof loadPersonalWatchlist === 'function') {
+            await loadPersonalWatchlist();
+        } else {
+            console.error('[WATCHLIST] personal_watchlist_ui.js not loaded');
+            renderWatchlist([]);
+        }
+    } else {
+        // Use market watchlist (existing behavior)
+        await loadMarketWatchlist();
+    }
+}
+
+// Panel 5: Market Watchlist (existing default watchlist)
+async function loadMarketWatchlist() {
     try {
         // Use enriched watchlist endpoint that includes live prices
         const response = await fetch('/api/v3/watchlist/enriched');
@@ -457,11 +611,24 @@ async function loadWatchlist() {
             type: item.type
         }));
         
-        renderWatchlist(watchlistData);
+        // Apply filter (stocks/crypto/all)
+        let filteredData = watchlistData;
+        if (watchlistFilter === 'stocks') {
+            filteredData = watchlistData.filter(item => item.type === 'stock');
+        } else if (watchlistFilter === 'crypto') {
+            filteredData = watchlistData.filter(item => item.type === 'crypto');
+        }
+        
+        renderWatchlist(filteredData);
     } catch (error) {
-        console.error('[GHOST V3] Error loading watchlist:', error);
+        console.error('[GHOST V3] Error loading market watchlist:', error);
         renderWatchlist([]);
     }
+}
+
+// Keep old loadWatchlist() as alias for backward compatibility
+async function loadWatchlist() {
+    await loadWatchlistByMode();
 }
 
 function renderWatchlist(data) {
@@ -511,7 +678,8 @@ async function loadHealthScore() {
         
         const data = await response.json();
         
-        const score = data.ghost_score || 0;
+        // Use ghost_health_score (real value from API) instead of ghost_score
+        const score = data.ghost_health_score || data.ghost_health || 0;
         const grade = calculateGrade(score);
         
         document.getElementById('health-score-value').textContent = score > 0 ? score.toFixed(0) : '--';
@@ -610,7 +778,7 @@ function refreshPanel(panel) {
         case 'forecast': loadForecast(); break;
         case 'news': loadNews(); break;
         case 'accuracy': loadAccuracyChart(); break;
-        case 'watchlist': loadWatchlist(); break;
+        case 'watchlist': loadPersonalWatchlist(); break;
         case 'health': loadHealthScore(); break;
     }
 }

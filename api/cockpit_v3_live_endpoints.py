@@ -1042,83 +1042,103 @@ async def get_ai_metrics():
 
 @router.get("/accuracy/summary")
 async def get_accuracy_summary():
-    """Get prediction accuracy metrics from database"""
+    """Get prediction accuracy metrics from ghost_prediction_outcomes table"""
     try:
-        import time
-        from services import predictor
-        from core.prediction_store import get_prediction_store
+        import os
+        import psycopg2
+        from datetime import datetime, timedelta
         
-        store = get_prediction_store()
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            LOGGER.warning("DATABASE_URL not set, returning zero accuracy")
+            return _zero_accuracy_response()
         
-        # Query predictions from last 1/7/30 days
-        now = time.time()
-        day_ago = now - (24 * 3600)
-        week_ago = now - (7 * 24 * 3600)
-        month_ago = now - (30 * 24 * 3600)
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
         
-        # Get recent predictions with outcomes across multiple symbols
-        predictions_data = []
-        for sym in ["BTC", "ETH", "AAPL", "TSLA", "NVDA", "SPY", "QQQ"]:
-            history = predictor.get_prediction_history(sym, limit=50)
-            for pred in history:
-                if pred.get("run_at", 0) >= month_ago:
-                    predictions_data.append(pred)
-        
-        # Sort by timestamp
-        predictions_data = sorted(predictions_data, key=lambda x: x.get("run_at", 0), reverse=True)
-        
-        # Calculate accuracy by time window
-        daily = [p for p in predictions_data if p.get("run_at", 0) >= day_ago]
-        weekly = [p for p in predictions_data if p.get("run_at", 0) >= week_ago]
-        monthly = predictions_data
-        
-        def calc_accuracy(preds):
-            if not preds:
-                return 0.0, 0, 0, 0
+        try:
+            # Use the pre-built accuracy views from migration
+            cursor.execute("SELECT * FROM v_accuracy_24h")
+            daily_row = cursor.fetchone()
             
-            with_outcomes = [p for p in preds if p.get("closed") and p.get("hit_direction") is not None]
-            if not with_outcomes:
-                return 0.0, 0, 0, len(preds)
+            cursor.execute("SELECT * FROM v_accuracy_7d")
+            weekly_row = cursor.fetchone()
             
-            correct = sum(1 for p in with_outcomes if p.get("hit_direction") == 1)
-            return (correct / len(with_outcomes) * 100) if with_outcomes else 0.0, correct, len(with_outcomes), len(preds) - len(with_outcomes)
-            wrong = sum(1 for p in with_outcomes if p[5] == 0)
-            pending = len(preds) - len(with_outcomes)
+            cursor.execute("SELECT * FROM v_accuracy_30d")
+            monthly_row = cursor.fetchone()
             
-            accuracy = (correct / len(with_outcomes) * 100) if with_outcomes else 0.0
-            return accuracy, correct, wrong, pending
+            # Get latest prediction timestamp
+            cursor.execute("""
+                SELECT MAX(gp.run_at)
+                FROM ghost_predictions gp
+            """)
+            last_tune_row = cursor.fetchone()
+            last_tune = int(last_tune_row[0]) if last_tune_row and last_tune_row[0] else None
+            
+            # Parse results (total, correct, wrong, accuracy_pct)
+            def parse_view_row(row):
+                if not row or row[0] == 0:
+                    return 0.0, 0, 0, 0
+                total, correct, wrong, accuracy = row
+                pending = 0  # Pending are excluded from views
+                return float(accuracy or 0.0), int(correct or 0), int(wrong or 0), int(pending)
+            
+            daily_acc, daily_corr, daily_wrong, daily_pend = parse_view_row(daily_row)
+            weekly_acc, weekly_corr, weekly_wrong, weekly_pend = parse_view_row(weekly_row)
+            monthly_acc, monthly_corr, monthly_wrong, monthly_pend = parse_view_row(monthly_row)
+            
+            # Determine accuracy status (70% threshold)
+            accuracy_status = "ACCURATE" if monthly_acc >= 70.0 else "BELOW_TARGET"
+            if monthly_acc == 0.0:
+                accuracy_status = "NO_DATA"
+            
+            return {
+                "daily_accuracy_pct": round(daily_acc, 1),
+                "weekly_accuracy_pct": round(weekly_acc, 1),
+                "monthly_accuracy_pct": round(monthly_acc, 1),
+                "accuracy_status": accuracy_status,
+                "meets_70pct_threshold": monthly_acc >= 70.0,
+                "correct": daily_corr,
+                "warning": 0,
+                "wrong": daily_wrong,
+                "pending": daily_pend,
+                "last_tune_ts": last_tune,
+                "config_name": "ghost-av1",
+                "total_predictions": daily_corr + daily_wrong + daily_pend,
+                "data_source": "postgres_outcomes_v2"
+            }
+            
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except psycopg2.Error as db_err:
+        LOGGER.error(f"Database error in accuracy_summary: {db_err}", exc_info=True)
+        return _zero_accuracy_response(error=f"Database error: {str(db_err)[:100]}")
         
-        daily_acc, daily_corr, daily_wrong, daily_pend = calc_accuracy(daily)
-        weekly_acc, weekly_corr, weekly_wrong, weekly_pend = calc_accuracy(weekly)
-        monthly_acc, monthly_corr, monthly_wrong, monthly_pend = calc_accuracy(monthly)
-        
-        # Get last tune timestamp (from latest prediction)
-        last_tune = max([p[2] for p in predictions]) if predictions else None
-        
-        return {
-            "daily_accuracy_pct": round(daily_acc, 1),
-            "weekly_accuracy_pct": round(weekly_acc, 1),
-            "monthly_accuracy_pct": round(monthly_acc, 1),
-            "correct": daily_corr,
-            "warning": 0,
-            "wrong": daily_wrong,
-            "pending": daily_pend,
-            "last_tune_ts": int(last_tune) if last_tune else None,
-            "config_name": "ghost-av1",
-            "total_predictions": len(daily)
-        }
     except Exception as e:
         LOGGER.error(f"Accuracy summary failed: {e}", exc_info=True)
-        return {
-            "daily_accuracy_pct": 0.0,
-            "weekly_accuracy_pct": 0.0,
-            "monthly_accuracy_pct": 0.0,
-            "correct": 0,
-            "warning": 0,
-            "wrong": 0,
-            "pending": 0,
-            "last_tune_ts": None,
-            "config_name": "error",
+        return _zero_accuracy_response(error=str(e)[:200])
+
+
+def _zero_accuracy_response(error=None):
+    """Return zero accuracy when no data available"""
+    return {
+        "daily_accuracy_pct": 0.0,
+        "weekly_accuracy_pct": 0.0,
+        "monthly_accuracy_pct": 0.0,
+        "accuracy_status": "NO_DATA",
+        "meets_70pct_threshold": False,
+        "correct": 0,
+        "warning": 0,
+        "wrong": 0,
+        "pending": 0,
+        "last_tune_ts": None,
+        "config_name": "error" if error else "ghost-av1",
+        "total_predictions": 0,
+        "data_source": "none",
+        "error": error
+    }
             "error": str(e)[:200]
         }
 

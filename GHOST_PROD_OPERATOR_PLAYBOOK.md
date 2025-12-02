@@ -617,7 +617,208 @@ MIN_ALERT_CONFIDENCE=0.55
 
 ---
 
-## Appendix C: Database Schema
+## Appendix C: Personal Watchlist Verification
+
+### Personal Watchlist System Overview
+
+The personal watchlist is a per-user (Ghost Commander) system for tracking manually-selected stocks and crypto symbols. It is **separate** from the global scanner/hunter watchlist.
+
+**Key Features:**
+- ✅ Persistent in Postgres (survives browser sessions)
+- ✅ Manual add/remove from Cockpit UI
+- ✅ Automatic 48h predictions (market open/close + big moves)
+- ✅ Telegram alerts for watchlist events
+- ✅ Backwards compatible (global watchlist still works for scanners)
+
+### Verification Commands
+
+#### 1. Check Watchlist Endpoint Health
+```bash
+curl -sS "https://ghost-protocol-production.up.railway.app/api/v3/watchlist/user" | python3 -m json.tool
+```
+
+**Expected Output (Healthy):**
+```json
+{
+    "items": [
+        {
+            "id": 1,
+            "symbol": "BTC",
+            "asset_type": "crypto",
+            "owns_position": false,
+            "notes": "",
+            "added_at": "2025-12-02T12:00:00Z",
+            "current_price": 87000.00,
+            "prediction": {
+                "prediction_id": 9,
+                "direction": "UP",
+                "confidence": 0.46,
+                "expected_move": 2.3,
+                "horizon_h": 48
+            }
+        }
+    ],
+    "count": 1,
+    "timestamp": 1764652576.184
+}
+```
+
+**If Empty (New Installation):**
+```json
+{
+    "items": [],
+    "count": 0,
+    "timestamp": 1764652576.184
+}
+```
+
+**If Tables Don't Exist (Migration Needed):**
+```json
+{
+    "detail": "relation \"ghost_watchlist_items\" does not exist"
+}
+```
+
+#### 2. Verify Watchlist Tables Exist
+```bash
+railway run python3 verify_postgres_migration.py
+```
+
+**Expected Output (Tables Exist):**
+```
+✅ ghost_watchlist_items: EXISTS (7 rows)
+✅ watchlist_prediction_tracking: EXISTS (0 rows)
+✅ watchlist_price_snapshots: EXISTS (0 rows)
+✅ watchlist_alerts_log: EXISTS (0 rows)
+```
+
+#### 3. Add Symbol to Watchlist (Manual Test)
+```bash
+curl -X POST "https://ghost-protocol-production.up.railway.app/api/v3/watchlist/add" \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTC","asset_type":"crypto","owns_position":false,"notes":"Bitcoin test"}'
+```
+
+**Expected Output:**
+```json
+{
+    "ok": true,
+    "action": "added",
+    "id": 1,
+    "symbol": "BTC",
+    "asset_type": "crypto",
+    "owns_position": false,
+    "added_at": "2025-12-02T12:34:56Z"
+}
+```
+
+#### 4. Get Watchlist Stats
+```bash
+curl -sS "https://ghost-protocol-production.up.railway.app/api/v3/watchlist/stats" | python3 -m json.tool
+```
+
+**Expected Output:**
+```json
+{
+    "total_items": 7,
+    "stocks": 4,
+    "crypto": 3,
+    "owned_positions": 2,
+    "active_alerts_24h": 5,
+    "last_updated": "2025-12-02T12:34:56Z"
+}
+```
+
+### Troubleshooting Personal Watchlist
+
+#### Issue: 404 Not Found on /api/v3/watchlist/user
+
+**Cause:** Personal watchlist endpoints not registered or router order conflict.
+
+**Fix:**
+1. Check wolf_app.py ensures personal watchlist router is registered BEFORE cockpit_v3:
+```python
+from api.personal_watchlist_endpoints import router as watchlist_router
+APP.include_router(watchlist_router)  # MUST be before cockpit_v3_router
+```
+
+2. Verify no route conflicts:
+```bash
+railway logs --tail 50 | grep "Personal Watchlist endpoints"
+# Expected: "✅ Personal Watchlist endpoints registered (priority routing)"
+```
+
+#### Issue: "relation does not exist" Error
+
+**Cause:** Migration not applied to Postgres database.
+
+**Fix:**
+```bash
+# Apply migration from local machine
+railway run psql $DATABASE_URL -f migrations/001_personal_watchlist.sql
+
+# Verify tables created
+railway run python3 verify_postgres_migration.py
+```
+
+#### Issue: Empty Watchlist After Page Refresh
+
+**Cause 1:** Migration applied but no symbols added yet (expected for new installation).
+
+**Solution:** Add symbols via Cockpit UI "Add Symbol" button or API endpoint.
+
+**Cause 2:** Cockpit is loading legacy /api/v3/watchlist/enriched instead of /api/v3/watchlist/user.
+
+**Fix:**
+1. Check templates/cockpit_v3.html includes personal_watchlist_ui.js:
+```html
+<script src="/static/personal_watchlist_ui.js?v=2025120201"></script>
+```
+
+2. Check static/cockpit_v3.js calls loadPersonalWatchlist() not loadWatchlist():
+```javascript
+setInterval(() => loadPersonalWatchlist(), 15000);
+```
+
+#### Issue: Watchlist Shows Only Green (No Red Predictions)
+
+**Cause:** Prediction confidence filtering too aggressive or bias in prediction generation.
+
+**Verification:**
+```bash
+# Check raw predictions for watchlist symbols
+for symbol in BTC ETH AAPL TSLA; do
+  echo "=== $symbol ==="
+  curl -sS "https://ghost-protocol-production.up.railway.app/api/v3/predictions/latest?symbol=$symbol" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\"Direction: {d['predictions'][0]['direction']}, Confidence: {d['predictions'][0]['confidence']:.0%}\")"
+done
+```
+
+**Expected:** Mix of UP and DOWN predictions (Ghost shows both positive and negative signals).
+
+### Personal Watchlist Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `WATCHLIST_SCHEDULER_ENABLED` | `1` | Enable automated predictions for watchlist |
+| `WATCHLIST_ALERTS_ENABLED` | `1` | Enable Telegram alerts for watchlist events |
+| `WATCHLIST_OPEN_HOUR` | `9` | Market open hour (EST) for stock predictions |
+| `WATCHLIST_CLOSE_HOUR` | `16` | Market close hour (EST) for stock predictions |
+| `WATCHLIST_BIG_MOVE_CHECK_MINUTES` | `15` | Frequency of big move detection |
+| `WATCHLIST_BIG_MOVE_THRESHOLD_PCT` | `5.0` | Price move % to trigger alert |
+| `WATCHLIST_ALERT_COOLDOWN_HOURS` | `4` | Cooldown between alerts per symbol |
+| `WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR` | `5` | Max alerts per hour globally |
+
+**Current Production Config:**
+```bash
+WATCHLIST_SCHEDULER_ENABLED=1
+WATCHLIST_ALERTS_ENABLED=1
+# (Other defaults are fine)
+```
+
+---
+
+## Appendix D: Database Schema
 
 ### PostgreSQL Tables (Railway)
 

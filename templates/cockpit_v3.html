@@ -30,7 +30,7 @@
             <select id="mode-selector" class="mode-select">
                 <option value="live">LIVE</option>
                 <option value="fixed">FIXED</option>
-                <option value="training">TRAINING</option>
+                <!-- TRAINING mode removed - violates SIM_MODE=0 baseline -->
             </select>
         </div>
     </header>
@@ -121,10 +121,16 @@
         <section class="panel" id="panel-watchlist">
             <div class="panel-header">
                 <h2>Watchlist</h2>
-                <div class="tabs">
-                    <button class="tab active" data-tab="stocks">Stocks</button>
+                <!-- Mode Tabs: Personal vs Market -->
+                <div class="tabs" id="watchlist-mode-tabs" style="margin-bottom: 10px;">
+                    <button class="tab active" data-mode="personal">📋 Personal</button>
+                    <button class="tab" data-mode="market">📊 Market</button>
+                </div>
+                <!-- Filter Tabs: Stocks/Crypto/All -->
+                <div class="tabs" id="watchlist-filter-tabs">
+                    <button class="tab" data-tab="stocks">Stocks</button>
                     <button class="tab" data-tab="crypto">Crypto</button>
-                    <button class="tab" data-tab="all">All</button>
+                    <button class="tab active" data-tab="all">All</button>
                 </div>
             </div>
             <div class="panel-body">
@@ -187,5 +193,6 @@
     </div>
 
     <script src="/static/cockpit_v3.js?v=2025112804"></script>
+    <script src="/static/personal_watchlist_ui.js?v=2025120201"></script>
 </body>
 </html>

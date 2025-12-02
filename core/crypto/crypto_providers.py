@@ -24,11 +24,9 @@ _session.mount("http://", _adapter)
 _session.mount("https://", _adapter)
 
 # Provider configuration from environment
-_DEFAULT_CRYPTO_QUORUM = ["coingecko", "binance", "coinbase"]
-_CRYPTO_QUORUM_ORDER = None  # Lazy-loaded from env
-
-# Provider configuration from environment
-_DEFAULT_CRYPTO_QUORUM = ["coingecko", "binance", "coinbase"]
+# CoinGecko DISABLED - hitting 429 rate limits even at 2.0s interval
+# Use only Binance (primary) and Coinbase (secondary) for reliable service
+_DEFAULT_CRYPTO_QUORUM = ["binance", "coinbase"]  # coingecko removed
 _CRYPTO_QUORUM_ORDER = None  # Lazy-loaded from env
 
 
@@ -122,13 +120,17 @@ class CoinGeckoProvider:
 
     def __init__(self):
         self.last_call = 0
-        self.min_interval = 1.2  # 50 calls/min = 1.2s between calls
+        # Increased from 1.2s to 2.0s to prevent 429 rate limit errors
+        # Conservative rate: 30 calls/min instead of 50 calls/min
+        self.min_interval = 2.0  # 30 calls/min = 2.0s between calls
 
     def _rate_limit(self):
-        """Enforce rate limiting"""
+        """Enforce rate limiting (2s minimum between calls)"""
         elapsed = time.time() - self.last_call
         if elapsed < self.min_interval:
-            time.sleep(self.min_interval - elapsed)
+            sleep_time = self.min_interval - elapsed
+            LOGGER.debug(f"CoinGecko rate limit: sleeping {sleep_time:.2f}s")
+            time.sleep(sleep_time)
         self.last_call = time.time()
 
     def get_coin_id(self, symbol: str) -> str | None:
