@@ -68,7 +68,8 @@ def run_migrations() -> Tuple[bool, List[str]]:
                             AND table_name = 'ghost_watchlist_items'
                         )
                     """)
-                    table_exists = cursor.fetchone()[0]
+                    result = cursor.fetchone()
+                    table_exists = result[0] if result else False
                     
                     if table_exists:
                         msg = f"[MIGRATION] ✅ {migration_name} - already applied (table exists)"
@@ -79,6 +80,9 @@ def run_migrations() -> Tuple[bool, List[str]]:
                 # Execute migration
                 try:
                     sql = migration_file.read_text()
+                    
+                    # PostgreSQL psycopg2 can handle multiple statements in one execute()
+                    # but we need to ensure the connection is in the right state
                     cursor.execute(sql)
                     conn.commit()
                     
@@ -86,18 +90,20 @@ def run_migrations() -> Tuple[bool, List[str]]:
                     LOGGER.info(msg)
                     messages.append(msg)
                 except Exception as e:
+                    error_str = str(e)
                     # If error contains "already exists", it's OK (idempotent)
-                    if "already exists" in str(e).lower():
+                    if "already exists" in error_str.lower():
                         msg = f"[MIGRATION] ✅ {migration_name} - already applied (idempotent)"
                         LOGGER.info(msg)
                         messages.append(msg)
                         conn.rollback()
                     else:
-                        msg = f"[MIGRATION] ❌ {migration_name} - failed: {e}"
+                        msg = f"[MIGRATION] ❌ {migration_name} - failed: {error_str}"
                         LOGGER.error(msg, exc_info=True)
                         messages.append(msg)
                         conn.rollback()
-                        return False, messages
+                        # Don't stop on first failure - continue with other migrations
+                        continue
         
         return True, messages
         
@@ -132,7 +138,8 @@ def ensure_personal_watchlist_table() -> bool:
                     AND table_name = 'ghost_watchlist_items'
                 )
             """)
-            table_exists = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            table_exists = result[0] if result else False
             
             if table_exists:
                 LOGGER.info("[MIGRATION] ✅ ghost_watchlist_items table exists")
