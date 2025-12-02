@@ -259,12 +259,21 @@ async function loadTopMovers() {
 
 // Panel VIP: VIP Coins + XRP
 async function loadVIPCoins() {
+    const container = document.getElementById('vip-list');
+    
     try {
-        const response = await fetch('/api/v3/vip/snapshot');
+        // Add 8-second timeout to prevent indefinite hanging
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const response = await fetch('/api/v3/vip/snapshot', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
         if (!response.ok) throw new Error('Failed to load VIP coins');
         
         const data = await response.json();
-        const container = document.getElementById('vip-list');
+        
+        console.log('[VIP] Loaded:', data.count || 0, 'coins');
         
         // Get VIP coins and XRP
         const vipCoins = data.vip_coins || [];
@@ -311,8 +320,14 @@ async function loadVIPCoins() {
             `;
         }).join('');
     } catch (error) {
-        console.error('[GHOST V3] Error loading VIP coins:', error);
-        document.getElementById('vip-list').innerHTML = '<p style="color: var(--accent-red);">VIP data unavailable</p>';
+        console.error('[VIP] Error loading coins:', error);
+        const container = document.getElementById('vip-list');
+        
+        if (error.name === 'AbortError') {
+            container.innerHTML = '<p style="color: var(--accent-orange);">⏱️ VIP data timeout (backend slow - fix in progress)</p>';
+        } else {
+            container.innerHTML = '<p style="color: var(--accent-red);">VIP data unavailable</p>';
+        }
     }
 }
 
@@ -330,7 +345,8 @@ async function loadForecast() {
         const predictions = data.predictions || [];
         const pred = predictions[0] || {};
         
-        console.log(`[GHOST V3] Loaded forecast for ${currentForecastSymbol}:`, pred);
+        console.log(`[FORECAST] Loaded for ${currentForecastSymbol}:`, pred);
+        console.log(`[FORECAST] Direction: ${pred.direction}, Confidence: ${pred.confidence}, Move: ${pred.expected_move}`);
         
         // Generate differentiated forecasts for each timeframe
         // 24h: Full confidence
@@ -352,7 +368,10 @@ async function loadForecast() {
 
 function updateForecastCard(index, prediction, icon, timeframe, confidenceMultiplier = 1.0) {
     const cards = document.querySelectorAll('.forecast-card');
-    if (!cards[index]) return;
+    if (!cards[index]) {
+        console.error(`[FORECAST] Card ${index} not found in DOM`);
+        return;
+    }
     
     const card = cards[index];
     const direction = prediction.direction || 'FLAT';
@@ -364,10 +383,12 @@ function updateForecastCard(index, prediction, icon, timeframe, confidenceMultip
     }
     
     // Apply time decay to confidence
+    const originalConfidence = confidence;
     confidence = confidence * confidenceMultiplier;
     
+    console.log(`[FORECAST] ${timeframe}: orig_conf=${originalConfidence.toFixed(1)}, multiplier=${confidenceMultiplier}, final=${confidence.toFixed(1)}`);
+    
     // Use backend expected_move if available, otherwise calculate from confidence
-    // Apply larger move estimates for longer timeframes
     let expectedMove = prediction.expected_move !== undefined 
         ? prediction.expected_move 
         : (confidence > 0 ? (confidence * 0.15) : 0);
@@ -378,7 +399,10 @@ function updateForecastCard(index, prediction, icon, timeframe, confidenceMultip
         '2-5d': 1.8,
         '7-14d': 2.5
     };
+    const originalMove = expectedMove;
     expectedMove = expectedMove * (timeframeMultipliers[timeframe] || 1.0);
+    
+    console.log(`[FORECAST] ${timeframe}: orig_move=${originalMove.toFixed(2)}, multiplier=${timeframeMultipliers[timeframe]}, final=${expectedMove.toFixed(2)}`);
     
     card.querySelector('.forecast-icon').textContent = icon;
     
@@ -401,7 +425,10 @@ async function loadNews() {
         const data = await response.json();
         const container = document.getElementById('news-list');
         
+        console.log('[NEWS] Loaded items:', data?.items?.length || 0);
+        
         if (!data || !data.items || data.items.length === 0) {
+            console.error('[NEWS] No items in response:', data);
             container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No news available yet</p>';
             return;
         }
@@ -579,35 +606,25 @@ async function loadWatchlistByMode() {
 // Panel 5: Market Watchlist (existing default watchlist)
 async function loadMarketWatchlist() {
     try {
-        // Use enriched watchlist endpoint that includes live prices
+        // Use enriched watchlist endpoint that includes live prices AND predictions
         const response = await fetch('/api/v3/watchlist/enriched');
         if (!response.ok) throw new Error('Failed to load watchlist');
         
         const data = await response.json();
         const watchlistItems = data.items || [];
         
-        // Fetch predictions for all symbols
-        const predResponse = await fetch('/api/v3/predictions/latest?limit=100');
-        const predData = await predResponse.json();
-        
-        // Create lookup map for predictions
-        const predMap = {};
-        if (predData && predData.predictions) {
-            predData.predictions.forEach(pred => {
-                predMap[pred.symbol] = {
-                    confidence: pred.confidence * 100,  // Convert 0.45 to 45
-                    direction: pred.direction
-                };
-            });
+        console.log('[WATCHLIST] Loaded items:', watchlistItems.length);
+        if (watchlistItems.length > 0) {
+            console.log('[WATCHLIST] Sample item:', watchlistItems[0]);
         }
         
-        // Enrich watchlist with prediction data
+        // API already includes ghost_confidence and ghost_direction - use them directly!
         const watchlistData = watchlistItems.map(item => ({
             symbol: item.symbol,
-            change: item.change_pct || 0,  // Real price change from enriched endpoint
-            price: item.price || 0,         // Real price
-            ghost_score: predMap[item.symbol]?.confidence || 0,
-            direction: predMap[item.symbol]?.direction || 'FLAT',
+            change: item.change_pct || 0,
+            price: item.price || 0,
+            ghost_score: item.ghost_confidence || 0,  // Use API field directly
+            direction: item.ghost_direction || 'FLAT', // Use API field directly
             type: item.type
         }));
         

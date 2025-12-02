@@ -6811,8 +6811,8 @@ async def api_v3_watchlist_enriched():
         }
 
 
-# VIP snapshot cache (5-minute TTL to prevent 60-120s generation delays)
-_VIP_SNAPSHOT_CACHE = {"data": None, "timestamp": 0, "ttl": 300}
+# VIP snapshot cache (30s TTL - reduced from 5min due to timeout issues)
+_VIP_SNAPSHOT_CACHE = {"data": None, "timestamp": 0, "ttl": 30}
 
 @APP.get("/api/v3/vip/snapshot")
 async def api_v3_vip_snapshot():
@@ -6820,62 +6820,27 @@ async def api_v3_vip_snapshot():
     Get VIP coins snapshot with prices and changes.
     
     Used by cockpit VIP panel.
-    CACHED for 5 minutes to prevent on-demand prediction storms.
+    CACHED for 30s. Returns stale cache immediately if refresh takes >2s.
     """
     # Check cache first
     cache_age = time.time() - _VIP_SNAPSHOT_CACHE["timestamp"]
-    if _VIP_SNAPSHOT_CACHE["data"] and cache_age < _VIP_SNAPSHOT_CACHE["ttl"]:
-        LOGGER.info(f"[VIP] ⚡ Serving cached snapshot (age: {cache_age:.1f}s)")
-        return _VIP_SNAPSHOT_CACHE["data"]  # RETURN IMMEDIATELY - don't fetch prices
     
-    LOGGER.info(f"[VIP] Cache miss (age: {cache_age:.1f}s), fetching fresh data...")
+    # ALWAYS return cached data if available (even if stale) to prevent 3min hangs
+    if _VIP_SNAPSHOT_CACHE["data"]:
+        if cache_age < _VIP_SNAPSHOT_CACHE["ttl"]:
+            LOGGER.info(f"[VIP] ⚡ Serving fresh cache (age: {cache_age:.1f}s)")
+            return _VIP_SNAPSHOT_CACHE["data"]
+        else:
+            LOGGER.info(f"[VIP] ⚠️ Returning stale cache ({cache_age:.1f}s old) while refreshing in background")
+            # Trigger async refresh but don't wait for it
+            asyncio.create_task(_refresh_vip_cache())
+            return _VIP_SNAPSHOT_CACHE["data"]
     
+    LOGGER.info(f"[VIP] No cache available, fetching with 2s timeout...")
+    
+    # Only block on first fetch (no cache available)
     try:
-        from core.crypto.crypto_providers import get_crypto_price_quorum
-
-        vip_symbols = list(dict.fromkeys(VIP_COINS))
-        # Use cache and limit timeout to avoid blocking
-        tasks = [asyncio.wait_for(get_crypto_price_quorum(symbol, use_cache=True), timeout=2.0) for symbol in vip_symbols]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        vip_data = []
-        for symbol, result in zip(vip_symbols, results):
-            if isinstance(result, Exception) or not result:
-                LOGGER.debug(f"VIP snapshot fallback for {symbol}: {result}")
-                vip_data.append({
-                    "symbol": symbol,
-                    "price": 0,
-                    "change_pct": 0.0,
-                    "status": "offline"
-                })
-                continue
-
-            price_val = result.get("price")
-            change_pct = result.get("change_24h_pct")
-            if change_pct is None:
-                change_pct = result.get("change_pct", 0.0)
-
-            vip_data.append({
-                "symbol": symbol,
-                "price": round(price_val, 6) if price_val else 0.0,
-                "change_pct": round(change_pct or 0.0, 2),
-                "status": "online",
-                "provider": result.get("provider"),
-            })
-
-        result = {
-            "ok": True,
-            "vip_coins": vip_data,
-            "count": len(vip_data)
-        }
-        
-        # Cache result for 5 minutes
-        _VIP_SNAPSHOT_CACHE["data"] = result
-        _VIP_SNAPSHOT_CACHE["timestamp"] = time.time()
-        LOGGER.info(f"[VIP] Cached snapshot with {len(vip_data)} coins for 5min")
-        
-        return result
-    
+        return await _fetch_vip_snapshot_with_timeout()
     except Exception as e:
         LOGGER.error(f"VIP snapshot failed: {e}", exc_info=True)
         return {
@@ -6883,6 +6848,68 @@ async def api_v3_vip_snapshot():
             "vip_coins": [],
             "error": str(e)
         }
+
+
+async def _fetch_vip_snapshot_with_timeout():
+    """Helper to fetch VIP snapshot with aggressive timeout"""
+    try:
+        from core.crypto.crypto_providers import get_crypto_price_quorum
+
+        vip_symbols = list(dict.fromkeys(VIP_COINS))
+        tasks = [asyncio.wait_for(get_crypto_price_quorum(symbol, use_cache=True), timeout=0.4) for symbol in vip_symbols]
+        
+        # 2-second HARD TIMEOUT for entire fetch
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=2.0
+        )
+    except asyncio.TimeoutError:
+        LOGGER.error("[VIP] Fetch timeout - returning empty data")
+        return {"ok": False, "vip_coins": [], "error": "Timeout"}
+    
+    vip_data = []
+    for symbol, result in zip(vip_symbols, results):
+        if isinstance(result, Exception) or not result:
+            vip_data.append({
+                "symbol": symbol,
+                "price": 0,
+                "change_pct": 0.0,
+                "status": "offline"
+            })
+            continue
+
+        price_val = result.get("price")
+        change_pct = result.get("change_24h_pct") or result.get("change_pct", 0.0)
+
+        vip_data.append({
+            "symbol": symbol,
+            "price": round(price_val, 6) if price_val else 0.0,
+            "change_pct": round(change_pct or 0.0, 2),
+            "status": "online",
+            "provider": result.get("provider"),
+        })
+
+    result = {
+        "ok": True,
+        "vip_coins": vip_data,
+        "count": len(vip_data)
+    }
+    
+    # Cache result
+    _VIP_SNAPSHOT_CACHE["data"] = result
+    _VIP_SNAPSHOT_CACHE["timestamp"] = time.time()
+    LOGGER.info(f"[VIP] Cached snapshot with {len(vip_data)} coins")
+    
+    return result
+
+
+async def _refresh_vip_cache():
+    """Background task to refresh VIP cache (doesn't block requests)"""
+    try:
+        result = await _fetch_vip_snapshot_with_timeout()
+        LOGGER.info(f"[VIP] Background refresh complete: {result.get('count', 0)} coins")
+    except Exception as e:
+        LOGGER.error(f"[VIP] Background refresh failed: {e}")
 
 
 @APP.get("/api/v3/alerts/status")

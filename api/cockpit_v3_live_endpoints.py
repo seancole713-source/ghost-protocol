@@ -1139,8 +1139,6 @@ def _zero_accuracy_response(error=None):
         "data_source": "none",
         "error": error
     }
-            "error": str(e)[:200]
-        }
 
 
 @router.get("/predictions/latest")

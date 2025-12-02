@@ -158,7 +158,7 @@ function renderWatchlistItem(item) {
         '<span style="background: #3498db; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">STOCK</span>';
     
     return `
-        <div class="watchlist-row" style="display: flex; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); gap: 15px;">
+        <div class="watchlist-row" style="gap: 15px;">
             <!-- Symbol Info -->
             <div style="flex: 1; min-width: 120px;">
                 <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">
@@ -226,8 +226,8 @@ function showAddSymbolForm() {
             display: flex; align-items: center; justify-content: center;">
             
             <div style="
-                background: var(--card-bg); padding: 30px; border-radius: 8px;
-                max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                background: var(--bg-panel); padding: 30px; border-radius: 12px; border: 1px solid var(--border-subtle);
+                max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
                 
                 <h2 style="margin: 0 0 20px 0; font-size: 20px;">➕ Add Symbol to Watchlist</h2>
                 
@@ -237,7 +237,7 @@ function showAddSymbolForm() {
                         type="text" 
                         id="add-symbol-input" 
                         placeholder="e.g., AAPL, BTC"
-                        style="width: 100%; padding: 10px; font-size: 14px; border: 1px solid var(--border-color); border-radius: 4px;"
+                        style="width: 100%; padding: 10px; font-size: 14px; background: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: 6px;"
                         maxlength="20">
                 </div>
                 
@@ -245,7 +245,7 @@ function showAddSymbolForm() {
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Asset Type</label>
                     <select 
                         id="add-asset-type" 
-                        style="width: 100%; padding: 10px; font-size: 14px; border: 1px solid var(--border-color); border-radius: 4px;">
+                        style="width: 100%; padding: 10px; font-size: 14px; background: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: 6px; cursor: pointer;">
                         <option value="stock">Stock</option>
                         <option value="crypto">Crypto</option>
                     </select>
@@ -267,7 +267,7 @@ function showAddSymbolForm() {
                         min="0.1"
                         max="50"
                         step="0.5"
-                        style="width: 100%; padding: 10px; font-size: 14px; border: 1px solid var(--border-color); border-radius: 4px;">
+                        style="width: 100%; padding: 10px; font-size: 14px; background: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: 6px;">
                     <small style="color: var(--text-secondary);">Alert when price moves ±this %</small>
                 </div>
                 
@@ -276,16 +276,16 @@ function showAddSymbolForm() {
                     <textarea 
                         id="add-notes" 
                         placeholder="e.g., Watching for breakout above $150"
-                        style="width: 100%; padding: 10px; font-size: 14px; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;"
+                        style="width: 100%; padding: 10px; font-size: 14px; background: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: 6px; resize: vertical;"
                         maxlength="500"
                         rows="3"></textarea>
                 </div>
                 
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                    <button onclick="closeAddSymbolForm()" class="btn-secondary" style="padding: 10px 20px;">
+                    <button onclick="closeAddSymbolForm()" class="btn btn-secondary" style="padding: 10px 20px;">
                         Cancel
                     </button>
-                    <button onclick="submitAddSymbol()" class="btn-primary" style="padding: 10px 20px;">
+                    <button onclick="submitAddSymbol()" class="btn btn-primary" style="padding: 10px 20px;">
                         ➕ Add Symbol
                     </button>
                 </div>
@@ -459,7 +459,7 @@ async function viewSymbolHistory(symbol) {
 function showHistoryModal(symbol, history) {
     const historyHtml = history.length > 0 ? 
         history.map(item => `
-            <div style="padding: 12px; border-bottom: 1px solid var(--border-color);">
+            <div style="padding: 12px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-dark); border-radius: 6px; margin-bottom: 8px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                     <span style="font-weight: 600;">${item.direction}</span>
                     <span style="font-size: 12px; color: var(--text-secondary);">
@@ -483,9 +483,9 @@ function showHistoryModal(symbol, history) {
             display: flex; align-items: center; justify-content: center;">
             
             <div style="
-                background: var(--card-bg); padding: 30px; border-radius: 8px;
-                max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                background: var(--bg-panel); padding: 30px; border-radius: 12px; border: 1px solid var(--border-subtle);
+                max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
                 
                 <h2 style="margin: 0 0 20px 0; font-size: 20px;">📊 Prediction History: ${symbol}</h2>
                 
