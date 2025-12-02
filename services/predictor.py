@@ -71,7 +71,13 @@ class Outcome:
 
 
 def _init_db():
-    """Initialize database schema. Idempotent."""
+    """
+    DEPRECATED: Legacy SQLite initialization.
+    
+    This function is no longer used when PREDICTION_STORE_ENGINE=postgres.
+    The prediction_store abstraction handles schema initialization for both backends.
+    Only called in SQLite-only mode for backward compatibility.
+    """
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -163,6 +169,8 @@ def create_prediction(
         prediction_id
     """
     # Use PredictionStore abstraction (handles SQLite or PostgreSQL)
+    backend_name = _PREDICTION_STORE.backend.__class__.__name__
+    
     prediction_id = _PREDICTION_STORE.save_prediction(
         symbol=symbol,
         forecast_points=forecast_points,
@@ -172,6 +180,11 @@ def create_prediction(
         features=features or {},
         params=params or {"horizon_h": 48},
         tag=tag,
+    )
+    
+    LOGGER.info(
+        f"[{backend_name}] Created prediction {prediction_id} for {symbol}: "
+        f"{direction} @ {confidence:.2f} confidence"
     )
     
     return prediction_id
@@ -214,22 +227,22 @@ def get_prediction(prediction_id: int) -> Prediction | None:
 
 
 def get_prediction_points(prediction_id: int, kind: str | None = None) -> list[PredictionPoint]:
-    """Get forecast or actual points for a prediction."""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        if kind:
-            rows = conn.execute(
-                "SELECT id, prediction_id, ts, kind, price FROM prediction_points WHERE prediction_id=? AND kind=? ORDER BY ts",
-                (prediction_id, kind),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT id, prediction_id, ts, kind, price FROM prediction_points WHERE prediction_id=? ORDER BY ts",
-                (prediction_id,),
-            ).fetchall()
-        return [PredictionPoint(*r) for r in rows]
-    finally:
-        conn.close()
+    """
+    Get forecast or actual points for a prediction.
+    
+    Uses prediction_store abstraction (supports SQLite or PostgreSQL).
+    """
+    points_data = _PREDICTION_STORE.get_prediction_points(prediction_id, kind)
+    return [
+        PredictionPoint(
+            id=p["id"],
+            prediction_id=p["prediction_id"],
+            ts=p["ts"],
+            kind=p["kind"],
+            price=p["price"]
+        )
+        for p in points_data
+    ]
 
 
 def get_latest_prediction(symbol: str) -> Prediction | None:
@@ -238,9 +251,17 @@ def get_latest_prediction(symbol: str) -> Prediction | None:
     
     Uses PredictionStore abstraction (supports SQLite or PostgreSQL).
     """
+    backend_name = _PREDICTION_STORE.backend.__class__.__name__
+    
     pred_dict = _PREDICTION_STORE.get_latest_prediction(symbol)
     if not pred_dict:
+        LOGGER.debug(f"[{backend_name}] No prediction found for {symbol}")
         return None
+    
+    LOGGER.info(
+        f"[{backend_name}] Retrieved prediction {pred_dict['id']} for {symbol} "
+        f"(run_at={pred_dict['run_at']:.0f})"
+    )
     
     return Prediction(
         id=pred_dict["id"],
@@ -257,49 +278,16 @@ def get_latest_prediction(symbol: str) -> Prediction | None:
 
 
 def get_prediction_history(symbol: str, limit: int = 20) -> list[dict[str, Any]]:
-    """Get prediction history with outcomes for a symbol."""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        rows = conn.execute(
-            """
-            SELECT
-                p.id, p.symbol, p.run_at, p.horizon_h, p.method, p.confidence, p.direction, p.tag,
-                o.closed_at, o.mae, o.map, o.rmse, o.hit_direction, o.hit_ratio_window, o.notes
-            FROM predictions p
-            LEFT JOIN outcomes o ON p.id = o.prediction_id
-            WHERE p.symbol = ?
-            ORDER BY p.run_at DESC
-            LIMIT ?
-            """,
-            (symbol, limit),
-        ).fetchall()
-
-        results = []
-        for r in rows:
-            closed = r[8] is not None
-            results.append(
-                {
-                    "id": r[0],
-                    "symbol": r[1],
-                    "run_at": r[2],
-                    "horizon_h": r[3],
-                    "method": r[4],
-                    "confidence": r[5],
-                    "direction": r[6],
-                    "tag": r[7],
-                    "closed": closed,
-                    "closed_at": r[8],
-                    "mae": r[9],
-                    "map": r[10],
-                    "rmse": r[11],
-                    "hit_direction": r[12],
-                    "hit_ratio_window": r[13],
-                    "notes": r[14],
-                }
-            )
-        return results
-    finally:
-        conn.close()
+    """
+    Get prediction history with outcomes for a symbol.
+    
+    Uses prediction_store abstraction (supports SQLite or PostgreSQL).
+    """
+    history = _PREDICTION_STORE.get_prediction_history(symbol, limit)
+    # Add timestamp alias for backward compatibility
+    for item in history:
+        item["timestamp"] = item.get("run_at")
+    return history
 
 
 def create_outcome(
@@ -312,22 +300,12 @@ def create_outcome(
     notes: str = "",
 ):
     """Create outcome record for a closed prediction."""
-    closed_at = time.time()
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO outcomes (prediction_id, closed_at, mae, map, rmse, hit_direction, hit_ratio_window, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (prediction_id, closed_at, mae, map, rmse, hit_direction, hit_ratio_window, notes),
-        )
-        conn.commit()
-        LOGGER.info(
-            f"Created outcome for prediction {prediction_id}: MAE={mae:.4f}, hit={hit_direction}"
-        )
-    finally:
-        conn.close()
+    _PREDICTION_STORE.create_outcome(
+        prediction_id, mae, map, rmse, hit_direction, hit_ratio_window, notes
+    )
+    LOGGER.info(
+        f"Created outcome for prediction {prediction_id}: MAE={mae:.4f}, hit={hit_direction}"
+    )
 
 
 def compute_metrics(forecast: list[float], actual: list[float]) -> dict[str, float]:
@@ -376,84 +354,64 @@ def get_scoreboard(symbol: str, windows: list[int] = None) -> dict[str, Any]:
     if windows is None:
         windows = [7, 30]
 
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        # Overall stats
-        rows = conn.execute(
-            """
-            SELECT p.confidence, o.mae, o.map, o.rmse, o.hit_direction
-            FROM predictions p
-            JOIN outcomes o ON p.id = o.prediction_id
-            WHERE p.symbol = ?
-            """,
-            (symbol,),
-        ).fetchall()
+    # Get predictions with outcomes through prediction_store
+    rows = _PREDICTION_STORE.get_predictions_with_outcomes(symbol)
 
-        if not rows:
-            return {
-                "overall": {"count": 0},
-                **{f"w{w}d": {"count": 0} for w in windows},
-            }
-
-        confs = [r[0] for r in rows]
-        maes = [r[1] for r in rows]
-        mapes = [r[2] for r in rows]
-        rmses = [r[3] for r in rows]
-        hits = [r[4] for r in rows]
-
-        overall = {
-            "count": len(rows),
-            "hit_dir_pct": round(100 * sum(hits) / len(hits), 2) if hits else 0,
-            "mae": round(float(np.mean(maes)), 4) if maes else 0,
-            "map": round(float(np.mean(mapes)), 4) if mapes else 0,
-            "rmse": round(float(np.mean(rmses)), 4) if rmses else 0,
-            "avg_conf": round(float(np.mean(confs)), 4) if confs else 0,
+    if not rows:
+        return {
+            "overall": {"count": 0},
+            **{f"w{w}d": {"count": 0} for w in windows},
         }
 
-        # Brier-like calibration: |avg_conf - hit_rate|
-        overall["calibration_gap"] = round(
-            abs(overall["avg_conf"] - overall["hit_dir_pct"] / 100), 4
-        )
+    confs = [r["confidence"] for r in rows]
+    maes = [r["mae"] for r in rows]
+    mapes = [r["map"] for r in rows]
+    rmses = [r["rmse"] for r in rows]
+    hits = [r["hit_direction"] for r in rows]
 
-        result = {"overall": overall}
+    overall = {
+        "count": len(rows),
+        "hit_dir_pct": round(100 * sum(hits) / len(hits), 2) if hits else 0,
+        "mae": round(float(np.mean(maes)), 4) if maes else 0,
+        "map": round(float(np.mean(mapes)), 4) if mapes else 0,
+        "rmse": round(float(np.mean(rmses)), 4) if rmses else 0,
+        "avg_conf": round(float(np.mean(confs)), 4) if confs else 0,
+    }
 
-        # Windowed stats
-        now = time.time()
-        for window_days in windows:
-            cutoff = now - (window_days * 86400)
-            windowed = conn.execute(
-                """
-                SELECT p.confidence, o.mae, o.map, o.rmse, o.hit_direction
-                FROM predictions p
-                JOIN outcomes o ON p.id = o.prediction_id
-                WHERE p.symbol = ? AND o.closed_at >= ?
-                """,
-                (symbol, cutoff),
-            ).fetchall()
+    # Brier-like calibration: |avg_conf - hit_rate|
+    overall["calibration_gap"] = round(
+        abs(overall["avg_conf"] - overall["hit_dir_pct"] / 100), 4
+    )
 
-            if windowed:
-                w_confs = [r[0] for r in windowed]
-                w_maes = [r[1] for r in windowed]
-                w_mapes = [r[2] for r in windowed]
-                w_rmses = [r[3] for r in windowed]
-                w_hits = [r[4] for r in windowed]
+    result = {"overall": overall}
 
-                w_stats = {
-                    "count": len(windowed),
-                    "hit_dir_pct": round(100 * sum(w_hits) / len(w_hits), 2),
-                    "mae": round(float(np.mean(w_maes)), 4),
-                    "map": round(float(np.mean(w_mapes)), 4),
-                    "rmse": round(float(np.mean(w_rmses)), 4),
-                    "avg_conf": round(float(np.mean(w_confs)), 4),
-                }
-                w_stats["calibration_gap"] = round(
-                    abs(w_stats["avg_conf"] - w_stats["hit_dir_pct"] / 100), 4
-                )
-            else:
-                w_stats = {"count": 0}
+    # Windowed stats
+    now = time.time()
+    for window_days in windows:
+        cutoff = now - (window_days * 86400)
+        windowed = _PREDICTION_STORE.get_predictions_with_outcomes_since(symbol, cutoff)
 
-            result[f"w{window_days}d"] = w_stats
+        if windowed:
+            w_confs = [r["confidence"] for r in windowed]
+            w_maes = [r["mae"] for r in windowed]
+            w_mapes = [r["map"] for r in windowed]
+            w_rmses = [r["rmse"] for r in windowed]
+            w_hits = [r["hit_direction"] for r in windowed]
 
-        return result
-    finally:
-        conn.close()
+            w_stats = {
+                "count": len(windowed),
+                "hit_dir_pct": round(100 * sum(w_hits) / len(w_hits), 2),
+                "mae": round(float(np.mean(w_maes)), 4),
+                "map": round(float(np.mean(w_mapes)), 4),
+                "rmse": round(float(np.mean(w_rmses)), 4),
+                "avg_conf": round(float(np.mean(w_confs)), 4),
+            }
+            w_stats["calibration_gap"] = round(
+                abs(w_stats["avg_conf"] - w_stats["hit_dir_pct"] / 100), 4
+            )
+        else:
+            w_stats = {"count": 0}
+
+        result[f"w{window_days}d"] = w_stats
+
+    return result

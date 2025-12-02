@@ -291,20 +291,25 @@ async function loadForecast() {
         const predictions = data.predictions || [];
         const pred = predictions[0] || {};
         
-        // Map single prediction to all timeframes (simplified)
-        updateForecastCard(0, pred, '☀️', '24h');
-        updateForecastCard(1, pred, '⛅', '2-5d');
-        updateForecastCard(2, pred, '🌤️', '7-14d');
+        // Generate differentiated forecasts for each timeframe
+        // 24h: Full confidence
+        updateForecastCard(0, pred, '☀️', '24h', 1.0);
+        
+        // 2-5d: Moderate confidence decay (70% of original)
+        updateForecastCard(1, pred, '⛅', '2-5d', 0.7);
+        
+        // 7-14d: Lower confidence decay (50% of original)  
+        updateForecastCard(2, pred, '🌤️', '7-14d', 0.5);
     } catch (error) {
         console.error('[GHOST V3] Error loading forecast:', error);
         // Graceful degradation: show "no data" state
         for (let i = 0; i < 3; i++) {
-            updateForecastCard(i, {direction: 'FLAT', confidence: 0, expected_move: 0}, ['☀️', '⛅', '🌤️'][i], ['24h', '2-5d', '7-14d'][i]);
+            updateForecastCard(i, {direction: 'FLAT', confidence: 0, expected_move: 0}, ['☀️', '⛅', '🌤️'][i], ['24h', '2-5d', '7-14d'][i], 1.0);
         }
     }
 }
 
-function updateForecastCard(index, prediction, icon, timeframe) {
+function updateForecastCard(index, prediction, icon, timeframe, confidenceMultiplier = 1.0) {
     const cards = document.querySelectorAll('.forecast-card');
     if (!cards[index]) return;
     
@@ -317,11 +322,22 @@ function updateForecastCard(index, prediction, icon, timeframe) {
         confidence = confidence * 100;
     }
     
+    // Apply time decay to confidence
+    confidence = confidence * confidenceMultiplier;
+    
     // Use backend expected_move if available, otherwise calculate from confidence
-    // Backend provides: confidence (0-1) * base_volatility * direction
-    const expectedMove = prediction.expected_move !== undefined 
+    // Apply larger move estimates for longer timeframes
+    let expectedMove = prediction.expected_move !== undefined 
         ? prediction.expected_move 
         : (confidence > 0 ? (confidence * 0.15) : 0);
+    
+    // Scale expected move by timeframe (longer = larger potential move)
+    const timeframeMultipliers = {
+        '24h': 1.0,
+        '2-5d': 1.8,
+        '7-14d': 2.5
+    };
+    expectedMove = expectedMove * (timeframeMultipliers[timeframe] || 1.0);
     
     card.querySelector('.forecast-icon').textContent = icon;
     
@@ -332,7 +348,7 @@ function updateForecastCard(index, prediction, icon, timeframe) {
     
     card.querySelector('.forecast-direction').textContent = directionText;
     card.querySelector('.prob-value').textContent = confidence > 0 ? confidence.toFixed(0) : '--';
-    card.querySelector('.move-value').textContent = expectedMove !== 0 ? Math.abs(expectedMove).toFixed(2) + '%' : '--';
+    card.querySelector('.move-value').textContent = expectedMove !== 0 ? Math.abs(expectedMove).toFixed(2) : '--';
 }
 
 // Panel 3: News Feed
@@ -347,6 +363,16 @@ async function loadNews() {
         if (!data || !data.items || data.items.length === 0) {
             container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No news available yet</p>';
             return;
+        }
+        
+        // Debug: Log first item's sentiment
+        if (data.items[0]) {
+            console.log('[GHOST V3] News sentiment debug:', {
+                headline: data.items[0].headline,
+                sentiment: data.items[0].sentiment,
+                type: typeof data.items[0].sentiment,
+                formatted: formatSentiment(data.items[0].sentiment)
+            });
         }
         
         container.innerHTML = data.items.slice(0, 10).map(article => `

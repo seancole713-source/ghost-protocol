@@ -218,15 +218,30 @@ class TurboProvider:
                 "cached": True,
             }
 
-        # Total failure
+        # Total failure - generate detailed error message
         duration = time.monotonic() - start
+        
+        # Analyze failure reasons from logs
+        error_summary = []
+        if any("timeout" in log.lower() for log in logs):
+            error_summary.append("timeouts")
+        if any("rate limit" in log.lower() or "429" in log for log in logs):
+            error_summary.append("rate limits")
+        if any("invalid tuple" in log.lower() or "no data" in log.lower() for log in logs):
+            error_summary.append("no data available")
+        
+        if error_summary:
+            error_detail = f"All stock providers failed for {symbol_upper} ({', '.join(error_summary)})"
+        else:
+            error_detail = f"All stock providers failed for {symbol_upper}"
+        
         return {
             "ok": False,
             "price": None,
             "provider": None,
             "duration_s": duration,
             "logs": logs,
-            "error": f"All stock providers failed for {symbol_upper}",
+            "error": error_detail,
             "cached": False,
         }
 
@@ -355,15 +370,30 @@ class TurboProvider:
                 "cached": True,
             }
 
-        # Total failure
+        # Total failure - generate detailed error message
         duration = time.monotonic() - start
+        
+        # Analyze failure reasons from logs
+        error_summary = []
+        if any("timeout" in log.lower() for log in logs):
+            error_summary.append("timeouts")
+        if any("rate limit" in log.lower() or "429" in log for log in logs):
+            error_summary.append("rate limits")
+        if any("invalid" in log.lower() or "no data" in log.lower() for log in logs):
+            error_summary.append("no data available")
+        
+        if error_summary:
+            error_detail = f"All crypto providers failed for {symbol_upper} ({', '.join(error_summary)})"
+        else:
+            error_detail = f"All crypto providers failed for {symbol_upper}"
+        
         return {
             "ok": False,
             "price": None,
             "provider": None,
             "duration_s": duration,
             "logs": logs,
-            "error": f"All crypto providers failed for {symbol_upper}",
+            "error": error_detail,
             "cached": False,
         }
 

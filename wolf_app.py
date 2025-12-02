@@ -3583,6 +3583,15 @@ async def _on_startup():
         LOGGER.error(f"accuracy_evaluator_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
+    # Start Personal Watchlist Prediction Scheduler
+    try:
+        from core.watchlist_prediction_scheduler import start_watchlist_scheduler
+        start_watchlist_scheduler()
+        LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist scheduler started")
+    except Exception as e:
+        LOGGER.error(f"watchlist_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
 
@@ -6622,6 +6631,7 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
     Get latest predictions for cockpit forecast panel.
     
     Returns predictions with confidence, direction, and expected_move for UI.
+    Note: Reads from in-memory cache populated by /api/predict/run.
     """
     try:
         predictions_list = []
@@ -6630,6 +6640,7 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
         if symbol:
             pred = _LATEST_PREDICTIONS.get(symbol.upper())
             if pred:
+                prediction_id = pred.get("prediction_id")
                 predictions_list.append({
                     "symbol": symbol.upper(),
                     "direction": pred.get("direction", "FLAT"),
@@ -6638,6 +6649,10 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                     "horizon_h": pred.get("horizon_h", 48),
                     "run_at": pred.get("run_at", 0),
                 })
+                LOGGER.info(
+                    f"[API] Served prediction {prediction_id} for {symbol.upper()} from cache "
+                    f"(run_at={pred.get('run_at', 0):.0f})"
+                )
         else:
             # Get latest N predictions from in-memory store
             for sym, pred in list(_LATEST_PREDICTIONS.items())[:limit]:
@@ -6783,7 +6798,8 @@ async def api_v3_vip_snapshot():
         from core.crypto.crypto_providers import get_crypto_price_quorum
 
         vip_symbols = list(dict.fromkeys(VIP_COINS))
-        tasks = [get_crypto_price_quorum(symbol, use_cache=False) for symbol in vip_symbols]
+        # Use cache and limit timeout to avoid blocking
+        tasks = [asyncio.wait_for(get_crypto_price_quorum(symbol, use_cache=True), timeout=2.0) for symbol in vip_symbols]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         vip_data = []
@@ -6823,6 +6839,49 @@ async def api_v3_vip_snapshot():
             "ok": False,
             "vip_coins": [],
             "error": str(e)
+        }
+
+
+@APP.get("/api/v3/alerts/status")
+async def api_v3_alerts_status():
+    """
+    Get alert system status and recent alerts.
+    
+    Returns active alerts count, Telegram status, and recent notifications.
+    """
+    try:
+        from wolf_app import STATE
+        
+        # Check if Telegram is configured
+        telegram_configured = bool(os.getenv("TELEGRAM_BOT_TOKEN")) and bool(os.getenv("TELEGRAM_CHAT_ID"))
+        
+        # Get recent alert stats from state
+        alert_count = STATE.get("alert_count", 0)
+        last_alert_time = STATE.get("last_alert_time", 0)
+        
+        # Check if any predictions triggered alerts recently (last hour)
+        recent_alerts = 0
+        if last_alert_time > 0 and time.time() - last_alert_time < 3600:
+            recent_alerts = alert_count
+        
+        return {
+            "ok": True,
+            "telegram_configured": telegram_configured,
+            "telegram_enabled": telegram_configured,
+            "alert_count_1h": recent_alerts,
+            "last_alert_timestamp": last_alert_time if last_alert_time > 0 else None,
+            "min_confidence_threshold": float(os.getenv("MIN_ALERT_CONFIDENCE", "0.55")),
+            "instant_alert_threshold": int(os.getenv("INSTANT_ALERT_THRESHOLD", "80")),
+            "status": "active" if telegram_configured else "not_configured",
+            "timestamp": time.time()
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Alert status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "status": "error"
         }
 
 
@@ -9831,7 +9890,9 @@ def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]
             # Increase timeout and add better JSON error handling
             tkr = yf.Ticker(symbol.upper())
             # Use timeout in session to prevent hanging on bad JSON responses
-            tkr.session.timeout = (5, 15)  # (connect, read) timeouts in seconds
+            # Safety check: session might be None in some yfinance versions
+            if hasattr(tkr, 'session') and tkr.session is not None:
+                tkr.session.timeout = (5, 15)  # (connect, read) timeouts in seconds
             hist = tkr.history(period="2d")
             if not hist.empty:
                 close = float(hist["Close"].iloc[-1])
@@ -24679,6 +24740,14 @@ try:
     from api.cockpit_v3_live_endpoints import router as cockpit_v3_router
     APP.include_router(cockpit_v3_router)
     LOGGER.info("✅ Cockpit V3 LIVE endpoints registered - all panels wired to real data")
+    
+    # Include Personal Watchlist endpoints
+    try:
+        from api.personal_watchlist_endpoints import router as watchlist_router
+        APP.include_router(watchlist_router)
+        LOGGER.info("✅ Personal Watchlist endpoints registered")
+    except Exception as e:
+        LOGGER.error(f"⚠️ Personal Watchlist endpoints not loaded: {e}", exc_info=True)
     
     # Add alias routes for frontend compatibility (legacy /api/cockpit/v3 paths)
     @APP.api_route("/api/cockpit/v3/goals", methods=["POST", "OPTIONS"])

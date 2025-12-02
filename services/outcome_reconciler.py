@@ -25,37 +25,25 @@ def reconcile_outcomes():
     Find predictions where 48h window has closed but outcome is missing.
     Compute metrics and persist outcome.
     """
-    now = time.time()
-    conn = sqlite3.connect(DB_PATH)
+    from core.prediction_store import get_prediction_store
+    
+    store = get_prediction_store()
+    rows = store.get_pending_outcomes()
 
-    try:
-        # Find predictions ready for outcome but not yet closed
-        rows = conn.execute(
-            """
-            SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.direction
-            FROM predictions p
-            LEFT JOIN outcomes o ON p.id = o.prediction_id
-            WHERE o.prediction_id IS NULL
-              AND (p.run_at + (p.horizon_h * 3600)) <= ?
-            ORDER BY p.run_at
-            """,
-            (now,),
-        ).fetchall()
+    if not rows:
+        LOGGER.debug("No predictions ready for outcome reconciliation")
+        return
 
-        if not rows:
-            LOGGER.debug("No predictions ready for outcome reconciliation")
-            return
+    LOGGER.info(f"Reconciling outcomes for {len(rows)} predictions")
 
-        LOGGER.info(f"Reconciling outcomes for {len(rows)} predictions")
-
-        for pred_id, symbol, run_at, horizon_h, pred_direction in rows:
-            try:
-                _reconcile_single(pred_id, symbol, run_at, horizon_h, pred_direction)
-            except Exception as e:
-                LOGGER.error(f"Failed to reconcile prediction {pred_id}: {e}", exc_info=True)
-
-    finally:
-        conn.close()
+    for pred in rows:
+        try:
+            _reconcile_single(
+                pred["id"], pred["symbol"], pred["run_at"], 
+                pred["horizon_h"], pred["direction"]
+            )
+        except Exception as e:
+            LOGGER.error(f"Failed to reconcile prediction {pred['id']}: {e}", exc_info=True)
 
 
 def _reconcile_single(

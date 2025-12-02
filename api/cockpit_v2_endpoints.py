@@ -349,16 +349,22 @@ async def get_latest_prediction():
     Get most recent Ghost prediction.
     """
     try:
-        # FIXED: Query real predictions from ghost_predictions.db
-        import sqlite3
-        conn = sqlite3.connect("./data/ghost_predictions.db")
-        cur = conn.execute("SELECT symbol, direction, confidence, horizon FROM predictions ORDER BY created_at DESC LIMIT 1")
-        row = cur.fetchone()
-        conn.close()
+        # Use prediction_store abstraction (supports SQLite or PostgreSQL)
+        from core.prediction_store import get_prediction_store
+        store = get_prediction_store()
         
+        # Get latest prediction from any symbol (scan common symbols)
         prediction = None
-        if row:
-            prediction = {"symbol": row[0], "direction": row[1], "confidence": row[2], "horizon": row[3]}
+        for symbol in ["BTC", "ETH", "AAPL", "TSLA", "NVDA"]:
+            pred_dict = store.get_latest_prediction(symbol)
+            if pred_dict:
+                prediction = {
+                    "symbol": pred_dict["symbol"],
+                    "direction": pred_dict["direction"],
+                    "confidence": pred_dict["confidence"],
+                    "horizon": pred_dict["horizon_h"]
+                }
+                break
         
         return {
             "prediction": prediction,

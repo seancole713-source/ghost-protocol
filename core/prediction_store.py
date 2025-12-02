@@ -157,6 +157,52 @@ class PredictionStore:
         if hasattr(self.backend, 'get_prediction_points'):
             return self.backend.get_prediction_points(prediction_id, kind)
         return []
+    
+    def count_predictions_since(self, since_ts: float) -> int:
+        """Count predictions made since a given timestamp."""
+        if hasattr(self.backend, 'count_predictions_since'):
+            return self.backend.count_predictions_since(since_ts)
+        return 0
+    
+    def get_recent_predictions(self, limit: int = 50, since_ts: float | None = None) -> list[dict[str, Any]]:
+        """Get recent predictions across all symbols."""
+        if hasattr(self.backend, 'get_recent_predictions'):
+            return self.backend.get_recent_predictions(limit, since_ts)
+        return []
+    
+    def create_outcome(
+        self,
+        prediction_id: int,
+        mae: float,
+        map_val: float,
+        rmse: float,
+        hit_direction: int,
+        hit_ratio_window: float | None = None,
+        notes: str = "",
+    ):
+        """Create outcome record for a closed prediction."""
+        if hasattr(self.backend, 'create_outcome'):
+            self.backend.create_outcome(
+                prediction_id, mae, map_val, rmse, hit_direction, hit_ratio_window, notes
+            )
+    
+    def get_pending_outcomes(self) -> list[dict[str, Any]]:
+        """Get predictions ready for outcome reconciliation (48h window closed, no outcome yet)."""
+        if hasattr(self.backend, 'get_pending_outcomes'):
+            return self.backend.get_pending_outcomes()
+        return []
+    
+    def get_predictions_with_outcomes(self, symbol: str) -> list[dict[str, Any]]:
+        """Get predictions with their outcomes for accuracy computation."""
+        if hasattr(self.backend, 'get_predictions_with_outcomes'):
+            return self.backend.get_predictions_with_outcomes(symbol)
+        return []
+    
+    def get_predictions_with_outcomes_since(self, symbol: str, since_ts: float) -> list[dict[str, Any]]:
+        """Get predictions with outcomes since a timestamp for windowed accuracy."""
+        if hasattr(self.backend, 'get_predictions_with_outcomes_since'):
+            return self.backend.get_predictions_with_outcomes_since(symbol, since_ts)
+        return []
 
 
 class SQLiteBackend:
@@ -413,6 +459,169 @@ class SQLiteBackend:
             ]
         finally:
             conn.close()
+    
+    def count_predictions_since(self, since_ts: float) -> int:
+        """Count predictions made since a given timestamp."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM predictions WHERE run_at >= ?",
+                (since_ts,)
+            )
+            return cursor.fetchone()[0] or 0
+        finally:
+            conn.close()
+    
+    def get_recent_predictions(self, limit: int = 50, since_ts: float | None = None) -> list[dict[str, Any]]:
+        """Get recent predictions across all symbols."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            if since_ts:
+                rows = conn.execute(
+                    """
+                    SELECT id, symbol, run_at, horizon_h, method, confidence, direction, tag
+                    FROM predictions
+                    WHERE run_at >= ?
+                    ORDER BY run_at DESC
+                    LIMIT ?
+                    """,
+                    (since_ts, limit)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, symbol, run_at, horizon_h, method, confidence, direction, tag
+                    FROM predictions
+                    ORDER BY run_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,)
+                ).fetchall()
+            
+            return [
+                {
+                    "id": row[0],
+                    "symbol": row[1],
+                    "run_at": row[2],
+                    "horizon_h": row[3],
+                    "method": row[4],
+                    "confidence": row[5],
+                    "direction": row[6],
+                    "tag": row[7],
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+    
+    def create_outcome(
+        self,
+        prediction_id: int,
+        mae: float,
+        map_val: float,
+        rmse: float,
+        hit_direction: int,
+        hit_ratio_window: float | None = None,
+        notes: str = "",
+    ):
+        """Create outcome record for a closed prediction in SQLite."""
+        closed_at = time.time()
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO outcomes (prediction_id, closed_at, mae, map, rmse, hit_direction, hit_ratio_window, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (prediction_id, closed_at, mae, map_val, rmse, hit_direction, hit_ratio_window, notes),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    
+    def get_pending_outcomes(self) -> list[dict[str, Any]]:
+        """Get predictions ready for outcome reconciliation."""
+        now = time.time()
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.direction
+                FROM predictions p
+                LEFT JOIN outcomes o ON p.id = o.prediction_id
+                WHERE o.prediction_id IS NULL
+                  AND (p.run_at + (p.horizon_h * 3600)) <= ?
+                ORDER BY p.run_at
+                """,
+                (now,),
+            ).fetchall()
+            
+            return [
+                {
+                    "id": row[0],
+                    "symbol": row[1],
+                    "run_at": row[2],
+                    "horizon_h": row[3],
+                    "direction": row[4],
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+    
+    def get_predictions_with_outcomes(self, symbol: str) -> list[dict[str, Any]]:
+        """Get predictions with their outcomes for accuracy computation."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT p.confidence, o.mae, o.map, o.rmse, o.hit_direction
+                FROM predictions p
+                JOIN outcomes o ON p.id = o.prediction_id
+                WHERE p.symbol = ?
+                """,
+                (symbol,),
+            ).fetchall()
+            
+            return [
+                {
+                    "confidence": row[0],
+                    "mae": row[1],
+                    "map": row[2],
+                    "rmse": row[3],
+                    "hit_direction": row[4],
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+    
+    def get_predictions_with_outcomes_since(self, symbol: str, since_ts: float) -> list[dict[str, Any]]:
+        """Get predictions with outcomes since a timestamp (windowed)."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT p.confidence, o.mae, o.map, o.rmse, o.hit_direction
+                FROM predictions p
+                JOIN outcomes o ON p.id = o.prediction_id
+                WHERE p.symbol = ? AND o.closed_at >= ?
+                """,
+                (symbol, since_ts),
+            ).fetchall()
+            
+            return [
+                {
+                    "confidence": row[0],
+                    "mae": row[1],
+                    "map": row[2],
+                    "rmse": row[3],
+                    "hit_direction": row[4],
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
 
 
 class PostgresBackend:
@@ -421,6 +630,9 @@ class PostgresBackend:
     
     Fully implements prediction storage with connection pooling,
     transactions, and proper schema mapping from SQLite.
+    
+    LAZY INITIALIZATION: Connection pool is created on first use to avoid
+    blocking module imports when Railway Postgres is slow/unreachable.
     """
     
     def __init__(self):
@@ -434,29 +646,65 @@ class PostgresBackend:
             from psycopg2.extras import RealDictCursor
             self.psycopg2 = psycopg2
             self.RealDictCursor = RealDictCursor
+            self.ThreadedConnectionPool = ThreadedConnectionPool
         except ImportError as e:
             raise RuntimeError(f"PostgreSQL dependencies missing: {e}. Install: pip install psycopg2-binary")
         
-        # Create connection pool
-        self.pool = ThreadedConnectionPool(
-            minconn=2,
-            maxconn=10,
-            dsn=DATABASE_URL,
-            cursor_factory=RealDictCursor
-        )
+        # Lazy-init: defer pool creation until first use
+        self.pool = None
+        self._pool_initialized = False
+        self._init_lock = __import__('threading').Lock()
         
-        # Initialize schema
-        self._init_schema()
+        LOGGER.info("📡 PostgreSQL backend created (lazy-init mode)")
+    
+    def _ensure_pool(self):
+        """Ensure connection pool is initialized (lazy init with retry)."""
+        if self._pool_initialized:
+            return
         
-        LOGGER.info("📡 PostgreSQL backend initialized with connection pool (2-10 connections)")
+        with self._init_lock:
+            if self._pool_initialized:
+                return
+            
+            # Retry logic for Railway Postgres connection issues
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    LOGGER.info(f"Initializing Postgres connection pool (attempt {attempt + 1}/{max_retries})...")
+                    self.pool = self.ThreadedConnectionPool(
+                        minconn=2,
+                        maxconn=10,
+                        dsn=DATABASE_URL,
+                        cursor_factory=self.RealDictCursor,
+                        connect_timeout=10
+                    )
+                    
+                    # Initialize schema
+                    self._init_schema()
+                    
+                    self._pool_initialized = True
+                    LOGGER.info("✅ PostgreSQL connection pool initialized (2-10 connections)")
+                    return
+                    
+                except Exception as e:
+                    LOGGER.warning(f"Connection pool init failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    if attempt < max_retries - 1:
+                        import time
+                        backoff = 2 ** attempt
+                        LOGGER.info(f"Retrying in {backoff}s...")
+                        time.sleep(backoff)
+                    else:
+                        raise RuntimeError(f"Failed to initialize PostgreSQL pool after {max_retries} attempts: {e}")
     
     def _get_connection(self):
-        """Get connection from pool."""
+        """Get connection from pool (ensures pool is initialized)."""
+        self._ensure_pool()
         return self.pool.getconn()
     
     def _return_connection(self, conn):
         """Return connection to pool."""
-        self.pool.putconn(conn)
+        if self.pool:
+            self.pool.putconn(conn)
     
     def _init_schema(self):
         """
@@ -892,6 +1140,174 @@ class PostgresBackend:
             conn.rollback()
             LOGGER.error(f"[POSTGRES] Failed to create outcome for prediction {prediction_id}: {e}")
             raise
+        finally:
+            self._return_connection(conn)
+    
+    def count_predictions_since(self, since_ts: float) -> int:
+        """Count predictions made since a given timestamp in PostgreSQL."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM predictions WHERE run_at >= %s",
+                (since_ts,)
+            )
+            result = cursor.fetchone()
+            return result[0] if result else 0
+        except Exception as e:
+            LOGGER.error(f"[POSTGRES] Failed to count predictions: {e}")
+            return 0
+        finally:
+            self._return_connection(conn)
+    
+    def get_recent_predictions(self, limit: int = 50, since_ts: float | None = None) -> list[dict[str, Any]]:
+        """Get recent predictions across all symbols from PostgreSQL."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            if since_ts:
+                cursor.execute(
+                    """
+                    SELECT id, symbol, run_at, horizon_h, method, confidence, direction, tag
+                    FROM predictions
+                    WHERE run_at >= %s
+                    ORDER BY run_at DESC
+                    LIMIT %s
+                    """,
+                    (since_ts, limit)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, symbol, run_at, horizon_h, method, confidence, direction, tag
+                    FROM predictions
+                    ORDER BY run_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,)
+                )
+            
+            rows = cursor.fetchall()
+            
+            return [
+                {
+                    "id": row["id"],
+                    "symbol": row["symbol"],
+                    "run_at": row["run_at"],
+                    "horizon_h": row["horizon_h"],
+                    "method": row["method"],
+                    "confidence": row["confidence"],
+                    "direction": row["direction"],
+                    "tag": row["tag"],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            LOGGER.error(f"[POSTGRES] Failed to get recent predictions: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+    
+    def get_pending_outcomes(self) -> list[dict[str, Any]]:
+        """Get predictions ready for outcome reconciliation in PostgreSQL."""
+        now = time.time()
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.direction
+                FROM predictions p
+                LEFT JOIN outcomes o ON p.id = o.prediction_id
+                WHERE o.prediction_id IS NULL
+                  AND (p.run_at + (p.horizon_h * 3600)) <= %s
+                ORDER BY p.run_at
+                """,
+                (now,),
+            )
+            
+            rows = cursor.fetchall()
+            
+            return [
+                {
+                    "id": row["id"],
+                    "symbol": row["symbol"],
+                    "run_at": row["run_at"],
+                    "horizon_h": row["horizon_h"],
+                    "direction": row["direction"],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            LOGGER.error(f"[POSTGRES] Failed to get pending outcomes: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+    
+    def get_predictions_with_outcomes(self, symbol: str) -> list[dict[str, Any]]:
+        """Get predictions with their outcomes for accuracy computation in PostgreSQL."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT p.confidence, o.mae, o.map, o.rmse, o.hit_direction
+                FROM predictions p
+                JOIN outcomes o ON p.id = o.prediction_id
+                WHERE p.symbol = %s
+                """,
+                (symbol,),
+            )
+            
+            rows = cursor.fetchall()
+            
+            return [
+                {
+                    "confidence": row["confidence"],
+                    "mae": row["mae"],
+                    "map": row["map"],
+                    "rmse": row["rmse"],
+                    "hit_direction": row["hit_direction"],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            LOGGER.error(f"[POSTGRES] Failed to get predictions with outcomes: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+    
+    def get_predictions_with_outcomes_since(self, symbol: str, since_ts: float) -> list[dict[str, Any]]:
+        """Get predictions with outcomes since a timestamp in PostgreSQL."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT p.confidence, o.mae, o.map, o.rmse, o.hit_direction
+                FROM predictions p
+                JOIN outcomes o ON p.id = o.prediction_id
+                WHERE p.symbol = %s AND o.closed_at >= %s
+                """,
+                (symbol, since_ts),
+            )
+            
+            rows = cursor.fetchall()
+            
+            return [
+                {
+                    "confidence": row["confidence"],
+                    "mae": row["mae"],
+                    "map": row["map"],
+                    "rmse": row["rmse"],
+                    "hit_direction": row["hit_direction"],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            LOGGER.error(f"[POSTGRES] Failed to get windowed predictions with outcomes: {e}")
+            return []
         finally:
             self._return_connection(conn)
 

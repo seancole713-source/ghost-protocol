@@ -628,6 +628,64 @@ class GoalsSnapshot(BaseModel):
 
 # === STATUS & HEALTH ===
 
+@router.get("/cockpit/overview")
+async def get_cockpit_overview():
+    """
+    Comprehensive cockpit overview with all key metrics.
+    
+    Returns:
+        {
+            "ok": True,
+            "ghost_score": 92.5,
+            "health": {...},
+            "predictions": {...},
+            "alerts": {...},
+            "timestamp": 1234567890
+        }
+    """
+    try:
+        # Get health status
+        status = await get_cockpit_status()
+        
+        # Get goals/score
+        goals = await get_goals_snapshot()
+        
+        # Get recent predictions count
+        from wolf_app import _LATEST_PREDICTIONS
+        prediction_count = len(dict(_LATEST_PREDICTIONS or {}))
+        
+        # Build overview
+        return {
+            "ok": True,
+            "ghost_score": status.get("ghost_health_score", 0.0),
+            "ghost_grade": status.get("ghost_health_grade", "F"),
+            "health": {
+                "data_ok": status.get("data_ok", False),
+                "ai_ok": status.get("ai_ok", False),
+                "risk_ok": status.get("risk_ok", False),
+                "live": status.get("live", False),
+            },
+            "predictions": {
+                "cached_count": prediction_count,
+                "last_update": status.get("last_update_ts", 0),
+            },
+            "goals": {
+                "daily_pct": goals.get("daily_goal_pct", 0),
+                "weekly_pct": goals.get("weekly_goal_pct", 0),
+                "monthly_pct": goals.get("monthly_goal_pct", 0),
+                "yearly_pct": goals.get("yearly_goal_pct", 0),
+            },
+            "timestamp": time.time(),
+        }
+    except Exception as exc:
+        LOGGER.error(f"Cockpit overview failed: {exc}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(exc),
+            "timestamp": time.time(),
+        }
+
+
 @router.get("/cockpit/version")
 async def get_cockpit_version():
     """Expose the active cockpit build identifier for smoke checks."""
@@ -665,57 +723,99 @@ async def get_cockpit_status():
 
 @router.get("/goals/snapshot")
 async def get_goals_snapshot():
-    """Expose live Ghost Score + goal progress for cockpit health panel."""
-    goals_raw = await _load_goals_data()
-    goals_payload = _format_goal_payload(goals_raw)
-    ghost_score_details = _compute_ghost_score_snapshot()
+    """
+    Expose live Ghost Score + goal progress for cockpit health panel.
+    
+    Returns both dollar-based and percentage-based goals with model performance.
+    """
+    try:
+        from core.goals_tracker import GoalsTracker
+        
+        tracker = GoalsTracker()
+        
+        # Update model performance for all periods
+        for period in ["daily", "weekly", "monthly", "yearly"]:
+            try:
+                tracker.update_model_performance(period)
+            except Exception as e:
+                LOGGER.warning(f"Failed to update model performance for {period}: {e}")
+        
+        # Get all goals (now includes percentage data)
+        goals_data = tracker.get_all_goals()
+        
+        # Legacy format for backward compatibility
+        goals_raw = await _load_goals_data()
+        goals_payload = _format_goal_payload(goals_raw)
+        ghost_score_details = _compute_ghost_score_snapshot()
 
-    daily_pct = _goal_progress_pct(goals_payload["daily"])
-    weekly_pct = _goal_progress_pct(goals_payload["weekly"])
-    monthly_pct = _goal_progress_pct(goals_payload["monthly"])
-    yearly_pct = _goal_progress_pct(goals_payload["yearly"])
+        daily_pct = _goal_progress_pct(goals_payload["daily"])
+        weekly_pct = _goal_progress_pct(goals_payload["weekly"])
+        monthly_pct = _goal_progress_pct(goals_payload["monthly"])
+        yearly_pct = _goal_progress_pct(goals_payload["yearly"])
 
-    ghost_score_value: Optional[float] = None
-    if ghost_score_details:
-        try:
-            ghost_score_value = float(ghost_score_details.get("score"))
-        except (TypeError, ValueError):
-            ghost_score_value = None
+        ghost_score_value: Optional[float] = None
+        if ghost_score_details:
+            try:
+                ghost_score_value = float(ghost_score_details.get("score"))
+            except (TypeError, ValueError):
+                ghost_score_value = None
 
-    status_ok = any(
-        value is not None
-        for value in (
-            ghost_score_value,
-            daily_pct,
-            weekly_pct,
-            monthly_pct,
-            yearly_pct,
+        status_ok = any(
+            value is not None
+            for value in (
+                ghost_score_value,
+                daily_pct,
+                weekly_pct,
+                monthly_pct,
+                yearly_pct,
+            )
         )
-    )
 
-    response = {
-        "ghost_score": ghost_score_value,
-        "ghost_score_details": ghost_score_details or None,
-        "goals": goals_payload,
-        "daily_goal_pct": daily_pct,
-        "weekly_goal_pct": weekly_pct,
-        "monthly_goal_pct": monthly_pct,
-        "yearly_goal_pct": yearly_pct,
-        "status": "ok" if status_ok else "no-data",
-        "timestamp": time.time(),
-    }
+        response = {
+            "ghost_score": ghost_score_value,
+            "ghost_score_details": ghost_score_details or None,
+            "goals": goals_payload,
+            "goals_v2": goals_data,  # NEW: Enhanced goals with % tracking
+            "daily_goal_pct": daily_pct,
+            "weekly_goal_pct": weekly_pct,
+            "monthly_goal_pct": monthly_pct,
+            "yearly_goal_pct": yearly_pct,
+            "status": "ok" if status_ok else "no-data",
+            "timestamp": time.time(),
+        }
 
-    return response
+        return response
+    except Exception as exc:
+        LOGGER.error(f"Goals snapshot failed: {exc}", exc_info=True)
+        # Fallback to legacy behavior
+        goals_raw = await _load_goals_data()
+        goals_payload = _format_goal_payload(goals_raw)
+        ghost_score_details = _compute_ghost_score_snapshot()
+
+        return {
+            "ghost_score": None,
+            "ghost_score_details": ghost_score_details or None,
+            "goals": goals_payload,
+            "goals_v2": {},
+            "daily_goal_pct": 0,
+            "weekly_goal_pct": 0,
+            "monthly_goal_pct": 0,
+            "yearly_goal_pct": 0,
+            "status": "error",
+            "timestamp": time.time(),
+            "error": str(exc)
+        }
 
 
 @router.post("/goals/set")
-async def set_goal(period: str, target_amount: float):
+async def set_goal(period: str, target_amount: float | None = None, target_pct: float | None = None):
     """
-    Set a trading goal for a specific period.
+    Set a trading goal for a specific period (dollar and/or percentage based).
     
     Args:
         period: 'daily', 'weekly', 'monthly', or 'yearly'
-        target_amount: Target profit amount in USD
+        target_amount: Target profit amount in USD (optional)
+        target_pct: Target percentage return (optional)
     
     Returns:
         {
@@ -723,17 +823,27 @@ async def set_goal(period: str, target_amount: float):
             "id": goal_id,
             "period": str,
             "target_amount": float,
+            "target_pct": float,
             "start_date": str,
             "end_date": str
         }
+    
+    Note:
+        At least one of target_amount or target_pct must be provided.
+        Ghost tracks model-implied performance vs percentage goals.
     """
     try:
         from core.goals_tracker import GoalsTracker
         
         tracker = GoalsTracker()
-        result = tracker.set_goal(period, target_amount)
+        result = tracker.set_goal(period, target_amount=target_amount, target_pct=target_pct)
         
-        LOGGER.info(f"Goal set: {period} = ${target_amount:,.0f}")
+        if target_amount and target_pct:
+            LOGGER.info(f"Goal set: {period} = ${target_amount:,.0f} ({target_pct}%)")
+        elif target_amount:
+            LOGGER.info(f"Goal set: {period} = ${target_amount:,.0f}")
+        elif target_pct:
+            LOGGER.info(f"Goal set: {period} = {target_pct}%")
         
         return {"ok": True, **result}
     except Exception as e:
@@ -934,11 +1044,11 @@ async def get_ai_metrics():
 async def get_accuracy_summary():
     """Get prediction accuracy metrics from database"""
     try:
-        import sqlite3
         import time
         from services import predictor
+        from core.prediction_store import get_prediction_store
         
-        conn = sqlite3.connect(predictor.DB_PATH)
+        store = get_prediction_store()
         
         # Query predictions from last 1/7/30 days
         now = time.time()
@@ -946,38 +1056,32 @@ async def get_accuracy_summary():
         week_ago = now - (7 * 24 * 3600)
         month_ago = now - (30 * 24 * 3600)
         
-        # Get predictions with outcomes
-        predictions = conn.execute("""
-            SELECT 
-                p.id,
-                p.symbol,
-                p.run_at,
-                p.direction,
-                p.confidence,
-                o.hit_direction,
-                o.hit_ratio_window
-            FROM predictions p
-            LEFT JOIN outcomes o ON p.id = o.prediction_id
-            WHERE p.run_at >= ?
-            ORDER BY p.run_at DESC
-        """, (month_ago,)).fetchall()
+        # Get recent predictions with outcomes across multiple symbols
+        predictions_data = []
+        for sym in ["BTC", "ETH", "AAPL", "TSLA", "NVDA", "SPY", "QQQ"]:
+            history = predictor.get_prediction_history(sym, limit=50)
+            for pred in history:
+                if pred.get("run_at", 0) >= month_ago:
+                    predictions_data.append(pred)
         
-        conn.close()
+        # Sort by timestamp
+        predictions_data = sorted(predictions_data, key=lambda x: x.get("run_at", 0), reverse=True)
         
         # Calculate accuracy by time window
-        daily = [p for p in predictions if p[2] >= day_ago]
-        weekly = [p for p in predictions if p[2] >= week_ago]
-        monthly = predictions
+        daily = [p for p in predictions_data if p.get("run_at", 0) >= day_ago]
+        weekly = [p for p in predictions_data if p.get("run_at", 0) >= week_ago]
+        monthly = predictions_data
         
         def calc_accuracy(preds):
             if not preds:
                 return 0.0, 0, 0, 0
             
-            with_outcomes = [p for p in preds if p[5] is not None]
+            with_outcomes = [p for p in preds if p.get("closed") and p.get("hit_direction") is not None]
             if not with_outcomes:
                 return 0.0, 0, 0, len(preds)
             
-            correct = sum(1 for p in with_outcomes if p[5] == 1)
+            correct = sum(1 for p in with_outcomes if p.get("hit_direction") == 1)
+            return (correct / len(with_outcomes) * 100) if with_outcomes else 0.0, correct, len(with_outcomes), len(preds) - len(with_outcomes)
             wrong = sum(1 for p in with_outcomes if p[5] == 0)
             pending = len(preds) - len(with_outcomes)
             
@@ -1047,69 +1151,37 @@ async def get_latest_predictions(symbol: Optional[str] = None, limit: int = 10):
         }
     """
     try:
-        import sqlite3
         import time
         from services import predictor
         
-        conn = sqlite3.connect(predictor.DB_PATH)
-        
-        # Get recent predictions with outcomes
+        # REPLACED: Use predictor.get_prediction_history() instead
+        # Get recent predictions with outcomes using abstraction
         if symbol:
-            # Filter by specific symbol
-            predictions = conn.execute("""
-                SELECT 
-                    p.id,
-                    p.symbol,
-                    p.run_at,
-                    p.direction,
-                    p.confidence,
-                    p.horizon_h,
-                    o.hit_direction,
-                    o.hit_ratio_window,
-                    o.map
-                FROM predictions p
-                LEFT JOIN outcomes o ON p.id = o.prediction_id
-                WHERE p.symbol = ?
-                ORDER BY p.run_at DESC
-                LIMIT ?
-            """, (symbol.upper(), limit)).fetchall()
+            predictions_data = predictor.get_prediction_history(symbol.upper(), limit=limit)
         else:
-            # Get all predictions
-            predictions = conn.execute("""
-                SELECT 
-                    p.id,
-                    p.symbol,
-                    p.run_at,
-                    p.direction,
-                    p.confidence,
-                    p.horizon_h,
-                    o.hit_direction,
-                    o.hit_ratio_window,
-                    o.map
-                FROM predictions p
-                LEFT JOIN outcomes o ON p.id = o.prediction_id
-                ORDER BY p.run_at DESC
-                LIMIT ?
-            """, (limit,)).fetchall()
-        
-        conn.close()
+            predictions_data = []
+            for sym in ["BTC", "ETH", "AAPL", "TSLA", "NVDA", "SPY", "QQQ"]:
+                history = predictor.get_prediction_history(sym, limit=10)
+                predictions_data.extend(history)
+                if len(predictions_data) >= limit:
+                    break
+            predictions_data = sorted(predictions_data, key=lambda x: x.get("run_at", 0), reverse=True)[:limit]
         
         result = []
-        for pred in predictions:
+        for pred in predictions_data:
             pred_obj = {
-                "id": pred[0],
-                "symbol": pred[1],
-                "run_at": int(pred[2]),
-                "direction": pred[3],
-                "confidence": round(pred[4], 2),
-                "horizon_h": pred[5]
+                "id": pred.get("id"),
+                "symbol": pred.get("symbol"),
+                "run_at": int(pred.get("run_at", 0)),
+                "direction": pred.get("direction"),
+                "confidence": round(pred.get("confidence", 0), 2),
+                "horizon_h": pred.get("horizon_h")
             }
             
-            # Calculate expected_move based on confidence and asset volatility
-            # Formula: expected_move = confidence * base_volatility * direction_multiplier
-            confidence = pred[4]
-            direction = pred[3]
-            symbol = pred[1]
+            # Calculate expected_move
+            confidence = pred.get("confidence", 0)
+            direction = pred.get("direction")
+            symbol = pred.get("symbol")
             
             # Base expected volatility by asset class (% per 48h)
             if symbol in ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "DOT", "MATIC"]:
@@ -1297,45 +1369,26 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
         # FAST FALLBACK: Use Ghost AI predictions as primary news source
         # This ensures news feed always has content even when external APIs fail
         try:
-            import sqlite3
-            db_path = "data/ghost_predictions.db"
+            from core.prediction_store import get_prediction_store
+            store = get_prediction_store()
             
-            # Try to read from predictions database
-            conn = sqlite3.connect(db_path, timeout=3)
-            cursor = conn.cursor()
-            
-            # Get recent predictions (last 48 hours for more content)
+            # Get recent predictions for news-like content
             cutoff_ts = int(time.time()) - (48 * 3600)
+            items = []
             
-            if symbol:
-                cursor.execute("""
-                    SELECT symbol, direction, confidence, run_at
-                    FROM predictions
-                    WHERE run_at > ? AND symbol = ?
-                    ORDER BY run_at DESC
-                    LIMIT ?
-                """, (cutoff_ts, symbol.upper(), limit))
-            else:
-                cursor.execute("""
-                    SELECT symbol, direction, confidence, run_at
-                    FROM predictions
-                    WHERE run_at > ?
-                    ORDER BY run_at DESC
-                    LIMIT ?
-                """, (cutoff_ts, limit))
+            # Get predictions for common symbols if no specific symbol requested
+            symbols_to_check = [symbol.upper()] if symbol else ["BTC", "ETH", "AAPL", "TSLA", "NVDA"]
             
-            rows = cursor.fetchall()
-            conn.close()
-            
-            if rows:
-                items = []
-                for row in rows:
-                    symbol_name, direction, confidence, run_at = row
-                    confidence_pct = int(float(confidence) * 100) if confidence <= 1.0 else int(confidence)
+            for sym in symbols_to_check:
+                pred_dict = store.get_latest_prediction(sym)
+                if pred_dict and pred_dict.get("run_at", 0) > cutoff_ts:
+                    direction = pred_dict.get("direction", "FLAT")
+                    confidence = pred_dict.get("confidence", 0.0)
+                    run_at = pred_dict.get("run_at", time.time())
                     
-                    # Generate varied headlines
+                    confidence_pct = int(float(confidence) * 100) if confidence <= 1.0 else int(confidence)
                     direction_emoji = "🟢" if direction == "UP" else "🔴" if direction == "DOWN" else "⚪"
-                    headline = f"{direction_emoji} Ghost predicts {symbol_name} {direction} movement ({confidence_pct}% confidence)"
+                    headline = f"{direction_emoji} Ghost predicts {sym} {direction} movement ({confidence_pct}% confidence)"
                     
                     items.append({
                         "headline": headline,
@@ -1343,9 +1396,13 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
                         "source": "Ghost AI",
                         "sentiment": 1.0 if direction == "UP" else -1.0 if direction == "DOWN" else 0.0,
                         "url": "",
-                        "symbols": [symbol_name]
+                        "symbols": [sym]
                     })
-                
+                    
+                    if len(items) >= limit:
+                        break
+            
+            if items:
                 LOGGER.info(f"News feed: Generated {len(items)} items from Ghost predictions")
                 return {
                     "items": items,
@@ -1556,37 +1613,16 @@ async def get_predictions_history(
             if symbol:
                 history = get_prediction_history(symbol, limit=limit)
             else:
-                # Get predictions for all symbols (may need DB query)
-                import sqlite3
-                conn = sqlite3.connect("data/ghost_predictions.db")
-                cursor = conn.cursor()
-                
-                cursor.execute("""
-                    SELECT 
-                        p.id, p.symbol, p.run_at, p.direction, p.confidence, 
-                        p.horizon_h, o.closed_at, o.mae, o.hit_direction
-                    FROM predictions p
-                    LEFT JOIN outcomes o ON p.id = o.prediction_id
-                    ORDER BY p.run_at DESC
-                    LIMIT ?
-                """, (limit,))
-                
-                rows = cursor.fetchall()
-                conn.close()
-                
+                # Get predictions for all symbols using prediction_store abstraction
                 history = []
-                for row in rows:
-                    history.append({
-                        "id": row[0],
-                        "symbol": row[1],
-                        "timestamp": row[2],
-                        "direction": row[3],
-                        "confidence": row[4],
-                        "horizon_h": row[5],
-                        "closed": row[6] is not None,
-                        "mae": row[7] if row[6] else None,
-                        "hit_direction": row[8] if row[6] else None
-                    })
+                for sym in ["BTC", "ETH", "AAPL", "TSLA", "NVDA", "SPY", "QQQ", "DOGE", "SOL"]:
+                    sym_history = get_prediction_history(sym, limit=5)
+                    history.extend(sym_history)
+                    if len(history) >= limit:
+                        break
+                
+                # Sort by timestamp descending and limit
+                history = sorted(history, key=lambda x: x.get("run_at", x.get("timestamp", 0)), reverse=True)[:limit]
             
             # Format for V3
             predictions = []
@@ -2055,18 +2091,18 @@ async def get_daily_summary():
         # Predictions made today
         predictions_made = 0
         try:
-            import sqlite3
-            conn = sqlite3.connect("data/ghost_predictions.db")
-            cursor = conn.cursor()
+            from core.prediction_store import get_prediction_store
+            store = get_prediction_store()
             
-            # Count predictions from today
+            # Count predictions from today across all symbols
             today_start = int(datetime.now().replace(hour=0, minute=0, second=0).timestamp())
-            cursor.execute("""
-                SELECT COUNT(*) FROM predictions 
-                WHERE run_at >= ?
-            """, (today_start,))
-            predictions_made = cursor.fetchone()[0] or 0
-            conn.close()
+            predictions_made = 0
+            
+            # Check common symbols for today's predictions
+            for sym in ["BTC", "ETH", "AAPL", "TSLA", "NVDA", "SPY", "QQQ"]:
+                pred_dict = store.get_latest_prediction(sym)
+                if pred_dict and pred_dict.get("run_at", 0) >= today_start:
+                    predictions_made += 1
         except:
             pass
         
@@ -2223,17 +2259,23 @@ async def get_system_diagnostics():
         }
         
         # Check databases
-        import sqlite3
-        
         try:
-            conn = sqlite3.connect("ghost_predictions.db")
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM predictions")
-            count = cursor.fetchone()[0]
-            conn.close()
-            diagnostics["databases"]["predictions"] = {"exists": True, "row_count": count}
-        except:
-            diagnostics["databases"]["predictions"] = {"exists": False, "row_count": 0}
+            from core.prediction_store import get_prediction_store
+            store = get_prediction_store()
+            
+            # Test prediction store connectivity
+            test_pred = store.get_latest_prediction("BTC")
+            diagnostics["databases"]["predictions"] = {
+                "exists": True, 
+                "accessible": test_pred is not None,
+                "backend": store.backend.__class__.__name__
+            }
+        except Exception as e:
+            diagnostics["databases"]["predictions"] = {
+                "exists": False, 
+                "accessible": False,
+                "error": str(e)[:100]
+            }
         
         try:
             conn = sqlite3.connect("watchlist.db")
