@@ -66,10 +66,10 @@ def run_migrations() -> Tuple[bool, List[str]]:
                             SELECT FROM information_schema.tables 
                             WHERE table_schema = 'public'
                             AND table_name = 'ghost_watchlist_items'
-                        )
+                        ) as exists
                     """)
                     result = cursor.fetchone()
-                    table_exists = result[0] if result else False
+                    table_exists = result['exists'] if result else False
                     
                     if table_exists:
                         msg = f"[MIGRATION] ✅ {migration_name} - already applied (table exists)"
@@ -108,7 +108,10 @@ def run_migrations() -> Tuple[bool, List[str]]:
         return True, messages
         
     except Exception as e:
-        msg = f"[MIGRATION] ❌ Migration runner failed: {e}"
+        # Handle ANY exception type (including KeyError, TypeError, etc.)
+        error_type = type(e).__name__
+        error_msg = str(e) if str(e) else error_type
+        msg = f"[MIGRATION] ❌ Migration runner failed: {error_msg}"
         LOGGER.error(msg, exc_info=True)
         messages.append(msg)
         return False, messages
@@ -136,10 +139,10 @@ def ensure_personal_watchlist_table() -> bool:
                     SELECT FROM information_schema.tables 
                     WHERE table_schema = 'public'
                     AND table_name = 'ghost_watchlist_items'
-                )
+                ) as exists
             """)
             result = cursor.fetchone()
-            table_exists = result[0] if result else False
+            table_exists = result['exists'] if result else False
             
             if table_exists:
                 LOGGER.info("[MIGRATION] ✅ ghost_watchlist_items table exists")
