@@ -59,9 +59,10 @@ if IS_POSTGRES:
                     minconn=2,
                     maxconn=20,
                     dsn=DATABASE_URL,
-                    cursor_factory=RealDictCursor
+                    cursor_factory=RealDictCursor,
+                    connect_timeout=5  # CRITICAL: 5 second timeout to prevent startup hangs
                 )
-                LOGGER.info("✅ PostgreSQL pool initialized (2-20 connections)")
+                LOGGER.info("✅ PostgreSQL pool initialized (2-20 connections, 5s timeout)")
             return _pg_pool
         
     except ImportError as e:
