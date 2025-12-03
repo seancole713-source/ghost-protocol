@@ -3600,10 +3600,14 @@ async def _on_startup():
         # Non-critical - continue startup
 
     # Start Personal Watchlist Prediction Scheduler
+    # TEMPORARILY DISABLED - SQL parameter binding issues in production
+    # See: https://github.com/seancole713-source/ghost-protocol/issues/XXX
+    # Re-enable after testing PostgreSQL INTERVAL fixes locally
     try:
-        from core.watchlist_prediction_scheduler import start_watchlist_scheduler
-        start_watchlist_scheduler()
-        LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist scheduler started")
+        LOGGER.warning("[GHOST STARTUP] ⚠️ Personal watchlist scheduler DISABLED (SQL debugging)")
+        # from core.watchlist_prediction_scheduler import start_watchlist_scheduler
+        # start_watchlist_scheduler()
+        # LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist scheduler started")
     except Exception as e:
         LOGGER.error(f"watchlist_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
