@@ -57,7 +57,7 @@ from xml.etree import ElementTree as ET
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request, Response, Security
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import (
@@ -712,7 +712,8 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         "/api/predictions/run",  # Single-symbol on-demand predictions are public (supports 500+ stocks, 1000+ crypto)
         "/api/predictions/symbols",  # Symbol discovery endpoint
         "/api/health/predictions",  # Prediction health check is public
-        "/api/cockpit"  # Cockpit snapshot is public
+        "/api/cockpit",  # Cockpit snapshot is public
+        "/api/recent_alerts"  # Recent alerts feed is public (no auth needed)
     ]
 
     path = request.url.path

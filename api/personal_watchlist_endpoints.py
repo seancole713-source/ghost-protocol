@@ -237,17 +237,17 @@ async def get_user_watchlist(request: Request, x_api_token: Optional[str] = Head
             # Fallback: return unenriched watchlist
             enriched_items = pwm.get_watchlist()
 
-        return {"items": enriched_items, "count": len(enriched_items), "timestamp": time.time()}
+        return {"ok": True, "items": enriched_items, "count": len(enriched_items), "timestamp": time.time()}
 
     except Exception as e:
         # Gracefully handle errors (e.g., tables don't exist yet)
         # Return empty list instead of 500 error for better UX
         if "does not exist" in str(e) or "no such table" in str(e):
             LOGGER.warning(f"⚠️ Watchlist tables not ready: {e}")
-            return {"items": [], "count": 0, "timestamp": time.time()}
+            return {"ok": True, "items": [], "count": 0, "timestamp": time.time()}
         else:
             LOGGER.error(f"❌ Get watchlist API error: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=str(e))
+            return {"ok": False, "items": [], "count": 0, "timestamp": time.time(), "error": str(e)}
 
 
 @router.post("/update-position")

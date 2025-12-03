@@ -22,9 +22,12 @@ CREATE TABLE IF NOT EXISTS ghost_watchlist_items (
     priority INTEGER DEFAULT 1,  -- 1=normal, 2=high, 3=critical
     
     -- Constraints
-    UNIQUE (symbol, asset_type) WHERE active = TRUE,
     CHECK (LENGTH(symbol) > 0 AND LENGTH(symbol) <= 20)
 );
+
+-- Partial unique index (only active items must be unique)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_unique_active 
+    ON ghost_watchlist_items(symbol, asset_type) WHERE active = TRUE;
 
 -- Indexes for fast lookups
 CREATE INDEX IF NOT EXISTS idx_watchlist_symbol ON ghost_watchlist_items(symbol) WHERE active = TRUE;
