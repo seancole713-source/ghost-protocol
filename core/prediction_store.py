@@ -689,10 +689,9 @@ class PostgresBackend:
                 except Exception as e:
                     LOGGER.warning(f"Connection pool init failed (attempt {attempt + 1}/{max_retries}): {e}")
                     if attempt < max_retries - 1:
+                        # Short delay to avoid blocking healthcheck (0.5s instead of exponential backoff)
                         import time
-                        backoff = 2 ** attempt
-                        LOGGER.info(f"Retrying in {backoff}s...")
-                        time.sleep(backoff)
+                        time.sleep(0.5)
                     else:
                         raise RuntimeError(f"Failed to initialize PostgreSQL pool after {max_retries} attempts: {e}")
     
