@@ -1249,17 +1249,25 @@ async def _get_latest_predictions_core(symbol: Optional[str], limit: int):
         import time
         from services import predictor
         
+        # CRITICAL FIX: Cap limit to prevent slow DB queries
+        limit = min(limit, 20)  # Maximum 20 predictions
+        
         # REPLACED: Use predictor.get_prediction_history() instead
         # Get recent predictions with outcomes using abstraction
         if symbol:
             predictions_data = predictor.get_prediction_history(symbol.upper(), limit=limit)
         else:
             predictions_data = []
-            for sym in ["BTC", "ETH", "AAPL", "TSLA", "NVDA", "SPY", "QQQ"]:
-                history = predictor.get_prediction_history(sym, limit=10)
-                predictions_data.extend(history)
-                if len(predictions_data) >= limit:
-                    break
+            # Only query 5 symbols to keep it fast
+            for sym in ["BTC", "ETH", "AAPL", "NVDA", "SPY"]:
+                try:
+                    history = predictor.get_prediction_history(sym, limit=5)
+                    predictions_data.extend(history)
+                    if len(predictions_data) >= limit:
+                        break
+                except Exception as e:
+                    LOGGER.warning(f"Failed to get history for {sym}: {e}")
+                    continue
             predictions_data = sorted(predictions_data, key=lambda x: x.get("run_at", 0), reverse=True)[:limit]
         
         result = []
@@ -1998,7 +2006,7 @@ async def get_watchlist_enriched():
 
 
 async def _get_watchlist_enriched_core():
-    """Core logic for watchlist enrichment with prices."""
+    """Core logic for watchlist enrichment with prices - PARALLEL execution."""
     try:
         # Get base watchlist
         watchlist_data = await get_watchlist()
@@ -2006,86 +2014,71 @@ async def _get_watchlist_enriched_core():
         crypto = watchlist_data.get("crypto", [])
         vip = watchlist_data.get("vip", [])
         
-        all_symbols = stocks + crypto + vip
-        enriched_items = []
+        # CRITICAL FIX: Limit to first 15 symbols to prevent timeouts
+        # Fetching prices for 50+ symbols sequentially takes 150+ seconds
+        all_symbols = (stocks + crypto + vip)[:15]
         
-        # Fetch prices for each symbol
-        for symbol in all_symbols:
+        LOGGER.info(f"Enriching watchlist: {len(all_symbols)} symbols (limited from {len(stocks) + len(crypto) + len(vip)} total)")
+        
+        # Fetch prices in PARALLEL using asyncio.gather for speed
+        async def fetch_symbol_price(symbol):
+            """Fetch price for a single symbol with 2s timeout."""
             try:
                 # Determine asset type
-                if symbol in crypto or symbol in vip:
-                    # Fetch crypto price using TurboProvider
-                    try:
-                        from core.providers.turbo_provider import turbo_crypto_price
-                        crypto_result = await asyncio.to_thread(
-                            turbo_crypto_price,
-                            symbol,
-                            max_budget_s=3.0
-                        )
-                        if crypto_result.get("ok") and crypto_result.get("price"):
-                            enriched_items.append({
-                                "symbol": symbol,
-                                "price": float(crypto_result.get("price", 0)),
-                                "change_pct": 0.0,  # TurboProvider doesn't return change_pct yet
-                                "type": "crypto" if symbol in crypto else "vip",
-                                "provider": crypto_result.get("provider", "unknown")
-                            })
-                        else:
-                            LOGGER.warning(f"Crypto price fetch returned no data for {symbol}")
-                            enriched_items.append({
-                                "symbol": symbol,
-                                "price": 0,
-                                "change_pct": 0,
-                                "type": "crypto" if symbol in crypto else "vip"
-                            })
-                    except Exception as e:
-                        LOGGER.warning(f"Crypto price fetch failed for {symbol}: {e}")
-                        enriched_items.append({
+                is_crypto = symbol in crypto or symbol in vip
+                
+                # Apply 2 second timeout per symbol (prevent slow providers from blocking)
+                if is_crypto:
+                    from core.providers.turbo_provider import turbo_crypto_price
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(turbo_crypto_price, symbol, max_budget_s=1.5),
+                        timeout=2.0
+                    )
+                    if result.get("ok") and result.get("price"):
+                        return {
                             "symbol": symbol,
-                            "price": 0,
-                            "change_pct": 0,
-                            "type": "crypto" if symbol in crypto else "vip"
-                        })
+                            "price": float(result.get("price", 0)),
+                            "change_pct": 0.0,
+                            "type": "crypto" if symbol in crypto else "vip",
+                            "provider": result.get("provider", "unknown")
+                        }
                 else:
-                    # Fetch stock price using TurboProvider
-                    try:
-                        from core.providers.turbo_provider import turbo_stock_price
-                        stock_result = await asyncio.to_thread(
-                            turbo_stock_price,
-                            symbol,
-                            max_budget_s=3.0
-                        )
-                        if stock_result.get("ok") and stock_result.get("price"):
-                            enriched_items.append({
-                                "symbol": symbol,
-                                "price": float(stock_result.get("price", 0)),
-                                "change_pct": 0.0,  # TurboProvider doesn't return change_pct yet
-                                "type": "stock",
-                                "provider": stock_result.get("provider", "unknown")
-                            })
-                        else:
-                            LOGGER.warning(f"Stock price fetch returned no data for {symbol}")
-                            enriched_items.append({
-                                "symbol": symbol,
-                                "price": 0,
-                                "change_pct": 0,
-                                "type": "stock"
-                            })
-                    except Exception as e:
-                        LOGGER.warning(f"Stock price fetch failed for {symbol}: {e}")
-                        enriched_items.append({
+                    from core.providers.turbo_provider import turbo_stock_price
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(turbo_stock_price, symbol, max_budget_s=1.5),
+                        timeout=2.0
+                    )
+                    if result.get("ok") and result.get("price"):
+                        return {
                             "symbol": symbol,
-                            "price": 0,
-                            "change_pct": 0,
-                            "type": "stock"
-                        })
-            except Exception as e:
-                LOGGER.warning(f"Price fetch failed for {symbol}: {e}")
-                continue
+                            "price": float(result.get("price", 0)),
+                            "change_pct": 0.0,
+                            "type": "stock",
+                            "provider": result.get("provider", "unknown")
+                        }
+                
+                # If we get here, price fetch failed
+                return {
+                    "symbol": symbol,
+                    "price": 0,
+                    "change_pct": 0,
+                    "type": "crypto" if is_crypto else "stock"
+                }
+            except (asyncio.TimeoutError, Exception) as e:
+                LOGGER.warning(f"Price fetch failed/timeout for {symbol}: {e}")
+                return {
+                    "symbol": symbol,
+                    "price": 0,
+                    "change_pct": 0,
+                    "type": "crypto" if symbol in crypto or symbol in vip else "stock"
+                }
+        
+        # Fetch all prices in parallel (15 symbols * 2s = 30s max, but likely <5s)
+        enriched_items = await asyncio.gather(*[fetch_symbol_price(sym) for sym in all_symbols])
         
         return {
             "ok": True,
-            "items": enriched_items,
+            "items": [item for item in enriched_items if item],  # Filter out None
             "count": len(enriched_items),
             "timestamp": time.time()
         }
