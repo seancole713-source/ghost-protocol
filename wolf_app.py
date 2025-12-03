@@ -3480,63 +3480,57 @@ async def _on_startup():
         # Critical failure - but try to continue
 
     # Run database migrations (personal watchlist, etc.)
-    # DISABLED: Migration runner blocks startup if PostgreSQL slow/unavailable
-    # Move to background task after server starts
-    # try:
-    #     from core.migration_runner import run_migrations
-    #     success, messages = run_migrations()
-    #     for msg in messages:
-    #         LOGGER.info(msg)
-    #     if success:
-    #         LOGGER.info("[GHOST STARTUP] ✅ Database migrations complete")
-    #     else:
-    #         LOGGER.warning("[GHOST STARTUP] ⚠️  Some migrations failed (see logs above)")
-    # except Exception as e:
-    #     LOGGER.error(f"migrations_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    #     # Non-critical - continue startup
-    LOGGER.warning("[GHOST STARTUP] ⚠️ Database migrations DISABLED (moved to background)")
+    # NOTE: Wrapped in try/except, non-blocking, has 5s timeout on PostgreSQL connection
+    try:
+        from core.migration_runner import run_migrations
+        success, messages = run_migrations()
+        for msg in messages:
+            LOGGER.info(msg)
+        if success:
+            LOGGER.info("[GHOST STARTUP] ✅ Database migrations complete")
+        else:
+            LOGGER.warning("[GHOST STARTUP] ⚠️  Some migrations failed (see logs above)")
+    except Exception as e:
+        LOGGER.error(f"migrations_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
 
     # Initialize forecast tables
-    # DISABLED: SQLite operations can block if disk I/O slow
-    # try:
-    #     _init_forecast_tables()
-    #     LOGGER.info("[GHOST STARTUP] Forecast tables initialized")
-    # except Exception as e:
-    #     LOGGER.error(f"forecast_tables_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    #     # Non-critical - continue startup
-    LOGGER.warning("[GHOST STARTUP] ⚠️ Forecast tables DISABLED (moved to background)")
+    try:
+        _init_forecast_tables()
+        LOGGER.info("[GHOST STARTUP] Forecast tables initialized")
+    except Exception as e:
+        LOGGER.error(f"forecast_tables_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
     
     # Initialize goals from environment
-    # DISABLED: GoalsTracker may access SQLite, blocking startup
-    # try:
-    #     from core.goals_tracker import GoalsTracker
-    #     tracker = GoalsTracker()
-    #     existing = tracker.get_all_goals()
-    #     
-    #     # Check if goals are already set
-    #     has_goals = any(g.get('target', 0) > 0 for g in existing.values())
-    #     
-    #     if not has_goals:
-    #         # Initialize from environment variable
-    #         weekly_target = float(_os_module.getenv("TARGET_WEEKLY_PROFIT_USD", "300"))
-    #         
-    #         # Calculate other periods based on weekly target
-    #         daily_target = weekly_target / 5  # 5 trading days per week
-    #         monthly_target = weekly_target * 4  # ~4 weeks per month
-    #         yearly_target = weekly_target * 52  # 52 weeks per year
-    #         
-    #         tracker.set_goal("daily", daily_target)
-    #         tracker.set_goal("weekly", weekly_target)
-    #         tracker.set_goal("monthly", monthly_target)
-    #         tracker.set_goal("yearly", yearly_target)
-    #         
-    #         LOGGER.info(f"[GHOST STARTUP] Goals initialized: weekly=${weekly_target}, yearly=${yearly_target}")
-    #     else:
-    #         LOGGER.info("[GHOST STARTUP] Goals already configured (skipping initialization)")
-    # except Exception as e:
-    #     LOGGER.error(f"goals_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    #     # Non-critical - continue startup
-    LOGGER.warning("[GHOST STARTUP] ⚠️ Goals initialization DISABLED (moved to background)")
+    try:
+        from core.goals_tracker import GoalsTracker
+        tracker = GoalsTracker()
+        existing = tracker.get_all_goals()
+        
+        # Check if goals are already set
+        has_goals = any(g.get('target', 0) > 0 for g in existing.values())
+        
+        if not has_goals:
+            # Initialize from environment variable
+            weekly_target = float(_os_module.getenv("TARGET_WEEKLY_PROFIT_USD", "300"))
+            
+            # Calculate other periods based on weekly target
+            daily_target = weekly_target / 5  # 5 trading days per week
+            monthly_target = weekly_target * 4  # ~4 weeks per month
+            yearly_target = weekly_target * 52  # 52 weeks per year
+            
+            tracker.set_goal("daily", daily_target)
+            tracker.set_goal("weekly", weekly_target)
+            tracker.set_goal("monthly", monthly_target)
+            tracker.set_goal("yearly", yearly_target)
+            
+            LOGGER.info(f"[GHOST STARTUP] Goals initialized: weekly=${weekly_target}, yearly=${yearly_target}")
+        else:
+            LOGGER.info("[GHOST STARTUP] Goals already configured (skipping initialization)")
+    except Exception as e:
+        LOGGER.error(f"goals_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
     
     # Stage 1: Initialize Context Awareness Layer
     if STAGE1_ENABLED:
