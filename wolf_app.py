@@ -3648,7 +3648,11 @@ async def _post_startup_init():
     Run Stage 4/5 and background tasks AFTER server starts accepting connections.
     This prevents blocking the startup event handler.
     """
-    await asyncio.sleep(1)  # Let FastAPI start accepting connections first
+    # CRITICAL: Wait 5 seconds for FastAPI to fully initialize and healthcheck to pass
+    # Railway healthcheck window is 100s - we need to respond IMMEDIATELY, then run tasks
+    await asyncio.sleep(5)
+    
+    LOGGER.info("[POST-STARTUP] Starting background initialization (delayed 5s)...")
     
     # Stage 4: Initialize Portfolio Optimization & Advanced Strategies
     if STAGE4_ENABLED:
@@ -3702,17 +3706,19 @@ async def _post_startup_init():
 
         async def get_top_opportunities():
             """Get top opportunities from high-confidence predictions"""
-            # Try scanner first
-            try:
-                results = await scan_all()
-                all_opps = results["stocks"] + results["crypto"]
-                all_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
-                if all_opps:
-                    return all_opps[:10]
-            except Exception:
-                pass
+            # DISABLED: Scanner blocks startup with 60+ crypto price fetches
+            # Use _LATEST_PREDICTIONS directly (in-memory, instant)
+            # # Try scanner first
+            # try:
+            #     results = await scan_all()
+            #     all_opps = results["stocks"] + results["crypto"]
+            #     all_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
+            #     if all_opps:
+            #         return all_opps[:10]
+            # except Exception:
+            #     pass
 
-            # Fallback: use _LATEST_PREDICTIONS with configurable confidence
+            # Use _LATEST_PREDICTIONS with configurable confidence
             min_conf = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.55"))
             opportunities = []
             for sym, pred in _LATEST_PREDICTIONS.items():
