@@ -582,14 +582,14 @@ class PersonalWatchlistManager:
 
                     # Get price snapshots from last N minutes
                     cursor.execute(
-                        """
+                        f"""
                         SELECT price, snapshot_at
                         FROM watchlist_price_snapshots
                         WHERE watchlist_item_id = %s
-                          AND snapshot_at >= NOW() - INTERVAL '%s minutes'
+                          AND snapshot_at >= NOW() - INTERVAL '{lookback_minutes} minutes'
                         ORDER BY snapshot_at ASC
                         """,
-                        (item_id, lookback_minutes),
+                        (item_id,),
                     )
 
                     snapshots = cursor.fetchall()
@@ -713,14 +713,14 @@ class PersonalWatchlistManager:
                 cursor = conn.cursor()
 
                 cursor.execute(
-                    """
+                    f"""
                     SELECT COUNT(*) as cnt
                     FROM watchlist_alerts_log
                     WHERE symbol = %s
                       AND alert_type = %s
-                      AND created_at >= NOW() - INTERVAL '%s hours'
+                      AND created_at >= NOW() - INTERVAL '{cooldown_hours} hours'
                     """,
-                    (symbol.upper(), alert_type, cooldown_hours),
+                    (symbol.upper(), alert_type),
                 )
 
                 result = cursor.fetchone()
@@ -747,13 +747,12 @@ class PersonalWatchlistManager:
                 cursor = conn.cursor()
 
                 cursor.execute(
-                    """
+                    f"""
                     SELECT alert_type, COUNT(*) as cnt
                     FROM watchlist_alerts_log
-                    WHERE created_at >= NOW() - INTERVAL '%s days'
+                    WHERE created_at >= NOW() - INTERVAL '{days} days'
                     GROUP BY alert_type
-                    """,
-                    (days,),
+                    """
                 )
 
                 stats = {"total": 0, "by_type": {}}

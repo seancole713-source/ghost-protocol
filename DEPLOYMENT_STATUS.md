@@ -137,3 +137,22 @@ Ghost will be running 24/7 at:
 ______________________________________________________________________
 
 **Run `./check_railway_deployment.sh` in ~5 minutes to verify!** ✅
+
+---
+
+## 🔄 UPDATE - Dec 3, 2025 01:15 AM
+
+**Latest Changes Pushed:**
+- ✅ Commit `b36f3c3` - PostgreSQL migration fix + public paths
+- ✅ Commit `f9148ca` - Added /api/v3/watchlist/user alias
+- ✅ Commit `0efa5ee` - Empty commit to force Railway redeploy
+
+**Current Production Status:**
+| Endpoint | Status | Details |
+|----------|--------|---------|
+| `/api/v3/watchlist/enriched` | ✅ WORKING | Returns 20 items with ok:true |
+| `/api/v3/watchlist/user` | ❌ 404 | Waiting for deployment |
+| `/api/recent_alerts` | ❌ 401 | Waiting for deployment |
+
+**Next:** Railway should deploy in 2-5 minutes. Run `bash scripts/monitor_deployment.sh` to track progress.
+
