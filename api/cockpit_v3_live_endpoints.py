@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -1018,7 +1019,7 @@ async def get_vip_snapshot():
 # === RISK ENGINE ===
 
 @router.get("/risk/snapshot")
-async def get_risk_snapshot():
+async def get_risk_snapshot(symbol: str = "WOLF"):
     """
     Get risk metrics: NAV, exposure, VaR, drawdown, position limits.
     Uses Ghost's risk management system.
@@ -1355,8 +1356,9 @@ async def get_providers_health():
             redis_url = os.getenv("REDIS_URL", "")
             if redis_url:
                 redis_client = redis_lib.from_url(redis_url, decode_responses=True)
-        except:
-            pass
+        except Exception as e:
+            LOGGER.warning(f"Redis initialization failed: {e}")
+            redis_client = None
         
         # Check Redis for provider stats
         if redis_client:
@@ -1386,8 +1388,10 @@ async def get_providers_health():
                             "latency_ms": int(avg_latency),
                             "success_rate": round(success_rate, 1)
                         }
+            except (KeyError, json.JSONDecodeError, TypeError) as e:
+                LOGGER.warning(f"Failed to parse provider stats from Redis: {e}")
             except Exception as e:
-                LOGGER.error(f"Failed to load provider stats from Redis: {e}")
+                LOGGER.error(f"Unexpected error loading provider stats: {e}", exc_info=True)
         
         # If no Redis stats, try to get from price reliability module
         if all(p["status"] == "unknown" for p in providers.values()):
@@ -1401,8 +1405,10 @@ async def get_providers_health():
                             "latency_ms": stats.get("latency_ms", 0),
                             "success_rate": stats.get("success_rate", 0)
                         }
-            except:
-                pass
+            except (ImportError, AttributeError, KeyError) as e:
+                LOGGER.debug(f"Price reliability module not available or incomplete: {e}")
+            except Exception as e:
+                LOGGER.warning(f"Failed to get provider reliability: {e}")
         
         return {
             "providers": providers,
@@ -1816,8 +1822,8 @@ async def get_watchlist():
                 for sym in default_symbols:
                     try:
                         watcher.add_ticker(sym)
-                    except:
-                        pass
+                    except Exception as e:
+                        LOGGER.debug(f"Failed to add ticker {sym}: {e}")
                 tickers = watcher.get_watchlist()
             
             # Group by type
@@ -1864,8 +1870,8 @@ async def get_watchlist():
                     "count": len(stocks) + len(crypto),
                     "timestamp": time.time()
                 }
-            except:
-                pass
+            except Exception as e:
+                LOGGER.warning(f"Failed to build watchlist from smart_watcher: {e}")
         
         # Final fallback
         return {
@@ -2201,16 +2207,18 @@ async def get_daily_summary():
             from core.metrics.ghost_score import compute_ghost_score_v2
             score_result = compute_ghost_score_v2({}, {}, {})
             ghost_score = score_result.get("overall_score", 0.0)
-        except:
-            pass
+        except (ImportError, AttributeError, TypeError) as e:
+            LOGGER.debug(f"Ghost score computation failed: {e}")
+        except Exception as e:
+            LOGGER.warning(f"Unexpected error computing ghost score: {e}")
         
         # Count opportunities
         opportunities = 0
         try:
             movers = await get_crypto_top_movers(limit=20)
             opportunities = len(movers)
-        except:
-            pass
+        except Exception as e:
+            LOGGER.debug(f"Failed to get top movers: {e}")
         
         # Predictions made today
         predictions_made = 0
@@ -2227,8 +2235,10 @@ async def get_daily_summary():
                 pred_dict = store.get_latest_prediction(sym)
                 if pred_dict and pred_dict.get("run_at", 0) >= today_start:
                     predictions_made += 1
-        except:
-            pass
+        except (ImportError, AttributeError) as e:
+            LOGGER.debug(f"Failed to count predictions: {e}")
+        except Exception as e:
+            LOGGER.warning(f"Unexpected error counting predictions: {e}")
         
         # Accuracy today
         accuracy_today = 0.0
@@ -2236,15 +2246,17 @@ async def get_daily_summary():
             from core.prediction_tracker import calculate_accuracy
             stats = calculate_accuracy("24h")
             accuracy_today = stats.get("accuracy_pct", 0.0) / 100.0
-        except:
-            pass
+        except (ImportError, AttributeError, ZeroDivisionError) as e:
+            LOGGER.debug(f"Failed to calculate accuracy: {e}")
+        except Exception as e:
+            LOGGER.warning(f"Unexpected error calculating accuracy: {e}")
         
         # Top movers
         top_movers = []
         try:
             top_movers = await get_crypto_top_movers(limit=5)
-        except:
-            pass
+        except Exception as e:
+            LOGGER.debug(f"Failed to get top movers for summary: {e}")
         
         # Market regime
         market_regime = "SIDEWAYS"
@@ -2252,8 +2264,10 @@ async def get_daily_summary():
             from core.regime_detector import detect_regime
             regime_result = detect_regime()
             market_regime = regime_result.get("regime", "SIDEWAYS")
-        except:
-            pass
+        except (ImportError, AttributeError) as e:
+            LOGGER.debug(f"Failed to detect market regime: {e}")
+        except Exception as e:
+            LOGGER.warning(f"Unexpected error detecting regime: {e}")
         
         # Generate summary text
         summary_lines = []
@@ -2359,7 +2373,8 @@ async def get_system_diagnostics():
             diagnostics["api_keys"]["POLYGON_KEY"] = bool(POLYGON_KEY)
             diagnostics["api_keys"]["ALPHAVANTAGE_KEY"] = bool(ALPHAVANTAGE_KEY)
             diagnostics["api_keys"]["ALPHA_VANTAGE_API_KEY"] = bool(os.getenv("ALPHA_VANTAGE_API_KEY"))
-        except:
+        except (ImportError, AttributeError) as e:
+            LOGGER.debug(f"Failed to import API keys: {e}")
             diagnostics["api_keys"]["POLYGON_KEY"] = False
             diagnostics["api_keys"]["ALPHAVANTAGE_KEY"] = False
             diagnostics["api_keys"]["ALPHA_VANTAGE_API_KEY"] = False
@@ -2408,7 +2423,8 @@ async def get_system_diagnostics():
             count = cursor.fetchone()[0]
             conn.close()
             diagnostics["databases"]["watchlist"] = {"exists": True, "row_count": count}
-        except:
+        except (sqlite3.Error, FileNotFoundError) as e:
+            LOGGER.debug(f"Watchlist database not accessible: {e}")
             diagnostics["databases"]["watchlist"] = {"exists": False, "row_count": 0}
         
         try:
@@ -2418,7 +2434,8 @@ async def get_system_diagnostics():
             count = cursor.fetchone()[0]
             conn.close()
             diagnostics["databases"]["smart_watcher"] = {"exists": True, "row_count": count}
-        except:
+        except (sqlite3.Error, FileNotFoundError) as e:
+            LOGGER.debug(f"Smart watcher database not accessible: {e}")
             diagnostics["databases"]["smart_watcher"] = {"exists": False, "row_count": 0}
         
         # Check prediction stats
