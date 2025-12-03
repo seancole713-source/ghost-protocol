@@ -352,6 +352,9 @@ def start_reconciler_background_task():
         """Background loop that runs reconciliation periodically."""
         LOGGER.info(f"🚀 Starting outcome reconciler background task (every {interval_hours}h)")
         
+        # Sleep first on startup to avoid blocking server initialization
+        time.sleep(60)  # Wait 60s for server to fully start before first run
+        
         while True:
             try:
                 reconcile_outcomes_v2()
