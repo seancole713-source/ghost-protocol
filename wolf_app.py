@@ -1143,11 +1143,6 @@ async def health_check():
             "message": "Server is accepting connections"
         }
 
-@APP.get("/api/health", include_in_schema=False)
-async def api_health_check():
-    """API health check endpoint"""
-    return {"status": "healthy", "api": "online", "service": "ghost-protocol"}
-
 @APP.get("/", include_in_schema=False)
 async def _root_index():
     """Single entrypoint: redirect root traffic to Cockpit V3."""
