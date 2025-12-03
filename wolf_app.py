@@ -6812,6 +6812,16 @@ async def api_v3_watchlist_enriched():
         }
 
 
+# Alias for /api/v3/watchlist/user (compatibility with personal watchlist router)
+@APP.get("/api/v3/watchlist/user")
+async def api_v3_watchlist_user():
+    """
+    Alias for /api/v3/watchlist/enriched - maintains compatibility with personal watchlist API.
+    Returns the same enriched watchlist data.
+    """
+    return await api_v3_watchlist_enriched()
+
+
 # VIP snapshot cache (30s TTL - reduced from 5min due to timeout issues)
 _VIP_SNAPSHOT_CACHE = {"data": None, "timestamp": 0, "ttl": 30}
 
