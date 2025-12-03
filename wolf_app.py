@@ -24807,8 +24807,8 @@ async def cockpit_v2_page(request: Request):
 
 # Include Personal Watchlist endpoints FIRST (higher priority than cockpit v3 legacy watchlist)
 try:
-    from api.personal_watchlist_endpoints import router as watchlist_router
-    APP.include_router(watchlist_router)
+    from api.personal_watchlist_endpoints import router as personal_watchlist_router
+    APP.include_router(personal_watchlist_router)
     LOGGER.info("✅ Personal Watchlist endpoints registered (priority routing)")
 except Exception as e:
     LOGGER.error(f"⚠️ Personal Watchlist endpoints not loaded: {e}", exc_info=True)
@@ -24818,7 +24818,7 @@ try:
     from api.cockpit_v3_live_endpoints import router as cockpit_v3_router
     APP.include_router(cockpit_v3_router)
     LOGGER.info("✅ Cockpit V3 LIVE endpoints registered - all panels wired to real data")
-    
+
     # Add alias routes for frontend compatibility (legacy /api/cockpit/v3 paths)
     @APP.api_route("/api/cockpit/v3/goals", methods=["POST", "OPTIONS"])
     async def cockpit_v3_goals_alias(
@@ -24827,20 +24827,20 @@ try:
         target_amount: float | None = None
     ):
         """
-        Alias for /api/v3/goals/set - maintains frontend compatibility
-        Supports both query params AND JSON body
-        Handles OPTIONS for CORS preflight
+        Alias for /api/v3/goals/set - maintains frontend compatibility.
+        Supports both query params AND JSON body.
+        Handles OPTIONS for CORS preflight.
         """
         # Handle CORS preflight
         if request.method == "OPTIONS":
             return Response(status_code=200)
-        
+
         from api.cockpit_v3_live_endpoints import set_goal
-        
+
         try:
             # Log incoming request for debugging
             LOGGER.info(f"Goals POST: query_params={dict(request.query_params)}")
-            
+
             # Try JSON body first (common frontend pattern)
             if period is None or target_amount is None:
                 try:
@@ -24850,7 +24850,7 @@ try:
                     target_amount = target_amount or body.get("target_amount") or body.get("targetAmount")
                 except Exception as e:
                     LOGGER.warning(f"Goals POST: Failed to parse JSON body: {e}")
-            
+
             # Validate we have required params
             if not period or target_amount is None:
                 LOGGER.error(f"Goals POST: Missing params - period={period}, target_amount={target_amount}")
@@ -24858,26 +24858,31 @@ try:
                     status_code=400,
                     content={"ok": False, "error": "Missing required parameters: period and target_amount"}
                 )
-            
-            result = await set_goal(period, target_amount)
+
+            # Call the actual endpoint function with request context
+            result = await set_goal(
+                period=str(period),
+                target_amount=float(target_amount),
+                request=request
+            )
             LOGGER.info(f"Goals POST: Success - {result}")
             return result
-            
+
         except Exception as e:
             LOGGER.error(f"Goals POST: Exception - {e}", exc_info=True)
             return JSONResponse(
                 status_code=500,
                 content={"ok": False, "error": str(e)}
             )
-    
+
     @APP.get("/api/cockpit/v3/goals")
     async def cockpit_v3_goals_get_alias():
-        """Alias for /api/v3/goals/snapshot - maintains frontend compatibility"""
+        """Alias for /api/v3/goals/snapshot - maintains frontend compatibility."""
         from api.cockpit_v3_live_endpoints import get_goals_snapshot
         return await get_goals_snapshot()
-    
+
     LOGGER.info("✅ Cockpit V3 legacy route aliases registered (/api/cockpit/v3/*)")
-    
+
 except Exception as e:
     LOGGER.error(f"⚠️ Cockpit V3 LIVE endpoints not loaded: {e}", exc_info=True)
     # Continue startup even if V3 endpoints fail to load
@@ -24889,11 +24894,6 @@ try:
     LOGGER.info("✅ Cockpit V2 API endpoints registered (fallback)")
 except Exception as e:
     LOGGER.error(f"⚠️ Cockpit V2 API endpoints not loaded: {e}", exc_info=True)
-
-
-# ============================================================================
-# GHOST INVESTMENT HUNTER - EXISTING MARKET SCANNER ENDPOINTS
-# ============================================================================
 
 
 # Alias for Railway/Uvicorn compatibility (expects lowercase 'app')
