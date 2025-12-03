@@ -3,10 +3,9 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Healthcheck TEMPORARILY DISABLED - startup takes >100s with PostgreSQL initialization
-# Re-enable after optimizing startup sequence (move heavy init to background tasks)
-# healthcheckPath = "/health"
-# healthcheckTimeout = 100
+# Healthcheck re-enabled - reconcilers disabled to isolate hang issue
+healthcheckPath = "/health"
+healthcheckTimeout = 100
 
 # Restart policy to auto-recover failed deployments
 restartPolicyType = "ON_FAILURE"
