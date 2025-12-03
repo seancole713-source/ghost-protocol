@@ -11927,6 +11927,9 @@ def _stop_reconciler_worker():
 
 def _reconciler_loop():
     """Background loop to reconcile prediction outcomes and append actual prices"""
+    # Sleep first on startup to avoid blocking server initialization
+    time.sleep(60)  # Wait 60s for server to fully start before first run
+    
     while not _RECONCILER_STOP.is_set():
         try:
             # 1. Append actual prices to active predictions
