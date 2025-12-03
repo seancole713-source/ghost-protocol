@@ -3634,7 +3634,18 @@ async def _on_startup():
 
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
+    
+    # Schedule post-startup initialization in background (non-blocking)
+    asyncio.create_task(_post_startup_init())
 
+
+async def _post_startup_init():
+    """
+    Run Stage 4/5 and background tasks AFTER server starts accepting connections.
+    This prevents blocking the startup event handler.
+    """
+    await asyncio.sleep(1)  # Let FastAPI start accepting connections first
+    
     # Stage 4: Initialize Portfolio Optimization & Advanced Strategies
     if STAGE4_ENABLED:
         try:
@@ -4000,9 +4011,7 @@ async def _on_startup():
 
     # Start background tasks for forecast persistence and learning
     try:
-        import asyncio
-
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         loop.create_task(_auto_record_forecast())
         loop.create_task(_auto_record_actual_prices())
         loop.create_task(_auto_score_forecasts())
