@@ -729,6 +729,48 @@ async def get_goals_snapshot():
     Returns both dollar-based and percentage-based goals with model performance.
     """
     try:
+        # Wrap in timeout to prevent hanging on DB queries
+        return await asyncio.wait_for(
+            _get_goals_snapshot_core(),
+            timeout=5.0  # 5 second max for goals calculation
+        )
+    except asyncio.TimeoutError:
+        LOGGER.warning("Goals snapshot timeout after 5s")
+        return {
+            "ok": False,
+            "ghost_score": None,
+            "ghost_score_details": None,
+            "goals": {},
+            "goals_v2": {},
+            "daily_goal_pct": 0,
+            "weekly_goal_pct": 0,
+            "monthly_goal_pct": 0,
+            "yearly_goal_pct": 0,
+            "status": "error",
+            "timestamp": time.time(),
+            "error": "Timeout: goals calculation took >5s"
+        }
+    except Exception as e:
+        LOGGER.error(f"Goals snapshot error: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "ghost_score": None,
+            "ghost_score_details": None,
+            "goals": {},
+            "goals_v2": {},
+            "daily_goal_pct": 0,
+            "weekly_goal_pct": 0,
+            "monthly_goal_pct": 0,
+            "yearly_goal_pct": 0,
+            "status": "error",
+            "timestamp": time.time(),
+            "error": str(e)[:200]
+        }
+
+
+async def _get_goals_snapshot_core():
+    """Core logic for goals snapshot calculation."""
+    try:
         from core.goals_tracker import GoalsTracker
         
         tracker = GoalsTracker()
@@ -772,6 +814,7 @@ async def get_goals_snapshot():
         )
 
         response = {
+            "ok": True,
             "ghost_score": ghost_score_value,
             "ghost_score_details": ghost_score_details or None,
             "goals": goals_payload,
@@ -786,13 +829,18 @@ async def get_goals_snapshot():
 
         return response
     except Exception as exc:
-        LOGGER.error(f"Goals snapshot failed: {exc}", exc_info=True)
+        LOGGER.error(f"Goals snapshot core failed: {exc}", exc_info=True)
         # Fallback to legacy behavior
-        goals_raw = await _load_goals_data()
-        goals_payload = _format_goal_payload(goals_raw)
-        ghost_score_details = _compute_ghost_score_snapshot()
+        try:
+            goals_raw = await _load_goals_data()
+            goals_payload = _format_goal_payload(goals_raw)
+            ghost_score_details = _compute_ghost_score_snapshot()
+        except Exception:
+            goals_payload = {}
+            ghost_score_details = None
 
         return {
+            "ok": False,
             "ghost_score": None,
             "ghost_score_details": ghost_score_details or None,
             "goals": goals_payload,
@@ -803,7 +851,7 @@ async def get_goals_snapshot():
             "yearly_goal_pct": 0,
             "status": "error",
             "timestamp": time.time(),
-            "error": str(exc)
+            "error": str(exc)[:200]
         }
 
 
@@ -1152,6 +1200,7 @@ async def get_latest_predictions(symbol: Optional[str] = None, limit: int = 10):
     
     Returns:
         {
+            "ok": bool,
             "predictions": [
                 {
                     "id": 123,
@@ -1168,6 +1217,34 @@ async def get_latest_predictions(symbol: Optional[str] = None, limit: int = 10):
             "count": 10
         }
     """
+    try:
+        # Wrap in timeout to prevent hanging on DB queries
+        return await asyncio.wait_for(
+            _get_latest_predictions_core(symbol, limit),
+            timeout=5.0  # 5 second max for DB queries
+        )
+    except asyncio.TimeoutError:
+        LOGGER.warning(f"Predictions latest timeout after 5s (symbol={symbol})")
+        return {
+            "ok": False,
+            "predictions": [],
+            "count": 0,
+            "timestamp": int(time.time()),
+            "error": "Timeout: database query took >5s"
+        }
+    except Exception as e:
+        LOGGER.error(f"Predictions latest error: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "predictions": [],
+            "count": 0,
+            "timestamp": int(time.time()),
+            "error": str(e)[:200]
+        }
+
+
+async def _get_latest_predictions_core(symbol: Optional[str], limit: int):
+    """Core logic for fetching latest predictions."""
     try:
         import time
         from services import predictor
@@ -1227,14 +1304,16 @@ async def get_latest_predictions(symbol: Optional[str] = None, limit: int = 10):
             result.append(pred_obj)
         
         return {
+            "ok": True,
             "predictions": result,
             "count": len(result),
             "timestamp": int(time.time())
         }
     
     except Exception as e:
-        LOGGER.error(f"Latest predictions failed: {e}", exc_info=True)
+        LOGGER.error(f"Latest predictions core failed: {e}", exc_info=True)
         return {
+            "ok": False,
             "predictions": [],
             "count": 0,
             "error": str(e)[:200],
@@ -1878,6 +1957,7 @@ async def get_watchlist_enriched():
     
     Returns:
         {
+            "ok": bool,
             "items": [
                 {
                     "symbol": "AAPL",
@@ -1891,6 +1971,34 @@ async def get_watchlist_enriched():
             "timestamp": float
         }
     """
+    try:
+        # Wrap in timeout to prevent hanging
+        return await asyncio.wait_for(
+            _get_watchlist_enriched_core(),
+            timeout=10.0  # 10 second max for all price fetches
+        )
+    except asyncio.TimeoutError:
+        LOGGER.warning("Watchlist enriched timeout after 10s")
+        return {
+            "ok": False,
+            "items": [],
+            "count": 0,
+            "timestamp": time.time(),
+            "error": "Timeout: price fetches took >10s"
+        }
+    except Exception as e:
+        LOGGER.error(f"Watchlist enriched error: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "items": [],
+            "count": 0,
+            "timestamp": time.time(),
+            "error": str(e)[:200]
+        }
+
+
+async def _get_watchlist_enriched_core():
+    """Core logic for watchlist enrichment with prices."""
     try:
         # Get base watchlist
         watchlist_data = await get_watchlist()
@@ -1976,17 +2084,19 @@ async def get_watchlist_enriched():
                 continue
         
         return {
+            "ok": True,
             "items": enriched_items,
             "count": len(enriched_items),
             "timestamp": time.time()
         }
     except Exception as e:
-        LOGGER.error(f"Enriched watchlist error: {e}", exc_info=True)
+        LOGGER.error(f"Enriched watchlist core error: {e}", exc_info=True)
         return {
+            "ok": False,
             "items": [],
             "count": 0,
             "timestamp": time.time(),
-            "error": str(e)
+            "error": str(e)[:200]
         }
 
 

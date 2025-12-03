@@ -1126,14 +1126,22 @@ async def health_check():
     This endpoint is intentionally simple and doesn't check any subsystems - it just
     confirms the FastAPI server is alive and can accept HTTP requests.
     """
-    # Return immediately without checking any initialization state
-    # This allows healthcheck to pass while background initialization continues
-    return {
-        "status": "ok", 
-        "service": "ghost-protocol", 
-        "uptime": int(time.time() - _START_TS),
-        "message": "Server is accepting connections"
-    }
+    try:
+        # Return immediately without checking any initialization state
+        # This allows healthcheck to pass while background initialization continues
+        return {
+            "status": "ok", 
+            "service": "ghost-protocol", 
+            "uptime": int(time.time() - _START_TS),
+            "message": "Server is accepting connections"
+        }
+    except Exception as e:
+        # Even if uptime calculation fails, return OK (server is responding)
+        return {
+            "status": "ok",
+            "service": "ghost-protocol",
+            "message": "Server is accepting connections"
+        }
 
 @APP.get("/api/health", include_in_schema=False)
 async def api_health_check():
@@ -5884,6 +5892,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
     
     This function is the HEART OF THE GHOST TURBO SURGERY.
     - Hard 4 second budget (3s price + 1s features)
+    - Hard 8 second timeout (fast-fail to prevent hanging)
     - Uses turbo_stock_price/turbo_crypto_price with fast-fail
     - Always returns dict (never raises exceptions)
     - Returns structured error on any failure
@@ -5905,26 +5914,24 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "error": str or None
         }
     """
-    # Import turbo providers
-    from core.providers.turbo_provider import turbo_stock_price, turbo_crypto_price
-    
     start = time.monotonic()
-    BUDGET_S = 4.0  # Hard budget: <=4s for PACS/BTC
     
-    symbol = symbol.upper().strip()
+    # Validate symbol first (before any expensive operations)
+    symbol = symbol.upper().strip() if symbol else ""
     if not symbol:
         return {
             "ok": False,
-            "symbol": symbol,
+            "symbol": "UNKNOWN",
             "direction": "ERROR",
             "confidence": 0.0,
             "current_price": None,
             "feature_count": 0,
             "available_count": 0,
-            "duration_ms": int((time.monotonic() - start) * 1000),
+            "duration_ms": 0,
             "error": "symbol required"
         }
     
+    # Wrap core logic in try/except for safety
     try:
         # Detect asset type (crypto vs stock)
         is_crypto = symbol in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(symbol) == "crypto"
