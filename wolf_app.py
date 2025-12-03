@@ -1121,8 +1121,19 @@ except Exception as e:
 @APP.get("/health", include_in_schema=False)
 async def health_check():
     """Ultra-lightweight health check that responds immediately during startup.
-    Railway needs this to respond within 100s, but app startup can take longer."""
-    return {"status": "ok", "service": "ghost-protocol", "uptime": int(time.time() - _START_TS)}
+    Railway needs this to respond within 100s, even if app initialization is still running.
+    
+    This endpoint is intentionally simple and doesn't check any subsystems - it just
+    confirms the FastAPI server is alive and can accept HTTP requests.
+    """
+    # Return immediately without checking any initialization state
+    # This allows healthcheck to pass while background initialization continues
+    return {
+        "status": "ok", 
+        "service": "ghost-protocol", 
+        "uptime": int(time.time() - _START_TS),
+        "message": "Server is accepting connections"
+    }
 
 @APP.get("/api/health", include_in_schema=False)
 async def api_health_check():
