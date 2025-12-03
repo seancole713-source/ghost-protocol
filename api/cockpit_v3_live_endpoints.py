@@ -2074,11 +2074,14 @@ async def _get_watchlist_enriched_core():
                 }
         
         # Fetch all prices in parallel (15 symbols * 2s = 30s max, but likely <5s)
-        enriched_items = await asyncio.gather(*[fetch_symbol_price(sym) for sym in all_symbols])
+        enriched_items = await asyncio.gather(*[fetch_symbol_price(sym) for sym in all_symbols], return_exceptions=True)
+        
+        # Filter out exceptions and None values
+        valid_items = [item for item in enriched_items if item and not isinstance(item, Exception)]
         
         return {
             "ok": True,
-            "items": [item for item in enriched_items if item],  # Filter out None
+            "items": valid_items,
             "count": len(enriched_items),
             "timestamp": time.time()
         }
