@@ -3631,14 +3631,15 @@ async def _on_startup():
         LOGGER.error(f"watchlist_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
-    # Start Outcome Reconciler (70% Accuracy Goal)
-    try:
-        from services.outcome_reconciler_v2 import start_reconciler_background_task
-        start_reconciler_background_task()
-        LOGGER.info("[GHOST STARTUP] ✅ Outcome reconciler started (48h accuracy tracking)")
-    except Exception as e:
-        LOGGER.error(f"outcome_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
-        # Non-critical - continue startup
+    # Start Outcome Reconciler (70% Accuracy Goal) - TEMPORARILY DISABLED FOR DEBUGGING
+    # try:
+    #     from services.outcome_reconciler_v2 import start_reconciler_background_task
+    #     start_reconciler_background_task()
+    #     LOGGER.info("[GHOST STARTUP] ✅ Outcome reconciler started (48h accuracy tracking)")
+    # except Exception as e:
+    #     LOGGER.error(f"outcome_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    #     # Non-critical - continue startup
+    LOGGER.warning("[GHOST STARTUP] ⚠️ Outcome reconciler DISABLED (debugging request hangs)")
 
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
@@ -3931,11 +3932,11 @@ async def _post_startup_init():
             _start_schedule_worker()
     except Exception:
         LOGGER.exception("schedule_worker_start_failed", extra={"component": "startup"})
-    # Start Ghost Prediction outcome reconciler
-    try:
-        _start_reconciler_worker()
-    except Exception:
-        LOGGER.exception("reconciler_worker_start_failed", extra={"component": "startup"})
+    # Start Ghost Prediction outcome reconciler - TEMPORARILY DISABLED FOR DEBUGGING
+    # try:
+    #     _start_reconciler_worker()
+    # except Exception:
+    #     LOGGER.exception("reconciler_worker_start_failed", extra={"component": "startup"})
 
     # Start Scheduled Predictions (8am pre-market, 9:35am market open check)
     try:
