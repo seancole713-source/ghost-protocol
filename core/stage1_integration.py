@@ -86,22 +86,33 @@ async def _background_updater():
     """Background task to update context and market mood."""
     global _last_update
 
+    # CRITICAL: Delay first run to let health checks pass
+    await asyncio.sleep(10)
+    LOGGER.info("[STAGE1] Starting background updater (after 10s delay)...")
+
     while True:
         try:
-            # Update context engine
+            # CRITICAL: Run blocking I/O in thread pool to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            
+            # Update context engine (blocking RSS fetches + parsing)
             if _context_engine:
-                _context_engine.fetch_and_parse(max_per_feed=20)
+                await loop.run_in_executor(
+                    None,
+                    _context_engine.fetch_and_parse,
+                    20  # max_per_feed
+                )
 
-            # Update market mood
+            # Update market mood (blocking yfinance calls)
             from core.market_mood import update_market_mood
-
-            update_market_mood()
+            
+            await loop.run_in_executor(None, update_market_mood)
 
             _last_update = int(__import__("time").time())
-            LOGGER.info("Stage 1 context updated")
+            LOGGER.info("[STAGE1] Context updated successfully")
 
         except Exception as e:
-            LOGGER.error(f"Stage 1 update error: {e}")
+            LOGGER.error(f"[STAGE1] Update error: {e}")
 
         # Sleep for 5 minutes
         await asyncio.sleep(_update_interval)

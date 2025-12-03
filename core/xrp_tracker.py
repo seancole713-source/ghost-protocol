@@ -36,22 +36,18 @@ def get_xrp_status() -> dict[str, Any]:
     }
     
     try:
-        from core.price_quorum import get_price_quorum
-        from core.providers.crypto_providers import get_crypto_providers
+        from core.providers.turbo_provider import turbo_crypto_price
         
-        # Get XRP price
-        quorum = get_price_quorum()
-        providers = get_crypto_providers("XRP")
-        xrp_decision = quorum.get_price("XRP", providers, is_market_open=True)
+        # Get XRP price using turbo provider
+        xrp_price_data = turbo_crypto_price("XRP", max_budget_s=3.0)
         
-        if xrp_decision and xrp_decision.price:
-            price = xrp_decision.price
+        if xrp_price_data and xrp_price_data.get("ok") and xrp_price_data.get("price"):
+            price = xrp_price_data["price"]
             result["price"] = round(price, 4)
             
-            # Calculate 24h change if available
-            if xrp_decision.prev_close:
-                change_pct = ((price - xrp_decision.prev_close) / xrp_decision.prev_close) * 100
-                result["change_24h_pct"] = round(change_pct, 2)
+            # Calculate 24h change if available from cache metadata
+            # Note: turbo_crypto_price doesn't return prev_close, so change_24h_pct stays None
+            # This is acceptable - we focus on current price + bullish eye signal
             
             # Calculate bullish eye and signal
             factors = []

@@ -678,10 +678,16 @@ class PostgresBackend:
                         cursor_factory=self.RealDictCursor,
                         connect_timeout=10
                     )
-                    
+
                     # Initialize schema
-                    self._init_schema()
-                    
+                    try:
+                        self._init_schema()
+                    except Exception:
+                        if self.pool:
+                            self.pool.closeall()
+                            self.pool = None
+                        raise
+
                     self._pool_initialized = True
                     LOGGER.info("✅ PostgreSQL connection pool initialized (2-10 connections)")
                     return
@@ -717,7 +723,10 @@ class PostgresBackend:
         - Foreign keys with ON DELETE CASCADE
         - Indexes for performance
         """
-        conn = self._get_connection()
+        if not self.pool:
+            raise RuntimeError("PostgreSQL pool is not initialized")
+
+        conn = self.pool.getconn()
         try:
             cursor = conn.cursor()
             
@@ -790,7 +799,7 @@ class PostgresBackend:
             LOGGER.error(f"Failed to initialize PostgreSQL schema: {e}")
             raise
         finally:
-            self._return_connection(conn)
+            self.pool.putconn(conn)
     
     def save_prediction(
         self,

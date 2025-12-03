@@ -3502,6 +3502,24 @@ async def _on_startup():
         LOGGER.error(f"forecast_tables_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
     
+    # Initialize Telegram alerts module (CRITICAL for VIP scanner, movers, daily reports)
+    try:
+        from core import telegram_alerts
+        from core.telegram_hunter import send_telegram_message
+        
+        # Inject dependencies
+        telegram_alerts.REDIS_CLIENT = _get_redis()
+        telegram_alerts.TELEGRAM_SEND_FUNC = send_telegram_message
+        telegram_alerts.TELEGRAM_CHAT_ID = TELEGRAM_CHAT_ID
+        telegram_alerts.LOGGER = LOGGER
+        
+        if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+            LOGGER.info("[GHOST STARTUP] ✅ Telegram alerts module initialized")
+        else:
+            LOGGER.warning("[GHOST STARTUP] ⚠️  Telegram disabled (missing BOT_TOKEN or CHAT_ID)")
+    except Exception as e:
+        LOGGER.error(f"telegram_alerts_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
     # Initialize goals from environment
     try:
         from core.goals_tracker import GoalsTracker
@@ -3637,6 +3655,17 @@ async def _on_startup():
     #     # Non-critical - continue startup
     LOGGER.warning("[GHOST STARTUP] ⚠️ Outcome reconciler DISABLED (debugging request hangs)")
 
+    # CRITICAL: Initialize prediction store pool EAGERLY to prevent first-request blocking
+    try:
+        from services.predictor import predictor
+        # Force pool initialization during startup (not on first request)
+        LOGGER.info("[GHOST STARTUP] Initializing prediction store pool...")
+        predictor.store._ensure_pool()
+        LOGGER.info("[GHOST STARTUP] ✅ Prediction store pool ready")
+    except Exception as e:
+        LOGGER.error(f"prediction_store_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup (will retry on first request)
+
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
     
@@ -3698,6 +3727,51 @@ async def _post_startup_init():
     # except Exception as e:
     #     LOGGER.error(f"order_sync_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
+    # Start VIP Microcap Scanner (WEPE, LILPEPE, DORKL, SLOTH, APC) - CRITICAL FIX #3
+    try:
+        from core.vip_scanner import scan_vip_coins, VIP_SCAN_INTERVAL_S
+        
+        async def _vip_scanner_loop():
+            """Background loop for VIP microcap scanning with Cash-App alerts"""
+            while True:
+                try:
+                    result = scan_vip_coins()
+                    LOGGER.info(
+                        f"VIP scan: {result['available']}/{result['scanned']} available, "
+                        f"{len(result['opportunities'])} opportunities, {result['alerts_sent']} alerts"
+                    )
+                except Exception as e:
+                    LOGGER.error(f"VIP scanner error: {e}", exc_info=True)
+                await asyncio.sleep(VIP_SCAN_INTERVAL_S)
+        
+        asyncio.create_task(_vip_scanner_loop())
+        LOGGER.info("✅ VIP Microcap Scanner: STARTED (60s interval, Cash-App alerts)")
+    except Exception as e:
+        LOGGER.error(f"vip_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
+    # Start Pre-Market Predictor (7AM CT weekdays) - CRITICAL FIX #4
+    try:
+        from core.premarket_predictor import should_run_premarket, run_premarket_predictions
+        
+        async def _premarket_loop():
+            """Check for pre-market prediction trigger (7AM CT weekdays)"""
+            while True:
+                try:
+                    if should_run_premarket():
+                        LOGGER.info("🌅 Running pre-market predictions...")
+                        # Use thread pool to avoid blocking event loop
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, run_premarket_predictions)
+                        LOGGER.info("✅ Pre-market predictions complete")
+                except Exception as e:
+                    LOGGER.error(f"Pre-market predictor error: {e}", exc_info=True)
+                await asyncio.sleep(60)  # Check every minute
+        
+        asyncio.create_task(_premarket_loop())
+        LOGGER.info("✅ Pre-Market Predictor: STARTED (7AM CT weekdays)")
+    except Exception as e:
+        LOGGER.error(f"premarket_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
     # Start Telegram daily report scheduler (Ghost Investment Hunter)
     try:
         import asyncio as _asyncio_module
@@ -3940,9 +4014,11 @@ async def _post_startup_init():
     # except Exception:
     #     LOGGER.exception("reconciler_worker_start_failed", extra={"component": "startup"})
 
-    # Start Scheduled Predictions (8am pre-market, 9:35am market open check)
+    # Scheduled Predictions DISABLED - Using auto_prediction_loop instead (5-min interval covers all cases)
+    # REASON: Prevents duplicate predictions and excessive API calls
+    # The auto_prediction_loop (started below at line ~4018) handles all symbols every 5 minutes
     try:
-        if SCHEDULED_PREDICTIONS_ENABLED:
+        if False:  # SCHEDULED_PREDICTIONS_ENABLED - INTENTIONALLY DISABLED
             # Configure the scheduler with multi-symbol functions
             scheduled_predictions.MULTI_SYMBOL_PREDICTION_FUNC = _generate_multi_symbol_predictions
             scheduled_predictions.TELEGRAM_SEND_MULTI_FUNC = _send_multi_symbol_telegram_alert
@@ -16666,7 +16742,10 @@ async def ai_agent_run(
         from llm.agent import run_once  # type: ignore
     except Exception:
         raise HTTPException(500, "llm agent missing")
-    out = run_once(_tool_router)
+    
+    # CRITICAL: Run LLM agent in thread pool to avoid blocking event loop
+    loop = asyncio.get_event_loop()
+    out = await loop.run_in_executor(None, run_once, _tool_router)
     # Persist agent result to AI memory
     try:
         px = snap.get("prices") or {}
