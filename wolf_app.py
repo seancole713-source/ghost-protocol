@@ -20482,11 +20482,16 @@ async def api_sources_status():
 
 @APP.get("/api/predictions/run")
 async def api_predictions_run(symbol: str = WOLF):
-    """Trigger a lightweight forecast generation (non-blocking style)."""
+    """
+    Trigger a prediction for a symbol.
+    This updates _LATEST_PREDICTIONS for Cockpit consumption.
+    """
     try:
-        res = _generate_48h_forecast(symbol)
+        # Use run_single_prediction which updates _LATEST_PREDICTIONS
+        res = run_single_prediction(symbol)
         return {"ok": True, "result": res}
     except Exception as e:
+        LOGGER.error(f"api_predictions_run failed for {symbol}: {e}")
         return {"ok": False, "error": str(e)}
 
 
