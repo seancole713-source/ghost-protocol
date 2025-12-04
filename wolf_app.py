@@ -6777,12 +6777,12 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
         if not _LATEST_PREDICTIONS:
             LOGGER.info("[PREDICTIONS] _LATEST_PREDICTIONS empty, querying database...")
             try:
-                from core.database.postgres_backend import PostgresBackend
-                postgres = PostgresBackend()
+                from core.prediction_store import get_prediction_store
+                store = get_prediction_store()
                 
                 if symbol:
                     # Get latest prediction for specific symbol
-                    recent_preds = postgres.get_recent_predictions(limit=100)
+                    recent_preds = store.get_recent_predictions(limit=100)
                     symbol_pred = next((p for p in recent_preds if p.get("symbol") == symbol.upper()), None)
                     if symbol_pred:
                         predictions_list.append({
@@ -6797,7 +6797,7 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                         })
                 else:
                     # Get latest N predictions
-                    recent_preds = postgres.get_recent_predictions(limit=limit)
+                    recent_preds = store.get_recent_predictions(limit=limit)
                     for pred in recent_preds:
                         predictions_list.append({
                             "symbol": pred.get("symbol"),
@@ -7324,10 +7324,10 @@ async def api_v3_hunter_feed(limit: int = 10):
         if not _LATEST_PREDICTIONS:
             LOGGER.info("[HUNTER] _LATEST_PREDICTIONS empty, querying database...")
             try:
-                # Query Postgres for recent predictions
-                from core.database.postgres_backend import PostgresBackend
-                postgres = PostgresBackend()
-                recent_preds = postgres.get_recent_predictions(limit=limit * 2)  # Get more to filter
+                # Query database for recent predictions
+                from core.prediction_store import get_prediction_store
+                store = get_prediction_store()
+                recent_preds = store.get_recent_predictions(limit=limit * 2)  # Get more to filter
                 
                 # Convert to feed format
                 feed_items = []
