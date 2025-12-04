@@ -193,6 +193,16 @@ def _prediction_loop():
 
 def start_auto_prediction_loop():
     """Start the UNLIMITED auto-prediction background thread"""
+    # EMERGENCY FIX: Disable auto-predictions - Railway free tier (512MB RAM) cannot handle it
+    # Memory exhaustion causes server unresponsive to external requests
+    # Use manual triggers: /api/predictions/run?symbol=BTC
+    print("[AUTO-PREDICT] ⚠️ DISABLED - Railway free tier memory limit exceeded")
+    print("[AUTO-PREDICT] ℹ️ Use manual predictions: /api/predictions/run?symbol=XXX")
+    if LOGGER:
+        LOGGER.warning("⚠️ Auto-predictions DISABLED - Railway free tier RAM exhaustion")
+        LOGGER.info("ℹ️ Use manual endpoint: /api/predictions/run?symbol=SYMBOL")
+    return
+    
     global _LOOP_THREAD
     
     if _LOOP_THREAD and _LOOP_THREAD.is_alive():
