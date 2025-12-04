@@ -194,13 +194,21 @@ def _prediction_loop():
 
 def start_auto_prediction_loop():
     """Start the UNLIMITED auto-prediction background thread"""
-    # EMERGENCY FIX (REVERSED): Re-enable with ULTRA-LIGHT settings for Railway free tier
-    # Only run TOP 10 crypto, 60-minute intervals, 5s delays
-    print("[AUTO-PREDICT] ⚡ Starting ULTRA-LIGHT mode (Railway free tier)")
-    print("[AUTO-PREDICT] ℹ️ Top 10 crypto only, 60min intervals, Cockpit population")
+    # PERMANENT FIX: Auto-predictions disabled - synchronous blocking causes server hangs
+    # Root cause: run_prediction() is SYNCHRONOUS (25s per symbol × 10 = 250s blocking)
+    # This blocks Python thread despite daemon=True, causing Railway timeouts
+    # 
+    # Cockpit now queries DATABASE for predictions (4600+ stored predictions available)
+    # Use manual endpoint for new predictions: /api/predictions/run?symbol=XXX
+    print("[AUTO-PREDICT] ❌ PERMANENTLY DISABLED - Synchronous blocking causes server hangs")
+    print("[AUTO-PREDICT] ℹ️ Cockpit uses DATABASE (4600+ predictions available)")
+    print("[AUTO-PREDICT] ℹ️ Manual predictions: /api/predictions/run?symbol=XXX")
     if LOGGER:
-        LOGGER.info("⚡ Auto-predictions RE-ENABLED - ULTRA-LIGHT mode for Railway")
-        LOGGER.info("ℹ️ Top 10 crypto, 60-minute cycles, minimal resource usage")
+        LOGGER.warning("❌ Auto-predictions PERMANENTLY DISABLED")
+        LOGGER.info("ℹ️ Root cause: Synchronous blocking (25s/symbol) hangs server")
+        LOGGER.info("ℹ️ Cockpit queries DATABASE for existing predictions")
+        LOGGER.info("ℹ️ Manual endpoint: /api/predictions/run?symbol=SYMBOL")
+    return
     
     global _LOOP_THREAD
     

@@ -6768,11 +6768,64 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
     Get latest predictions for cockpit forecast panel.
     
     Returns predictions with confidence, direction, and expected_move for UI.
-    Note: Reads from in-memory cache populated by /api/predict/run.
+    FIXED: Query database if _LATEST_PREDICTIONS is empty
     """
     try:
         predictions_list = []
         
+        # FALLBACK: If _LATEST_PREDICTIONS is empty, query database
+        if not _LATEST_PREDICTIONS:
+            LOGGER.info("[PREDICTIONS] _LATEST_PREDICTIONS empty, querying database...")
+            try:
+                from core.database.postgres_backend import PostgresBackend
+                postgres = PostgresBackend()
+                
+                if symbol:
+                    # Get latest prediction for specific symbol
+                    recent_preds = postgres.get_recent_predictions(limit=100)
+                    symbol_pred = next((p for p in recent_preds if p.get("symbol") == symbol.upper()), None)
+                    if symbol_pred:
+                        predictions_list.append({
+                            "symbol": symbol.upper(),
+                            "direction": symbol_pred.get("direction", "FLAT"),
+                            "confidence": symbol_pred.get("confidence", 0),
+                            "expected_move": symbol_pred.get("confidence", 0) * 5,
+                            "horizon_h": 48,
+                            "run_at": symbol_pred.get("created_at", 0),
+                            "price_at_prediction": symbol_pred.get("price_at_prediction"),
+                            "created_at": symbol_pred.get("created_at")
+                        })
+                else:
+                    # Get latest N predictions
+                    recent_preds = postgres.get_recent_predictions(limit=limit)
+                    for pred in recent_preds:
+                        predictions_list.append({
+                            "symbol": pred.get("symbol"),
+                            "direction": pred.get("direction", "FLAT"),
+                            "confidence": pred.get("confidence", 0),
+                            "expected_move": pred.get("confidence", 0) * 5,
+                            "horizon_h": 48,
+                            "run_at": pred.get("created_at", 0),
+                            "price_at_prediction": pred.get("price_at_prediction"),
+                            "created_at": pred.get("created_at")
+                        })
+                
+                return {
+                    "ok": True,
+                    "predictions": predictions_list,
+                    "count": len(predictions_list),
+                    "source": "database"
+                }
+            except Exception as db_error:
+                LOGGER.error(f"Database fallback failed: {db_error}")
+                return {
+                    "ok": True,
+                    "predictions": [],
+                    "count": 0,
+                    "error": "No predictions available"
+                }
+        
+        # Original logic for _LATEST_PREDICTIONS
         # If symbol specified, get just that one
         if symbol:
             pred = _LATEST_PREDICTIONS.get(symbol.upper())
@@ -7264,8 +7317,76 @@ async def api_v3_hunter_feed(limit: int = 10):
     Get Hunter news feed for cockpit movers/news panel.
     
     Returns recent prediction news/alerts as both 'movers' and 'feed'.
+    FIXED: Query database instead of relying on empty _LATEST_PREDICTIONS
     """
     try:
+        # FALLBACK: If _LATEST_PREDICTIONS is empty, query database for recent predictions
+        if not _LATEST_PREDICTIONS:
+            LOGGER.info("[HUNTER] _LATEST_PREDICTIONS empty, querying database...")
+            try:
+                # Query Postgres for recent predictions
+                from core.database.postgres_backend import PostgresBackend
+                postgres = PostgresBackend()
+                recent_preds = postgres.get_recent_predictions(limit=limit * 2)  # Get more to filter
+                
+                # Convert to feed format
+                feed_items = []
+                for pred in recent_preds[:limit]:
+                    symbol = pred.get("symbol")
+                    direction = pred.get("direction", "FLAT")
+                    confidence = pred.get("confidence", 0) or 0
+                    confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
+                    
+                    # Calculate expected move
+                    expected_move = pred.get("expected_move")
+                    if expected_move is None:
+                        if direction == "UP":
+                            change_pct = ((confidence_pct - 40) / 10) + 1.0
+                        elif direction == "DOWN":
+                            change_pct = -(((confidence_pct - 40) / 10) + 1.0)
+                        else:
+                            change_pct = 0.5 if confidence_pct > 50 else -0.5
+                    else:
+                        change_pct = expected_move * 100
+                    
+                    change_pct = round(change_pct, 2)
+                    
+                    feed_items.append({
+                        "symbol": symbol,
+                        "name": symbol,
+                        "title": f"Ghost predicts {symbol} {direction} ({confidence_pct:.0f}% confidence)",
+                        "sentiment": "bullish" if direction == "UP" else "bearish" if direction == "DOWN" else "neutral",
+                        "timestamp": int(pred.get("created_at", time.time())),
+                        "source": "Ghost AI",
+                        "type": "crypto" if symbol in CRYPTO_SYMBOLS else "stock",
+                        "change_pct": change_pct,
+                        "change": change_pct,
+                        "confidence": confidence_pct,
+                        "ghost_confidence": confidence_pct,
+                        "price": pred.get("price_at_prediction")
+                    })
+                
+                return {
+                    "ok": True,
+                    "movers": feed_items,
+                    "feed": feed_items,
+                    "count": len(feed_items),
+                    "timestamp": int(time.time()),
+                    "source": "database"
+                }
+            except Exception as db_error:
+                LOGGER.error(f"Database fallback failed: {db_error}")
+                # Return empty if database fails too
+                return {
+                    "ok": True,
+                    "movers": [],
+                    "feed": [],
+                    "count": 0,
+                    "timestamp": int(time.time()),
+                    "error": "No predictions available"
+                }
+        
+        # Original logic for _LATEST_PREDICTIONS
         predictions = list(_LATEST_PREDICTIONS.values())
         predictions.sort(key=lambda p: p.get("confidence", 0), reverse=True)
         feed_items = []
