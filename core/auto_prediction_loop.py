@@ -148,6 +148,15 @@ async def _run_all_predictions_async():
     # Update last run time
     _LAST_RUN_TIME = time.time()
     
+    # Update global prediction counters for health score
+    try:
+        import wolf_app
+        wolf_app._LAST_MULTI_PREDICTION_COUNTS["stocks"] = stocks_success
+        wolf_app._LAST_MULTI_PREDICTION_COUNTS["crypto"] = crypto_success
+    except Exception as e:
+        if LOGGER:
+            LOGGER.warning(f"Could not update prediction counters: {e}")
+    
     # Log summary
     total = stocks_success + crypto_success
     duration = time.time() - start_time

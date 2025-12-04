@@ -7257,9 +7257,25 @@ async def api_v3_cockpit_status():
     Returns mode, active status, uptime, etc.
     """
     try:
-        # Calculate health score from recent predictions
-        total_predictions = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
-        health_score = min(100, total_predictions * 5)  # 5 points per prediction, max 100
+        # Calculate health score from ACTUAL recent predictions (not counters)
+        health_score = 0
+        try:
+            from core.prediction_store import get_prediction_store
+            store = get_prediction_store()
+            recent = store.get_recent_predictions(limit=100)
+            
+            # Count predictions from last 24 hours
+            from datetime import datetime, timedelta
+            cutoff = (datetime.now() - timedelta(hours=24)).timestamp()
+            recent_24h = [p for p in recent if p.get('timestamp', 0) > cutoff]
+            
+            # Health score: 10 points per prediction in last 24h, max 100
+            health_score = min(100, len(recent_24h) * 10)
+        except Exception as e:
+            LOGGER.warning(f"Could not calculate health score from DB: {e}")
+            # Fallback to old method
+            total_predictions = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
+            health_score = min(100, total_predictions * 5)
         
         # Calculate grade based on score
         if health_score >= 90:

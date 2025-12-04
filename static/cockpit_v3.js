@@ -880,16 +880,17 @@ async function openGoalsModal() {
         
         // Populate input fields with current goals
         if (data.goals) {
-            document.getElementById('goal-daily').value = data.goals.daily?.target || 500;
-            document.getElementById('goal-weekly').value = data.goals.weekly?.target || 2500;
-            document.getElementById('goal-monthly').value = data.goals.monthly?.target || 10000;
-            document.getElementById('goal-yearly').value = data.goals.yearly?.target || 120000;
+            // API returns {daily: 500, weekly: 2500, ...} not {daily: {target: 500}, ...}
+            document.getElementById('goal-daily').value = data.goals.daily || 500;
+            document.getElementById('goal-weekly').value = data.goals.weekly || 2500;
+            document.getElementById('goal-monthly').value = data.goals.monthly || 10000;
+            document.getElementById('goal-yearly').value = data.goals.yearly || 120000;
         }
         
         // Show modal
         document.getElementById('goals-modal').classList.add('active');
     } catch (error) {
-        console.error('Error loading goals:', error);
+        console.error('[GOALS] Error loading goals:', error);
         // Show modal anyway with defaults
         document.getElementById('goals-modal').classList.add('active');
     }
