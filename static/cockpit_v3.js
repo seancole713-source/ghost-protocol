@@ -287,20 +287,8 @@ async function loadVIPCoins() {
         
         console.log('[VIP] Loaded:', data.count || 0, 'coins');
         
-        // Get VIP coins and XRP
-        const vipCoins = data.vip_coins || [];
-        const xrp = data.xrp || null;
-        
-        // Combine VIP + XRP
-        const allCoins = [...vipCoins];
-        if (xrp) {
-            allCoins.push({
-                symbol: xrp.symbol,
-                price: xrp.price,
-                change_pct: xrp.change_pct,
-                status: xrp.provider !== 'offline' ? 'online' : 'offline'
-            });
-        }
+        // VIP coins already includes all coins (BTC, ETH, SOL, BNB, XRP)
+        const allCoins = data.vip_coins || [];
         
         if (allCoins.length === 0) {
             container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">VIP data loading...</p>';
@@ -679,27 +667,31 @@ function renderWatchlist(data) {
     }
     
     container.innerHTML = data.slice(0, 15).map(item => {
-        const changeDisplay = item.change && item.change !== 0 ? 
-            `${item.change >= 0 ? '+' : ''}${item.change.toFixed(2)}%` : 
+        // API returns: price, ghost_confidence, predicted_direction
+        const priceDisplay = item.price ? `$${item.price.toFixed(2)}` : '--';
+        
+        const changeDisplay = item.change_24h ? 
+            `${item.change_24h >= 0 ? '+' : ''}${item.change_24h.toFixed(2)}%` : 
             '--';
         
-        const scoreDisplay = item.ghost_score && item.ghost_score > 0 ? 
-            `${item.ghost_score.toFixed(0)}%` : 
+        const scoreDisplay = item.ghost_confidence && item.ghost_confidence > 0 ? 
+            `${item.ghost_confidence.toFixed(0)}%` : 
             '--';
         
-        // Direction emoji
-        const directionEmoji = item.direction === 'UP' ? '↑' : 
-                              item.direction === 'DOWN' ? '↓' : 
-                              item.direction === 'FLAT' ? '→' : '';
+        // Direction from predicted_direction field
+        const direction = item.predicted_direction || 'FLAT';
+        const directionEmoji = direction === 'UP' ? '↑' : direction === 'DOWN' ? '↓' : '→';
+        const changeClass = item.change_24h >= 0 ? 'positive' : 'negative';
         
         return `
             <div class="watchlist-row">
                 <div class="watchlist-left">
                     <div class="watchlist-icon">${getSymbolIcon(item.symbol)}</div>
                     <div class="watchlist-ticker">${item.symbol}</div>
+                    <div class="watchlist-price">${priceDisplay}</div>
                 </div>
                 <div class="watchlist-right">
-                    <div class="watchlist-move ${item.change >= 0 ? 'positive' : 'negative'}">
+                    <div class="watchlist-move ${changeClass}">
                         ${changeDisplay}
                     </div>
                     <div class="watchlist-score">${directionEmoji} Ghost: ${scoreDisplay}</div>
@@ -717,9 +709,11 @@ async function loadHealthScore() {
         
         const data = await response.json();
         
-        // Use ghost_health_score (real value from API) instead of ghost_score
-        const score = data.ghost_health_score || data.ghost_health || 0;
+        // Use ghost_score from goals API (85 = 85%)
+        const score = data.ghost_score || 0;
         const grade = calculateGrade(score);
+        
+        console.log('[HEALTH] Ghost score:', score, 'Grade:', grade);
         
         document.getElementById('health-score-value').textContent = score > 0 ? score.toFixed(0) : '--';
         document.getElementById('health-grade').textContent = grade;
@@ -731,9 +725,9 @@ async function loadHealthScore() {
             monthly: data.monthly_goal_pct || 0
         });
     } catch (error) {
-        console.error('[GHOST V3] Error loading health score:', error);
+        console.error('[HEALTH] Error loading health score:', error);
         document.getElementById('health-score-value').textContent = '--';
-        document.getElementById('health-grade').textContent = 'N/A';
+        document.getElementById('health-grade').textContent = 'F';
     }
 }
 
