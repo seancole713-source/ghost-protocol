@@ -72,6 +72,7 @@ from pydantic import BaseModel
 
 from core.concurrency import AsyncRateLimiter
 from core.price_quorum import PriceDecision, PriceProvider, get_price_quorum
+from core.providers.turbo_provider import turbo_stock_price, turbo_crypto_price
 
 # Ghost Hunter Phase 1 imports
 try:
