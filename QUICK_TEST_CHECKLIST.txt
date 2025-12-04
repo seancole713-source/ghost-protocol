@@ -1,0 +1,125 @@
+⚡ QUICK COCKPIT TEST - December 4, 2025
+═══════════════════════════════════════════════════════════════════════
+
+🌐 URL: https://ghost-protocol-production.up.railway.app/cockpit
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: HARD REFRESH FIRST (Clear cached broken JS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Mac:     Cmd + Shift + R
+Windows: Ctrl + Shift + R
+
+OR: Open DevTools (F12) → Network tab → Check "Disable cache" → Reload
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 2: CHECK CONSOLE (F12) - Should see NO syntax errors
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ GOOD:
+   [Cockpit] Initialization started
+   [Personal Watchlist] UI module initialized
+
+❌ BAD:
+   Uncaught SyntaxError: Identifier 'currentForecastSymbol' has already been declared
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 3: TEST BUTTON - Click START
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Watch Console for:
+   [CONTROL] START clicked
+
+Watch Network tab for:
+   POST /api/cockpit/start (or similar)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 4: CHECK PANELS - Should populate with data
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] Timer:          Shows HH:MM:SS and animates (not 00:00:00)
+[ ] Top Movers:     Shows crypto/stock tickers with %
+[ ] VIP Coins:      Shows coins (may timeout, that's OK)
+[ ] Forecast:       Shows Prob: XX%, Move: XX% (not --%)
+[ ] News:           Shows article headlines
+[ ] Watchlist:      Shows symbols and prices
+[ ] Health Score:   Shows 0-100 (not --)
+[ ] Goals:          Click ⚙️ → Shows $500/$2500/$10000/$120000
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 5: RUN DIAGNOSTIC (If still broken)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Copy entire contents of: BROWSER_DIAGNOSTIC_PASTE.js
+2. Paste into Console and press Enter
+3. Copy ALL output
+4. Send to developer
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHAT WAS FIXED:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ BEFORE (Broken):
+   - Line 347 had duplicate variable declaration
+   - JavaScript stopped parsing (fatal syntax error)
+   - NO functions initialized
+   - NO event handlers attached
+   - Cockpit was just static HTML shell
+
+✅ AFTER (Fixed):
+   - Duplicate declaration removed (Commit 1c2f63c)
+   - JavaScript parses correctly
+   - All functions available
+   - Event handlers attached
+   - Cockpit should fully initialize
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RAILWAY STATUS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Deployment: 27d8cdc1 (Active)
+Date:       Dec 4, 2025, 8:35 AM
+Status:     All endpoints 200 OK
+
+HTTP Logs:
+✅ GET /cockpit                   200  5ms
+✅ GET /static/cockpit_v3.js      200  62ms
+✅ GET /api/v3/cockpit/status     200  169ms
+✅ GET /api/v3/hunter/feed        200  70ms
+✅ GET /api/v3/goals/snapshot     200  60ms
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IF STILL BROKEN:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Try these in order:
+
+1. Clear browser cache completely (Settings → Privacy → Clear cache)
+2. Try incognito/private window (Cmd+Shift+N or Ctrl+Shift+N)
+3. Try different browser (Chrome/Firefox/Safari)
+4. Check Network tab → verify cockpit_v3.js is ~37KB (not old version)
+5. Run diagnostic script and send output
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+REPORT RESULTS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ If working: Report "Cockpit operational, all panels showing data"
+
+❌ If broken: Send:
+   1. Browser + OS version
+   2. Console output (entire contents)
+   3. Network tab screenshot
+   4. Diagnostic script output
+   5. Which specific panels are empty
+
+═══════════════════════════════════════════════════════════════════════

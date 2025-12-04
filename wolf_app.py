@@ -7212,6 +7212,69 @@ async def api_v3_goals_snapshot():
         }
 
 
+@APP.get("/api/v3/health/metrics")
+async def api_v3_health_metrics():
+    """
+    Calculate real-time health metrics for the cockpit.
+    
+    Returns:
+        - data_health: Provider uptime (test BTC availability)
+        - ai_activity: Predictions per hour
+        - accuracy: Win rate from prediction store
+    """
+    try:
+        # Data Health: Check if BTC provider is working
+        data_health = 50  # Default if provider unavailable
+        try:
+            btc_data = await fetch_price_async("BTC", STATE)
+            if btc_data and btc_data.get("price", 0) > 0:
+                data_health = 95  # Provider working
+        except Exception:
+            data_health = 30  # Provider offline
+        
+        # AI Activity: Count recent predictions (predictions per hour)
+        total_predictions = len(_LATEST_PREDICTIONS)
+        # Assume predictions span multiple hours, calculate rate
+        # Simple heuristic: if we have 100+ predictions, activity is high
+        if total_predictions >= 100:
+            ai_activity = 90
+        elif total_predictions >= 50:
+            ai_activity = 70
+        elif total_predictions >= 20:
+            ai_activity = 50
+        else:
+            ai_activity = 30
+        
+        # Accuracy: Calculate win rate from predictions
+        accuracy = 50  # Default
+        try:
+            if _PREDICTION_STORE and len(_PREDICTION_STORE) > 0:
+                wins = sum(1 for p in _PREDICTION_STORE.values() if p.get("outcome") == "win")
+                total_resolved = sum(1 for p in _PREDICTION_STORE.values() if p.get("outcome") in ["win", "loss"])
+                if total_resolved > 0:
+                    accuracy = round((wins / total_resolved) * 100, 1)
+        except Exception:
+            pass
+        
+        return {
+            "ok": True,
+            "data_health": data_health,
+            "ai_activity": ai_activity,
+            "accuracy": accuracy,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Health metrics failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "data_health": 50,
+            "ai_activity": 50,
+            "accuracy": 50,
+            "error": str(e)
+        }
+
+
 @APP.get("/api/v3/goals/set")
 async def api_v3_goals_set(period: str, target_amount: float):
     """
