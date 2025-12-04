@@ -74,9 +74,9 @@ async def _run_all_predictions_async():
         if LOGGER:
             LOGGER.info(f"[AUTO-PREDICT] Market OPEN - processing {stock_count} stocks asynchronously")
         
-        # Process stocks with async concurrency (3 at a time to avoid overwhelming)
-        for i in range(0, stock_count, 3):
-            batch = HUNTER_STOCK_SYMBOLS[i:i+3]
+        # Process stocks with async concurrency (2 at a time for stability)
+        for i in range(0, stock_count, 2):  # REDUCED: 2 concurrent (was 3)
+            batch = HUNTER_STOCK_SYMBOLS[i:i+2]
             
             # Create async tasks for batch
             tasks = []
@@ -115,9 +115,9 @@ async def _run_all_predictions_async():
     if LOGGER:
         LOGGER.info(f"[AUTO-PREDICT] ASYNC: Processing {crypto_count}/{len(HUNTER_CRYPTO_SYMBOLS)} top crypto with concurrency")
     
-    # Process crypto with async concurrency (3 at a time)
-    for i in range(0, crypto_count, 3):
-        batch = crypto_symbols_to_process[i:i+3]
+    # Process crypto with async concurrency (2 at a time for stability)
+    for i in range(0, crypto_count, 2):  # REDUCED: 2 concurrent (was 3)
+        batch = crypto_symbols_to_process[i:i+2]
         
         # Create async tasks for batch
         tasks = []
@@ -142,8 +142,8 @@ async def _run_all_predictions_async():
             except Exception as e:
                 errors.append(f"{symbol}: {str(e)[:100]}")
         
-        # ULTRA-LIGHT: 5s delay between batches to minimize Railway resource usage
-        await asyncio.sleep(PREDICTION_DELAY_S)
+        # INCREASED: 10s delay between batches for Railway stability (was 5s)
+        await asyncio.sleep(10)
     
     # Update last run time
     _LAST_RUN_TIME = time.time()
@@ -164,11 +164,27 @@ async def _run_all_predictions_async():
 
 
 def _run_all_predictions():
-    """Wrapper to run async predictions in sync context"""
+    """
+    BACKGROUND WORKER: Run predictions in separate thread pool.
+    
+    CRITICAL: This runs in a background thread spawned by threading.Thread(),
+    NOT in the FastAPI event loop. This prevents blocking HTTP responses.
+    """
+    import threading
+    
+    # Run in separate event loop (thread-safe)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
+        # Log that we're in background thread
+        thread_id = threading.current_thread().name
+        if LOGGER:
+            LOGGER.info(f"[AUTO-PREDICT] Running in background thread: {thread_id}")
+        
         loop.run_until_complete(_run_all_predictions_async())
+    except Exception as e:
+        if LOGGER:
+            LOGGER.error(f"[AUTO-PREDICT] Background worker error: {e}", exc_info=True)
     finally:
         loop.close()
 
@@ -302,8 +318,19 @@ def _prediction_loop():
             
             if should_run:
                 market_str = "Market hours" if is_market_open else "Off-hours"
-                print(f"[AUTO-PREDICT] {market_str} cycle at {datetime.now().strftime('%H:%M:%S')}")
-                _run_all_predictions()
+                print(f"[AUTO-PREDICT] {market_str} cycle starting at {datetime.now().strftime('%H:%M:%S')}")
+                
+                # Run predictions in SEPARATE background thread (fire-and-forget)
+                # This prevents blocking the prediction loop scheduler
+                prediction_thread = threading.Thread(
+                    target=_run_all_predictions,
+                    name=f"prediction-cycle-{int(now)}",
+                    daemon=True
+                )
+                prediction_thread.start()
+                
+                # Don't wait for completion - let it run in background
+                print(f"[AUTO-PREDICT] Cycle dispatched to background thread: {prediction_thread.name}")
             
             # Sleep for 30 seconds between checks (responsive to interval changes)
             _LOOP_STOP.wait(30.0)
