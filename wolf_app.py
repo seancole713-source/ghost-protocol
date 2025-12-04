@@ -5995,6 +5995,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         }
     """
     start = time.monotonic()
+    BUDGET_S = 4.0  # Total budget: 3s price + 1s features
     
     # Validate symbol first (before any expensive operations)
     symbol = symbol.upper().strip() if symbol else ""
