@@ -22,9 +22,10 @@ _LOOP_THREAD: threading.Thread | None = None
 _LOOP_STOP = threading.Event()
 _LAST_RUN_TIME = 0
 
-# Adaptive prediction intervals - faster during market hours
-PREDICTION_INTERVAL_MARKET_HOURS = 600  # 10 minutes during market hours (reduced to prevent overload)
-PREDICTION_INTERVAL_OFF_HOURS = 1800    # 30 minutes off-hours (reduced to prevent overload)
+# ULTRA-LIGHT intervals for Railway free tier (512MB RAM)
+PREDICTION_INTERVAL_MARKET_HOURS = 3600  # 60 minutes (was 10min) - ULTRA-LIGHT
+PREDICTION_INTERVAL_OFF_HOURS = 7200     # 120 minutes (was 30min) - ULTRA-LIGHT  
+PREDICTION_DELAY_S = 5.0                 # 5s delay between predictions - ULTRA-LIGHT
 BATCH_SIZE = 50  # Process 50 symbols at a time in parallel
 MAX_WORKERS = 10  # Parallel workers for batch processing
 
@@ -90,7 +91,7 @@ def _run_all_predictions():
                 except Exception as e:
                     errors.append(f"{symbol}: {str(e)[:100]}")
                 
-                # PERFORMANCE FIX: Add delay to prevent overwhelming server
+                # ULTRA-LIGHT: 5s delay to minimize Railway resource usage
                 time.sleep(PREDICTION_DELAY_S)
             
             batch_duration = time.time() - batch_start
@@ -101,12 +102,12 @@ def _run_all_predictions():
             LOGGER.info(f"[AUTO-PREDICT] Market CLOSED - skipping {stock_count} stock predictions")
     
     # Run crypto predictions (24/7 - crypto markets never close)
-    # PERFORMANCE FIX: Limit to top 30 crypto to prevent resource exhaustion
-    TOP_CRYPTO_LIMIT = 30
+    # ULTRA-LIGHT: Top 10 crypto only for Railway free tier
+    TOP_CRYPTO_LIMIT = 10  # BTC, ETH, BNB, SOL, XRP, ADA, DOGE, DOT, MATIC, AVAX
     crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_LIMIT]
     crypto_count = len(crypto_symbols_to_process)
     if LOGGER:
-        LOGGER.info(f"[AUTO-PREDICT] Processing {crypto_count}/{len(HUNTER_CRYPTO_SYMBOLS)} crypto (24/7) in batches of {BATCH_SIZE}")
+        LOGGER.info(f"[AUTO-PREDICT] ULTRA-LIGHT: Processing {crypto_count}/{len(HUNTER_CRYPTO_SYMBOLS)} top crypto in batches of {BATCH_SIZE}")
     
     # Process crypto in batches
     for i in range(0, crypto_count, BATCH_SIZE):
@@ -126,7 +127,7 @@ def _run_all_predictions():
             except Exception as e:
                 errors.append(f"{symbol}: {str(e)[:100]}")
             
-            # PERFORMANCE FIX: Add delay to prevent overwhelming server
+            # ULTRA-LIGHT: 5s delay to minimize Railway resource usage
             time.sleep(PREDICTION_DELAY_S)
         
         batch_duration = time.time() - batch_start
@@ -193,15 +194,13 @@ def _prediction_loop():
 
 def start_auto_prediction_loop():
     """Start the UNLIMITED auto-prediction background thread"""
-    # EMERGENCY FIX: Disable auto-predictions - Railway free tier (512MB RAM) cannot handle it
-    # Memory exhaustion causes server unresponsive to external requests
-    # Use manual triggers: /api/predictions/run?symbol=BTC
-    print("[AUTO-PREDICT] ⚠️ DISABLED - Railway free tier memory limit exceeded")
-    print("[AUTO-PREDICT] ℹ️ Use manual predictions: /api/predictions/run?symbol=XXX")
+    # EMERGENCY FIX (REVERSED): Re-enable with ULTRA-LIGHT settings for Railway free tier
+    # Only run TOP 10 crypto, 60-minute intervals, 5s delays
+    print("[AUTO-PREDICT] ⚡ Starting ULTRA-LIGHT mode (Railway free tier)")
+    print("[AUTO-PREDICT] ℹ️ Top 10 crypto only, 60min intervals, Cockpit population")
     if LOGGER:
-        LOGGER.warning("⚠️ Auto-predictions DISABLED - Railway free tier RAM exhaustion")
-        LOGGER.info("ℹ️ Use manual endpoint: /api/predictions/run?symbol=SYMBOL")
-    return
+        LOGGER.info("⚡ Auto-predictions RE-ENABLED - ULTRA-LIGHT mode for Railway")
+        LOGGER.info("ℹ️ Top 10 crypto, 60-minute cycles, minimal resource usage")
     
     global _LOOP_THREAD
     
