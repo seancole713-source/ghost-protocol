@@ -23,10 +23,13 @@ _LOOP_STOP = threading.Event()
 _LAST_RUN_TIME = 0
 
 # Adaptive prediction intervals - faster during market hours
-PREDICTION_INTERVAL_MARKET_HOURS = 180  # 3 minutes during market hours (faster updates)
-PREDICTION_INTERVAL_OFF_HOURS = 600     # 10 minutes off-hours (crypto continues 24/7)
+PREDICTION_INTERVAL_MARKET_HOURS = 600  # 10 minutes during market hours (reduced to prevent overload)
+PREDICTION_INTERVAL_OFF_HOURS = 1800    # 30 minutes off-hours (reduced to prevent overload)
 BATCH_SIZE = 50  # Process 50 symbols at a time in parallel
 MAX_WORKERS = 10  # Parallel workers for batch processing
+
+# PERFORMANCE FIX: Add delay between predictions to prevent resource exhaustion
+PREDICTION_DELAY_S = 2.0  # 2 second delay between predictions to reduce load
 
 # Timezone
 CHICAGO_TZ = ZoneInfo("America/Chicago")
@@ -87,8 +90,8 @@ def _run_all_predictions():
                 except Exception as e:
                     errors.append(f"{symbol}: {str(e)[:100]}")
                 
-                # Minimal delay to respect rate limits
-                time.sleep(0.1)
+                # PERFORMANCE FIX: Add delay to prevent overwhelming server
+                time.sleep(PREDICTION_DELAY_S)
             
             batch_duration = time.time() - batch_start
             if LOGGER:
@@ -98,13 +101,16 @@ def _run_all_predictions():
             LOGGER.info(f"[AUTO-PREDICT] Market CLOSED - skipping {stock_count} stock predictions")
     
     # Run crypto predictions (24/7 - crypto markets never close)
-    crypto_count = len(HUNTER_CRYPTO_SYMBOLS)
+    # PERFORMANCE FIX: Limit to top 30 crypto to prevent resource exhaustion
+    TOP_CRYPTO_LIMIT = 30
+    crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_LIMIT]
+    crypto_count = len(crypto_symbols_to_process)
     if LOGGER:
-        LOGGER.info(f"[AUTO-PREDICT] Processing {crypto_count} crypto (24/7) in batches of {BATCH_SIZE}")
+        LOGGER.info(f"[AUTO-PREDICT] Processing {crypto_count}/{len(HUNTER_CRYPTO_SYMBOLS)} crypto (24/7) in batches of {BATCH_SIZE}")
     
     # Process crypto in batches
     for i in range(0, crypto_count, BATCH_SIZE):
-        batch = HUNTER_CRYPTO_SYMBOLS[i:i+BATCH_SIZE]
+        batch = crypto_symbols_to_process[i:i+BATCH_SIZE]
         batch_start = time.time()
         
         for symbol in batch:
@@ -120,8 +126,8 @@ def _run_all_predictions():
             except Exception as e:
                 errors.append(f"{symbol}: {str(e)[:100]}")
             
-            # Minimal delay
-            time.sleep(0.1)
+            # PERFORMANCE FIX: Add delay to prevent overwhelming server
+            time.sleep(PREDICTION_DELAY_S)
         
         batch_duration = time.time() - batch_start
         if LOGGER:
