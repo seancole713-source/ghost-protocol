@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeApp() {
     setupEventListeners();
     updateSystemTime();
+    
+    // Load all panels IMMEDIATELY on startup (don't wait for intervals)
     loadAllPanels();
     
     // OPTIMIZED: Set smart update intervals (reduced from 5s to prevent hammering)
@@ -29,6 +31,8 @@ function initializeApp() {
     setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s (includes hunter feed)
     setInterval(() => loadWatchlistByMode(), 15000);  // Watchlist: every 15s (mode-aware)
     setInterval(() => loadVIPCoins(), 15000);  // VIP Coins: every 15s
+    
+    console.log('✅ Ghost Protocol Cockpit v3 initialized');
 }
 
 // Event Listeners
@@ -87,13 +91,11 @@ function setupEventListeners() {
 // System Time Update
 function updateSystemTime() {
     const timeEl = document.getElementById('system-time');
-    setInterval(() => {
-        const now = new Date();
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        timeEl.textContent = `${hours}:${minutes}:${seconds}`;
-    }, 1000);
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    timeEl.textContent = `${hours}:${minutes}:${seconds}`;
 }
 
 // Control Actions
@@ -197,7 +199,12 @@ async function loadAllPanels() {
 // Panel 1: Top Movers
 async function loadTopMovers() {
     try {
-        const response = await fetch('/api/v3/hunter/feed');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);  // 10s timeout
+        
+        const response = await fetch('/api/v3/hunter/feed', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
         if (!response.ok) throw new Error('Failed to load movers');
         
         const data = await response.json();
@@ -252,8 +259,13 @@ async function loadTopMovers() {
             `;
         }).join('');
     } catch (error) {
-        console.error('Error loading movers:', error);
-        document.getElementById('movers-list').innerHTML = '<p style="color: var(--accent-red);">Failed to load movers</p>';
+        console.error('[MOVERS] Error:', error);
+        const container = document.getElementById('movers-list');
+        if (error.name === 'AbortError') {
+            container.innerHTML = '<p style="color: var(--accent-orange); text-align: center; padding: 20px;">⏱️ Connection timeout - retrying...</p>';
+        } else {
+            container.innerHTML = '<p style="color: var(--accent-red); text-align: center; padding: 20px;">❌ Failed to load movers</p>';
+        }
     }
 }
 
@@ -419,7 +431,12 @@ function updateForecastCard(index, prediction, icon, timeframe, confidenceMultip
 // Panel 3: News Feed
 async function loadNews() {
     try {
-        const response = await fetch('/api/v3/news/feed?limit=10');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);  // 10s timeout
+        
+        const response = await fetch('/api/v3/news/feed?limit=10', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
         if (!response.ok) throw new Error('Failed to load news');
         
         const data = await response.json();
@@ -455,8 +472,13 @@ async function loadNews() {
             </div>
         `).join('');
     } catch (error) {
-        console.error('[GHOST V3] Error loading news:', error);
-        document.getElementById('news-list').innerHTML = '<p style="color: var(--text-secondary);">News feed temporarily unavailable</p>';
+        console.error('[NEWS] Error:', error);
+        const container = document.getElementById('news-list');
+        if (error.name === 'AbortError') {
+            container.innerHTML = '<p style="color: var(--accent-orange); text-align: center; padding: 20px;">⏱️ Loading news...</p>';
+        } else {
+            container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">📰 News feed temporarily unavailable</p>';
+        }
     }
 }
 
@@ -765,13 +787,18 @@ function renderHealthMetrics(metrics) {
 // Cockpit Snapshot (for system state)
 async function loadCockpitSnapshot() {
     try {
-        const response = await fetch('/api/v3/cockpit/status');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);  // 5s timeout
+        
+        const response = await fetch('/api/v3/cockpit/status', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
         if (!response.ok) throw new Error('Failed to load cockpit snapshot');
         
         const data = await response.json();
         
-        // Update system status
-        updateStatusIndicator(data.live || false);
+        // Update system status (use 'active' field from API)
+        updateStatusIndicator(data.active !== undefined ? data.active : true);
         
         // Update header with last update time if available
         if (data.last_update_ts) {
