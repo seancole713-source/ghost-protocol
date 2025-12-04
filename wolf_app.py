@@ -4061,20 +4061,21 @@ async def _post_startup_init():
     except Exception:
         LOGGER.exception("scheduled_predictions_start_failed", extra={"component": "startup"})
 
-    # Start Auto-Prediction Loop (5-min interval for all watchlist symbols)
+    # Start Auto-Prediction Loop (async architecture for non-blocking predictions)
     try:
         from core import auto_prediction_loop
         
-        # Inject dependencies
+        # Inject dependencies (both sync and async versions)
         auto_prediction_loop.LOGGER = LOGGER
         auto_prediction_loop.RUN_PREDICTION_FUNC = run_prediction
+        auto_prediction_loop.RUN_PREDICTION_FUNC_ASYNC = run_single_prediction_async
         auto_prediction_loop.HUNTER_STOCK_SYMBOLS = HUNTER_STOCK_SYMBOLS
         auto_prediction_loop.HUNTER_CRYPTO_SYMBOLS = HUNTER_CRYPTO_SYMBOLS
         
         # Start the loop
         auto_prediction_loop.start_auto_prediction_loop()
         
-        LOGGER.info("✅ Auto-Prediction Loop: STARTED (5-min interval, 26 symbols)")
+        LOGGER.info("✅ Auto-Prediction Loop: STARTED (ASYNC, non-blocking, 60-min interval)")
     except Exception as e:
         LOGGER.exception("auto_prediction_loop_start_failed", extra={"component": "startup", "error": str(e)})
 
@@ -5966,6 +5967,40 @@ class _PredictRunBody(BaseModel):
 
 
 @APP.post("/api/predict/run")
+async def run_single_prediction_async(symbol: str) -> dict[str, Any]:
+    """
+    ASYNC version of core prediction function with turbo provider architecture.
+    
+    This function is the ASYNC HEART OF THE GHOST TURBO SURGERY.
+    - Hard 4 second budget (3s price + 1s features)
+    - Hard 8 second timeout (fast-fail to prevent hanging)
+    - Uses turbo_stock_price/turbo_crypto_price with fast-fail
+    - Always returns dict (never raises exceptions)
+    - Returns structured error on any failure
+    - NON-BLOCKING: Can handle multiple symbols concurrently
+    
+    Args:
+        symbol: Trading symbol (e.g., "PACS", "BTC")
+    
+    Returns:
+        {
+            "ok": bool,
+            "prediction_id": int or None,
+            "symbol": str,
+            "direction": str,
+            "confidence": float,
+            "current_price": float or None,
+            "feature_count": int,
+            "available_count": int,
+            "duration_ms": int,
+            "error": str or None
+        }
+    """
+    # Run synchronous prediction in thread pool to avoid blocking event loop
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, run_single_prediction, symbol)
+
+
 def run_single_prediction(symbol: str) -> dict[str, Any]:
     """
     Core synchronous prediction function with turbo provider architecture.
