@@ -344,7 +344,7 @@ async function loadVIPCoins() {
 }
 
 // Panel 2: Forecast
-let currentForecastSymbol = 'BTC';  // Default symbol
+// currentForecastSymbol already declared at top of file (line 5)
 
 async function loadForecast() {
     try {
