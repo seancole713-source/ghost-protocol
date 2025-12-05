@@ -761,6 +761,10 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         return await call_next(request)
     if request.url.path.startswith("/api/v3/"):  # All Cockpit V3 live endpoints (NO AUTH)
         return await call_next(request)
+    if request.url.path.startswith("/api/xrp/"):  # XRP tracker for cockpit
+        return await call_next(request)
+    if request.url.path.startswith("/api/presale/"):  # Presale watch for cockpit
+        return await call_next(request)
     if request.url.path.startswith("/api/config"):  # Runtime config endpoints
         return await call_next(request)
     if request.url.path.startswith("/api/corporate_actions"):  # Corporate actions feed
@@ -7322,6 +7326,7 @@ async def api_v3_cockpit_status():
     try:
         # Calculate health score from ACTUAL recent predictions (not counters)
         health_score = 0
+        total_predictions = 0
         try:
             from core.prediction_store import get_prediction_store
             store = get_prediction_store()
@@ -7333,7 +7338,8 @@ async def api_v3_cockpit_status():
             recent_24h = [p for p in recent if p.get('timestamp', 0) > cutoff]
             
             # Health score: 10 points per prediction in last 24h, max 100
-            health_score = min(100, len(recent_24h) * 10)
+            total_predictions = len(recent_24h)
+            health_score = min(100, total_predictions * 10)
         except Exception as e:
             LOGGER.warning(f"Could not calculate health score from DB: {e}")
             # Fallback to old method
