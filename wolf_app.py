@@ -7261,7 +7261,7 @@ async def api_v3_health_metrics():
             "data_health": data_health,
             "ai_activity": ai_activity,
             "accuracy": accuracy,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }
     
     except Exception as e:
