@@ -305,7 +305,7 @@ class AccuracyDashboardV2:
                         "win_rate": round(win_rate, 3),
                         "total_trades": total,
                         "wins": wins,
-                        "losses": total - wins,
+                        "losses": max(0, total - wins),  # Ensure non-negative
                         "best_symbol": best_symbol,
                         "worst_symbol": worst_symbol,
                         "sharpe_ratio": None,  # Not yet implemented
