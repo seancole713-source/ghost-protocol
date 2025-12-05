@@ -7317,6 +7317,48 @@ async def api_v3_goals_set(period: str, target_amount: float):
         }
 
 
+@APP.get("/api/v3/watchlist/market")
+async def get_market_watchlist_v3():
+    """
+    Market watchlist: top crypto symbols with prices and Ghost predictions.
+    Cockpit v3 Market tab.
+    """
+    try:
+        symbols = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX", 
+                   "MATIC", "DOT", "LINK", "UNI", "LTC", "ATOM", "XLM"]
+        items = []
+        
+        for symbol in symbols:
+            try:
+                # Get price (with 1s timeout per symbol)
+                price_data = turbo_crypto_price(symbol, max_budget_s=1.0)
+                price = price_data.get("price", 0)
+                change_pct = price_data.get("change_24h_pct", 0)
+                
+                # Get Ghost prediction
+                pred = _LATEST_PREDICTIONS.get(symbol, {})
+                confidence = pred.get("confidence", 0)
+                if 0 < confidence <= 1:
+                    confidence = confidence * 100  # Convert 0-1 to 0-100
+                
+                items.append({
+                    "symbol": symbol,
+                    "price": price,
+                    "change_pct": change_pct,
+                    "ghost_confidence": confidence,
+                    "ghost_direction": pred.get("direction", "FLAT"),
+                    "type": "crypto"
+                })
+            except Exception as e:
+                LOGGER.warning(f"Market watchlist: {symbol} fetch failed: {e}")
+                continue
+        
+        return {"ok": True, "items": items}
+    except Exception as e:
+        LOGGER.error(f"Market watchlist error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e), "items": []}
+
+
 @APP.get("/api/v3/cockpit/status")
 async def api_v3_cockpit_status():
     """

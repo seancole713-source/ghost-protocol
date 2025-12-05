@@ -140,12 +140,15 @@ async def get_vip_price(symbol: str):
 @router.get("/presale/watch")
 async def get_presale_watch():
     """
-    Get presale and microcap watch list.
+    Get presale and microcap watch list (Ghost Commander baseline: all 5 VIP coins).
     """
     try:
         presales = [
             {"name": "WEPE", "status": "Active"},
             {"name": "LILPEPE", "status": "Monitoring"},
+            {"name": "DORKL", "status": "Watching"},
+            {"name": "SLOTH", "status": "Watching"},
+            {"name": "APC", "status": "Watching"},
         ]
         
         return {

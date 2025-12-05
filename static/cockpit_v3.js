@@ -19,6 +19,9 @@ function initializeApp() {
     // Load status indicator immediately
     loadCockpitStatus();
     
+    // Sync forecast input with default symbol
+    document.getElementById('forecast-symbol').value = currentForecastSymbol;
+    
     // Load all panels IMMEDIATELY on startup (don't wait for intervals)
     loadAllPanels();
     
@@ -795,8 +798,8 @@ function renderWatchlist(data) {
             `${item.ghost_confidence.toFixed(0)}%` : 
             '--';
         
-        // Direction from predicted_direction field
-        const direction = item.predicted_direction || 'FLAT';
+        // Direction from ghost_direction field (API returns this, not predicted_direction)
+        const direction = item.ghost_direction || 'FLAT';
         const directionEmoji = direction === 'UP' ? '↑' : direction === 'DOWN' ? '↓' : '→';
         const changeClass = item.change_24h >= 0 ? 'positive' : 'negative';
         
