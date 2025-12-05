@@ -6417,6 +6417,11 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         except Exception as e:
             LOGGER.error(f"[{symbol}] Failed to write to ghost_predictions table: {e}")
         
+        # Calculate stop loss and take profit (3:1 reward/risk ratio)
+        entry_price = current_price
+        stop_loss = round(entry_price * 0.98, 2)   # -2% stop
+        take_profit = round(entry_price * 1.06, 2)  # +6% target (3:1 R/R)
+        
         # Calculate total duration
         duration_ms = int((time.monotonic() - start) * 1000)
 
@@ -6429,6 +6434,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "confidence": confidence,
             "direction": direction,
             "current_price": current_price,
+            "entry_price": entry_price,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "reward_risk_ratio": 3.0,
             "feature_count": feature_data["feature_count"],
             "available_count": feature_data["available_count"],
             "duration_ms": duration_ms,
@@ -6744,6 +6753,311 @@ async def api_evaluate_predictions():
         return {
             "ok": False,
             "error": str(e)
+        }
+
+
+@APP.get("/api/v3/accuracy/dashboard")
+async def api_accuracy_dashboard(days: int = 30):
+    """
+    GHOST 70% Accuracy Dashboard - Comprehensive Metrics
+    =====================================================
+    
+    Real-time accuracy tracking with performance analytics.
+    
+    Features:
+    - Overall accuracy (7d, 30d, 90d trends)
+    - By-symbol breakdown
+    - Confidence band analysis
+    - Calibration metrics
+    - Recent predictions with outcomes
+    
+    Args:
+        days: Lookback period (default 30)
+    
+    Returns:
+        {
+            "timestamp": 1736899200,
+            "period_days": 30,
+            "overall_accuracy": 0.68,
+            "total_predictions": 150,
+            "reconciled": 120,
+            "pending": 30,
+            "accuracy_trend": {"7d": 0.70, "30d": 0.68, "90d": 0.65},
+            "by_symbol": {...},
+            "by_confidence_band": {...},
+            "calibration": {...},
+            "recent_predictions": [...]
+        }
+    """
+    try:
+        from core.accuracy_dashboard import get_accuracy_dashboard
+        
+        dashboard = get_accuracy_dashboard()
+        summary = dashboard.get_dashboard_summary(days=days)
+        
+        return summary
+    
+    except Exception as e:
+        LOGGER.error(f"Accuracy dashboard failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "days": days
+        }
+
+
+@APP.get("/api/v3/accuracy/performance")
+async def api_accuracy_performance(days: int = 30):
+    """
+    Advanced Performance Metrics
+    
+    Includes:
+    - Win rate
+    - Sharpe ratio
+    - Max drawdown
+    - Best/worst performing symbols
+    
+    Args:
+        days: Lookback period (default 30)
+    """
+    try:
+        from core.accuracy_dashboard import get_accuracy_dashboard
+        
+        dashboard = get_accuracy_dashboard()
+        metrics = dashboard.get_performance_metrics(days=days)
+        
+        return metrics
+    
+    except Exception as e:
+        LOGGER.error(f"Performance metrics failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.post("/api/v3/backtesting/run")
+async def api_run_backtest(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    train_window_days: int = 180,
+    test_window_days: int = 30
+):
+    """
+    Run Walk-Forward Backtest
+    
+    Validates prediction accuracy on historical data.
+    
+    Args:
+        symbol: Trading symbol (e.g., "WOLF")
+        start_date: Start date "2024-01-01"
+        end_date: End date "2024-12-31"
+        train_window_days: Training window (default 180)
+        test_window_days: Test window (default 30)
+    
+    Returns:
+        {
+            "symbol": "WOLF",
+            "period": "2024-01-01 to 2024-12-31",
+            "win_rate": 0.68,
+            "avg_confidence": 0.72,
+            "calibration_error": 0.04,
+            "sharpe_ratio": 1.8,
+            "max_drawdown_pct": -12.3,
+            "total_trades": 245
+        }
+    """
+    try:
+        from core.backtester import get_backtester
+        
+        backtester = get_backtester()
+        results = backtester.walk_forward_backtest(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            train_window_days=train_window_days,
+            test_window_days=test_window_days
+        )
+        
+        return results
+    
+    except Exception as e:
+        LOGGER.error(f"Backtest failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "symbol": symbol
+        }
+
+
+@APP.get("/api/v3/position/calculate")
+async def api_calculate_position(confidence: float, account_value: float = 25000.0):
+    """
+    Calculate Position Size (Kelly Criterion)
+    
+    Args:
+        confidence: Prediction confidence (0.0 to 1.0)
+        account_value: Account value in USD (default $25,000)
+    
+    Returns:
+        {
+            "position_size_usd": 2500.0,
+            "position_pct": 0.10,
+            "should_trade": true,
+            "reason": "Within limits"
+        }
+    """
+    try:
+        from core.position_sizer import get_position_sizer
+        
+        sizer = get_position_sizer()
+        result = sizer.calculate_position_size(confidence, account_value)
+        
+        return result
+    
+    except Exception as e:
+        LOGGER.error(f"Position calculation failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/position/breakdown")
+async def api_position_breakdown(account_value: float = 25000.0):
+    """
+    Get Position Sizes for Different Confidence Levels
+    
+    Shows position sizing across confidence spectrum.
+    
+    Args:
+        account_value: Account value in USD (default $25,000)
+    
+    Returns:
+        {
+            "50%": {"position_usd": 0, "should_trade": false},
+            "60%": {"position_usd": 2083.33, "should_trade": true},
+            "70%": {"position_usd": 3333.33, "should_trade": true},
+            "85%": {"position_usd": 5000.00, "should_trade": true}
+        }
+    """
+    try:
+        from core.position_sizer import get_position_sizer
+        
+        sizer = get_position_sizer()
+        breakdown = sizer.get_position_breakdown(account_value)
+        
+        return breakdown
+    
+    except Exception as e:
+        LOGGER.error(f"Position breakdown failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/regime/current")
+async def api_current_regime():
+    """
+    Get Current Market Regime
+    
+    Detects market conditions to filter trades.
+    
+    Returns:
+        {
+            "regime": "TRENDING_UP",
+            "should_trade": true,
+            "confidence": 0.8,
+            "vix_level": 18.5,
+            "spy_trend": "up",
+            "volume_ratio": 1.2,
+            "reasons": [...]
+        }
+    """
+    try:
+        from core.regime_detector import get_regime_detector
+        from core.price_fetchers import get_price
+        
+        # Fetch SPY and VIX data
+        spy_price = get_price("SPY")
+        vix_level = get_price("VIX") if get_price("VIX") else 20.0
+        
+        # TODO: Calculate SPY MA20 and volume ratio
+        spy_ma20 = spy_price * 0.98 if spy_price else None  # Placeholder
+        spy_volume_ratio = 1.0  # Placeholder
+        
+        detector = get_regime_detector()
+        regime = detector.detect_regime(
+            spy_price=spy_price,
+            spy_ma20=spy_ma20,
+            vix_level=vix_level,
+            spy_volume_ratio=spy_volume_ratio
+        )
+        
+        return regime
+    
+    except Exception as e:
+        LOGGER.error(f"Regime detection failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "regime": "UNKNOWN",
+            "should_trade": False
+        }
+
+
+@APP.post("/api/v3/learning/calibrate")
+async def api_calibrate_weights(symbol: str, lookback_days: int = 90):
+    """
+    Calibrate Signal Weights (Learning Loop)
+    
+    Analyzes past predictions to determine which signals are most accurate
+    and adjusts confidence weights accordingly.
+    
+    Args:
+        symbol: Trading symbol (e.g., "WOLF")
+        lookback_days: Days of history to analyze (default 90)
+    
+    Returns:
+        {
+            "symbol": "WOLF",
+            "weights": {
+                "RSI": 0.10,
+                "MACD": 0.04,
+                "BOLLINGER": 0.05,
+                "VOLUME": 0.07,
+                "SENTIMENT": 0.03,
+                "MOMENTUM": 0.06
+            },
+            "sample_size": 120,
+            "updated_at": 1736899200
+        }
+    """
+    try:
+        from core.learning_loop import get_learning_loop
+        import time
+        
+        loop = get_learning_loop()
+        weights = loop.calibrate_weights(symbol, lookback_days)
+        
+        # Save weights
+        loop.save_weights(symbol, weights)
+        
+        return {
+            "symbol": symbol,
+            "weights": weights,
+            "lookback_days": lookback_days,
+            "updated_at": int(time.time())
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Weight calibration failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "symbol": symbol
         }
 
 
