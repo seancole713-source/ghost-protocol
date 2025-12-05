@@ -3638,27 +3638,22 @@ async def _on_startup():
         # Non-critical - continue startup
 
     # Start Personal Watchlist Prediction Scheduler
-    # TEMPORARILY DISABLED - SQL parameter binding issues in production
-    # See: https://github.com/seancole713-source/ghost-protocol/issues/XXX
-    # Re-enable after testing PostgreSQL INTERVAL fixes locally
     try:
-        LOGGER.warning("[GHOST STARTUP] ⚠️ Personal watchlist scheduler DISABLED (SQL debugging)")
-        # from core.watchlist_prediction_scheduler import start_watchlist_scheduler
-        # start_watchlist_scheduler()
-        # LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist scheduler started")
+        from core.watchlist_prediction_scheduler import start_watchlist_scheduler
+        start_watchlist_scheduler()
+        LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist scheduler started")
     except Exception as e:
         LOGGER.error(f"watchlist_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
-    # Start Outcome Reconciler (70% Accuracy Goal) - TEMPORARILY DISABLED FOR DEBUGGING
-    # try:
-    #     from services.outcome_reconciler_v2 import start_reconciler_background_task
-    #     start_reconciler_background_task()
-    #     LOGGER.info("[GHOST STARTUP] ✅ Outcome reconciler started (48h accuracy tracking)")
-    # except Exception as e:
-    #     LOGGER.error(f"outcome_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    #     # Non-critical - continue startup
-    LOGGER.warning("[GHOST STARTUP] ⚠️ Outcome reconciler DISABLED (debugging request hangs)")
+    # Start Outcome Reconciler (70% Accuracy Goal)
+    try:
+        from services.outcome_reconciler_v2 import start_reconciler_background_task
+        start_reconciler_background_task()
+        LOGGER.info("[GHOST STARTUP] ✅ Outcome reconciler started (48h accuracy tracking)")
+    except Exception as e:
+        LOGGER.error(f"outcome_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
 
     # CRITICAL: Initialize prediction store pool EAGERLY to prevent first-request blocking
     try:
@@ -4014,11 +4009,11 @@ async def _post_startup_init():
             _start_schedule_worker()
     except Exception:
         LOGGER.exception("schedule_worker_start_failed", extra={"component": "startup"})
-    # Start Ghost Prediction outcome reconciler - TEMPORARILY DISABLED FOR DEBUGGING
-    # try:
-    #     _start_reconciler_worker()
-    # except Exception:
-    #     LOGGER.exception("reconciler_worker_start_failed", extra={"component": "startup"})
+    # Start Ghost Prediction outcome reconciler (secondary worker for redundancy)
+    try:
+        _start_reconciler_worker()
+    except Exception:
+        LOGGER.exception("reconciler_worker_start_failed", extra={"component": "startup"})
 
     # Scheduled Predictions DISABLED - Using auto_prediction_loop instead (5-min interval covers all cases)
     # REASON: Prevents duplicate predictions and excessive API calls

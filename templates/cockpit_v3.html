@@ -27,7 +27,7 @@
                 <button id="btn-stop" class="btn btn-danger">STOP</button>
                 <button id="btn-reset" class="btn btn-warning">RESET</button>
             </div>
-            <select id="mode-selector" class="mode-select">
+            <select id="mode-selector" class="mode-select" aria-label="Trading mode selector">
                 <option value="live">LIVE</option>
                 <option value="fixed">FIXED</option>
                 <!-- TRAINING mode removed - violates SIM_MODE=0 baseline -->
@@ -60,18 +60,18 @@
             </div>
             <div class="panel-body">
                 <!-- XRP Bullish Eye Tracker (Priority) -->
-                <div id="xrp-tracker" style="margin-bottom: 20px;"></div>
+                <div id="xrp-tracker"></div>
                 
                 <!-- VIP Sniper Coins (WEPE, LILPEPE, DORKL, SLOTH, APC) -->
-                <div style="margin-bottom: 20px;">
-                    <h3 style="font-size: 14px; color: var(--accent-orange); margin-bottom: 10px;">🎯 VIP Sniper Coins</h3>
+                <div class="vip-section-container">
+                    <h3 class="vip-section-header">🎯 VIP Sniper Coins</h3>
                     <div id="vip-sniper-list"></div>
                 </div>
                 
                 <!-- Major Caps Reference -->
-                <div style="border-top: 1px solid var(--border); padding-top: 15px;">
-                    <h3 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">📊 Major Caps</h3>
-                    <div id="vip-majors-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
+                <div class="vip-majors-container">
+                    <h3 class="vip-majors-header">📊 Major Caps</h3>
+                    <div id="vip-majors-list"></div>
                 </div>
             </div>
         </section>
@@ -81,7 +81,7 @@
             <div class="panel-header">
                 <h2>Ghost Forecast</h2>
                 <input type="text" id="forecast-symbol" class="search-input" placeholder="Enter symbol..." />
-                <span id="forecast-symbol-label" style="margin-left: 10px; font-size: 14px; font-weight: 600; color: var(--accent-green);"></span>
+                <span id="forecast-symbol-label" class="forecast-symbol-label"></span>
             </div>
             <div class="panel-body">
                 <div id="forecast-grid" class="forecast-container">
@@ -136,7 +136,7 @@
             <div class="panel-header">
                 <h2>Watchlist</h2>
                 <!-- Mode Tabs: Personal vs Market -->
-                <div class="tabs" id="watchlist-mode-tabs" style="margin-bottom: 10px;">
+                <div class="tabs watchlist-mode-tabs" id="watchlist-mode-tabs">
                     <button class="tab active" data-mode="personal">📋 Personal</button>
                     <button class="tab" data-mode="market">📊 Market</button>
                 </div>

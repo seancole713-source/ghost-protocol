@@ -9,6 +9,7 @@
     --accent-green: #00d632;
     --accent-red: #ff3b30;
     --accent-yellow: #ffcc00;
+    --accent-orange: #ff9500;
     --border-subtle: #2a2a2a;
     --shadow: rgba(0, 0, 0, 0.5);
     
@@ -761,4 +762,47 @@ body {
     .forecast-container {
         grid-template-columns: 1fr;
     }
+}
+
+/* VIP Panel Styles */
+#xrp-tracker {
+    margin-bottom: 20px;
+}
+
+.vip-section-container {
+    margin-bottom: 20px;
+}
+
+.vip-section-header {
+    font-size: 14px;
+    color: var(--accent-orange, #ff9500);
+    margin-bottom: 10px;
+}
+
+.vip-majors-container {
+    border-top: 1px solid var(--border);
+    padding-top: 15px;
+}
+
+.vip-majors-header {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
+#vip-majors-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.forecast-symbol-label {
+    margin-left: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent-green);
+}
+
+.watchlist-mode-tabs {
+    margin-bottom: 10px;
 }
