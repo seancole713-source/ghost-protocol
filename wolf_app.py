@@ -3740,7 +3740,9 @@ async def _post_startup_init():
             """Background loop for VIP microcap scanning with Cash-App alerts"""
             while True:
                 try:
-                    result = scan_vip_coins()
+                    # FIXED: Run blocking scan_vip_coins in thread pool to avoid blocking event loop
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(None, scan_vip_coins)
                     LOGGER.info(
                         f"VIP scan: {result['available']}/{result['scanned']} available, "
                         f"{len(result['opportunities'])} opportunities, {result['alerts_sent']} alerts"
@@ -3764,9 +3766,8 @@ async def _post_startup_init():
                 try:
                     if should_run_premarket():
                         LOGGER.info("🌅 Running pre-market predictions...")
-                        # Use thread pool to avoid blocking event loop
-                        loop = asyncio.get_event_loop()
-                        await loop.run_in_executor(None, run_premarket_predictions)
+                        # FIXED: Await async function directly (not via run_in_executor)
+                        await run_premarket_predictions()
                         LOGGER.info("✅ Pre-market predictions complete")
                 except Exception as e:
                     LOGGER.error(f"Pre-market predictor error: {e}", exc_info=True)

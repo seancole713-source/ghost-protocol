@@ -151,11 +151,13 @@ async def _generate_premarket_prediction(symbol: str) -> dict[str, Any] | None:
     Uses existing prediction engine but adds pre-market context
     """
     try:
-        # Import prediction function from wolf_app
+        # Import prediction function and asyncio
+        import asyncio
         from wolf_app import run_prediction
         
-        # Generate standard prediction
-        prediction = run_prediction(symbol)
+        # FIXED: Run blocking prediction function in thread pool
+        loop = asyncio.get_event_loop()
+        prediction = await loop.run_in_executor(None, run_prediction, symbol)
         
         if prediction and prediction.get('ok'):
             # Add pre-market metadata
