@@ -138,29 +138,10 @@ class AccuracyDashboardV2:
                                 result["correct"] / result["total"], 3
                             )
                     
-                    # By-symbol breakdown
-                    cursor.execute("""
-                        SELECT 
-                            symbol,
-                            COUNT(*) as total,
-                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
-                        FROM ghost_prediction_outcomes
-                        WHERE closed_at >= %s
-                        GROUP BY symbol
-                        ORDER BY COUNT(*) DESC
-                        LIMIT 20
-                    """, (cutoff_dt,))
-                    for row in cursor.fetchall():
-                        symbol = row["symbol"]
-                        total = row["total"]
-                        correct = row["correct"]
-                        accuracy = round(correct / total, 3) if total > 0 else 0.0
-                        summary["by_symbol"][symbol] = {
-                            "accuracy": accuracy,
-                            "count": total,
-                            "correct": correct,
-                            "incorrect": total - correct
-                        }
+                    # By-symbol breakdown - DISABLED (symbol not in ghost_prediction_outcomes table)
+                    # TODO: Add symbol column to ghost_prediction_outcomes or join with predictions table
+                    # For now, by_symbol will remain empty
+                    summary["by_symbol"] = {}
                     
                     # By-confidence band (using predicted_confidence)
                     cursor.execute("""
@@ -315,22 +296,10 @@ class AccuracyDashboardV2:
                     wins = result["wins"] if result else 0
                     win_rate = wins / total if total > 0 else 0.0
                     
-                    # Best/worst symbols
-                    cursor.execute("""
-                        SELECT 
-                            symbol,
-                            COUNT(*) as total,
-                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins
-                        FROM ghost_prediction_outcomes
-                        WHERE closed_at >= %s
-                        GROUP BY symbol
-                        HAVING COUNT(*) >= 3
-                        ORDER BY SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END)::float / COUNT(*) DESC
-                    """, (cutoff_dt,))
-                    
-                    symbols = cursor.fetchall()
-                    best_symbol = symbols[0]["symbol"] if symbols else None
-                    worst_symbol = symbols[-1]["symbol"] if symbols else None
+                    # Best/worst symbols - DISABLED (symbol not in ghost_prediction_outcomes table)
+                    # TODO: Add symbol column or join with predictions table
+                    best_symbol = None
+                    worst_symbol = None
                     
                     return {
                         "win_rate": round(win_rate, 3),
