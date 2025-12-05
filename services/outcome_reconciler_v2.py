@@ -292,11 +292,14 @@ def _store_outcome_no_data(
     try:
         cursor = conn.cursor()
         
-        # Insert outcome with NULL prices and hit_direction
+        # Insert outcome with NULL/0 for missing prices
+        # price_at_prediction and price_at_resolution are NOT NULL, so use 0.0 as sentinel
         cursor.execute("""
             INSERT INTO ghost_prediction_outcomes (
                 prediction_id, 
                 closed_at, 
+                price_at_prediction,
+                price_at_resolution,
                 predicted_direction,
                 predicted_confidence,
                 hit_direction,
@@ -308,6 +311,8 @@ def _store_outcome_no_data(
                 to_timestamp(%s), 
                 %s,
                 %s,
+                %s,
+                %s,
                 NULL,
                 %s,
                 %s,
@@ -315,11 +320,15 @@ def _store_outcome_no_data(
             )
             ON CONFLICT (prediction_id) DO UPDATE SET
                 closed_at = EXCLUDED.closed_at,
+                price_at_prediction = EXCLUDED.price_at_prediction,
+                price_at_resolution = EXCLUDED.price_at_resolution,
                 status = EXCLUDED.status,
                 notes = EXCLUDED.notes
         """, (
             prediction_id,
             resolve_at,
+            0.0,  # Sentinel value for missing price_at_prediction
+            0.0,  # Sentinel value for missing price_at_resolution
             predicted_direction,
             predicted_confidence,
             'no_data',
