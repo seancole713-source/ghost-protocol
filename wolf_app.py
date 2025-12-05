@@ -6790,9 +6790,9 @@ async def api_accuracy_dashboard(days: int = 30):
         }
     """
     try:
-        from core.accuracy_dashboard import get_accuracy_dashboard
+        from core.accuracy_dashboard_v2 import get_accuracy_dashboard_v2
         
-        dashboard = get_accuracy_dashboard()
+        dashboard = get_accuracy_dashboard_v2()
         summary = dashboard.get_dashboard_summary(days=days)
         
         return summary
@@ -6821,9 +6821,9 @@ async def api_accuracy_performance(days: int = 30):
         days: Lookback period (default 30)
     """
     try:
-        from core.accuracy_dashboard import get_accuracy_dashboard
+        from core.accuracy_dashboard_v2 import get_accuracy_dashboard_v2
         
-        dashboard = get_accuracy_dashboard()
+        dashboard = get_accuracy_dashboard_v2()
         metrics = dashboard.get_performance_metrics(days=days)
         
         return metrics

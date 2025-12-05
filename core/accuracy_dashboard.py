@@ -20,17 +20,20 @@ Date: 2025-01-15
 """
 
 import logging
-import sqlite3
+import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-LOGGER = logging.getLogger("ghost.accuracy_dashboard")
+try:
+    import psycopg2
+    import psycopg2.extras
+    HAS_PSYCOPG2 = True
+except ImportError:
+    HAS_PSYCOPG2 = False
 
-# Database paths
-PREDICTION_DB = Path(__file__).parent.parent / "data" / "wolf.db"
-ACCURACY_DB = Path(__file__).parent.parent / "data" / "prediction_outcomes.db"
+LOGGER = logging.getLogger("ghost.accuracy_dashboard")
 
 
 class AccuracyDashboard:
@@ -39,57 +42,29 @@ class AccuracyDashboard:
     
     Provides real-time insights into prediction performance,
     accuracy trends, and calibration quality.
+    
+    Reads from PostgreSQL ghost_prediction_outcomes table.
     """
     
     def __init__(self):
-        """Initialize dashboard with database connections."""
-        self._ensure_databases()
+        """Initialize dashboard with database connection."""
+        self.database_url = os.getenv("DATABASE_URL")
+        if not self.database_url:
+            LOGGER.warning("DATABASE_URL not set, dashboard will return empty data")
+        elif not HAS_PSYCOPG2:
+            LOGGER.warning("psycopg2 not installed, dashboard will return empty data")
     
-    def _ensure_databases(self):
-        """Ensure database tables exist."""
-        # Create prediction_outcomes table if missing
-        ACCURACY_DB.parent.mkdir(parents=True, exist_ok=True)
-        
-        with sqlite3.connect(str(ACCURACY_DB)) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS prediction_outcomes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    prediction_id INTEGER NOT NULL,
-                    symbol TEXT NOT NULL,
-                    predicted_at REAL NOT NULL,
-                    check_at REAL NOT NULL,
-                    predicted_price REAL NOT NULL,
-                    actual_price REAL,
-                    predicted_direction TEXT NOT NULL,
-                    actual_direction TEXT,
-                    confidence REAL NOT NULL,
-                    correct INTEGER,
-                    outcome_recorded_at REAL,
-                    error_message TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_outcomes_symbol
-                ON prediction_outcomes(symbol)
-            """)
-            
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_outcomes_predicted_at
-                ON prediction_outcomes(predicted_at DESC)
-            """)
-            
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_outcomes_correct
-                ON prediction_outcomes(correct)
-            """)
-            
-            conn.commit()
+    def _get_connection(self):
+        """Get PostgreSQL connection."""
+        if not self.database_url or not HAS_PSYCOPG2:
+            return None
+        return psycopg2.connect(self.database_url)
     
-    def get_dashboard_summary(self, days: int = 30) -> Dict[str, Any]:
+    def get_dashboard_summary(self, days: int = 30) -> dict[str, Any]:
         """
-        Get comprehensive dashboard summary.
+        Get comprehensive dashboard summary from PostgreSQL.
+        
+        Reads from ghost_prediction_outcomes table.
         
         Args:
             days: Lookback period (default 30 days)
@@ -104,18 +79,14 @@ class AccuracyDashboard:
                 "pending": 30,
                 "correct": 82,
                 "incorrect": 38,
-                "accuracy_trend": {
-                    "7d": 0.70,
-                    "30d": 0.68,
-                    "90d": 0.65
-                },
+                "accuracy_trend": {...},
                 "by_symbol": {...},
                 "by_confidence_band": {...},
                 "calibration": {...},
                 "recent_predictions": [...]
             }
         """
-        cutoff_ts = time.time() - (days * 86400)
+        cutoff_dt = datetime.now() - timedelta(days=days)
         
         summary = {
             "timestamp": int(time.time()),
@@ -128,26 +99,30 @@ class AccuracyDashboard:
             "incorrect": 0
         }
         
-        # Get overall stats
+        # Get overall stats from PostgreSQL
+        conn = self._get_connection()
+        if not conn:
+            LOGGER.warning("No database connection, returning empty summary")
+            summary.update({
+                "accuracy_trend": {"7d": None, "30d": None, "90d": None},
+                "by_symbol": {},
+                "by_confidence_band": self._empty_confidence_bands(),
+                "calibration": self._empty_calibration(),
+                "recent_predictions": []
+            })
+            return summary
+        
         try:
-            with sqlite3.connect(str(ACCURACY_DB)) as conn:
-                # Total predictions
-                cursor = conn.execute("""
-                    SELECT COUNT(*) FROM prediction_outcomes
-                    WHERE predicted_at >= ?
-                """, (cutoff_ts,))
-                summary["total_predictions"] = cursor.fetchone()[0]
+            with conn:
+                cursor = conn.cursor()
                 
-                # Reconciled predictions (have actual_price)
-                cursor = conn.execute("""
-                    SELECT COUNT(*) FROM prediction_outcomes
-                    WHERE predicted_at >= ?
-                    AND actual_price IS NOT NULL
-                """, (cutoff_ts,))
+                # Total reconciled predictions (those with outcomes)
+                cursor.execute("""
+                    SELECT COUNT(*) FROM ghost_prediction_outcomes
+                    WHERE closed_at >= %s
+                """, (cutoff_dt,))
                 summary["reconciled"] = cursor.fetchone()[0]
-                
-                # Pending predictions
-                summary["pending"] = summary["total_predictions"] - summary["reconciled"]
+                summary["total_predictions"] = summary["reconciled"]  # For now, only count reconciled
                 
                 # Correct predictions
                 cursor = conn.execute("""
