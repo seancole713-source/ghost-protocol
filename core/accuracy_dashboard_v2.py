@@ -287,13 +287,13 @@ class AccuracyDashboardV2:
                     cursor.execute("""
                         SELECT 
                             COUNT(*) as total,
-                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins
+                            COALESCE(SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END), 0) as wins
                         FROM ghost_prediction_outcomes
                         WHERE closed_at >= %s
                     """, (cutoff_dt,))
                     result = cursor.fetchone()
                     total = result["total"] if result else 0
-                    wins = result["wins"] if result else 0
+                    wins = result["wins"] if result and result["wins"] is not None else 0
                     win_rate = wins / total if total > 0 else 0.0
                     
                     # Best/worst symbols - DISABLED (symbol not in ghost_prediction_outcomes table)
