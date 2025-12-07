@@ -264,18 +264,21 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
     """Fetch prices for VIP coins used in the cockpit header."""
     try:
         from wolf_app import VIP_COINS  # type: ignore
-        from core.crypto.crypto_providers import BinanceProvider
+        from core.crypto.crypto_providers import get_crypto_price_quorum
 
         LOGGER.info(f"[VIP] Fetching prices for {len(VIP_COINS)} coins: {VIP_COINS}")
-        binance = BinanceProvider()
         prices: List[Dict[str, Any]] = []
         
-        # Use Binance directly for speed and reliability
+        # Use quorum for multi-provider fallback (handles CoinGecko 429 gracefully)
         for coin in VIP_COINS:
             try:
-                LOGGER.info(f"[VIP] Fetching {coin} via Binance...")
-                result = await asyncio.to_thread(binance.get_price, coin)
-                LOGGER.info(f"[VIP] {coin} result: price={result.get('price') if result else None}")
+                LOGGER.info(f"[VIP] Fetching {coin} via quorum...")
+                # Use short timeout and allow cache to avoid hammering CoinGecko
+                result = await asyncio.wait_for(
+                    get_crypto_price_quorum(coin, use_cache=True),
+                    timeout=5.0
+                )
+                LOGGER.info(f"[VIP] {coin} result: price={result.get('price') if result else None}, provider={result.get('provider') if result else None}")
                 
                 if result and result.get("price", 0) > 0:
                     prices.append({
@@ -283,9 +286,9 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
                         "price": float(result.get("price", 0.0)),
                         "change_pct": float(result.get("change_24h_pct", 0.0)),
                         "status": "online",
-                        "provider": "binance"
+                        "provider": result.get("provider", "unknown")
                     })
-                    LOGGER.info(f"[VIP] {coin} SUCCESS: ${result.get('price'):.2f}")
+                    LOGGER.info(f"[VIP] {coin} SUCCESS: ${result.get('price'):.2f} via {result.get('provider')}")
                 else:
                     LOGGER.warning(f"[VIP] {coin} FAILED: no price in result")
                     prices.append({
@@ -294,6 +297,14 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
                         "change_pct": 0.0,
                         "status": "offline",
                     })
+            except asyncio.TimeoutError:
+                LOGGER.error(f"[VIP] {coin} TIMEOUT after 5s")
+                prices.append({
+                    "symbol": coin,
+                    "price": 0.0,
+                    "change_pct": 0.0,
+                    "status": "offline",
+                })
             except Exception as e:
                 LOGGER.error(f"[VIP] {coin} EXCEPTION: {e}", exc_info=True)
                 prices.append({
