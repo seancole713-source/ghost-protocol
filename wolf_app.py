@@ -4009,11 +4009,13 @@ async def _post_startup_init():
             _start_schedule_worker()
     except Exception:
         LOGGER.exception("schedule_worker_start_failed", extra={"component": "startup"})
-    # Start Ghost Prediction outcome reconciler (secondary worker for redundancy)
-    try:
-        _start_reconciler_worker()
-    except Exception:
-        LOGGER.exception("reconciler_worker_start_failed", extra={"component": "startup"})
+    # OLD RECONCILER DISABLED - Using outcome_reconciler_v2 instead (started at line 3651)
+    # REASON: V2 has batch limits, timeouts, and circuit breaker protection
+    # Old reconciler lacked protections and caused crashes when processing large batches
+    # try:
+    #     _start_reconciler_worker()
+    # except Exception:
+    #     LOGGER.exception("reconciler_worker_start_failed", extra={"component": "startup"})
 
     # Scheduled Predictions DISABLED - Using auto_prediction_loop instead (5-min interval covers all cases)
     # REASON: Prevents duplicate predictions and excessive API calls
