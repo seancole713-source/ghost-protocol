@@ -36,18 +36,24 @@ def get_xrp_status() -> dict[str, Any]:
     }
     
     try:
-        from core.providers.turbo_provider import turbo_crypto_price
+        import asyncio
+        from core.crypto.crypto_providers import get_crypto_price_quorum
         
-        # Get XRP price using turbo provider
-        xrp_price_data = turbo_crypto_price("XRP", max_budget_s=3.0)
+        # Get XRP price with quorum (requires multiple provider agreement)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            xrp_data = loop.run_until_complete(get_crypto_price_quorum("XRP", use_cache=True))
+        finally:
+            loop.close()
         
-        if xrp_price_data and xrp_price_data.get("ok") and xrp_price_data.get("price"):
-            price = xrp_price_data["price"]
+        if xrp_data and xrp_data.get("price"):
+            price = xrp_data["price"]
             result["price"] = round(price, 4)
             
-            # Calculate 24h change if available from cache metadata
-            # Note: turbo_crypto_price doesn't return prev_close, so change_24h_pct stays None
-            # This is acceptable - we focus on current price + bullish eye signal
+            # Get 24h change from quorum data
+            if xrp_data.get("change_24h_pct") is not None:
+                result["change_24h_pct"] = round(xrp_data["change_24h_pct"], 2)
             
             # Calculate bullish eye and signal
             factors = []
@@ -70,11 +76,12 @@ def get_xrp_status() -> dict[str, Any]:
                     confidence -= 0.2
             
             # Factor 2: Data quality (quorum confidence)
-            if xrp_decision.quorum_size >= 2:
-                factors.append(f"Strong quorum ({xrp_decision.quorum_size} providers)")
+            quorum_size = xrp_data.get("quorum_size", 0)
+            if quorum_size >= 2:
+                factors.append(f"Strong quorum ({quorum_size} providers)")
                 confidence += 0.2
             else:
-                factors.append(f"Weak quorum ({xrp_decision.quorum_size} providers)")
+                factors.append(f"Weak quorum ({quorum_size} provider)")
                 confidence -= 0.1
             
             # Factor 3: Price levels (simple example)
