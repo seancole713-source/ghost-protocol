@@ -30,7 +30,21 @@ async function loadPersonalWatchlist() {
         }
         
         const data = await response.json();
-        personalWatchlistState.items = data.items || [];
+        const items = data.items || [];
+        
+        // Transform flat API response to expected structure
+        personalWatchlistState.items = items.map(item => ({
+            symbol: item.symbol,
+            asset_type: item.type || 'stock',
+            owns_position: item.owns_position || false,
+            current_price: item.price || 0,
+            change_24h: item.change_pct || 0,
+            prediction: {
+                direction: item.ghost_direction || 'FLAT',
+                confidence: (item.ghost_confidence || 0) / 100,  // Convert 46 -> 0.46
+                expected_move: item.change_pct || 0
+            }
+        }));
         
         renderPersonalWatchlist(getFilteredWatchlistItems());
         
@@ -142,10 +156,16 @@ function renderWatchlistItem(item) {
     const confidence = prediction.confidence || 0;
     const expectedMove = prediction.expected_move || 0;
     const price = item.current_price || 0;
+    const change24h = item.change_24h || 0;
     
     // Direction emoji and color
     const dirEmoji = direction === 'UP' ? '🟢↑' : direction === 'DOWN' ? '🔴↓' : '⚪→';
     const dirClass = direction === 'UP' ? 'positive' : direction === 'DOWN' ? 'negative' : 'neutral';
+    
+    // 24h change display with color
+    const change24hDisplay = change24h !== 0 ? 
+        `<span class="${change24h >= 0 ? 'positive' : 'negative'}">${change24h >= 0 ? '+' : ''}${change24h.toFixed(2)}%</span>` : 
+        '<span>--</span>';
     
     // Ownership badge
     const ownershipBadge = item.owns_position ? 
@@ -168,6 +188,7 @@ function renderWatchlistItem(item) {
                 <div style="font-size: 12px; color: var(--text-secondary);">
                     ${assetTypeBadge}
                     ${price > 0 ? `$${price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '--'}
+                    <span style="margin-left: 8px;">24h: ${change24hDisplay}</span>
                 </div>
             </div>
             
