@@ -325,9 +325,12 @@ async function loadVIPCoins() {
         // Major Caps (BTC, ETH reference)
         if (vipResponse.ok) {
             const vipData = await vipResponse.json();
+            console.log('[VIP] Major Caps raw data:', vipData.vip_coins);
             const majors = (vipData.vip_coins || []).filter(c => ['BTC', 'ETH'].includes(c.symbol));
+            console.log('[VIP] Filtered majors (BTC/ETH):', majors);
             renderMajorCaps(majors);
         } else {
+            console.error('[VIP] Failed to load majors:', vipResponse);
             document.getElementById('vip-majors-list').innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Loading...</p>';
         }
         
@@ -418,9 +421,12 @@ function renderMajorCaps(coins) {
     const container = document.getElementById('vip-majors-list');
     
     if (!coins || coins.length === 0) {
+        console.warn('[VIP] renderMajorCaps: No coins provided');
         container.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px; grid-column: 1 / -1;">Loading majors...</p>';
         return;
     }
+    
+    console.log('[VIP] Rendering', coins.length, 'major caps:', coins);
     
     container.innerHTML = coins.map(coin => {
         const isOffline = coin.status === 'offline' || coin.price === 0;
@@ -428,6 +434,8 @@ function renderMajorCaps(coins) {
         const changeClass = coin.change_pct >= 0 ? 'positive' : 'negative';
         const changeDisplay = isOffline ? '--' : 
             `${coin.change_pct >= 0 ? '+' : ''}${coin.change_pct.toFixed(2)}%`;
+        
+        console.log(`[VIP] ${coin.symbol}: price=${priceDisplay}, change=${changeDisplay}, isOffline=${isOffline}`);
         
         return `
             <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
@@ -1022,13 +1030,24 @@ async function openGoalsModal() {
         const response = await fetch('/api/v3/goals/snapshot');
         const data = await response.json();
         
+        console.log('[GOALS] Modal opened, API response:', data);
+        
         // Populate input fields with current goals
         if (data.goals) {
             // API returns {daily: 500, weekly: 2500, ...} not {daily: {target: 500}, ...}
-            document.getElementById('goal-daily').value = data.goals.daily || 500;
-            document.getElementById('goal-weekly').value = data.goals.weekly || 2500;
-            document.getElementById('goal-monthly').value = data.goals.monthly || 10000;
-            document.getElementById('goal-yearly').value = data.goals.yearly || 120000;
+            const daily = data.goals.daily || 500;
+            const weekly = data.goals.weekly || 2500;
+            const monthly = data.goals.monthly || 10000;
+            const yearly = data.goals.yearly || 120000;
+            
+            console.log('[GOALS] Prefilling modal:', { daily, weekly, monthly, yearly });
+            
+            document.getElementById('goal-daily').value = daily;
+            document.getElementById('goal-weekly').value = weekly;
+            document.getElementById('goal-monthly').value = monthly;
+            document.getElementById('goal-yearly').value = yearly;
+        } else {
+            console.warn('[GOALS] No goals data in response, using defaults');
         }
         
         // Show modal
