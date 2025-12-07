@@ -271,11 +271,11 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
             try:
                 # Use quorum for reliability (checks multiple providers)
                 result = await get_crypto_price_quorum(coin, use_cache=True)
-                if result and result.get("ok") and result.get("price"):
+                if result and result.get("price", 0) > 0:
                     prices.append({
                         "symbol": coin,
                         "price": float(result.get("price", 0.0)),
-                        "change_pct": result.get("change_pct", 0.0),
+                        "change_pct": result.get("change_24h_pct", 0.0),
                         "status": "online",
                         "provider": result.get("provider", "quorum")
                     })
