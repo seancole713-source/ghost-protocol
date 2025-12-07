@@ -266,11 +266,14 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
         from wolf_app import VIP_COINS  # type: ignore
         from core.crypto.crypto_providers import get_crypto_price_quorum
 
+        LOGGER.info(f"[VIP] Fetching prices for {len(VIP_COINS)} coins: {VIP_COINS}")
         prices: List[Dict[str, Any]] = []
         for coin in VIP_COINS:
             try:
+                LOGGER.info(f"[VIP] Fetching {coin}...")
                 # Use quorum for reliability (checks multiple providers)
                 result = await get_crypto_price_quorum(coin, use_cache=True)
+                LOGGER.info(f"[VIP] {coin} result: {result}")
                 if result and result.get("price", 0) > 0:
                     prices.append({
                         "symbol": coin,
@@ -279,7 +282,9 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
                         "status": "online",
                         "provider": result.get("provider", "quorum")
                     })
+                    LOGGER.info(f"[VIP] {coin} SUCCESS: ${result.get('price'):.2f}")
                 else:
+                    LOGGER.warning(f"[VIP] {coin} FAILED: no price in result")
                     prices.append({
                         "symbol": coin,
                         "price": 0.0,
@@ -287,7 +292,7 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
                         "status": "offline",
                     })
             except Exception as e:
-                LOGGER.warning(f"VIP price fetch failed for {coin}: {e}")
+                LOGGER.error(f"[VIP] {coin} EXCEPTION: {e}", exc_info=True)
                 prices.append({
                     "symbol": coin,
                     "price": 0.0,
@@ -295,9 +300,10 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
                     "status": "offline",
                 })
         
+        LOGGER.info(f"[VIP] Final result: {len([p for p in prices if p['status']=='online'])} online out of {len(prices)}")
         return prices
     except Exception as exc:
-        LOGGER.error("VIP coin price fetch error: %s", exc)
+        LOGGER.error(f"[VIP] FATAL ERROR: {exc}", exc_info=True)
         return []
 
 
