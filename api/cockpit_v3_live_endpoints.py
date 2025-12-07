@@ -264,23 +264,24 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
     """Fetch prices for VIP coins used in the cockpit header."""
     try:
         from wolf_app import VIP_COINS  # type: ignore
-        from core.crypto.crypto_providers import get_crypto_price_quorum
 
         LOGGER.info(f"[VIP] Fetching prices for {len(VIP_COINS)} coins: {VIP_COINS}")
         prices: List[Dict[str, Any]] = []
+        
+        # Use the existing get_price_for_symbol which handles quorum correctly
         for coin in VIP_COINS:
             try:
                 LOGGER.info(f"[VIP] Fetching {coin}...")
-                # Use quorum for reliability (checks multiple providers)
-                result = await get_crypto_price_quorum(coin, use_cache=True)
-                LOGGER.info(f"[VIP] {coin} result: {result}")
+                result = await get_price_for_symbol(coin)
+                LOGGER.info(f"[VIP] {coin} result: price={result.get('price')}, provider={result.get('provider')}")
+                
                 if result and result.get("price", 0) > 0:
                     prices.append({
                         "symbol": coin,
                         "price": float(result.get("price", 0.0)),
-                        "change_pct": result.get("change_24h_pct", 0.0),
+                        "change_pct": float(result.get("change_pct", 0.0)),
                         "status": "online",
-                        "provider": result.get("provider", "quorum")
+                        "provider": result.get("provider", "unknown")
                     })
                     LOGGER.info(f"[VIP] {coin} SUCCESS: ${result.get('price'):.2f}")
                 else:
@@ -785,7 +786,13 @@ async def _get_goals_snapshot_core():
             "ok": True,
             "ghost_score": ghost_score_value,
             "ghost_score_details": ghost_score_details or None,
-            "goals": goals_payload,
+            "goals": {
+                "daily": goals_payload.get("daily", {}).get("target") or 500,
+                "weekly": goals_payload.get("weekly", {}).get("target") or 2500,
+                "monthly": goals_payload.get("monthly", {}).get("target") or 10000,
+                "yearly": goals_payload.get("yearly", {}).get("target") or 120000,
+            },
+            "goals_detailed": goals_payload,  # Full structure for advanced UI
             "goals_v2": goals_data,  # NEW: Enhanced goals with % tracking
             "daily_goal_pct": daily_pct,
             "weekly_goal_pct": weekly_pct,
