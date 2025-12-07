@@ -1231,6 +1231,7 @@ class PostgresBackend:
                 WHERE o.prediction_id IS NULL
                   AND (p.run_at + (p.horizon_h * 3600)) <= %s
                 ORDER BY p.run_at
+                LIMIT 100
                 """,
                 (now,),
             )
