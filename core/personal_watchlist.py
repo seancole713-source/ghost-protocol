@@ -578,7 +578,17 @@ class PersonalWatchlistManager:
                 big_movers = []
 
                 for item in watchlist_items:
-                    item_id, symbol, asset_type, threshold_pct, owns_position, priority = item
+                    # Handle both tuple and dict responses from cursor
+                    if isinstance(item, dict):
+                        item_id = item['id']
+                        symbol = item['symbol']
+                        asset_type = item['asset_type']
+                        threshold_pct = item['alert_threshold_pct']
+                        owns_position = item['owns_position']
+                        priority = item['priority']
+                    else:
+                        # Tuple unpacking (default cursor behavior)
+                        item_id, symbol, asset_type, threshold_pct, owns_position, priority = item
 
                     # Get price snapshots from last N minutes
                     cursor.execute(
