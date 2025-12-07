@@ -264,24 +264,26 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
     """Fetch prices for VIP coins used in the cockpit header."""
     try:
         from wolf_app import VIP_COINS  # type: ignore
+        from core.crypto.crypto_providers import BinanceProvider
 
         LOGGER.info(f"[VIP] Fetching prices for {len(VIP_COINS)} coins: {VIP_COINS}")
+        binance = BinanceProvider()
         prices: List[Dict[str, Any]] = []
         
-        # Use the existing get_price_for_symbol which handles quorum correctly
+        # Use Binance directly for speed and reliability
         for coin in VIP_COINS:
             try:
-                LOGGER.info(f"[VIP] Fetching {coin}...")
-                result = await get_price_for_symbol(coin)
-                LOGGER.info(f"[VIP] {coin} result: price={result.get('price')}, provider={result.get('provider')}")
+                LOGGER.info(f"[VIP] Fetching {coin} via Binance...")
+                result = await asyncio.to_thread(binance.get_price, coin)
+                LOGGER.info(f"[VIP] {coin} result: price={result.get('price') if result else None}")
                 
                 if result and result.get("price", 0) > 0:
                     prices.append({
                         "symbol": coin,
                         "price": float(result.get("price", 0.0)),
-                        "change_pct": float(result.get("change_pct", 0.0)),
+                        "change_pct": float(result.get("change_24h_pct", 0.0)),
                         "status": "online",
-                        "provider": result.get("provider", "unknown")
+                        "provider": "binance"
                     })
                     LOGGER.info(f"[VIP] {coin} SUCCESS: ${result.get('price'):.2f}")
                 else:
