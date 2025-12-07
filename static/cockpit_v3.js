@@ -1026,35 +1026,55 @@ function getHealthClass(value) {
 // Goals Settings Modal Functions
 async function openGoalsModal() {
     try {
+        console.log('[GOALS] Opening modal, fetching current goals...');
+        
         // Fetch current goals
         const response = await fetch('/api/v3/goals/snapshot');
-        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(`API returned ${response.status}`);
+        }
         
-        console.log('[GOALS] Modal opened, API response:', data);
+        const data = await response.json();
+        console.log('[GOALS] API response:', JSON.stringify(data, null, 2));
         
         // Populate input fields with current goals
-        if (data.goals) {
-            // API returns {daily: 500, weekly: 2500, ...} not {daily: {target: 500}, ...}
+        if (data.ok && data.goals) {
+            // API returns {daily: 500, weekly: 2500, ...}
             const daily = data.goals.daily || 500;
             const weekly = data.goals.weekly || 2500;
             const monthly = data.goals.monthly || 10000;
             const yearly = data.goals.yearly || 120000;
             
-            console.log('[GOALS] Prefilling modal:', { daily, weekly, monthly, yearly });
+            console.log('[GOALS] Setting input values:', { daily, weekly, monthly, yearly });
             
-            document.getElementById('goal-daily').value = daily;
-            document.getElementById('goal-weekly').value = weekly;
-            document.getElementById('goal-monthly').value = monthly;
-            document.getElementById('goal-yearly').value = yearly;
+            // Set values with verification
+            const dailyInput = document.getElementById('goal-daily');
+            const weeklyInput = document.getElementById('goal-weekly');
+            const monthlyInput = document.getElementById('goal-monthly');
+            const yearlyInput = document.getElementById('goal-yearly');
+            
+            if (dailyInput) dailyInput.value = daily;
+            if (weeklyInput) weeklyInput.value = weekly;
+            if (monthlyInput) monthlyInput.value = monthly;
+            if (yearlyInput) yearlyInput.value = yearly;
+            
+            console.log('[GOALS] Input values after setting:', {
+                daily: dailyInput?.value,
+                weekly: weeklyInput?.value,
+                monthly: monthlyInput?.value,
+                yearly: yearlyInput?.value
+            });
         } else {
-            console.warn('[GOALS] No goals data in response, using defaults');
+            console.warn('[GOALS] No goals data in response, inputs will be empty');
+            console.warn('[GOALS] Response structure:', data);
         }
         
         // Show modal
         document.getElementById('goals-modal').classList.add('active');
+        console.log('[GOALS] Modal displayed');
     } catch (error) {
         console.error('[GOALS] Error loading goals:', error);
-        // Show modal anyway with defaults
+        // Show modal anyway with empty inputs
         document.getElementById('goals-modal').classList.add('active');
     }
 }
