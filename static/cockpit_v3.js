@@ -25,6 +25,9 @@ function initializeApp() {
     // Load all panels IMMEDIATELY on startup (don't wait for intervals)
     loadAllPanels();
     
+    // Pre-load goals for modal (silent load, no UI update needed)
+    loadHealthScore();
+    
     // OPTIMIZED: Set smart update intervals (reduced from 5s to prevent hammering)
     // Goals/Stats: 30s (slow-changing data)
     // Predictions/Forecast: 15s (medium-priority)
@@ -751,11 +754,12 @@ async function loadMarketWatchlist() {
         // API already includes ghost_confidence and ghost_direction - use them directly!
         const watchlistData = watchlistItems.map(item => ({
             symbol: item.symbol,
-            change: item.change_pct || 0,
+            change_pct: item.change_pct || 0,  // Keep original field name
             price: item.price || 0,
-            ghost_score: item.ghost_confidence || 0,  // Use API field directly
-            direction: item.ghost_direction || 'FLAT', // Use API field directly
-            type: item.type
+            ghost_confidence: item.ghost_confidence || 0,  // Keep original field name
+            ghost_direction: item.ghost_direction || 'FLAT', // Keep original field name
+            type: item.type || 'stock',  // Default to stock if not specified
+            asset_type: item.type || 'stock'  // Add asset_type alias
         }));
         
         // Apply filter (stocks/crypto/all)
@@ -787,27 +791,35 @@ function renderWatchlist(data) {
     }
     
     container.innerHTML = data.slice(0, 15).map(item => {
-        // API returns: price, ghost_confidence, predicted_direction
+        // API returns: price, ghost_confidence, ghost_direction, change_pct, type
         const priceDisplay = item.price ? `$${item.price.toFixed(2)}` : '--';
         
-        const changeDisplay = item.change_24h ? 
-            `${item.change_24h >= 0 ? '+' : ''}${item.change_24h.toFixed(2)}%` : 
+        // Use change_pct (from API) instead of change_24h
+        const changePct = item.change_pct ?? item.change ?? 0;
+        const changeDisplay = changePct !== 0 ? 
+            `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : 
             '--';
         
         const scoreDisplay = item.ghost_confidence && item.ghost_confidence > 0 ? 
             `${item.ghost_confidence.toFixed(0)}%` : 
             '--';
         
-        // Direction from ghost_direction field (API returns this, not predicted_direction)
+        // Asset type display
+        const assetType = (item.type || item.asset_type || 'stock').toUpperCase();
+        
+        // Direction from ghost_direction field
         const direction = item.ghost_direction || 'FLAT';
         const directionEmoji = direction === 'UP' ? '↑' : direction === 'DOWN' ? '↓' : '→';
-        const changeClass = item.change_24h >= 0 ? 'positive' : 'negative';
+        const changeClass = changePct >= 0 ? 'positive' : 'negative';
         
         return `
             <div class="watchlist-row">
                 <div class="watchlist-left">
                     <div class="watchlist-icon">${getSymbolIcon(item.symbol)}</div>
-                    <div class="watchlist-ticker">${item.symbol}</div>
+                    <div class="watchlist-ticker">
+                        ${item.symbol}
+                        <span style="font-size: 10px; color: var(--text-secondary); margin-left: 4px;">${assetType}</span>
+                    </div>
                     <div class="watchlist-price">${priceDisplay}</div>
                 </div>
                 <div class="watchlist-right">
