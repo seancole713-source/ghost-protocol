@@ -32,23 +32,18 @@ def reconcile_outcomes_v2():
     
     CRASH PROTECTION:
     - Batch limit: Max 100 predictions per run (enforced in get_pending_outcomes)
-    - Timeout: Max 5 minutes total per reconciliation run
+    - Time limit: Max 5 minutes total per reconciliation run (checked per prediction)
     - Circuit breaker: Stops if >70% failure rate after 10 predictions
     - Fast-fail: Skips predictions without data immediately
     
     Returns:
         dict with counts of success/no_data/error/skipped
     """
-    import signal
-    
     LOGGER.info("🔄 Starting outcome reconciliation V2...")
     
-    # Overall timeout handler (5 minutes max for entire reconciliation)
-    def timeout_handler(signum, frame):
-        raise TimeoutError("Reconciliation run exceeded 5 minute timeout")
-    
-    original_handler = signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(300)  # 5 minute timeout
+    # Track start time for timeout (signal doesn't work in background threads)
+    start_time = time.time()
+    max_duration = 300  # 5 minutes
     
     try:
         store = get_prediction_store()
@@ -71,6 +66,15 @@ def reconcile_outcomes_v2():
         
         for idx, pred in enumerate(pending, start=1):
             try:
+                # TIME LIMIT: Check if we've exceeded max duration
+                elapsed = time.time() - start_time
+                if elapsed > max_duration:
+                    LOGGER.warning(
+                        f"⏰ Reconciliation exceeded {max_duration}s time limit "
+                        f"(processed {idx-1}/{len(pending)} predictions). Stopping."
+                    )
+                    break
+                
                 result = _reconcile_single_v2(pred)
                 
                 if result == "success":
@@ -94,9 +98,6 @@ def reconcile_outcomes_v2():
                         )
                         break
                     
-            except TimeoutError:
-                LOGGER.error(f"⏰ Timeout processing prediction {pred.get('id')}, skipping")
-                skipped_count += 1
             except Exception as e:
                 LOGGER.error(f"❌ Unexpected error reconciling prediction {pred.get('id')}: {e}", exc_info=True)
                 error_count += 1
@@ -117,11 +118,6 @@ def reconcile_outcomes_v2():
     except Exception as e:
         LOGGER.error(f"❌ Outcome reconciliation failed: {e}", exc_info=True)
         return {"success": 0, "no_data": 0, "error": 0, "skipped": 0}
-    
-    finally:
-        # Cancel timeout and restore original handler
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, original_handler)
 
 
 def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
@@ -240,30 +236,14 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
         # For now, we use the unified provider which fetches latest price
         # TODO: Implement true historical price fetching for exact timestamps
         
-        # FAST-FAIL: Set short timeout to prevent hanging
-        import signal
+        price = get_symbol_price(symbol)
         
-        def price_timeout_handler(signum, frame):
-            raise TimeoutError("Price fetch timeout")
+        if price is None:
+            LOGGER.debug(f"⚠️  unified_provider returned None for {symbol} (fast-failing)")
+            return None
         
-        original_handler = signal.signal(signal.SIGALRM, price_timeout_handler)
-        signal.alarm(10)  # 10 second timeout per price fetch
+        return price
         
-        try:
-            price = get_symbol_price(symbol)
-            
-            if price is None:
-                LOGGER.debug(f"⚠️  unified_provider returned None for {symbol} (fast-failing)")
-                return None
-            
-            return price
-        finally:
-            signal.alarm(0)  # Cancel timeout
-            signal.signal(signal.SIGALRM, original_handler)
-        
-    except TimeoutError:
-        LOGGER.warning(f"⏰ Price fetch timeout for {symbol} after 10s (fast-failing)")
-        return None
     except Exception as e:
         LOGGER.debug(f"❌ Error fetching price for {symbol} (fast-failing): {e}")
         return None
