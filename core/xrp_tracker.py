@@ -10,7 +10,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def get_xrp_status() -> dict[str, Any]:
+async def get_xrp_status() -> dict[str, Any]:
     """
     Get XRP tracking data with bullish eye indicator.
     
@@ -36,16 +36,10 @@ def get_xrp_status() -> dict[str, Any]:
     }
     
     try:
-        import asyncio
         from core.crypto.crypto_providers import get_crypto_price_quorum
         
         # Get XRP price with quorum (requires multiple provider agreement)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            xrp_data = loop.run_until_complete(get_crypto_price_quorum("XRP", use_cache=True))
-        finally:
-            loop.close()
+        xrp_data = await get_crypto_price_quorum("XRP", use_cache=True)
         
         if xrp_data and xrp_data.get("price"):
             price = xrp_data["price"]

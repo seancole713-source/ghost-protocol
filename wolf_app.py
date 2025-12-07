@@ -24978,7 +24978,8 @@ async def api_xrp_tracker():
     """Get XRP bullish eye tracker status."""
     try:
         from core.xrp_tracker import get_xrp_status
-        return {"ok": True, **get_xrp_status()}
+        xrp_status = await get_xrp_status()
+        return {"ok": True, **xrp_status}
     except Exception as e:
         LOGGER.error(f"XRP tracker failed: {e}")
         return {
