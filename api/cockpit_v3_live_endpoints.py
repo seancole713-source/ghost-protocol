@@ -270,12 +270,8 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
         for coin in VIP_COINS:
             try:
                 # Use quorum for reliability (checks multiple providers)
-                result = await asyncio.to_thread(
-                    get_crypto_price_quorum,
-                    coin,
-                    use_cache=True
-                )
-                if result.get("ok") and result.get("price"):
+                result = await get_crypto_price_quorum(coin, use_cache=True)
+                if result and result.get("ok") and result.get("price"):
                     prices.append({
                         "symbol": coin,
                         "price": float(result.get("price", 0.0)),
@@ -298,44 +294,6 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
                     "change_pct": 0.0,
                     "status": "offline",
                 })
-        
-        # If all VIP coins are offline (meme coins not on major exchanges),
-        # fallback to showing mainstream cryptos
-        online_count = sum(1 for p in prices if p["status"] == "online")
-        if online_count == 0:
-            LOGGER.info("All VIP meme coins offline, showing mainstream cryptos instead")
-            mainstream = ["BTC", "ETH", "SOL", "BNB", "XRP"]
-            prices = []
-            for coin in mainstream:
-                try:
-                    result = await asyncio.to_thread(
-                        get_crypto_price_quorum,
-                        coin,
-                        use_cache=True
-                    )
-                    if result.get("ok") and result.get("price"):
-                        prices.append({
-                            "symbol": coin,
-                            "price": float(result.get("price", 0.0)),
-                            "change_pct": result.get("change_pct", 0.0),
-                            "status": "online",
-                            "provider": result.get("provider", "quorum")
-                        })
-                    else:
-                        prices.append({
-                            "symbol": coin,
-                            "price": 0.0,
-                            "change_pct": 0.0,
-                            "status": "offline",
-                        })
-                except Exception as e:
-                    LOGGER.warning(f"Mainstream crypto price fetch failed for {coin}: {e}")
-                    prices.append({
-                        "symbol": coin,
-                        "price": 0.0,
-                        "change_pct": 0.0,
-                        "status": "offline",
-                    })
         
         return prices
     except Exception as exc:
