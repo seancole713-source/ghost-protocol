@@ -264,22 +264,24 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
     """Fetch prices for VIP coins used in the cockpit header."""
     try:
         from wolf_app import VIP_COINS  # type: ignore
-        from core.providers.turbo_provider import turbo_crypto_price
+        from core.crypto.crypto_providers import get_crypto_price_quorum
 
         prices: List[Dict[str, Any]] = []
         for coin in VIP_COINS:
             try:
+                # Use quorum for reliability (checks multiple providers)
                 result = await asyncio.to_thread(
-                    turbo_crypto_price,
+                    get_crypto_price_quorum,
                     coin,
-                    max_budget_s=3.0
+                    use_cache=True
                 )
                 if result.get("ok") and result.get("price"):
                     prices.append({
                         "symbol": coin,
                         "price": float(result.get("price", 0.0)),
-                        "change_pct": 0.0,
-                        "status": "live",
+                        "change_pct": result.get("change_pct", 0.0),
+                        "status": "online",
+                        "provider": result.get("provider", "quorum")
                     })
                 else:
                     prices.append({
@@ -299,7 +301,7 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
         
         # If all VIP coins are offline (meme coins not on major exchanges),
         # fallback to showing mainstream cryptos
-        online_count = sum(1 for p in prices if p["status"] == "live")
+        online_count = sum(1 for p in prices if p["status"] == "online")
         if online_count == 0:
             LOGGER.info("All VIP meme coins offline, showing mainstream cryptos instead")
             mainstream = ["BTC", "ETH", "SOL", "BNB", "XRP"]
@@ -307,16 +309,17 @@ async def get_vip_coin_prices() -> List[Dict[str, Any]]:
             for coin in mainstream:
                 try:
                     result = await asyncio.to_thread(
-                        turbo_crypto_price,
+                        get_crypto_price_quorum,
                         coin,
-                        max_budget_s=3.0
+                        use_cache=True
                     )
                     if result.get("ok") and result.get("price"):
                         prices.append({
                             "symbol": coin,
                             "price": float(result.get("price", 0.0)),
-                            "change_pct": 0.0,
-                            "status": "live",
+                            "change_pct": result.get("change_pct", 0.0),
+                            "status": "online",
+                            "provider": result.get("provider", "quorum")
                         })
                     else:
                         prices.append({
