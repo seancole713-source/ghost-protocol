@@ -179,15 +179,10 @@ class CryptoPredictionEngine:
 
     def _calculate_metrics(self, history: list[dict], price_data: dict) -> dict[str, Any]:
         """
-        Calculate crypto-specific metrics
+        Calculate crypto-specific metrics + FULL TECHNICAL INDICATORS (50+)
 
         Returns:
-            {
-                'volatility': 0.035,
-                'momentum': 0.02,
-                'volume_trend': 1.5,
-                'rsi': 65.2
-            }
+            dict with 50+ technical indicators + legacy metrics
         """
         if len(history) < 2:
             return {
@@ -197,34 +192,56 @@ class CryptoPredictionEngine:
                 "rsi": 50.0,
             }
 
-        prices = [h["price"] for h in history]
+        # Convert history to DataFrame for technical indicators
+        import pandas as pd
+        from core.features.technical_indicators import calculate_technical_indicators
 
-        # Calculate volatility (standard deviation of returns)
+        df = pd.DataFrame(history)
+        
+        # Standardize column names
+        if 'price' in df.columns:
+            df['Close'] = df['price']
+        
+        # Estimate OHLC from close if not available
+        if 'Close' in df.columns and 'Open' not in df.columns:
+            df['Open'] = df['Close'].shift(1).fillna(df['Close'])
+            df['High'] = df['Close'] * 1.005  # Estimate ±0.5% spread
+            df['Low'] = df['Close'] * 0.995
+        
+        # Volume data (if available)
+        volume_24h = price_data.get("volume_24h", 0)
+        if volume_24h > 0 and 'Volume' not in df.columns:
+            df['Volume'] = volume_24h  # Use same value for all rows (estimate)
+        
+        # Calculate ALL technical indicators (50+)
+        indicators = calculate_technical_indicators(df, price_col='Close', volume_col='Volume' if 'Volume' in df.columns else None)
+        
+        # Legacy metrics (keep for backward compatibility)
+        prices = [h["price"] for h in history]
         returns = np.diff(prices) / prices[:-1]
         volatility = float(np.std(returns)) if len(returns) > 0 else 0.03
-
-        # Calculate momentum (recent trend)
+        
         if len(prices) >= 10:
             recent = prices[-10:]
             momentum = (recent[-1] - recent[0]) / recent[0]
         else:
             momentum = (prices[-1] - prices[0]) / prices[0]
-
-        # Volume trend (from price_data if available)
-        volume_24h = price_data.get("volume_24h", 0)
-        volume_trend = 1.0  # Default neutral
-
-        # RSI (Relative Strength Index)
+        
         rsi = self._calculate_rsi(prices) if len(prices) >= 14 else 50.0
-
-        return {
-            "volatility": volatility,
-            "momentum": momentum,
-            "volume_trend": volume_trend,
-            "rsi": rsi,
+        
+        # Merge legacy metrics with new indicators
+        indicators.update({
+            "volatility": volatility,  # Legacy
+            "momentum": momentum,  # Legacy
+            "volume_trend": 1.0,  # Legacy placeholder
+            "rsi": rsi,  # Legacy RSI calculation
             "market_cap": price_data.get("market_cap", 0),
             "volume_24h": volume_24h,
-        }
+        })
+        
+        LOGGER.info(f"Calculated {len(indicators)} technical indicators")
+        
+        return indicators
 
     def _calculate_rsi(self, prices: list[float], period: int = 14) -> float:
         """Calculate Relative Strength Index"""
