@@ -2,11 +2,11 @@
 
 ## ✅ FEATURE IMPLEMENTED
 
-Ghost now sends **automated stock market predictions** at key times:
+Ghost now sends **automated stock market predictions**at key times:
 
-### 📅 Automatic Schedule (Mon-Fri):
+### 📅 Automatic Schedule (Mon-Fri)
 
-1. **8:00 AM ET** - Pre-market Prediction
+1.**8:00 AM ET**- Pre-market Prediction
 
    - Current WOLF price & status
    - Ghost's prediction for the day (BUY/SELL/HOLD)
@@ -14,18 +14,20 @@ Ghost now sends **automated stock market predictions** at key times:
    - Key factors influencing prediction
    - Recommended strategy
 
-2. **9:35 AM ET** - Market Open Check (5 min after open)
+
+1.**9:35 AM ET**- Market Open Check (5 min after open)
 
    - Compares 8am prediction vs actual price
    - Shows if Ghost was CORRECT or INCORRECT
    - Price change since prediction
    - Accuracy tracking
 
-### 📊 What You'll Get:
 
-#### 8:00 AM Pre-Market Message Example:
+### 📊 What You'll Get
 
-```
+#### 8:00 AM Pre-Market Message Example
+
+```text
 🌅 PRE-MARKET PREDICTION
 ⏰ Time: 08:00 AM EDT
 
@@ -53,11 +55,13 @@ Direction: BUY
 Consider buying if you're comfortable with the confidence level
 
 ⏰ Will check again at 9:35 AM (5 min after market open)
-```
 
-#### 9:35 AM Market Open Check Example:
+```text
 
-```
+#### 9:35 AM Market Open Check Example
+
+```text
+
 🎯 MARKET OPEN CHECK
 ⏰ Time: 09:35 AM EDT (5 min after open)
 
@@ -79,28 +83,32 @@ RESULT: ✅ CORRECT
 Predicted BUY, market moved UP
 
 💡 Continue monitoring throughout the day...
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 🎯 HOW TO USE
 
-### Automatic (No Action Needed):
+### Automatic (No Action Needed)
 
 Just wait! Ghost will automatically send predictions to your Telegram at:
 
 - 8:00 AM ET (Mon-Fri)
 - 9:35 AM ET (Mon-Fri)
 
-### Manual Testing (Anytime):
+
+### Manual Testing (Anytime)
 
 You can test predictions manually in Telegram:
 
-```
+```text
+
 /predict   - Generate prediction right now
 /check     - Check prediction accuracy now
 /help      - See all commands
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -112,9 +120,11 @@ You can test the feature immediately without waiting for 8am:
 
 Open Telegram, send:
 
-```
+```text
+
 /predict
-```
+
+```text
 
 Expected: Ghost sends full prediction with current price, signal, confidence, factors
 
@@ -122,9 +132,11 @@ Expected: Ghost sends full prediction with current price, signal, confidence, fa
 
 Send:
 
-```
+```text
+
 /check
-```
+
+```text
 
 Expected: Ghost compares last prediction (if any) vs current price
 
@@ -132,9 +144,11 @@ Expected: Ghost compares last prediction (if any) vs current price
 
 Send:
 
-```
+```text
+
 /help
-```
+
+```text
 
 Expected: Help text now shows prediction commands
 
@@ -144,7 +158,8 @@ ______________________________________________________________________
 
 Ghost's help menu has been updated:
 
-```
+```text
+
 🤖 Ghost AI Commands:
 
 📊 STOCK TRADING:
@@ -170,13 +185,14 @@ Ghost's help menu has been updated:
 
 💬 Ask me anything!
 Example: 'Should I buy PEPE? 30-day outlook?'
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 🔧 TECHNICAL DETAILS
 
-### Files Created:
+### Files Created
 
 - `core/scheduled_predictions.py` (332 lines)
   - Handles scheduling logic
@@ -184,7 +200,8 @@ ______________________________________________________________________
   - Tracks prediction accuracy
   - Compares predicted vs actual
 
-### Files Modified:
+
+### Files Modified
 
 - `wolf_app.py`
   - Added scheduler import (line ~114)
@@ -192,13 +209,16 @@ ______________________________________________________________________
   - Added `/predict` and `/check` commands (line ~12708)
   - Updated `/help` command (line ~12726)
 
-### How It Works:
 
-1. **Background Thread**: Runs every 30 seconds checking time
-2. **Time Windows**: 2.5-minute window around target times
-3. **Market Days Only**: Only runs Mon-Fri
-4. **Deduplication**: Tracks last sent date to avoid duplicates
-5. **Persistence**: Stores 8am prediction for 9:35am comparison
+### How It Works
+
+1.**Background Thread**: Runs every 30 seconds checking time
+
+1. **Time Windows**: 2.5-minute window around target times
+2. **Market Days Only**: Only runs Mon-Fri
+3. **Deduplication**: Tracks last sent date to avoid duplicates
+4. **Persistence**: Stores 8am prediction for 9:35am comparison
+
 
 ______________________________________________________________________
 
@@ -211,6 +231,7 @@ Ghost automatically tracks:
 - 📊 Confidence levels for each prediction
 - 📈 Historical accuracy over time
 
+
 **Accuracy Logic**:
 
 - BUY prediction + price goes UP = ✅ CORRECT
@@ -218,36 +239,43 @@ Ghost automatically tracks:
 - HOLD prediction + price stays flat (\<1%) = ✅ CORRECT
 - Any other combination = ❌ INCORRECT
 
+
 ______________________________________________________________________
 
 ## 📊 EXPECTED BEHAVIOR
 
-### Monday 8:00 AM:
+### Monday 8:00 AM
 
-```
+```text
+
 [Ghost sends pre-market prediction]
 🌅 PRE-MARKET PREDICTION
 Current: $340.50
 Action: BUY
 Confidence: 78%
-```
 
-### Monday 9:35 AM:
+```text
 
-```
+### Monday 9:35 AM
+
+```text
+
 [Ghost sends accuracy check]
 🎯 MARKET OPEN CHECK
 Predicted: BUY @ $340.50
 Actual: $343.25 (+0.81%)
 RESULT: ✅ CORRECT
-```
 
-### Tuesday 8:00 AM:
+```text
 
-```
+### Tuesday 8:00 AM
+
+```text
+
 [New prediction for Tuesday]
 ...
-```
+
+```text
 
 This repeats every market day (Mon-Fri).
 
@@ -255,20 +283,21 @@ ______________________________________________________________________
 
 ## ⚠️ IMPORTANT NOTES
 
-### Timezone:
+### Timezone
 
-All times are **America/New_York (ET/EDT)**
+All times are **America/New_York (ET/EDT)**- Accounts for daylight saving time automatically
 
-- Accounts for daylight saving time automatically
 - Uses pytz library for accuracy
 
-### Market Days Only:
+
+### Market Days Only
 
 - Only runs Mon-Fri
 - Skips weekends and holidays
 - No messages on non-trading days
 
-### Price Data:
+
+### Price Data
 
 Predictions use Ghost's existing price sources:
 
@@ -276,7 +305,8 @@ Predictions use Ghost's existing price sources:
 - Yahoo Finance (backup)
 - Polygon.io (intraday)
 
-### Signal Calculation:
+
+### Signal Calculation
 
 Uses Ghost's existing `_evaluate_signal()` function:
 
@@ -286,16 +316,17 @@ Uses Ghost's existing `_evaluate_signal()` function:
 - Volume analysis
 - All standard Ghost intelligence
 
+
 ______________________________________________________________________
 
-## 🚀 WHAT'S NEXT?
+## 🚀 WHAT'S NEXT
 
-### Already Working:
+### Already Working
 
 ✅ Automatic 8am predictions ✅ Automatic 9:35am accuracy checks ✅ Manual `/predict` and
 `/check` commands ✅ Telegram integration ✅ Accuracy tracking
 
-### Future Enhancements (Optional):
+### Future Enhancements (Optional)
 
 - 📊 Historical accuracy dashboard
 - 📈 Multi-timeframe predictions (hourly, daily, weekly)
@@ -304,6 +335,7 @@ ______________________________________________________________________
 - 🔔 Custom prediction times (user configurable)
 - 📝 Weekly accuracy report (Friday EOD)
 
+
 ______________________________________________________________________
 
 ## 🧪 VERIFICATION CHECKLIST
@@ -311,79 +343,100 @@ ______________________________________________________________________
 Run through this to confirm everything works:
 
 ```bash
+
 # 1. Server is running with predictions enabled
+
 ps aux | grep uvicorn
+
 # Should see: python3 -m uvicorn wolf_app:APP
 
 # 2. Test manual prediction
+
 # In Telegram, send: /predict
+
 # Should receive: Pre-market prediction message
 
 # 3. Test accuracy check
+
 # In Telegram, send: /check
+
 # Should receive: Prediction vs actual comparison
 
 # 4. Check scheduler is running
+
 tail -f /tmp/ghost_predictions.log | grep "PREDICTION"
+
 # Should see: [PREDICTION SCHEDULER] started messages
 
 # 5. Wait until 8:00 AM (Mon-Fri)
+
 # Should automatically receive pre-market prediction
 
 # 6. Wait until 9:35 AM (Mon-Fri)
+
 # Should automatically receive market open check
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 💡 TIPS FOR BEST RESULTS
 
-### 1. Keep Server Running:
+### 1. Keep Server Running
 
 ```bash
-# Make sure Ghost is always running:
+
+# Make sure Ghost is always running
+
 ps aux | grep uvicorn
 
-# If not running, start it:
+# If not running, start it
+
 cd /Users/studio713/Desktop/GHOST
 bash start_ai_advisor.sh
-```
 
-### 2. Monitor Logs:
+```text
+
+### 2. Monitor Logs
 
 ```bash
-# Watch for prediction scheduler activity:
+
+# Watch for prediction scheduler activity
+
 tail -f /tmp/ghost_predictions.log | grep "PREDICTION"
 
-# Should see:
-# [PREDICTION SCHEDULER] Started
-# [PREDICTION] 🌅 Triggering pre-market prediction
-# [PREDICTION] 📊 Triggering market open check
-```
+# Should see
 
-### 3. Test Before Market Open:
+# [PREDICTION SCHEDULER] Started
+
+# [PREDICTION] 🌅 Triggering pre-market prediction
+
+# [PREDICTION] 📊 Triggering market open check
+
+```text
+
+### 3. Test Before Market Open
 
 Use `/predict` and `/check` commands any time to test
 
-### 4. Compare Predictions:
+### 4. Compare Predictions
 
 Keep a log of Ghost's predictions vs actual results to see long-term accuracy
 
 ______________________________________________________________________
 
-## 🎉 YOU'RE ALL SET!
+## 🎉 YOU'RE ALL SET
 
 Ghost will now automatically send you:
 
-- **8:00 AM** - Daily pre-market prediction
-- **9:35 AM** - Market open accuracy check
+-**8:00 AM**- Daily pre-market prediction
+-**9:35 AM**- Market open accuracy check
+
 
 Plus you can test anytime with:
 
 - `/predict` - Generate prediction now
-- `/check` - Check accuracy now
-
-**Next Steps**:
+- `/check` - Check accuracy now**Next Steps**:
 
 1. ✅ Test `/predict` now in Telegram
 2. ✅ Test `/check` now in Telegram
@@ -391,21 +444,24 @@ Plus you can test anytime with:
 4. 📊 See the 9:35 AM accuracy check
 5. 📈 Track Ghost's accuracy over time
 
+
 ______________________________________________________________________
 
 ## 📞 TROUBLESHOOTING
 
-### "Prediction scheduler not enabled" error?
+### "Prediction scheduler not enabled" error
 
 **Solution**: Server needs restart
 
 ```bash
+
 cd /Users/studio713/Desktop/GHOST
 pkill -9 -f uvicorn
 bash start_ai_advisor.sh
-```
 
-### Not receiving automatic predictions?
+```text
+
+### Not receiving automatic predictions
 
 **Check**:
 
@@ -413,24 +469,30 @@ bash start_ai_advisor.sh
 2. Is server running? `ps aux | grep uvicorn`
 3. Are logs showing scheduler? `grep PREDICTION /tmp/ghost_predictions.log`
 
-### Manual `/predict` works but auto doesn't?
+
+### Manual `/predict` works but auto doesn't
 
 **Wait**: Auto predictions only trigger within 2.5 min of target time
 
 - 7:57:30 AM - 8:02:30 AM (for 8am prediction)
 - 9:32:30 AM - 9:37:30 AM (for 9:35am check)
 
-### Want different times?
+
+### Want different times
 
 **Edit**: `core/scheduled_predictions.py`
 
 ```python
+
 # Line ~247: Change 08:00 to your preferred time
+
 premarket_time = datetime.strptime("08:00", "%H:%M").time()
 
 # Line ~260: Change 09:35 to your preferred time
+
 open_check_time = datetime.strptime("09:35", "%H:%M").time()
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -443,6 +505,7 @@ After 1 week of predictions, you'll have:
 - Accuracy percentage
 - Confidence calibration data
 - Trading insights
+
 
 **Ghost learns from this data** to improve future predictions!
 

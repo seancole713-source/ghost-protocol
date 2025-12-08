@@ -2,7 +2,7 @@
 
 ## What Just Happened
 
-You linked Railway to: **seancole713-source/GHOST** ✅
+You linked Railway to: **seancole713-source/GHOST**✅
 
 Railway is now automatically deploying with these fixes:
 
@@ -11,9 +11,10 @@ Railway is now automatically deploying with these fixes:
 - ✅ `railway.toml` - Health checks and restart policies
 - ✅ `requirements.txt` - All dependencies (fastapi, requests, etc.)
 
+
 ## Current Status
 
-🔄 **Railway is building and deploying now** (takes 3-5 minutes)
+🔄**Railway is building and deploying now**(takes 3-5 minutes)
 
 The deployment includes:
 
@@ -21,6 +22,7 @@ The deployment includes:
 2. Installing pip dependencies: fastapi, uvicorn, requests, yfinance, etc.
 3. Starting Ghost with: `python main.py`
 4. Health checks on: `/health/detailed`
+
 
 ## What to Do Next
 
@@ -34,42 +36,51 @@ Run this script:
 
 ```bash
 ./check_railway_deployment.sh
-```
+
+```text
 
 Or manually:
 
 ```bash
+
 railway status          # Check deployment status
 railway logs            # Watch live logs (look for "Uvicorn running")
 railway domain          # Get your app URL
-```
+
+```text
 
 ### Step 3: Test Ghost is live
 
 ```bash
+
 APP_URL=$(railway domain)
-curl https://$APP_URL/health
-```
+curl <<<<<https://$APP_URL/health>>>>>
+
+```text
 
 Expected response: `{"ok": true, "ts": ...}`
 
 ### Step 4: Restore position data
 
 ```bash
+
 APP_URL=$(railway domain)
-curl -X POST "https://$APP_URL/api/position" \
+curl -X POST "<<<<<https://$APP_URL/api/position">>>>> \
   -H "Authorization: Bearer e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0" \
   -H "Content-Type: application/json" \
   -d '{"qty": 8.41959051, "avg_cost": 359.28}'
-```
+
+```text
 
 ## Troubleshooting
 
 If deployment fails, check logs:
 
 ```bash
+
 railway logs --tail 100
-```
+
+```text
 
 Look for:
 
@@ -78,13 +89,16 @@ Look for:
 - ✅ "Uvicorn running on 0.0.0.0:$PORT" - Ghost started
 - ❌ "ModuleNotFoundError" - Should NOT appear anymore
 
+
 ## Environment Variables
 
 Make sure these are set in Railway:
 
 ```bash
+
 railway variables
-```
+
+```text
 
 Should show:
 
@@ -97,9 +111,11 @@ Should show:
 - WOLF_PERSIST_MODE
 - SIM_MODE
 
+
 If missing, set them:
 
 ```bash
+
 railway variables set GHOST_API_TOKEN="e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0"
 railway variables set POLYGON_API_KEY="G1UkONuCx3Mpcngnvu239peiSyhNWRC3"
 railway variables set ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK"
@@ -108,7 +124,8 @@ railway variables set TELEGRAM_CHAT_ID="940596997"
 railway variables set GHOST_FOCUS_TICKER="WOLF"
 railway variables set WOLF_PERSIST_MODE="sqlite"
 railway variables set SIM_MODE="0"
-```
+
+```text
 
 ## Success Indicators
 
@@ -123,36 +140,31 @@ system status ✅ No "ModuleNotFoundError" in logs
 - Auto-deploy started: 🔄 In progress
 - Build time: ~2-3 minutes
 - Deploy time: ~30 seconds
-- Total ETA: **~3-5 minutes from now**
+- Total ETA:**~3-5 minutes from now**## After Successful Deployment
 
-## After Successful Deployment
 
 Ghost will be running 24/7 at:
 
-- 🌐 Main URL: https://ghost-protocol-production.up.railway.app (or similar)
-- 🏥 Health: https://[your-url]/health
-- 📊 Cockpit: https://[your-url]/cockpit
-- 🤖 AI Memory: https://[your-url]/ai/memory/stats
+- 🌐 Main URL: <<<<<https://ghost-protocol-production.up.railway.app>>>>> (or similar)
+- 🏥 Health: <<<<<https://[your-url]/health>>>>>
+- 📊 Cockpit: <<<<<https://[your-url]/cockpit>>>>>
+- 🤖 AI Memory: <<<<<https://[your-url]/ai/memory/stats>>>>>
 
-______________________________________________________________________
 
-**Run `./check_railway_deployment.sh` in ~5 minutes to verify!** ✅
+______________________________________________________________________**Run `./check_railway_deployment.sh` in ~5
+minutes to verify!**✅
 
 ---
 
-## 🔄 UPDATE - Dec 3, 2025 01:15 AM
+## 🔄 UPDATE - Dec 3, 2025 01:15 AM**Latest Changes Pushed:**- ✅ Commit `b36f3c3` - PostgreSQL migration fix + public paths
 
-**Latest Changes Pushed:**
-- ✅ Commit `b36f3c3` - PostgreSQL migration fix + public paths
 - ✅ Commit `f9148ca` - Added /api/v3/watchlist/user alias
-- ✅ Commit `0efa5ee` - Empty commit to force Railway redeploy
+- ✅ Commit `0efa5ee` - Empty commit to force Railway redeploy**Current Production Status:**| Endpoint | Status | Details |
 
-**Current Production Status:**
-| Endpoint | Status | Details |
+
 |----------|--------|---------|
 | `/api/v3/watchlist/enriched` | ✅ WORKING | Returns 20 items with ok:true |
 | `/api/v3/watchlist/user` | ❌ 404 | Waiting for deployment |
-| `/api/recent_alerts` | ❌ 401 | Waiting for deployment |
-
-**Next:** Railway should deploy in 2-5 minutes. Run `bash scripts/monitor_deployment.sh` to track progress.
+| `/api/recent_alerts` | ❌ 401 | Waiting for deployment |**Next:** Railway should deploy in 2-5 minutes. Run `bash
+scripts/monitor_deployment.sh` to track progress.
 

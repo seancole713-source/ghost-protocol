@@ -19,11 +19,13 @@ _PROVIDER_BREAKERS = {
 PROVIDER_BLOCKLIST = {
     "WOLF": set()  # Previously blocked Polygon, now unblocked
 }
-```
+
+```text
 
 ### Live Test Results (Oct 6, 2025 - After Hours)
 
 ```json
+
 {
   "price": 24.37,
   "prev_close": 24.37,
@@ -36,7 +38,8 @@ PROVIDER_BLOCKLIST = {
     "last_fetch_latency_ms": 73
   }
 }
-```
+
+```text
 
 **Provider Performance**:
 
@@ -44,6 +47,7 @@ PROVIDER_BLOCKLIST = {
 - ✅ **Yahoo**: Cache hit, instant response
 - ⚠️ **AlphaVantage**: Not in quorum (not called during after-hours)
 - ⚠️ **YFinance**: Not in quorum
+
 
 **Quorum Status**: DEGRADED (only 1 provider responding)\
 **Reason**: After-hours trading, system optimizing for single fast provider
@@ -60,25 +64,29 @@ ______________________________________________________________________
 - **October 1, 2025**: Exited bankruptcy with 120:1 reverse split
 - **Current**: Trading resumed at ~$24, but delisted from NASDAQ
 
+
 **Evidence from Live News Feed**:
 
-```
-"Wolfspeed exited Chapter 11 bankruptcy by canceling existing shares 
-and issuing new stock, severely diluting shareholders with only one 
+```text
+
+"Wolfspeed exited Chapter 11 bankruptcy by canceling existing shares
+and issuing new stock, severely diluting shareholders with only one
 new share for every 120 old shares"
 
-"Wolfspeed emerged from Chapter 11 bankruptcy by reducing debt by 70% 
+"Wolfspeed emerged from Chapter 11 bankruptcy by reducing debt by 70%
 and replacing existing stock with new shares"
-```
+
+```text
 
 **Impact on Price Data**:
 
 - Pre-bankruptcy price: ~$3.30 (entry price in portfolio)
 - Post-restructuring price: ~$24.37 (current, after 120:1 split)
-- PnL showing +638% is **MISLEADING** - actual shareholder value destroyed
-- Real calculation: (24.37 ÷ 120) vs 3.30 = **-93% loss** (what user reported earlier)
+- PnL showing +638% is **MISLEADING**- actual shareholder value destroyed
+- Real calculation: (24.37 ÷ 120) vs 3.30 =**-93% loss**(what user reported earlier)
 
-### ❌ **Missing: Delisted Symbol Handling**
+
+### ❌**Missing: Delisted Symbol Handling**
 
 **Current Behavior**:
 
@@ -87,10 +95,13 @@ and replacing existing stock with new shares"
 - No banner warnings in UI
 - PnL calculations don't account for reverse split
 
+
 **Required**:
 
 ```python
+
 # Add to wolf_app.py
+
 DELISTED_SYMBOLS = {
     "WOLF": {
         "status": "restructured",
@@ -106,9 +117,9 @@ def _is_symbol_delisted(symbol: str) -> dict | None:
     return DELISTED_SYMBOLS.get(symbol.upper())
 
 def _adjust_pnl_for_corporate_action(
-    symbol: str, 
-    entry_price: float, 
-    current_price: float, 
+    symbol: str,
+    entry_price: float,
+    current_price: float,
     qty: float
 ) -> tuple[float, float, str]:
     """
@@ -117,24 +128,30 @@ def _adjust_pnl_for_corporate_action(
     """
     action = _is_symbol_delisted(symbol)
     if not action:
+
         # Normal calculation
+
         pnl_abs = (current_price - entry_price) * qty
         pnl_pct = ((current_price - entry_price) / entry_price * 100.0) if entry_price > 0 else 0.0
         return pnl_abs, pnl_pct, ""
-    
+
     if action.get("reverse_split"):
         ratio = action["reverse_split"]
-        # Adjust entry for split: if you owned 1 share @ $3.30, 
+
+        # Adjust entry for split: if you owned 1 share @ $3.30
+
         # after 120:1 split you own 0.00833 shares @ $396 equivalent
+
         adjusted_entry = entry_price * ratio
         adjusted_qty = qty / ratio
         pnl_abs = (current_price - adjusted_entry) * adjusted_qty
         pnl_pct = ((current_price - adjusted_entry) / adjusted_entry * 100.0)
         note = f"Adjusted for {ratio}:1 reverse split"
         return pnl_abs, pnl_pct, note
-    
+
     return 0.0, 0.0, "Corporate action not fully handled"
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -145,15 +162,15 @@ ______________________________________________________________________
 **Exponential Backoff**:
 
 ```python
+
 def _breaker_on_failure(name: str):
     b = _PROVIDER_BREAKERS.setdefault(name, ...)
     b["failures"] += 1
     b["backoff_factor"] = min(b["failures"], 5)  # Cap at 5
     b["state"] = "open" if b["failures"] >= 3 else "half-open"
-    b["open_until_ts"] = time.time() + (2 ** b["backoff_factor"])  # Exponential
-```
+    b["open_until_ts"] = time.time() + (2 **b["backoff_factor"])  # Exponential
 
-**Backoff Schedule**:
+```text**Backoff Schedule**:
 
 - Failure 1: 2^1 = 2 seconds
 - Failure 2: 2^2 = 4 seconds
@@ -161,12 +178,14 @@ def _breaker_on_failure(name: str):
 - Failure 4: 2^4 = 16 seconds
 - Failure 5: 2^5 = 32 seconds (capped)
 
+
 ### ⚠️ **Missing: Jitter**
 
 **Current**: Deterministic backoff could cause thundering herd\
 **Fix**: Add random jitter (±20%)
 
 ```python
+
 import random
 
 def _breaker_on_failure(name: str):
@@ -174,12 +193,14 @@ def _breaker_on_failure(name: str):
     b["failures"] += 1
     b["backoff_factor"] = min(b["failures"], 5)
     b["state"] = "open" if b["failures"] >= 3 else "half-open"
-    
+
     # Add jitter: base_delay * (0.8 to 1.2)
+
     base_delay = 2 ** b["backoff_factor"]
     jitter = random.uniform(0.8, 1.2)
     b["open_until_ts"] = time.time() + (base_delay * jitter)
-```
+
+```text
 
 **Status**: ✅ Will apply in AUTO-FIX phase
 
@@ -192,6 +213,7 @@ ______________________________________________________________________
 **Endpoint**: `/api/price/WOLF`
 
 ```json
+
 {
   "symbol": "WOLF",
   "price": 24.37,
@@ -201,7 +223,8 @@ ______________________________________________________________________
   "change_pct": 0.0,
   "market_open": false
 }
-```
+
+```text
 
 ✅ **Working**: Price, prev_close, provider, timestamp all present
 
@@ -215,11 +238,12 @@ ______________________________________________________________________
 **Endpoint**: Via `/api/cockpit`
 
 ```json
+
 {
   "news_relevant": [
     {
       "ts": 1759566660,
-      "url": "https://www.fool.com/investing/2025/10/04/...",
+      "url": "<<<<<https://www.fool.com/investing/2025/10/04/...",>>>>>
       "title": "Should You Buy Wolfspeed Stock Right Now?",
       "src": "polygon",
       "tag": "• Neutral",
@@ -229,7 +253,8 @@ ______________________________________________________________________
   ],
   "news_count": 10
 }
-```
+
+```text
 
 ✅ **Working**: 10 news items with timestamps, URLs, sentiment tags
 
@@ -239,6 +264,7 @@ ______________________________________________________________________
 - **Yahoo Cache Hit**: \<1ms (excellent)
 - **News Cache**: 201s age (within TTL)
 
+
 ______________________________________________________________________
 
 ## E. Fallback Logic
@@ -246,6 +272,7 @@ ______________________________________________________________________
 ### Last-Known Price Cache ✅
 
 ```python
+
 PRICE_CACHE: dict[str, dict[str, Any]] = {}
 
 def _cache_put_price(symbol, price, prev, provider):
@@ -257,24 +284,30 @@ def _cache_put_price(symbol, price, prev, provider):
     }
 
 def get_wolf_price():
+
     # Try cache first (TTL-based)
+
     cached = PRICE_CACHE.get(WOLF)
     if cached and (time.time() - cached["ts"]) < PRICE_TTL:
         return cached["price"], cached["prev_close"], "yahoo"
-    
+
     # Try live providers with quorum logic
+
     # ... (circuit breaker checks, multi-provider calls)
-    
+
     # Fallback to prev_close if all fail
+
     if prev_close:
         return prev_close, prev_close, "prev-close"
-    
+
     # Last resort: cached price even if stale
+
     if cached:
         return cached["price"], cached["prev_close"], "cached-stale"
-    
+
     return None, None, "unavailable"
-```
+
+```text
 
 **Status**: ✅ Robust fallback chain implemented
 
@@ -303,13 +336,11 @@ ______________________________________________________________________
 ## G. Provider Health Summary
 
 | Provider | Status | Latency | Rate Limit | Circuit Breaker |
-|----------|--------|---------|------------|-----------------| | **Polygon** | ✅ HEALTHY
-| 70-230ms | None observed | Closed (0 failures) | | **Yahoo** | ✅ CACHED | \<1ms | None
-observed | Closed (0 failures) | | **AlphaVantage** | ⚠️ STANDBY | N/A | 25/day FREE
-tier | Closed (untested) | | **YFinance** | ⚠️ STANDBY | N/A | Cloudflare blocking |
-Closed (untested) |
-
-**Overall**: ✅ System resilient with working fallback chain
+|----------|--------|---------|------------|-----------------| | **Polygon**| ✅ HEALTHY
+| 70-230ms | None observed | Closed (0 failures) | |**Yahoo**| ✅ CACHED | \<1ms | None
+observed | Closed (0 failures) | |**AlphaVantage**| ⚠️ STANDBY | N/A | 25/day FREE
+tier | Closed (untested) | |**YFinance**| ⚠️ STANDBY | N/A | Cloudflare blocking |
+Closed (untested) |**Overall**: ✅ System resilient with working fallback chain
 
 ______________________________________________________________________
 
@@ -318,23 +349,27 @@ ______________________________________________________________________
 ### Polygon Response (via diagnostics)
 
 ```json
+
 {
   "providers": [["polygon", 24.37]],
   "last_fetch_provider": "polygon",
   "last_fetch_latency_ms": 73
 }
-```
+
+```text
 
 ### Yahoo Response (inferred from cache)
 
 ```json
+
 {
   "price": 24.37,
   "prev_close": 24.37,
   "provider": "yahoo",
   "cache_age_s": 0.9
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -373,5 +408,6 @@ ______________________________________________________________________
 1. ✅ Add jitter to circuit breaker
 2. ✅ Create delisted symbol registry structure
 3. ⚠️ Open PR for PnL adjustment logic (risky, needs review)
+
 
 **Then**: REPORT_03 - Persistence & Portfolio

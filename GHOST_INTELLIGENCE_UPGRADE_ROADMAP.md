@@ -15,45 +15,60 @@ ______________________________________________________________________
 
 GHOST today has:
 
-- ✅ **News aggregation** from 14 premium sources (Reuters, MarketWatch, TechCrunch,
+- ✅ **News aggregation**from 14 premium sources (Reuters, MarketWatch, TechCrunch,
+
+
   Investors, PYMNTS)
-- ✅ **AI sentiment analysis** with FinBERT option (NEWS_SENTIMENT_ON=1)
-- ✅ **Watchlist tracking** (10 symbols: WOLF, NVDA, PLTR, TSLA, AMD, AAPL, MSFT, GOOGL,
+
+- ✅**AI sentiment analysis**with FinBERT option (NEWS_SENTIMENT_ON=1)
+- ✅**Watchlist tracking**(10 symbols: WOLF, NVDA, PLTR, TSLA, AMD, AAPL, MSFT, GOOGL,
+
+
   META, AMZN)
-- ✅ **OpenAI GPT-4o-mini agent** with BUY/SELL/HOLD decisions
-- ✅ **AI memory system** (SQLite + optional ChromaDB for vector search)
-- ✅ **Basic forecast** (drift model: 30% momentum + 1% news)
-- ✅ **Accuracy tracking** (MAP/RMSE/bias metrics in core/ai_memory.py)
+
+- ✅**OpenAI GPT-4o-mini agent**with BUY/SELL/HOLD decisions
+- ✅**AI memory system**(SQLite + optional ChromaDB for vector search)
+- ✅**Basic forecast**(drift model: 30% momentum + 1% news)
+- ✅**Accuracy tracking**(MAP/RMSE/bias metrics in core/ai_memory.py)
+
 
 ### What's Missing (7 → 10 Gap)
 
-- ❌ **World context understanding** (global macro, sector trends, market regime)
-- ❌ **Self-evaluation loop** (learn from prediction errors)
-- ❌ **Strategic reasoning** (multi-step causal thinking)
-- ❌ **Pattern recognition** (bankruptcy bounces, earnings patterns)
-- ❌ **Explainability** (2-line rationales for every decision)
-- ❌ **Long-term memory** (trade stories, market lessons)
-- ❌ **Adaptive strategies** (bull/bear/sideways regime detection)
+- ❌**World context understanding**(global macro, sector trends, market regime)
+- ❌**Self-evaluation loop**(learn from prediction errors)
+- ❌**Strategic reasoning**(multi-step causal thinking)
+- ❌**Pattern recognition**(bankruptcy bounces, earnings patterns)
+- ❌**Explainability**(2-line rationales for every decision)
+- ❌**Long-term memory**(trade stories, market lessons)
+- ❌**Adaptive strategies**(bull/bear/sideways regime detection)
+
 
 ### Target State (10/10 Intelligence)
 
 GHOST will become:
 
-- 🧠 **Context-aware**: Understands global macro, sector rotation, market sentiment
+- 🧠**Context-aware**: Understands global macro, sector rotation, market sentiment
 - 📈 **Self-improving**: Learns from forecast errors, auto-tunes models
 - 🎯 **Strategic thinker**: Multi-layer reasoning (observe → interpret → decide →
+
+
   reflect)
+
 - 🔮 **Pattern master**: Recognizes bankruptcy bounces, earnings patterns, sector
+
+
   spillovers
+
 - 📢 **Explainable**: Every decision comes with 2-line rationale + evidence
 - 📚 **Long-term learner**: Stores trade stories, reviews monthly performance
 - 🔄 **Adaptive**: Switches strategies based on market regime
+
 
 ______________________________________________________________________
 
 ## 🎯 INTELLIGENCE PROGRESSION MAP
 
-```
+```text
 LEVEL 7 (Current)                    LEVEL 10 (Target)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -86,15 +101,14 @@ LEVEL 7 (Current)                    LEVEL 10 (Target)
    • No correlation                 • Cross-asset analysis
    • No diversification             • Sector balance
                                     • Risk-adjusted allocation
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 🏗️ IMPLEMENTATION STAGES
 
-### **STAGE 1: CONTEXT AWARENESS (7 → 8)** — 2 weeks
-
-**Goal**: Give GHOST global market understanding
+### **STAGE 1: CONTEXT AWARENESS (7 → 8)**— 2 weeks**Goal**: Give GHOST global market understanding
 
 #### 1.1 World Context Engine
 
@@ -108,10 +122,13 @@ ______________________________________________________________________
 - Store in `data/context_news.db` (SQLite)
 - Update every 5 minutes via background job
 
+
 **Implementation**:
 
 ```python
+
 # core/context_engine.py
+
 import feedparser
 import spacy
 from typing import List, Dict, Any
@@ -121,21 +138,24 @@ import time
 class WorldContextEngine:
     """
     Aggregates global news and extracts market context.
-    
+
     Features:
+
     - 25 RSS feeds (Reuters, MarketWatch, TechCrunch, etc.)
     - NER extraction (tickers, companies, people)
     - Sentiment scoring (VADER for speed, FinBERT optional)
     - Relevance matching to watchlist
     - Entity linking (CEO → Company → Ticker)
+
+
     """
-    
+
     def __init__(self, feeds: List[str], db_path: str = "data/context_news.db"):
         self.feeds = feeds
         self.db = sqlite3.connect(db_path, check_same_thread=False)
         self.nlp = spacy.load("en_core_web_sm")  # FREE model
         self._init_db()
-    
+
     def _init_db(self):
         """Create tables for context storage."""
         self.db.execute("""
@@ -154,7 +174,7 @@ class WorldContextEngine:
         """)
         self.db.execute("CREATE INDEX IF NOT EXISTS idx_ts ON world_news(ts)")
         self.db.execute("CREATE INDEX IF NOT EXISTS idx_source ON world_news(source)")
-    
+
     def fetch_and_parse(self):
         """Fetch all RSS feeds and parse articles."""
         for feed_url in self.feeds:
@@ -164,27 +184,32 @@ class WorldContextEngine:
                     self._process_article(entry, feed_url)
             except Exception as e:
                 print(f"Feed error {feed_url}: {e}")
-    
+
     def _process_article(self, entry, source):
         """Extract entities, sentiment, relevance."""
         headline = entry.get('title', '')
         summary = entry.get('summary', '')[:500]
         url = entry.get('link', '')
-        
+
         # NER extraction
+
         doc = self.nlp(headline + " " + summary)
         entities = [ent.text for ent in doc.ents if ent.label_ in ('ORG', 'PERSON', 'GPE')]
-        
+
         # Sentiment (VADER for speed)
+
         sentiment = self._score_sentiment(headline + " " + summary)
-        
+
         # Relevance to watchlist
+
         relevance = self._compute_relevance(entities, headline)
-        
+
         # Event tagging
+
         tags = self._extract_tags(headline + " " + summary)
-        
+
         # Store
+
         self.db.execute("""
             INSERT INTO world_news (ts, source, headline, url, summary, sentiment, entities, relevance, tags)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -200,20 +225,20 @@ class WorldContextEngine:
             json.dumps(tags)
         ))
         self.db.commit()
-    
+
     def _score_sentiment(self, text: str) -> float:
         """VADER sentiment: -1.0 to +1.0"""
         from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
         analyzer = SentimentIntensityAnalyzer()
         scores = analyzer.polarity_scores(text)
         return scores['compound']
-    
+
     def _compute_relevance(self, entities: List[str], text: str) -> float:
         """Match entities to watchlist symbols."""
         watchlist = ['WOLF', 'NVDA', 'PLTR', 'TSLA', 'AMD', 'AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN']
         matches = sum(1 for sym in watchlist if sym in text.upper() or sym in ' '.join(entities))
         return min(1.0, matches / 3.0)  # 0-1 score
-    
+
     def _extract_tags(self, text: str) -> List[str]:
         """Extract event keywords."""
         keywords = {
@@ -229,7 +254,7 @@ class WorldContextEngine:
             if any(kw in text_lower for kw in kws):
                 tags.append(tag)
         return tags
-    
+
     def get_recent_context(self, hours: int = 24) -> Dict[str, Any]:
         """Get summary of last N hours."""
         cutoff = int(time.time()) - (hours * 3600)
@@ -241,13 +266,14 @@ class WorldContextEngine:
             WHERE ts > ? AND relevance > 0.3
         """, (cutoff,))
         row = cur.fetchone()
-        
+
         return {
             'avg_sentiment': row[0] or 0.0,
             'article_count': row[1] or 0,
             'trending_events': row[2] or ''
         }
-```
+
+```text
 
 **FREE Tools**:
 
@@ -255,6 +281,7 @@ class WorldContextEngine:
 - `spacy` (NER, en_core_web_sm model)
 - `vaderSentiment` (rule-based sentiment)
 - SQLite (built-in Python)
+
 
 #### 1.2 Market Mood Memory
 
@@ -267,9 +294,11 @@ class WorldContextEngine:
 - Global macro driver (e.g., "Fed rate pause", "oil surge")
 - Update daily via free Yahoo Finance API
 
+
 **Structure**:
 
 ```json
+
 {
   "date": "2025-10-05",
   "market_regime": "bull",
@@ -283,12 +312,15 @@ class WorldContextEngine:
   "macro_driver": "Fed rate pause + Q3 earnings season",
   "sentiment": "risk-on"
 }
-```
+
+```text
 
 **Implementation**:
 
 ```python
+
 # core/market_mood.py
+
 import yfinance as yf
 import json
 from typing import Dict, Any
@@ -298,16 +330,18 @@ def update_market_mood():
     spy = yf.Ticker("SPY")
     qqq = yf.Ticker("QQQ")
     vix = yf.Ticker("^VIX")
-    
+
     spy_hist = spy.history(period="5d")
     qqq_hist = qqq.history(period="5d")
     vix_current = vix.history(period="1d")['Close'].iloc[-1]
-    
+
     # Trend detection
+
     spy_change = ((spy_hist['Close'].iloc[-1] / spy_hist['Close'].iloc[0]) - 1) * 100
     qqq_change = ((qqq_hist['Close'].iloc[-1] / qqq_hist['Close'].iloc[0]) - 1) * 100
-    
+
     # Regime classification
+
     if vix_current < 15 and spy_change > 0:
         regime = "bull"
         sentiment = "risk-on"
@@ -317,7 +351,7 @@ def update_market_mood():
     else:
         regime = "sideways"
         sentiment = "neutral"
-    
+
     mood = {
         "date": time.strftime("%Y-%m-%d"),
         "market_regime": regime,
@@ -326,31 +360,37 @@ def update_market_mood():
         "vix": round(vix_current, 1),
         "sentiment": sentiment
     }
-    
+
     with open("data/market_mood.json", "w") as f:
         json.dump(mood, f, indent=2)
-    
+
     return mood
-```
+
+```text
 
 **FREE Tools**:
 
 - `yfinance` (Yahoo Finance API)
 - JSON (built-in Python)
 
+
 #### 1.3 Integration to wolf_app.py
 
 Add market context to AI decisions:
 
 ```python
+
 # wolf_app.py additions
+
 from core.context_engine import WorldContextEngine
 from core.market_mood import update_market_mood
 
 # Initialize
+
 context_engine = WorldContextEngine(feeds=NEWS_MANUAL_FEEDS.split(','))
 
 # Background job (every 5 min)
+
 async def context_updater():
     while True:
         context_engine.fetch_and_parse()
@@ -358,20 +398,20 @@ async def context_updater():
         await asyncio.sleep(300)
 
 # Inject into /ai/decide
+
 def _build_ai_context():
     ctx = {...}  # existing context
     ctx['world_context'] = context_engine.get_recent_context(hours=24)
     ctx['market_mood'] = json.load(open('data/market_mood.json'))
     return ctx
-```
+
+```text
 
 **Result**: GHOST now understands global market context (Level 7 → 8)
 
 ______________________________________________________________________
 
-### **STAGE 2: SELF-EVALUATION (8 → 9)** — 2 weeks
-
-**Goal**: GHOST learns from its own mistakes
+### **STAGE 2: SELF-EVALUATION (8 → 9)**— 2 weeks**Goal**: GHOST learns from its own mistakes
 
 #### 2.1 Prediction Tracker
 
@@ -385,10 +425,13 @@ ______________________________________________________________________
 - Weekly accuracy reports
 - Flag degrading models
 
+
 **Implementation**:
 
 ```python
+
 # core/accuracy_tracker.py
+
 import sqlite3
 import numpy as np
 from typing import Dict, List, Tuple
@@ -396,18 +439,21 @@ from typing import Dict, List, Tuple
 class AccuracyTracker:
     """
     Track forecast accuracy over time.
-    
+
     Metrics:
+
     - MAP (Mean Absolute Percentage Error)
     - RMSE (Root Mean Square Error)
     - Bias (systematic over/under prediction)
     - Direction Accuracy (% correct up/down calls)
+
+
     """
-    
+
     def __init__(self, db_path: str = "data/forecast_accuracy.db"):
         self.db = sqlite3.connect(db_path, check_same_thread=False)
         self._init_db()
-    
+
     def _init_db(self):
         self.db.execute("""
             CREATE TABLE IF NOT EXISTS forecasts (
@@ -424,18 +470,20 @@ class AccuracyTracker:
             )
         """)
         self.db.execute("CREATE INDEX IF NOT EXISTS idx_ts ON forecasts(ts)")
-    
+
     def log_forecast(self, symbol: str, horizon_h: int, predicted: float, actual: float, model: str):
         """Log a forecast vs actual result."""
         error_pct = abs((predicted - actual) / actual) * 100 if actual > 0 else 0
         error_abs = abs(predicted - actual)
-        
+
         # Direction accuracy (did we predict up/down correctly?)
+
         # Compare to previous close (would need to store baseline)
+
         direction_correct = True  # Placeholder
-        
+
         self.db.execute("""
-            INSERT INTO forecasts (ts, symbol, horizon_h, predicted_price, actual_price, 
+            INSERT INTO forecasts (ts, symbol, horizon_h, predicted_price, actual_price,
                                    error_pct, error_abs, direction_correct, model_version)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
@@ -443,7 +491,7 @@ class AccuracyTracker:
             error_pct, error_abs, direction_correct, model
         ))
         self.db.commit()
-    
+
     def compute_metrics(self, last_n_days: int = 7) -> Dict[str, float]:
         """Compute rolling accuracy metrics."""
         cutoff = int(time.time()) - (last_n_days * 86400)
@@ -452,21 +500,21 @@ class AccuracyTracker:
             FROM forecasts
             WHERE ts > ?
         """, (cutoff,))
-        
+
         rows = cur.fetchall()
         if not rows:
             return {'error': 'No data'}
-        
+
         predicted = np.array([r[0] for r in rows])
         actual = np.array([r[1] for r in rows])
         errors = np.array([r[2] for r in rows])
         directions = np.array([r[3] for r in rows])
-        
+
         map = np.mean(errors)
         rmse = np.sqrt(np.mean((predicted - actual) ** 2))
         bias = np.mean(predicted - actual)
         direction_acc = np.mean(directions) * 100
-        
+
         return {
             'map': round(map, 2),
             'rmse': round(rmse, 4),
@@ -474,16 +522,17 @@ class AccuracyTracker:
             'direction_accuracy': round(direction_acc, 1),
             'sample_count': len(rows)
         }
-    
+
     def detect_degradation(self) -> bool:
         """Alert if accuracy is degrading."""
         metrics_7d = self.compute_metrics(last_n_days=7)
         metrics_30d = self.compute_metrics(last_n_days=30)
-        
+
         if metrics_7d.get('mape', 100) > metrics_30d.get('mape', 0) * 1.5:
             return True  # 50% worse than 30-day baseline
         return False
-```
+
+```text
 
 #### 2.2 Learning Loop
 
@@ -496,29 +545,35 @@ class AccuracyTracker:
 - Auto-adjust drift weights, lookback windows
 - Store tuned params in `data/model_memory.json`
 
+
 **Implementation**:
 
 ```python
+
 # core/learning_loop.py
+
 import json
 from typing import Dict
 
 class LearningLoop:
     """
     Self-improving forecast system.
-    
+
     Process:
+
     1. Monitor accuracy (MAP, RMSE)
     2. If accuracy < threshold, retune
     3. Adjust model parameters
     4. Backtest on recent data
     5. Deploy if improvement > 10%
+
+
     """
-    
+
     def __init__(self, memory_path: str = "data/model_memory.json"):
         self.memory_path = memory_path
         self.load_memory()
-    
+
     def load_memory(self):
         """Load tuned parameters."""
         try:
@@ -531,56 +586,62 @@ class LearningLoop:
                 'lookback_days': 7,
                 'confidence_floor': 30
             }
-    
+
     def save_memory(self):
         """Persist tuned parameters."""
         with open(self.memory_path, 'w') as f:
             json.dump(self.memory, f, indent=2)
-    
+
     def should_retune(self, accuracy_tracker) -> bool:
         """Check if retuning is needed."""
         metrics = accuracy_tracker.compute_metrics(last_n_days=7)
         if metrics.get('mape', 0) > 5.0:  # MAP > 5%
             return True
         return False
-    
+
     def tune_parameters(self, accuracy_tracker):
         """Grid search over parameter space."""
         best_mape = float('inf')
         best_params = self.memory.copy()
-        
+
         # Grid search
+
         for drift_w in [0.1, 0.2, 0.3, 0.4, 0.5]:
             for news_w in [0.005, 0.01, 0.02, 0.05]:
+
                 # Simulate with these params
+
                 map = self._backtest_params(drift_w, news_w)
                 if map < best_mape:
                     best_mape = map
                     best_params['drift_weight'] = drift_w
                     best_params['news_weight'] = news_w
-        
+
         # Update if improvement > 10%
+
         current_mape = accuracy_tracker.compute_metrics(last_n_days=7).get('mape', 100)
         if best_mape < current_mape * 0.9:
             self.memory.update(best_params)
             self.save_memory()
             return True
         return False
-    
+
     def _backtest_params(self, drift_w: float, news_w: float) -> float:
         """Backtest parameter combination."""
+
         # TODO: Implement backtesting logic
+
         # For now, return random MAP
+
         return np.random.uniform(2.0, 8.0)
-```
+
+```text
 
 **Result**: GHOST auto-improves forecast accuracy (Level 8 → 9)
 
 ______________________________________________________________________
 
-### **STAGE 3: STRATEGIC REASONING (9 → 10)** — 2 weeks
-
-**Goal**: Multi-layer thought process with explainability
+### **STAGE 3: STRATEGIC REASONING (9 → 10)**— 2 weeks**Goal**: Multi-layer thought process with explainability
 
 #### 3.1 Reasoning Engine
 
@@ -593,28 +654,34 @@ ______________________________________________________________________
 - **Decision Layer**: Recommend action (BUY/SELL/HOLD)
 - **Reflection Layer**: Log reasoning for later review
 
+
 **Implementation**:
 
 ```python
+
 # core/reasoning_engine.py
+
 from typing import Dict, Any
 import logging
 
 class ReasoningEngine:
     """
     Multi-layer strategic reasoning system.
-    
+
     Layers:
+
     1. Observe: Collect data
     2. Interpret: Explain observations
     3. Decide: Recommend action
     4. Reflect: Log reasoning + outcome
+
+
     """
-    
+
     def __init__(self, log_path: str = "logs/ghost_thoughts.log"):
         self.log_path = log_path
         self.logger = self._setup_logger()
-    
+
     def _setup_logger(self):
         logger = logging.getLogger('GhostReasoning')
         handler = logging.FileHandler(self.log_path)
@@ -622,42 +689,46 @@ class ReasoningEngine:
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
         return logger
-    
+
     def reason(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Execute 4-layer reasoning process."""
-        
+
         # Layer 1: Observe
+
         observations = self._observe(context)
         self.logger.info(f"OBSERVE: {observations['summary']}")
-        
+
         # Layer 2: Interpret
+
         interpretation = self._interpret(observations)
         self.logger.info(f"INTERPRET: {interpretation['explanation']}")
-        
+
         # Layer 3: Decide
+
         decision = self._decide(interpretation)
         self.logger.info(f"DECIDE: {decision['action']} @ {decision['confidence']}% — {decision['rationale']}")
-        
+
         # Layer 4: Reflect (later, after outcome known)
+
         # Will be called by background job
-        
+
         return {
             'observations': observations,
             'interpretation': interpretation,
             'decision': decision
         }
-    
+
     def _observe(self, ctx: Dict) -> Dict:
         """Layer 1: Data collection."""
         price = ctx.get('prices', {}).get('price', 0)
         prev = ctx.get('prices', {}).get('prev_close', 0)
         change_pct = ((price - prev) / prev * 100) if prev > 0 else 0
-        
+
         news_score = ctx.get('news_signal', {}).get('score', 0)
         market_mood = ctx.get('market_mood', {})
-        
+
         summary = f"Price ${price:.2f} ({change_pct:+.1f}%), News sentiment {news_score:.2f}, Market {market_mood.get('regime', 'unknown')}"
-        
+
         return {
             'summary': summary,
             'price': price,
@@ -665,38 +736,38 @@ class ReasoningEngine:
             'news_score': news_score,
             'market_regime': market_mood.get('regime', 'unknown')
         }
-    
+
     def _interpret(self, obs: Dict) -> Dict:
         """Layer 2: Causal explanation."""
         explanations = []
-        
+
         if obs['change_pct'] > 5:
             explanations.append("Strong upward momentum (+5%)")
         elif obs['change_pct'] < -5:
             explanations.append("Significant downward pressure (-5%)")
-        
+
         if obs['news_score'] > 0.5:
             explanations.append("Positive news sentiment driving optimism")
         elif obs['news_score'] < -0.5:
             explanations.append("Negative news creating selling pressure")
-        
+
         if obs['market_regime'] == 'bull':
             explanations.append("Bull market regime supports risk-on positioning")
         elif obs['market_regime'] == 'bear':
             explanations.append("Bear market regime increases downside risk")
-        
+
         return {
             'explanation': ' | '.join(explanations) if explanations else 'Neutral conditions',
             'factors': explanations
         }
-    
+
     def _decide(self, interp: Dict) -> Dict:
         """Layer 3: Action recommendation."""
         factors = interp.get('factors', [])
-        
+
         bullish_count = sum(1 for f in factors if 'upward' in f or 'positive' in f or 'bull' in f)
         bearish_count = sum(1 for f in factors if 'downward' in f or 'negative' in f or 'bear' in f)
-        
+
         if bullish_count > bearish_count:
             action = 'BUY'
             confidence = min(90, 50 + (bullish_count * 15))
@@ -709,26 +780,29 @@ class ReasoningEngine:
             action = 'HOLD'
             confidence = 50
             rationale = "Neutral signal balance"
-        
+
         return {
             'action': action,
             'confidence': confidence,
             'rationale': rationale,
             'evidence': interp['factors']
         }
-    
+
     def reflect(self, decision_id: int, outcome: float):
         """Layer 4: Post-decision reflection."""
         success = "✓" if outcome > 0 else "✗"
         self.logger.info(f"REFLECT [{decision_id}]: Outcome {outcome:+.2f}% {success}")
-```
+
+```text
 
 #### 3.2 Explainable AI
 
 Every decision gets 2-line rationale:
 
 ```python
+
 # Example output
+
 {
   "action": "BUY",
   "confidence": 75,
@@ -739,7 +813,8 @@ Every decision gets 2-line rationale:
     "Bull market regime supports risk-on positioning"
   ]
 }
-```
+
+```text
 
 #### 3.3 Daily Journal
 
@@ -753,17 +828,22 @@ Every decision gets 2-line rationale:
 - Key headlines
 - Performance metrics
 
+
 **Template**:
 
 ```markdown
+
 # Ghost Daily Journal — 2025-10-05
 
 ## Market Summary
+
 - **SPY**: +1.2% | **QQQ**: +1.5% | **VIX**: 13.8
 - **Regime**: Bull market (risk-on)
 - **Macro**: Fed rate pause confirmed, Q3 earnings strong
 
+
 ## Watchlist Performance
+
 | Symbol | Change | Ghost Action | Outcome |
 |--------|--------|-------------|---------|
 | NVDA   | +3.2%  | BUY (85%)   | ✓ Hit   |
@@ -772,33 +852,40 @@ Every decision gets 2-line rationale:
 | AMD    | +0.5%  | BUY (55%)   | ✗ Miss  |
 
 ## Forecast Accuracy
+
 - **MAP**: 3.2% (target: <5%)
 - **Direction**: 75% correct (3/4)
 - **RMSE**: $0.42
 
+
 ## Top Headlines
+
 1. **NVDA**: Q3 earnings beat +15% on AI chip demand [Reuters]
 2. **TSLA**: Recalls 50K vehicles, stock dips [MarketWatch]
 3. **Fed**: Rate pause confirmed through Q4 [CNBC]
 
+
 ## Ghost Learnings
+
 - Earnings beats → +5-8% pop in 24h (pattern #47)
 - Recall news → -2-4% dip, recovers in 3d (pattern #18)
 - Bull regime + positive news = 85% BUY success rate
 
+
 ## Tomorrow's Focus
+
 - Watch PLTR earnings (after-hours)
 - Monitor Fed speakers (Powell at 2pm ET)
 - Check AMD chip demand data
-```
+
+
+```text
 
 **Result**: GHOST now thinks strategically and explains itself (Level 9 → 10)
 
 ______________________________________________________________________
 
-### **STAGE 4: MEMORY & PATTERNS** — 2 weeks
-
-**Goal**: Long-term learning with pattern recognition
+### **STAGE 4: MEMORY & PATTERNS**— 2 weeks**Goal**: Long-term learning with pattern recognition
 
 #### 4.1 Pattern Recognition
 
@@ -811,10 +898,13 @@ ______________________________________________________________________
 - Store "ghost patterns" with success rates
 - Alert when similar setup detected
 
+
 **Implementation**:
 
 ```python
+
 # core/pattern_recognition.py
+
 from sklearn.cluster import DBSCAN
 import numpy as np
 from typing import List, Dict
@@ -822,36 +912,43 @@ from typing import List, Dict
 class PatternRecognition:
     """
     Identify recurring market patterns.
-    
+
     Patterns:
+
     - Bankruptcy Bounce: Ch11 filing → -30% → +50% in 7d
     - Earnings Beat: Beat estimates → +5-10% pop
     - Sector Rotation: Tech down → Energy up (correlation)
+
+
     """
-    
+
     def __init__(self, ai_memory):
         self.memory = ai_memory
         self.patterns = []
-    
+
     def discover_patterns(self, min_occurrences: int = 3):
         """Cluster historical decisions to find patterns."""
+
         # Export features + outcomes
+
         X, y = self.memory.export_for_training()
-        
+
         # Cluster similar feature vectors
+
         clustering = DBSCAN(eps=0.5, min_samples=min_occurrences).fit(X)
-        
+
         # Analyze each cluster
+
         for cluster_id in set(clustering.labels_):
             if cluster_id == -1:  # Noise
                 continue
-            
+
             mask = clustering.labels_ == cluster_id
             cluster_features = X[mask]
             cluster_outcomes = y[mask]
-            
+
             success_rate = np.mean(cluster_outcomes)
-            
+
             if success_rate > 0.7 or success_rate < 0.3:  # Strong pattern
                 self.patterns.append({
                     'id': len(self.patterns) + 1,
@@ -860,9 +957,9 @@ class PatternRecognition:
                     'sample_count': len(cluster_outcomes),
                     'type': 'bullish' if success_rate > 0.7 else 'bearish'
                 })
-        
+
         return self.patterns
-    
+
     def match_pattern(self, current_features: np.ndarray) -> Dict:
         """Check if current situation matches a known pattern."""
         for pattern in self.patterns:
@@ -875,24 +972,26 @@ class PatternRecognition:
                     'confidence': 1.0 - distance,
                     'type': pattern['type']
                 }
-        
+
         return {'matched': False}
-```
+
+```text
 
 #### 4.2 Semantic Search
 
 **File**: Already exists in `core/ai_memory.py` ✅
 
-**Features** (already implemented):
+**Features**(already implemented):
 
 - ChromaDB vector store for semantic similarity
 - Find similar past scenarios
-- `find_similar_situations(current_state, k=10)`
+- `find_similar_situations(current_state, k=10)`**Usage**:
 
-**Usage**:
 
 ```python
+
 # Find similar situations to current market
+
 memory = AIMemory(vector_store="chromadb")
 similar = memory.find_similar_situations({
     'features': current_features,
@@ -900,15 +999,14 @@ similar = memory.find_similar_situations({
 }, k=5)
 
 # Returns: 5 most similar past decisions with outcomes
-```
+
+```text
 
 **Result**: GHOST recognizes patterns and learns from history
 
 ______________________________________________________________________
 
-### **STAGE 5: ADAPTIVE STRATEGIES** — 1 week
-
-**Goal**: Switch tactics based on market regime
+### **STAGE 5: ADAPTIVE STRATEGIES**— 1 week**Goal**: Switch tactics based on market regime
 
 #### 5.1 Regime Detector
 
@@ -921,45 +1019,54 @@ ______________________________________________________________________
 - Store regime history
 - Adjust strategies per regime
 
+
 **Implementation**:
 
 ```python
+
 # core/regime_detector.py
+
 import yfinance as yf
 import numpy as np
 
 class RegimeDetector:
     """
     Detect market regime: bull, bear, or sideways.
-    
+
     Signals:
+
     - VIX: <15=bull, >25=bear
     - SPY MA: Price > 50MA = bull
     - Volatility: High = bear, Low = bull
+
+
     """
-    
+
     def detect_regime(self) -> str:
         spy = yf.Ticker("SPY")
         vix = yf.Ticker("^VIX")
-        
+
         spy_hist = spy.history(period="60d")
         vix_current = vix.history(period="1d")['Close'].iloc[-1]
-        
+
         # Moving averages
+
         spy_price = spy_hist['Close'].iloc[-1]
         spy_ma50 = spy_hist['Close'].rolling(50).mean().iloc[-1]
-        
+
         # Volatility
+
         volatility = spy_hist['Close'].pct_change().std() * np.sqrt(252)
-        
+
         # Regime logic
+
         if vix_current < 15 and spy_price > spy_ma50 and volatility < 0.15:
             return "bull"
         elif vix_current > 25 or spy_price < spy_ma50 * 0.95 or volatility > 0.25:
             return "bear"
         else:
             return "sideways"
-    
+
     def recommend_strategy(self, regime: str) -> Dict:
         """Strategy per regime."""
         strategies = {
@@ -983,15 +1090,14 @@ class RegimeDetector:
             }
         }
         return strategies.get(regime, strategies['sideways'])
-```
+
+```text
 
 **Result**: GHOST adapts to market conditions
 
 ______________________________________________________________________
 
-### **STAGE 6: PORTFOLIO INTELLIGENCE** — 1 week
-
-**Goal**: Multi-stock awareness with correlation
+### **STAGE 6: PORTFOLIO INTELLIGENCE**— 1 week**Goal**: Multi-stock awareness with correlation
 
 #### 6.1 Portfolio Analyzer
 
@@ -1004,10 +1110,13 @@ ______________________________________________________________________
 - Sector diversification
 - Risk-adjusted allocation
 
+
 **Implementation**:
 
 ```python
+
 # core/portfolio_analyzer.py
+
 import yfinance as yf
 import numpy as np
 import pandas as pd
@@ -1015,16 +1124,19 @@ import pandas as pd
 class PortfolioAnalyzer:
     """
     Multi-asset portfolio intelligence.
-    
+
     Features:
+
     - Correlation matrix (identify redundant positions)
     - Sector balance (avoid concentration)
     - Risk-adjusted allocation (Sharpe optimization)
+
+
     """
-    
+
     def __init__(self, symbols: List[str]):
         self.symbols = symbols
-    
+
     def compute_correlation_matrix(self) -> pd.DataFrame:
         """Get 60-day return correlations."""
         data = {}
@@ -1032,27 +1144,29 @@ class PortfolioAnalyzer:
             ticker = yf.Ticker(sym)
             hist = ticker.history(period="60d")
             data[sym] = hist['Close'].pct_change()
-        
+
         df = pd.DataFrame(data)
         return df.corr()
-    
+
     def check_diversification(self) -> Dict:
         """Ensure portfolio is diversified."""
         corr = self.compute_correlation_matrix()
-        
+
         # Flag high correlations (>0.8)
+
         high_corr_pairs = []
         for i in range(len(corr)):
             for j in range(i+1, len(corr)):
                 if corr.iloc[i, j] > 0.8:
                     high_corr_pairs.append((corr.index[i], corr.columns[j], corr.iloc[i, j]))
-        
+
         return {
             'diversified': len(high_corr_pairs) == 0,
             'high_correlations': high_corr_pairs,
             'recommendation': 'Reduce exposure to correlated assets' if high_corr_pairs else 'Well diversified'
         }
-```
+
+```text
 
 **Result**: GHOST manages portfolio like a fund manager
 
@@ -1061,22 +1175,21 @@ ______________________________________________________________________
 ## 🛠️ FREE TOOLS REFERENCE
 
 | Tool | Purpose | Installation | Cost | |------|---------|-------------|------| |
-**feedparser** | RSS parsing | `pip install feedparser` | FREE | | **spacy** | NER
-extraction | `pip install spacy && python -m spacy download en_core_web_sm` | FREE | |
-**vaderSentiment** | Sentiment analysis | `pip install vaderSentiment` | FREE | |
-**yfinance** | Stock data | `pip install yfinance` | FREE | | **scikit-learn** | ML
-clustering | `pip install scikit-learn` | FREE | | **transformers** | FinBERT (optional)
-| `pip install transformers torch` | FREE | | **SQLite** | Persistence | Built-in Python
-| FREE | | **ChromaDB** | Vector search | `pip install chromadb` | FREE | |
-**NumPy/Pandas** | Data analysis | `pip install numpy pandas` | FREE |
-
-**Total Cost**: $0/month
+**feedparser**| RSS parsing | `pip install feedparser` | FREE | |**spacy**| NER
+extraction | `pip install spacy && python -m spacy download en_core_web_sm` | FREE | |**vaderSentiment**| Sentiment
+analysis | `pip install vaderSentiment` | FREE | |**yfinance**| Stock data | `pip install yfinance` | FREE |
+|**scikit-learn**| ML
+clustering | `pip install scikit-learn` | FREE | |**transformers**| FinBERT (optional)
+| `pip install transformers torch` | FREE | |**SQLite**| Persistence | Built-in Python
+| FREE | |**ChromaDB**| Vector search | `pip install chromadb` | FREE | |**NumPy/Pandas**| Data analysis | `pip install
+numpy pandas` | FREE |**Total Cost**: $0/month
 
 ______________________________________________________________________
 
 ## 📅 IMPLEMENTATION TIMELINE
 
-```
+```text
+
 Week 1-2:  Stage 1 — Context Awareness
            ├─ World context engine
            ├─ Market mood memory
@@ -1110,7 +1223,8 @@ Week 11-12: Integration & Testing
            ├─ End-to-end testing
            ├─ Performance benchmarking
            └─ Documentation
-```
+
+```text
 
 **Total Timeline**: 8-12 weeks (depends on complexity)
 
@@ -1124,7 +1238,10 @@ ______________________________________________________________________
 - [ ] **Self-Evaluation**: MAP < 3% (vs 5% baseline), auto-tunes when degrading
 - [ ] **Strategic Reasoning**: Every decision has 2-line explanation + evidence
 - [ ] **Pattern Recognition**: Detects 10+ recurring patterns (bankruptcy bounces,
+
+
   earnings pops)
+
 - [ ] **Long-Term Memory**: Stores unlimited decisions with semantic search
 - [ ] **Adaptive Strategies**: Switches tactics based on bull/bear/sideways regime
 - [ ] **Portfolio Intelligence**: Manages 10-stock watchlist with correlation analysis
@@ -1132,14 +1249,15 @@ ______________________________________________________________________
 - [ ] **Learning Loop**: Improves forecast accuracy by 20%+ in 30 days
 - [ ] **Autonomy**: Runs 24/7 with zero human intervention
 
+
 ### Performance Targets
 
 | Metric | Current (Level 7) | Target (Level 10) |
-|--------|-------------------|-------------------| | **Forecast MAP** | ~5% | \<3% | |
-**Direction Accuracy** | ~60% | >75% | | **Decision Confidence Calibration** |
-Uncalibrated | R² > 0.8 | | **Pattern Recognition** | 0 patterns | 10+ patterns | |
-**Memory Depth** | 100 samples | Unlimited | | **News Sources** | 14 feeds | 25+ feeds |
-| **Explainability** | Basic | Full causal reasoning | | **Adaptation** | Static |
+|--------|-------------------|-------------------| | **Forecast MAP**| ~5% | \<3% | |**Direction Accuracy**| ~60% | >75%
+| |**Decision Confidence Calibration**|
+Uncalibrated | R² > 0.8 | |**Pattern Recognition**| 0 patterns | 10+ patterns | |**Memory Depth**| 100 samples |
+Unlimited | |**News Sources**| 14 feeds | 25+ feeds |
+|**Explainability**| Basic | Full causal reasoning | |**Adaptation**| Static |
 Regime-aware |
 
 ______________________________________________________________________
@@ -1153,46 +1271,54 @@ ______________________________________________________________________
 - ✅ Sentiment analysis enabled (`NEWS_SENTIMENT_ON=1`)
 - ✅ Watchlist configured (10 stocks)
 
+
 ### Step 1: Install Dependencies
 
 ```bash
+
 pip install feedparser spacy vaderSentiment yfinance scikit-learn chromadb
 python -m spacy download en_core_web_sm
-```
+
+```text
 
 ### Step 2: Create Stage 1 Files
 
 ```bash
+
 mkdir -p core logs reports data
 touch core/context_engine.py
 touch core/market_mood.py
 touch data/market_mood.json
-```
+
+```text
 
 ### Step 3: Implement Context Engine
 
-Copy code from **Stage 1.1** above into `core/context_engine.py`
+Copy code from**Stage 1.1**above into `core/context_engine.py`
 
 ### Step 4: Test Context Engine
 
 ```python
+
 from core.context_engine import WorldContextEngine
 
 feeds = [
-    "https://www.reuters.com/business/rss",
-    "https://www.marketwatch.com/rss/topstories"
+    "<<<<<https://www.reuters.com/business/rss",>>>>>
+    "<<<<<https://www.marketwatch.com/rss/topstories">>>>>
 ]
 
 engine = WorldContextEngine(feeds)
 engine.fetch_and_parse()
 context = engine.get_recent_context(hours=24)
 print(context)
+
 # Output: {'avg_sentiment': 0.32, 'article_count': 127, 'trending_events': 'earnings,merger'}
-```
+
+```text
 
 ### Step 5: Integrate to wolf_app.py
 
-Add background job to fetch context every 5 minutes (see **Stage 1.3**)
+Add background job to fetch context every 5 minutes (see**Stage 1.3**)
 
 ### Step 6: Repeat for Stages 2-6
 
@@ -1230,17 +1356,25 @@ ______________________________________________________________________
 ### Understanding the Architecture
 
 1. **Context Awareness**:
-   [spaCy NER Tutorial](https://spacy.io/usage/linguistic-features#named-entities)
-2. **Pattern Recognition**:
-   [DBSCAN Clustering](https://scikit-learn.org/stable/modules/clustering.html#dbscan)
-3. **Vector Search**: [ChromaDB Docs](https://docs.trychroma.com/)
-4. **Sentiment Analysis**: [VADER Paper](https://github.com/cjhutto/vaderSentiment)
+
+
+   [spaCy NER Tutorial](<<<<<https://spacy.io/usage/linguistic-features#named-entitie>>>>>s)
+
+1. **Pattern Recognition**:
+
+
+   [DBSCAN Clustering](<<<<<https://scikit-learn.org/stable/modules/clustering.html#dbsca>>>>>n)
+
+1. **Vector Search**: [ChromaDB Docs](<<<<<https://docs.trychroma.com>>>>>/)
+2. **Sentiment Analysis**: [VADER Paper](<<<<<https://github.com/cjhutto/vaderSentimen>>>>>t)
+
 
 ### Market Intelligence
 
 1. **Regime Detection**: VIX + moving averages
 2. **Correlation Analysis**: `pandas.DataFrame.corr()`
 3. **Portfolio Optimization**: Sharpe ratio maximization
+
 
 ______________________________________________________________________
 
@@ -1254,6 +1388,7 @@ ______________________________________________________________________
 - 100-sample memory
 - Rule-based decisions
 
+
 ### Level 8 (+Context)
 
 - 25 news sources
@@ -1261,12 +1396,14 @@ ______________________________________________________________________
 - Market mood tracking
 - Entity extraction (NER)
 
+
 ### Level 9 (+Learning)
 
 - Self-evaluation (MAP tracking)
 - Auto-tuning parameters
 - Accuracy monitoring
 - Learning loop
+
 
 ### Level 10 (+Reasoning)
 
@@ -1277,6 +1414,7 @@ ______________________________________________________________________
 - Regime adaptation
 - Portfolio intelligence
 
+
 **Path**: News Reader → World Context Master → Self-Improving Learner → Strategic AI
 Fund Manager
 
@@ -1284,15 +1422,13 @@ ______________________________________________________________________
 
 ## 🚨 NEXT STEPS
 
-1. **Review this roadmap** — Understand the 6 stages
-2. **Install dependencies** — All free tools
-3. **Start Stage 1** — Context engine (2 weeks)
-4. **Test & iterate** — Verify each stage works
-5. **Complete Stages 2-6** — Follow timeline
-6. **Achieve Level 10** — Ghost becomes autonomous AI trader
+1. **Review this roadmap**— Understand the 6 stages
 
-**Ready to begin?** Start with Stage 1.1 (World Context Engine) and build incrementally!
 
-______________________________________________________________________
+2.**Install dependencies**— All free tools
+3.**Start Stage 1**— Context engine (2 weeks)
+4.**Test & iterate**— Verify each stage works
+5.**Complete Stages 2-6**— Follow timeline
+6.**Achieve Level 10**— Ghost becomes autonomous AI trader**Ready to begin?**Start with Stage 1.1 (World Context Engine) and build incrementally!
 
-**End of Roadmap**
+______________________________________________________________________**End of Roadmap**

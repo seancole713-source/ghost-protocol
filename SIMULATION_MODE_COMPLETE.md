@@ -31,38 +31,32 @@ ______________________________________________________________________
 
 ### Core Modules
 
-**1. `simulation_mode.py`** (~500 lines)
+**1. `simulation_mode.py`**(~500 lines)
 
 - Complete simulation engine with 9 mock data providers
 - Auto-activates on import with logging
 - Realistic synthetic data with random variations
-- All functions include `[SIMULATION]` tags in logs
-
-**2. `public/simulation_data.json`** (15 KB)
+- All functions include `[SIMULATION]` tags in logs**2. `public/simulation_data.json`**(15 KB)
 
 - Static JSON file with all mock endpoint responses
 - Ready for frontend integration
-- Accessible at: http://localhost:5000/simulation_data.json
+- Accessible at: <<<<<http://localhost:5000/simulation_data.json>>>>>
 
-### Utility Scripts
 
-**3. `generate_simulation_data.py`** (~260 lines)
+### Utility Scripts**3. `generate_simulation_data.py`**(~260 lines)
 
 - Generates and saves mock data to JSON
 - Displays preview of all 9 endpoint responses
-- Shows detailed data structure for each panel
-
-**4. `activate_simulation.py`** (~180 lines)
+- Shows detailed data structure for each panel**4. `activate_simulation.py`**(~180 lines)
 
 - Runtime injection script (for backend patching)
 - Monkey-patches wolf_app.py endpoints
-- Note: Server restart required for backend method
-
-**5. `start_simulation_mode.sh`** (bash script)
+- Note: Server restart required for backend method**5. `start_simulation_mode.sh`**(bash script)
 
 - Launches server with simulation pre-loaded
 - Sets SIM_MODE=1 environment variable
 - Alternative: Restart server with `bash start_simulation_mode.sh`
+
 
 ______________________________________________________________________
 
@@ -78,17 +72,19 @@ Total P&L: $152.50 (+0.89%)
 Positions:
   🟢 AAPL: 50 shares @ $175.20
      Current: $178.45 | Value: $8,922.50 | P&L: +$162.50 (+1.85%)
-  
+
   🔴 TSLA: 25 shares @ $242.50
      Current: $238.90 | Value: $5,972.50 | P&L: -$90.00 (-1.48%)
-  
+
   🟢 WOLF: 2000 shares @ $1.20
      Current: $1.24 | Value: $2,480.00 | P&L: +$80.00 (+3.33%)
-```
+
+```text
 
 ### 2️⃣ Watchlist (`/api/watcher/watchlist`)
 
 ```yaml
+
 Tickers: 5/25
 
 🟢 MSFT: GPS 8.1 | $378.50 (+1.20%)
@@ -105,11 +101,13 @@ Tickers: 5/25
 
 🔴 DOGE: GPS 5.8 | $0.09 (-2.10%)
    Signal: HOLD | Sentiment: BEARISH
-```
+
+```text
 
 ### 3️⃣ 48H Forecast (`/predict/48h`)
 
 ```yaml
+
 Ticker: WOLF
 Horizon: 48 hours (24 data points every 2h)
 Price Trajectory:
@@ -118,13 +116,17 @@ Price Trajectory:
   Change: +2.30%
 
 Each point includes:
+
   - price_mid, price_lo, price_hi (cone projection)
   - pnl_mid, pnl_lo, pnl_hi (P&L tracking)
-```
+
+
+```text
 
 ### 4️⃣ Trade Card (`/api/trade_card/WOLF`)
 
 ```yaml
+
 Action: BUY WOLF
 Confidence: 72.5% | Win Probability: 68.0%
 
@@ -146,11 +148,13 @@ Historical Analogs:
   🟢 2024-09-15: +4.2% (match: 87%)
   🟢 2024-08-22: +2.8% (match: 82%)
   🟢 2024-07-10: +1.5% (match: 79%)
-```
+
+```text
 
 ### 5️⃣ Market Mood (`/fusion/ai`)
 
 ```yaml
+
 Sentiment: BULLISH/NEUTRAL/BEARISH (random)
 Regime: TRENDING_UP, SIDEWAYS, TRENDING_DOWN
 Confidence: 60-85%
@@ -158,11 +162,13 @@ Confidence: 60-85%
 Market Indicators:
   VIX: 15-25 range
   SPY: ±2% change
-```
+
+```text
 
 ### 6️⃣ News Feed (`/api/feeds/latest`)
 
 ```yaml
+
 Headlines: 20 simulated articles
 
 Sources: Bloomberg, Reuters, CNBC, WSJ, FT
@@ -173,11 +179,13 @@ Symbols: Random 1-3 tickers per article
 Example:
   🟢 [Bloomberg] Tech Stocks Rally on Strong Earnings Reports
      Symbols: TSLA, AMZN, WOLF
-```
+
+```text
 
 ### 7️⃣ AI Preview (`/ai/preview`)
 
 ```yaml
+
 GPS Score: 6.5-8.5/10
 Confidence: 60-85%
 
@@ -190,11 +198,13 @@ Top Features:
   • price_momentum: 0.15
   • news_sentiment: 0.45
   • risk_score: 0.35
-```
+
+```text
 
 ### 8️⃣ Risk Status (`/api/risk/status`)
 
 ```yaml
+
 Can Trade: True (75% probability) / False (25%)
 Risk Level: LOW / HIGH
 
@@ -205,11 +215,13 @@ Reasons:
   • Position size within limits
   • Volatility acceptable
   • Drawdown under threshold
-```
+
+```text
 
 ### 9️⃣ Top Movers (`/api/top_movers`)
 
 ```yaml
+
 Threshold: GPS ≥ 7.0
 Total Count: 3
 
@@ -217,23 +229,24 @@ Stocks:
   🟢 MSFT: GPS 8.1 | $378.50 (+1.20%)
   🟢 AMZN: GPS 7.9 | $145.20 (+0.80%)
   🟢 GOOG: GPS 7.5 | $139.75 (-0.30%)
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 🚀 ACTIVATION OPTIONS
 
-### 🅰️ Option A: Frontend JavaScript (EASIEST - RECOMMENDED)
-
-**Status**: ⚠️ **NOT YET IMPLEMENTED**
+### 🅰️ Option A: Frontend JavaScript (EASIEST - RECOMMENDED)**Status**: ⚠️ **NOT YET IMPLEMENTED**
 
 **Steps**:
 
 1. Open `static/ghost.js`
 
-2. Add simulation mode detection to `initCockpit()`:
+1. Add simulation mode detection to `initCockpit()`:
+
 
    ```javascript
+
    // At top of initCockpit() function
    const urlParams = new URLSearchParams(window.location.search);
    if (urlParams.get('sim') === '1') {
@@ -244,7 +257,7 @@ ______________________________________________________________________
    async function loadSimulationData() {
      const resp = await fetch('/simulation_data.json');
      const data = await resp.json();
-     
+
      // Populate panels with mock data
      renderPortfolio(data.portfolio);
      renderWatchlist(data.watchlist);
@@ -255,12 +268,14 @@ ______________________________________________________________________
      renderAIPreview(data.ai_preview);
      renderRiskStatus(data.risk_status);
      renderTopMovers(data.top_movers);
-     
+
      console.log('[SIMULATION] All panels loaded with mock data');
    }
-   ```
 
-3. **Test URL**: http://localhost:5000/cockpit.html?sim=1
+   ```text
+
+1. **Test URL**: <<<<<http://localhost:5000/cockpit.html?sim=1>>>>>
+
 
 **Advantages**:
 
@@ -268,6 +283,7 @@ ______________________________________________________________________
 - ✅ Easy to toggle on/off with URL parameter
 - ✅ Can test both real and mock data side-by-side
 - ✅ No backend changes needed
+
 
 ______________________________________________________________________
 
@@ -279,11 +295,13 @@ ______________________________________________________________________
 
 1. Stop server: Find PID and kill or Ctrl+C in terminal
 
-2. Open `wolf_app.py`
+1. Open `wolf_app.py`
 
-3. Add imports at top:
+1. Add imports at top:
+
 
    ```python
+
    import os
    from simulation_mode import (
        get_mock_portfolio, get_mock_watchlist, get_mock_forecast_48h,
@@ -293,30 +311,39 @@ ______________________________________________________________________
 
    def is_sim_mode():
        return os.getenv('SIM_MODE') == '1'
-   ```
 
-4. Modify each API endpoint:
+   ```text
+
+1. Modify each API endpoint:
+
 
    ```python
+
    @APP.get("/api/portfolio")
    async def api_portfolio():
        if is_sim_mode():
            return get_mock_portfolio()
-       # ... existing real data logic ...
+
+       # ... existing real data logic 
 
    @APP.get("/api/watcher/watchlist")
    async def api_watcher_get_watchlist():
        if is_sim_mode():
            return {"tickers": get_mock_watchlist(), "count": 5}
-       # ... existing real data logic ...
-   ```
 
-5. Restart server:
+       # ... existing real data logic 
+
+   ```text
+
+1. Restart server:
+
 
    ```bash
+
    export SIM_MODE=1
    bash start_simulation_mode.sh
-   ```
+
+   ```bash
 
 **Advantages**:
 
@@ -324,10 +351,12 @@ ______________________________________________________________________
 - ✅ No frontend changes required
 - ✅ Works for all UI pages (cockpit, bank, markets, engine)
 
+
 **Disadvantages**:
 
 - ⚠️ Requires server restart
 - ⚠️ Must modify wolf_app.py (9 endpoints)
+
 
 ______________________________________________________________________
 
@@ -337,38 +366,44 @@ ______________________________________________________________________
 
 **Steps**:
 
-1. Open: http://localhost:5000/cockpit.html
+1. Open: <<<<<http://localhost:5000/cockpit.html>>>>>
 
-2. Open DevTools (F12) → Console
+1. Open DevTools (F12) → Console
 
-3. Paste and run:
+1. Paste and run:
+
 
    ```javascript
+
    fetch('/simulation_data.json')
      .then(r => r.json())
      .then(data => {
        window.GHOST_SIM_DATA = data;
        console.log('[SIMULATION] Mock data loaded:', data);
-       
+
        // Example: Manually render portfolio
        if (data.portfolio) {
          console.log('Portfolio NAV:', data.portfolio.nav);
          console.log('Positions:', data.portfolio.positions);
        }
      });
-   ```
 
-4. Manually call rendering functions with mock data
+   ```text
+
+1. Manually call rendering functions with mock data
+
 
 **Advantages**:
 
 - ✅ Immediate testing without code changes
 - ✅ Can inspect data structure in console
 
+
 **Disadvantages**:
 
 - ⚠️ Manual process, not persistent
 - ⚠️ Must manually wire data to panels
+
 
 ______________________________________________________________________
 
@@ -376,18 +411,17 @@ ______________________________________________________________________
 
 ### Tonight (Before Monday Launch)
 
-**Step 1**: Test simulation data availability ✅ **COMPLETE**
+**Step 1**: Test simulation data availability ✅ **COMPLETE**```bash
 
-```bash
-curl http://localhost:5000/simulation_data.json | jq 'keys'
-```
+curl <<<<<http://localhost:5000/simulation_data.json>>>>> | jq 'keys'
 
-**Step 2**: Frontend JavaScript integration (Option A)
+```text**Step 2**: Frontend JavaScript integration (Option A)
 
 1. Edit `static/ghost.js`
 2. Add `?sim=1` URL parameter detection
 3. Load mock data when sim mode active
 4. Test all 15 UI panels render correctly
+
 
 **Estimated Time**: 30-45 minutes
 
@@ -398,6 +432,7 @@ curl http://localhost:5000/simulation_data.json | jq 'keys'
 1. Remove `?sim=1` from URL
 2. Confirm all panels work with live API data
 3. Use simulation mode as fallback if any panel fails
+
 
 ______________________________________________________________________
 
@@ -415,11 +450,13 @@ Use this checklist to verify all panels display correctly:
 - [ ] **Decision Preview**: GPS 6.5-8.5 with confidence
 - [ ] **Risk Factors**: can_trade flag, risk level, reasons
 
+
 ### Bank Page (`/bank.html?sim=1`)
 
 - [ ] **Position List**: 3 positions (AAPL, TSLA, WOLF) with current values
 - [ ] **P&L Summary**: Total +$152.50 (+0.89%)
 - [ ] **Cash Balance**: $5,000.00
+
 
 ### Markets Page (`/markets.html?sim=1`)
 
@@ -428,11 +465,13 @@ Use this checklist to verify all panels display correctly:
 - [ ] **Market Mood**: BULLISH/NEUTRAL/BEARISH with VIX, SPY
 - [ ] **News Feed**: 20 headlines with sentiment icons
 
+
 ### Engine Page (`/engine.html?sim=1`)
 
 - [ ] **System Diagnostics**: Shows simulation mode active
 - [ ] **Performance Metrics**: Displays uptime, data sources
 - [ ] **API Status**: All 9 endpoints show "simulation" source
+
 
 ______________________________________________________________________
 
@@ -446,26 +485,31 @@ ______________________________________________________________________
 
 1. **Check JSON file exists**:
 
-   ```bash
-   ls -lh public/simulation_data.json
-   # Should show: ~15KB file
-   ```
 
-2. **Verify URL parameter**:
+   ```bash
+
+   ls -lh public/simulation_data.json
+
+   # Should show: ~15KB file
+
+   ```text
+
+1. **Verify URL parameter**:
 
    - URL must include `?sim=1`
-   - Example: http://localhost:5000/cockpit.html?sim=1
+   - Example: <<<<<http://localhost:5000/cockpit.html?sim=1>>>>>
 
-3. **Check browser console**:
+1. **Check browser console**:
 
    - Open DevTools (F12) → Console
    - Look for `[SIMULATION]` log messages
    - Check for fetch errors
 
-4. **Hard refresh**:
+1. **Hard refresh**:
 
    - Ctrl+Shift+R (Linux/Windows)
    - Cmd+Shift+R (Mac)
+
 
 ### JSON parse errors
 
@@ -475,15 +519,21 @@ ______________________________________________________________________
 
 1. Validate JSON:
 
+
    ```bash
+
    jq '.' public/simulation_data.json
-   ```
 
-2. Regenerate if corrupted:
+   ```text
+
+1. Regenerate if corrupted:
+
 
    ```bash
+
    python3 generate_simulation_data.py
-   ```
+
+   ```bash
 
 ### Panels still blank
 
@@ -495,6 +545,7 @@ ______________________________________________________________________
 2. Verify field names match (e.g., `current_price` not `price`)
 3. Add console.log debugging in rendering functions
 
+
 ______________________________________________________________________
 
 ## 📚 RELATED DOCUMENTATION
@@ -504,11 +555,12 @@ ______________________________________________________________________
 - **simulation_mode.py**: Full source code with documentation
 - **generate_simulation_data.py**: Data generator with preview
 
+
 ______________________________________________________________________
 
 ## ✅ SUCCESS CRITERIA
 
-Simulation mode is **SUCCESSFUL** when:
+Simulation mode is **SUCCESSFUL**when:
 
 1. ✅ All 9 endpoints return mock data
 2. ✅ All 15 UI panels render without errors
@@ -517,43 +569,45 @@ Simulation mode is **SUCCESSFUL** when:
 5. ✅ `[SIMULATION]` tags appear in logs
 6. ✅ URL parameter `?sim=1` toggles mode
 
+
 ______________________________________________________________________
 
 ## 🎉 NEXT STEPS
 
-1. **Implement Option A** (Frontend JavaScript integration)
+1.**Implement Option A**(Frontend JavaScript integration)
 
    - Edit `static/ghost.js`
    - Add `loadSimulationData()` function
    - Wire mock data to rendering functions
 
-2. **Test all 15 panels** with `?sim=1` URL parameter
+
+1.**Test all 15 panels**with `?sim=1` URL parameter
 
    - Verify no blank panels
    - Check data formatting
    - Validate charts render correctly
 
-3. **Compare with real data**
 
-   - Remove `?sim=1` parameter
+1.**Compare with real data**- Remove `?sim=1` parameter
+
    - Ensure real API calls still work
    - Use simulation as fallback
 
-4. **Document any issues**
 
-   - Note field name mismatches
+1.**Document any issues**- Note field name mismatches
+
    - Report missing data structures
    - Update rendering functions as needed
 
-5. **Monday Launch**
 
-   - Switch to LIVE mode (no simulation)
+1.**Monday Launch**- Switch to LIVE mode (no simulation)
+
    - Keep simulation available as backup
    - Monitor for any panel failures
 
-______________________________________________________________________
 
-**Status**: ✅ **SIMULATION MODE READY FOR INTEGRATION**
+______________________________________________________________________**Status**: ✅ **SIMULATION MODE READY FOR
+INTEGRATION**
 
 **Time to Complete Option A**: ~30-45 minutes\
 **Time to Test All Panels**: ~15-20 minutes\

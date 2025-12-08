@@ -2,29 +2,31 @@
 
 ## 🎯 Issues Reported
 
-User reported Ghost showing **100% operational** but experiencing:
+User reported Ghost showing **100% operational**but experiencing:
 
-1. **Watchlist showing `[object Object]`** instead of symbol names
-2. **JavaScript error**: `f.value?.toFixed is not a function` in APEX Trade Card
-3. **UI panels frozen** - no real-time updates
-4. **Ghost-AI v1 decision preview empty**
-5. **Market outlook fields blank** (risk: –, confidence: –)
-6. **Server not running** (task had terminated)
+1.**Watchlist showing `[object Object]`**instead of symbol names
+2.**JavaScript error**: `f.value?.toFixed is not a function` in APEX Trade Card
+
+1. **UI panels frozen**- no real-time updates
+
+
+4.**Ghost-AI v1 decision preview empty**5.**Market outlook fields blank**(risk: –, confidence: –)
+6.**Server not running**(task had terminated)
+
 
 ______________________________________________________________________
 
 ## ✅ Fixes Applied
 
-### 1. **Fixed Watchlist Rendering** (`ui_dist/index.html` line 557-574)
-
-**Problem**: Watchlist API returns array of objects like:
+### 1.**Fixed Watchlist Rendering**(`ui_dist/index.html` line 557-574)**Problem**: Watchlist API returns array of objects like
 
 ```json
 [
   {"symbol": "WOLF", "name": "Wolfspeed Inc", "added_at": "..."},
   {"symbol": "AEO", "name": "American Eagle...", "added_at": "..."}
 ]
-```
+
+```text
 
 JavaScript was calling `.join(', ')` directly on objects, resulting in
 `[object Object]`.
@@ -32,32 +34,35 @@ JavaScript was calling `.join(', ')` directly on objects, resulting in
 **Fix**: Map objects to symbol strings before joining:
 
 ```javascript
+
 // Handle both string arrays and object arrays
-const symbolStrings = symbols.map(s => 
+const symbolStrings = symbols.map(s =>
   typeof s === 'string' ? s : (s.symbol || s.name || String(s))
 );
 if(input) input.value = symbolStrings.join(', ');
-```
+
+```text
 
 ______________________________________________________________________
 
-### 2. **Fixed JavaScript toFixed Error** (`ui_dist/index.html` line 680-689)
-
-**Problem**: Code called `f.value?.toFixed(3)` but `f.value` could be:
+### 2. **Fixed JavaScript toFixed Error**(`ui_dist/index.html` line 680-689)**Problem**: Code called `f.value?.toFixed(3)` but `f.value` could be
 
 - `undefined`
 - `null`
 - A string
 - An object
 
+
 **Fix**: Check if value is actually a number before calling `.toFixed()`:
 
 ```javascript
-const valueStr = (typeof f.value === 'number' && !isNaN(f.value)) 
-  ? f.value.toFixed(3) 
+
+const valueStr = (typeof f.value === 'number' && !isNaN(f.value))
+  ? f.value.toFixed(3)
   : 'N/A';
 return `...Value: ${valueStr}...`;
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -72,6 +77,7 @@ ______________________________________________________________________
 - **Mode**: LIVE (SIM_MODE=0)
 - **Status**: ✅ Healthy, Active
 
+
 ______________________________________________________________________
 
 ## 📊 Verification Results
@@ -79,18 +85,24 @@ ______________________________________________________________________
 ### ✅ Health Check
 
 ```bash
-curl http://localhost:5000/health
-```
+
+curl <<<<<http://localhost:5000/health>>>>>
+
+```text
 
 ```json
+
 {"ok": true, "ts": 1759768258.4289918}
-```
+
+```text
 
 ### ✅ Portfolio API
 
 ```bash
-curl http://localhost:5000/api/portfolio
-```
+
+curl <<<<<http://localhost:5000/api/portfolio>>>>>
+
+```text
 
 **Result**:
 
@@ -101,11 +113,14 @@ curl http://localhost:5000/api/portfolio
 - **P&L**: -$2,819.81 (-93.22%)
 - **GPS**: 7.2
 
+
 ### ✅ Watchlist API
 
 ```bash
-curl http://localhost:5000/api/watchlist
-```
+
+curl <<<<<http://localhost:5000/api/watchlist>>>>>
+
+```text
 
 **Result**:
 
@@ -114,17 +129,21 @@ curl http://localhost:5000/api/watchlist
 - **Format**: Objects with `symbol`, `name`, `added_at` fields
 - **JavaScript Fix**: Now extracts `.symbol` field properly
 
+
 ### ✅ Status API
 
 ```bash
-curl http://localhost:5000/api/status
-```
+
+curl <<<<<http://localhost:5000/api/status>>>>>
+
+```text
 
 **Result**:
 
 - **Mode**: live
 - **Active**: True
 - **Errors**: 0
+
 
 ______________________________________________________________________
 
@@ -140,13 +159,18 @@ ______________________________________________________________________
 - No price tick scheduler running in background
 - AlphaVantage/Polygon fallback not configured
 
+
 **Recommendation**:
 
 ```python
+
 # Check if background price updater is running
+
 grep -r "@repeat_every\|schedule\|tick" wolf_app.py
+
 # Consider adding FastAPI BackgroundTasks for periodic price updates
-```
+
+```text
 
 ### 2. **Ghost-AI v1 Decision Preview Empty**
 
@@ -156,14 +180,20 @@ grep -r "@repeat_every\|schedule\|tick" wolf_app.py
 - Forecast cache not populated
 - AI model needs manual trigger
 
+
 **Recommendation**:
 
 ```bash
+
 # Trigger forecast generation
-curl -X POST http://localhost:5000/agent/analyze
+
+curl -X POST <<<<<http://localhost:5000/agent/analyze>>>>>
+
 # Or check diagnostics
-curl http://localhost:5000/diagnostics/summary
-```
+
+curl <<<<<http://localhost:5000/diagnostics/summary>>>>>
+
+```text
 
 ### 3. **Market Outlook Fields Blank**
 
@@ -173,14 +203,20 @@ curl http://localhost:5000/diagnostics/summary
 - Fusion AI model not initialized
 - External data feeds unavailable
 
+
 **Recommendation**:
 
 ```bash
+
 # Test fusion endpoint
-curl http://localhost:5000/fusion/ai
+
+curl <<<<<http://localhost:5000/fusion/ai>>>>>
+
 # Refresh fusion
-curl -X POST http://localhost:5000/fusion/refresh
-```
+
+curl -X POST <<<<<http://localhost:5000/fusion/refresh>>>>>
+
+```text
 
 ______________________________________________________________________
 
@@ -189,48 +225,64 @@ ______________________________________________________________________
 ### Test Watchlist Fix
 
 ```bash
-# Open cockpit UI
-open https://crispy-happiness-q7gp6xvxr9r62xv9v-5000.app.github.dev/cockpit
 
-# Check Manual Watchlist panel - should show:
+# Open cockpit UI
+
+open <<<<<https://crispy-happiness-q7gp6xvxr9r62xv9v-5000.app.github.dev/cockpit>>>>>
+
+# Check Manual Watchlist panel - should show
+
 # "53 symbols"
+
 # "WOLF, AEO, ANET, APH, ..." (not [object Object])
-```
+
+```text
 
 ### Test APEX Trade Card Fix
 
 ```bash
+
 # Open cockpit, scroll to "APEX Trade Card — AI Explainability"
+
 # Should NOT show: "Failed: f.value?.toFixed is not a function"
+
 # Should show: "Value: 0.123" or "Value: N/A" (gracefully)
-```
+
+```text
 
 ### Test Telegram Bot (Previous Session Fix)
 
 ```bash
-# Send to GhostAlphaSniperBot:
+
+# Send to GhostAlphaSniperBot
+
 /status
 
-# Expected output:
+# Expected output
+
 # 🐺 WOLF STATUS 🐺
+
 # Qty: 8.41959051 (not 0.00)
+
 # Avg: $359.28
+
 # NAV: $205.19
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 📁 Modified Files
 
-1. **`/workspaces/GHOST/ui_dist/index.html`**
-
-   - Line 557-574: Fixed watchlist rendering
+1. **`/workspaces/GHOST/ui_dist/index.html`**- Line 557-574: Fixed watchlist rendering
    - Line 680-689: Fixed toFixed() type error
 
-2. **`/workspaces/GHOST/wolf_app.py`** *(Previous Session)*
+
+1.**`/workspaces/GHOST/wolf_app.py`** *(Previous Session)*
 
    - Added `_get_portfolio_qty_and_avg()` helper
    - Fixed 4 locations reading `STATE["qty"]` directly
+
 
 ______________________________________________________________________
 
@@ -242,6 +294,7 @@ ______________________________________________________________________
 4. **Trigger Forecast**: Call `/agent/analyze` if Ghost-AI preview still empty
 5. **Check Diagnostics**: Call `/diagnostics/run` to verify all subsystems
 
+
 ______________________________________________________________________
 
 ## 📞 Support
@@ -249,15 +302,20 @@ ______________________________________________________________________
 If issues persist:
 
 ```bash
+
 # Full diagnostics
-curl http://localhost:5000/diagnostics/run | jq .
+
+curl <<<<<http://localhost:5000/diagnostics/run>>>>> | jq .
 
 # Server logs
+
 tail -100 ghost_server.out
 
 # Check for errors
+
 grep -i "error\|exception\|failed" ghost_server.out | tail -20
-```
+
+```text
 
 **Server Info**:
 

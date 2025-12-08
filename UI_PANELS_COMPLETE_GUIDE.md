@@ -11,11 +11,12 @@ ______________________________________________________________________
 
 **Current Display**:
 
-```
+```text
 action: HOLD
 confidence: 0%
 why: Momentum +0.00% vs prev close, Dist to avg -0.53%, News neutral
-```
+
+```text
 
 **What It Shows**:
 
@@ -26,6 +27,7 @@ why: Momentum +0.00% vs prev close, Dist to avg -0.53%, News neutral
   - Distance to average cost
   - News sentiment score
 
+
 **Interactive**: Click "AI Decide" button to get fresh recommendation
 
 ______________________________________________________________________
@@ -34,16 +36,19 @@ ______________________________________________________________________
 
 **Current Display**:
 
-```
+```text
+
 Market: CLOSED
 Opens: 10/06/2025, 08:30:00 AM
-```
+
+```text
 
 **What It Shows**:
 
 - **Status**: OPEN or CLOSED
 - **Next Event**: When market opens/closes
 - **Provider**: yfinance (with prev_close fallback)
+
 
 **Real-Time**: Updates automatically when market opens
 
@@ -53,10 +58,12 @@ ______________________________________________________________________
 
 **Current Display**:
 
-```
+```text
+
 conf: 60% · 48h mid PnL: $-13.00
 [Interactive Chart with prediction bands]
-```
+
+```text
 
 **What It Shows**:
 
@@ -65,12 +72,14 @@ conf: 60% · 48h mid PnL: $-13.00
 - **Confidence %**: Model certainty (60% = moderate)
 - **48h Mid PnL**: Expected profit/loss in 2 days
 
+
 **Chart Features**:
 
 - X-axis: Time (48 hours ahead)
 - Y-axis: Price or PnL ($)
 - Band width: Uncertainty range
 - Refresh button: Get latest forecast
+
 
 **Data Points**: 25 forecast points over 48 hours
 
@@ -80,7 +89,8 @@ ______________________________________________________________________
 
 **Current Display**:
 
-```
+```text
+
 ┌─────────────────────────────────────────────────────────┐
 │ Portfolio Overview                                      │
 ├─────────────────────────────────────────────────────────┤
@@ -99,7 +109,8 @@ ______________________________________________________________________
 ├─────────────────────────────────────────────────────────┤
 │ Add Position: [Symbol] [Type▾] [Qty] [Price] [Add]     │
 └─────────────────────────────────────────────────────────┘
-```
+
+```text
 
 **What It Shows**:
 
@@ -107,6 +118,7 @@ ______________________________________________________________________
 - **PnL Abs**: Dollar gain/loss from cost basis
 - **PnL %**: Percentage return on investment
 - **Cash**: Uninvested funds available
+
 
 **Position Details**:
 
@@ -118,6 +130,7 @@ ______________________________________________________________________
 - **PnL**: Unrealized gain/loss per position
 - **GPS**: Ghost Prediction Score (0-10 scale)
 
+
 **Interactive**: Add new positions via form
 
 ______________________________________________________________________
@@ -126,13 +139,15 @@ ______________________________________________________________________
 
 **Current Display**:
 
-```
+```text
+
 ┌──────────────────────────────┐
 │ WOLF                         │
 │ GPS 7.2                      │
 │ $24.37                       │
 └──────────────────────────────┘
-```
+
+```text
 
 **What It Shows**:
 
@@ -143,36 +158,42 @@ ______________________________________________________________________
   - 7-10: Bullish (green)
 - **Current Price**: Latest market price
 
+
 **GPS Score Breakdown**:
 
-```
+```text
+
 7.2 = Moderately Bullish
 ├─ Technical indicators: Positive
 ├─ Momentum: Neutral
 ├─ News sentiment: Neutral
 ├─ Volatility: Low
 └─ Forecast confidence: 60%
-```
+
+```text
 
 **Color Coding**:
 
-- 🟢 **Green** (7-10): Strong buy signal
-- 🟡 **Yellow** (4-6): Hold/neutral
-- 🔴 **Red** (0-3): Bearish/avoid
+- 🟢 **Green**(7-10): Strong buy signal
+- 🟡**Yellow**(4-6): Hold/neutral
+- 🔴**Red**(0-3): Bearish/avoid
+
 
 ______________________________________________________________________
 
-### 6. 📊 **Top Movers**
+### 6. 📊**Top Movers**
 
 **Current Display**:
 
-```
+```text
+
 Stocks:
   WOLF    $24.37    0.00%    GPS 7.2
 
 Crypto:
   (empty - focus mode active)
-```
+
+```text
 
 **What It Shows**:
 
@@ -181,14 +202,17 @@ Crypto:
 - **Change %**: Daily price movement
 - **GPS**: Quick sentiment score
 
+
 **When Market Open**:
 
-```
+```text
+
 Stocks:
   WOLF    $25.45    +4.41%   GPS 8.5  ⬆️
   AAPL    $178.23   +2.15%   GPS 7.8  ⬆️
   NVDA    $482.91   -1.23%   GPS 6.2  ⬇️
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -196,18 +220,21 @@ ______________________________________________________________________
 
 **Current Display**:
 
-```
+```text
+
 risk: neutral
 confidence: 0.70
 action: HOLD
 
 Signals:
   (No signals displayed)
-```
 
-**What It SHOULD Show** (when populated):
+```text
 
-```
+**What It SHOULD Show**(when populated):
+
+```text
+
 risk: moderate
 confidence: 0.75
 
@@ -221,9 +248,8 @@ Signals:
   MACD: Bullish crossover
   Volume: Above average (+15%)
   Sentiment: Slightly bullish (+0.12)
-```
 
-**Interactive**: Click "Refresh" to update outlook
+```text**Interactive**: Click "Refresh" to update outlook
 
 **Risk Levels**:
 
@@ -231,13 +257,15 @@ Signals:
 - **moderate**: Yellow, confidence 50-80%
 - **high**: Red, confidence \<50%
 
+
 ______________________________________________________________________
 
 ### 8. 📰 **Live News**
 
-**Current Display** (10 items showing):
+**Current Display**(10 items showing):
 
-```
+```text
+
 03:38:00 AM  Should You Buy Wolfspeed Stock Right Now?
              Source: polygon  |  Tag: • Neutral
 
@@ -251,9 +279,8 @@ ______________________________________________________________________
              Source: polygon  |  Tag: • Neutral
 
 [... 6 more articles ...]
-```
 
-**What It Shows**:
+```text**What It Shows**:
 
 - **Timestamp**: Article publish time
 - **Headline**: News title (clickable link)
@@ -263,10 +290,12 @@ ______________________________________________________________________
   - • **Neutral**: No clear direction
   - ↓ **Bearish**: Negative sentiment
 
+
 **Filters**:
 
 - **Relevant**: WOLF-specific news only
 - **All**: Broader market news
+
 
 **Interactive**: Click "Refresh" for latest headlines
 
@@ -277,6 +306,7 @@ ______________________________________________________________________
 **Current Display**:
 
 ```json
+
 {
   "error_count": 0,
   "events": [
@@ -293,7 +323,8 @@ ______________________________________________________________________
     }
   ]
 }
-```
+
+```text
 
 **What It Shows**:
 
@@ -305,13 +336,16 @@ ______________________________________________________________________
   - forecast: Forecast generation
   - ai_decide: AI decision made
 
+
 **Recent Events Log**:
 
-```
+```text
+
 [01:03:36 PM] snapshot: Cockpit snapshot served
 [01:03:41 PM] price_ok: cache (TTL hit, 0ms)
 [01:04:10 PM] snapshot: Cockpit snapshot served
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -319,11 +353,13 @@ ______________________________________________________________________
 
 ### Header Controls
 
-```
+```text
+
 ┌─────────────────────────────────────────┐
 │ [Start] [Stop] [Save] [Reset]          │
 └─────────────────────────────────────────┘
-```
+
+```text
 
 **Button Functions**:
 
@@ -332,13 +368,17 @@ ______________________________________________________________________
 - **Save**: Persist current state to disk
 - **Reset**: Clear all positions (WARNING!)
 
+
 ### Panel-Specific Buttons
 
 - **AI Decide**: Generate fresh AI recommendation
-- **Refresh** (Forecast): Update 48h chart
-- **Refresh** (Outlook): Update fusion analysis
-- **Refresh** (News): Fetch latest headlines
-- **Add Position**: Submit new position form
+- **Refresh**(Forecast): Update 48h chart
+
+
+-**Refresh**(Outlook): Update fusion analysis
+-**Refresh**(News): Fetch latest headlines
+-**Add Position**: Submit new position form
+
 
 ______________________________________________________________________
 
@@ -346,9 +386,11 @@ ______________________________________________________________________
 
 **Header Display**:
 
-```
+```text
+
 ckpt-1759687476-bf30 • 10/05/2025, 01:04:36 PM
-```
+
+```text
 
 **What It Means**:
 
@@ -356,6 +398,7 @@ ckpt-1759687476-bf30 • 10/05/2025, 01:04:36 PM
 - **1759687476**: Unix timestamp
 - **bf30**: Unique 4-char identifier
 - **Date/Time**: Human-readable timestamp
+
 
 **Updates**: Every 5-20 seconds via SSE stream
 
@@ -365,7 +408,8 @@ ______________________________________________________________________
 
 ### Portfolio Metrics
 
-```
+```text
+
 Total Positions: 1 (WOLF stock)
 Total Quantity: 100 shares
 Total Value: $2,437.00
@@ -374,36 +418,43 @@ Current Price: $24.37
 Unrealized PnL: -$13.00 (-0.53%)
 Available Cash: $0.00
 GPS Score: 7.2/10 (Bullish)
-```
+
+```text
 
 ### Market State
 
-```
+```text
+
 Status: CLOSED (weekend)
 Next Open: Monday 10/06/2025, 08:30 AM
 Price Source: prev_close (last Friday)
 Data Age: <5 minutes
 Feeds Active: ✅ Stocks, ✅ News, ✅ Telegram
-```
+
+```text
 
 ### AI Analysis
 
-```
+```text
+
 Recommendation: HOLD
 Confidence: 0% (low data during market close)
 Reasoning: Neutral momentum, small unrealized loss
 Next Review: When market opens
-```
+
+```text
 
 ### Forecast
 
-```
+```text
+
 Horizon: 48 hours
 Confidence: 60%
 Mid Prediction: $24.37 → $24.24 (48h)
 Expected PnL: -$13.00 (current)
 Model: ghost-av1 (ensemble)
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -412,49 +463,60 @@ ______________________________________________________________________
 ### 1. Add More WOLF Positions (Different Prices)
 
 ```bash
+
 # Buy 25 shares at $24.75
-curl -X POST "http://localhost:5000/api/bank/add_position" \
+
+curl -X POST "<<<<<http://localhost:5000/api/bank/add_position">>>>> \
   -H "Content-Type: application/json" \
   -d '{"symbol":"WOLF","quantity":25,"price":24.75,"type":"stock"}'
 
 # Buy 50 shares at $24.20
-curl -X POST "http://localhost:5000/api/bank/add_position" \
+
+curl -X POST "<<<<<http://localhost:5000/api/bank/add_position">>>>> \
   -H "Content-Type: application/json" \
   -d '{"symbol":"WOLF","quantity":50,"price":24.20,"type":"stock"}'
 
 # Result: Portfolio updates to 175 shares with new average cost
-```
+
+```text
 
 ### 2. Trigger AI Decision
 
 ```bash
-curl -X POST "http://localhost:5000/ai/decide" \
+
+curl -X POST "<<<<<http://localhost:5000/ai/decide">>>>> \
   -H "Content-Type: application/json"
 
 # Result: Ghost-AI v1 panel fills with fresh recommendation
-```
+
+```text
 
 ### 3. Refresh Forecast
 
 ```bash
-curl "http://localhost:5000/predict/48h"
+
+curl "<<<<<http://localhost:5000/predict/48h">>>>>
 
 # Result: 48h chart updates with new predictions
-```
+
+```text
 
 ### 4. Update Market Outlook
 
 ```bash
-curl -X POST "http://localhost:5000/fusion/refresh"
+
+curl -X POST "<<<<<http://localhost:5000/fusion/refresh">>>>>
 
 # Result: Market Outlook panel shows risk/confidence/scenarios
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 📊 EXPECTED DISPLAY (All Panels Full)
 
-```
+```text
+
 ╔═══════════════════════════════════════════════════════════════╗
 ║ Ghost Cockpit — Live Trader Dashboard                        ║
 ║ mode: live  |  status: active                                ║
@@ -528,7 +590,8 @@ ______________________________________________________________________
 ║ │ [01:04:46 PM] snapshot: Cockpit snapshot served           │ ║
 ║ └───────────────────────────────────────────────────────────┘ ║
 ╚═══════════════════════════════════════════════════════════════╝
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -547,10 +610,9 @@ ______________________________________________________________________
 - ✅ Live News: 10 recent articles with sentiment
 - ✅ Diagnostics: 0 errors, event stream active
 
-**Nothing is empty!** All panels have realistic test data.
 
-______________________________________________________________________
+**Nothing is empty!**All panels have realistic test data.
 
-**Status**: ✅ **ALL PANELS POPULATED**\
+______________________________________________________________________**Status**: ✅ **ALL PANELS POPULATED**\
 **Last Updated**: October 5, 2025, 01:04 PM\
 **Next Refresh**: Auto (SSE stream active)

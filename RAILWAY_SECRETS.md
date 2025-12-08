@@ -52,13 +52,17 @@ ______________________________________________________________________
 5. Click "Add Variable" for each secret above
 6. Copy the exact values (including quotes if shown)
 
+
 ### Option B: Railway CLI
 
 ```bash
+
 # First, login to Railway
+
 railway login
 
 # Add all 8 variables at once
+
 railway variables set GHOST_API_TOKEN="e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0"
 railway variables set POLYGON_API_KEY="G1UkONuCx3Mpcngnvu239peiSyhNWRC3"
 railway variables set ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK"
@@ -67,13 +71,16 @@ railway variables set TELEGRAM_CHAT_ID="940596997"
 railway variables set GHOST_FOCUS_TICKER="WOLF"
 railway variables set WOLF_PERSIST_MODE="sqlite"
 railway variables set SIM_MODE="0"
-```
+
+```text
 
 ### Verify Variables Are Set
 
 ```bash
+
 railway variables
-```
+
+```text
 
 Should show all 8 variables listed.
 
@@ -82,12 +89,11 @@ ______________________________________________________________________
 ## What Each Secret Does
 
 | Variable | Used For | Required? | |----------|----------|-----------| |
-**GHOST_API_TOKEN** | Authenticate API requests to Ghost | ✅ YES | | **POLYGON_API_KEY**
-| Fetch stock prices from Polygon.io | ✅ YES | | **ALPHAVANTAGE_API_KEY** | Backup price
-provider | ✅ YES | | **TELEGRAM_BOT_TOKEN** | Send trading alerts | ⚠️ Optional\* | |
+**GHOST_API_TOKEN**| Authenticate API requests to Ghost | ✅ YES | |**POLYGON_API_KEY**| Fetch stock prices from Polygon.io | ✅ YES | |**ALPHAVANTAGE_API_KEY**| Backup price
+provider | ✅ YES | |**TELEGRAM_BOT_TOKEN** | Send trading alerts | ⚠️ Optional\* | |
 **TELEGRAM_CHAT_ID** | Receive alerts on your phone | ⚠️ Optional\* | |
-**GHOST_FOCUS_TICKER** | Which stock to trade (WOLF) | ✅ YES | | **WOLF_PERSIST_MODE** |
-How to save data (sqlite) | ✅ YES | | **SIM_MODE** | Live trading (0) or simulation (1)
+**GHOST_FOCUS_TICKER**| Which stock to trade (WOLF) | ✅ YES | |**WOLF_PERSIST_MODE**|
+How to save data (sqlite) | ✅ YES | |**SIM_MODE** | Live trading (0) or simulation (1)
 | ✅ YES |
 
 \*Telegram is optional but recommended for alerts
@@ -96,14 +102,15 @@ ______________________________________________________________________
 
 ## After Adding Secrets
 
-Railway will automatically **redeploy** your app with the new environment variables.
-
-**Wait 2-3 minutes** for the redeploy to complete, then test:
+Railway will automatically **redeploy**your app with the new environment variables.**Wait 2-3 minutes**for the redeploy
+to complete, then test:
 
 ```bash
+
 railway domain  # Get your URL
-curl https://[your-url]/health
-```
+curl <<<<<https://[your-url]/health>>>>>
+
+```text
 
 Expected: `{"ok": true, "ts": ...}`
 
@@ -111,26 +118,30 @@ ______________________________________________________________________
 
 ## Security Notes
 
-⚠️ **IMPORTANT**: These secrets are already exposed in this file. After deployment:
+⚠️**IMPORTANT**: These secrets are already exposed in this file. After deployment:
 
 1. Consider rotating your API keys (get new ones)
 2. Never commit `.env` files or secrets to GitHub
 3. Use Railway's secret management (encrypted at rest)
 4. Regenerate GHOST_API_TOKEN if you suspect compromise
 
+
 To rotate GHOST_API_TOKEN:
 
 ```python
+
 import secrets
 new_token = secrets.token_urlsafe(32)
 print(new_token)  # Use this as new GHOST_API_TOKEN
-```
+
+```text
 
 ______________________________________________________________________
 
 ## Quick Copy-Paste (for CLI)
 
 ```bash
+
 railway variables set GHOST_API_TOKEN="e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0" \
   && railway variables set POLYGON_API_KEY="G1UkONuCx3Mpcngnvu239peiSyhNWRC3" \
   && railway variables set ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK" \
@@ -139,30 +150,23 @@ railway variables set GHOST_API_TOKEN="e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0" \
   && railway variables set GHOST_FOCUS_TICKER="WOLF" \
   && railway variables set WOLF_PERSIST_MODE="sqlite" \
   && railway variables set SIM_MODE="0"
-```
+
+```text
 
 ______________________________________________________________________
 
 ## Troubleshooting
 
-**If Ghost crashes after deployment:**
+**If Ghost crashes after deployment:**- Check Railway logs: `railway logs --tail 50`
 
-- Check Railway logs: `railway logs --tail 50`
 - Look for "environment variable not found" errors
-- Verify all 8 variables are set: `railway variables`
-
-**If prices don't work:**
-
-- POLYGON_API_KEY and ALPHAVANTAGE_API_KEY must be valid
+- Verify all 8 variables are set: `railway variables`**If prices don't work:**- POLYGON_API_KEY and ALPHAVANTAGE_API_KEY must be valid
 - Check provider status in logs
-- Ghost will fall back to forecast data if providers fail
-
-**If you don't receive alerts:**
-
-- TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are optional
+- Ghost will fall back to forecast data if providers fail**If you don't receive alerts:**- TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are optional
 - Ghost will still trade without them
 - Test Telegram: send `/start` to your bot
 
+
 ______________________________________________________________________
 
-✅ **Add these 8 secrets, then Ghost will be fully operational on Railway!**
+✅**Add these 8 secrets, then Ghost will be fully operational on Railway!**

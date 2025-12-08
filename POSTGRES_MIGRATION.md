@@ -4,9 +4,9 @@
 
 Successfully migrated Ghost Protocol from SQLite to Railway PostgreSQL with full scalability architecture.
 
-**Migration Date**: November 30, 2025  
-**Database**: Railway PostgreSQL  
-**Host**: metro.proxy.rlwy.net:28328  
+**Migration Date**: November 30, 2025
+**Database**: Railway PostgreSQL
+**Host**: metro.proxy.rlwy.net:28328
 **Status**: ✅ COMPLETE
 
 ---
@@ -17,20 +17,21 @@ Successfully migrated Ghost Protocol from SQLite to Railway PostgreSQL with full
 
 | Component | Before (SQLite) | After (PostgreSQL) | Status |
 |-----------|----------------|-------------------|--------|
-| **Predictions** | `ghost_predictions.db` (local) | `ghost_predictions` table | ✅ Ready |
-| **Outcomes** | `ghost_predictions.db` (local) | `outcomes` table | ✅ Ready |
-| **Watchlist** | `watchlist.db` (local) | `symbol_universe` table | ✅ Ready |
-| **Price Cache** | In-memory only | `price_cache` table | ✅ NEW |
-| **Volatility Triggers** | Not tracked | `volatility_triggers` table | ✅ NEW |
-| **Connection Pooling** | N/A (file-based) | ThreadedConnectionPool (2-20) | ✅ Active |
+| **Predictions**| `ghost_predictions.db` (local) | `ghost_predictions` table | ✅ Ready |
+|**Outcomes**| `ghost_predictions.db` (local) | `outcomes` table | ✅ Ready |
+|**Watchlist**| `watchlist.db` (local) | `symbol_universe` table | ✅ Ready |
+|**Price Cache**| In-memory only | `price_cache` table | ✅ NEW |
+|**Volatility Triggers**| Not tracked | `volatility_triggers` table | ✅ NEW |
+|**Connection Pooling**| N/A (file-based) | ThreadedConnectionPool (2-20) | ✅ Active |
 
 ### New Capabilities Unlocked
 
-1. **Unlimited Symbol Tracking** - PostgreSQL handles millions of rows efficiently
-2. **Concurrent Access** - Connection pooling supports multiple workers
-3. **Real-time Analytics** - Advanced SQL queries on massive datasets
-4. **Data Durability** - Railway automatic backups + replication
-5. **Horizontal Scaling** - Ready for read replicas
+1.**Unlimited Symbol Tracking**- PostgreSQL handles millions of rows efficiently
+2.**Concurrent Access**- Connection pooling supports multiple workers
+3.**Real-time Analytics**- Advanced SQL queries on massive datasets
+4.**Data Durability**- Railway automatic backups + replication
+5.**Horizontal Scaling**- Ready for read replicas
+
 
 ---
 
@@ -39,6 +40,7 @@ Successfully migrated Ghost Protocol from SQLite to Railway PostgreSQL with full
 ### Core Tables
 
 #### 1. `ghost_predictions`
+
 Stores all prediction records with metadata.
 
 ```sql
@@ -58,10 +60,11 @@ CREATE TABLE ghost_predictions (
 
 CREATE INDEX idx_predictions_symbol ON ghost_predictions(symbol);
 CREATE INDEX idx_predictions_run_at ON ghost_predictions(run_at DESC);
-```
 
-**Example Record**:
+```text**Example Record**:
+
 ```json
+
 {
   "id": 1,
   "symbol": "AAPL",
@@ -73,12 +76,15 @@ CREATE INDEX idx_predictions_run_at ON ghost_predictions(run_at DESC);
   "model_version": "ghost_v2",
   "provider": "volatility_engine"
 }
-```
+
+```text
 
 #### 2. `prediction_points`
+
 Stores forecast price paths (for charting).
 
 ```sql
+
 CREATE TABLE prediction_points (
     id SERIAL PRIMARY KEY,
     prediction_id INTEGER NOT NULL,
@@ -88,12 +94,15 @@ CREATE TABLE prediction_points (
 );
 
 CREATE INDEX idx_prediction_points_pred_id ON prediction_points(prediction_id);
-```
+
+```text
 
 #### 3. `outcomes`
+
 Stores prediction evaluation results.
 
 ```sql
+
 CREATE TABLE outcomes (
     id SERIAL PRIMARY KEY,
     prediction_id INTEGER NOT NULL,
@@ -113,12 +122,15 @@ CREATE TABLE outcomes (
 CREATE INDEX idx_outcomes_symbol ON outcomes(symbol);
 CREATE INDEX idx_outcomes_evaluated_at ON outcomes(evaluated_at DESC);
 CREATE INDEX idx_outcomes_was_correct ON outcomes(was_correct);
-```
+
+```text
 
 #### 4. `symbol_universe`
+
 Stores all trackable symbols (~7,000 US stocks + crypto).
 
 ```sql
+
 CREATE TABLE symbol_universe (
     id SERIAL PRIMARY KEY,
     symbol TEXT UNIQUE NOT NULL,
@@ -136,12 +148,15 @@ CREATE TABLE symbol_universe (
 
 CREATE INDEX idx_symbol_universe_symbol ON symbol_universe(symbol);
 CREATE INDEX idx_symbol_universe_active ON symbol_universe(is_active);
-```
+
+```text
 
 #### 5. `price_cache`
+
 Stores recent price snapshots for volatility detection.
 
 ```sql
+
 CREATE TABLE price_cache (
     id SERIAL PRIMARY KEY,
     symbol TEXT NOT NULL,
@@ -153,12 +168,15 @@ CREATE TABLE price_cache (
 );
 
 CREATE INDEX idx_price_cache_symbol_time ON price_cache(symbol, timestamp DESC);
-```
+
+```text
 
 #### 6. `volatility_triggers`
+
 Logs all volatility events (for debugging and analysis).
 
 ```sql
+
 CREATE TABLE volatility_triggers (
     id SERIAL PRIMARY KEY,
     symbol TEXT NOT NULL,
@@ -172,7 +190,8 @@ CREATE TABLE volatility_triggers (
 
 CREATE INDEX idx_volatility_triggers_symbol ON volatility_triggers(symbol);
 CREATE INDEX idx_volatility_triggers_time ON volatility_triggers(triggered_at DESC);
-```
+
+```text
 
 ---
 
@@ -183,16 +202,20 @@ CREATE INDEX idx_volatility_triggers_time ON volatility_triggers(triggered_at DE
 Copies all historical data from SQLite → PostgreSQL.
 
 ```bash
+
 python scripts/migrate_to_postgres.py \
   --mode=A \
   --database-url="postgresql://postgres:***@metro.proxy.rlwy.net:28328/railway"
-```
+
+```text
 
 **What gets migrated**:
+
 - ✅ All predictions (past 7 days)
 - ✅ All outcomes
 - ✅ Watchlist symbols
 - ✅ Historical price data (if available)
+
 
 **Duration**: ~2-5 minutes for typical Ghost installation
 
@@ -201,25 +224,31 @@ python scripts/migrate_to_postgres.py \
 Creates new schema only, archives old data.
 
 ```bash
+
 python scripts/migrate_to_postgres.py \
   --mode=B \
   --database-url="postgresql://postgres:***@metro.proxy.rlwy.net:28328/railway"
-```
+
+```text
 
 **Use when**:
+
 - Starting fresh deployment
 - Old data is corrupted
 - Want clean slate for testing
+
 
 ### Option C: Hybrid (Last 30 Days)
 
 Migrates recent data only (recommended for large SQLite databases).
 
 ```bash
+
 python scripts/migrate_to_postgres.py \
   --mode=C \
   --database-url="postgresql://postgres:***@metro.proxy.rlwy.net:28328/railway"
-```
+
+```text
 
 ---
 
@@ -230,42 +259,56 @@ python scripts/migrate_to_postgres.py \
 Add to Railway or `.env`:
 
 ```bash
+
 # PostgreSQL Connection
+
 DATABASE_URL="postgresql://postgres:jdkObNnbzRoxzsPicrsfDeNuSUIrTgLp@metro.proxy.rlwy.net:28328/railway"
 
 # Connection Pool (optional, has sensible defaults)
+
 DB_POOL_MIN=2
 DB_POOL_MAX=20
 
 # Legacy SQLite (fallback only, not used when DATABASE_URL is set)
+
 WOLF_SQLITE_PATH="data/wolf.db"
-```
+
+```text
 
 ### Code Changes
 
 **Before (SQLite)**:
+
 ```python
+
 import sqlite3
 conn = sqlite3.connect("data/wolf.db")
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM predictions")
-```
+
+```text
 
 **After (PostgreSQL-aware)**:
+
 ```python
+
 from core.db_engine import get_db_connection
 
 with get_db_connection() as conn:
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM ghost_predictions")
+
     # Auto-commits on success, auto-rollbacks on error
-```
+
+```text
 
 The `db_engine` module automatically detects PostgreSQL vs SQLite and handles:
+
 - ✅ Connection pooling
 - ✅ Parameter styles (`?` vs `%s`)
 - ✅ Transaction management
 - ✅ Error handling and retries
+
 
 ---
 
@@ -284,9 +327,9 @@ The `db_engine` module automatically detects PostgreSQL vs SQLite and handles:
 
 | Metric | Value |
 |--------|-------|
-| Max symbols | **7,000+** (tested), millions (theoretical) |
+| Max symbols | **7,000+**(tested), millions (theoretical) |
 | Concurrent writes | ✅ 20 connections |
-| Query time (1M rows) | **~0.5-1 second** (10x faster) |
+| Query time (1M rows) |**~0.5-1 second** (10x faster) |
 | Backup strategy | Railway automatic hourly backups |
 
 ---
@@ -296,25 +339,33 @@ The `db_engine` module automatically detects PostgreSQL vs SQLite and handles:
 ### Direct psql Access
 
 ```bash
+
 # Connect via psql
+
 psql postgresql://postgres:jdkObNnbzRoxzsPicrsfDeNuSUIrTgLp@metro.proxy.rlwy.net:28328/railway
 
 # List tables
+
 \dt
 
 # View schema
+
 \d ghost_predictions
 
 # Count records
+
 SELECT COUNT(*) FROM ghost_predictions;
-```
+
+```text
 
 ### Python Queries
 
 ```python
+
 from core.db_engine import get_db_connection
 
 # Get recent predictions
+
 with get_db_connection() as conn:
     cursor = conn.cursor()
     cursor.execute("""
@@ -327,10 +378,11 @@ with get_db_connection() as conn:
     predictions = cursor.fetchall()
 
 # Get accuracy by symbol
+
 with get_db_connection() as conn:
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT symbol, 
+        SELECT symbol,
                COUNT(*) as total,
                SUM(was_correct) as correct,
                ROUND(100.0 * SUM(was_correct) / COUNT(*), 2) as accuracy_pct
@@ -341,7 +393,8 @@ with get_db_connection() as conn:
         LIMIT 20
     """)
     accuracy = cursor.fetchall()
-```
+
+```text
 
 ---
 
@@ -352,28 +405,39 @@ If migration fails or issues arise:
 ### 1. Revert to SQLite
 
 ```bash
+
 # Unset DATABASE_URL
+
 export DATABASE_URL=""
 
 # Restart Ghost Protocol
+
 # Will automatically fall back to WOLF_SQLITE_PATH
-```
+
+```text
 
 ### 2. Re-migrate with Different Mode
 
 ```bash
+
 # Try hybrid mode if full transfer failed
+
 python scripts/migrate_to_postgres.py --mode=C --database-url="..."
-```
+
+```text
 
 ### 3. Restore from Backup
 
 Railway provides automatic backups:
+
 ```bash
+
 # Via Railway CLI
+
 railway backup list
 railway backup restore <backup-id>
-```
+
+```text
 
 ---
 
@@ -390,40 +454,47 @@ After migration, verify:
 - [ ] Evaluator can write outcomes
 - [ ] Connection pool logs show healthy connections
 
+
 ---
 
 ## 🔮 Next Steps
 
-1. **Ingest US Market Symbols** (7,000 stocks)
-   ```bash
-   python scripts/ingest_us_market.py
-   ```
+1. **Ingest US Market Symbols**(7,000 stocks)
 
-2. **Enable Volatility-Triggered Predictions**
-   - Set `PREDICTION_MODE=volatility` in Railway
+
+   ```bash
+
+   python scripts/ingest_us_market.py
+
+   ```text
+
+1.**Enable Volatility-Triggered Predictions**- Set `PREDICTION_MODE=volatility` in Railway
+
    - Adjust thresholds via `VOLATILITY_THRESHOLD_STOCK` and `VOLATILITY_THRESHOLD_CRYPTO`
 
-3. **Monitor Performance**
-   - Check connection pool utilization
+
+1.**Monitor Performance**- Check connection pool utilization
+
    - Monitor query performance via Railway metrics
    - Set up alerts for slow queries
 
-4. **Scale Horizontally**
-   - Add read replicas for analytics queries
+
+1.**Scale Horizontally**- Add read replicas for analytics queries
+
    - Separate write/read workloads
    - Consider connection pooling proxy (PgBouncer)
 
+
 ---
 
-## 📞 Support
+## 📞 Support**Migration logs**: `logs/migration.log`
 
-**Migration logs**: `logs/migration.log`  
-**Database logs**: Railway dashboard → Logs  
-**Connection issues**: Check `DATABASE_URL` format and firewall rules  
+**Database logs**: Railway dashboard → Logs
+**Connection issues**: Check `DATABASE_URL` format and firewall rules
 **Schema issues**: Verify PostgreSQL version >= 12
 
 ---
 
-**Migration Completed By**: Ghost Scaling Architect  
-**Status**: ✅ Production Ready  
+**Migration Completed By**: Ghost Scaling Architect
+**Status**: ✅ Production Ready
 **Last Updated**: November 30, 2025

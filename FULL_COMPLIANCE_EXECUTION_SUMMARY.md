@@ -10,7 +10,7 @@ ______________________________________________________________________
 
 ## Executive Summary
 
-Successfully implemented **complete two-line overlay system** (Ghost forecast vs Live
+Successfully implemented **complete two-line overlay system**(Ghost forecast vs Live
 actual) with:
 
 - ✅ Backend infrastructure (100%)
@@ -19,17 +19,15 @@ actual) with:
 - ✅ Startup initialization (100%)
 - ✅ Historical data collection (100%)
 - ✅ Comprehensive test suite (20 tests: 16 passed, 4 N/A)
-- ✅ Runtime verification tooling (100%)
+- ✅ Runtime verification tooling (100%)**Estimated Compliance Improvement**: 68.6% → **95-100%**(pending final audit)
 
-**Estimated Compliance Improvement**: 68.6% → **95-100%** (pending final audit)
 
 ______________________________________________________________________
 
 ## Implementation Details
 
-### 1. Two-Line Overlay Backend Infrastructure ✅ COMPLETE
+### 1. Two-Line Overlay Backend Infrastructure ✅ COMPLETE**File**: `wolf_app.py` Lines 548-790, 5733-5797\
 
-**File**: `wolf_app.py` Lines 548-790, 5733-5797\
 **Status**: Implemented and tested
 
 **Components**:
@@ -39,7 +37,8 @@ ______________________________________________________________________
 - `_compute_forecast_accuracy()`: MAP, RMSE, bias calculations
 - `_build_two_line_forecast()`: Orchestrator function
 
-**Schema** (two_line_overlay):
+
+**Schema**(two_line_overlay):
 
 ```json
 {
@@ -61,11 +60,11 @@ ______________________________________________________________________
     "summary": {"map": 0.0015, "rmse": 0.05, "bias": -0.01}
   }
 }
-```
 
-### 2. Cockpit API Integration ✅ COMPLETE
+```text
 
-**Endpoint**: `/api/cockpit`\
+### 2. Cockpit API Integration ✅ COMPLETE**Endpoint**: `/api/cockpit`\
+
 **Status**: Integrated and tested
 
 **Changes**:
@@ -73,6 +72,7 @@ ______________________________________________________________________
 - Added `two_line_overlay` field to cockpit snapshot
 - Field contains complete forecast + actual + accuracy data
 - Accessible to frontend via GET /api/cockpit
+
 
 ### 3. SSE Streaming Endpoint ✅ COMPLETE
 
@@ -85,6 +85,7 @@ ______________________________________________________________________
 - Emits `forecast_update` events with two_line_overlay data
 - Frontend auto-refreshes chart on event receipt
 - Reconnection logic with 5s delay
+
 
 ### 4. Frontend Visualization ✅ COMPLETE
 
@@ -99,11 +100,13 @@ ______________________________________________________________________
 - Maintains backward compatibility with legacy forecast schema
 - Extracts band data (lo/hi) from separate arrays
 
+
 #### B. `drawForecastChart()` (Lines 777-792)
 
 - **Ghost forecast**: Solid blue line (#5bd4ff, 2.5px width)
 - **Live actual**: Dashed white line (#e7eaf6, 2px width, [6,4] dash pattern)
 - Gap handling in actual line rendering
+
 
 #### C. `loadForecastOverlay()` (Lines 794-850)
 
@@ -112,6 +115,7 @@ ______________________________________________________________________
 - Added data source badge (`Src: history|live|prev_close`)
 - Confidence from `forecast.meta.conf`
 - Fallback to legacy overlay if `two_line_overlay` not available
+
 
 #### D. `connectCockpitStream()` (Lines 582-640)
 
@@ -122,6 +126,7 @@ ______________________________________________________________________
 - Auto-refresh chart when SSE event received
 - Updates accuracy chips in real-time
 - Reconnection logic (5s delay on error)
+
 
 ### 5. Startup Grid Initialization ✅ COMPLETE
 
@@ -136,6 +141,7 @@ ______________________________________________________________________
 - Emits `forecast.grid` event for observability
 - Error handling with fallback
 
+
 ### 6. Historical Price Collection ✅ COMPLETE
 
 **File**: `wolf_app.py` Lines 643-700\
@@ -149,15 +155,18 @@ ______________________________________________________________________
 - Structured error handling with logging
 - Returns data source label: `history`, `live`, or `prev_close`
 
+
 **Database Schema**:
 
 ```sql
+
 CREATE TABLE IF NOT EXISTS realized_prices (
   ts INTEGER,
   symbol TEXT,
   price REAL
 )
-```
+
+```text
 
 ### 7. Test Suite ✅ COMPLETE
 
@@ -173,22 +182,27 @@ CREATE TABLE IF NOT EXISTS realized_prices (
 - ✅ Accuracy computation: perfect match, known errors, consistent bias, no overlap
 - ✅ Two-line orchestration: structure, accuracy present
 
+
 #### API Tests (3 tests)
 
 - ✅ Cockpit integration: two_line_overlay field present
 - ✅ SSE streaming: endpoint responds, content-type (fixed)
 - ✅ Runtime config: endpoint exists, forecast params from env
 
+
 #### Schema Tests (2 tests)
 
 - ✅ Database: realized_prices table exists with correct schema
 - ✅ Frontend: two_line_overlay matches expected schema
 
+
 **Test Results**:
 
-```
+```text
+
 20 tests: 16 passed, 4 N/A (SSE/config tests adjusted for actual API)
-```
+
+```text
 
 ### 8. Runtime Verification Tooling ✅ COMPLETE
 
@@ -205,11 +219,14 @@ CREATE TABLE IF NOT EXISTS realized_prices (
 - Colored output with timestamps
 - Exit code 0 (success) or 1 (failure)
 
+
 **Usage**:
 
 ```bash
+
 python utils/verify_two_line_overlay.py
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -217,25 +234,32 @@ ______________________________________________________________________
 
 ### Core Application
 
-1. **wolf_app.py** (Lines 643-700, 1156-1179)
+1. **wolf_app.py**(Lines 643-700, 1156-1179)
    - Enhanced historical price collection with database queries
    - Added startup grid initialization
 
+
 ### Frontend
 
-2. **templates/cockpit.html** (Lines 730-850, 582-640)
+1.**templates/cockpit.html**(Lines 730-850, 582-640)
+
    - Updated `normalizeOverlay()`, `drawForecastChart()`, `loadForecastOverlay()`
    - Enhanced `connectCockpitStream()` with forecast update stream
 
+
 ### Testing
 
-3. **tests/test_two_line_overlay.py** (NEW FILE: 379 lines)
+1.**tests/test_two_line_overlay.py**(NEW FILE: 379 lines)
+
    - 20 comprehensive tests covering unit, API, schema validation
+
 
 ### Utilities
 
-4. **utils/verify_two_line_overlay.py** (NEW FILE: 234 lines)
+1.**utils/verify_two_line_overlay.py**(NEW FILE: 234 lines)
+
    - Runtime verification script for production validation
+
 
 ______________________________________________________________________
 
@@ -251,6 +275,7 @@ ______________________________________________________________________
 - [x] Code review complete
 - [x] Documentation updated
 
+
 ### Deployment
 
 - [ ] Start Ghost server: `uvicorn wolf_app:app --host 0.0.0.0 --port 5000`
@@ -261,6 +286,7 @@ ______________________________________________________________________
 - [ ] Wait 10s, verify SSE updates trigger chart refresh
 - [ ] Check browser console for errors
 
+
 ### Post-Deployment
 
 - [ ] Monitor accuracy metrics for 24h
@@ -269,26 +295,28 @@ ______________________________________________________________________
 - [ ] Validate accuracy improves as historical data accumulates
 - [ ] Update GHOST_CAPABILITY_AUDIT_REPORT.md with new compliance score
 
+
 ______________________________________________________________________
 
 ## Known Issues & Limitations
 
 ### Non-Critical
 
-1. **WOLF Ticker Delisted**: External dependency (cannot fix)
+1.**WOLF Ticker Delisted**: External dependency (cannot fix)
 
    - Impact: May use placeholder prices until ticker migration
    - Mitigation: Ticker migration planned (see audit report Section C)
 
-2. **SSE Test Failures**: TestClient doesn't support SSE streaming
+1. **SSE Test Failures**: TestClient doesn't support SSE streaming
 
    - Impact: Cannot unit test SSE in FastAPI TestClient
    - Mitigation: Use runtime verification script instead
 
-3. **Config Endpoint**: `/api/config` doesn't expose forecast params
+1. **Config Endpoint**: `/api/config` doesn't expose forecast params
 
    - Impact: Forecast params only configurable via environment variables
    - Mitigation: Use FORECAST_STEP_S, FORECAST_HORIZON_S env vars
+
 
 ### Historical Data Collection
 
@@ -296,6 +324,7 @@ ______________________________________________________________________
 - **After 24h**: Accuracy improves as realized_prices table fills
 - **Tolerance**: ±5min window for matching forecast to actual timestamps
 - **Fallback Chain**: history → live (recent) → prev_close (older)
+
 
 ______________________________________________________________________
 
@@ -308,16 +337,19 @@ ______________________________________________________________________
 - Accuracy computation: \<50ms for 24 points
 - Full two-line build: \<400ms end-to-end
 
+
 ### Frontend
 
 - Chart rendering: \<100ms (Canvas-based)
 - SSE event handling: \<10ms (DOM updates)
 - Accuracy chip updates: \<5ms (text updates)
 
+
 ### Database
 
 - realized_prices query: \<10ms (±5min window, indexed by ts)
 - Grid initialization: \<50ms on startup
+
 
 ______________________________________________________________________
 
@@ -330,6 +362,7 @@ ______________________________________________________________________
 3. ✅ Monitor accuracy metrics for 24h
 4. ⏳ Re-assess compliance score (expected: 95-100%)
 
+
 ### Short-term (1-2 weeks)
 
 1. Implement ticker migration (WOLF → replacement)
@@ -337,12 +370,14 @@ ______________________________________________________________________
 3. Enhance band rendering (confidence intervals)
 4. Add historical accuracy tracking (trend over time)
 
+
 ### Long-term (1-3 months)
 
 1. Add model comparison (multiple forecasts on same chart)
 2. Implement accuracy alerts (notify when MAP > threshold)
 3. Add export functionality (CSV, JSON)
 4. Create accuracy dashboard (historical trends)
+
 
 ______________________________________________________________________
 
@@ -361,6 +396,7 @@ ______________________________________________________________________
 - [x] SSE events trigger chart updates
 - [x] Startup initialization working
 
+
 ### Validation (P1) ✅ ALL COMPLETE
 
 - [x] Unit tests pass (16/20 applicable)
@@ -368,6 +404,7 @@ ______________________________________________________________________
 - [x] Database schema correct
 - [x] Runtime verification script ready
 - [x] Documentation complete
+
 
 ### Production Readiness (P2) ⏳ PENDING
 
@@ -378,6 +415,7 @@ ______________________________________________________________________
 - [ ] No errors in browser console
 - [ ] No errors in server logs
 
+
 ______________________________________________________________________
 
 ## Compliance Impact
@@ -385,9 +423,7 @@ ______________________________________________________________________
 ### Requirement #3: Prediction vs Reality Overlay
 
 **Before**: 70% compliance (backend only, no frontend)\
-**After**: **95-100%** compliance (full system operational)
-
-**Gaps Closed**:
+**After**: **95-100%**compliance (full system operational)**Gaps Closed**:
 
 - ✅ Frontend visualization (was 0%, now 100%)
 - ✅ Real-time updates (was 0%, now 100%)
@@ -395,31 +431,31 @@ ______________________________________________________________________
 - ✅ Accuracy metrics (was missing, now complete)
 - ✅ Test coverage (was 0%, now 80%+)
 
+
 **Remaining Work**:
 
 - Ticker migration (external dependency)
 - Multi-ticker support (enhancement, not requirement)
 
+
 ### Overall Compliance Estimate
 
 **Before**: 68.6% (4.8/7 requirements)\
-**After**: **95-100%** (6.8-7/7 requirements)
-
-**Breakdown**:
+**After**: **95-100%**(6.8-7/7 requirements)**Breakdown**:
 
 1. Price Data: 100% ✅
 2. News Feed: 100% ✅
-3. **Prediction vs Reality: 95%** ✅ (was 70%)
+3. **Prediction vs Reality: 95%**✅ (was 70%)
 4. Price Alerts: 100% ✅
 5. Data Persistence: 100% ✅
 6. Admin Controls: 95% ✅ (was 90%)
 7. Observability: 100% ✅
 
+
 ______________________________________________________________________
 
-## Conclusion
+## Conclusion**Mission Accomplished**: All critical path items for full compliance execution are
 
-**Mission Accomplished**: All critical path items for full compliance execution are
 **100% complete**.
 
 The two-line overlay system is production-ready and addresses the primary compliance gap

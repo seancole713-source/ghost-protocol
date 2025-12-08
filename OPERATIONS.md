@@ -14,20 +14,25 @@ ______________________________________________________________________
 ```bash
 source .venv/bin/activate
 uvicorn wolf_app:app --host 0.0.0.0 --port 5000
-```
+
+```text
 
 ### Background Start (with logging)
 
 ```bash
+
 source .venv/bin/activate
 nohup uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload > /tmp/ghost_server.log 2>&1 &
-```
+
+```text
 
 ### Check Status
 
 ```bash
-curl -s http://localhost:5000/health | jq
-```
+
+curl -s <<<<<http://localhost:5000/health>>>>> | jq
+
+```text
 
 ______________________________________________________________________
 
@@ -36,14 +41,17 @@ ______________________________________________________________________
 ### View Current Config
 
 ```bash
-curl -s http://localhost:5000/api/runtime/config \
+
+curl -s <<<<<http://localhost:5000/api/runtime/config>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" | jq
-```
+
+```text
 
 ### Update Settings (No Restart Required)
 
 ```bash
-curl -X POST http://localhost:5000/api/runtime/config \
+
+curl -X POST <<<<<http://localhost:5000/api/runtime/config>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -54,7 +62,8 @@ curl -X POST http://localhost:5000/api/runtime/config \
     "diag_collapse_dupes": 1,
     "diag_ring_size": 200
   }' | jq
-```
+
+```text
 
 ### Key Configuration Parameters
 
@@ -75,7 +84,8 @@ ______________________________________________________________________
 ### Import Positions
 
 ```bash
-curl -X POST http://localhost:5000/api/positions/import \
+
+curl -X POST <<<<<http://localhost:5000/api/positions/import>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -89,22 +99,27 @@ curl -X POST http://localhost:5000/api/positions/import \
       }
     ]
   }' | jq
-```
+
+```text
 
 ### View Current Positions
 
 ```bash
-curl -s http://localhost:5000/api/positions | jq
-```
+
+curl -s <<<<<http://localhost:5000/api/positions>>>>> | jq
+
+```text
 
 ### Set Cash Balance
 
 ```bash
-curl -X POST http://localhost:5000/api/bank/set_cash \
+
+curl -X POST <<<<<http://localhost:5000/api/bank/set_cash>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"stock": 1000.0}' | jq
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -113,7 +128,8 @@ ______________________________________________________________________
 ### Set Manual Price (for testing)
 
 ```bash
-curl -X POST http://localhost:5000/debug/price_override \
+
+curl -X POST <<<<<http://localhost:5000/debug/price_override>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -121,20 +137,24 @@ curl -X POST http://localhost:5000/debug/price_override \
     "price": 28.50,
     "ttl_s": 3600
   }' | jq
-```
+
+```text
 
 ### Clear Manual Override
 
 ```bash
-curl -X DELETE http://localhost:5000/debug/price_override \
-  -H "Authorization: Bearer $GHOST_API_TOKEN" | jq
-```
 
-**Note:** When manual override is active:
+curl -X DELETE <<<<<http://localhost:5000/debug/price_override>>>>> \
+  -H "Authorization: Bearer $GHOST_API_TOKEN" | jq
+
+```text
+
+**Note:**When manual override is active:
 
 - `prices.provider` will show `"manual"`
 - `row.stale` will be `true`
 - Forecast will pause (if `forecast_pause_on_anomaly` is enabled)
+
 
 ______________________________________________________________________
 
@@ -143,26 +163,34 @@ ______________________________________________________________________
 ### Full Cockpit Snapshot
 
 ```bash
-curl -s http://localhost:5000/api/cockpit | jq
-```
+
+curl -s <<<<<http://localhost:5000/api/cockpit>>>>> | jq
+
+```text
 
 ### Price Diagnostics Only
 
 ```bash
-curl -s http://localhost:5000/diagnostics/summary | jq '.price_diag'
-```
+
+curl -s <<<<<http://localhost:5000/diagnostics/summary>>>>> | jq '.price_diag'
+
+```text
 
 ### Live Events Stream (SSE)
 
 ```bash
-curl -s --no-buffer http://localhost:5000/events | head -n 20
-```
+
+curl -s --no-buffer <<<<<http://localhost:5000/events>>>>> | head -n 20
+
+```text
 
 ### Run Validation Script
 
 ```bash
+
 ./scripts/validate_ghost_simple.sh
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -173,6 +201,7 @@ ______________________________________________________________________
 The `/api/cockpit` endpoint includes:
 
 ```json
+
 {
   "forecast": {
     "ticker": "WOLF",
@@ -198,7 +227,8 @@ The `/api/cockpit` endpoint includes:
     }
   }
 }
-```
+
+```text
 
 ### Interpreting Forecast Fields
 
@@ -216,6 +246,7 @@ Once Ghost has accumulated 24-48 hours of historical data, the `metrics` field w
 populate:
 
 ```json
+
 {
   "metrics": {
     "map": 8.5,     // Mean Absolute Percentage Error
@@ -224,16 +255,15 @@ populate:
     "as_of": 1759500000
   }
 }
-```
 
-**Interpreting Metrics:**
+```text**Interpreting Metrics:**-**MAP < 10%**: Excellent forecast accuracy
 
-- **MAP < 10%**: Excellent forecast accuracy
 - **MAP 10-20%**: Good accuracy
 - **MAP > 20%**: Poor accuracy, model needs tuning
 - **Bias < 0**: Ghost consistently under-predicts (too bearish)
 - **Bias > 0**: Ghost consistently over-predicts (too bullish)
 - **Bias ≈ 0**: Well-calibrated predictions
+
 
 ______________________________________________________________________
 
@@ -241,152 +271,166 @@ ______________________________________________________________________
 
 Ghost automatically pauses forecasts when:
 
-1. **Manual Price Override Active**
-
-   - Reason: `"paused:manual_override"`
+1. **Manual Price Override Active**- Reason: `"paused:manual_override"`
    - Action: Clear override to resume
 
-2. **Price Anomaly Detected**
 
-   - Reason: `"paused:price_anomaly"`
+1.**Price Anomaly Detected**- Reason: `"paused:price_anomaly"`
+
    - Triggers:
      - Price deviates >50% from previous close
      - Fresh Reuters news + extreme move
      - Provider spread exceeds threshold
    - Action: Wait for anomaly to clear, or disable pause via config
 
+
 Check pause status:
 
 ```bash
-curl -s http://localhost:5000/api/cockpit | jq '{
+
+curl -s <<<<<http://localhost:5000/api/cockpit>>>>> | jq '{
   forecast_enabled: .forecast_summary.enabled,
   forecast_note: .forecast.note
 }'
-```
+
+```text
 
 ______________________________________________________________________
 
 ## Troubleshooting
 
-### Problem: No Live Price (Provider = "unavailable")
+### Problem: No Live Price (Provider = "unavailable")**Diagnosis:**```bash
 
-**Diagnosis:**
+curl -s <<<<<http://localhost:5000/diagnostics/summary>>>>> | jq '.price_diag'
 
-```bash
-curl -s http://localhost:5000/diagnostics/summary | jq '.price_diag'
-```
-
-**Common Causes:**
-
-1. **Rate Limiting**: Yahoo/AlphaVantage hit request limits
+```text**Common Causes:**1.**Rate Limiting**: Yahoo/AlphaVantage hit request limits
 
    - **Fix**: Wait 5-10 minutes, or toggle provider order
 
+
    ```bash
-   curl -X POST http://localhost:5000/api/runtime/config \
+
+   curl -X POST <<<<<http://localhost:5000/api/runtime/config>>>>> \
      -H "Authorization: Bearer $GHOST_API_TOKEN" \
      -H 'Content-Type: application/json' \
      -d '{"yahoo_first": 0}'
-   ```
 
-2. **Market Closed**: Outside trading hours
+   ```text
+
+1. **Market Closed**: Outside trading hours
 
    - **Expected**: `prev_close` used instead
-   - **Check**: `curl -s http://localhost:5000/api/cockpit | jq '.flags.market_open'`
+   - **Check**: `curl -s <<<<<http://localhost:5000/api/cockpit>>>>> | jq '.flags.market_open'`
 
-3. **API Keys Missing**:
+1. **API Keys Missing**:
 
-   - Check: `curl -s http://localhost:5000/api/secrets/health | jq`
+   - Check: `curl -s <<<<<http://localhost:5000/api/secrets/health>>>>> | jq`
    - **Fix**: Set environment variables:
+
+
     ```bash
+
     export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
     export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
-    ```
+
+    ```text
 
 ### Problem: Forecast Metrics Still Null
 
-**Reason:** Need 24-48h of historical forecast vs. actual data
+**Reason:**Need 24-48h of historical forecast vs. actual data**Check Progress:**```bash
 
-**Check Progress:**
-
-```bash
 # Check how many forecasts have been recorded
-curl -s http://localhost:5000/api/cockpit | jq '.forecast.as_of'
+
+curl -s <<<<<http://localhost:5000/api/cockpit>>>>> | jq '.forecast.as_of'
+
 # If recent (within last hour), Ghost is generating forecasts
-```
 
-**Timeline:**
+```text**Timeline:**-**0-24h**: Metrics will be `null` (collecting data)
 
-- **0-24h**: Metrics will be `null` (collecting data)
 - **24-48h**: MAP/RMSE/Bias will begin populating
 - **48h+**: Full accuracy tracking active
 
+
 ### Problem: Position Not Persisting Across Restart
 
-**Diagnosis:**
+**Diagnosis:**```bash
 
-```bash
 # Before restart
-curl -s http://localhost:5000/api/positions | jq '.positions[0].qty'
+
+curl -s <<<<<http://localhost:5000/api/positions>>>>> | jq '.positions[0].qty'
 
 # Restart Ghost
+
 pkill -9 -f uvicorn && sleep 2
 uvicorn wolf_app:app --host 0.0.0.0 --port 5000 &
 sleep 5
 
 # After restart
-curl -s http://localhost:5000/api/positions | jq '.positions[0].qty'
-```
 
-**If quantity changed:**
+curl -s <<<<<http://localhost:5000/api/positions>>>>> | jq '.positions[0].qty'
 
-1. Check persistence path:
+```text**If quantity changed:**1. Check persistence path:
+
 
    ```bash
+
    echo $WOLF_SQLITE_PATH  # Default: /data/wolf.db
    ls -lh /data/wolf.db
-   ```
 
-2. Check for write errors in logs:
+   ```text
+
+1. Check for write errors in logs:
+
 
    ```bash
+
    tail -n 100 /tmp/ghost_server.log | grep -i "persist"
-   ```
 
-3. Verify autosave worker started:
+   ```text
+
+1. Verify autosave worker started:
+
 
    ```bash
-   curl -s http://localhost:5000/diagnostics/summary | jq '.events[] | select(.message | contains("autosave"))'
-   ```
 
-### Problem: UI Not Loading
+   curl -s <<<<<http://localhost:5000/diagnostics/summary>>>>> | jq '.events[] | select(.message | contains("autosave"))'
 
-**Check:**
+   ```text
 
-```bash
-curl -s http://localhost:5000/ | head -n 10
-```
+### Problem: UI Not Loading**Check:**```bash
 
-**If blank or error:**
+curl -s <<<<<http://localhost:5000/>>>>> | head -n 10
+
+```text**If blank or error:**
 
 1. Verify UI files exist:
 
+
    ```bash
+
    ls -lh /workspaces/GHOST/ui_dist/index.html
-   ```
 
-2. Check Static file mount:
+   ```text
 
-   ```bash
-   curl -s http://localhost:5000/static/ghost.css | head -n 5
-   ```
+1. Check Static file mount:
 
-3. Rebuild UI (if needed):
 
    ```bash
+
+   curl -s <<<<<http://localhost:5000/static/ghost.css>>>>> | head -n 5
+
+   ```text
+
+1. Rebuild UI (if needed):
+
+
+   ```bash
+
    # Copy from static/ to ui_dist/ if missing
+
    cp -r /workspaces/GHOST/static/* /workspaces/GHOST/ui_dist/
-   ```
+
+   ```text
 
 ______________________________________________________________________
 
@@ -395,32 +439,41 @@ ______________________________________________________________________
 ### Reduce API Call Frequency
 
 ```bash
+
 # Increase TTL for closed market hours
-curl -X POST http://localhost:5000/api/runtime/config \
+
+curl -X POST <<<<<http://localhost:5000/api/runtime/config>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"price_ttl_s": 300}' | jq
-```
+
+```text
 
 ### Speed Up Cockpit Response
 
 ```bash
+
 # Disable Reuters (slow DNS lookups)
-curl -X POST http://localhost:5000/api/runtime/config \
+
+curl -X POST <<<<<http://localhost:5000/api/runtime/config>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"reuters_feeds_on": 0}' | jq
-```
+
+```text
 
 ### Reduce Diagnostic Noise
 
 ```bash
+
 # Collapse duplicate events
-curl -X POST http://localhost:5000/api/runtime/config \
+
+curl -X POST <<<<<http://localhost:5000/api/runtime/config>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"diag_collapse_dupes": 1, "diag_ring_size": 50}' | jq
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -429,21 +482,27 @@ ______________________________________________________________________
 ### Backup Positions and State
 
 ```bash
+
 # Backup SQLite database
+
 cp /data/wolf.db /data/wolf.db.backup_$(date +%Y%m%d_%H%M%S)
 
 # Export positions as JSON
-curl -s http://localhost:5000/api/positions > positions_backup.json
-```
+
+curl -s <<<<<http://localhost:5000/api/positions>>>>> > positions_backup.json
+
+```text
 
 ### Restore Positions
 
 ```bash
-curl -X POST http://localhost:5000/api/positions/import \
+
+curl -X POST <<<<<http://localhost:5000/api/positions/import>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d @positions_backup.json | jq
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -452,16 +511,21 @@ ______________________________________________________________________
 ### Rotate API Token
 
 ```bash
+
 # Generate new token
+
 NEW_TOKEN=$(openssl rand -hex 12)
 
 # Update environment
+
 export GHOST_API_TOKEN="$NEW_TOKEN"
 
 # Restart Ghost
+
 pkill -f uvicorn && sleep 2
 uvicorn wolf_app:app --host 0.0.0.0 --port 5000 &
-```
+
+```text
 
 ### Secure Deployment Checklist
 
@@ -471,6 +535,7 @@ uvicorn wolf_app:app --host 0.0.0.0 --port 5000 &
 - [ ] Enable rate limiting on API endpoints
 - [ ] Rotate API keys for external providers (Polygon, AlphaVantage)
 - [ ] Backup SQLite database daily
+
 
 ______________________________________________________________________
 
@@ -485,34 +550,42 @@ ______________________________________________________________________
 - **Events Stream**: `GET /events` (SSE)
 - **Runtime Config**: `GET/POST /api/runtime/config` (auth required)
 
+
 ### Environment Variables
 
 ```bash
+
 GHOST_API_TOKEN=""           # Bearer token for auth endpoints
 POLYGON_API_KEY=""           # Polygon.io API key
 ALPHAVANTAGE_API_KEY=""      # AlphaVantage API key
 WOLF_SQLITE_PATH="/data/wolf.db"  # Persistence database path
 REDIS_URL=""                 # Optional Redis connection string
 REUTERS_FEEDS_ON="0"         # Enable Reuters news (0=off, 1=on)
-```
+
+```text
 
 ### Validation Commands
 
 ```bash
+
 # Quick health check
-curl -s http://localhost:5000/health | jq
+
+curl -s <<<<<http://localhost:5000/health>>>>> | jq
 
 # Full validation
+
 ./scripts/validate_ghost_simple.sh
 
 # Check forecast status
-curl -s http://localhost:5000/api/cockpit | jq '{
+
+curl -s <<<<<http://localhost:5000/api/cockpit>>>>> | jq '{
   forecast_enabled: .forecast_summary.enabled,
   points: (.forecast.points | length),
   confidence: .forecast_summary.confidence,
   metrics_available: (.metrics != null)
 }'
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -523,7 +596,7 @@ ______________________________________________________________________
 - **Implementation Details**: `IMPLEMENTATION_SUMMARY.md`
 - **Requirements Verification**: `GHOST_REQUIREMENTS_VERIFICATION.md`
 
+
 ______________________________________________________________________
 
-**Last Updated:** October 2, 2025\
-**Ghost Version:** 0.3.0-production
+**Last Updated:**October 2, 2025\**Ghost Version:** 0.3.0-production

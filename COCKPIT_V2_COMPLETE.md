@@ -1,8 +1,8 @@
 # 🚀 GHOST HUNTER COCKPIT V2 — COMPLETE
 
-**Status**: ✅ **PRODUCTION READY**  
-**Build Date**: 2025-11-20  
-**Agent**: GitHub Copilot (Claude Sonnet 4.5)  
+**Status**: ✅ **PRODUCTION READY**
+**Build Date**: 2025-11-20
+**Agent**: GitHub Copilot (Claude Sonnet 4.5)
 **Cost**: ~$1.85 (~73k tokens)
 
 ---
@@ -11,7 +11,8 @@
 
 ### 1. Frontend Files (3 files, ~2,000 lines total)
 
-**`templates/cockpit_v2.html`** — 600 lines
+**`templates/cockpit_v2.html`**— 600 lines
+
 - Clean semantic HTML5 structure
 - Zero inline styles (all external CSS)
 - 5-row grid layout: Header + 4 content rows
@@ -23,9 +24,8 @@
 - Daily/Weekly/Monthly/Yearly goals
 - Real-time Ghost Score with grade badge
 - Multi-asset Hunter Feed table
-- 19+ data panels
+- 19+ data panels**`static/cockpit_v2.css`**— 1,000 lines
 
-**`static/cockpit_v2.css`** — 1,000 lines
 - CSS3 custom properties (design tokens)
 - Dark theme optimized for trading
 - Responsive grid system (12-column)
@@ -36,9 +36,8 @@
 - Smooth animations & transitions
 - Mobile breakpoints (@768px, @1400px)
 - Utility classes for rapid development
-- Zero !important declarations
+- Zero !important declarations**`static/cockpit_v2.js`**— 800 lines
 
-**`static/cockpit_v2.js`** — 800 lines
 - Modern ES6+ JavaScript
 - Modular architecture (11 modules)
 - Automatic retry with exponential backoff
@@ -52,9 +51,9 @@
 - Format utilities (currency, percent, timestamp)
 - Data validation & sanitization
 
-### 2. Backend Integration (2 files, ~600 lines)
 
-**`api/cockpit_v2_endpoints.py`** — 500 lines
+### 2. Backend Integration (2 files, ~600 lines)**`api/cockpit_v2_endpoints.py`**— 500 lines
+
 - 20+ FastAPI endpoints
 - RESTful API design
 - Pydantic models for type safety
@@ -62,48 +61,51 @@
 - Error logging & monitoring
 - Async/await throughout
 - TODO markers for future integration
-- Modular router architecture
+- Modular router architecture**`wolf_app.py`**(modified)
 
-**`wolf_app.py`** (modified)
 - Added `/cockpit_v2` route
 - Integrated API router with `APP.include_router(cockpit_v2_router)`
 - Mock request pattern for Jinja2 templates
 - Error handling with fallback UI
 - Logging on success/failure
 
-### 3. Safety & Backup
 
-**`templates/cockpit_v1_backup.html`** — 3,015 lines
+### 3. Safety & Backup**`templates/cockpit_v1_backup.html`**— 3,015 lines
+
 - Complete backup of original cockpit
 - All functionality preserved
 - Rollback available at any time
+
 
 ---
 
 ## 🎯 KEY FEATURES
 
 ### Architecture Wins
-✅ **Zero inline styles** — All CSS external, maintainable  
-✅ **Zero hardcoded symbols** — Runtime configuration only  
-✅ **Modular JavaScript** — 11 independent modules  
-✅ **Graceful degradation** — Shows "N/A" when data unavailable  
-✅ **Type safety** — Pydantic models throughout  
-✅ **Responsive design** — Works on mobile, tablet, desktop  
+
+✅**Zero inline styles**— All CSS external, maintainable
+✅**Zero hardcoded symbols**— Runtime configuration only
+✅**Modular JavaScript**— 11 independent modules
+✅**Graceful degradation**— Shows "N/A" when data unavailable
+✅**Type safety**— Pydantic models throughout
+✅**Responsive design**— Works on mobile, tablet, desktop
 
 ### Mandatory Requirements (User-Specified)
-✅ **Daily/Weekly/Monthly/Yearly Goals** — Row 1, always visible  
-✅ **Real-time Ghost Score** — Header + Row 1 with grade badge  
-✅ **5 VIP Coins** — WEPE, LILPEPE, DORKL, SLOTH, APC (Row 1, Column 3)  
-✅ **XRP Tracker** — Dedicated "bullish eye" section (Row 1, Column 3)  
-✅ **Presale/Microcap Watch** — Always-visible zone (Row 1, Column 3)  
-✅ **Multi-Asset Hunter Feed** — Dynamic table with GPS scores (Row 1, Column 2)  
+
+✅**Daily/Weekly/Monthly/Yearly Goals**— Row 1, always visible
+✅**Real-time Ghost Score**— Header + Row 1 with grade badge
+✅**5 VIP Coins**— WEPE, LILPEPE, DORKL, SLOTH, APC (Row 1, Column 3)
+✅**XRP Tracker**— Dedicated "bullish eye" section (Row 1, Column 3)
+✅**Presale/Microcap Watch**— Always-visible zone (Row 1, Column 3)
+✅**Multi-Asset Hunter Feed**— Dynamic table with GPS scores (Row 1, Column 2)
 
 ### Safety Guarantees
-✅ **No AUTO_TRADE changes** — UI only, no execution code  
-✅ **No SIM_MODE changes** — Read-only access  
-✅ **No API semantic changes** — Backward compatible  
-✅ **Original cockpit preserved** — `/cockpit` still works  
-✅ **V1 backup exists** — `cockpit_v1_backup.html` (3,015 lines)  
+
+✅**No AUTO_TRADE changes**— UI only, no execution code
+✅**No SIM_MODE changes**— Read-only access
+✅**No API semantic changes**— Backward compatible
+✅**Original cockpit preserved**— `/cockpit` still works
+✅**V1 backup exists** — `cockpit_v1_backup.html` (3,015 lines)
 
 ---
 
@@ -111,7 +113,7 @@
 
 ### Layout Structure
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │ ROW 0: Header (80px fixed)                                  │
 │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │
@@ -180,11 +182,13 @@
 │ • AUTO_TRADE: false                                         │
 │ • GHOST_VERSION: 2.0.0                                      │
 └─────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ### API Endpoints (20+ new routes)
 
-```
+```text
+
 GET  /cockpit_v2                   → Serve cockpit_v2.html
 GET  /api/hunter/feed              → Top opportunities
 GET  /api/price/{symbol}           → VIP coin prices
@@ -205,11 +209,13 @@ GET  /api/ghost/brain/stats        → AI activity statistics
 GET  /api/providers/health         → Provider health matrix
 GET  /api/logs/recent              → System logs
 GET  /api/config/runtime           → Runtime configuration
-```
+
+```text
 
 ### Data Flow
 
-```
+```text
+
 ┌──────────────┐
 │  Browser     │
 │  JavaScript  │
@@ -234,7 +240,8 @@ GET  /api/config/runtime           → Runtime configuration
 │  • news_sentiment.py         │
 │  • portfolio_persistence.py  │
 └──────────────────────────────┘
-```
+
+```text
 
 ---
 
@@ -243,61 +250,67 @@ GET  /api/config/runtime           → Runtime configuration
 ### Color Palette
 
 ```css
-/* Background */
---color-bg-primary: #0a0e1a      /* Deep space black */
---color-bg-secondary: #121829    /* Card headers */
---color-bg-card: #1a2035         /* Card bodies */
---color-bg-hover: #252d45        /* Interactive hover */
 
-/* Text */
---color-text-primary: #e8eaf0    /* Main text */
---color-text-secondary: #9ca3af  /* Labels */
---color-text-muted: #6b7280      /* Timestamps */
+/*Background*/
+--color-bg-primary: #0a0e1a      /*Deep space black*/
+--color-bg-secondary: #121829    /*Card headers*/
+--color-bg-card: #1a2035         /*Card bodies*/
+--color-bg-hover: #252d45        /*Interactive hover*/
 
-/* Accents */
---color-accent-primary: #3b82f6  /* Blue - Primary actions */
---color-accent-secondary: #8b5cf6 /* Purple - Gradients */
---color-accent-success: #10b981  /* Green - Positive */
---color-accent-warning: #f59e0b  /* Orange - Caution */
---color-accent-danger: #ef4444   /* Red - Negative */
+/*Text*/
+--color-text-primary: #e8eaf0    /*Main text*/
+--color-text-secondary: #9ca3af  /*Labels*/
+--color-text-muted: #6b7280      /*Timestamps*/
 
-/* Status */
---color-status-healthy: #10b981  /* ✓ OK */
---color-status-warning: #f59e0b  /* ⚠ WARN */
---color-status-critical: #ef4444 /* ✗ DOWN */
+/*Accents*/
+--color-accent-primary: #3b82f6  /*Blue - Primary actions*/
+--color-accent-secondary: #8b5cf6 /*Purple - Gradients*/
+--color-accent-success: #10b981  /*Green - Positive*/
+--color-accent-warning: #f59e0b  /*Orange - Caution*/
+--color-accent-danger: #ef4444   /*Red - Negative*/
 
-/* Market */
---color-bullish: #10b981         /* +% gains */
---color-bearish: #ef4444         /* -% losses */
---color-neutral: #6b7280         /* Flat */
-```
+/*Status*/
+--color-status-healthy: #10b981  /*✓ OK*/
+--color-status-warning: #f59e0b  /*⚠ WARN*/
+--color-status-critical: #ef4444 /*✗ DOWN*/
+
+/*Market*/
+--color-bullish: #10b981         /*+% gains*/
+--color-bearish: #ef4444         /*-% losses*/
+--color-neutral: #6b7280         /*Flat*/
+
+```text
 
 ### Typography
 
 ```css
-/* Fonts */
+
+/*Fonts*/
 --font-primary: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto
 --font-mono: "SF Mono", Monaco, "Cascadia Code", Consolas
 
-/* Sizes */
---font-size-xs: 0.75rem    /* 12px - timestamps */
---font-size-sm: 0.875rem   /* 14px - labels */
---font-size-md: 1rem       /* 16px - body */
---font-size-lg: 1.125rem   /* 18px - headings */
---font-size-xl: 1.25rem    /* 20px - metrics */
---font-size-2xl: 1.5rem    /* 24px - scores */
---font-size-3xl: 2rem      /* 32px - hero */
-```
+/*Sizes*/
+--font-size-xs: 0.75rem    /*12px - timestamps*/
+--font-size-sm: 0.875rem   /*14px - labels*/
+--font-size-md: 1rem       /*16px - body*/
+--font-size-lg: 1.125rem   /*18px - headings*/
+--font-size-xl: 1.25rem    /*20px - metrics*/
+--font-size-2xl: 1.5rem    /*24px - scores*/
+--font-size-3xl: 2rem      /*32px - hero*/
+
+```text
 
 ### Spacing System
 
 ```css
---spacing-xs: 0.25rem    /* 4px */
---spacing-sm: 0.5rem     /* 8px */
---spacing-md: 1rem       /* 16px */
---spacing-lg: 1.5rem     /* 24px */
---spacing-xl: 2rem       /* 32px */
-```
+
+--spacing-xs: 0.25rem    /*4px*/
+--spacing-sm: 0.5rem     /*8px*/
+--spacing-md: 1rem       /*16px*/
+--spacing-lg: 1.5rem     /*24px*/
+--spacing-xl: 2rem       /*32px*/
+
+```text
 
 ---
 
@@ -307,51 +320,66 @@ GET  /api/config/runtime           → Runtime configuration
 
 Each endpoint currently returns mock data with `data_available: false`. Integration needed:
 
-1. **Price Data** (`/api/price/{symbol}`)
+1. **Price Data**(`/api/price/{symbol}`)
    - Hook into: `core/price_quorum.py::get_price_quorum()`
    - Hook into: `core/crypto/crypto_providers.py` for VIP coins
    - Status: 70% infrastructure exists, needs adapter layer
 
-2. **Hunter Feed** (`/api/hunter/feed`)
+
+1.**Hunter Feed**(`/api/hunter/feed`)
+
    - Hook into: Ghost Hunter algorithm (when complete)
    - Alternative: Use existing market scanner
    - Status: Awaiting Hunter Phase 2 completion
 
-3. **World Context** (`/api/world-context`)
+
+1.**World Context**(`/api/world-context`)
+
    - Hook into: `core/world_context.py::get_world_context_sync()`
    - Hook into: `core/regime_detector.py::detect_regime()`
    - Status: 80% ready, needs QQQ/DXY additions
 
-4. **Portfolio** (`/api/portfolio/summary`, `/api/portfolio/goals`)
+
+1.**Portfolio**(`/api/portfolio/summary`, `/api/portfolio/goals`)
+
    - Hook into: Existing `/api/portfolio` endpoint
    - Hook into: Goal tracking system (if exists)
    - Status: 90% ready, straightforward adapter
 
-5. **Risk Metrics** (`/api/risk/metrics`)
+
+1.**Risk Metrics**(`/api/risk/metrics`)
+
    - Hook into: Existing risk management calculations
    - Status: 60% ready, needs centralized risk module
 
-6. **Predictions** (`/api/predictions/*`)
+
+1.**Predictions** (`/api/predictions/*`)
+
    - Hook into: Existing prediction system
    - Hook into: `core/scheduled_predictions.py`
    - Status: 70% ready, needs accuracy tracker
 
-7. **AI Brain** (`/api/ghost/brain/*`)
+1. **AI Brain** (`/api/ghost/brain/*`)
    - Hook into: Ghost 2.x brain telemetry
    - Status: 40% ready, needs instrumentation
 
-8. **Providers** (`/api/providers/health`)
+1. **Providers**(`/api/providers/health`)
    - Hook into: Existing provider health checks
    - Status: 80% ready, straightforward aggregation
 
-9. **News** (`/api/news/headlines`)
+
+1.**News**(`/api/news/headlines`)
+
    - Hook into: `core/news_sentiment.py`
    - Hook into: `core/world_feed_fusion.py`
    - Status: 90% ready, needs limit parameter
 
-10. **Logs** (`/api/logs/recent`)
+
+1.**Logs** (`/api/logs/recent`)
+
     - Hook into: Python logging system
     - Status: Simple handler needed
+
 
 ---
 
@@ -360,36 +388,44 @@ Each endpoint currently returns mock data with `data_available: false`. Integrat
 ### Manual Testing Checklist
 
 ```bash
+
 # 1. Start Ghost server
+
 cd /Users/studio713/ghost-protocol
 python wolf_app.py
 
 # 2. Open cockpit V2
-open http://localhost:5000/cockpit_v2
+
+open <<<<<http://localhost:5000/cockpit_v2>>>>>
 
 # 3. Verify UI loads
+
 ✓ Header displays
 ✓ All rows render
 ✓ No JavaScript console errors
 ✓ CSS loads correctly
 
 # 4. Check API endpoints
-curl http://localhost:5000/api/hunter/feed
-curl http://localhost:5000/api/portfolio/summary
-curl http://localhost:5000/api/world-context
-curl http://localhost:5000/api/ghost/health
+
+curl <<<<<http://localhost:5000/api/hunter/feed>>>>>
+curl <<<<<http://localhost:5000/api/portfolio/summary>>>>>
+curl <<<<<http://localhost:5000/api/world-context>>>>>
+curl <<<<<http://localhost:5000/api/ghost/health>>>>>
 
 # 5. Test responsive design
+
 ✓ Desktop (1920x1080)
 ✓ Tablet (768x1024)
 ✓ Mobile (375x812)
 
 # 6. Verify safety
-✓ Original cockpit still works: http://localhost:5000/cockpit
+
+✓ Original cockpit still works: <<<<<http://localhost:5000/cockpit>>>>>
 ✓ Backup exists: templates/cockpit_v1_backup.html
 ✓ No AUTO_TRADE changes
 ✓ No SIM_MODE changes
-```
+
+```text
 
 ### Browser Compatibility
 
@@ -398,12 +434,14 @@ curl http://localhost:5000/api/ghost/health
 - ✅ Firefox 88+
 - ✅ Opera 76+
 
+
 ### Lighthouse Scores (Target)
 
 - Performance: 90+
 - Accessibility: 95+
 - Best Practices: 95+
 - SEO: 90+
+
 
 ---
 
@@ -412,6 +450,7 @@ curl http://localhost:5000/api/ghost/health
 ### Performance Budget
 
 ```javascript
+
 // Update intervals
 Fast:   2000ms   // VIP coins, XRP, status indicators
 Normal: 5000ms   // Hunter feed, portfolio, risk, AI brain
@@ -428,17 +467,20 @@ Total: ~80KB
 < 200ms: /api/portfolio/summary
 < 500ms: /api/hunter/feed
 < 1000ms: /api/world-context
-```
+
+```text
 
 ### Error Handling
 
 ```javascript
+
 // All API calls wrapped in try-catch
 // Automatic retry with exponential backoff
 // Graceful degradation to "N/A" or "--"
 // User-friendly error messages
 // Console logging for debugging
-```
+
+```text
 
 ---
 
@@ -447,16 +489,21 @@ Total: ~80KB
 ### Accessing Cockpit V2
 
 ```bash
+
 # Development
-http://localhost:5000/cockpit_v2
+
+<<<<<http://localhost:5000/cockpit_v2>>>>>
 
 # Production (Railway)
-https://your-ghost-instance.up.railway.app/cockpit_v2
-```
+
+<<<<<https://your-ghost-instance.up.railway.app/cockpit_v2>>>>>
+
+```text
 
 ### API Examples
 
 ```javascript
+
 // Fetch hunter feed
 const feed = await fetch('/api/hunter/feed');
 const data = await feed.json();
@@ -471,26 +518,31 @@ console.log(`WEPE: $${price.price}`);
 const health = await fetch('/api/ghost/health');
 const status = await health.json();
 console.log(`Ghost Score: ${status.overall_health_score}`);
-```
+
+```text
 
 ### Customization
 
 ```css
-/* Change color scheme in cockpit_v2.css */
+
+/*Change color scheme in cockpit_v2.css*/
 :root {
-  --color-accent-primary: #ff6b6b;  /* Change blue to red */
-  --color-bg-primary: #1a1a2e;      /* Darker background */
+  --color-accent-primary: #ff6b6b;  /*Change blue to red*/
+  --color-bg-primary: #1a1a2e;      /*Darker background*/
 }
-```
+
+```text
 
 ```javascript
-/* Adjust update intervals in cockpit_v2.js */
+
+/*Adjust update intervals in cockpit_v2.js*/
 const CONFIG = {
     UPDATE_INTERVAL: 3000,        // Change from 5s to 3s
     FAST_UPDATE_INTERVAL: 1000,   // Change from 2s to 1s
     SLOW_UPDATE_INTERVAL: 60000,  // Change from 30s to 1min
 };
-```
+
+```text
 
 ---
 
@@ -502,6 +554,7 @@ const CONFIG = {
 - No new authentication required
 - Inherits wolf_app.py security model
 
+
 ### Data Privacy
 
 - No client-side storage of sensitive data
@@ -509,17 +562,20 @@ const CONFIG = {
 - No external CDN dependencies
 - All assets served from Ghost server
 
+
 ### Rate Limiting
 
 - Respects existing API rate limits
 - Client-side request throttling
 - No excessive polling
 
+
 ---
 
 ## 📈 ROADMAP
 
 ### Phase 1: Foundation ✅ COMPLETE
+
 - [x] Clean HTML structure
 - [x] External CSS with design system
 - [x] Modular JavaScript
@@ -527,7 +583,9 @@ const CONFIG = {
 - [x] Backend integration hook
 - [x] Safety backup
 
+
 ### Phase 2: Data Integration (NEXT)
+
 - [ ] Wire price_quorum.py to `/api/price/{symbol}`
 - [ ] Wire world_context.py to `/api/world-context`
 - [ ] Wire portfolio to `/api/portfolio/summary`
@@ -535,24 +593,31 @@ const CONFIG = {
 - [ ] Wire news to `/api/news/headlines`
 - [ ] Wire providers to `/api/providers/health`
 
+
 ### Phase 3: Real-Time Features
+
 - [ ] WebSocket connection for live updates
 - [ ] Server-Sent Events (SSE) for streaming
 - [ ] Toast notifications for alerts
 - [ ] Audio alerts for opportunities
 
+
 ### Phase 4: Advanced Features
+
 - [ ] Chart.js integration for visualizations
 - [ ] Customizable dashboard layouts
 - [ ] Export to PDF/CSV
 - [ ] Dark/Light theme toggle
 - [ ] Keyboard shortcuts
 
+
 ### Phase 5: Mobile Optimization
+
 - [ ] Progressive Web App (PWA)
 - [ ] Offline mode
 - [ ] Push notifications
 - [ ] Touch gestures
+
 
 ---
 
@@ -566,12 +631,14 @@ const CONFIG = {
 4. **No Persistence**: Client state resets on page reload
 5. **No Authentication UI**: Assumes API token set server-side
 
+
 ### Minor Issues
 
 - [ ] Presale watch list placeholder (needs data source)
 - [ ] Provider latency always shows 0ms (needs instrumentation)
 - [ ] XRP trend calculation placeholder
 - [ ] Goal progress calculations not wired
+
 
 ### Non-Blocking
 
@@ -580,6 +647,7 @@ const CONFIG = {
 - No loading skeletons (just shows "Loading...")
 - Error messages could be more specific
 
+
 ---
 
 ## 🤝 CONTRIBUTING
@@ -587,45 +655,54 @@ const CONFIG = {
 ### Code Style
 
 ```javascript
+
 // Use const/let, never var
 // Async/await over promises
 // Arrow functions preferred
 // Template literals for strings
 // Destructuring where possible
-```
+
+```text
 
 ```css
-/* Use custom properties for all values */
-/* Mobile-first responsive design */
-/* Component-based naming (BEM-like) */
-/* No !important declarations */
-```
+
+/*Use custom properties for all values*/
+/*Mobile-first responsive design*/
+/*Component-based naming (BEM-like)*/
+/*No !important declarations*/
+
+```text
 
 ### Commit Messages
 
-```
+```text
+
 feat: Add VIP coins tracking to Row 1
 fix: Correct Ghost Score grade badge colors
 refactor: Extract portfolio module from core
 docs: Update API endpoint documentation
 test: Add unit tests for price formatting
-```
+
+```text
 
 ---
 
 ## 📄 LICENSE & CREDITS
 
-**Built for**: Ghost Protocol  
-**By**: GitHub Copilot (Claude Sonnet 4.5)  
-**Date**: November 20, 2025  
-**License**: Same as Ghost Protocol repository  
+**Built for**: Ghost Protocol
+**By**: GitHub Copilot (Claude Sonnet 4.5)
+**Date**: November 20, 2025
+**License**: Same as Ghost Protocol repository
 
 ### Dependencies
 
-- **FastAPI** - Web framework
-- **Jinja2** - Template engine
-- **Pydantic** - Data validation
-- **uvicorn** - ASGI server
+- **FastAPI**- Web framework
+
+
+-**Jinja2**- Template engine
+-**Pydantic**- Data validation
+-**uvicorn**- ASGI server
+
 
 ### No External Frontend Dependencies
 
@@ -636,6 +713,7 @@ test: Add unit tests for price formatting
 - ✅ 100% vanilla JavaScript
 - ✅ 100% custom CSS
 
+
 ---
 
 ## 📞 SUPPORT & FEEDBACK
@@ -643,45 +721,40 @@ test: Add unit tests for price formatting
 ### Testing Instructions
 
 ```bash
+
 # 1. Backup check
+
 ls -lh templates/cockpit_v1_backup.html
+
 # Expected: 3,015 lines
 
 # 2. File verification
+
 ls -lh templates/cockpit_v2.html static/cockpit_v2.css static/cockpit_v2.js api/cockpit_v2_endpoints.py
+
 # Expected: All files exist
 
 # 3. Start server
+
 python wolf_app.py
+
 # Expected: "✅ Cockpit V2 API endpoints registered"
 
 # 4. Open browser
-open http://localhost:5000/cockpit_v2
+
+open <<<<<http://localhost:5000/cockpit_v2>>>>>
+
 # Expected: Dashboard loads with all panels
-```
 
-### Common Issues
+```text
 
-**Q: Cockpit V2 shows 500 error**  
-A: Check `templates/cockpit_v2.html` exists and wolf_app.py has the route
-
-**Q: API endpoints return 404**  
-A: Check `api/cockpit_v2_endpoints.py` exists and router is included
-
-**Q: CSS not loading**  
-A: Check `static/cockpit_v2.css` exists and path is correct in HTML
-
-**Q: JavaScript errors in console**  
-A: Check `static/cockpit_v2.js` exists and is properly linked
-
-**Q: Original cockpit broken**  
-A: Restore from backup: `cp templates/cockpit_v1_backup.html templates/cockpit.html`
+### Common Issues**Q: Cockpit V2 shows 500 error**A: Check `templates/cockpit_v2.html` exists and wolf_app.py has the route**Q: API endpoints return 404**A: Check `api/cockpit_v2_endpoints.py` exists and router is included**Q: CSS not loading**A: Check `static/cockpit_v2.css` exists and path is correct in HTML**Q: JavaScript errors in console**A: Check `static/cockpit_v2.js` exists and is properly linked**Q: Original cockpit broken**A: Restore from backup: `cp templates/cockpit_v1_backup.html templates/cockpit.html`
 
 ---
 
 ## ✨ SUMMARY
 
-Ghost Hunter Cockpit V2 is a **complete, production-ready rebuild** of the Ghost trading dashboard with:
+Ghost Hunter Cockpit V2 is a**complete, production-ready rebuild**of the Ghost trading dashboard with:
 
 - ✅ Clean, maintainable codebase (2,000+ lines)
 - ✅ Modern tech stack (FastAPI + vanilla JS + CSS3)
@@ -691,14 +764,12 @@ Ghost Hunter Cockpit V2 is a **complete, production-ready rebuild** of the Ghost
 - ✅ Graceful error handling
 - ✅ Zero breaking changes
 - ✅ Full backward compatibility
-- ✅ Safety backup preserved
+- ✅ Safety backup preserved**Ready for**: Phase 2 data integration
 
-**Ready for**: Phase 2 data integration  
-**Next step**: Wire existing Ghost modules to API endpoints  
-**Timeline**: Integration can happen incrementally without blocking usage  
 
-The cockpit is **fully functional** with mock data and will seamlessly upgrade as real data sources are connected.
+**Next step**: Wire existing Ghost modules to API endpoints
+**Timeline**: Integration can happen incrementally without blocking usage
 
----
+The cockpit is **fully functional**with mock data and will seamlessly upgrade as real data sources are connected.
 
-**🎯 BUILD COMPLETE — READY FOR INTEGRATION** 🚀
+---**🎯 BUILD COMPLETE — READY FOR INTEGRATION** 🚀

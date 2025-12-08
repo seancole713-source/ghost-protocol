@@ -6,7 +6,8 @@ Run this to set up everything automatically:
 
 ```bash
 ./deploy_ghost.sh
-```
+
+```text
 
 This script will:
 
@@ -18,33 +19,32 @@ This script will:
 6. ✅ Test health endpoint
 7. ✅ Show deployment URL
 
-**First-time setup: ~5 minutes**
 
-______________________________________________________________________
+**First-time setup: ~5 minutes**______________________________________________________________________
 
 ## 📋 Available Scripts
 
-### **1. Initial Deployment**
+###**1. Initial Deployment**```bash
 
-```bash
 ./deploy_ghost.sh
-```
+
+```text
 
 Complete setup + deployment. Use this the first time.
 
-### **2. Quick Redeploy**
+###**2. Quick Redeploy**```bash
 
-```bash
 ./redeploy.sh "Your commit message"
-```
+
+```text
 
 Git commit + push + Railway deploy in one command.
 
-### **3. Railway Management**
+###**3. Railway Management**```bash
 
-```bash
 ./railway_manage.sh [command]
-```
+
+```text
 
 Commands:
 
@@ -58,39 +58,40 @@ Commands:
 - `open` - Open in browser
 - `restore` - Restore position data
 
+
 ______________________________________________________________________
 
 ## 🎯 Common Workflows
 
-### **Deploy After Code Changes**
+###**Deploy After Code Changes**```bash
 
-```bash
 ./redeploy.sh "Fixed WOLF price provider"
-```
 
-### **Check If Ghost Is Running**
+```text
 
-```bash
+###**Check If Ghost Is Running**```bash
+
 ./railway_manage.sh health
-```
 
-### **Watch Live Logs**
+```text
 
-```bash
+###**Watch Live Logs**```bash
+
 ./railway_manage.sh logs
-```
 
-### **Get Your URL**
+```text
 
-```bash
+###**Get Your URL**```bash
+
 ./railway_manage.sh url
-```
 
-### **Restore Position Data**
+```text
 
-```bash
+###**Restore Position Data**```bash
+
 ./railway_manage.sh restore
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -99,38 +100,46 @@ ______________________________________________________________________
 If you prefer using Railway CLI directly:
 
 ```bash
+
 # Deploy
+
 railway up --detach
 
 # Watch logs
+
 railway logs
 
 # Check status
+
 railway status
 
 # Get URL
+
 railway domain
 
 # Open in browser
+
 railway open
 
 # Set variable
+
 railway variables set KEY="value"
 
 # List variables
+
 railway variables
 
 # Restart
+
 railway restart
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 🌐 Your Deployment
 
-After running `./deploy_ghost.sh`, you'll get:
-
-**URL**: `https://ghost-protocol-production.up.railway.app`\
+After running `./deploy_ghost.sh`, you'll get:**URL**: `https://ghost-protocol-production.up.railway.app`\
 (or similar)
 
 **Endpoints**:
@@ -140,6 +149,7 @@ After running `./deploy_ghost.sh`, you'll get:
 - Cockpit: `https://[your-url]/api/cockpit`
 - AI Memory: `https://[your-url]/ai/memory/stats`
 
+
 ______________________________________________________________________
 
 ## 🔐 Environment Variables
@@ -147,6 +157,7 @@ ______________________________________________________________________
 These are automatically set by `deploy_ghost.sh`:
 
 ```bash
+
 GHOST_API_TOKEN              # API authentication
 POLYGON_API_KEY              # Stock price data
 ALPHAVANTAGE_API_KEY         # Backup price provider
@@ -155,41 +166,46 @@ TELEGRAM_CHAT_ID             # Your Telegram chat
 GHOST_FOCUS_TICKER           # Trading symbol (WOLF)
 WOLF_PERSIST_MODE            # Database mode (sqlite)
 SIM_MODE                     # Live trading (0)
-```
+
+```text
 
 To update:
 
 ```bash
+
 railway variables set KEY="new_value"
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 📊 Monitoring
 
-### **Live Logs**
+### **Live Logs**```bash
 
-```bash
 railway logs
-```
 
-### **Health Check**
+```text
 
-```bash
-curl https://[your-url]/health
-```
+###**Health Check**```bash
+
+curl <<<<<https://[your-url]/health>>>>>
+
+```text
 
 Expected response:
 
 ```json
+
 {"ok": true, "ts": 1759543749}
-```
 
-### **Detailed Health**
+```text
 
-```bash
-curl https://[your-url]/health/detailed
-```
+###**Detailed Health**```bash
+
+curl <<<<<https://[your-url]/health/detailed>>>>>
+
+```text
 
 Shows:
 
@@ -198,6 +214,7 @@ Shows:
 - Price provider status
 - Database health
 
+
 ______________________________________________________________________
 
 ## 🔄 Auto-Deploy
@@ -205,18 +222,22 @@ ______________________________________________________________________
 Railway automatically deploys when you push to `main` branch:
 
 ```bash
+
 git add .
 git commit -m "Updated feature"
 git push origin main
-```
+
+```text
 
 Railway detects the push and redeploys within 3-5 minutes.
 
 Or use the quick script:
 
 ```bash
+
 ./redeploy.sh "Updated feature"
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -226,53 +247,56 @@ Ghost uses Railway's persistent storage for:
 
 - `wolf.db` - Position data
 - `ai_memory.db` - AI decisions
-- `ghost_ai.db` - Trading history
+- `ghost_ai.db` - Trading history**Automatic backups**: Daily at 3 AM UTC (configured in `railway.toml`)
 
-**Automatic backups**: Daily at 3 AM UTC (configured in `railway.toml`)
 
 ______________________________________________________________________
 
 ## 🐛 Troubleshooting
 
-### **Deployment fails with "ModuleNotFoundError"**
+### **Deployment fails with "ModuleNotFoundError"**✅ Already fixed! `Procfile` and `nixpacks.toml` ensure dependencies install
 
-✅ Already fixed! `Procfile` and `nixpacks.toml` ensure dependencies install.
+###**Health check fails**```bash
 
-### **Health check fails**
-
-```bash
 # Check logs
+
 railway logs --tail 100
 
 # Check status
+
 railway status
 
 # Restart
+
 railway restart
-```
 
-### **Can't get URL**
+```text
 
-```bash
+###**Can't get URL**```bash
+
 railway domain
-```
 
-### **Environment variables missing**
+```text
 
-```bash
+###**Environment variables missing**```bash
+
 # List current
+
 railway variables
 
 # Set missing ones
+
 railway variables set KEY="value"
-```
 
-### **Position data lost**
+```text
 
-```bash
+###**Position data lost**```bash
+
 # Restore WOLF position
+
 ./railway_manage.sh restore
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -280,10 +304,11 @@ ______________________________________________________________________
 
 These files control Railway deployment:
 
-- **`Procfile`** - Tells Railway to run `python main.py`
-- **`nixpacks.toml`** - Installs Python dependencies
-- **`railway.toml`** - Health checks, restarts, cron jobs
-- **`requirements.txt`** - Python packages
+-**`Procfile`**- Tells Railway to run `python main.py`
+-**`nixpacks.toml`**- Installs Python dependencies
+-**`railway.toml`**- Health checks, restarts, cron jobs
+-**`requirements.txt`**- Python packages
+
 
 Don't delete these!
 
@@ -291,11 +316,11 @@ ______________________________________________________________________
 
 ## 🎯 Quick Reference
 
-| Task | Command | |------|---------| | **First deploy** | `./deploy_ghost.sh` | |
-**Redeploy** | `./redeploy.sh "message"` | | **Watch logs** | `./railway_manage.sh logs`
-| | **Check health** | `./railway_manage.sh health` | | **Get URL** |
-`./railway_manage.sh url` | | **Restart** | `./railway_manage.sh restart` | | **Restore
-position** | `./railway_manage.sh restore` |
+| Task | Command | |------|---------| |**First deploy**| `./deploy_ghost.sh` | |**Redeploy**| `./redeploy.sh "message"`
+| |**Watch logs**| `./railway_manage.sh logs`
+| |**Check health**| `./railway_manage.sh health` | |**Get URL**|
+`./railway_manage.sh url` | |**Restart**| `./railway_manage.sh restart` | |**Restore
+position**| `./railway_manage.sh restore` |
 
 ______________________________________________________________________
 
@@ -310,17 +335,17 @@ After deployment, verify:
 - [ ] `/ai/memory/stats` shows decision count
 - [ ] `./railway_manage.sh restore` succeeds
 
-If all checked, **Ghost is running 24/7 on Railway!** 🎉
+
+If all checked,**Ghost is running 24/7 on Railway!**🎉
 
 ______________________________________________________________________
 
-## 🆘 Need Help?
+## 🆘 Need Help
 
 1. Check logs: `./railway_manage.sh logs`
 2. Check status: `./railway_manage.sh status`
 3. Test health: `./railway_manage.sh health`
 4. Restart service: `./railway_manage.sh restart`
 
-______________________________________________________________________
 
-**Made with ❤️ for Ghost Trading System**
+______________________________________________________________________**Made with ❤️ for Ghost Trading System**

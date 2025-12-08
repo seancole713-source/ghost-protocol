@@ -11,7 +11,7 @@ ______________________________________________________________________
 ### 1. Fixed Telegram Bot OpenAI Integration
 
 **Problem**: Telegram bot was returning "404 Client Error: Not Found for url:
-https://api.openai.com/v1/chat/completions"\
+<<<<<https://api.openai.com/v1/chat/completions"\>>>>>
 **Root Cause**: Missing `OPENAI_AGENT_API_KEY` and `OPENAI_API_KEY` in Railway
 environment variables\
 **Solution**: Set both keys in Railway:
@@ -19,6 +19,7 @@ environment variables\
 - `OPENAI_AGENT_API_KEY=sk-proj-EpPiGZaf...`
 - `OPENAI_API_KEY=sk-proj-EpPiGZaf...`
 - `OPENAI_ORG_ID=org:jgG9PhOvU5uFkEPWKwe8Moa0`
+
 
 **Result**: ✅ Telegram bot AI Q&A now working
 
@@ -35,21 +36,25 @@ ______________________________________________________________________
 - `LOG_JSON=1`, `LOG_LEVEL=INFO`
 - `TZ=America/Chicago`
 
+
 #### Database & Cache
 
 - `DATABASE_URL=sqlite:///data/ghost.db`
 - `CACHE_MODE=redis`
 - `REDIS_URL=rediss://default:AVriAAI...` (Upstash)
 
+
 #### Portfolio
 
 - `WOLF_QTY=8.41959051`
 - `WOLF_AVG_COST=359.28`
 
+
 #### Price Providers
 
 - `ALPHAVANTAGE_API_KEY=3WNNLA81KS7BG4AK`
 - `POLYGON_API_KEY=8VIvELVXiLG30K2l1348RzSurffLM0jR`
+
 
 #### Crypto (NEW)
 
@@ -57,13 +62,15 @@ ______________________________________________________________________
 - `CRYPTO_SYMBOLS=BTC,ETH,SOL,BNB`
 - `CRYPTO_QUORUM=coingecko,binance,coinbase`
 
+
 #### Broker Integration (NEW) ⭐
 
 - `BROKER=alpaca`
 - `ALPACA_KEY_ID=PKVUMLL1V91W9Y5QCG77`
 - `ALPACA_SECRET_KEY=sw09z6TdIeXrs9G6fE5Lo9AayM44UmSWiEYcuXyk`
 - `ALPACA_PAPER=1` (Paper trading enabled)
-- `APCA_API_BASE_URL=https://paper-api.alpaca.markets/v2`
+- `APCA_API_BASE_URL=<<<<<https://paper-api.alpaca.markets/v2`>>>>>
+
 
 #### Risk Management (NEW) ⭐
 
@@ -73,9 +80,11 @@ ______________________________________________________________________
 - `RISK_MAX_DAILY_DD_PCT=5` (Max 5% daily drawdown)
 - `RISK_KILL=0` (Kill switch OFF)
 
+
 #### Security (NEW)
 
 - `AUTH_SECRET=5e7a60f7b0e841e5a56f5b9f02e35c9c1d2af64b3a45f07e6c8b9a4e0d8b5b2a`
+
 
 **Result**: ✅ All environment variables documented in `.env.complete` and set in Railway
 
@@ -96,6 +105,7 @@ ______________________________________________________________________
 - ✅ Market clock (open/close times)
 - ✅ Health checks
 
+
 **Methods**:
 
 ```python
@@ -105,7 +115,8 @@ broker.get_positions()
 broker.get_account()
 broker.cancel_order(order_id)
 broker.is_market_open()
-```
+
+```text
 
 **Result**: ✅ Complete broker abstraction ready to use
 
@@ -128,6 +139,7 @@ ______________________________________________________________________
   - All 60+ variables documented
   - Categories and explanations
 
+
 **Result**: ✅ Full system documentation available
 
 ______________________________________________________________________
@@ -140,16 +152,21 @@ ______________________________________________________________________
 
 1. Add broker endpoints to `wolf_app.py`:
 
+
    ```python
+
    @APP.post("/trade/submit")
    @APP.get("/trade/status")
    @APP.get("/trade/positions")
    @APP.delete("/trade/cancel/{order_id}")
-   ```
 
-2. Connect risk engine to broker:
+   ```text
+
+1. Connect risk engine to broker:
+
 
    ```python
+
    from core.alpaca_broker import get_broker
    from core.risk_engine import get_risk_engine
 
@@ -157,25 +174,33 @@ ______________________________________________________________________
    async def submit_trade(order: OrderRequest):
        risk_engine = get_risk_engine()
        broker = get_broker()
-       
+
        # Check risk before submitting
+
        allowed, reason = risk_engine.risk_check_order(...)
        if not allowed:
            return {"ok": False, "blocked": True, "reason": reason}
-       
+
        # Submit to broker
+
        result = broker.submit_order(...)
        return {"ok": True, "order": result}
-   ```
 
-3. Add automated stop-loss/take-profit scanning:
+   ```text
+
+1. Add automated stop-loss/take-profit scanning:
+
 
    ```python
+
    @APP.on_event("startup")
    async def start_risk_monitor():
+
        # Every 60 seconds, scan positions for SL/TP triggers
+
        asyncio.create_task(risk_monitor_loop())
-   ```
+
+   ```text
 
 ### Phase 2: Add Trading Dashboard UI (1-2 hours)
 
@@ -187,10 +212,11 @@ ______________________________________________________________________
    - Open orders
    - Today's P&L
    - Risk status (position limits, daily DD)
-3. Add buttons:
+1. Add buttons:
    - "Place Order" (manual trading)
    - "Close Position"
    - "Cancel Order"
+
 
 ### Phase 3: Telegram Trading Commands (1 hour)
 
@@ -203,6 +229,7 @@ ______________________________________________________________________
    - `/positions` - Show positions with SL/TP
    - `/risk` - Show risk status
 
+
 ### Phase 4: Testing & Validation (1-2 hours)
 
 **Tasks**:
@@ -213,19 +240,19 @@ ______________________________________________________________________
 4. Test take-profit trigger
 5. Verify Telegram commands work
 
+
 ______________________________________________________________________
 
 ## 📊 PROGRESS TRACKING
 
 | Feature | Before | After | Status | |---------|--------|-------|--------| | **Telegram
-Bot** | 🔴 Broken (OpenAI 404) | 🟢 Fixed | ✅ DONE | | **Environment Vars** | ⚠️
-Incomplete | 🟢 Complete (60+) | ✅ DONE | | **Broker Integration** | ❌ None | 🟡 Code
-Ready | 🚧 IN PROGRESS | | **Risk Management** | 🟡 Basic (40%) | 🟢 Advanced (90%) | 🚧 IN
-PROGRESS | | **Trading Execution** | ❌ None (20%) | 🟡 Ready (70%) | 🚧 NEEDS INTEGRATION
-| | **Paper Trading** | ❌ None | 🟢 Alpaca Ready | 🚧 NEEDS TESTING | | **Stop-Loss/TP** |
-❌ Manual Only | 🟢 Auto (code ready) | 🚧 NEEDS INTEGRATION |
-
-**Overall Completion**: ~75% → ~85% (environment done, code ready, needs integration)
+Bot**| 🔴 Broken (OpenAI 404) | 🟢 Fixed | ✅ DONE | |**Environment Vars**| ⚠️
+Incomplete | 🟢 Complete (60+) | ✅ DONE | |**Broker Integration**| ❌ None | 🟡 Code
+Ready | 🚧 IN PROGRESS | |**Risk Management**| 🟡 Basic (40%) | 🟢 Advanced (90%) | 🚧 IN
+PROGRESS | |**Trading Execution**| ❌ None (20%) | 🟡 Ready (70%) | 🚧 NEEDS INTEGRATION
+| |**Paper Trading**| ❌ None | 🟢 Alpaca Ready | 🚧 NEEDS TESTING | |**Stop-Loss/TP**|
+❌ Manual Only | 🟢 Auto (code ready) | 🚧 NEEDS INTEGRATION |**Overall Completion**: ~75% → ~85% (environment done, code
+ready, needs integration)
 
 ______________________________________________________________________
 
@@ -236,11 +263,13 @@ ______________________________________________________________________
 - Set OpenAI keys in Railway
 - Verify AI Q&A working
 
+
 ### 2. ✅ DONE: Configure Environment
 
 - Set all 60+ variables in Railway
 - Add broker credentials
 - Add risk parameters
+
 
 ### 3. ⏳ TODO: Integrate Broker
 
@@ -248,11 +277,13 @@ ______________________________________________________________________
 - Connect risk engine checks
 - Test paper order submission
 
+
 ### 4. ⏳ TODO: Add Risk Automation
 
 - Create background task for SL/TP monitoring
 - Trigger exit orders automatically
 - Log risk events to database
+
 
 ### 5. ⏳ TODO: Test End-to-End
 
@@ -260,6 +291,7 @@ ______________________________________________________________________
 - Verify risk blocks bad orders
 - Test Telegram trading commands
 - Monitor positions for SL/TP triggers
+
 
 ______________________________________________________________________
 
@@ -271,6 +303,7 @@ ______________________________________________________________________
 4. **MEDIUM**: Add stop-loss/take-profit monitoring loop
 5. **MEDIUM**: Add Telegram trading commands
 6. **LOW**: Add trading UI dashboard
+
 
 ______________________________________________________________________
 
@@ -288,6 +321,7 @@ Before declaring 90% complete, verify:
 - [ ] Daily drawdown limit prevents trading after 5% loss
 - [ ] Kill switch (`RISK_KILL=1`) blocks all orders
 
+
 ______________________________________________________________________
 
 ## 🚀 DEPLOYMENT STATUS
@@ -301,13 +335,14 @@ All variables set, deployment automatically restarting.
 - Documentation updated
 - Environment template saved
 
+
 **Next Deploy**: After integrating broker endpoints into wolf_app.py
 
 ______________________________________________________________________
 
 ## 💡 KEY INSIGHTS
 
-### What Was Wrong with Telegram Bot?
+### What Was Wrong with Telegram Bot
 
 The issue was NOT related to the crypto update. The crypto module was added with proper
 error handling (try/except, returns empty array on failure).
@@ -330,6 +365,7 @@ for crypto movers.
 - ✅ Database schemas exist (orders table already defined)
 - ⏳ Just needs: Wire broker into wolf_app.py endpoints
 
+
 ______________________________________________________________________
 
 ## 📞 NEXT CONVERSATION TOPICS
@@ -338,15 +374,18 @@ ______________________________________________________________________
 2. **Broker integration priority**: Should I add the `/trade/*` endpoints now?
 3. **Risk automation**: Want me to add the auto SL/TP monitoring loop?
 4. **Testing plan**: Want to test paper trading immediately or wait for full
+
+
    integration?
 
 ______________________________________________________________________
 
-**Bottom Line**: GHOST is at **~85%** right now. We have:
+**Bottom Line**: GHOST is at **~85%**right now. We have:
 
 - ✅ All infrastructure configured (environment, keys, broker credentials)
 - ✅ All code modules written (broker, risk engine)
 - ⏳ Just need to wire them together in wolf_app.py
-- ⏳ Est. 4-6 hours of work to reach **90%+**
+- ⏳ Est. 4-6 hours of work to reach**90%+**
+
 
 The Telegram bot issue is FIXED (was just missing API keys, not related to crypto).

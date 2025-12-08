@@ -23,8 +23,12 @@ ______________________________________________________________________
 - **Persistent**: SQLite database at `data/ai_memory.db` (13MB)
 - **Table**: `ai_memory` - stores decision history with features, outcomes, confidence
 - **Vector Store**: Currently "none" (Euclidean distance fallback), ready for
+
+
   ChromaDB/FAISS
+
 - **Cache**: 1000-item deque (`AI_MEMORY_RING`) for fast access to recent decisions
+
 
 ### 2. Core Components
 
@@ -40,7 +44,8 @@ class AIMemory:
     def export_for_training(symbol, min_samples)     # ML training data
     def prune_old_memories(keep_days=365)            # Cleanup old records
     def search_by_reasoning(query, k=10) -> list     # Semantic text search
-```
+
+```text
 
 #### Helper Functions (`wolf_app.py`)
 
@@ -49,6 +54,7 @@ class AIMemory:
 - **`_serialize_memory_decision(row)`**: Converts DB row → API response format
 - **`_ai_neighbors(features, k=50)`**: Find similar past situations
 - **`_migrate_legacy_ai_memory()`**: One-time migration from `ghost_ai.db`
+
 
 ### 3. API Endpoints
 
@@ -65,7 +71,8 @@ ______________________________________________________________________
 
 ## Data Flow
 
-```
+```text
+
 ┌─────────────────────────────────────────────────────────────┐
 │                    Decision Event                            │
 │  /ai/decide OR /ai/agent/run OR background scheduler        │
@@ -97,7 +104,8 @@ ______________________________________________________________________
          │   API Endpoints              │
          │   /stats, /recent, /similar  │
          └─────────────────────────────┘
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -105,7 +113,7 @@ ______________________________________________________________________
 
 ### Unit Tests (`test_ai_memory.py`)
 
-✅ **11/11 tests passing** (1.89s runtime)
+✅ **11/11 tests passing**(1.89s runtime)
 
 | Test | Status | Description | |------|--------|-------------| |
 `test_memory_initialization` | ✅ | Empty memory starts at 0 records | |
@@ -121,36 +129,41 @@ by BUY/SELL/HOLD action | | `test_memory_stats` | ✅ | Total count, avg confide
 
 ### Integration Tests (Manual)
 
-✅ **Server running on port 5000**
+✅**Server running on port 5000**```bash
 
-```bash
 # Stats endpoint
-curl http://localhost:5000/ai/memory/stats
+
+curl <<<<<http://localhost:5000/ai/memory/stats>>>>>
+
 # Result: {"ok": true, "count": 57549, "last_ts": 1759508531}
 
 # Recent decisions
-curl 'http://localhost:5000/ai/memory/recent?limit=3'
+
+curl '<<<<<http://localhost:5000/ai/memory/recent?limit=3'>>>>>
+
 # Result: {"ok": true, "total": 57549, "items": [...], "limit": 3, "offset": 0}
 
 # Similar situations
-curl -X POST http://localhost:5000/ai/memory/similar \
+
+curl -X POST <<<<<http://localhost:5000/ai/memory/similar>>>>> \
   -d '{"symbol":"WOLF","price":450,"features":{"ret_1d":0.01},"k":5}'
+
 # Result: {"ok": true, "items": [...], "count": 5}
-```
+
+```text
 
 ______________________________________________________________________
 
 ## Integration Points
 
-### 1. `/ai/decide` Endpoint (Lines 4599-4667)
-
-**Flow**:
+### 1. `/ai/decide` Endpoint (Lines 4599-4667)**Flow**
 
 1. Build context with prices, position, news
 2. Call LLM or fallback heuristic
 3. Extract features: `_extract_features(price, prev, qty, avg, news_score)`
 4. Persist via `_ai_memory_append({ts, price, features, action, confidence, ...})`
 5. Store to both ring buffer and SQLite
+
 
 **Idempotency**: Cached responses for repeated `Idempotency-Key` values (60s TTL)
 
@@ -162,6 +175,7 @@ ______________________________________________________________________
 2. Call `llm.agent.run_once(_tool_router)`
 3. Extract features from agent result
 4. Persist via `_ai_memory_append(...)`
+
 
 ### 3. Background Scheduler (Not in scope)
 
@@ -177,10 +191,17 @@ ______________________________________________________________________
 - **Target**: `data/ai_memory.db` → `ai_memory` table
 - **Transformation**: `_legacy_snapshot_to_decision(row)`
   - Maps old schema:
+
+
     `(ts, price, prev, qty, avg, news_score, features_json, label_next_move, advisory, confidence)`
+
   - To new schema:
+
+
     `{ts, symbol, price, prev_close, news_score, features, action, confidence, reasoning, model_version, model_type}`
+
 - **Status**: ✅ Successfully migrated 57K+ records on first run
+
 
 ______________________________________________________________________
 
@@ -199,26 +220,28 @@ FAISS for:
 - Support for 10K+ feature dimensions
 - Sub-10ms query times
 
+
 ______________________________________________________________________
 
 ## Feature Extraction
 
-**Current Features** (`_extract_features()` - Line 1088):
+**Current Features**(`_extract_features()` - Line 1088):
 
 ```python
+
 {
     "ret_1d": (price - prev_close) / prev_close,  # 1-day return
     "dist_avg": (price / avg_cost) - 1.0,         # Distance from avg cost
     "news": news_score,                            # Sentiment score
     "qty": quantity,                               # Position size
 }
-```
 
-**Stored in `features` JSON column**:
+```text**Stored in `features` JSON column**:
 
 - Extensible: Add technical indicators (RSI, MACD, Bollinger Bands)
 - Ready for RL: Action-value pairs for TD-learning
 - ML-friendly: Normalized numeric vectors
+
 
 ______________________________________________________________________
 
@@ -227,6 +250,7 @@ ______________________________________________________________________
 ### `/ai/memory/recent` Response
 
 ```json
+
 {
   "ok": true,
   "total": 57549,
@@ -248,11 +272,13 @@ ______________________________________________________________________
   "limit": 50,
   "offset": 0
 }
-```
+
+```text
 
 ### `/ai/memory/similar` Response
 
 ```json
+
 {
   "ok": true,
   "items": [
@@ -270,7 +296,8 @@ ______________________________________________________________________
   ],
   "count": 5
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -281,13 +308,16 @@ ______________________________________________________________________
 - `ghost_ai_memory_requests_total{endpoint, result}` - Counter
 - `ghost_ai_memory_latency_seconds{endpoint}` - Histogram
 
+
 ### Logging
 
 ```python
+
 LOGGER.info("ai_memory_initialized", extra={"db": path, "vector": store})
 LOGGER.exception("ai_memory_store_failed", extra={"error": str(e)})
 LOGGER.info("ai_memory_migrated", extra={"count": migrated})
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -299,11 +329,13 @@ ______________________________________________________________________
 - **Bearer Token**: Standard `Authorization: Bearer <token>` header
 - **Test Toggle**: `/ai/memory/debug/auth?on=0` (only in `SNAP_TEST_MODE`)
 
+
 ### Data Privacy
 
 - No PII stored (only WOLF symbol, prices, features)
 - Reasoning text may contain trade rationale (sanitize before export)
 - Outcomes are numeric performance metrics (not sensitive)
+
 
 ______________________________________________________________________
 
@@ -316,6 +348,7 @@ ______________________________________________________________________
 3. **Outcome Tracking**: Manual updates required (no background job yet)
 4. **Calibration**: Computed on-demand (should be cached/periodic)
 
+
 ### Phase 1 Enhancements
 
 - [ ] Integrate ChromaDB for semantic similarity (reasoning text embeddings)
@@ -324,6 +357,7 @@ ______________________________________________________________________
 - [ ] Cache calibration metrics (recompute daily)
 - [ ] Expose `/ai/memory/calibration` endpoint
 
+
 ### Phase 2 GPT Evolution
 
 - [ ] Train LSTM forecaster on 57K+ decision history
@@ -331,6 +365,7 @@ ______________________________________________________________________
 - [ ] Regime detection based on feature clustering
 - [ ] Risk-adjusted position sizing via Kelly criterion
 - [ ] Multi-horizon forecasting (1h, 4h, 24h, 7d)
+
 
 ______________________________________________________________________
 
@@ -360,12 +395,14 @@ ______________________________________________________________________
 - Legacy migration complete
 - Ring buffer + SQLite dual-layer caching
 
+
 **Next Steps**:
 
 1. Add ChromaDB for semantic similarity
 2. Implement background outcome updates
 3. Expose calibration metrics endpoint
 4. Train LSTM/PPO models on historical data
+
 
 **Recommendation**: Move to Phase 1 ensemble forecasting (LSTM + XGBoost + Prophet)
 while AI memory continues accumulating training data in background.

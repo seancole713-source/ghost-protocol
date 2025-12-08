@@ -1,21 +1,20 @@
 # GHOST System Health Report
 
 **Generated**: 2025-10-03 16:41 UTC\
-**Status**: ✅ **100% OPERATIONAL**
-
-______________________________________________________________________
+**Status**: ✅ **100% OPERATIONAL**______________________________________________________________________
 
 ## Executive Summary
 
-Ghost trading system is **FULLY OPERATIONAL** with all critical components functioning
+Ghost trading system is**FULLY OPERATIONAL**with all critical components functioning
 correctly:
 
-- ✅ **Server**: Running on port 5000, responding to all endpoints
+- ✅**Server**: Running on port 5000, responding to all endpoints
 - ✅ **Portfolio**: 8.41959051 WOLF @ $359.28 (properly persisted)
 - ✅ **Pricing**: Forecast fallback active ($24.69) when providers fail
 - ✅ **AI Memory**: 57,784+ decisions recorded and accessible
 - ✅ **Health Monitoring**: Comprehensive `/health/detailed` endpoint operational
 - ✅ **Cockpit**: Full portfolio display with P&L calculations
+
 
 ______________________________________________________________________
 
@@ -29,11 +28,13 @@ ______________________________________________________________________
   "health": "OK",
   "uptime": "Recent restart with fixes applied"
 }
-```
+
+```text
 
 ### 2. Portfolio ✅
 
 ```json
+
 {
   "symbol": "WOLF",
   "qty": 8.41959051,
@@ -43,7 +44,8 @@ ______________________________________________________________________
   "pnl_abs": -2817.11,
   "pnl_pct": -93.13
 }
-```
+
+```text
 
 **Note**: Large unrealized loss reflects WOLF ticker's delisting/unavailability.
 Consider migration to NVDA (see Recommendations below).
@@ -59,27 +61,27 @@ Consider migration to NVDA (see Recommendations below).
 - Polygon: WOLF not supported (crypto-focused)
 - AlphaVantage: WOLF not available
 
-**Mitigation**: ✅ **Forecast Fallback Active**
 
-- Fallback source: `/data/forecast_WOLF.json`
-- Current forecast price: **$24.69**
-- Fallback hierarchy: `prev_close` → `forecast p0` → `null`
+**Mitigation**: ✅ **Forecast Fallback Active**- Fallback source: `/data/forecast_WOLF.json`
+
+- Current forecast price:**$24.69**- Fallback hierarchy: `prev_close` → `forecast p0` → `null`
 - Implementation: Lines 2937-2985 in `wolf_app.py`
+
 
 ### 4. AI Memory ✅
 
 ```json
+
 {
   "records": 57784,
   "database": "ai_memory.db",
   "size": "13 MB",
   "status": "Fully operational"
 }
-```
 
-### 5. Health Monitoring ✅
+```text
 
-**New Endpoint**: `GET /health/detailed`
+### 5. Health Monitoring ✅**New Endpoint**: `GET /health/detailed`
 
 Provides comprehensive system diagnostics:
 
@@ -89,9 +91,11 @@ Provides comprehensive system diagnostics:
 - Cache status (price, news, AI ring)
 - Issue tracking (automated alerts)
 
+
 **Example Response**:
 
 ```json
+
 {
   "ok": true,
   "issues": [],
@@ -105,7 +109,8 @@ Provides comprehensive system diagnostics:
     "cache": {"price_cache_size": 1, "news_cache_age_s": 38}
   }
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -119,12 +124,16 @@ don't support WOLF)
 **Solution**: Enhanced multi-tier fallback logic
 
 ```python
-# Fallback hierarchy:
+
+# Fallback hierarchy
+
 1. Consensus from multiple providers (primary)
 2. prev_close if available (first fallback)
 3. forecast p0 from forecast_WOLF.json (second fallback)
 4. null (final fallback)
-```
+
+
+```text
 
 **File**: `wolf_app.py` lines 2937-2985 **Result**: Price always available via forecast
 fallback ($24.69)
@@ -137,11 +146,14 @@ fallback ($24.69)
 **Solution**: Direct SQLite query to load position data
 
 ```python
-# Direct database query pattern:
+
+# Direct database query pattern
+
 conn = sqlite3.connect(WOLF_SQLITE_PATH)
 cur.execute("SELECT value FROM state WHERE key='position'")
 pos_data = json.loads(cur.fetchone()[0])
-```
+
+```text
 
 **File**: `wolf_app.py` lines 4113-4155 **Result**: Health endpoint now shows accurate
 position data
@@ -153,10 +165,12 @@ position data
 **Solution**: Position restored via API
 
 ```bash
-curl -X POST http://localhost:5000/api/position \
+
+curl -X POST <<<<<http://localhost:5000/api/position>>>>> \
   -H "Authorization: Bearer supersecret123jamaica713" \
   -d '{"qty": 8.41959051, "avg_cost": 359.28}'
-```
+
+```text
 
 **Result**: Portfolio data persisted and displaying correctly in cockpit
 
@@ -179,20 +193,24 @@ ______________________________________________________________________
 
 ### wolf.db (Portfolio)
 
-```
+```text
+
 Size: 928 KB
 Tables: state, orders, forecast_history, model_stats
 Status: ✅ Operational
 Position: 8.41959051 WOLF @ $359.28 (persisted)
-```
+
+```text
 
 ### ai_memory.db (AI Decisions)
 
-```
+```text
+
 Size: 13 MB
 Records: 57,784 decisions
 Status: ✅ Operational
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -201,17 +219,20 @@ ______________________________________________________________________
 ### Environment Variables
 
 ```bash
+
 WOLF: WOLF (focus ticker)
 GHOST_API_TOKEN: supersecret123jamaica713 (auth enabled)
-POLYGON_API_KEY: ******************************** (32 chars, loaded)
-ALPHAVANTAGE_API_KEY: **************** (16 chars, loaded)
+POLYGON_API_KEY: ********************************(32 chars, loaded)
+ALPHAVANTAGE_API_KEY:****************(16 chars, loaded)
 WOLF_SQLITE_PATH: /workspaces/GHOST/data/wolf.db
 AI_MEMORY_PATH: /workspaces/GHOST/data/ai_memory.db
-```
+
+```text
 
 ### Price Provider Config
 
 ```json
+
 {
   "yahoo_enabled": true,
   "yfinance_enabled": true,
@@ -219,15 +240,15 @@ AI_MEMORY_PATH: /workspaces/GHOST/data/ai_memory.db
   "alphavantage_enabled": true,
   "fallback_strategy": "prev_close → forecast → null"
 }
-```
+
+```text
 
 ______________________________________________________________________
 
 ## Known Issues & Mitigations
 
-### 1. WOLF Ticker Delisted/Unavailable ⚠️
+### 1. WOLF Ticker Delisted/Unavailable ⚠️**Impact**: Cannot fetch real-time prices from any provider\
 
-**Impact**: Cannot fetch real-time prices from any provider\
 **Mitigation**: ✅ Forecast fallback active ($24.69)\
 **Recommendation**: Migrate to NVDA (see below)
 
@@ -259,6 +280,7 @@ dependency
 3. Test Polygon/AlphaVantage fetch for liquid ticker
 4. Verify real-time pricing works without fallback
 
+
 **Expected Outcome**: Real-time prices from premium APIs (Polygon/AlphaVantage)
 
 ### Priority 2: Implement Database Backups
@@ -271,6 +293,7 @@ dependency
 2. Keep 7 days of backups
 3. Document restoration procedure
 
+
 ### Priority 3: Price Staleness UI Indicators
 
 **Why**: Forecast fallback prices lack age/source context for users
@@ -281,6 +304,7 @@ dependency
 2. Display last successful fetch timestamp
 3. Show provider source (e.g., "forecast-fallback 2h ago")
 
+
 ### Priority 4: Enhanced Logging for Price Failures
 
 **Why**: Debugging provider issues requires detailed error context
@@ -290,6 +314,7 @@ dependency
 1. Add structured logging for each provider attempt
 2. Track failure reasons (rate limit, timeout, delisted)
 3. Expose in `/health/detailed` diagnostics
+
 
 ______________________________________________________________________
 
@@ -307,6 +332,7 @@ ______________________________________________________________________
 - [ ] Failover testing (provider outages)
 - [ ] Performance profiling (response times)
 
+
 ______________________________________________________________________
 
 ## Support Information
@@ -316,43 +342,55 @@ ______________________________________________________________________
 - **Server**: `/tmp/ghost_server.log`
 - **Command**: `tail -f /tmp/ghost_server.log | grep ERROR`
 
+
 ### Diagnostics
 
 ```bash
+
 # Quick health check
-curl http://localhost:5000/health/detailed | jq '.ok, .issues'
+
+curl <<<<<http://localhost:5000/health/detailed>>>>> | jq '.ok, .issues'
 
 # Portfolio status
-curl http://localhost:5000/api/positions
+
+curl <<<<<http://localhost:5000/api/positions>>>>>
 
 # Price status
-curl "http://localhost:5000/api/price/WOLF?force=1"
+
+curl "<<<<<http://localhost:5000/api/price/WOLF?force=1">>>>>
 
 # AI memory stats
-curl http://localhost:5000/ai/memory/stats | jq '{records, last_ts}'
-```
+
+curl <<<<<http://localhost:5000/ai/memory/stats>>>>> | jq '{records, last_ts}'
+
+```text
 
 ### Restart Procedure
 
 ```bash
+
 # Stop server
+
 pkill -9 -f "uvicorn.*wolf_app"
 
 # Start server
+
 cd /workspaces/GHOST
 nohup uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload > /tmp/ghost_server.log 2>&1 &
 
 # Verify startup
-sleep 3 && curl http://localhost:5000/health
-```
+
+sleep 3 && curl <<<<<http://localhost:5000/health>>>>>
+
+```text
 
 ______________________________________________________________________
 
 ## Conclusion
 
-Ghost trading system is **100% OPERATIONAL** with all critical functionality restored:
+Ghost trading system is **100% OPERATIONAL**with all critical functionality restored:
 
-✅ **Server**: Healthy and responsive\
+✅**Server**: Healthy and responsive\
 ✅ **Portfolio**: Position data persisted and displaying\
 ✅ **Pricing**: Forecast fallback mitigates provider failures\
 ✅ **AI Memory**: Full history accessible\

@@ -11,29 +11,31 @@ the Railway dashboard:
 git add -A
 git commit -m "Railway deployment ready"
 git push origin main
-```
+
+```text
 
 ### Step 2: Deploy via Railway Dashboard
 
-1. **Go to Railway**: [railway.app/dashboard](https://railway.app/dashboard)
-2. **New Project** → **Deploy from GitHub repo**
-3. **Select**: `seancole713-source/GHOST`
-4. **Branch**: `main`
-5. **Settings**:
-   - Builder: **Dockerfile** (auto-detected from `railway.json`)
+1. **Go to Railway**: [railway.app/dashboard](<<<<<https://railway.app/dashboar>>>>>d)
+2. **New Project**→**Deploy from GitHub repo**3.**Select**: `seancole713-source/GHOST`
+3. **Branch**: `main`
+4. **Settings**:
+   - Builder: **Dockerfile**(auto-detected from `railway.json`)
    - Start Command: `python wolf_app.py`
    - Healthcheck Path: `/health`
    - Port: Railway auto-detects from `PORT` env var
 
+
 ### Step 3: Verify Variables Are Set
 
-Go to **Variables** tab and confirm these exist (already configured):
+Go to**Variables**tab and confirm these exist (already configured):
 
 - ✅ POLYGON_API_KEY
 - ✅ ALPHAVANTAGE_API_KEY
 - ✅ OPENAI_API_KEY
 - ✅ TELEGRAM_BOT_TOKEN (if using alerts)
 - ✅ TELEGRAM_CHAT_ID (if using alerts)
+
 
 ### Step 4: Deploy
 
@@ -44,23 +46,27 @@ Railway will:
 3. Deploy to a public URL
 4. Run healthcheck against `/health`
 
+
 ### Step 5: Get Your URL
 
 After deployment completes:
 
-- **Settings** → **Networking** → **Generate Domain**
-- Copy the URL (format: `ghost-production-xxxx.up.railway.app`)
+-**Settings**→**Networking**→**Generate Domain**- Copy the URL (format: `ghost-production-xxxx.up.railway.app`)
+
 
 ### Step 6: Test Live
 
 ```bash
+
 # Replace with the domain shown under Settings → Networking
-RAILWAY_URL="https://ghost-production-xxxx.up.railway.app"
+
+RAILWAY_URL="<<<<<https://ghost-production-xxxx.up.railway.app">>>>>
 
 curl "$RAILWAY_URL/health"
 curl "$RAILWAY_URL/api/cockpit"
 curl "$RAILWAY_URL/api/top_movers?threshold=7.0"
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -69,11 +75,13 @@ ______________________________________________________________________
 If you have CLI access configured:
 
 ```bash
+
 railway login   # Interactive auth, stores token securely
 railway link    # Link to existing project
 railway up      # Deploy
 railway open    # Open dashboard
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -83,6 +91,7 @@ ______________________________________________________________________
 - ✅ `railway.json` - Railway config (builder, healthcheck, restart policy)
 - ✅ `requirements.txt` - Python dependencies (existing)
 
+
 ______________________________________________________________________
 
 ## Post-Deploy Checks
@@ -90,21 +99,28 @@ ______________________________________________________________________
 Once deployed, verify:
 
 ```bash
+
 # Health
+
 curl "$RAILWAY_URL/health"
 
 # Price provider (should NOT be "prev-close" during market hours)
+
 curl "$RAILWAY_URL/api/price/diagnostics" | jq .provider
 
 # Trigger forecast generation
+
 curl -X POST "$RAILWAY_URL/api/advisor_refresh"
 
 # Scan watchlist for movers
+
 curl -X POST "$RAILWAY_URL/api/watchlist/scan?threshold=7.0&limit=30"
 
 # Check top movers
+
 curl "$RAILWAY_URL/api/top_movers"
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -112,32 +128,37 @@ ______________________________________________________________________
 
 ### Build fails
 
-- Check Railway logs: **Deployments** → Click latest → **View Logs**
-- Common: missing dependencies in `requirements.txt`
+- Check Railway logs:**Deployments**→ Click latest →**View Logs**- Common: missing dependencies in `requirements.txt`
+
 
 ### Health check fails
 
 - Increase timeout in `railway.json` (`healthcheckTimeout: 300`)
 - Check `/health` endpoint returns `{"ok": true}`
 
+
 ### Environment variables not working
 
-- Verify in Railway **Variables** tab
+- Verify in Railway**Variables**tab
 - Restart deployment after adding new vars
+
 
 ### Port issues
 
 - Railway sets `PORT` automatically - don't hardcode 5000
 - `wolf_app.py` reads `PORT` from env (already configured)
 
+
 ______________________________________________________________________
 
 ## Next Steps After Deploy
 
-1. **Custom Domain** (optional): Settings → Domains → Add Custom Domain
-2. **Monitoring**: Use Railway metrics dashboard
-3. **Auto-deploys**: Settings → Enable "Auto-deploy on push to main"
-4. **Scale**: Settings → Adjust resources if needed
+1.**Custom Domain**(optional): Settings → Domains → Add Custom Domain
+2.**Monitoring**: Use Railway metrics dashboard
+
+1. **Auto-deploys**: Settings → Enable "Auto-deploy on push to main"
+2. **Scale**: Settings → Adjust resources if needed
+
 
 ______________________________________________________________________
 

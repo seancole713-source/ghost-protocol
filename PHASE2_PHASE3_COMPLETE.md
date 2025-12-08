@@ -18,6 +18,7 @@ ______________________________________________________________________
 - **API**: `/api/insider/{symbol}` (TODO: add endpoint)
 - **Expected Accuracy Boost**: +3-4%
 
+
 ### 2. CBOE Options Flow Tracker ✅
 
 - **Location**: `wolf_app.py` lines 4215-4360
@@ -28,6 +29,7 @@ ______________________________________________________________________
 - **Weight in Model**: 15%
 - **API**: `GET /api/options/{symbol}`
 - **Expected Accuracy Boost**: +2-3%
+
 
 ### 3. Short Interest Tracker ✅
 
@@ -40,6 +42,7 @@ ______________________________________________________________________
 - **API**: `GET /api/short_interest/{symbol}`
 - **Expected Accuracy Boost**: +2-3%
 
+
 ### 4. Supply Chain & Macro Indicators ✅
 
 - **Location**: `wolf_app.py` lines 4545-4710
@@ -49,6 +52,7 @@ ______________________________________________________________________
 - **Weight in Model**: 10%
 - **API**: `GET /api/supply_chain/{symbol}`
 - **Expected Accuracy Boost**: +3-4%
+
 
 ### 5. SEC 13F Institutional Holdings ✅
 
@@ -60,6 +64,7 @@ ______________________________________________________________________
 - **Weight in Model**: 15%
 - **API**: `GET /api/institutional/{symbol}`
 - **Expected Accuracy Boost**: +4-5%
+
 
 ### 6. Ensemble Forecaster Integration ✅
 
@@ -73,19 +78,22 @@ ______________________________________________________________________
 - **API**: `GET /api/ensemble/forecast/{symbol}?horizon_hours=24`
 - **Expected Accuracy Boost**: +2-3% (diversification reduces overfitting)
 
-### Phase 2 Total Expected Accuracy: **68% → 80%**
 
-______________________________________________________________________
+### Phase 2 Total Expected Accuracy: **68% → 80%**______________________________________________________________________
 
 ## 🚀 Phase 3: Regime Detection + Confidence Gating (80% → 90%)
 
 ### 1. Market Regime Detection ✅
 
-- **Location**: `core/regime_detector.py` (382 lines)
+-**Location**: `core/regime_detector.py` (382 lines)
+
 - **Regimes**: BULL, BEAR, SIDEWAYS, VOLATILE
 - **Features**: Mean return, volatility, trend strength, VIX, SPY momentum
 - **Integration**: Adjusts confidence based on regime (reduce conf in VOLATILE, boost in
+
+
   trending markets)
+
 - **API**: `GET /api/regime/current`
 - **Strategy Adjustments**:
   - BULL: Aggressive, larger positions, wider stops
@@ -93,6 +101,7 @@ ______________________________________________________________________
   - SIDEWAYS: Range trading, quick profits
   - VOLATILE: Risk-off, reduce exposure
 - **Expected Accuracy Boost**: +3-4%
+
 
 ### 2. Confidence Gating ✅
 
@@ -102,6 +111,7 @@ ______________________________________________________________________
 - **Impact**: Trade less, win more (precision over coverage)
 - **Tracking**: `should_trade` flag in daily predictions
 - **Expected Accuracy Boost**: +3-5% (by filtering low-quality predictions)
+
 
 ### 3. Walk-Forward Backtesting ✅
 
@@ -115,13 +125,12 @@ ______________________________________________________________________
 - **Output**: Validates Ghost's accuracy on 2020-2024 historical data
 - **Expected Accuracy Validation**: Proves 80-90% accuracy is real, not overfit
 
-### Phase 3 Total Expected Accuracy: **80% → 88-90%**
 
-______________________________________________________________________
+### Phase 3 Total Expected Accuracy: **80% → 88-90%**______________________________________________________________________
 
 ## 📊 Feature Vector Summary
 
-Ghost now uses **10 predictive signals** for daily predictions:
+Ghost now uses**10 predictive signals**for daily predictions:
 
 | Feature | Type | Range | Weight | Source |
 |---------|------|-------|--------|--------| | `ret_1d` | Technical | -10% to +10% | 25%
@@ -132,9 +141,7 @@ CBOE put/call ratio | | `institutional` | Smart Money | -1.0 to +1.0 | 15% | 13F
 | | `short_squeeze` | Smart Money | -1.0 to +1.0 | 10% | Short interest | |
 `supply_chain` | Macro | -1.0 to +1.0 | 10% | VIX, SPY, SOX | | `regime` | Context |
 Categorical | Modifier | Market state | | `confidence` | Meta | 0-100% | Gate | Trade
-filter |
-
-**Total Weight**: 115% (overlapping context)\
+filter |**Total Weight**: 115% (overlapping context)\
 **Ensemble**: 4 models voting with dynamic weights
 
 ______________________________________________________________________
@@ -144,13 +151,15 @@ ______________________________________________________________________
 ### Server Health
 
 ```bash
-$ curl http://localhost:5000/health
+$ curl <<<<<http://localhost:5000/health>>>>>
 {"ok": true, "ts": 1759888047.302095}
-```
+
+```text
 
 ### Learning Worker
 
 ```bash
+
 $ curl /api/learning/status
 {
   "enabled": true,
@@ -158,11 +167,13 @@ $ curl /api/learning/status
   "current_time_ny": "2025-10-07T21:53:42-04:00",
   "predictions_today": 0
 }
-```
+
+```text
 
 ### Ensemble Forecast
 
 ```bash
+
 $ curl /api/ensemble/forecast/WOLF?horizon_hours=24
 {
   "ok": true,
@@ -176,11 +187,13 @@ $ curl /api/ensemble/forecast/WOLF?horizon_hours=24
   "weights": {"ghost_ai": 0.4, "technical": 0.25, ...},
   "confidence": 0.98
 }
-```
+
+```text
 
 ### Regime Detection
 
 ```bash
+
 $ curl /api/regime/current
 {
   "ok": true,
@@ -194,20 +207,23 @@ $ curl /api/regime/current
     }
   }
 }
-```
+
+```text
 
 ### All API Endpoints Working ✅
 
-01. ✅ `/api/options/{symbol}` - Options flow
-02. ✅ `/api/short_interest/{symbol}` - Short squeeze risk
-03. ✅ `/api/supply_chain/{symbol}` - Macro indicators
-04. ✅ `/api/institutional/{symbol}` - 13F holdings
-05. ✅ `/api/ensemble/forecast/{symbol}` - Multi-model prediction
-06. ✅ `/api/regime/current` - Market state
-07. ✅ `/api/backtest/run` - Historical validation
-08. ✅ `/api/learning/status` - Worker health
-09. ✅ `/api/learning/predictions` - Historical predictions
-10. ✅ `/api/learning/performance` - Accuracy metrics
+1. ✅ `/api/options/{symbol}` - Options flow
+2. ✅ `/api/short_interest/{symbol}` - Short squeeze risk
+3. ✅ `/api/supply_chain/{symbol}` - Macro indicators
+4. ✅ `/api/institutional/{symbol}` - 13F holdings
+5. ✅ `/api/ensemble/forecast/{symbol}` - Multi-model prediction
+6. ✅ `/api/regime/current` - Market state
+7. ✅ `/api/backtest/run` - Historical validation
+8. ✅ `/api/learning/status` - Worker health
+9. ✅ `/api/learning/predictions` - Historical predictions
+
+1. ✅ `/api/learning/performance` - Accuracy metrics
+
 
 ______________________________________________________________________
 
@@ -231,6 +247,7 @@ ______________________________________________________________________
 - Review market regime (BULL/BEAR/SIDEWAYS/VOLATILE)
 - Prepare watchlist
 
+
 ### 9:20 AM ET - Generate Predictions
 
 1. Fetch current price for WOLF
@@ -242,11 +259,12 @@ ______________________________________________________________________
    - Short interest
    - Supply chain / macro
    - Technical momentum
-3. Run ensemble forecaster (4 models)
-4. Detect market regime
-5. Calculate confidence (0-100%)
-6. **Gate**: Only predict if confidence >= 70%
-7. Store prediction with reasoning
+1. Run ensemble forecaster (4 models)
+2. Detect market regime
+3. Calculate confidence (0-100%)
+4. **Gate**: Only predict if confidence >= 70%
+5. Store prediction with reasoning
+
 
 ### 4:10 PM ET - Score Predictions
 
@@ -256,6 +274,7 @@ ______________________________________________________________________
 4. Update model weights based on accuracy
 5. Store to `prediction_scores` table
 
+
 ### 11:00 PM ET - Learning Cycle
 
 1. Analyze day's accuracy
@@ -263,6 +282,7 @@ ______________________________________________________________________
 3. Update regime probabilities
 4. Adjust confidence thresholds
 5. Generate overnight report
+
 
 ______________________________________________________________________
 
@@ -275,6 +295,7 @@ ______________________________________________________________________
 - **13F Filings**: Hedge funds = smart money → copy their moves
 - **Short Interest**: High short + catalyst = squeeze opportunity
 
+
 ### Risk Management
 
 - **Regime Detection**: Different markets need different strategies
@@ -282,11 +303,13 @@ ______________________________________________________________________
 - **Ensemble**: Diversify models → reduce overfitting
 - **Backtesting**: Validate on history → prove it's not luck
 
+
 ### Macro Integration
 
 - **VIX**: Fear gauge → adjust risk accordingly
 - **SPY**: Market leader → sector rotation matters
 - **Supply Chain**: Leading indicators > lagging earnings
+
 
 ______________________________________________________________________
 
@@ -298,23 +321,27 @@ ______________________________________________________________________
 2. Alternative data (satellite imagery, credit card data)
 3. Social sentiment (Twitter, Reddit, StockTwits)
 
+
 ### Model Improvements
 
-4. Deep learning (LSTM, Transformer)
-5. Reinforcement learning (agent learns optimal strategy)
-6. Multi-timeframe analysis (1min, 5min, 1hr, daily)
+1. Deep learning (LSTM, Transformer)
+2. Reinforcement learning (agent learns optimal strategy)
+3. Multi-timeframe analysis (1min, 5min, 1hr, daily)
+
 
 ### Execution
 
-7. Auto-trading integration (Interactive Brokers, Alpaca)
-8. Smart order routing (TWAP, VWAP, iceberg orders)
-9. Portfolio optimization (Kelly criterion, mean-variance)
+1. Auto-trading integration (Interactive Brokers, Alpaca)
+2. Smart order routing (TWAP, VWAP, iceberg orders)
+3. Portfolio optimization (Kelly criterion, mean-variance)
+
 
 ### Monitoring
 
-10. Real-time drift detection
-11. Model performance dashboards (Grafana)
-12. Alerting on accuracy degradation
+1. Real-time drift detection
+2. Model performance dashboards (Grafana)
+3. Alerting on accuracy degradation
+
 
 ______________________________________________________________________
 
@@ -324,6 +351,7 @@ ______________________________________________________________________
 - **Phase 1**: `PHASE1_COMPLETE.md`
 - **This Document**: `PHASE2_PHASE3_COMPLETE.md`
 - **API Docs**: OpenAPI spec at `/docs` (FastAPI auto-generated)
+
 
 ______________________________________________________________________
 
@@ -342,6 +370,7 @@ ______________________________________________________________________
 - [x] Error handling robust (fallbacks for rate limits)
 - [x] Documentation complete
 
+
 ______________________________________________________________________
 
 ## 🎯 Next Trading Day
@@ -355,6 +384,7 @@ ______________________________________________________________________
 5. Record prediction with explainable reasoning
 6. Score itself at 4:10 PM close
 7. Publish accuracy to `/api/learning/performance`
+
 
 **Expected First-Day Accuracy**: 75-80% (Phase 2 features proven)\
 **30-Day Target**: 80-85% (ensemble stabilizes)\

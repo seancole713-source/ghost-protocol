@@ -1,43 +1,49 @@
 # COCKPIT PRODUCTION VERIFICATION CHECKLIST
 
-**Date:** December 3, 2025  
-**Commits:**
-- 8502279: UI fixes (timer, status, timeouts)
-- 33cd320: Background worker (499 fix)
-- c143509: Health score, goals modal, counters
+**Date:**December 3, 2025**Commits:**- 8502279: UI fixes (timer, status, timeouts)
 
-**Production URL:** https://ghost-protocol-production.up.railway.app/cockpit
+- 33cd320: Background worker (499 fix)
+- c143509: Health score, goals modal, counters**Production URL:**<<<<<https://ghost-protocol-production.up.railway.app/cockpit>>>>>
+
 
 ---
 
 ## I. BEFORE YOU START
 
 ### 1. Open Browser DevTools (F12)
-- Navigate to: https://ghost-protocol-production.up.railway.app/cockpit
-- Open DevTools: **F12** or **Right-click → Inspect**
-- Switch to **Console** tab
+
+- Navigate to: <<<<<https://ghost-protocol-production.up.railway.app/cockpit>>>>>
+- Open DevTools:**F12**or**Right-click → Inspect**- Switch to**Console**tab
 - Keep it open during all tests
 
+
 ### 2. Check for JavaScript Errors
-Look for **RED text** in console. Common issues:
+
+Look for**RED text**in console. Common issues:
+
 - `Uncaught ReferenceError: initializeApp is not defined`
 - `Failed to load resource: /static/cockpit_v3.js 404`
 - `Uncaught TypeError: Cannot read property...`
 
-If you see errors, **copy the entire error message and report it**.
+
+If you see errors,**copy the entire error message and report it**.
 
 ---
 
 ## II. TIMER TEST (Issue #1 from original diagnostic)
 
-### Expected Behavior:
+### Expected Behavior
+
 ✅ Timer should animate: 00:00:01, 00:00:02, 00:00:03...
 
-### Current Status in Browser:
+### Current Status in Browser
+
 - [ ] Timer stuck at 00:00:00
 - [ ] Timer animating correctly
 
-### If Stuck, Run This in Console:
+
+### If Stuck, Run This in Console
+
 ```javascript
 // Check if function exists
 typeof updateSystemTime
@@ -55,41 +61,50 @@ setInterval(() => {
 }, 1000);
 
 // Timer should start animating now
-```
+
+```text
 
 ---
 
 ## III. STATUS INDICATOR TEST
 
-### Expected Behavior:
-✅ Status should show "LIVE" with **green dot**
+### Expected Behavior
 
-### Current Status in Browser:
+✅ Status should show "LIVE" with **green dot**### Current Status in Browser
+
 - [ ] Shows "LIVE" with green dot
 - [ ] Shows "STOPPED" with red dot
 - [ ] Shows "LIVE" but no green dot
 - [ ] Static "LIVE" text only
 
+
 ---
 
 ## IV. START/STOP/RESET BUTTONS (Issue from diagnostic)
 
-### Test START Button:
-1. Click **START** button
-2. Open DevTools → **Network** tab
+### Test START Button
+
+1. Click**START**button
+2. Open DevTools →**Network**tab
 3. Look for a request to `/api/cockpit/start`
 
-### Expected:
+
+### Expected
+
 ✅ POST request appears in Network tab
 ✅ Status changes to LIVE (if wasn't already)
 
-### Current Status:
+### Current Status
+
 - [ ] Button works (Network request sent)
 - [ ] Button does nothing (no Network activity)
 - [ ] Console error when clicked
 
-### If Nothing Happens, Run This:
+
+### If Nothing Happens, Run This
+
 ```javascript
+
 // Check if event listener attached
 document.getElementById('btn-start').onclick
 
@@ -101,26 +116,34 @@ document.getElementById('btn-start').addEventListener('click', async () => {
     const r = await fetch('/api/cockpit/start', {method: 'POST'});
     console.log('START response:', await r.json());
 });
-```
+
+```text
 
 ---
 
 ## V. TOP MOVERS PANEL (Issue #2 from original diagnostic)
 
-### Expected Behavior:
+### Expected Behavior
+
 ✅ Shows list of crypto/stocks with:
+
 - Ticker symbols (BTC, ETH, etc.)
 - Price change percentages (+1.5%, -0.3%)
 - Ghost confidence scores (46%, 50%)
 
-### Current Status in Browser:
+
+### Current Status in Browser
+
 - [ ] Shows movers list with data
 - [ ] Empty panel (no tickers)
 - [ ] Shows "No High-Quality Opportunities" message
 - [ ] Loading spinner stuck
 
-### If Empty, Check in Console:
+
+### If Empty, Check in Console
+
 ```javascript
+
 // Test API endpoint
 fetch('/api/v3/hunter/feed?limit=5')
     .then(r => r.json())
@@ -132,57 +155,72 @@ fetch('/api/v3/hunter/feed?limit=5')
 if (typeof loadTopMovers === 'function') {
     loadTopMovers();
 }
-```
+
+```text
 
 ---
 
 ## VI. VIP COINS PANEL (Issue #3 from original diagnostic)
 
-### Expected Behavior:
+### Expected Behavior
+
 ✅ Shows 5 VIP coins:
+
 - WEPE
-- LILPEPE  
+- LILPEPE
 - DORKL
 - SLOTH
 - APC
 
-### Known Issue:
-⚠️ **VIP Coins may timeout** (external APIs take 4+ minutes)
 
-### Current Status in Browser:
+### Known Issue
+
+⚠️**VIP Coins may timeout**(external APIs take 4+ minutes)
+
+### Current Status in Browser
+
 - [ ] Shows VIP coins with prices
 - [ ] Shows "VIP data loading..."
 - [ ] Empty (only heading visible)
 - [ ] Timeout message
 
-### If Empty, Check:
+
+### If Empty, Check
+
 ```javascript
+
 // Test VIP endpoint (may take 10s+)
 fetch('/api/v3/vip/snapshot')
     .then(r => r.json())
     .then(data => console.log('VIP data:', data))
     .catch(err => console.log('VIP timeout:', err))
-```
 
-**Note:** This is a known issue (external API slow). Skip if it times out.
+```text**Note:**This is a known issue (external API slow). Skip if it times out.
 
 ---
 
 ## VII. GHOST FORECAST CARDS (Issue #4 from original diagnostic)
 
-### Expected Behavior:
-✅ Three cards show:
-- **Next 24h:** Prob: 46%, Move: +2.5%
-- **2-5 Days:** Prob: 50%, Move: +1.0%
-- **7-14 Days:** Prob: 55%, Move: +3.0%
+### Expected Behavior
 
-### Current Status in Browser:
+✅ Three cards show:
+
+-**Next 24h:**Prob: 46%, Move: +2.5%
+-**2-5 Days:**Prob: 50%, Move: +1.0%
+-**7-14 Days:**Prob: 55%, Move: +3.0%
+
+
+### Current Status in Browser
+
 - [ ] Shows real probabilities and moves
 - [ ] All show "--%" (no data)
 - [ ] Cards exist but empty
 
-### If Empty, Check:
+
+### If Empty, Check
+
 ```javascript
+
 // Test predictions endpoint
 fetch('/api/v3/predictions/latest?symbol=BTC')
     .then(r => r.json())
@@ -193,25 +231,33 @@ if (typeof loadForecast === 'function') {
     currentForecastSymbol = 'BTC';
     loadForecast();
 }
-```
+
+```text
 
 ---
 
 ## VIII. NEWS FEED (Issue #5 from original diagnostic)
 
-### Expected Behavior:
+### Expected Behavior
+
 ✅ Shows 5-10 news articles with:
+
 - Headlines
 - Timestamps
 - Sentiment indicators
 
-### Current Status in Browser:
+
+### Current Status in Browser
+
 - [ ] Shows news articles
 - [ ] Empty (no headlines)
 - [ ] Shows "News feed temporarily unavailable"
 
-### If Empty, Check:
+
+### If Empty, Check
+
 ```javascript
+
 // Test news endpoint
 fetch('/api/v3/news/feed?limit=5')
     .then(r => r.json())
@@ -221,26 +267,34 @@ fetch('/api/v3/news/feed?limit=5')
 if (typeof loadNews === 'function') {
     loadNews();
 }
-```
+
+```text
 
 ---
 
 ## IX. WATCHLIST (Issue #6 from original diagnostic)
 
-### Expected Behavior:
+### Expected Behavior
+
 ✅ Shows symbols with:
+
 - Ticker names
 - Prices
 - % changes
 - Ghost predictions
 
-### Current Status in Browser:
+
+### Current Status in Browser
+
 - [ ] Shows watchlist with symbols
 - [ ] Empty under all tabs
 - [ ] Shows "Watchlist empty" message
 
-### If Empty, Check:
+
+### If Empty, Check
+
 ```javascript
+
 // Test watchlist endpoint
 fetch('/api/v3/watchlist/enriched')
     .then(r => r.json())
@@ -250,21 +304,27 @@ fetch('/api/v3/watchlist/enriched')
 if (typeof loadWatchlistByMode === 'function') {
     loadWatchlistByMode();
 }
-```
+
+```text
 
 ---
 
 ## X. GHOST HEALTH SCORE (Issue #7 - FIXED in c143509)
 
-### Expected Behavior:
+### Expected Behavior
+
 ✅ Shows numeric value: 50-100 (based on recent predictions)
 
-### Current Status in Browser:
+### Current Status in Browser
+
 - [ ] Shows numeric value (50, 75, 100, etc.)
 - [ ] Still shows "--"
 
-### If Still Shows "--", Check:
+
+### If Still Shows "--", Check
+
 ```javascript
+
 // Test health endpoint
 fetch('/api/v3/cockpit/status')
     .then(r => r.json())
@@ -276,36 +336,45 @@ fetch('/api/v3/cockpit/status')
 if (typeof loadHealthScore === 'function') {
     loadHealthScore();
 }
-```
 
-**Fix Applied:**
-- Now calculates from actual DB predictions (last 24 hours)
+```text**Fix Applied:**- Now calculates from actual DB predictions (last 24 hours)
+
 - 10 points per prediction, max 100
 - If shows 0, predictions may not have run yet (wait 60 minutes)
+
 
 ---
 
 ## XI. GOALS MODAL (Issue #8 - FIXED in c143509)
 
-### Expected Behavior:
+### Expected Behavior
+
 ✅ Modal prepopulates with saved values:
+
 - Daily: $500
 - Weekly: $2500
 - Monthly: $10000
 - Yearly: $120000
 
-### Test Steps:
-1. Click **⚙️** (settings) button in header
+
+### Test Steps
+
+1. Click**⚙️**(settings) button in header
 2. Goals modal opens
 3. Check if input fields have values
 
-### Current Status in Browser:
+
+### Current Status in Browser
+
 - [ ] Modal opens with values ($500, $2500, etc.)
 - [ ] Modal opens but all inputs empty (value="")
 - [ ] Modal doesn't open at all
 
-### If Inputs Empty, Check:
+
+### If Inputs Empty, Check
+
 ```javascript
+
 // Test goals endpoint
 fetch('/api/v3/goals/snapshot')
     .then(r => r.json())
@@ -317,19 +386,20 @@ fetch('/api/v3/goals/snapshot')
 if (typeof openGoalsModal === 'function') {
     openGoalsModal();
 }
-```
 
-**Fix Applied:**
-- Removed `.target` optional chaining
+```text**Fix Applied:**- Removed `.target` optional chaining
+
 - Now reads `data.goals.daily` directly (not `data.goals.daily.target`)
+
 
 ---
 
 ## XII. FULL INITIALIZATION TEST
 
-### If Everything Seems Broken, Run Complete Diagnostic:
+### If Everything Seems Broken, Run Complete Diagnostic
 
 ```javascript
+
 // Paste this entire block into console:
 
 console.log('🔍 COCKPIT DIAGNOSTIC');
@@ -363,7 +433,7 @@ Promise.all([
     console.log(`   ✅ Predictions: ${predictions.predictions?.length || 0} items`);
     console.log(`   ✅ Watchlist: ${watchlist.items?.length || 0} items`);
     console.log(`   ✅ Goals: Daily=$${goals.goals?.daily || 0}`);
-    
+
     console.log('\n' + '='.repeat(70));
     console.log('📊 DIAGNOSTIC COMPLETE - Copy output and send to developer');
 }).catch(err => console.log('❌ Endpoints failed:', err));
@@ -377,7 +447,8 @@ if (typeof initializeApp === 'function') {
 } else {
     console.log('❌ initializeApp() not found');
 }
-```
+
+```text
 
 ---
 
@@ -385,12 +456,15 @@ if (typeof initializeApp === 'function') {
 
 After running all tests above, fill this out:
 
-### UI Elements:
+### UI Elements
+
 - [ ] Timer animates (not stuck at 00:00:00)
 - [ ] Status shows LIVE with green dot
 - [ ] START/STOP/RESET buttons trigger network requests
 
-### Data Panels:
+
+### Data Panels
+
 - [ ] Top Movers shows crypto/stocks
 - [ ] VIP Coins shows data (or known timeout message)
 - [ ] Ghost Forecast shows probabilities (not --%)
@@ -399,54 +473,57 @@ After running all tests above, fill this out:
 - [ ] Ghost Health Score shows number (not --)
 - [ ] Goals modal prepopulates values
 
-### Console:
+
+### Console
+
 - [ ] No JavaScript errors (red text)
 - [ ] initializeApp() logs "✅ Ghost Protocol Cockpit v3 initialized"
 - [ ] API calls return 200 status codes
+
 
 ---
 
 ## XIV. REPORTING RESULTS
 
-### If Everything Works:
+### If Everything Works
+
 ✅ Report: "All tests pass, Cockpit fully operational"
 
-### If Issues Remain:
-Copy and send:
-1. **Browser:** Chrome/Firefox/Safari version
-2. **Console Output:** Full text from diagnostic script
-3. **Network Tab:** Screenshot showing failed requests (if any)
-4. **Specific Failures:** Which panels are empty, which buttons don't work
-5. **Console Errors:** Any red error messages
+### If Issues Remain
 
-### Most Useful Info:
+Copy and send:
+
+1.**Browser:**Chrome/Firefox/Safari version
+2.**Console Output:**Full text from diagnostic script
+3.**Network Tab:**Screenshot showing failed requests (if any)
+4.**Specific Failures:**Which panels are empty, which buttons don't work
+5.**Console Errors:**Any red error messages
+
+
+### Most Useful Info
+
 ```javascript
+
 // Run this and copy the output:
 console.log('Browser:', navigator.userAgent);
 console.log('Document state:', document.readyState);
 console.log('initializeApp type:', typeof initializeApp);
 console.log('Timer value:', document.getElementById('system-time')?.textContent);
-```
+
+```text
 
 ---
 
-## XV. EXPECTED SUCCESS CRITERIA
+## XV. EXPECTED SUCCESS CRITERIA**Cockpit is FULLY OPERATIONAL when:**1. ✅ Timer moves every second
 
-**Cockpit is FULLY OPERATIONAL when:**
-1. ✅ Timer moves every second
-2. ✅ START/STOP buttons work (Network tab shows requests)
-3. ✅ Top Movers shows 5+ predictions
-4. ✅ Forecast cards show real percentages
-5. ✅ News Feed shows 5+ articles
-6. ✅ Watchlist shows 10+ symbols
-7. ✅ Health Score shows 0-100 (not --)
-8. ✅ Goals modal opens with saved values
-9. ✅ No JavaScript console errors
+1. ✅ START/STOP buttons work (Network tab shows requests)
+2. ✅ Top Movers shows 5+ predictions
+3. ✅ Forecast cards show real percentages
+4. ✅ News Feed shows 5+ articles
+5. ✅ Watchlist shows 10+ symbols
+6. ✅ Health Score shows 0-100 (not --)
+7. ✅ Goals modal opens with saved values
+8. ✅ No JavaScript console errors**Note:**VIP Coins may timeout (known issue, needs Redis cache).
 
-**Note:** VIP Coins may timeout (known issue, needs Redis cache).
 
----
-
-**Last Updated:** December 3, 2025  
-**Deployed Commits:** 8502279, 33cd320, c143509  
-**Production URL:** https://ghost-protocol-production.up.railway.app/cockpit
+---**Last Updated:**December 3, 2025**Deployed Commits:**8502279, 33cd320, c143509**Production URL:** <<<<<https://ghost-protocol-production.up.railway.app/cockpit>>>>>

@@ -8,22 +8,27 @@ ______________________________________________________________________
 
 The Ghost Daily Auto-Audit script performs comprehensive health checks:
 
-### ✅ Checks Performed:
+### ✅ Checks Performed
 
-1. **Core Health** - Basic & detailed system status
-2. **AI Memory** - 58K+ decisions, recent activity, growth
-3. **Data Persistence** - Portfolio, database, cache status
-4. **Price Providers** - Data availability, API keys, fallbacks
-5. **Telegram Bot** - Bot status, webhook config, endpoint
-6. **Security** - API keys and secrets validation
-7. **Functionality** - Critical endpoints spot checks
+1. **Core Health**- Basic & detailed system status
 
-### 📊 Audit Results:
 
-- **Health Score**: Percentage of passed checks
+2.**AI Memory**- 58K+ decisions, recent activity, growth
+3.**Data Persistence**- Portfolio, database, cache status
+4.**Price Providers**- Data availability, API keys, fallbacks
+5.**Telegram Bot**- Bot status, webhook config, endpoint
+6.**Security**- API keys and secrets validation
+7.**Functionality**- Critical endpoints spot checks
+
+
+### 📊 Audit Results
+
+-**Health Score**: Percentage of passed checks
+
 - **Status**: EXCELLENT / GOOD / FAIR / POOR
 - **Detailed Log**: Saved to `/tmp/ghost_audit_YYYYMMDD.log`
 - **Telegram Alert**: Automatic notification with summary
+
 
 ______________________________________________________________________
 
@@ -35,47 +40,58 @@ The script is already created at:
 
 ```bash
 /workspaces/GHOST/ghost_daily_audit.sh
-```
+
+```text
 
 Make it executable (already done):
 
 ```bash
+
 chmod +x ghost_daily_audit.sh
-```
+
+```text
 
 ### 2. Set Environment Variables
 
 The script uses these environment variables:
 
 ```bash
-export GHOST_URL="https://web-production-8e9a0.up.railway.app"
+
+export GHOST_URL="<<<<<https://web-production-8e9a0.up.railway.app">>>>>
 export GHOST_API_TOKEN="your-api-token-here"
 export TELEGRAM_BOT_TOKEN="8229069551:AAEBHMpX8TkaPFD2hhGL_Wgo2J8k5Sr3gYw"
 export TELEGRAM_CHAT_ID="940596997"
-```
+
+```text
 
 Or create a config file `/etc/ghost/audit.env`:
 
 ```bash
+
 # Ghost Audit Configuration
-GHOST_URL=https://web-production-8e9a0.up.railway.app
+
+GHOST_URL=<<<<<https://web-production-8e9a0.up.railway.app>>>>>
 GHOST_API_TOKEN=e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0
 TELEGRAM_BOT_TOKEN=8229069551:AAEBHMpX8TkaPFD2hhGL_Wgo2J8k5Sr3gYw
 TELEGRAM_CHAT_ID=940596997
 LOG_FILE=/var/log/ghost/audit.log
-```
+
+```text
 
 ### 3. Manual Test Run
 
 Run the audit manually to verify it works:
 
 ```bash
+
 ./ghost_daily_audit.sh
-```
+
+```text
 
 Expected output:
 
-```
+```text
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🤖 Ghost Daily Auto-Audit - 2025-10-04 16:56:40
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -95,7 +111,8 @@ Expected output:
 ℹ️  INFO - Health Score:  86%
 
 ✅ AUDIT RESULT: GOOD - Minor warnings detected
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -105,44 +122,63 @@ ______________________________________________________________________
 
 1. **Edit crontab**:
 
+
 ```bash
+
 crontab -e
-```
 
-2. **Add daily audit at 9:00 AM**:
+```text
+
+1. **Add daily audit at 9:00 AM**:
+
 
 ```bash
+
 # Ghost Daily Audit - runs every day at 9:00 AM
-0 9 * * * /workspaces/GHOST/ghost_daily_audit.sh >> /var/log/ghost/cron.log 2>&1
-```
 
-3. **Alternative schedules**:
+0 9 ***/workspaces/GHOST/ghost_daily_audit.sh >> /var/log/ghost/cron.log 2>&1
+
+```text
+
+1.**Alternative schedules**:
+
 
 ```bash
+
 # Every day at 6:00 AM
-0 6 * * * /workspaces/GHOST/ghost_daily_audit.sh
+
+0 6 ***/workspaces/GHOST/ghost_daily_audit.sh
 
 # Twice daily: 9:00 AM and 9:00 PM
-0 9,21 * * * /workspaces/GHOST/ghost_daily_audit.sh
+
+0 9,21*** /workspaces/GHOST/ghost_daily_audit.sh
 
 # Every 12 hours
-0 */12 * * * /workspaces/GHOST/ghost_daily_audit.sh
+
+0 */12 *** /workspaces/GHOST/ghost_daily_audit.sh
 
 # Every 6 hours (4 times daily)
-0 */6 * * * /workspaces/GHOST/ghost_daily_audit.sh
-```
 
-4. **With environment variables**:
+0 */6 ***/workspaces/GHOST/ghost_daily_audit.sh
+
+```text
+
+1.**With environment variables**:
+
 
 ```bash
-0 9 * * * source /etc/ghost/audit.env && /workspaces/GHOST/ghost_daily_audit.sh
-```
+
+0 9 ***source /etc/ghost/audit.env && /workspaces/GHOST/ghost_daily_audit.sh
+
+```text
 
 ### Option B: systemd Timer (Modern Linux)
 
-1. **Create service file** `/etc/systemd/system/ghost-audit.service`:
+1.**Create service file**`/etc/systemd/system/ghost-audit.service`:
+
 
 ```ini
+
 [Unit]
 Description=Ghost Daily Auto-Audit
 After=network.target
@@ -154,11 +190,14 @@ EnvironmentFile=/etc/ghost/audit.env
 ExecStart=/workspaces/GHOST/ghost_daily_audit.sh
 StandardOutput=journal
 StandardError=journal
-```
 
-2. **Create timer file** `/etc/systemd/system/ghost-audit.timer`:
+```text
+
+1.**Create timer file** `/etc/systemd/system/ghost-audit.timer`:
+
 
 ```ini
+
 [Unit]
 Description=Run Ghost audit daily at 9 AM
 Requires=ghost-audit.service
@@ -170,47 +209,64 @@ Persistent=true
 
 [Install]
 WantedBy=timers.target
-```
 
-3. **Enable and start**:
+```text
+
+1. **Enable and start**:
+
 
 ```bash
+
 sudo systemctl daemon-reload
 sudo systemctl enable ghost-audit.timer
 sudo systemctl start ghost-audit.timer
-```
 
-4. **Check status**:
+```text
+
+1. **Check status**:
+
 
 ```bash
+
 sudo systemctl status ghost-audit.timer
 sudo systemctl list-timers ghost-audit
-```
+
+```text
 
 ### Option C: Railway Cron Job
 
 Railway doesn't natively support cron jobs, but you can:
 
-1. **Use GitHub Actions** to trigger the audit:
+1. **Use GitHub Actions**to trigger the audit:
+
 
 Create `.github/workflows/ghost-audit.yml`:
 
 ```yaml
+
 name: Ghost Daily Audit
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # 9:00 AM UTC daily
+
+    - cron: '0 9***'  # 9:00 AM UTC daily
+
+
   workflow_dispatch:  # Manual trigger
 
 jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
+
       - name: Checkout
+
+
         uses: actions/checkout@v3
-      
+
       - name: Run Ghost Audit
+
+
         env:
           GHOST_URL: ${{ secrets.GHOST_URL }}
           GHOST_API_TOKEN: ${{ secrets.GHOST_API_TOKEN }}
@@ -219,19 +275,22 @@ jobs:
         run: |
           chmod +x ghost_daily_audit.sh
           ./ghost_daily_audit.sh
-```
 
-2. **Use EasyCron** (external service):
+```text
 
-   - Sign up at https://www.easycron.com
+1. **Use EasyCron**(external service):
+
+   - Sign up at <<<<<https://www.easycron.com>>>>>
    - Create job: Run shell command or webhook
-   - Point to: `curl https://your-audit-endpoint.com/run-audit`
+   - Point to: `curl <<<<<https://your-audit-endpoint.com/run-audit`>>>>>
 
-3. **Use Cloud Scheduler** (GCP):
+
+1.**Use Cloud Scheduler**(GCP):
 
    - Create Cloud Scheduler job
    - Target: HTTP endpoint or Cloud Function
-   - Schedule: `0 9 * * *`
+   - Schedule: `0 9***`
+
 
 ______________________________________________________________________
 
@@ -240,9 +299,10 @@ ______________________________________________________________________
 The audit automatically sends a Telegram message if `TELEGRAM_BOT_TOKEN` and
 `TELEGRAM_CHAT_ID` are set.
 
-### Sample Notification:
+### Sample Notification
 
-```
+```text
+
 🎉 Ghost Daily Audit Report
 
 Status: EXCELLENT (100%)
@@ -254,11 +314,13 @@ Date: 2025-10-04 09:00:00
 
 AI Memory: 58226 decisions
 Portfolio: 0 shares
-```
 
-### If Issues Detected:
+```text
 
-```
+### If Issues Detected
+
+```text
+
 ⚠️  Ghost Daily Audit Report
 
 Status: FAIR (73%)
@@ -275,27 +337,30 @@ Portfolio: 0 shares
 → Price provider timeout
 → Webhook endpoint 500 error
 → AI Memory database locked
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 📊 Interpreting Results
 
-### Health Scores:
+### Health Scores
 
 - **100%**: 🎉 EXCELLENT - Perfect health
 - **90-99%**: ✅ GOOD - Minor warnings only
 - **70-89%**: ⚠️ FAIR - Some issues detected
 - **\<70%**: ❌ POOR - Multiple failures
 
-### Common Warnings (Normal):
+
+### Common Warnings (Normal)
 
 - ⚠️ Using fallback price source (markets closed)
 - ⚠️ News cache aging (6+ hours old)
 - ⚠️ Missing REDIS_URL (optional)
 - ⚠️ AI Memory stale (weekend, no trading)
 
-### Critical Issues (Action Required):
+
+### Critical Issues (Action Required)
 
 - ❌ Basic health endpoint failed
 - ❌ AI Memory database error
@@ -303,37 +368,46 @@ ______________________________________________________________________
 - ❌ Telegram bot not responding
 - ❌ Price unavailable (all providers failed)
 
+
 ______________________________________________________________________
 
 ## 📝 Log Files
 
-### Default Log Location:
+### Default Log Location
 
 ```bash
-/tmp/ghost_audit_YYYYMMDD.log
-```
 
-### Custom Log Location:
+/tmp/ghost_audit_YYYYMMDD.log
+
+```text
+
+### Custom Log Location
 
 Set `LOG_FILE` environment variable:
 
 ```bash
-export LOG_FILE="/var/log/ghost/audit-$(date +%Y%m%d).log"
-```
 
-### View Latest Log:
+export LOG_FILE="/var/log/ghost/audit-$(date +%Y%m%d).log"
+
+```text
+
+### View Latest Log
 
 ```bash
-tail -f /tmp/ghost_audit_*.log
-```
 
-### Rotate Logs (Keep Last 7 Days):
+tail -f /tmp/ghost_audit_*.log
+
+```text
+
+### Rotate Logs (Keep Last 7 Days)
 
 Add to crontab:
 
 ```bash
-0 0 * * * find /tmp -name "ghost_audit_*.log" -mtime +7 -delete
-```
+
+0 0 *** find /tmp -name "ghost_audit_*.log" -mtime +7 -delete
+
+```text
 
 ______________________________________________________________________
 
@@ -344,48 +418,59 @@ ______________________________________________________________________
 Edit cron expression in crontab:
 
 ```bash
-# Daily at 9 AM
-0 9 * * *
 
-# Twice daily (9 AM & 9 PM)
-0 9,21 * * *
+# Daily at 9 AM
+
+0 9 ***# Twice daily (9 AM & 9 PM)
+
+0 9,21***
 
 # Every 6 hours
-0 */6 * * *
+
+0 */6 ***
 
 # Weekly on Monday at 9 AM
+
 0 9 * * 1
 
 # Monthly on 1st at 9 AM
+
 0 9 1 * *
-```
+
+```text
 
 ### Add Custom Checks
 
 Edit `ghost_daily_audit.sh` and add your checks:
 
 ```bash
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 log "🔍 8. CUSTOM CHECKS"
 log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Example: Check disk space
+
 disk_usage=$(df -h / | tail -1 | awk '{print $5}' | sed 's/%//')
 if [ "$disk_usage" -lt 80 ]; then
     log_pass "Disk usage OK: ${disk_usage}%"
 else
     log_warn "Disk usage high: ${disk_usage}%"
 fi
-```
+
+```text
 
 ### Disable Telegram Notifications
 
 Unset the environment variables:
 
 ```bash
+
 unset TELEGRAM_BOT_TOKEN
 unset TELEGRAM_CHAT_ID
-```
+
+```text
 
 Or comment out the Telegram section in the script.
 
@@ -398,142 +483,175 @@ ______________________________________________________________________
 **Check cron service**:
 
 ```bash
+
 sudo systemctl status cron
-```
+
+```text
 
 **Check cron logs**:
 
 ```bash
+
 grep CRON /var/log/syslog
-```
+
+```text
 
 **Test cron expression**:
 
 ```bash
+
 # Run at next minute
-* * * * * /workspaces/GHOST/ghost_daily_audit.sh
-```
+
+*** * * /workspaces/GHOST/ghost_daily_audit.sh
+
+
+```text
 
 ### Issue: Script fails with "command not found"
 
 **Check dependencies**:
 
 ```bash
+
 which curl
 which jq
-```
+
+```text
 
 **Install missing tools**:
 
 ```bash
+
 # Debian/Ubuntu
+
 sudo apt-get install curl jq bc
 
 # RHEL/CentOS
+
 sudo yum install curl jq bc
 
 # macOS
+
 brew install jq bc
-```
+
+```text
 
 ### Issue: Permission denied
 
 **Fix permissions**:
 
 ```bash
+
 chmod +x /workspaces/GHOST/ghost_daily_audit.sh
-```
+
+```text
 
 **Check file ownership**:
 
 ```bash
+
 ls -la /workspaces/GHOST/ghost_daily_audit.sh
-```
+
+```text
 
 ### Issue: Environment variables not found
 
 **Source config file**:
 
 ```bash
+
 source /etc/ghost/audit.env
 ./ghost_daily_audit.sh
-```
+
+```text
 
 **Or inline**:
 
 ```bash
-GHOST_URL=https://... GHOST_API_TOKEN=... ./ghost_daily_audit.sh
-```
+
+GHOST_URL=<<<<<https://...>>>>> GHOST_API_TOKEN=... ./ghost_daily_audit.sh
+
+```text
 
 ______________________________________________________________________
 
 ## 📚 Example Cron Setup (Complete)
 
-### 1. Create config file:
+### 1. Create config file
 
 ```bash
+
 sudo mkdir -p /etc/ghost
 sudo tee /etc/ghost/audit.env << 'EOF'
-GHOST_URL=https://web-production-8e9a0.up.railway.app
+GHOST_URL=<<<<<https://web-production-8e9a0.up.railway.app>>>>>
 GHOST_API_TOKEN=e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0
 TELEGRAM_BOT_TOKEN=8229069551:AAEBHMpX8TkaPFD2hhGL_Wgo2J8k5Sr3gYw
 TELEGRAM_CHAT_ID=940596997
 LOG_FILE=/var/log/ghost/audit.log
 EOF
-```
 
-### 2. Create log directory:
+```text
+
+### 2. Create log directory
 
 ```bash
+
 sudo mkdir -p /var/log/ghost
 sudo chown $USER:$USER /var/log/ghost
-```
 
-### 3. Add to crontab:
+```text
+
+### 3. Add to crontab
 
 ```bash
+
 crontab -e
-```
+
+```text
 
 Add:
 
 ```bash
+
 # Source env and run Ghost audit daily at 9 AM
-0 9 * * * source /etc/ghost/audit.env && /workspaces/GHOST/ghost_daily_audit.sh >> /var/log/ghost/cron.log 2>&1
+
+0 9 ***source /etc/ghost/audit.env && /workspaces/GHOST/ghost_daily_audit.sh >> /var/log/ghost/cron.log 2>&1
 
 # Rotate old logs (keep last 30 days)
-0 0 * * * find /var/log/ghost -name "audit-*.log" -mtime +30 -delete
-```
 
-### 4. Verify:
+0 0*** find /var/log/ghost -name "audit-*.log" -mtime +30 -delete
+
+```text
+
+### 4. Verify
 
 ```bash
+
 # List cron jobs
+
 crontab -l
 
 # Test run
+
 source /etc/ghost/audit.env && /workspaces/GHOST/ghost_daily_audit.sh
 
 # Check Telegram for notification
-```
+
+```text
 
 ______________________________________________________________________
 
-## 🎉 Success!
+## 🎉 Success
 
 You should now receive daily health reports via Telegram at 9:00 AM!
 
-**Check Results:**
+**Check Results:**- 📱 Telegram notification with health score
 
-- 📱 Telegram notification with health score
 - 📝 Detailed log at `/var/log/ghost/audit.log`
-- 🔍 Comprehensive 23-point system check
-
-**Next Steps:**
-
-- Monitor first few audits to ensure stability
+- 🔍 Comprehensive 23-point system check**Next Steps:**- Monitor first few audits to ensure stability
 - Adjust schedule if needed (twice daily for critical systems)
 - Customize checks for your specific needs
 - Set up log rotation for long-term storage
 
-Ghost now **self-audits daily** and alerts you automatically! 🤖✅
+
+Ghost now**self-audits daily** and alerts you automatically! 🤖✅

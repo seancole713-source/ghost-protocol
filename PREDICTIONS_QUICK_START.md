@@ -2,12 +2,13 @@
 
 ## ✅ WHAT YOU GET
 
-Ghost now sends **automatic predictions** to your Telegram:
+Ghost now sends **automatic predictions**to your Telegram:
 
-### 📅 Every Market Day (Mon-Fri):
+### 📅 Every Market Day (Mon-Fri)
 
-- **8:00 AM ET** → Pre-market prediction (what Ghost thinks will happen)
-- **9:35 AM ET** → Reality check (was Ghost right?)
+-**8:00 AM ET**→ Pre-market prediction (what Ghost thinks will happen)
+-**9:35 AM ET**→ Reality check (was Ghost right?)
+
 
 ______________________________________________________________________
 
@@ -15,9 +16,10 @@ ______________________________________________________________________
 
 Open Telegram and send:
 
-```
+```text
 /predict
-```
+
+```text
 
 You'll instantly get:
 
@@ -27,11 +29,14 @@ You'll instantly get:
 - Key factors
 - Recommended strategy
 
+
 Then send:
 
-```
+```text
+
 /check
-```
+
+```text
 
 You'll get:
 
@@ -39,13 +44,15 @@ You'll get:
 - Accuracy result (✅ or ❌)
 - Price changes
 
+
 ______________________________________________________________________
 
 ## 📋 WHAT THE MESSAGES LOOK LIKE
 
-### 8:00 AM Message:
+### 8:00 AM Message
 
-```
+```text
+
 🌅 PRE-MARKET PREDICTION
 ⏰ 08:00 AM EDT
 
@@ -63,11 +70,13 @@ Confidence: 78%
 
 💡 Ghost predicts UPWARD movement
 ⏰ Will check at 9:35 AM
-```
 
-### 9:35 AM Message:
+```text
 
-```
+### 9:35 AM Message
+
+```text
+
 🎯 MARKET OPEN CHECK
 ⏰ 09:35 AM EDT
 
@@ -76,46 +85,45 @@ NOW: $343.25 (+0.81%)
 
 RESULT: ✅ CORRECT
 Ghost was right!
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 🎯 NEW COMMANDS
 
-```
+```text
+
 /predict  - Get prediction now
 /check    - Check accuracy now
 /help     - See all commands
-```
+
+```text
 
 ______________________________________________________________________
 
-## ⏰ SCHEDULE
+## ⏰ SCHEDULE**Every weekday at:**- 8:00 AM → Ghost tells you what it thinks will happen
 
-**Every weekday at:**
+- 9:35 AM → Ghost shows you if it was right**You don't need to do anything!**Just check Telegram at those times.
 
-- 8:00 AM → Ghost tells you what it thinks will happen
-- 9:35 AM → Ghost shows you if it was right
-
-**You don't need to do anything!** Just check Telegram at those times.
 
 ______________________________________________________________________
 
 ## ✅ STATUS
 
-🟢 **LIVE AND RUNNING**
-
-The prediction scheduler is active now. Tomorrow morning (8:00 AM ET) you'll get your
+🟢**LIVE AND RUNNING**The prediction scheduler is active now. Tomorrow morning (8:00 AM ET) you'll get your
 first automatic prediction!
 
 ______________________________________________________________________
 
 ## 🚀 NEXT STEPS
 
-1. **Test now**: Send `/predict` in Telegram
-2. **Wait**: Check Telegram tomorrow at 8:00 AM
-3. **Compare**: Check again at 9:35 AM
-4. **Track**: See how accurate Ghost is over time
+1.**Test now**: Send `/predict` in Telegram
+
+1. **Wait**: Check Telegram tomorrow at 8:00 AM
+2. **Compare**: Check again at 9:35 AM
+3. **Track**: See how accurate Ghost is over time
+
 
 ______________________________________________________________________
 

@@ -2,14 +2,15 @@
 
 ## Why You're Still Getting Old Response
 
-Your Telegram webhook points to **Railway** (old code), not your local server (new
+Your Telegram webhook points to **Railway**(old code), not your local server (new
 code).
 
 ## One-Command Solution
 
 ```bash
 ./deploy_complete.sh
-```
+
+```text
 
 This will:
 
@@ -18,18 +19,21 @@ This will:
 3. Test deployment
 4. Show you next steps for env vars
 
+
 ## After Deploy
 
 Set these in Railway dashboard:
 
-```
+```text
+
 AGENTS_ENABLED=1
 AI_PROVIDER=openai
 AGENT_MODEL=gpt-4o-mini
 OPENAI_API_KEY=your-key-here
-```
 
-Then text your bot: **"What would a Bitcoin drop do to WOLF?"**
+```text
+
+Then text your bot:**"What would a Bitcoin drop do to WOLF?"**
 
 You'll get AI analysis! 🎉
 
@@ -41,8 +45,10 @@ ______________________________________________________________________
 ✅ Test button (GET/POST, no auth)\
 ✅ Direct alert sending
 
-## Ready?
+## Ready
 
 ```bash
+
 ./deploy_complete.sh
-```
+
+```text

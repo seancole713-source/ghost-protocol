@@ -12,6 +12,7 @@
   - Update forecasts and metrics
   - Backup before migration
 
+
 ### 2️⃣ Enhanced Rate Limiting
 
 - **Status**: Advanced rate limiting with provider rotation
@@ -22,6 +23,7 @@
   - Automatic provider failover
   - Request queuing and retry logic
   - Provider health monitoring
+
 
 ### 3️⃣ UI Panel Name Updates
 
@@ -37,6 +39,7 @@
   - "Live News" → "📰 Market Intelligence Feed"
   - "Diagnostics" → "🔬 System Health Monitor"
 
+
 ### 4️⃣ Railway Deployment Fix
 
 - **Status**: Cache busting + health check
@@ -44,6 +47,7 @@
   - Add version timestamp to static assets
   - Update railway.toml with longer health check timeout
   - Add deployment verification script
+
 
 ### 5️⃣ Ghost Brain Intelligence Enhancement
 
@@ -55,6 +59,7 @@
   - Risk-adjusted recommendations
   - Confidence calibration
 
+
 ______________________________________________________________________
 
 ## 📋 EXECUTION PLAN
@@ -63,40 +68,56 @@ ______________________________________________________________________
 
 ```bash
 python scripts/backup_before_migration.py
-```
+
+```text
 
 ### Step 2: Deploy Enhanced Rate Limiter
 
 ```bash
+
 # Automatically integrated into wolf_app.py
+
 # No restart needed - hot reload enabled
-```
+
+```text
 
 ### Step 3: Migrate Portfolio (Optional)
 
 ```bash
+
 # IMPORTANT: Only run if you want to switch from WOLF to NVDA
+
 python migrate_portfolio_to_nvda.py --backup --dry-run
-# Review changes, then run:
+
+# Review changes, then run
+
 python migrate_portfolio_to_nvda.py --backup --execute
-```
+
+```text
 
 ### Step 4: Deploy to Railway with Cache Bust
 
 ```bash
+
 # Force Railway to pull latest changes
+
 railway up --detach
-# Or use git push:
+
+# Or use git push
+
 git add -A
 git commit -m "🚀 Comprehensive fixes: rate limiting, UI updates, intelligence engine"
 git push origin main
-```
+
+```text
 
 ### Step 5: Verify Deployment
 
 ```bash
+
 ./verify_railway_deployment.sh
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -104,19 +125,15 @@ ______________________________________________________________________
 
 ### Rate Limiting (Before → After)
 
-**Before:**
+**Before:**- Simple request counter
 
-- Simple request counter
 - Hard failure on rate limits
 - No provider rotation
-- Manual recovery needed
-
-**After:**
-
-- Token bucket per provider (requests/second)
+- Manual recovery needed**After:**- Token bucket per provider (requests/second)
 - Exponential backoff (2s, 4s, 8s, 16s)
 - Automatic failover to next provider
 - Self-healing with provider health checks
+
 
 ### UI Panel Names (Before → After)
 
@@ -131,22 +148,19 @@ Strategic Intelligence | Enterprise-grade, strategic focus | | Live News | 📰 
 Intelligence Feed | Intelligence vs just news | | Diagnostics | 🔬 System Health Monitor
 | Clear purpose |
 
-### Ghost Brain Intelligence (Before → After)
+### Ghost Brain Intelligence (Before → After)**Before:**```python
 
-**Before:**
-
-```python
 # Simple momentum-based decision
+
 if momentum > 0:
     action = "BUY"
 else:
     action = "SELL"
-```
 
-**After:**
+```text**After:**```python
 
-```python
 # Multi-factor analysis with context awareness
+
 decision = GhostBrain.analyze(
     technical_indicators,
     market_regime,
@@ -155,8 +169,10 @@ decision = GhostBrain.analyze(
     risk_tolerance,
     portfolio_allocation
 )
+
 # Returns: action, confidence, reasoning, risk_score
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -169,29 +185,31 @@ ______________________________________________________________________
 - [ ] Ghost brain provides detailed reasoning
 - [ ] Portfolio migration (if executed) preserves all data
 
+
 ______________________________________________________________________
 
 ## 📊 MONITORING
 
 ### Key Metrics to Watch
 
-1. **Rate Limiting**:
+1.**Rate Limiting**:
 
    - `ghost_provider_fetch_total{status="rate_limited"}` - Should decrease
    - `ghost_provider_fetch_duration_seconds` - Should stay < 5s
    - Provider rotation count - Should be minimal
 
-2. **UI Performance**:
+1. **UI Performance**:
 
    - Page load time - Should be < 2s
    - Asset loading - All static files should load from Railway CDN
    - Cache hit rate - Should be > 90% after first load
 
-3. **Ghost Brain**:
+1. **Ghost Brain**:
 
    - Decision latency - Should be < 500ms
    - Confidence scores - Should be calibrated (not always 100%)
    - Reasoning quality - Should explain 3+ factors
+
 
 ______________________________________________________________________
 
@@ -201,30 +219,40 @@ If issues occur:
 
 1. **Revert Rate Limiter**:
 
+
 ```bash
+
 git revert <commit-hash>
 railway up --detach
-```
 
-2. **Restore Portfolio**:
+```text
+
+1. **Restore Portfolio**:
+
 
 ```bash
+
 python scripts/restore_backup.py --date 2025-10-12
-```
 
-3. **Clear Railway Cache**:
+```text
+
+1. **Clear Railway Cache**:
+
 
 ```bash
+
 railway run rm -rf /app/.cache
 railway restart
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 📞 SUPPORT
 
 - Check logs: `railway logs`
-- Health check: https://web-production-8e9a0.up.railway.app/health/detailed
-- Metrics: https://web-production-8e9a0.up.railway.app/metrics
+- Health check: <<<<<https://web-production-8e9a0.up.railway.app/health/detailed>>>>>
+- Metrics: <<<<<https://web-production-8e9a0.up.railway.app/metrics>>>>>
+
 
 **Everything is backed up before changes!** 🛡️

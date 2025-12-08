@@ -21,7 +21,7 @@ controls. This is the most sophisticated execution system in the GHOST stack.
 
 ### Component Breakdown
 
-```
+```text
 Stage 5: Advanced Execution & Order Management (2,800+ lines)
 ├── Order Manager (750+ lines)
 │   ├── Order lifecycle management
@@ -44,7 +44,8 @@ Stage 5: Advanced Execution & Order Management (2,800+ lines)
     ├── Kill switch (emergency halt)
     ├── Risk limit enforcement
     └── Breach logging
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -62,15 +63,21 @@ ______________________________________________________________________
 - **Order Sides**: BUY, SELL
 - **Order Status**: PENDING → SUBMITTED → PARTIAL/FILLED/CANCELLED/REJECTED/EXPIRED
 - **Time In Force**: DAY (expires end of day), GTC (good till cancelled), IOC (immediate
+
+
   or cancel), FOK (fill or kill)
+
 - **Position Tracking**: Maintains long/short positions with realized/unrealized P&L
 - **Partial Fills**: Supports incremental fills with average price calculation
 - **Fill Simulation**: Instant fills for MARKET orders (production: broker API
+
+
   integration)
 
-**Database Schema** (`order_manager.db`):
+**Database Schema**(`order_manager.db`):
 
 ```sql
+
 -- Orders table
 CREATE TABLE orders (
     order_id TEXT PRIMARY KEY,
@@ -111,9 +118,8 @@ CREATE TABLE positions (
     realized_pnl REAL DEFAULT 0,
     last_updated TEXT
 );
-```
 
-**Core Methods**:
+```text**Core Methods**:
 
 1. **create_order()**: Creates new order with validation
 
@@ -122,43 +128,46 @@ CREATE TABLE positions (
    - Stores in memory and database
    - Returns order details
 
-2. **submit_order()**: Submits order for execution
+1. **submit_order()**: Submits order for execution
 
    - Changes status to SUBMITTED
    - Simulates instant fill for MARKET orders
    - In production: sends to broker API
 
-3. **cancel_order()**: Cancels pending/submitted order
+1. **cancel_order()**: Cancels pending/submitted order
 
    - Updates status to CANCELLED
    - Cannot cancel FILLED orders
 
-4. **\_fill_order()**: Records full or partial fill
+1. **\_fill_order()**: Records full or partial fill
 
    - Calculates average fill price
    - Updates order status (PARTIAL or FILLED)
    - Calls \_update_position()
 
-5. **\_update_position()**: Updates position after fill
+1. **\_update_position()**: Updates position after fill
 
    - BUY: Adds to position, updates avg_cost
    - SELL: Calculates realized P&L, reduces position
    - Handles position flips (long to short)
 
-6. **get_order()**: Retrieves order details by ID
+1. **get_order()**: Retrieves order details by ID
 
-7. **get_active_orders()**: Lists all PENDING/SUBMITTED orders
+1. **get_active_orders()**: Lists all PENDING/SUBMITTED orders
 
-8. **get_all_positions()**: Returns all open positions with P&L
+1. **get_all_positions()**: Returns all open positions with P&L
+
 
 **Usage Example**:
 
 ```python
+
 from core.order_manager import get_order_manager, OrderType, OrderSide
 
 order_mgr = get_order_manager()
 
 # Create market order
+
 order = order_mgr.create_order(
     symbol="WOLF",
     order_type=OrderType.MARKET,
@@ -167,11 +176,14 @@ order = order_mgr.create_order(
 )
 
 # Submit for execution
+
 result = order_mgr.submit_order(order["order_id"])
 
 # Get positions
+
 positions = order_mgr.get_all_positions()
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -184,15 +196,20 @@ ______________________________________________________________________
 **Key Features**:
 
 - **VWAP (Volume-Weighted Average Price)**: Slices order based on historical volume
+
+
   profile
+
 - **TWAP (Time-Weighted Average Price)**: Equal-sized slices over time
 - **ADAPTIVE**: Urgency-based execution (low/medium/high)
 - **Slippage Estimation**: Market impact model with participation rate
 - **TCA (Transaction Cost Analysis)**: Post-trade cost breakdown
 
-**Database Schema** (`smart_router.db`):
+
+**Database Schema**(`smart_router.db`):
 
 ```sql
+
 -- Execution plans
 CREATE TABLE execution_plans (
     plan_id TEXT PRIMARY KEY,
@@ -232,9 +249,8 @@ CREATE TABLE tca_reports (
     created_at TEXT,
     FOREIGN KEY (plan_id) REFERENCES execution_plans(plan_id)
 );
-```
 
-**Execution Algorithms**:
+```text**Execution Algorithms**:
 
 #### VWAP (Volume-Weighted Average Price)
 
@@ -248,22 +264,27 @@ market impact
    - Higher volume at market open (9:30-10:30 AM)
    - Lower volume midday (11:00 AM-2:00 PM)
    - Higher volume at close (3:00-4:00 PM)
-3. Targets participation rate (default: 10% of expected volume)
+1. Targets participation rate (default: 10% of expected volume)
+
 
 **Volume Profile Formula**:
 
 ```python
+
 # U-shaped curve: high at start/end, low in middle
+
 progress = slice_number / total_slices  # 0.0 to 1.0
-weight = 0.5 + (1.0 - 2.0 * (progress - 0.5)**2) * 0.5
+weight = 0.5 + (1.0 - 2.0 *(progress - 0.5)**2)* 0.5
 slice_quantity = total_quantity * weight
-```
+
+```text
 
 **When to Use**:
 
 - Large orders (>5% of daily volume)
 - Liquid stocks with predictable volume patterns
 - Want to blend in with market activity
+
 
 #### TWAP (Time-Weighted Average Price)
 
@@ -275,11 +296,13 @@ slice_quantity = total_quantity * weight
 2. Spreads slices evenly over time period
 3. More passive than VWAP (5% participation)
 
+
 **When to Use**:
 
 - Medium-sized orders (2-5% of daily volume)
 - Low urgency
 - Stable, low-volatility stocks
+
 
 #### ADAPTIVE
 
@@ -293,7 +316,8 @@ slice_quantity = total_quantity * weight
    - **Medium**: Balanced (10% participation, equal distribution)
    - **Low**: Back-loaded (5% participation, 60% in second half)
 
-2. Adjusts slice sizes dynamically
+1. Adjusts slice sizes dynamically
+
 
 **When to Use**:
 
@@ -301,36 +325,41 @@ slice_quantity = total_quantity * weight
 - **Medium Urgency**: Normal rebalancing
 - **Low Urgency**: Patient accumulation/distribution
 
+
 **Slippage Estimation**:
 
 Uses square root market impact model:
 
 ```python
+
 slippage_bps = base_slippage * sqrt(order_quantity / avg_daily_volume)
 base_slippage = 10 bps per 10% participation
-```
+
+```text
 
 **Example**: 10,000 shares order in stock with 100,000 daily volume:
 
 - Participation: 10%
 - Slippage: 10 bps * sqrt(0.10) ≈ 3.16 bps
-- Cost on $50 stock: $50 * 0.000316 * 10,000 = $158
+- Cost on $50 stock: $50 *0.000316* 10,000 = $158
+
 
 **TCA (Transaction Cost Analysis)**:
 
 Post-trade cost breakdown:
 
-- **Market Impact** (60%): Immediate price movement from order
-- **Timing Cost** (30%): Price drift during execution
-- **Opportunity Cost** (10%): Cost of not executing instantly
+- **Market Impact**(60%): Immediate price movement from order
 
-**Quality Classification**:
+
+-**Timing Cost**(30%): Price drift during execution
+-**Opportunity Cost**(10%): Cost of not executing instantly**Quality Classification**:
 
 - **Excellent**: < 5 bps total cost
 - **Good**: 5-10 bps
 - **Fair**: 10-25 bps
 - **Poor**: 25-50 bps
 - **Very Poor**: > 50 bps
+
 
 **Core Methods**:
 
@@ -340,14 +369,17 @@ Post-trade cost breakdown:
 4. **estimate_slippage()**: Estimates market impact cost
 5. **generate_tca_report()**: Post-trade cost analysis
 
+
 **Usage Example**:
 
 ```python
+
 from core.smart_router import get_smart_router
 
 smart_router = get_smart_router()
 
 # Create VWAP plan for large order
+
 plan = smart_router.create_vwap_plan(
     symbol="WOLF",
     total_quantity=10000,
@@ -360,9 +392,11 @@ print(f"Number of slices: {plan['num_slices']}")
 print(f"Estimated slippage: {plan['estimated_slippage_bps']:.2f} bps")
 
 # Execute slices (in production: schedule for target times)
+
 for slice_data in plan['slices']:
     print(f"Slice {slice_data['slice_number']}: {slice_data['quantity']} shares at {slice_data['target_time']}")
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -380,9 +414,11 @@ ______________________________________________________________________
 - **Latency Distribution**: p50, p95, p99 percentiles
 - **Daily Reports**: Aggregate statistics per day
 
-**Database Schema** (`execution_analytics.db`):
+
+**Database Schema**(`execution_analytics.db`):
 
 ```sql
+
 -- Execution metrics
 CREATE TABLE execution_metrics (
     metric_id TEXT PRIMARY KEY,
@@ -409,24 +445,24 @@ CREATE TABLE daily_stats (
     avg_slippage_bps REAL,
     execution_quality_score REAL     -- 0-100 composite score
 );
-```
 
-**Latency Metrics**:
+```text**Latency Metrics**:
 
 1. **Submission Latency**: Time from order creation to submission
 
    - Measures internal processing speed
    - Target: < 50ms
 
-2. **Execution Latency**: Time from submission to first fill
+1. **Execution Latency**: Time from submission to first fill
 
    - Measures broker/exchange speed
    - Target: < 100ms (market orders)
 
-3. **Total Latency**: Time from creation to last fill
+1. **Total Latency**: Time from creation to last fill
 
    - End-to-end execution time
    - Target: < 500ms (full fills)
+
 
 **Execution Quality Score (0-100)**:
 
@@ -450,12 +486,14 @@ Composite score with weighted components:
   - 50 points: 0 bps (at arrival price)
   - 0 points: > -10 bps (worse than arrival)
 
+
 **Quality Classification**:
 
 - **Excellent**: 90-100 score
 - **Good**: 75-89 score
 - **Fair**: 60-74 score
 - **Poor**: < 60 score
+
 
 **Core Methods**:
 
@@ -464,14 +502,17 @@ Composite score with weighted components:
 3. **get_latency_distribution()**: Statistical latency analysis (p50, p95, p99)
 4. **get_daily_report()**: Daily execution summary
 
+
 **Usage Example**:
 
 ```python
+
 from core.execution_analytics import get_execution_analytics
 
 exec_analytics = get_execution_analytics()
 
 # Get dashboard
+
 dashboard = exec_analytics.get_execution_dashboard(lookback_days=7)
 
 print(f"Total orders: {dashboard['total_orders']}")
@@ -481,12 +522,14 @@ print(f"Avg latency: {dashboard['avg_latency_ms']:.0f}ms")
 print(f"Avg fill rate: {dashboard['avg_fill_rate']*100:.1f}%")
 
 # Get latency distribution
+
 latency = exec_analytics.get_latency_distribution(lookback_days=7)
 
 print(f"Latency p50: {latency['p50_ms']:.0f}ms")
 print(f"Latency p95: {latency['p95_ms']:.0f}ms")
 print(f"Latency p99: {latency['p99_ms']:.0f}ms")
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -504,9 +547,11 @@ ______________________________________________________________________
 - **Breach Logging**: Records all violations with severity levels
 - **Symbol Restrictions**: Blacklist/whitelist capability
 
-**Database Schema** (`execution_risk.db`):
+
+**Database Schema**(`execution_risk.db`):
 
 ```sql
+
 -- Risk checks (every pre-trade check)
 CREATE TABLE risk_checks (
     check_id TEXT PRIMARY KEY,
@@ -541,48 +586,48 @@ CREATE TABLE kill_switch_events (
     triggered_by TEXT,                -- User/system who activated
     timestamp TEXT
 );
-```
 
-**Risk Limits** (default values):
+```text**Risk Limits**(default values):
 
 ```python
+
 max_order_value = 1_000_000        # $1M max single order
 max_position_size = 5_000_000      # $5M max single position
 max_daily_trades = 1_000           # Max 1000 trades per day
 max_order_quantity = 100_000       # Max 100K shares per order
-```
 
-**Pre-Trade Checks** (6 validations):
+```text**Pre-Trade Checks**(6 validations):
 
-1. **Kill Switch Check**: Trading must be enabled
+1.**Kill Switch Check**: Trading must be enabled
 
    - Blocks all orders if kill switch active
    - Critical severity
 
-2. **Order Quantity Check**: Quantity ≤ max_order_quantity
+1. **Order Quantity Check**: Quantity ≤ max_order_quantity
 
    - Default: 100,000 shares
    - Medium severity
 
-3. **Order Value Check**: Quantity × Price ≤ max_order_value
+1. **Order Value Check**: Quantity × Price ≤ max_order_value
 
    - Default: $1,000,000
    - High severity
 
-4. **Position Size Check**: Current position + order ≤ max_position_size
+1. **Position Size Check**: Current position + order ≤ max_position_size
 
    - Default: $5,000,000
    - High severity
 
-5. **Daily Trade Limit Check**: Today's trades < max_daily_trades
+1. **Daily Trade Limit Check**: Today's trades < max_daily_trades
 
    - Default: 1,000 trades
    - Medium severity
 
-6. **Symbol Restrictions Check**: Symbol not on blacklist
+1. **Symbol Restrictions Check**: Symbol not on blacklist
 
    - Optional: maintain restricted symbols list
    - Low severity
+
 
 **Kill Switch**:
 
@@ -591,11 +636,13 @@ Emergency trading halt mechanism:
 **Activation**:
 
 ```python
+
 exec_risk.activate_kill_switch(
     reason="Unusual market conditions",
     triggered_by="risk_officer"
 )
-```
+
+```text
 
 **Effects**:
 
@@ -604,13 +651,16 @@ exec_risk.activate_kill_switch(
 - Trading status displayed on UI (red indicator)
 - Critical breach logged
 
+
 **Deactivation**:
 
 ```python
+
 exec_risk.deactivate_kill_switch(
     authorized_by="head_trader"
 )
-```
+
+```text
 
 **Core Methods**:
 
@@ -622,14 +672,17 @@ exec_risk.deactivate_kill_switch(
 6. **update_risk_limits()**: Dynamically adjusts limits
 7. **get_recent_breaches()**: Lists recent violations
 
+
 **Usage Example**:
 
 ```python
+
 from core.execution_risk import get_execution_risk
 
 exec_risk = get_execution_risk()
 
 # Pre-trade check
+
 result = exec_risk.pre_trade_check(
     order_id="order_123",
     symbol="WOLF",
@@ -639,21 +692,26 @@ result = exec_risk.pre_trade_check(
 )
 
 if result["passed"]:
+
     # Submit order
+
     print("Order passed pre-trade checks")
 else:
     print(f"Order rejected: {result['violations']}")
 
 # Activate kill switch in emergency
+
 exec_risk.activate_kill_switch(
     reason="Flash crash detected",
     triggered_by="auto_monitor"
 )
 
 # Check status
+
 status = exec_risk.get_kill_switch_status()
 print(f"Trading enabled: {status['trading_enabled']}")
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -663,108 +721,112 @@ ______________________________________________________________________
 
 #### Order Management (6 endpoints)
 
-1. **POST /api/stage5/order/create**
-
-   - Create new order
+1. **POST /api/stage5/order/create**- Create new order
    - Parameters: symbol, order_type, side, quantity, price, stop_price, time_in_force,
+
+
      strategy
+
    - Returns: Order details with order_id
 
-2. **POST /api/stage5/order/submit/{order_id}**
 
-   - Submit order for execution
+1.**POST /api/stage5/order/submit/{order_id}**- Submit order for execution
+
    - Returns: Execution result
 
-3. **POST /api/stage5/order/cancel/{order_id}**
 
-   - Cancel pending/submitted order
+1.**POST /api/stage5/order/cancel/{order_id}**- Cancel pending/submitted order
+
    - Returns: Cancellation confirmation
 
-4. **GET /api/stage5/order/{order_id}**
 
-   - Get order details
+1.**GET /api/stage5/order/{order_id}**- Get order details
+
    - Returns: Full order information
 
-5. **GET /api/stage5/orders/active**
 
-   - Get all active orders
+1.**GET /api/stage5/orders/active**- Get all active orders
+
    - Optional: symbol filter
    - Returns: List of PENDING/SUBMITTED orders
 
-6. **GET /api/stage5/positions**
 
-   - Get all positions
+1.**GET /api/stage5/positions**- Get all positions
+
    - Returns: List with P&L
+
 
 #### Smart Routing (3 endpoints)
 
-7. **POST /api/stage5/router/vwap**
+1.**POST /api/stage5/router/vwap**- Create VWAP execution plan
 
-   - Create VWAP execution plan
    - Parameters: symbol, total_quantity, duration_minutes, participation_rate
    - Returns: Execution plan with slices
 
-8. **POST /api/stage5/router/twap**
 
-   - Create TWAP execution plan
+1.**POST /api/stage5/router/twap**- Create TWAP execution plan
+
    - Parameters: symbol, total_quantity, duration_minutes
    - Returns: Execution plan with slices
 
-9. **POST /api/stage5/router/adaptive**
 
-   - Create adaptive execution plan
+1.**POST /api/stage5/router/adaptive**- Create adaptive execution plan
+
    - Parameters: symbol, total_quantity, duration_minutes, urgency
    - Returns: Execution plan with slices
 
+
 #### Analytics (2 endpoints)
 
-10. **GET /api/stage5/analytics/dashboard**
+1.**GET /api/stage5/analytics/dashboard**- Get execution analytics dashboard
 
-    - Get execution analytics dashboard
     - Parameters: lookback_days (default: 7)
     - Returns: Quality score, metrics, classification
 
-11. **GET /api/stage5/analytics/latency**
 
-    - Get latency distribution
+1.**GET /api/stage5/analytics/latency**- Get latency distribution
+
     - Parameters: lookback_days (default: 7)
     - Returns: p50, p95, p99 percentiles
 
+
 #### Risk Controls (4 endpoints)
 
-12. **POST /api/stage5/risk/check**
+1.**POST /api/stage5/risk/check**- Run pre-trade risk check
 
-    - Run pre-trade risk check
     - Parameters: order_id, symbol, side, quantity, price
     - Returns: Passed/failed with violations
 
-13. **POST /api/stage5/risk/kill-switch/activate**
 
-    - Activate kill switch
+1.**POST /api/stage5/risk/kill-switch/activate**- Activate kill switch
+
     - Parameters: reason, triggered_by
     - Returns: Activation confirmation
 
-14. **POST /api/stage5/risk/kill-switch/deactivate**
 
-    - Deactivate kill switch
+1.**POST /api/stage5/risk/kill-switch/deactivate**- Deactivate kill switch
+
     - Parameters: authorized_by
     - Returns: Deactivation confirmation
 
-15. **GET /api/stage5/risk/kill-switch/status**
 
-    - Get kill switch status
+1.**GET /api/stage5/risk/kill-switch/status**- Get kill switch status
+
     - Returns: Trading enabled, reason if halted
+
 
 #### Configuration (2 endpoints)
 
-16. **GET /api/config** (updated)
+1.**GET /api/config**(updated)
 
     - Now includes `stage5_enabled: true`
     - Features: order_manager, smart_router, execution_analytics, execution_risk
 
-17. **GET /api/version** (unchanged)
+
+1.**GET /api/version**(unchanged)
 
     - Returns GHOST version
+
 
 ______________________________________________________________________
 
@@ -772,9 +834,7 @@ ______________________________________________________________________
 
 ### Execution Dashboard Widget
 
-Added to `templates/cockpit.html` (line ~395)
-
-**Components**:
+Added to `templates/cockpit.html` (line ~395)**Components**:
 
 1. **Execution Quality Panel**:
 
@@ -784,16 +844,17 @@ Added to `templates/cockpit.html` (line ~395)
    - Fill rate (%)
    - Total orders count
 
-2. **Risk Status Panel**:
+1. **Risk Status Panel**:
 
    - Kill switch indicator (green = active, red = halted)
    - Trading status text
    - Reason display (if halted)
 
-3. **Active Orders Panel**:
+1. **Active Orders Panel**:
 
    - Count of PENDING/SUBMITTED orders
    - Color-coded (accent if > 0, muted if 0)
+
 
 **Auto-Refresh**:
 
@@ -801,17 +862,19 @@ Added to `templates/cockpit.html` (line ~395)
 - Refresh button for manual update
 - Auto-refresh every 5 minutes (300,000ms)
 
-**JavaScript Function** (`loadExecutionDashboard()`):
+
+**JavaScript Function**(`loadExecutionDashboard()`):
 
 ```javascript
+
 async function loadExecutionDashboard() {
     // Load execution dashboard
     const dashboard = await fetch('/api/stage5/analytics/dashboard?lookback_days=7');
-    
+
     // Display quality score with color
     const score = dashboard.execution_quality_score;
     el('execQualityScore').textContent = score.toFixed(0);
-    
+
     // Classification with color coding
     const qualityClass = dashboard.quality_classification;
     const colors = {
@@ -820,24 +883,23 @@ async function loadExecutionDashboard() {
         'Fair': 'var(--warn)',
         'Poor': 'var(--danger)'
     };
-    
+
     // Load kill switch status
     const killSwitch = await fetch('/api/stage5/risk/kill-switch/status');
     // Update indicator color (green/red)
-    
+
     // Load active orders count
     const activeOrders = await fetch('/api/stage5/orders/active');
     el('activeOrdersCount').textContent = activeOrders.count;
 }
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 📊 Code Statistics
 
-### Total Lines of Code: 2,800+
-
-**Component Breakdown**:
+### Total Lines of Code: 2,800+**Component Breakdown**
 
 - Order Manager: 750 lines
 - Smart Router: 600 lines
@@ -846,12 +908,14 @@ ______________________________________________________________________
 - API Integration (wolf_app.py): 300 lines
 - UI Integration (cockpit.html): 200 lines
 
+
 **Databases**: 4 SQLite files
 
 - `order_manager.db`: 3 tables (orders, fills, positions)
 - `smart_router.db`: 3 tables (execution_plans, execution_slices, tca_reports)
 - `execution_analytics.db`: 2 tables (execution_metrics, daily_stats)
 - `execution_risk.db`: 3 tables (risk_checks, risk_breaches, kill_switch_events)
+
 
 **Total Tables**: 12
 
@@ -861,6 +925,7 @@ ______________________________________________________________________
 - OrderSide (BUY, SELL)
 - OrderStatus (PENDING, SUBMITTED, PARTIAL, FILLED, CANCELLED, REJECTED, EXPIRED)
 - TimeInForce (DAY, GTC, IOC, FOK)
+
 
 **Methods**: 35+ public methods across 4 components
 
@@ -887,6 +952,7 @@ ______________________________________________________________________
 - ✅ Realized P&L calculation
 - ✅ Unrealized P&L calculation
 
+
 #### Smart Router Tests
 
 - ✅ VWAP plan creation
@@ -898,6 +964,7 @@ ______________________________________________________________________
 - ✅ TCA report generation
 - ✅ Quality classification
 
+
 #### Execution Analytics Tests
 
 - ✅ Record execution metrics
@@ -905,6 +972,7 @@ ______________________________________________________________________
 - ✅ Latency distribution (p50, p95, p99)
 - ✅ Daily report generation
 - ✅ Quality score calculation
+
 
 #### Execution Risk Tests
 
@@ -917,11 +985,13 @@ ______________________________________________________________________
 - ✅ Kill switch deactivation
 - ✅ Breach logging
 
+
 #### API Tests
 
 - ✅ All 17 endpoints respond
 - ✅ Stage 5 in config endpoint
 - ✅ Error handling
+
 
 #### UI Tests
 
@@ -931,6 +1001,7 @@ ______________________________________________________________________
 - ✅ Active orders count updates
 - ✅ Refresh button functional
 - ✅ Auto-refresh (5 minutes)
+
 
 ### Test Execution Results
 
@@ -942,6 +1013,7 @@ ______________________________________________________________________
 - No runtime errors during testing
 - All database tables created successfully
 - All API endpoints operational
+
 
 ______________________________________________________________________
 
@@ -956,53 +1028,71 @@ ______________________________________________________________________
 - ✅ sqlite3 (built-in)
 - ✅ FastAPI & Uvicorn (already installed)
 
+
 #### Configuration
 
-1. **Environment Variables** (optional):
+1. **Environment Variables**(optional):
+
 
    ```bash
+
    export STAGE5_ENABLED=true
    export GHOST_RISK_MAX_ORDER_VALUE=1000000
    export GHOST_RISK_MAX_POSITION_SIZE=5000000
-   ```
 
-2. **Database Initialization**:
+   ```text
+
+1.**Database Initialization**:
 
    - Databases auto-created on first run
    - Location: `./order_manager.db`, `./smart_router.db`, etc.
 
-3. **Risk Limits** (adjust in code if needed):
+1. **Risk Limits**(adjust in code if needed):
+
 
    ```python
+
    # In core/execution_risk.py
+
    self.max_order_value = 1_000_000      # Adjust as needed
    self.max_position_size = 5_000_000    # Adjust as needed
-   ```
+
+   ```text
 
 #### Startup
 
 1. Start GHOST server:
 
+
    ```bash
+
    source .venv/bin/activate
    uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload
-   ```
 
-2. Verify Stage 5 in logs:
+   ```text
 
-   ```
+1. Verify Stage 5 in logs:
+
+
+   ```text
+
    INFO: stage5_initialized component=startup features=order_manager,smart_router,...
-   ```
 
-3. Check config endpoint:
+   ```text
+
+1. Check config endpoint:
+
 
    ```bash
-   curl http://localhost:5000/api/config | jq '.intelligence'
-   ```
+
+   curl <<<<<http://localhost:5000/api/config>>>>> | jq '.intelligence'
+
+   ```text
 
    Expected output:
 
    ```json
+
    {
      "stage5_enabled": true,
      "features": [
@@ -1012,13 +1102,16 @@ ______________________________________________________________________
        "execution_risk"
      ]
    }
-   ```
+
+   ```text
 
 #### Smoke Test
 
 ```bash
+
 # Create test order
-curl -X POST http://localhost:5000/api/stage5/order/create \
+
+curl -X POST <<<<<http://localhost:5000/api/stage5/order/create>>>>> \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "WOLF",
@@ -1028,11 +1121,14 @@ curl -X POST http://localhost:5000/api/stage5/order/create \
   }'
 
 # Get execution dashboard
-curl http://localhost:5000/api/stage5/analytics/dashboard
+
+curl <<<<<http://localhost:5000/api/stage5/analytics/dashboard>>>>>
 
 # Check kill switch status
-curl http://localhost:5000/api/stage5/risk/kill-switch/status
-```
+
+curl <<<<<http://localhost:5000/api/stage5/risk/kill-switch/status>>>>>
+
+```text
 
 ______________________________________________________________________
 
@@ -1040,7 +1136,8 @@ ______________________________________________________________________
 
 ### Stage 5 Position in Intelligence Hierarchy
 
-```
+```text
+
 GHOST Intelligence Stack (5 Stages)
 ├── Stage 1: World Context & Market Intelligence (1,920+ lines)
 │   └── Provides market context for execution decisions
@@ -1052,9 +1149,8 @@ GHOST Intelligence Stack (5 Stages)
 │   └── Generates optimal allocations for execution
 └── Stage 5: Advanced Execution & Order Management (2,800+ lines) ⭐ YOU ARE HERE
     └── Executes trades with intelligent routing and risk controls
-```
 
-**Total Intelligence Stack**: 9,449+ lines of code
+```text**Total Intelligence Stack**: 9,449+ lines of code
 
 ### Inter-Stage Communication
 
@@ -1064,11 +1160,13 @@ GHOST Intelligence Stack (5 Stages)
 - High volatility regime → tighter position limits
 - Calm regime → relaxed limits
 
+
 **Stage 4 → Stage 5**:
 
 - Portfolio optimizer generates target allocations
 - Stage 5 executes rebalancing orders
 - VWAP/TWAP routing for large rebalancing trades
+
 
 **Stage 2 → Stage 5**:
 
@@ -1076,11 +1174,13 @@ GHOST Intelligence Stack (5 Stages)
 - Learning system tunes slippage estimates
 - Adaptive algorithms improve over time
 
+
 **Stage 1 → Stage 5**:
 
 - World context influences execution urgency
 - News events → higher urgency (ADAPTIVE high)
 - Quiet periods → lower urgency (ADAPTIVE low)
+
 
 ______________________________________________________________________
 
@@ -1092,11 +1192,13 @@ ______________________________________________________________________
 - Partial fill support with average price calculation
 - Commission tracking
 
+
 ### 2. Advanced Routing Algorithms
 
 - **VWAP**: Industry-standard volume-weighted execution
 - **TWAP**: Time-weighted for low-impact execution
 - **ADAPTIVE**: Urgency-based with front/back loading
+
 
 ### 3. Comprehensive Risk Controls
 
@@ -1104,17 +1206,20 @@ ______________________________________________________________________
 - **Kill Switch**: Emergency trading halt
 - **Dynamic Limits**: Adjustable based on market conditions
 
+
 ### 4. Real-Time Performance Monitoring
 
 - **Latency Tracking**: Submission, execution, total (ms)
 - **Quality Scoring**: 0-100 composite score
 - **Latency Distribution**: p50, p95, p99 percentiles
 
+
 ### 5. Transaction Cost Analysis (TCA)
 
 - Post-trade cost breakdown
 - Market impact vs timing cost vs opportunity cost
 - Quality classification (Excellent to Very Poor)
+
 
 ______________________________________________________________________
 
@@ -1124,95 +1229,130 @@ ______________________________________________________________________
 
 1. **Always Run Pre-Trade Checks**:
 
+
    ```python
+
    result = exec_risk.pre_trade_check(order_id, symbol, side, quantity, price)
    if not result["passed"]:
        print(f"Order rejected: {result['violations']}")
        return
-   ```
 
-2. **Monitor Kill Switch Status**:
+   ```text
+
+1. **Monitor Kill Switch Status**:
+
 
    ```python
+
    status = exec_risk.get_kill_switch_status()
    if not status["trading_enabled"]:
        print(f"Trading halted: {status['reason']}")
-   ```
 
-3. **Choose Appropriate Routing Algorithm**:
+   ```text
+
+1. **Choose Appropriate Routing Algorithm**:
 
    - Large orders (>5% daily volume) → VWAP
    - Medium orders (2-5% daily volume) → TWAP
    - Urgent orders → ADAPTIVE (high urgency)
    - Patient orders → ADAPTIVE (low urgency)
 
-4. **Track Execution Quality**:
+1. **Track Execution Quality**:
+
 
    ```python
+
    dashboard = exec_analytics.get_execution_dashboard(lookback_days=7)
    if dashboard["execution_quality_score"] < 60:
        print("Poor execution quality - review routing strategy")
-   ```
+
+   ```text
 
 ### Risk Management Best Practices
 
 1. **Set Conservative Limits Initially**:
 
+
    ```python
+
    exec_risk.update_risk_limits(
        max_order_value=500_000,        # Start with $500K
        max_position_size=2_000_000,    # Start with $2M
        max_daily_trades=500            # Start with 500 trades/day
    )
-   ```
 
-2. **Monitor Breaches Daily**:
+   ```text
+
+1. **Monitor Breaches Daily**:
+
 
    ```python
+
    breaches = exec_risk.get_recent_breaches(limit=10)
    for breach in breaches:
        if breach["severity"] == "CRITICAL":
            print(f"CRITICAL BREACH: {breach['description']}")
-   ```
 
-3. **Test Kill Switch in Development**:
+   ```text
+
+1. **Test Kill Switch in Development**:
+
 
    ```python
+
    # Activate
+
    exec_risk.activate_kill_switch("Testing kill switch", "test_user")
 
    # Verify all orders blocked
+
    result = exec_risk.pre_trade_check("test_order", "WOLF", "BUY", 100, 50.0)
    assert not result["passed"], "Kill switch should block orders"
 
    # Deactivate
+
    exec_risk.deactivate_kill_switch("test_user")
-   ```
+
+   ```text
 
 ### Performance Optimization Tips
 
 1. **Database Maintenance**:
 
+
    ```python
+
    # Archive old execution metrics monthly
+
    # Keep last 90 days in hot database
+
    # Move older data to cold storage
-   ```
 
-2. **Batch Operations**:
+   ```text
+
+1. **Batch Operations**:
+
 
    ```python
+
    # For multiple orders, batch database writes
-   # Use SQLite transactions for atomicity
-   ```
 
-3. **Caching**:
+   # Use SQLite transactions for atomicity
+
+   ```text
+
+1. **Caching**:
+
 
    ```python
+
    # Cache active orders in memory (already implemented)
+
    # Cache positions in memory (already implemented)
+
    # Refresh from DB only on startup or after failure
-   ```
+
+   ```text
 
 ______________________________________________________________________
 
@@ -1232,9 +1372,7 @@ ______________________________________________________________________
 
 ### GHOST Stack Milestone
 
-🎉 **ALL 5 STAGES COMPLETE** 🎉
-
-**Total Lines of Code**: 9,449+\
+🎉 **ALL 5 STAGES COMPLETE**🎉**Total Lines of Code**: 9,449+\
 **Total Databases**: 20+ SQLite databases\
 **Total API Endpoints**: 50+\
 **Total Features**: 20+ intelligence features
@@ -1246,6 +1384,7 @@ ______________________________________________________________________
 - 🎯 Regime detection & risk management
 - 🎲 Portfolio optimization & strategies
 - ⚡ Advanced execution & order management
+
 
 ______________________________________________________________________
 
@@ -1261,6 +1400,7 @@ ______________________________________________________________________
 - [ ] Real-time order status updates
 - [ ] Real-time fill notifications
 
+
 #### Phase 2: Advanced Algorithms (Q2 2025)
 
 - [ ] POV (Percentage of Volume) algorithm
@@ -1268,6 +1408,7 @@ ______________________________________________________________________
 - [ ] Dark pool routing
 - [ ] Smart order routing (multi-venue)
 - [ ] Iceberg orders
+
 
 #### Phase 3: Machine Learning (Q3 2025)
 
@@ -1277,6 +1418,7 @@ ______________________________________________________________________
 - [ ] Execution venue selection
 - [ ] Order timing optimization
 
+
 #### Phase 4: Advanced Risk (Q4 2025)
 
 - [ ] Real-time P&L monitoring
@@ -1284,6 +1426,7 @@ ______________________________________________________________________
 - [ ] Correlation-based position limits
 - [ ] Stress testing
 - [ ] What-if analysis
+
 
 ______________________________________________________________________
 
@@ -1293,12 +1436,14 @@ ______________________________________________________________________
 
 - **Developer**: GHOST Development Team
 - **Email**: support@ghost-trading.ai
-- **Documentation**: https://docs.ghost-trading.ai
-- **GitHub**: https://github.com/ghost-trading/ghost
+- **Documentation**: <<<<<https://docs.ghost-trading.ai>>>>>
+- **GitHub**: <<<<<https://github.com/ghost-trading/ghost>>>>>
+
 
 ### Known Issues
 
 - None currently
+
 
 ### FAQ
 
@@ -1329,11 +1474,13 @@ ______________________________________________________________________
 - "Algorithmic and High-Frequency Trading" by Cartea, Jaimungal, Peñaherrera
 - VWAP/TWAP white papers from major brokers
 
+
 ### Transaction Cost Analysis
 
 - "Transaction Costs and the Trading Process" by Madhavan
 - TCA best practices from CFA Institute
 - Implementation Shortfall methodology papers
+
 
 ### Risk Management
 
@@ -1341,24 +1488,21 @@ ______________________________________________________________________
 - Pre-trade risk control frameworks
 - Kill switch implementation guides
 
+
 ______________________________________________________________________
 
 ## 🎬 Conclusion
 
 Stage 5 represents the culmination of the GHOST intelligence stack, providing
-**production-ready order execution and management** with:
+**production-ready order execution and management**with:
 
-✅ **Intelligent Routing**: VWAP, TWAP, ADAPTIVE algorithms\
+✅**Intelligent Routing**: VWAP, TWAP, ADAPTIVE algorithms\
 ✅ **Risk Controls**: Pre-trade checks, kill switch, limit enforcement\
 ✅ **Performance Monitoring**: Real-time analytics with quality scoring\
 ✅ **Complete Lifecycle**: Order creation → submission → execution → analysis
 
 **With all 5 stages complete, GHOST is now a fully-featured algorithmic trading system
-with 9,449+ lines of sophisticated intelligence code.**
-
-______________________________________________________________________
-
-**Stage 5 Status**: ✅ **COMPLETE & OPERATIONAL**\
-**GHOST Stack Status**: ✅ **ALL 5 STAGES COMPLETE**
-
-🚀 **Ready for production deployment!** 🚀
+with 9,449+ lines of sophisticated intelligence
+code.**______________________________________________________________________**Stage 5 Status**: ✅ **COMPLETE &
+OPERATIONAL**\
+**GHOST Stack Status**: ✅ **ALL 5 STAGES COMPLETE**🚀**Ready for production deployment!** 🚀

@@ -19,6 +19,7 @@ Enhanced TWO Telegram alert card functions with Stage 1 context:
 1. _build_status_card() - Status alerts with portfolio snapshot
 2. _signal_card() - Trading signal alerts (BUY/SELL/HOLD)
 
+
 Both now include:
   • Market Mood section (regime + sentiment + VIX)
   • Trending Events (top 3 from 47+ news sources)
@@ -101,14 +102,16 @@ CHANGE 1: _build_status_card() Enhancement (Line ~1850)
 Added after "Market" section, before "News":
 
 ```python
+
 # Add Stage 1 World Context (if available)
+
 try:
     if STAGE1_ENABLED:
         from core.stage1_integration import get_enhanced_context
         ctx = get_enhanced_context()
         mood = ctx.get('market_mood', {})
         world = ctx.get('world_context', {})
-        
+
         if not mood.get('error'):
             regime = mood.get('market_regime', 'unknown').upper()
             mood_icon = '🐂' if regime == 'BULL' else '🐻' if regime == 'BEAR' else '↔️'
@@ -120,7 +123,7 @@ try:
             if mood.get('vix_level'):
                 card += f"• VIX: {mood['vix_level']:.1f}\\n"
             card += "\\n"
-        
+
         if not world.get('error'):
             events = world.get('trending_events', [])[:3]
             if events:
@@ -128,6 +131,7 @@ try:
                 card += "• " + ", ".join([f"[{e}]" for e in events]) + "\\n\\n"
 except Exception as e:
     logging.debug(f"Stage 1 context unavailable in status card: {e}")
+
 ````
 
 CHANGE 2: \_signal_card() Enhancement (Line ~5535)
@@ -136,14 +140,16 @@ CHANGE 2: \_signal_card() Enhancement (Line ~5535)
 Added after "Why now" reasons section:
 
 ```python
+
 # Add Stage 1 World Context (if available)
+
 try:
     if STAGE1_ENABLED:
         from core.stage1_integration import get_enhanced_context
         ctx = get_enhanced_context()
         mood = ctx.get('market_mood', {})
         world = ctx.get('world_context', {})
-        
+
         if not mood.get('error'):
             regime = mood.get('market_regime', 'unknown').upper()
             mood_icon = '🐂' if regime == 'BULL' else '🐻' if regime == 'BEAR' else '↔️'
@@ -154,14 +160,15 @@ try:
             )
             if mood.get('vix_level'):
                 card += f"• VIX: {mood['vix_level']:.1f}\\n"
-        
+
         if not world.get('error'):
             events = world.get('trending_events', [])[:3]
             if events:
                 card += "\\n🔥 Events: " + ", ".join([f"[{e}]" for e in events])
 except Exception as e:
     logging.debug(f"Stage 1 context unavailable in signal card: {e}")
-```
+
+```text
 
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -169,16 +176,24 @@ except Exception as e:
 ═══════════════════════════════════════════════════════════════════════════════
 
 1. MARKET MOOD INTEGRATION • Bull/Bear/Sideways regime detection • Risk-on / Risk-off /
+
+
    Neutral sentiment • VIX volatility level (when available) • Dynamic icons: 🐂 Bull, 🐻
    Bear, ↔️ Sideways
 
-2. TRENDING EVENTS • Top 3 events from 47+ news sources • Event types: earnings, merger,
+1. TRENDING EVENTS • Top 3 events from 47+ news sources • Event types: earnings, merger,
+
+
    bankruptcy, product, upgrade, etc. • Compact tag format: [event_type]
 
-3. GRACEFUL DEGRADATION • Works with or without Stage 1 enabled • Handles API errors
+1. GRACEFUL DEGRADATION • Works with or without Stage 1 enabled • Handles API errors
+
+
    without breaking cards • Logs debug messages on failure
 
-4. MINIMAL FOOTPRINT • Only ~6 lines added to card body • No external dependencies
+1. MINIMAL FOOTPRINT • Only ~6 lines added to card body • No external dependencies
+
+
    beyond Stage 1 • Negligible performance impact
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -246,15 +261,23 @@ Memory Usage: • Context data: ~50KB (cached) • Negligible impact on card gen
 ═══════════════════════════════════════════════════════════════════════════════
 
 1. PREREQUISITES • Stage 1 must be enabled and initialized • core/stage1_integration.py
+
+
    available • Background updater running (5min interval)
 
-2. COMPATIBILITY • Backward compatible: Works with/without Stage 1 • No breaking changes
+1. COMPATIBILITY • Backward compatible: Works with/without Stage 1 • No breaking changes
+
+
    to existing cards • Telegram bot token unchanged
 
-3. MONITORING • Watch for "Stage 1 context unavailable" debug logs • Monitor card
+1. MONITORING • Watch for "Stage 1 context unavailable" debug logs • Monitor card
+
+
    generation latency (should stay < 50ms) • Check Telegram delivery success rate
 
-4. ROLLBACK • If issues occur, disable Stage 1: STAGE1_ENABLED = False • Cards will
+1. ROLLBACK • If issues occur, disable Stage 1: STAGE1_ENABLED = False • Cards will
+
+
    revert to legacy format automatically • No data loss or state changes
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -287,9 +310,10 @@ NEXT MILESTONE: Week 3-4 → Stage 2 (Self-Evaluation System)
 
 ═══════════════════════════════════════════════════════════════════════════════
 
-```
+```text
 
 Author: Ghost AI
 Date: 2025-10-05
 Status: ✅ Complete
-```
+
+```text

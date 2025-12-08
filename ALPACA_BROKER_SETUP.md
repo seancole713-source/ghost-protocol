@@ -10,61 +10,64 @@ covers configuration, safety measures, and operational procedures.
 ### Required Environment Variables
 
 ```bash
+
 # Enable Alpaca broker
+
 BROKER=alpaca
 
 # API Credentials
+
 ALPACA_KEY_ID=<Railway:ALPACA_KEY_ID>
 ALPACA_SECRET_KEY=<Railway:ALPACA_SECRET_KEY>
 
 # Trading Mode
+
 ALPACA_PAPER=1              # 1 = Paper trading (default), 0 = LIVE trading
 APCA_API_BASE_URL=          # Optional: Override base URL
 
 # Rate Limiting (optional)
+
 ALPACA_ORDER_RATE=30        # Max orders per window (default: 30)
 ALPACA_ORDER_WINDOW_S=60    # Rate limit window in seconds (default: 60)
-```
+
+```text
 
 ### Paper Trading vs Live Trading
 
-**Paper Trading (ALPACA_PAPER=1):**
+**Paper Trading (ALPACA_PAPER=1):**- Uses: `https://paper-api.alpaca.markets/v2`
 
-- Uses: `https://paper-api.alpaca.markets/v2`
 - Risk: None (simulated money)
 - Best for: Testing strategies, development, demos
-- API Keys: Use paper trading keys from Alpaca dashboard
-
-**Live Trading (ALPACA_PAPER=0):**
-
-- Uses: `https://api.alpaca.markets/v2`
+- API Keys: Use paper trading keys from Alpaca dashboard**Live Trading (ALPACA_PAPER=0):**- Uses: `https://api.alpaca.markets/v2`
 - Risk: Real money at risk
 - Best for: Production trading with validated strategies
 - API Keys: Use live trading keys (requires funded account)
 
-⚠️ **WARNING**: Never use live API keys in paper mode or vice versa. Alpaca enforces
+
+⚠️**WARNING**: Never use live API keys in paper mode or vice versa. Alpaca enforces
 this at the API level.
 
 ## Getting API Keys
 
-1. **Sign up for Alpaca**: https://alpaca.markets
+1. **Sign up for Alpaca**: <<<<<https://alpaca.markets>>>>>
 
-2. **Navigate to Paper Trading Dashboard**:
-   https://app.alpaca.markets/paper/dashboard/overview
+1. **Navigate to Paper Trading Dashboard**:
 
-3. **Generate API Keys**:
+
+   <<<<<https://app.alpaca.markets/paper/dashboard/overview>>>>>
+
+1. **Generate API Keys**:
 
    - Go to "Your API Keys" section
    - Click "Generate New Key"
    - Save `API Key ID` and `Secret Key` securely
-   - **Never commit keys to git or share publicly**
-
-4. **For Live Trading** (after paper testing):
+   - **Never commit keys to git or share publicly**1.**For Live Trading**(after paper testing):
 
    - Fund your account
    - Generate separate live API keys
    - Update environment variables
    - Set `ALPACA_PAPER=0`
+
 
 ## Safety Features
 
@@ -77,6 +80,7 @@ All orders pass through the risk engine before submission:
 - Maximum loss per trade
 - Daily loss limits
 
+
 ### 2. Rate Limiting
 
 Built-in rate limiter prevents API throttling:
@@ -85,12 +89,14 @@ Built-in rate limiter prevents API throttling:
 - Configurable via env vars
 - Uses AsyncRateLimiter for non-blocking operation
 
+
 ### 3. Dry Run Mode
 
 Test orders without submission:
 
 ```bash
-curl -X POST https://your-ghost-instance/api/trade/submit \
+
+curl -X POST <<<<<https://your-ghost-instance/api/trade/submit>>>>> \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -100,7 +106,8 @@ curl -X POST https://your-ghost-instance/api/trade/submit \
     "type": "market",
     "dry_run": true
   }'
-```
+
+```text
 
 ### 4. Pre-Flight Checks
 
@@ -111,21 +118,26 @@ Before each order:
 - Validate sufficient buying power
 - Confirm order parameters
 
+
 ### 5. Paper Mode Default
 
 System defaults to paper trading even if ALPACA_PAPER is not set:
 
 ```python
+
 self.paper = os.getenv("ALPACA_PAPER", "1") == "1"
-```
+
+```text
 
 ## API Endpoints
 
 ### Broker Health Check
 
 ```bash
+
 GET /api/broker/health
-```
+
+```text
 
 Returns:
 
@@ -136,33 +148,41 @@ Returns:
 - Position count
 - Market open status
 
+
 ### Get Account
 
 ```bash
+
 GET /api/broker/account
-```
+
+```text
 
 Returns full account details including equity, cash, trading restrictions.
 
 ### Get Positions
 
 ```bash
+
 GET /api/broker/positions
-```
+
+```text
 
 Returns all open positions with P&L, entry price, current value.
 
 ### Get Market Clock
 
 ```bash
+
 GET /api/broker/clock
-```
+
+```text
 
 Returns market open/close times and current status.
 
 ### Submit Order
 
 ```bash
+
 POST /api/trade/submit
 {
   "symbol": "AAPL",
@@ -172,25 +192,32 @@ POST /api/trade/submit
   "time_in_force": "day",
   "dry_run": false
 }
-```
+
+```text
 
 ### Get Orders
 
 ```bash
+
 GET /api/trade/orders?status=open&limit=50
-```
+
+```text
 
 ### Cancel Order
 
 ```bash
+
 DELETE /api/trade/order/{order_id}
-```
+
+```text
 
 ### Close Position
 
 ```bash
+
 POST /api/trade/position/close/{symbol}
-```
+
+```text
 
 ## Order Types
 
@@ -199,19 +226,22 @@ POST /api/trade/position/close/{symbol}
 Executes immediately at current market price:
 
 ```json
+
 {
   "symbol": "WOLF",
   "qty": 10,
   "side": "buy",
   "type": "market"
 }
-```
+
+```text
 
 ### Limit Order
 
 Executes at specified price or better:
 
 ```json
+
 {
   "symbol": "WOLF",
   "qty": 10,
@@ -220,13 +250,15 @@ Executes at specified price or better:
   "limit_price": 15.50,
   "time_in_force": "gtc"
 }
-```
+
+```text
 
 ### Stop Order
 
 Triggers market order when price reaches stop:
 
 ```json
+
 {
   "symbol": "WOLF",
   "qty": 10,
@@ -234,13 +266,15 @@ Triggers market order when price reaches stop:
   "type": "stop",
   "stop_price": 14.00
 }
-```
+
+```text
 
 ### Stop-Limit Order
 
 Triggers limit order at stop price:
 
 ```json
+
 {
   "symbol": "WOLF",
   "qty": 10,
@@ -249,13 +283,15 @@ Triggers limit order at stop price:
   "stop_price": 14.00,
   "limit_price": 13.50
 }
-```
+
+```text
 
 ### Trailing Stop
 
 Stop price trails market price by percentage or dollar amount:
 
 ```json
+
 {
   "symbol": "WOLF",
   "qty": 10,
@@ -263,39 +299,49 @@ Stop price trails market price by percentage or dollar amount:
   "type": "trailing_stop",
   "trail_percent": 5.0
 }
-```
+
+```text
 
 ## Time in Force Options
 
-- **day**: Order active until end of trading day
+-**day**: Order active until end of trading day
+
 - **gtc**: Good 'til canceled (active until filled or manually canceled)
 - **ioc**: Immediate or cancel (fill immediately or cancel)
 - **fok**: Fill or kill (fill entire order immediately or cancel)
+
 
 ## Testing Procedure
 
 ### 1. Initial Setup (Paper Trading)
 
 ```bash
+
 # Set environment variables
+
 export BROKER=alpaca
 export ALPACA_KEY_ID="$(railway variables get ALPACA_KEY_ID)"
 export ALPACA_SECRET_KEY="$(railway variables get ALPACA_SECRET_KEY)"
 export ALPACA_PAPER=1
 
 # Run connection test
+
 python test_alpaca_broker.py
-```
+
+```text
 
 ### 2. Verify Health
 
 ```bash
-curl https://your-ghost-instance/api/broker/health
-```
+
+curl <<<<<https://your-ghost-instance/api/broker/health>>>>>
+
+```text
 
 Expected response:
 
 ```json
+
 {
   "ok": true,
   "broker": "alpaca",
@@ -305,12 +351,14 @@ Expected response:
   "portfolio_value": 100000.00,
   "market_open": true
 }
-```
+
+```text
 
 ### 3. Test Dry Run Order
 
 ```bash
-curl -X POST https://your-ghost-instance/api/trade/submit \
+
+curl -X POST <<<<<https://your-ghost-instance/api/trade/submit>>>>> \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -319,12 +367,14 @@ curl -X POST https://your-ghost-instance/api/trade/submit \
     "type": "market",
     "dry_run": true
   }'
-```
+
+```text
 
 ### 4. Submit Paper Trading Order
 
 ```bash
-curl -X POST https://your-ghost-instance/api/trade/submit \
+
+curl -X POST <<<<<https://your-ghost-instance/api/trade/submit>>>>> \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -333,29 +383,37 @@ curl -X POST https://your-ghost-instance/api/trade/submit \
     "type": "market",
     "dry_run": false
   }'
-```
+
+```text
 
 ### 5. Verify Order Execution
 
 ```bash
-curl https://your-ghost-instance/api/trade/orders?status=open
-curl https://your-ghost-instance/api/broker/positions
-```
+
+curl <<<<<https://your-ghost-instance/api/trade/orders?status=open>>>>>
+curl <<<<<https://your-ghost-instance/api/broker/positions>>>>>
+
+```text
 
 ### 6. Transition to Live (After Extensive Testing)
 
 ```bash
-# DANGER: Real money at risk!
+
+# DANGER: Real money at risk
+
 export ALPACA_PAPER=0
 export ALPACA_KEY_ID="$(railway variables get ALPACA_KEY_ID)"
 export ALPACA_SECRET_KEY="$(railway variables get ALPACA_SECRET_KEY)"
 
 # Restart Ghost
+
 ./scripts/restart_ghost.sh
 
 # Verify live connection
+
 python test_alpaca_broker.py
-```
+
+```text
 
 ## Monitoring and Logging
 
@@ -367,11 +425,14 @@ All broker operations are logged:
 - Risk check failures
 - API errors
 
+
 Check logs:
 
 ```bash
+
 tail -f logs/ghost.log | grep -E "trade|broker|order"
-```
+
+```text
 
 ## Troubleshooting
 
@@ -381,10 +442,12 @@ tail -f logs/ghost.log | grep -E "trade|broker|order"
 - Check API keys are configured
 - Restart Ghost after env changes
 
+
 ### "API keys not configured"
 
 - Set `ALPACA_KEY_ID` and `ALPACA_SECRET_KEY`
 - Ensure keys are for correct mode (paper vs live)
+
 
 ### "Order blocked by risk engine"
 
@@ -392,11 +455,13 @@ tail -f logs/ghost.log | grep -E "trade|broker|order"
 - Review portfolio concentration
 - Verify position sizing
 
+
 ### "Insufficient buying power"
 
 - Check account balance: `GET /api/broker/account`
 - Review open positions
 - Consider closing positions or reducing order size
+
 
 ### "Market closed"
 
@@ -404,69 +469,78 @@ tail -f logs/ghost.log | grep -E "trade|broker|order"
 - Check market hours: `GET /api/broker/clock`
 - Use `time_in_force=gtc` for overnight orders
 
+
 ## Security Best Practices
 
-1. **Never commit API keys to git**
-
-   - Use environment variables
+1. **Never commit API keys to git**- Use environment variables
    - Add .env to .gitignore
    - Use secrets management in production
 
-2. **Separate paper and live keys**
 
-   - Use different keys for testing and production
+1.**Separate paper and live keys**- Use different keys for testing and production
+
    - Rotate keys periodically
    - Revoke unused keys
 
-3. **Monitor account activity**
 
-   - Set up email/SMS alerts in Alpaca dashboard
+1.**Monitor account activity**- Set up email/SMS alerts in Alpaca dashboard
+
    - Review daily trading activity
    - Check for unexpected positions
 
-4. **Start small in live trading**
 
-   - Test with minimal capital first
+1.**Start small in live trading**- Test with minimal capital first
+
    - Gradually increase position sizes
    - Monitor performance closely
 
-5. **Use risk limits**
 
-   - Configure max position size
+1.**Use risk limits**- Configure max position size
+
    - Set daily loss limits
    - Enable circuit breakers
+
 
 ## Railway Deployment
 
 For Railway production deployment:
 
-1. **Set environment variables in Railway dashboard**:
+1.**Set environment variables in Railway dashboard**:
 
-   ```
+
+   ```text
+
    BROKER=alpaca
    ALPACA_KEY_ID=***
-   ALPACA_SECRET_KEY=***
-   ALPACA_PAPER=1 (or 0 for live)
-   ```
+   ALPACA_SECRET_KEY=***ALPACA_PAPER=1 (or 0 for live)
 
-2. **Deploy and verify**:
+   ```text
 
-   ```bash
-   curl https://ghost-sniper-bot-seancole713-production.up.railway.app/api/broker/health
-   ```
+1.**Deploy and verify**:
 
-3. **Monitor logs**:
 
    ```bash
+
+   curl <<<<<https://ghost-sniper-bot-seancole713-production.up.railway.app/api/broker/health>>>>>
+
+   ```text
+
+1. **Monitor logs**:
+
+
+   ```bash
+
    railway logs
-   ```
+
+   ```text
 
 ## Support and Resources
 
-- **Alpaca API Docs**: https://alpaca.markets/docs/api-documentation/
-- **Ghost Issues**: https://github.com/your-repo/issues
-- **Trading Hours**: https://www.alpaca.markets/support/market-hours/
-- **API Status**: https://status.alpaca.markets/
+- **Alpaca API Docs**: <<<<<https://alpaca.markets/docs/api-documentation/>>>>>
+- **Ghost Issues**: <<<<<https://github.com/your-repo/issues>>>>>
+- **Trading Hours**: <<<<<https://www.alpaca.markets/support/market-hours/>>>>>
+- **API Status**: <<<<<https://status.alpaca.markets/>>>>>
+
 
 ## License and Disclaimer
 

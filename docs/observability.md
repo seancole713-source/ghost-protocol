@@ -35,28 +35,42 @@ histogram_quantile(0.95, sum(rate(ghost_cockpit_snapshot_build_seconds_bucket[5m
 ### Fusion and LLM examples
 
 Final score (last value):
+
 ```promql
+
 ghost_decision_final_score
-```
+
+```text
 
 Why now reasons (last value):
+
 ```promql
+
 ghost_why_now_count
-```
+
+```text
 
 LLM call rate and recent confidence:
+
 ```promql
+
 rate(ghost_llm_calls_total[5m])
 ghost_llm_confidence
-```
+
+```text
+
 sum by (provider)(rate(ghost_provider_fetch_seconds_sum[5m]))
   / sum by (provider)(rate(ghost_provider_fetch_seconds_count[5m]))
-```
+
+```text
 
 ## Alert Examples
 
 ```yaml
+
 - alert: GhostSnapshotLatencyP95High
+
+
   expr: histogram_quantile(0.95, sum(rate(ghost_cockpit_snapshot_build_seconds_bucket[5m])) by (le)) > 2
   for: 10m
   labels:
@@ -66,6 +80,8 @@ sum by (provider)(rate(ghost_provider_fetch_seconds_sum[5m]))
     description: "P95 cockpit snapshot build time > 2s for 10m"
 
 - alert: GhostSnapshotFailures
+
+
   expr: rate(ghost_cockpit_snapshot_failures_total[5m]) > 0
   for: 5m
   labels:
@@ -75,6 +91,8 @@ sum by (provider)(rate(ghost_provider_fetch_seconds_sum[5m]))
     description: "Snapshot failure counter increasing continuously"
 
 - alert: GhostInstanceDown
+
+
   expr: ghost_up == 0
   for: 2m
   labels:
@@ -82,7 +100,8 @@ sum by (provider)(rate(ghost_provider_fetch_seconds_sum[5m]))
   annotations:
     summary: "Ghost instance down"
     description: "No metrics scrape reporting ghost_up=1 for 2 minutes"
-```
+
+```text
 
 ## UI Latency Badge
 
@@ -92,17 +111,25 @@ Disable via `UI_LATENCY_BADGE=0`.
 ## Testing Failure Path
 
 Force a snapshot failure (non-production):
+
 ```bash
-SNAP_FORCE_FAIL=1 curl -sS http://localhost:5000/api/cockpit
-```
+
+SNAP_FORCE_FAIL=1 curl -sS <<<<<http://localhost:5000/api/cockpit>>>>>
+
+```text
+
 Check increment:
+
 ```bash
-curl -s http://localhost:5000/metrics | grep ghost_cockpit_snapshot_failures_total
-```
+
+curl -s <<<<<http://localhost:5000/metrics>>>>> | grep ghost_cockpit_snapshot_failures_total
+
+```text
 
 ## Multiprocess Note
 
-If you scale to multiple workers, set `PROMETHEUS_MULTIPROC_DIR` and ensure the directory is empty on each restart. Current deployment assumes single-process simplicity.
+If you scale to multiple workers, set `PROMETHEUS_MULTIPROC_DIR` and ensure the directory is empty on each restart.
+Current deployment assumes single-process simplicity.
 
 ## Additions (WOLF-only app)
 
@@ -111,6 +138,7 @@ If you scale to multiple workers, set `PROMETHEUS_MULTIPROC_DIR` and ensure the 
   - Last seen timestamp window: `last_over_time(ghost_snapshot_asof[15m])`
 - `/metrics` auto-detects Prometheus multiprocess mode via `PROMETHEUS_MULTIPROC_DIR`.
 - Grafana example panel JSON for `ghost_snapshot_asof` lives at `docs/grafana/snapshot_asof_panel.json`.
+
 
 ---
 
@@ -130,107 +158,105 @@ The ChatGPT Analyst agent exports additional metrics for monitoring decision qua
 
 ### Agent PromQL Examples
 
-**Average confidence over last hour:**
-```promql
+**Average confidence over last hour:**```promql
+
 avg_over_time(ghost_ai_decision_confidence[1h])
-```
 
-**Decision rate by action:**
-```promql
+```text**Decision rate by action:**```promql
+
 rate(ghost_ai_decisions_total[5m])
-```
 
-**Tool success rate:**
-```promql
+```text**Tool success rate:**```promql
+
 rate(ghost_ai_tool_calls_total{result="success"}[5m])
 /
 rate(ghost_ai_tool_calls_total[5m])
-```
 
-**Tool failure rate by tool:**
-```promql
+```text**Tool failure rate by tool:**```promql
+
 rate(ghost_ai_tool_calls_total{result="failure"}[5m])
-```
 
-**Tool latency p95:**
-```promql
-histogram_quantile(0.95, 
+```text**Tool latency p95:**```promql
+
+histogram_quantile(0.95,
   rate(ghost_ai_tool_latency_seconds_bucket[5m])
 )
-```
 
-**Tool latency p95 by tool:**
-```promql
-histogram_quantile(0.95, 
+```text**Tool latency p95 by tool:**```promql
+
+histogram_quantile(0.95,
   sum by (tool_name, le) (rate(ghost_ai_tool_latency_seconds_bucket[5m]))
 )
-```
 
-**Time since last decision (seconds):**
-```promql
+```text**Time since last decision (seconds):**```promql
+
 time() - ghost_ai_decision_last_ts
-```
 
-**Decisions per hour:**
+```text**Decisions per hour:**
+
 ```promql
+
 rate(ghost_ai_decisions_total[1h]) * 3600
-```
+
+```text
 
 ### Agent Alert Rules
 
 See `docs/alerts/agent_slo_rules.yml` for comprehensive alert definitions.
 
-**Critical Alerts:**
-- **GhostAgentStale**: No decisions in 24+ hours → Agent may be down
+**Critical Alerts:**-**GhostAgentStale**: No decisions in 24+ hours → Agent may be down
+
 - **GhostAgentToolFailures**: Tool failure rate >20% → Data provider issues
 - **GhostAgentToolLatency**: Tool latency p95 >5s → Performance degradation
 
-**Warning Alerts:**
-- **GhostAgentLowConfidence**: Avg confidence <50% for 30min → Market uncertainty
+
+**Warning Alerts:**-**GhostAgentLowConfidence**: Avg confidence <50% for 30min → Market uncertainty
+
 - **GhostAgentNotFetchingData**: No tool calls for 30min → Agent idle
 
-**Info Alerts:**
-- **GhostAgentVeryLowConfidence**: Latest decision <30% confidence
+
+**Info Alerts:**-**GhostAgentVeryLowConfidence**: Latest decision <30% confidence
+
 - **GhostAgentHighDecisionRate**: >0.5 decisions/sec → Possible oscillation
+
 
 ### Agent Runbooks
 
-**GhostAgentStale** - Agent stopped making decisions
+**GhostAgentStale**- Agent stopped making decisions
+
 1. Check health: `GET /agent/health`
 2. Verify `OPENAI_API_KEY` is set in Railway
 3. Check logs for errors: `railway logs --filter agent`
-4. Restart service if needed: `railway restart`
+4. Restart service if needed: `railway restart`**GhostAgentLowConfidence**- Low confidence decisions
 
-**GhostAgentLowConfidence** - Low confidence decisions
 1. Review recent decisions: `GET /api/ai/decisions?hours=2`
 2. Check market conditions (VIX, volatility)
 3. Review decision rationale in agent responses
-4. May be normal during high uncertainty periods
+4. May be normal during high uncertainty periods**GhostAgentToolFailures**- High tool error rate
 
-**GhostAgentToolFailures** - High tool error rate
 1. Check tool metrics: `GET /api/ai/monitor`
 2. Verify API keys: `POLYGON_API_KEY`, `ALPHAVANTAGE_API_KEY`
 3. Check provider status pages
 4. Review specific errors in logs
-5. Test tools manually: `GET /api/prices/WOLF`
+5. Test tools manually: `GET /api/prices/WOLF`**GhostAgentToolLatency**- Slow tool responses
 
-**GhostAgentToolLatency** - Slow tool responses
 1. Check tool metrics by provider: `GET /api/ai/monitor`
 2. Review Railway resource utilization (CPU, memory)
 3. Check provider status for incidents
 4. Consider increasing `HTTP_TIMEOUT_S` if appropriate
-5. Check network latency to providers
+5. Check network latency to providers**GhostAgentNotFetchingData** - Agent idle
 
-**GhostAgentNotFetchingData** - Agent idle
 1. Check agent state: `GET /agent/state`
 2. Verify `GHOST_AGENT_TICK` is 300s (5min)
 3. Check `AI_ON=1` in environment variables
 4. Review conversation history: `GET /agent/state`
 5. Check portfolio has positions: `GET /api/cockpit`
 
+
 ### Grafana Dashboard
 
 See `docs/grafana/agent_dashboard.json` for a complete monitoring dashboard with:
+
 - Decision confidence gauge
 - Action distribution pie chart
 - Tool success rate by tool

@@ -9,7 +9,8 @@
 ```python
 @APP.post("/telegram/webhook")
 async def telegram_webhook(update: TelegramUpdate):
-```
+
+```text
 
 ### Message Sending Functions
 
@@ -17,16 +18,19 @@ async def telegram_webhook(update: TelegramUpdate):
 - `send_telegram()` - Line 7107
 - `send_telegram_detailed()` - Line 7113
 
+
 ### Test Endpoints
 
 - `/api/telegram/test` - Line 9950
 - `/debug/telegram_test` - Line 12748
+
 
 ### Environment Variables
 
 - `TELEGRAM_BOT_TOKEN` - Bot API token
 - `TELEGRAM_CHAT_ID` - Target chat ID
 - `TELEGRAM_HEARTBEAT_ON_START` - Send startup notification
+
 
 ### Prometheus Metrics
 
@@ -35,6 +39,7 @@ async def telegram_webhook(update: TelegramUpdate):
 - `ghost_telegram_test_seconds` - Test endpoint latency
 - `ghost_telegram_test_total` - Test endpoint calls
 
+
 ______________________________________________________________________
 
 ## 🔧 SETUP INSTRUCTIONS
@@ -42,41 +47,56 @@ ______________________________________________________________________
 ### 1. Create Telegram Bot
 
 ```bash
+
 # Talk to @BotFather on Telegram
+
 /newbot
+
 # Follow prompts, get token like: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 
 # Set webhook (after deploying to Railway)
+
 TELEGRAM_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
-RAILWAY_URL="https://ghost-production-xxxx.up.railway.app"
-curl "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${RAILWAY_URL}/telegram/webhook"
-```
+RAILWAY_URL="<<<<<https://ghost-production-xxxx.up.railway.app">>>>>
+curl "<<<<<https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${RAILWAY_URL}/telegram/webhook">>>>>
+
+```text
 
 ### 2. Get Your Chat ID
 
 ```bash
-# Send a message to your bot, then:
-curl "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates" | jq
+
+# Send a message to your bot, then
+
+curl "<<<<<https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates">>>>> | jq
+
 # Look for "chat": {"id": 123456789}
-```
+
+```text
 
 ### 3. Configure Environment Variables
 
 ```bash
+
 # In Railway dashboard or .env
+
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_CHAT_ID=123456789
 TELEGRAM_HEARTBEAT_ON_START=1
-```
+
+```text
 
 ### 4. Test Integration
 
 ```bash
+
 # Test endpoint
-curl -X POST http://localhost:5001/api/telegram/test
+
+curl -X POST <<<<<http://localhost:5001/api/telegram/test>>>>>
 
 # Should send a test message to your Telegram chat
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -90,6 +110,7 @@ The webhook at `/telegram/webhook` currently:
 - ✅ Parses message text
 - ✅ Logs incoming messages
 - ⚠️ Limited command handling
+
 
 ### Commands to Enhance
 
@@ -112,11 +133,12 @@ ______________________________________________________________________
 Add command parsing to `telegram_webhook()`:
 
 ```python
+
 @APP.post("/telegram/webhook")
 async def telegram_webhook(update: TelegramUpdate):
     text = update.message.text.strip()
     chat_id = update.message.chat.id
-    
+
     if text.startswith('/status'):
         response = await _handle_status_command()
     elif text.startswith('/signal'):
@@ -131,14 +153,18 @@ async def telegram_webhook(update: TelegramUpdate):
     elif text.startswith('/help'):
         response = _handle_help_command()
     else:
+
         # Free-form Q&A with GPT-4
+
         response = await _handle_ai_chat(text)
-    
+
     # Send response
+
     await _send_telegram_response(chat_id, response)
-    
+
     return {"ok": True}
-```
+
+```text
 
 ### Phase 2: Command Handlers (30 minutes)
 
@@ -150,20 +176,24 @@ Implement each command handler to fetch and format data:
 - `/crypto` - Call `/api/crypto/watchlist`, format prices
 - `/predict` - Call `/api/crypto/predict/run`, format forecast
 
+
 ### Phase 3: AI Chat Integration (15 minutes)
 
 Add GPT-4 Q&A for free-form questions:
 
 ```python
+
 async def _handle_ai_chat(question: str) -> str:
     if not AI_ON:
         return "AI features are currently disabled."
-    
+
     # Use existing AI infrastructure
+
     system_prompt = "You are GHOST, a crypto/stock trading assistant..."
     response = await _call_openai(system_prompt, question)
     return response
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -177,6 +207,7 @@ From recent test:
 - ⏳ Command routing needs enhancement
 - ⏳ AI chat integration pending
 
+
 ______________________________________________________________________
 
 ## ✅ READY TO USE (No Additional Code Needed)
@@ -186,27 +217,36 @@ The following features work NOW if you set the environment variables:
 ### 1. Startup Notifications
 
 ```bash
+
 # In Railway dashboard
+
 TELEGRAM_HEARTBEAT_ON_START=1
 
 # Server will send "🚀 GHOST is online" on startup
-```
+
+```text
 
 ### 2. Manual Messages
 
 ```python
+
 # From any Python code in the app
+
 from wolf_app import send_telegram
 
 send_telegram("📊 BTC crossed $100k!")
-```
+
+```text
 
 ### 3. Test Endpoint
 
 ```bash
+
 # Send a test message
-curl -X POST http://localhost:5001/api/telegram/test
-```
+
+curl -X POST <<<<<http://localhost:5001/api/telegram/test>>>>>
+
+```text
 
 ______________________________________________________________________
 
@@ -219,12 +259,14 @@ ______________________________________________________________________
 3. Set webhook URL
 4. Receive manual notifications (heartbeats, alerts)
 
+
 ### Option B: Add Commands (1 hour)
 
 1. Implement command router in `telegram_webhook()`
 2. Add 6 command handlers
 3. Test each command
 4. Deploy
+
 
 ### Option C: Full AI Integration (2 hours)
 
@@ -233,11 +275,12 @@ ______________________________________________________________________
 3. Add context awareness (portfolio state, recent trades)
 4. Deploy
 
+
 ______________________________________________________________________
 
 ## 🔥 RECOMMENDATION
 
-**Start with Option A** - Telegram is already 80% implemented!
+**Start with Option A**- Telegram is already 80% implemented!
 
 Just add these two variables and you'll get:
 
@@ -245,10 +288,9 @@ Just add these two variables and you'll get:
 - ✅ Manual alert messages
 - ✅ Test endpoint working
 
+
 Then enhance commands incrementally as needed.
 
-______________________________________________________________________
-
-**Status**: 🟢 **READY TO USE**\
+______________________________________________________________________**Status**: 🟢 **READY TO USE**\
 **Effort**: 5 minutes to enable, 1 hour to enhance\
 **Blocker**: None - just needs env vars

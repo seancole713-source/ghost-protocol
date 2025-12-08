@@ -13,47 +13,55 @@ ______________________________________________________________________
 
 ```python
 def get_wolf_price() -> tuple[float | None, float | None, str]:
-    # CRITICAL FIX: Do NOT return prev_close prematurely when TTL is fresh
-    # Always attempt live provider fetch during market hours
-    # Only fallback to prev_close after ALL providers have been tried
-```
 
-**Provider Chain** (configurable via `PRICE_YAHOO_FIRST`):
+    # CRITICAL FIX: Do NOT return prev_close prematurely when TTL is fresh
+
+    # Always attempt live provider fetch during market hours
+
+    # Only fallback to prev_close after ALL providers have been tried
+
+```text
+
+**Provider Chain**(configurable via `PRICE_YAHOO_FIRST`):
 
 1. Yahoo Finance (HTTP)
 2. AlphaVantage (if API key configured)
 3. Polygon.io (if API key configured)
-4. yfinance (library)
-
-**Fallback Logic**:
+4. yfinance (library)**Fallback Logic**:
 
 - Attempts ALL configured providers
 - Uses consensus quorum (≥2 providers agreeing within deviation threshold)
 - Only falls back to `prev_close` if ALL providers fail
 - Never generates fake/placeholder values
 
-**Diagnostics Tracking** (Lines 2388-2396):
+
+**Diagnostics Tracking**(Lines 2388-2396):
 
 ```python
+
 PRICE_DIAG["last_fetch_provider"] = prov or name
 PRICE_DIAG["last_fetch_latency_ms"] = ms
 PRICE_DIAG["last_good_price_ts"] = int(time.time())
 PRICE_DIAG["fallback_reason"] = None  # or "all_providers_failed", "quorum_failed", "no_data_available"
-```
 
-**Verification Steps**:
+```text**Verification Steps**:
 
 ```bash
+
 # Test live price fetch
-curl http://localhost:5000/api/cockpit | jq '.prices'
+
+curl <<<<<http://localhost:5000/api/cockpit>>>>> | jq '.prices'
 
 # Check diagnostics
-curl http://localhost:5000/diagnostics/summary | jq '.price_diag'
-```
+
+curl <<<<<http://localhost:5000/diagnostics/summary>>>>> | jq '.price_diag'
+
+```text
 
 **Expected Output**:
 
 ```json
+
 {
   "provider": "yahoo",
   "price": 123.45,
@@ -68,7 +76,8 @@ curl http://localhost:5000/diagnostics/summary | jq '.price_diag'
     "quorum_ok": true
   }
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -79,13 +88,15 @@ ______________________________________________________________________
 **NAV Calculation** (Lines 5264-5266):
 
 ```python
+
 "kpis": {
     "nav": round(sum((r.get("mark_value") or 0.0) for r in rows) + cash_bal, 2),
     "cash": cash_bal,
     "pnl_abs": round((row_current - avg) * qty, 2),
     "pnl_pct": float(f"{(((row_current - avg) / avg) * 100.0) if avg>0 else 0.0:.6f}")
 }
-```
+
+```text
 
 **Formula**:
 
@@ -94,9 +105,11 @@ ______________________________________________________________________
 - `PnL Absolute = (Current Price - Entry Price) × Quantity`
 - `PnL Percent = ((Current - Entry) / Entry) × 100`
 
+
 **Portfolio Row Calculation** (Lines 5210-5233):
 
 ```python
+
 for pos in positions:
     sym = str(pos.get("symbol") or "").upper()
     market = str(pos.get("market") or "stock")
@@ -107,13 +120,16 @@ for pos in positions:
         cur = row_current  # live price from get_wolf_price()
     pnl_abs_i = ((cur - entry) * q) if (cur is not None) else 0.0
     pnl_pct_i = (((cur - entry) / entry) * 100.0) if (cur is not None and entry>0) else 0.0
-```
+
+```text
 
 **Verification Steps**:
 
 ```bash
+
 # Import position
-curl -X POST http://localhost:5000/api/positions/import \
+
+curl -X POST <<<<<http://localhost:5000/api/positions/import>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -123,12 +139,15 @@ curl -X POST http://localhost:5000/api/positions/import \
   }'
 
 # Check cockpit
-curl http://localhost:5000/api/cockpit | jq '.portfolio, .kpis'
-```
 
-**Expected Output** (if current price is $123.45):
+curl <<<<<http://localhost:5000/api/cockpit>>>>> | jq '.portfolio, .kpis'
+
+```text
+
+**Expected Output**(if current price is $123.45):
 
 ```json
+
 {
   "portfolio": {
     "symbol": "WOLF",
@@ -145,17 +164,17 @@ curl http://localhost:5000/api/cockpit | jq '.portfolio, .kpis'
     "pnl_pct": 2.875000
   }
 }
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 3. Persistence ✅
 
-### Implementation
-
-**Save Function** (`_persist_save()` Lines 2845-2935):
+### Implementation**Save Function**(`_persist_save()` Lines 2845-2935)
 
 ```python
+
 portfolio_state = {
     "qty": STATE.get("qty", 0.0),
     "avg_cost": STATE.get("avg_cost", 0.0),
@@ -164,11 +183,11 @@ portfolio_state = {
     "cash_stock": STATE.get("cash_stock", 0.0),  # Optional split
     "cash_crypto": STATE.get("cash_crypto", 0.0),  # Optional split
 }
-```
 
-**Load Function** (`_persist_load()` Lines 2739-2843):
+```text**Load Function**(`_persist_load()` Lines 2739-2843):
 
 ```python
+
 def _restore_from_data(data: dict):
     STATE["qty"] = float(data.get("qty", 0.0))
     STATE["avg_cost"] = float(data.get("avg_cost", 0.0))
@@ -178,19 +197,21 @@ def _restore_from_data(data: dict):
         STATE["cash_stock"] = float(data["cash_stock"])
     if "cash_crypto" in data:
         STATE["cash_crypto"] = float(data["cash_crypto"])
-```
 
-**Storage Modes** (configurable via `WOLF_PERSIST_MODE`):
+```text**Storage Modes**(configurable via `WOLF_PERSIST_MODE`):
 
-1. **auto** (default): Redis → SQLite → File
-2. **redis**: Redis only
-3. **sqlite**: SQLite only
-4. **file**: JSON file only
-5. **none**: No persistence
+1.**auto**(default): Redis → SQLite → File
+2.**redis**: Redis only
 
-**Auto-Save** (Lines 2974-2983):
+1. **sqlite**: SQLite only
+2. **file**: JSON file only
+3. **none**: No persistence
+
+
+**Auto-Save**(Lines 2974-2983):
 
 ```python
+
 def _autosave_loop():
     if WOLF_AUTOSAVE_S <= 0:
         return
@@ -200,24 +221,25 @@ def _autosave_loop():
             _persist_save()
         except Exception:
             pass
-```
 
-**Startup Load** (Lines 899-902):
+```text**Startup Load**(Lines 899-902):
 
 ```python
+
 @APP.on_event("startup")
 async def _on_startup():
     try:
         _persist_load()
     except Exception:
         LOGGER.exception("persist_load_failed")
-```
 
-**Verification Steps**:
+```text**Verification Steps**:
 
 ```bash
+
 # 1. Import positions
-curl -X POST http://localhost:5000/api/positions/import \
+
+curl -X POST <<<<<http://localhost:5000/api/positions/import>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -228,16 +250,22 @@ curl -X POST http://localhost:5000/api/positions/import \
   }'
 
 # 2. Check state file
+
 cat /data/wolf_state.json
+
 # or
+
 sqlite3 /data/wolf.db "SELECT value FROM state WHERE key='position';"
 
 # 3. Restart server
+
 pkill -f uvicorn
 
 # 4. Verify positions restored
-curl http://localhost:5000/api/cockpit | jq '.portfolio.rows'
-```
+
+curl <<<<<http://localhost:5000/api/cockpit>>>>> | jq '.portfolio.rows'
+
+```text
 
 **Expected**: Positions array intact after restart.
 
@@ -247,9 +275,10 @@ ______________________________________________________________________
 
 ### Implementation
 
-**Forecast Storage** (Lines 726-760):
+**Forecast Storage**(Lines 726-760):
 
 ```sql
+
 CREATE TABLE forecasts (
     id TEXT PRIMARY KEY,
     symbol TEXT NOT NULL,
@@ -278,46 +307,54 @@ CREATE TABLE forecast_scores (
     direction_match INTEGER,
     magnitude_error_pct REAL
 );
-```
 
-**Metrics Calculation** (`_compute_forecast_metrics()` Lines 3926-3974):
+```text**Metrics Calculation** (`_compute_forecast_metrics()` Lines 3926-3974):
 
 ```python
+
 def _compute_forecast_metrics(fcst: dict, actuals: list[dict]) -> dict[str, Any]:
+
     # Match actual ticks to predicted timestamps
+
     paired = []
     for a in actuals:
         ts = a.get("t", 0)
         closest = min(pred_mid, key=lambda p: abs(p.get("t", 0) - ts), default=None)
         if closest and abs(closest.get("t", 0) - ts) < 3600:  # within 1h
             paired.append((closest.get("p", 0), a.get("p", 0)))
-    
+
     # MAP = Σ|actual - predicted| / actual × 100
+
     ape = [abs(act - pred) / act * 100 for pred, act in paired if act != 0]
     map = sum(ape) / len(ape) if ape else None
-    
+
     # RMSE = √(Σ(actual - predicted)²)
-    se = [(act - pred) ** 2 for pred, act in paired]
-    rmse = (sum(se) / len(se)) ** 0.5 if se else None
-    
+
+    se = [(act - pred) **2 for pred, act in paired]
+    rmse = (sum(se) / len(se))** 0.5 if se else None
+
     # Bias = Σ(predicted - actual) / actual × 100
+
     errors = [(pred - act) / act * 100 for pred, act in paired if act != 0]
     bias = sum(errors) / len(errors) if errors else None
-    
+
     # Accrual = matched points / total predictions × 100
+
     accrual_pct = len(paired) / len(pred_mid) * 100
-    
+
     return {
         "map": round(map, 2),
         "rmse": round(rmse, 3),
         "bias": round(bias, 2),
         "accrual_pct": round(accrual_pct, 1)
     }
-```
 
-**Overlay Endpoint** (`/api/forecast/overlay` Lines 3886-3920):
+```text
+
+**Overlay Endpoint**(`/api/forecast/overlay` Lines 3886-3920):
 
 ```python
+
 return {
     "symbol": "WOLF",
     "forecast_id": "forecast-12345",
@@ -337,30 +374,31 @@ return {
         "accrual_pct": 87.5  # 87.5% of predictions have actuals
     }
 }
-```
 
-**UI Display** (cockpit.html Lines 148-152):
+```text**UI Display**(cockpit.html Lines 148-152):
 
 ```html
+
 <span class="badge" id="foMAPE">MAP: —</span>
 <span class="badge" id="foRMSE">RMSE: —</span>
 <span class="badge" id="foBias">Bias: —</span>
 <span class="badge" id="foAccrual">Accrual: — / —</span>
-```
 
-**Background Tasks** (Lines 773-870):
+```text**Background Tasks**(Lines 773-870):
 
 - `_auto_record_forecast()`: Saves predictions every hour
 - `_auto_record_actual_prices()`: Polls live prices and stores them
-- `_auto_score_forecasts()`: Computes accuracy metrics every 2 minutes
+- `_auto_score_forecasts()`: Computes accuracy metrics every 2 minutes**Verification Steps**:
 
-**Verification Steps**:
 
 ```bash
+
 # Get forecast overlay
-curl http://localhost:5000/api/forecast/overlay?symbol=WOLF | jq '.'
+
+curl <<<<<http://localhost:5000/api/forecast/overlay?symbol=WOLF>>>>> | jq '.'
 
 # Expected output
+
 {
   "enabled": true,
   "path_predicted": {
@@ -382,7 +420,8 @@ curl http://localhost:5000/api/forecast/overlay?symbol=WOLF | jq '.'
     "accrual_pct": 92.3
   }
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -400,22 +439,25 @@ ______________________________________________________________________
 - Auto-pause on anomaly detection
 - Manual override button
 
+
 **Chart Drawing** (Lines 612-648):
 
 ```javascript
+
 function drawForecastChart(data){
     const pred = data.pred||[];
     const actual = data.actual||[];
-    
+
     // Draw prediction line (mid)
     ctx.strokeStyle = '#1e90ff';
     pred.forEach((p,i)=>{ const x=X(p.t), y=Y(p.p); /*...*/ });
-    
+
     // Draw actual line
     ctx.strokeStyle = '#9370db';
     actual.forEach((a,i)=>{ const x=X(a.t), y=Y(a.p); /*...*/ });
 }
-```
+
+```text
 
 ### Portfolio Panel
 
@@ -429,9 +471,11 @@ function drawForecastChart(data){
 - Multi-position support
 - Stale indicator when provider fails
 
+
 **Row Structure**:
 
 ```javascript
+
 {
   "symbol": "WOLF",
   "qty": 100.00000000,
@@ -443,7 +487,8 @@ function drawForecastChart(data){
   "stale": false,
   "src": "yahoo"
 }
-```
+
+```text
 
 ### Diagnostics Panel
 
@@ -463,9 +508,11 @@ function drawForecastChart(data){
   - Provider spread
   - Quorum status
 
+
 **Example Output**:
 
 ```json
+
 {
   "price_diag": {
     "market_open": true,
@@ -477,7 +524,8 @@ function drawForecastChart(data){
     "quorum_ok": true
   }
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -485,9 +533,10 @@ ______________________________________________________________________
 
 ### Implementation
 
-**GET Endpoint** (`/api/runtime/config` Lines 4861-4875):
+**GET Endpoint**(`/api/runtime/config` Lines 4861-4875):
 
 ```python
+
 return {
     "price_ttl_s": 30,
     "price_ttl_open_s": 45,
@@ -502,22 +551,23 @@ return {
     "learning_enabled": true,
     "band_widen_factor": 1.0
 }
-```
 
-**POST Endpoint** (Lines 4879-4928):
+```text**POST Endpoint**(Lines 4879-4928):
 
 ```python
+
 @APP.post("/api/runtime/config")
 async def api_runtime_config_post(body: RuntimeConfigBody):
     global PRICE_TTL_S, PRICE_TTL_OPEN_S, NEWS_TTL_S
     global PRICE_YAHOO_FIRST, PRICE_MAX_DEVIATION_OPEN
     global REUTERS_FEEDS_ON, OVERLAY_ENABLED
-    # ... updates apply immediately without restart
-```
 
-**UI Controls** (cockpit.html Lines 161-194):
+    # ... updates apply immediately without restart
+
+```text**UI Controls**(cockpit.html Lines 161-194):
 
 ```html
+
 <section class="card">
   <h2>Admin Toggles</h2>
   <label>price_ttl_s <input id="ttlPrice" /></label>
@@ -526,9 +576,8 @@ async def api_runtime_config_post(body: RuntimeConfigBody):
   <label>yahoo_first <select id="yahooFirst">...</select></label>
   <button onclick="applyRuntimeConfig()">Apply</button>
 </section>
-```
 
-**Configurable Parameters**:
+```text**Configurable Parameters**:
 
 | Parameter | Type | Effect | No Restart Required |
 |-----------|------|--------|---------------------| | `price_ttl_s` | int | Cache TTL
@@ -544,11 +593,14 @@ width multiplier | ✅ |
 **Verification Steps**:
 
 ```bash
+
 # Get current config
-curl http://localhost:5000/api/runtime/config | jq '.'
+
+curl <<<<<http://localhost:5000/api/runtime/config>>>>> | jq '.'
 
 # Update config (no restart needed)
-curl -X POST http://localhost:5000/api/runtime/config \
+
+curl -X POST <<<<<http://localhost:5000/api/runtime/config>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -558,8 +610,10 @@ curl -X POST http://localhost:5000/api/runtime/config \
   }'
 
 # Verify changes applied
-curl http://localhost:5000/api/runtime/config | jq '.'
-```
+
+curl <<<<<http://localhost:5000/api/runtime/config>>>>> | jq '.'
+
+```text
 
 ______________________________________________________________________
 
@@ -567,32 +621,38 @@ ______________________________________________________________________
 
 ### Code Audit Results
 
-**Price Sources** (Lines 2103-2354):
+**Price Sources**(Lines 2103-2354):
 
 ```python
-def _fetch_price_yahoo_http(symbol: str) -> tuple[float | None, float | None, str]:
-    # Real HTTP call to Yahoo Finance API
-    
-def _fetch_price_alphavantage(symbol: str) -> tuple[float | None, float | None, str]:
-    # Real call to AlphaVantage API
-    
-def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
-    # Real call to Polygon.io API
-    
-def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]:
-    # Real call via yfinance library
-```
 
-**No Random/Fake Values**:
+def _fetch_price_yahoo_http(symbol: str) -> tuple[float | None, float | None, str]:
+
+    # Real HTTP call to Yahoo Finance API
+
+def _fetch_price_alphavantage(symbol: str) -> tuple[float | None, float | None, str]:
+
+    # Real call to AlphaVantage API
+
+def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
+
+    # Real call to Polygon.io API
+
+def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]:
+
+    # Real call via yfinance library
+
+```text**No Random/Fake Values**:
 
 - ❌ No `random.random()` calls
 - ❌ No hardcoded placeholder prices
 - ❌ No simulation mode (SIM_ENABLED removed)
 - ✅ All prices from live providers or `prev_close` (last known real value)
 
-**Traceability** (Lines 2394-2398):
+
+**Traceability**(Lines 2394-2398):
 
 ```python
+
 _add_event("price_ok", "provider", {
     "provider": prov or name,
     "price": float(p),
@@ -600,9 +660,8 @@ _add_event("price_ok", "provider", {
     "ms": ms,
     "ttl_hit": False
 })
-```
 
-**Every Number is Explainable**:
+```text**Every Number is Explainable**:
 
 1. **Live Prices**: Direct from provider API
 2. **Prev Close**: Last known closing price from provider
@@ -610,13 +669,17 @@ _add_event("price_ok", "provider", {
 4. **PnL**: `(Current - Entry) × Quantity`
 5. **NAV**: `Cash + Σ(Market Values)`
 
+
 **Verification Steps**:
 
 ```bash
+
 # Check event log for price sources
-curl http://localhost:5000/diagnostics/summary | jq '.events[] | select(.type == "price_ok")'
+
+curl <<<<<http://localhost:5000/diagnostics/summary>>>>> | jq '.events[] | select(.type == "price_ok")'
 
 # Expected: Every price has explicit provider attribution
+
 {
   "type": "price_ok",
   "message": "provider",
@@ -628,7 +691,8 @@ curl http://localhost:5000/diagnostics/summary | jq '.events[] | select(.type ==
     "ttl_hit": false
   }
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -639,7 +703,9 @@ ______________________________________________________________________
 **Implementation**: Lines 2379-2414
 
 ```python
+
 # Configurable priority order
+
 if PRICE_YAHOO_FIRST:
     take("yahoo", ...)
     take("alphavantage", ...)
@@ -652,15 +718,19 @@ else:
     take("yfinance", ...)
 
 # Quorum consensus (≥2 agreeing providers)
+
 if len(agree) >= 2:
     consensus = sorted(agree)[len(agree)//2]
     return consensus, best_prev, label
 else:
+
     # Fallback to prev_close only after ALL fail
+
     if best_prev is not None:
         PRICE_DIAG["fallback_reason"] = "quorum_failed"
         return None, best_prev, "prev-close"
-```
+
+```text
 
 **Status**: degraded flag set when using prev_close fallback
 
@@ -669,6 +739,7 @@ else:
 **Implementation**: Lines 2845-2935
 
 ```python
+
 portfolio_state = {
     "qty": STATE.get("qty", 0.0),
     "avg_cost": STATE.get("avg_cost", 0.0),
@@ -677,8 +748,10 @@ portfolio_state = {
     "cash_stock": STATE.get("cash_stock", 0.0),
     "cash_crypto": STATE.get("cash_crypto", 0.0),
 }
+
 # Saved to: Redis → SQLite → File (auto-fallback)
-```
+
+```text
 
 **Storage**: `/data/wolf.db` (SQLite) or `/data/wolf_state.json` (File)
 
@@ -687,13 +760,15 @@ portfolio_state = {
 **Implementation**: Lines 5240-5247
 
 ```python
+
 fsum = _forecast_summary_for_snapshot()
 if manual_active or (anomaly_active and FORECAST_PAUSE_ON_ANOMALY):
     fsum.update({
         "enabled": False,
         "note": "paused:manual_override" if manual_active else "paused:price_anomaly"
     })
-```
+
+```text
 
 **Behavior**: Forecast automatically re-enables when `anomaly_active` becomes False
 (price normalizes)
@@ -703,13 +778,15 @@ if manual_active or (anomaly_active and FORECAST_PAUSE_ON_ANOMALY):
 **Implementation**: Lines 3926-3974
 
 ```python
+
 return {
     "map": 1.85,      # 1.85% average error
     "rmse": 0.98,      # $0.98 typical deviation
     "bias": 0.12,      # 0.12% systematic bias
     "accrual_pct": 92.3  # 92.3% data coverage
 }
-```
+
+```text
 
 **UI**: Badges display real-time accuracy in cockpit forecast panel
 
@@ -718,6 +795,7 @@ return {
 **Implementation**: Lines 5884-5938
 
 ```python
+
 "price_diag": {
     "market_open": true,
     "last_fetch_provider": "yahoo",
@@ -727,7 +805,8 @@ return {
     "provider_spread": 0.002,
     "quorum_ok": true
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -737,6 +816,7 @@ ______________________________________________________________________
 
 - `GHOST_API_TOKEN` - Bearer token for protected endpoints
 
+
 **Optional**:
 
 - `ALPHAVANTAGE_API_KEY` - AlphaVantage API key
@@ -744,6 +824,7 @@ ______________________________________________________________________
 - `TELEGRAM_BOT_TOKEN` - Telegram alert bot token
 - `TELEGRAM_CHAT_ID` - Telegram chat ID
 - `REDIS_URL` - Redis connection string
+
 
 **Runtime Tuning**:
 
@@ -753,6 +834,7 @@ ______________________________________________________________________
 - `PRICE_MAX_DEVIATION_OPEN=0.05` - Quorum threshold
 - `WOLF_PERSIST_MODE=auto` - Persistence backend
 - `WOLF_AUTOSAVE_S=60` - Auto-save interval
+
 
 ______________________________________________________________________
 
@@ -767,6 +849,7 @@ ______________________________________________________________________
 - [ ] NAV calculation matches manual calculation
 - [ ] PnL calculation matches manual calculation
 
+
 ### Provider Chain
 
 - [ ] Yahoo fetched first (if `PRICE_YAHOO_FIRST=1`)
@@ -774,6 +857,7 @@ ______________________________________________________________________
 - [ ] Provider spread tracked in diagnostics
 - [ ] Fallback reason logged correctly
 - [ ] Latency tracked per fetch
+
 
 ### Forecast Accuracy
 
@@ -783,12 +867,14 @@ ______________________________________________________________________
 - [ ] Overlay displays both lines in UI
 - [ ] Metrics update continuously
 
+
 ### Runtime Config
 
 - [ ] TTL changes apply immediately
 - [ ] Provider preference changes apply immediately
 - [ ] No restart required for config changes
 - [ ] Changes visible in diagnostics
+
 
 ### Persistence
 
@@ -798,11 +884,12 @@ ______________________________________________________________________
 - [ ] Cash balances restored correctly
 - [ ] Auto-save triggers on changes
 
+
 ______________________________________________________________________
 
 ## ✅ Compliance Statement
 
-**Ghost WOLF-only v1.0** fully implements all 7 permanent requirements:
+**Ghost WOLF-only v1.0**fully implements all 7 permanent requirements:
 
 1. ✅ Live data only (no simulation, no placeholders)
 2. ✅ Prices & portfolio math always correct (NAV, PnL formulas)
@@ -810,13 +897,12 @@ ______________________________________________________________________
 4. ✅ Prediction vs reality tracking (MAP, RMSE, bias)
 5. ✅ Proper UI behavior (two-line charts, diagnostics clarity)
 6. ✅ Runtime config control (no restarts required)
-7. ✅ Zero randomness (every number traceable)
-
-**Every number in the cockpit is explainable and matches either**:
+7. ✅ Zero randomness (every number traceable)**Every number in the cockpit is explainable and matches either**:
 
 - Broker records (imported positions)
 - Provider live price (Yahoo, Polygon, AlphaVantage, yfinance)
 - Ghost's stored forecast (SQLite-backed)
 - Never fabricated demo values
+
 
 **Status**: Production-ready for live trading oversight.

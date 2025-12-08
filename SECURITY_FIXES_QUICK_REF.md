@@ -11,31 +11,36 @@
 5. `tests/test_security_audit_fixes.py` - NEW: Comprehensive test suite
 6. `GHOST_SECURITY_AUDIT_FIXES.md` - NEW: Full audit report
 
+
 ______________________________________________________________________
 
 ## Critical Fixes Summary
 
 ### 1. Runtime Bugs (3 fixes)
 
-- ✅ **Trailing stop None division** - Added parameter validation
-- ✅ **Cache TTL ignored** - Implemented per-entry TTL storage
-- ✅ **Missing scipy** - Added to requirements.txt
+- ✅ **Trailing stop None division**- Added parameter validation
+- ✅**Cache TTL ignored**- Implemented per-entry TTL storage
+- ✅**Missing scipy**- Added to requirements.txt
+
 
 ### 2. Security Hardening (4 fixes)
 
-- ✅ **API keys persistent** - SQLite tables with SHA256 hashing
-- ✅ **Webhooks persistent** - Database storage with secret hashing
-- ✅ **HMAC upgrade** - Proper HMAC-SHA256 with timestamp + canonical JSON
-- ✅ **Input validation** - Rate limits bounded, URLs validated (SSRF prevention)
+- ✅**API keys persistent**- SQLite tables with SHA256 hashing
+- ✅**Webhooks persistent**- Database storage with secret hashing
+- ✅**HMAC upgrade**- Proper HMAC-SHA256 with timestamp + canonical JSON
+- ✅**Input validation**- Rate limits bounded, URLs validated (SSRF prevention)
+
 
 ### 3. Stability (1 fix)
 
-- ✅ **Exception logging** - Replaced silent `except: pass` with structured logging
+- ✅**Exception logging**- Replaced silent `except: pass` with structured logging
+
 
 ### 4. Performance (2 fixes)
 
-- ✅ **Async webhooks** - Converted blocking requests to httpx AsyncClient
-- ✅ **Database indexes** - Added compound indexes for forecast_actuals, realized_prices
+- ✅**Async webhooks**- Converted blocking requests to httpx AsyncClient
+- ✅**Database indexes**- Added compound indexes for forecast_actuals, realized_prices
+
 
 ______________________________________________________________________
 
@@ -43,15 +48,16 @@ ______________________________________________________________________
 
 ### ⚠️ API Keys Must Be Recreated
 
-- Old in-memory keys **lost** (not persisted)
+- Old in-memory keys**lost**(not persisted)
 - Action: Re-create all keys via `/api/keys/create`
 - Keys now survive restarts
 
+
 ### ⚠️ Webhooks Must Be Re-subscribed
 
-- Old in-memory webhooks **lost**
-- Action: Re-subscribe via `/api/webhooks/subscribe`
+- Old in-memory webhooks**lost**- Action: Re-subscribe via `/api/webhooks/subscribe`
 - Webhooks now survive restarts
+
 
 ______________________________________________________________________
 
@@ -81,38 +87,45 @@ CREATE TABLE webhooks (
     failure_count INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1
 );
-```
 
-**Automatic Migration**: Tables created on first startup. No manual SQL required.
+```text**Automatic Migration**: Tables created on first startup. No manual SQL required.
 
 ______________________________________________________________________
 
 ## Quick Test Commands
 
 ```bash
+
 # Run security test suite
+
 pytest tests/test_security_audit_fixes.py -v
 
 # Test API key creation
-curl -X POST "http://localhost:5000/api/keys/create?name=TestKey&rate_limit=100"
+
+curl -X POST "<<<<<http://localhost:5000/api/keys/create?name=TestKey&rate_limit=100">>>>>
 
 # Test webhook subscription
-curl -X POST "http://localhost:5000/api/webhooks/subscribe" \
+
+curl -X POST "<<<<<http://localhost:5000/api/webhooks/subscribe">>>>> \
   -H "Content-Type: application/json" \
-  -d '{"url":"https://example.com/webhook","events":["order.filled"]}'
+  -d '{"url":"<<<<<https://example.com/webhook","events":["order.filled"]}'>>>>>
 
 # Verify database tables
+
 sqlite3 data/wolf.db "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('api_keys','webhooks')"
 
 # Check indexes
+
 sqlite3 data/wolf.db "SELECT name FROM sqlite_master WHERE type='index'"
-```
+
+```text
 
 ______________________________________________________________________
 
 ## Webhook Signature Verification (Recipients)
 
 ```python
+
 import hmac
 import hashlib
 import time
@@ -123,18 +136,21 @@ def verify_ghost_webhook(request):
     signature = request.headers.get("X-Ghost-Signature")
     timestamp = request.headers.get("X-Ghost-Timestamp")
     body = request.get_data()
-    
+
     # 1. Check timestamp (±5 min window)
+
     if abs(time.time() - int(timestamp)) > 300:
         return False  # Expired/replay attack
-    
+
     # 2. Verify HMAC signature
+
     message = f"{timestamp}.".encode() + body
     secret = os.environ["GHOST_WEBHOOK_SECRET"].encode()
     expected = hmac.new(secret, message, hashlib.sha256).hexdigest()
-    
+
     return hmac.compare_digest(signature, expected)
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -143,12 +159,16 @@ ______________________________________________________________________
 ### New Environment Variables
 
 ```bash
+
 # Webhook URL validation
+
 WEBHOOK_ALLOW_PRIVATE=0  # Set to 1 to allow localhost/private IPs (dev only)
 
 # IP allowlisting (optional)
+
 IP_ALLOWLIST="1.2.3.4,5.6.7.8"
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -156,8 +176,8 @@ ______________________________________________________________________
 
 | Operation | Before | After | Improvement |
 |-----------|--------|-------|-------------| | Webhook delivery (100 concurrent) | 50s
-(blocking) | 1.2s (async) | **40x faster** | | Cache TTL override | Broken | Working |
-Correctness | | Forecast actuals query | 200ms | 20ms | **10x faster** | | API key
+(blocking) | 1.2s (async) | **40x faster**| | Cache TTL override | Broken | Working |
+Correctness | | Forecast actuals query | 200ms | 20ms |**10x faster**| | API key
 lookup | O(n) dict | O(1) indexed | Constant time |
 
 ______________________________________________________________________
@@ -165,15 +185,20 @@ ______________________________________________________________________
 ## Rollback Instructions
 
 ```bash
+
 # 1. Revert code
+
 git revert HEAD
 
 # 2. Database compatible (no action needed)
+
 # Old tables untouched, new tables additive only
 
 # 3. Restart
+
 systemctl restart ghost-wolf
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -184,9 +209,8 @@ Remaining medium-priority items:
 1. Authentication enforcement on `/orders/place`
 2. Race condition mitigation (add locks to rate limiter)
 3. X-Forwarded-For support for IP allowlisting
-4. Webhook retry queue with exponential backoff
+4. Webhook retry queue with exponential backoff**Estimated**: 8 hours
 
-**Estimated**: 8 hours
 
 ______________________________________________________________________
 
@@ -202,6 +226,7 @@ ______________________________________________________________________
 - [x] Async I/O (non-blocking operations)
 - [ ] API key rotation (Phase 2)
 - [ ] Authentication on all sensitive endpoints (Phase 2)
+
 
 **Compliance Score**: 8/10 → 10/10 after Phase 2
 

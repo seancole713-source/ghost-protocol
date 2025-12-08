@@ -3,29 +3,36 @@
 ## Top clues
 
 ### route_diff.txt
-```
 
-```
+```text
+
+```text
 
 ### data_feeds.txt
-```
+
+```text
+
 /api/price/WOLF 200 133 15 ms
 /api/price/SPY 200 63 3 ms
 /api/price/BTC-USD 200 67 2 ms
 /api/news 200 5238 138 ms
 /api/news/recent 200 106 148 ms
 
-```
+```text
 
 ### forecasting_status.txt
-```
+
+```text
+
 forecasts_count 0
 accuracy_keys ['error', 'count', 'symbol', 'days']
 
-```
+```text
 
 ### feature_matrix.md
-```
+
+```text
+
 - news_routes: OK
 - agent_decisions_route: OK
 - agent_stats_route: OK
@@ -33,16 +40,20 @@ accuracy_keys ['error', 'count', 'symbol', 'days']
 - crypto_supported: MISSING
 - ui_dist_present: OK
 
-```
+
+```text
 
 ### exceptions.tsv
-```
+
+```text
+
 ./SYSTEM_STATUS_COMPLETE.md	21	- [x] Exception logging implemented
 ./SYSTEM_STATUS_COMPLETE.md	102	- [x] Exception logging tests
-./SYSTEM_STATUS_COMPLETE.md	173	5. **TYPE_ERRORS_FIXED.md** (2,000+ lines)
-./SYSTEM_STATUS_COMPLETE.md	179	6. **TYPE_ERRORS_SUMMARY.txt** (Visual summary)
+./SYSTEM_STATUS_COMPLETE.md	173	5. **TYPE_ERRORS_FIXED.md**(2,000+ lines)
+./SYSTEM_STATUS_COMPLETE.md	179	6.**TYPE_ERRORS_SUMMARY.txt**(Visual summary)
 ./GHOST_CAPABILITY_AUDIT_REPORT.md	438	except Exception as e:
-./GHOST_CAPABILITY_AUDIT_REPORT.md	920	**System Architecture Quality**: **9/10** - Exceptionally well-designed, modular, observable, resilient. The two-line overlay backend is production-grade code. Only gaps are UI binding and data source
+./GHOST_CAPABILITY_AUDIT_REPORT.md 920**System Architecture Quality**: **9/10** - Exceptionally well-designed, modular,
+observable, resilient. The two-line overlay backend is production-grade code. Only gaps are UI binding and data source
 ./CRYPTO_MODULE_QUICKSTART.md	83	raise HTTPException(404, f"Unable to fetch price for {symbol}")
 ./CRYPTO_MODULE_QUICKSTART.md	110	except Exception:
 ./CRYPTO_MODULE_QUICKSTART.md	115	raise HTTPException(400, "symbol required")
@@ -70,10 +81,13 @@ accuracy_keys ['error', 'count', 'symbol', 'days']
 ./signals.py	265	if isinstance(r, BaseException) or r is None:
 ./signals.py	268	except Exception:
 ./signals.py	279	except Exception:
-```
+
+```text
 
 ### services_status.txt
-```
+
+```text
+
 -rw-r--r-- 1 studio713 staff 44K Oct 14 00:01 watchlist.db
 -rw-r--r--@ 1 studio713 staff 0B Oct 14 08:56 wolf.db
 
@@ -84,5 +98,4 @@ drwxr-xr-x@ 5 studio713 staff 160B Oct 14 22:48 __pycache__
 -rw-r--r--@ 1 studio713 staff 3.6K Oct 14 22:18 crypto_ohlcv_routes.py
 -rw-r--r--@ 1 studio713 staff 11K Oct 14 12:53 news_routes.py
 
-```
-
+```text

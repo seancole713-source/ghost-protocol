@@ -11,7 +11,9 @@ These fields are exposed via GET/POST `/api/runtime/config` and can be adjusted 
 - diag_collapse_dupes (int: 0|1): Collapse duplicate events in the diagnostics ring when they occur within 1s.
 - diag_ring_size (int): Size of in-memory diagnostics ring buffer.
 
+
 Tips
+
 - Changes take effect immediately and are persisted in-process; they are not written to disk by default.
 - Increasing `diag_ring_size` will reset the ring; historical events beyond the new size are dropped.
 - The Diagnostics panel dedupes on the client as well; server-side dedupe can be tuned with `diag_collapse_dupes`.

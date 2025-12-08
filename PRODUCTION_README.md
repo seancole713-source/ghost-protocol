@@ -6,21 +6,20 @@
 
 ______________________________________________________________________
 
-## What Is Ghost?
+## What Is Ghost
 
-Ghost is a **live-data, stateful trading AI** for real-time portfolio oversight and
+Ghost is a **live-data, stateful trading AI**for real-time portfolio oversight and
 price forecasting. It provides:
 
-- **Real-time price tracking** from multiple live providers (Yahoo, Polygon,
+-**Real-time price tracking**from multiple live providers (Yahoo, Polygon,
+
   AlphaVantage)
-- **Multi-position portfolio management** with persistent state
-- **48-hour price forecasting** with accuracy tracking (MAP, RMSE, Bias)
-- **Live configuration control** without server restarts
-- **Complete transparency** - every number is traceable to real sources
 
-**Zero simulation. Zero placeholders. Zero randomness.**
-
-______________________________________________________________________
+-**Multi-position portfolio management**with persistent state
+-**48-hour price forecasting**with accuracy tracking (MAP, RMSE, Bias)
+-**Live configuration control**without server restarts
+-**Complete transparency**- every number is traceable to real sources**Zero simulation. Zero placeholders.
+Zero randomness.**______________________________________________________________________
 
 ## Quick Start (3 Steps)
 
@@ -29,12 +28,14 @@ ______________________________________________________________________
 ```bash
 source .venv/bin/activate
 uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload
-```
+
+```text
 
 ### 2. Import Portfolio
 
 ```bash
-curl -X POST http://localhost:5000/api/positions/import \
+
+curl -X POST <<<<<http://localhost:5000/api/positions/import>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -42,15 +43,16 @@ curl -X POST http://localhost:5000/api/positions/import \
       {"symbol": "WOLF", "qty": 100, "price_paid": 120.00}
     ]
   }'
-```
+
+```text
 
 ### 3. Open Cockpit
 
-```
-http://localhost:5000/cockpit
-```
+```text
 
-**Done!** Ghost is now tracking your portfolio with live prices.
+<<<<<http://localhost:5000/cockpit>>>>>
+
+```text**Done!**Ghost is now tracking your portfolio with live prices.
 
 ______________________________________________________________________
 
@@ -63,11 +65,13 @@ ______________________________________________________________________
 - Graceful fallback to prev_close if all fail
 - Never generates fake/placeholder values
 
+
 ### ✅ Accurate Math
 
 - `NAV = Cash + Σ(Market Values)`
 - `PnL = (Current - Entry) × Quantity`
 - Real-time updates every refresh
+
 
 ### ✅ Full Persistence
 
@@ -75,6 +79,7 @@ ______________________________________________________________________
 - Cash balances preserved across restarts
 - Auto-save on changes (optional)
 - Import once, remember forever
+
 
 ### ✅ Forecast Accuracy
 
@@ -84,11 +89,13 @@ ______________________________________________________________________
 - Bias (systematic over/under prediction)
 - Updated continuously
 
+
 ### ✅ Live Configuration
 
 - Change TTLs, provider preferences, thresholds
 - No server restart required
 - Takes effect immediately
+
 
 ### ✅ Complete Transparency
 
@@ -97,13 +104,13 @@ ______________________________________________________________________
 - Event log tracks all operations
 - Prometheus metrics for monitoring
 
+
 ______________________________________________________________________
 
 ## What Was Fixed (October 2, 2025)
 
-### 1. Price Fallback Logic ✅
+### 1. Price Fallback Logic ✅**Before**: Prices stuck at stale/prev_close despite market open\
 
-**Before**: Prices stuck at stale/prev_close despite market open\
 **After**: Attempts ALL providers before fallback, tracks diagnostics
 
 ### 2. Position Persistence ✅
@@ -130,10 +137,9 @@ ______________________________________________________________________
 
 ## Documentation
 
-| Document | Purpose | |----------|---------| | **QUICK_START.md** | Step-by-step setup
-guide | | **IMPLEMENTATION_SUMMARY.md** | Technical details of all fixes | |
-**GHOST_REQUIREMENTS_VERIFICATION.md** | Full requirement compliance proof | |
-**validate_ghost.sh** | Automated validation script | | **README.md** (original) | API
+| Document | Purpose | |----------|---------| | **QUICK_START.md**| Step-by-step setup
+guide | |**IMPLEMENTATION_SUMMARY.md**| Technical details of all fixes | |**GHOST_REQUIREMENTS_VERIFICATION.md**| Full
+requirement compliance proof | |**validate_ghost.sh**| Automated validation script | |**README.md**(original) | API
 reference and features |
 
 ______________________________________________________________________
@@ -143,43 +149,53 @@ ______________________________________________________________________
 ### Main Dashboard
 
 ```bash
+
 GET /api/cockpit
-```
+
+```text
 
 Returns: Prices, portfolio, forecast, news, diagnostics
 
 ### Forecast Accuracy
 
 ```bash
+
 GET /api/forecast/overlay?symbol=WOLF
-```
+
+```text
 
 Returns: Predicted vs actual paths + metrics
 
 ### Diagnostics
 
 ```bash
+
 GET /diagnostics/summary
-```
+
+```text
 
 Returns: Health, events, provider status
 
 ### Runtime Config
 
 ```bash
+
 GET /api/runtime/config
 POST /api/runtime/config
-```
+
+```text
 
 Get/update settings without restart
 
 ### Position Management
 
 ```bash
+
 POST /api/positions/import
 POST /api/positions/clear
 GET /api/portfolio
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -188,10 +204,10 @@ ______________________________________________________________________
 Run automated validation:
 
 ```bash
-./validate_ghost.sh
-```
 
-**Expected Output**: ✅ All checks passed!
+./validate_ghost.sh
+
+```text**Expected Output**: ✅ All checks passed!
 
 **Validates**:
 
@@ -203,6 +219,7 @@ Run automated validation:
 6. Runtime config available
 7. No randomness (provider tracking)
 
+
 ______________________________________________________________________
 
 ## Environment Setup
@@ -210,29 +227,37 @@ ______________________________________________________________________
 ### Required
 
 ```bash
+
 export GHOST_API_TOKEN="$(railway variables get GHOST_API_TOKEN)"
-```
+
+```text
 
 ### Optional (Enhanced Data)
 
 ```bash
+
 export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
-```
+
+```text
 
 ### Optional (Alerts)
 
 ```bash
+
 export TELEGRAM_BOT_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
 export TELEGRAM_CHAT_ID="$(railway variables get TELEGRAM_CHAT_ID)"
-```
+
+```text
 
 ### Optional (Storage)
 
 ```bash
+
 export REDIS_URL="redis://localhost:6379/0"
 export WOLF_PERSIST_MODE="auto"  # auto|redis|sqlite|file
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -240,7 +265,8 @@ ______________________________________________________________________
 
 ### Price Provider Chain
 
-```
+```text
+
 get_wolf_price()
   ↓
   ├─ Cache hit? → Return cached
@@ -253,11 +279,13 @@ get_wolf_price()
   ├─ Quorum (≥2 agree)? → Consensus
   ↓
   └─ All fail? → prev_close fallback
-```
+
+```text
 
 ### Persistence Flow
 
-```
+```text
+
 _persist_save()
   ↓
   ├─ Redis (if REDIS_URL)
@@ -267,11 +295,13 @@ _persist_save()
 _persist_load() @ startup
   ↓
   └─ Restores positions + cash
-```
+
+```text
 
 ### Forecast Accuracy
 
-```
+```text
+
 Background Tasks:
   ├─ _auto_record_forecast() → Save predictions
   ├─ _auto_record_actual_prices() → Poll live
@@ -280,7 +310,8 @@ Background Tasks:
 /api/forecast/overlay
   ↓
   └─ Returns: predicted, actual, metrics
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -289,8 +320,10 @@ ______________________________________________________________________
 ### Prometheus Metrics
 
 ```bash
-curl http://localhost:5000/metrics
-```
+
+curl <<<<<http://localhost:5000/metrics>>>>>
+
+```text
 
 **Key Metrics**:
 
@@ -299,17 +332,22 @@ curl http://localhost:5000/metrics
 - `ghost_forecast_calls_total` - Forecast generations
 - `ghost_alerts_sent_total` - Alert deliveries
 
+
 ### Event Log
 
 ```bash
-curl http://localhost:5000/diagnostics/summary | jq '.events'
-```
+
+curl <<<<<http://localhost:5000/diagnostics/summary>>>>> | jq '.events'
+
+```text
 
 ### Price Diagnostics
 
 ```bash
-curl http://localhost:5000/diagnostics/summary | jq '.price_diag'
-```
+
+curl <<<<<http://localhost:5000/diagnostics/summary>>>>> | jq '.price_diag'
+
+```text
 
 ______________________________________________________________________
 
@@ -362,6 +400,7 @@ Before going live:
 - [ ] Runtime config changes take effect
 - [ ] Validation script passes (`./validate_ghost.sh`)
 
+
 ______________________________________________________________________
 
 ## Support
@@ -372,17 +411,19 @@ ______________________________________________________________________
 - IMPLEMENTATION_SUMMARY.md - Technical details
 - GHOST_REQUIREMENTS_VERIFICATION.md - Full spec
 
+
 **Diagnostics**:
 
 - GET /diagnostics/summary - System health
 - GET /api/cockpit - Full snapshot
 - ./validate_ghost.sh - Automated checks
 
+
 ______________________________________________________________________
 
 ## Version History
 
-**v1.0** (October 2, 2025)
+**v1.0**(October 2, 2025)
 
 - ✅ Fixed price provider fallback
 - ✅ Fixed position persistence
@@ -391,19 +432,16 @@ ______________________________________________________________________
 - ✅ Enhanced diagnostics panel
 - ✅ All 7 requirements met
 
+
 ______________________________________________________________________
 
-## Status: 🟢 Production-Ready
+## Status: 🟢 Production-Ready**Ghost is a live, real-time, stateful trading AI.**- No placeholders
 
-**Ghost is a live, real-time, stateful trading AI.**
-
-- No placeholders
 - No fake values
 - No silent resets
 - Every number ties back to real data
-- Predictions testable against reality
+- Predictions testable against reality**Ready for live production oversight of real portfolios.** 🚀
 
-**Ready for live production oversight of real portfolios.** 🚀
 
 ______________________________________________________________________
 

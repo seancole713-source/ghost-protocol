@@ -14,12 +14,14 @@ ______________________________________________________________________
 - ✅ `templates/cockpit.html` - UI observability panels
 - ✅ `tests/test_telegram_test_endpoint.py` - New integration test
 
+
 ### Push Status
 
-```
-To https://github.com/seancole713-source/GHOST
+```text
+To <<<<<https://github.com/seancole713-source/GHOST>>>>>
    e86e150..0d2be3f  main -> main
-```
+
+```text
 
 **Status**: ✅ Successfully pushed to origin/main (Railway will auto-deploy)
 
@@ -32,6 +34,7 @@ ______________________________________________________________________
 **Endpoint**: `GET /api/corporate_actions`
 
 ```json
+
 {
   "actions": {
     "WOLF": {
@@ -47,7 +50,8 @@ ______________________________________________________________________
   },
   "symbols": ["WOLF"]
 }
-```
+
+```text
 
 **Validation**:
 
@@ -56,39 +60,42 @@ ______________________________________________________________________
 - ✅ Includes `has_reverse_split` and `reverse_split_display` fields
 - ✅ Banner text formatted correctly
 
+
 ______________________________________________________________________
 
 ### 2. Telegram Test Endpoint ✅
 
 **Endpoint**: `POST /api/telegram/test`
 
-**Test 1 - Preview Only** (`send: false`):
+**Test 1 - Preview Only**(`send: false`):
 
 ```json
+
 {
   "ok": true,
   "sent": false,
   "can_send": true,
-  "card": "⚖️ HOLD — WOLF (Wolfspeed)\n\nPortfolio\n• Qty: 909.43045956\n• Avg Cost: $3.30\n• Price: $26.17 (test)\n• Market Value: $23799.80\n• PnL: -2802.79 (-93.39%)\n• Note: Adjusted for 120.0:1 reverse split (2025-10-01)"
+"card": "⚖️ HOLD — WOLF (Wolfspeed)\n\nPortfolio\n• Qty: 909.43045956\n• Avg Cost: $3.30\n• Price: $26.17 (test)\n•
+Market Value: $23799.80\n• PnL: -2802.79 (-93.39%)\n• Note: Adjusted for 120.0:1 reverse split (2025-10-01)"
 }
-```
 
-**Test 2 - Live Send** (`send: true`):
+```text**Test 2 - Live Send**(`send: true`):
 
 ```json
+
 {
   "ok": true,
   "sent": true,
   "can_send": true
 }
-```
 
-**Validation**:
+```text**Validation**:
 
 - ✅ Builds card with adjusted PnL (-93.39%)
 - ✅ Includes reverse split note (120:1)
 - ✅ Successfully sends to Telegram when `send: true`
 - ✅ Bot credentials validated (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID configured)
+
 
 ______________________________________________________________________
 
@@ -99,6 +106,7 @@ ______________________________________________________________________
 **New Fields**:
 
 ```json
+
 {
   "delisted_hint": null,
   "delisted_reason": null,
@@ -106,7 +114,8 @@ ______________________________________________________________________
   "backoff_skip": null,
   "backoff_active": {}
 }
-```
+
+```text
 
 **Validation**:
 
@@ -115,6 +124,7 @@ ______________________________________________________________________
 - ✅ `throttled_provider` - Identifies rate-limited provider
 - ✅ `backoff_skip` - Lists providers skipped due to cooldown
 - ✅ `backoff_active` - Shows `{provider: seconds_remaining}` mapping
+
 
 **Current State**: No active throttling/delisting (clean state)
 
@@ -125,6 +135,7 @@ ______________________________________________________________________
 **Test File**: `tests/test_telegram_test_endpoint.py`
 
 ```python
+
 def test_telegram_test_endpoint_builds_card():
     r = client.post('/api/telegram/test', json={"action":"HOLD","price":26.17,"note":"Test Only"})
     assert r.status_code == 200
@@ -134,7 +145,8 @@ def test_telegram_test_endpoint_builds_card():
     assert "Reverse Split" in card or "reverse split" in card.lower()
     assert re.search(r"PnL: .*%", card)
     assert "Test Only" in card
-```
+
+```text
 
 **Test Result**: ✅ PASSED
 
@@ -142,25 +154,27 @@ ______________________________________________________________________
 
 ### 5. Cockpit UI Verification ✅
 
-**URL**: http://localhost:5000/cockpit.html
+**URL**: <<<<<http://localhost:5000/cockpit.html>>>>>
 
 **New UI Elements Added**:
 
-1. **Corporate Action Banner** (top of page)
+1. **Corporate Action Banner**(top of page)
 
    - Appears when `DELISTED_SYMBOLS['WOLF']` exists
    - Displays: "Corporate Action Adjustment — WOLF underwent 120:1 reverse split..."
    - Dismissible (persisted via localStorage)
    - ✅ Visible on page load
 
-2. **Delisted Badge** (topbar)
+
+1.**Delisted Badge**(topbar)
 
    - Badge ID: `#delistedBadge`
    - Text: "DELISTED MODE"
    - Visibility: Conditional on `PRICE_DIAG.delisted_hint`
    - ✅ Hidden by default (no current delisting)
 
-3. **Provider Backoff Panel** (new card in grid)
+
+1.**Provider Backoff Panel**(new card in grid)
 
    - Title: "⏱ Provider Backoff"
    - Shows:
@@ -169,14 +183,13 @@ ______________________________________________________________________
      - Recent failures with timing
      - Delisted hint status
    - Auto-refreshes every 10 seconds
-   - ✅ Panel renders correctly
-
-**Validation**:
+   - ✅ Panel renders correctly**Validation**:
 
 - ✅ Cockpit loads without errors
 - ✅ Corporate action banner displays (with dismiss button)
 - ✅ Rate-limit panel polls `/api/price/diagnostics`
 - ✅ All existing functionality preserved
+
 
 ______________________________________________________________________
 
@@ -186,39 +199,45 @@ ______________________________________________________________________
 
 **Cause**: Metrics may not be initialized until first collection or registry issue.
 
-**Metrics Defined** (will appear after triggering):
+**Metrics Defined**(will appear after triggering):
 
 - `ghost_telegram_test_seconds` (Histogram) - Latency of test card generation
-- `ghost_telegram_test_total` (Counter) - Total calls by `sent` label
+- `ghost_telegram_test_total` (Counter) - Total calls by `sent` label**Workaround Verification**: Endpoint logic confirmed via code inspection; metrics will
 
-**Workaround Verification**: Endpoint logic confirmed via code inspection; metrics will
+
 populate on Railway after actual usage.
 
 ______________________________________________________________________
 
 ## 🎯 PnL Accuracy Verification ✅
 
-### Before Fix (Misleading):
+### Before Fix (Misleading)
 
-```
+```text
+
 • PnL: +$20,000 (+638%)  ❌ WRONG
-```
 
-### After Fix (Correct):
+```text
 
-```
+### After Fix (Correct)
+
+```text
+
 • PnL: -2802.79 (-93.39%)  ✅ CORRECT
 • Note: Adjusted for 120.0:1 reverse split (2025-10-01)
-```
+
+```text
 
 **Formula Applied**:
 
 ```python
-adjusted_entry = entry_price * reverse_split_ratio  # $3.30 * 120 = $396
+
+adjusted_entry = entry_price *reverse_split_ratio  # $3.30* 120 = $396
 adjusted_qty = qty / reverse_split_ratio             # 909.43 / 120 = 7.58
 pnl_abs = (current_price - adjusted_entry) * adjusted_qty
 pnl_pct = (current_price - adjusted_entry) / adjusted_entry * 100
-```
+
+```text
 
 **Result**: -93.39% loss accurately reflects bankruptcy dilution
 
@@ -233,6 +252,7 @@ ______________________________________________________________________
 - [x] Integration tests passing locally
 - [x] No breaking changes detected
 
+
 ### Post-Deploy (Monitor These)
 
 - [ ] Railway build completes successfully
@@ -245,15 +265,18 @@ ______________________________________________________________________
   - `throttled_provider` messages (if 429s occur)
   - `backoff_skip` entries (during rate limiting)
 
+
 ### Environment Variables Required
 
 ```bash
+
 TELEGRAM_BOT_TOKEN="$(railway variables get TELEGRAM_BOT_TOKEN)"
 TELEGRAM_CHAT_ID="$(railway variables get TELEGRAM_CHAT_ID)"
 ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
 GHOST_API_TOKEN="$(railway variables get GHOST_API_TOKEN)"
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -266,6 +289,7 @@ ______________________________________________________________________
 3. ✅ **Provider Resilience**: 429 detection + exponential backoff
 4. ✅ **Delisted Handling**: Graceful suppression + diagnostics flag
 5. ✅ **Testing Infrastructure**: New integration test + endpoint for dry-runs
+
 
 ### Key Endpoints Added
 
@@ -282,23 +306,28 @@ ______________________________________________________________________
   - Check `$RAILWAY_URL/health`
    - Verify corporate action banner visible in production
 
-2. **Pre-Market Verification** (Before 9:30 AM ET):
+1. **Pre-Market Verification**(Before 9:30 AM ET):
+
 
    ```bash
+
   curl -X POST "$RAILWAY_URL/api/telegram/test" \
      -H 'Content-Type: application/json' \
      -d '{"action":"HOLD","send":true}'
-   ```
+
+   ```text
 
   - Check Telegram for test message
   - Confirm -93.39% PnL appears
   - Verify reverse split note included
 
-3. **Monitor During Market Hours**:
+
+1.**Monitor During Market Hours**:
 
    - Watch for `throttled_provider` in diagnostics
    - Confirm `backoff_skip` populates during rate limits
    - Check delisted badge appears if yfinance fails
+
 
 ______________________________________________________________________
 
@@ -307,16 +336,20 @@ ______________________________________________________________________
 ### Provider Backoff Logic
 
 ```python
+
 # Exponential cooldown: 30s → 60s → 120s → ... (capped at 600s)
+
 if "429" in error_message or "too many requests" in error_message.lower():
     failures = PROVIDER_BACKOFF.get(provider, {}).get("failures", 0) + 1
     cooldown = min(600, 30 * (2 ** (failures - 1)))
     PROVIDER_BACKOFF[provider] = {"until": time.time() + cooldown, "failures": failures}
-```
+
+```text
 
 ### Corporate Action Adjustment
 
 ```python
+
 def _adjust_pnl_for_corporate_action(symbol, entry_price, current_price, qty):
     action = DELISTED_SYMBOLS.get(symbol)
     if action and action.get("reverse_split_ratio"):
@@ -327,7 +360,8 @@ def _adjust_pnl_for_corporate_action(symbol, entry_price, current_price, qty):
         pnl_pct = (current_price - adjusted_entry) / adjusted_entry * 100
         return {"pnl_abs": pnl_abs, "pnl_pct": pnl_pct, "adjustment_note": f"Adjusted for {ratio}:1 reverse split"}
     return {"pnl_abs": ..., "pnl_pct": ..., "adjustment_note": ""}
-```
+
+```text
 
 ______________________________________________________________________
 

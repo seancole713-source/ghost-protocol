@@ -2,9 +2,7 @@
 
 **Created**: October 13, 2025\
 **Deployment**: Railway automatically deploying commit `bf75f2c1`\
-**Status**: 🚀 **READY TO TEST**
-
-______________________________________________________________________
+**Status**: 🚀 **READY TO TEST**______________________________________________________________________
 
 ## 🎯 WHAT WAS ADDED
 
@@ -15,23 +13,31 @@ All broker endpoints require Bearer token authentication.
 #### Broker Status & Info
 
 ```bash
+
 # Check broker health
+
 GET /api/broker/health
 
 # Get all open positions
+
 GET /api/broker/positions
 
 # Get account info (cash, buying power, portfolio value)
+
 GET /api/broker/account
 
 # Check if market is open
+
 GET /api/broker/clock
-```
+
+```text
 
 #### Trading Operations
 
 ```bash
+
 # Submit order (with risk checks)
+
 POST /api/trade/submit
 Body: {
   "symbol": "WOLF",
@@ -43,30 +49,40 @@ Body: {
 }
 
 # Get orders (open, closed, or all)
+
 GET /api/trade/orders?status=open&limit=50
 
 # Get specific order
+
 GET /api/trade/order/{order_id}
 
 # Cancel order
+
 DELETE /api/trade/order/{order_id}
 
 # Cancel ALL orders
+
 DELETE /api/trade/orders/cancel_all
 
 # Close entire position (sell all shares)
+
 POST /api/trade/position/close/{symbol}
-```
+
+```text
 
 #### Risk Management
 
 ```bash
+
 # Get risk status
+
 GET /api/risk/status
 
 # Scan positions for SL/TP triggers
+
 GET /api/risk/scan_exits
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -79,18 +95,21 @@ Railway is automatically deploying the new code.
 Check status:
 
 ```bash
-curl https://web-production-8e9a0.up.railway.app/health
-```
+
+curl <<<<<https://web-production-8e9a0.up.railway.app/health>>>>>
+
+```text
 
 ### 2. Test Broker Health
 
 ```bash
-curl https://web-production-8e9a0.up.railway.app/api/broker/health
-```
 
-**Expected Response**:
+curl <<<<<https://web-production-8e9a0.up.railway.app/api/broker/health>>>>>
+
+```text**Expected Response**:
 
 ```json
+
 {
   "ok": true,
   "broker": "alpaca",
@@ -103,17 +122,21 @@ curl https://web-production-8e9a0.up.railway.app/api/broker/health
   "positions_count": 0,
   "market_open": true/false
 }
-```
+
+```text
 
 ### 3. Test Risk Status
 
 ```bash
-curl https://web-production-8e9a0.up.railway.app/api/risk/status
-```
+
+curl <<<<<https://web-production-8e9a0.up.railway.app/api/risk/status>>>>>
+
+```text
 
 **Expected Response**:
 
 ```json
+
 {
   "ok": true,
   "risk": {
@@ -136,12 +159,14 @@ curl https://web-production-8e9a0.up.railway.app/api/risk/status
     }
   }
 }
-```
+
+```text
 
 ### 4. Test Dry Run Order (No Actual Trade)
 
 ```bash
-curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
+
+curl -X POST <<<<<https://web-production-8e9a0.up.railway.app/api/trade/submit>>>>> \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -150,11 +175,13 @@ curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
     "type": "market",
     "dry_run": true
   }'
-```
+
+```text
 
 **Expected Response**:
 
 ```json
+
 {
   "ok": true,
   "submitted": false,
@@ -169,14 +196,16 @@ curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
     "price": 225.50
   }
 }
-```
+
+```text
 
 ### 5. Submit Real Paper Trade Order 🎯
 
 **WARNING**: This will place a REAL paper trade order with Alpaca!
 
 ```bash
-curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
+
+curl -X POST <<<<<https://web-production-8e9a0.up.railway.app/api/trade/submit>>>>> \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -186,11 +215,13 @@ curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
     "time_in_force": "day",
     "dry_run": false
   }'
-```
+
+```text
 
 **Expected Response**:
 
 ```json
+
 {
   "ok": true,
   "submitted": true,
@@ -232,17 +263,21 @@ curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
     "source": null
   }
 }
-```
+
+```text
 
 ### 6. Check Positions
 
 ```bash
-curl https://web-production-8e9a0.up.railway.app/api/broker/positions
-```
+
+curl <<<<<https://web-production-8e9a0.up.railway.app/api/broker/positions>>>>>
+
+```text
 
 **Expected Response**:
 
 ```json
+
 {
   "ok": true,
   "count": 1,
@@ -267,12 +302,14 @@ curl https://web-production-8e9a0.up.railway.app/api/broker/positions
     }
   ]
 }
-```
+
+```text
 
 ### 7. Test Risk Blocking (Oversized Order)
 
 ```bash
-curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
+
+curl -X POST <<<<<https://web-production-8e9a0.up.railway.app/api/trade/submit>>>>> \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -281,11 +318,13 @@ curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
     "type": "market",
     "dry_run": false
   }'
-```
 
-**Expected Response** (Should be BLOCKED):
+```text
+
+**Expected Response**(Should be BLOCKED):
 
 ```json
+
 {
   "ok": false,
   "submitted": false,
@@ -298,7 +337,8 @@ curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
     "price": 225.50
   }
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -311,9 +351,12 @@ ______________________________________________________________________
 3. Simulate price drop by calling `/api/risk/scan_exits`
 4. If position is down 3%+, it will return exit signal
 
+
 ```bash
-curl https://web-production-8e9a0.up.railway.app/api/risk/scan_exits
-```
+
+curl <<<<<https://web-production-8e9a0.up.railway.app/api/risk/scan_exits>>>>>
+
+```text
 
 ### Test Take-Profit Trigger
 
@@ -322,11 +365,14 @@ Same as above, but if position is up 6%+
 ### Test Kill Switch
 
 ```bash
+
 # Enable kill switch via Railway dashboard
+
 # Set: RISK_KILL=1
 
 # Then try to place order
-curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
+
+curl -X POST <<<<<https://web-production-8e9a0.up.railway.app/api/trade/submit>>>>> \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -336,7 +382,8 @@ curl -X POST https://web-production-8e9a0.up.railway.app/api/trade/submit \
   }'
 
 # Expected: {"ok": false, "blocked": true, "reason": "🛑 KILL SWITCH ACTIVE"}
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -357,18 +404,18 @@ Before declaring broker integration complete, verify:
 - [ ] Can close position via `/api/trade/position/close/{symbol}`
 - [ ] `/api/risk/scan_exits` identifies positions with SL/TP triggers
 
+
 ______________________________________________________________________
 
 ## 🚨 TROUBLESHOOTING
 
-### "Broker not enabled"
-
-**Solution**: Check Railway environment variables:
+### "Broker not enabled"**Solution**: Check Railway environment variables
 
 - `BROKER=alpaca`
 - `ALPACA_KEY_ID=PKVUMLL1V91W9Y5QCG77`
 - `ALPACA_SECRET_KEY=sw09z6TdIeXrs9G6fE5Lo9AayM44UmSWiEYcuXyk`
 - `ALPACA_PAPER=1`
+
 
 ### "Module 'core.alpaca_broker' not found"
 
@@ -386,6 +433,7 @@ if needed.
 - Position size too large? Reduce `qty`
 - Daily drawdown exceeded? Reset NAV or wait for next trading day
 - Kill switch active? Set `RISK_KILL=0` in Railway
+
 
 ### Order stuck in "pending_new"
 
@@ -406,17 +454,19 @@ ______________________________________________________________________
 - ✅ Can cancel orders
 - ✅ Can close positions
 
+
 ______________________________________________________________________
 
 ## 📈 WHAT'S NEXT (90% → 95%)
 
-1. **Automated SL/TP Loop** (1 hour)
+1. **Automated SL/TP Loop**(1 hour)
 
    - Background task scanning positions every 60 seconds
    - Auto-submit sell orders when SL/TP triggered
    - Log all auto-exits to database
 
-2. **Telegram Trading Commands** (1 hour)
+
+1.**Telegram Trading Commands**(1 hour)
 
    - `/buy AAPL 10` - Buy 10 shares
    - `/sell AAPL` - Sell all AAPL
@@ -424,28 +474,30 @@ ______________________________________________________________________
    - `/orders` - Show open orders
    - `/cancel {id}` - Cancel order
 
-3. **Trading Dashboard UI** (2 hours)
+
+1.**Trading Dashboard UI**(2 hours)
 
    - Add "Trading" tab to web UI
    - Show positions with SL/TP levels
    - "Place Order" button
    - Real-time order status updates
 
-4. **Backtesting Engine** (4-6 hours)
+
+1.**Backtesting Engine**(4-6 hours)
 
    - Load historical OHLCV data
    - Simulate strategy on past data
    - Calculate metrics (Sharpe, max DD, win rate)
    - Store backtest results
 
+
 ______________________________________________________________________
 
-## 🔥 DEPLOY STATUS
+## 🔥 DEPLOY STATUS**Git Commit**: `bf75f2c1`\
 
-**Git Commit**: `bf75f2c1`\
 **Railway**: Deploying automatically\
 **ETA**: 1-2 minutes from push\
-**Check**: `curl https://web-production-8e9a0.up.railway.app/health`
+**Check**: `curl <<<<<https://web-production-8e9a0.up.railway.app/health`>>>>>
 
 ______________________________________________________________________
 

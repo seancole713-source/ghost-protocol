@@ -12,10 +12,12 @@ ______________________________________________________________________
 
 - 🔴 Manual Railway deployment required (Railway auto-deploy broken)
 
+
 **OPTIONAL**:
 
 - ⚪ Enable crypto module (`CRYPTO_ENABLED=1`)
 - ⚪ Test all 12 UI panels after deployment
+
 
 ### 2. "Is the crypto setup and working?"
 
@@ -30,17 +32,22 @@ ______________________________________________________________________
 - `/api/crypto/predict/run` - Generate 24h predictions
 - `/api/crypto/watchlist` - Track blue_chip, defi, meme, ai_gaming
 
+
 **Supported**: BTC, ETH, SOL, DOGE, SHIB, PEPE, FLOKI, BONK, WIF, and 30+ more
 
 **Example**:
 
 ```bash
+
 # Get BTC price
-curl https://web-production-8e9a0.up.railway.app/api/crypto/price/BTC
+
+curl <<<<<https://web-production-8e9a0.up.railway.app/api/crypto/price/BTC>>>>>
 
 # Generate prediction
-curl -X POST https://web-production-8e9a0.up.railway.app/api/crypto/predict/run?symbol=ETH
-```
+
+curl -X POST <<<<<https://web-production-8e9a0.up.railway.app/api/crypto/predict/run?symbol=ETH>>>>>
+
+```text
 
 ### 3. "Can Ghost make crypto predictions?"
 
@@ -55,10 +62,13 @@ curl -X POST https://web-production-8e9a0.up.railway.app/api/crypto/predict/run?
 - Direction (UP/DOWN) with confidence
 - Historical data (7 days) for pattern analysis
 
+
 **Prediction Engine**:
 
 ```python
-# Generates:
+
+# Generates
+
 {
   "prediction_id": "uuid",
   "symbol": "BTC",
@@ -68,7 +78,8 @@ curl -X POST https://web-production-8e9a0.up.railway.app/api/crypto/predict/run?
   "horizon_hours": 24,
   "volatility": 0.035           # 3.5% daily
 }
-```
+
+```text
 
 **Accuracy Tracking**: Stores predictions and actual prices for MAP calculation
 
@@ -85,20 +96,22 @@ ______________________________________________________________________
 - Dead code: Minimal ✅
 - Dependencies: No conflicts ✅
 
+
 **Local Server**:
 
-- Total routes: **263** ✅
+- Total routes: **263**✅
 - All endpoints working ✅
 - News router: 5 endpoints ✅
 - UI aliases: 4 endpoints ✅
-- Crypto: 3 endpoints (disabled) ✅
+- Crypto: 3 endpoints (disabled) ✅**Production Server**:
 
-**Production Server**:
-
-- Total routes: **231** ❌ (missing 32)
+- Total routes: **231**❌ (missing 32)
 - Missing: News + UI aliases ❌
 - Health check: Passing ✅
-- **Issue**: Old code deployed ❌
+
+
+-**Issue**: Old code deployed ❌
+
 
 ______________________________________________________________________
 
@@ -112,20 +125,23 @@ ______________________________________________________________________
 
 **How to Fix**:
 
-1. Go to https://railway.app/dashboard
-2. Project: **tender-benevolence** → Service: **web**
-3. Settings → GitHub Repo → **Disconnect**
-4. Wait 5 seconds
-5. **Connect Repository** → seancole713-source/GHOST (main)
-6. Railway will auto-deploy latest code
+1. Go to <<<<<https://railway.app/dashboard>>>>>
+2. Project: **tender-benevolence**→ Service:**web**3. Settings → GitHub Repo →**Disconnect**4. Wait 5 seconds
 
-**Verification**:
+
+5.**Connect Repository**→ seancole713-source/GHOST (main)
+
+1. Railway will auto-deploy latest code**Verification**:
+
 
 ```bash
+
 # Should return 263 (not 231)
-curl -s https://web-production-8e9a0.up.railway.app/openapi.json | \
+
+curl -s <<<<<https://web-production-8e9a0.up.railway.app/openapi.json>>>>> | \
   python3 -c "import sys,json; print(len(json.load(sys.stdin)['paths']))"
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -139,54 +155,55 @@ ______________________________________________________________________
 - `core/crypto/crypto_predictor.py` (397 lines) - Prediction engine
 - `wolf_app.py` lines 5284-5600 (316 lines) - API endpoints
 
+
 **Database Tables**:
 
 - `crypto_predictions` - Prediction metadata
 - `crypto_forecast_points` - Forecast path (30min intervals)
 - `crypto_actual_points` - Actual prices for accuracy
 
+
 **Providers**:
 
-- **CoinGecko** (Primary) - Free tier, 50 calls/min
-- **Binance** (Secondary) - Public API, real-time
-- **Coinbase** (Tertiary) - Public API
+- **CoinGecko**(Primary) - Free tier, 50 calls/min
 
-**Quorum Logic**: Requires 2+ providers to agree within 1% spread
+
+-**Binance**(Secondary) - Public API, real-time
+-**Coinbase**(Tertiary) - Public API**Quorum Logic**: Requires 2+ providers to agree within 1% spread
 
 ### Supported Cryptocurrencies (40+)
 
-**Blue Chip** (8): BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT\
-**DeFi** (6): UNI, AAVE, MKR, CRV, SUSHI, COMP\
-**Meme Coins** (10): DOGE, SHIB, PEPE, FLOKI, BONK, WIF, BABYDOGE, ELON, AKITA, SHIB2\
-**AI/Gaming** (7): FET, AGIX, RNDR, SAND, MANA, AXS, GALA\
-**Layer 2** (3): OP, ARB, MATIC\
-**Trending** (4): BRETT, MOG, TURBO, WOJAK
+**Blue Chip**(8): BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT\**DeFi**(6): UNI, AAVE, MKR, CRV, SUSHI, COMP\**Meme Coins**(10): DOGE, SHIB, PEPE, FLOKI, BONK, WIF, BABYDOGE, ELON, AKITA, SHIB2\**AI/Gaming**(7): FET, AGIX, RNDR, SAND, MANA, AXS, GALA\**Layer 2**(3): OP, ARB, MATIC\**Trending**(4): BRETT, MOG, TURBO, WOJAK
 
-### Usage Examples
-
-**Get Meme Coin Prices**:
+### Usage Examples**Get Meme Coin Prices**
 
 ```bash
-curl 'https://web-production-8e9a0.up.railway.app/api/crypto/watchlist?category=meme'
-```
+
+curl '<<<<<https://web-production-8e9a0.up.railway.app/api/crypto/watchlist?category=meme'>>>>>
+
+```text
 
 **Generate BTC Prediction**:
 
 ```bash
-curl -X POST 'https://web-production-8e9a0.up.railway.app/api/crypto/predict/run?symbol=BTC'
-```
+
+curl -X POST '<<<<<https://web-production-8e9a0.up.railway.app/api/crypto/predict/run?symbol=BTC'>>>>>
+
+```text
 
 **Get Latest ETH Prediction**:
 
 ```bash
-curl 'https://web-production-8e9a0.up.railway.app/api/crypto/predict/ETH'
-```
+
+curl '<<<<<https://web-production-8e9a0.up.railway.app/api/crypto/predict/ETH'>>>>>
+
+```text
 
 ______________________________________________________________________
 
 ## 📚 DOCUMENTATION FILES
 
-### Created Today:
+### Created Today
 
 - ✅ `CRYPTO_STATUS_REPORT.md` - Complete crypto module guide
 - ✅ `RAILWAY_DEPLOYMENT_BLOCKED.md` - Deployment troubleshooting
@@ -194,13 +211,15 @@ ______________________________________________________________________
 - ✅ `verify_railway_deployment.sh` - Automated verification script
 - ✅ `audit_out/` - Complete system audit results
 
-### Existing:
+
+### Existing
 
 - `CRYPTO_MODULE_QUICKSTART.md` - Quick setup guide
 - `CRYPTO_MODULE_IMPLEMENTATION_SUMMARY.md` - Technical details
 - `CRYPTO_PREDICTION_MODULE_BLUEPRINT.md` - Architecture
 - `CRYPTO_MEME_COIN_TRACKING.md` - Meme coin features
 - `CRYPTO_SCALABILITY_ANALYSIS.md` - Performance analysis
+
 
 ______________________________________________________________________
 
@@ -216,8 +235,10 @@ ______________________________________________________________________
 ### Step 2: Verify Deployment (REQUIRED)
 
 ```bash
+
 ./verify_railway_deployment.sh
-```
+
+```text
 
 **Expected**: "✅ VERIFICATION PASSED!"
 
@@ -243,10 +264,12 @@ ______________________________________________________________________
 - ✅ Prediction engine ready (24h forecasts)
 - ✅ Multi-provider quorum for reliable prices
 
+
 **What's Blocked**:
 
 - ❌ Railway deployment (requires manual trigger)
 - ❌ 12 UI panels showing errors (missing endpoints on production)
+
 
 **Solution**: ONE manual action required → Reconnect GitHub on Railway
 
@@ -260,5 +283,6 @@ production-ready, just needs activation via `CRYPTO_ENABLED=1`.
 - Code: ✅ Ready
 - Deployment: ⏸️ Pending manual trigger
 - Crypto: ✅ Ready to enable
+
 
 Last Updated: October 14, 2025, 5:40 PM CDT

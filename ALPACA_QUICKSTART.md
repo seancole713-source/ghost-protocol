@@ -3,23 +3,29 @@
 ## 🚀 Quick Start
 
 ```bash
+
 # 1. Configure environment
+
 export BROKER=alpaca
 export ALPACA_KEY_ID="$(railway variables get ALPACA_KEY_ID)"
 export ALPACA_SECRET_KEY="$(railway variables get ALPACA_SECRET_KEY)"
 export ALPACA_PAPER=1  # 1=paper, 0=LIVE
 
 # 2. Test connection
+
 python test_alpaca_broker.py
 
 # 3. Check health via API
-curl http://localhost:8444/api/broker/health
+
+curl <<<<<http://localhost:8444/api/broker/health>>>>>
 
 # 4. Submit test order
-curl -X POST http://localhost:8444/api/trade/submit \
+
+curl -X POST <<<<<http://localhost:8444/api/trade/submit>>>>> \
   -H "Content-Type: application/json" \
   -d '{"symbol":"AAPL","qty":1,"side":"buy","type":"market","dry_run":true}'
-```
+
+```text
 
 ## 📋 Essential Commands
 
@@ -52,34 +58,44 @@ Optional |
 - [ ] Daily loss limits enabled
 - [ ] Emergency stop tested
 
+
 ## 📊 Order Types
 
 ```python
+
 # Market Order (executes immediately)
+
 {"symbol":"AAPL","qty":10,"side":"buy","type":"market"}
 
 # Limit Order (price or better)
+
 {"symbol":"AAPL","qty":10,"side":"buy","type":"limit","limit_price":150.00}
 
 # Stop Order (triggers at price)
+
 {"symbol":"AAPL","qty":10,"side":"sell","type":"stop","stop_price":140.00}
 
 # Stop-Limit Order
+
 {"symbol":"AAPL","qty":10,"side":"sell","type":"stop_limit","stop_price":140.00,"limit_price":139.50}
 
 # Trailing Stop (trails by %)
+
 {"symbol":"AAPL","qty":10,"side":"sell","type":"trailing_stop","trail_percent":5.0}
-```
+
+```text
 
 ## 🎯 Position Sizing
 
 ```python
+
 from core.trading_automation import (
     build_order_from_prediction,
     PositionSizingMethod
 )
 
 # Method 1: Fixed Dollar
+
 order = build_order_from_prediction(
     symbol="AAPL",
     prediction_pct=0.08,
@@ -91,6 +107,7 @@ order = build_order_from_prediction(
 )
 
 # Method 2: Percent Portfolio
+
 order = build_order_from_prediction(
     symbol="AAPL",
     prediction_pct=0.08,
@@ -102,6 +119,7 @@ order = build_order_from_prediction(
 )
 
 # Method 3: Kelly Criterion
+
 order = build_order_from_prediction(
     symbol="AAPL",
     prediction_pct=0.08,
@@ -112,14 +130,17 @@ order = build_order_from_prediction(
     win_rate=0.55,  # 55% win rate
     avg_win_loss_ratio=1.5  # Wins are 1.5x losses
 )
-```
+
+```text
 
 ## 📈 Risk Management
 
 ```python
+
 from core.trading_automation import should_close_position, create_close_order
 
 # Check if should close existing position
+
 should_close, reason = should_close_position(
     symbol="AAPL",
     current_qty=100,
@@ -136,23 +157,30 @@ should_close, reason = should_close_position(
 if should_close:
     close_order = create_close_order("AAPL", current_qty, reason)
     broker.submit_order(**close_order)
-```
+
+```text
 
 ## 🔍 Monitoring
 
 ```bash
+
 # Watch logs
+
 tail -f logs/ghost.log | grep -E "trade|broker|order"
 
 # Check positions
-watch -n 5 'curl -s http://localhost:8444/api/broker/positions | jq'
+
+watch -n 5 'curl -s <<<<<http://localhost:8444/api/broker/positions>>>>> | jq'
 
 # Check orders
-curl http://localhost:8444/api/trade/orders?status=open | jq
+
+curl <<<<<http://localhost:8444/api/trade/orders?status=open>>>>> | jq
 
 # Check account
-curl http://localhost:8444/api/broker/account | jq
-```
+
+curl <<<<<http://localhost:8444/api/broker/account>>>>> | jq
+
+```text
 
 ## 🚨 Troubleshooting
 
@@ -172,32 +200,39 @@ balance, reduce position size | | "Market closed" | Wait for market open or use
 - **Automation Library**: `core/trading_automation.py`
 - **Broker Module**: `core/alpaca_broker.py`
 
+
 ## 🔗 Links
 
-- **Alpaca Dashboard**: [app.alpaca.markets](https://app.alpaca.markets/)
-- **API Docs**: [alpaca.markets/docs](https://alpaca.markets/docs/)
-- **Market Hours**: [alpaca.markets/support/market-hours](https://www.alpaca.markets/support/market-hours/)
-- **API Status**: [status.alpaca.markets](https://status.alpaca.markets/)
+- **Alpaca Dashboard**: [app.alpaca.markets](<<<<<https://app.alpaca.markets>>>>>/)
+- **API Docs**: [alpaca.markets/docs](<<<<<https://alpaca.markets/docs>>>>>/)
+- **Market Hours**: [alpaca.markets/support/market-hours](<<<<<https://www.alpaca.markets/support/market-hours>>>>>/)
+- **API Status**: [status.alpaca.markets](<<<<<https://status.alpaca.markets>>>>>/)
+
 
 ## ⚡ Example Workflow
 
 ```python
+
 # 1. Get prediction
+
 prediction_pct = 0.08  # +8% predicted
 confidence = 0.75
 
 # 2. Get account state
+
 from core.alpaca_broker import get_broker
 broker = get_broker()
 account = broker.get_account()
 portfolio_value = float(account["portfolio_value"])
 
 # 3. Get current price
+
 from wolf_app import fetch_price_live
 price_data = fetch_price_live("AAPL")
 current_price = price_data["price"]
 
 # 4. Build order
+
 from core.trading_automation import build_order_from_prediction, PositionSizingMethod
 order = build_order_from_prediction(
     symbol="AAPL",
@@ -211,39 +246,33 @@ order = build_order_from_prediction(
 )
 
 # 5. Submit order (passes through risk engine automatically via API)
+
 if order:
     result = broker.submit_order(**order)
     print(f"Order submitted: {result['id']}")
 
 # 6. Monitor execution
+
 import time
 time.sleep(2)
 order_status = broker.get_order(result['id'])
 print(f"Order status: {order_status['status']}")
-```
+
+```text
 
 ## 🎯 Production Checklist
 
-**Local Testing:**
+**Local Testing:**- [ ] `BROKER=alpaca` set
 
-- [ ] `BROKER=alpaca` set
 - [ ] Paper keys configured
 - [ ] `ALPACA_PAPER=1` verified
 - [ ] Test suite passes
 - [ ] Dry run orders work
-- [ ] Real paper orders execute
-
-**Railway Deployment:**
-
-- [ ] Environment variables set in dashboard
+- [ ] Real paper orders execute**Railway Deployment:**- [ ] Environment variables set in dashboard
 - [ ] Health endpoint returns OK
 - [ ] Price providers working
 - [ ] Orders submit successfully
-- [ ] Risk engine active
-
-**Live Trading Prep:**
-
-- [ ] Paper testing complete (>50 orders)
+- [ ] Risk engine active**Live Trading Prep:**- [ ] Paper testing complete (>50 orders)
 - [ ] Live account funded
 - [ ] Live API keys generated
 - [ ] `ALPACA_PAPER=0` set
@@ -252,7 +281,6 @@ print(f"Order status: {order_status['status']}")
 - [ ] Monitoring enabled
 - [ ] Start with small positions
 
-______________________________________________________________________
 
-**Status**: ✅ Ready for paper trading\
+______________________________________________________________________**Status**: ✅ Ready for paper trading\
 **Next**: Configure paper credentials and test

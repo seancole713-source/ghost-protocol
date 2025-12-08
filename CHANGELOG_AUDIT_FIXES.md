@@ -2,9 +2,8 @@
 
 ## Critical Fixes Applied During Deep Scrub
 
-### 🔴 **CRITICAL: Telegram Signal Shows Empty Portfolio** ✅ FIXED
+### 🔴 **CRITICAL: Telegram Signal Shows Empty Portfolio**✅ FIXED**Issue**: `/signal` command returned zero portfolio (`Qty: 0.00`, `Avg Cost: $0.00`
 
-**Issue**: `/signal` command returned zero portfolio (`Qty: 0.00`, `Avg Cost: $0.00`,
 `Cash: $0.00`)\
 **Root Cause**: `_evaluate_signal()` and `_signal_card()` read from legacy STATE fields
 (`qty`, `avg_cost`) which are `null`. Portfolio data actually stored in `positions`
@@ -18,28 +17,31 @@ correctly reads from positions array
 - `wolf_app.py` line 7009: Changed `_evaluate_signal()` to use helper function
 - `wolf_app.py` line 7139: Changed `_signal_card()` to use helper function
 
+
 **Before**:
 
 ```python
 def _evaluate_signal() -> dict[str, Any]:
     qty = float(STATE.get("qty", 0.0))  # ❌ Returns 0.0 (null)
     avg = float(STATE.get("avg_cost", 0.0))  # ❌ Returns 0.0 (null)
-```
+
+```text
 
 **After**:
 
 ```python
+
 def _evaluate_signal() -> dict[str, Any]:
     qty, avg = _get_portfolio_qty_and_avg()  # ✅ Reads from positions array
-```
+
+```text
 
 **Verified**: Test message sent successfully to Telegram (2025-10-06T23:21:49)
 
 ______________________________________________________________________
 
-### 🟡 **MEDIUM: WOLF Corporate Action Tracking** ✅ FIXED
+### 🟡 **MEDIUM: WOLF Corporate Action Tracking**✅ FIXED**Issue**: Portfolio shows +638% PnL when actual is -93% (WOLF 120:1 reverse split not
 
-**Issue**: Portfolio shows +638% PnL when actual is -93% (WOLF 120:1 reverse split not
 tracked)\
 **Root Cause**: No system for tracking corporate actions (bankruptcy, reverse splits,
 spinoffs)\
@@ -50,9 +52,11 @@ spinoffs)\
 
 - `wolf_app.py` line 554-569: Added DELISTED_SYMBOLS registry
 
+
 **Registry Added**:
 
 ```python
+
 DELISTED_SYMBOLS: dict[str, dict[str, Any]] = {
     "WOLF": {
         "status": "restructured",
@@ -63,16 +67,16 @@ DELISTED_SYMBOLS: dict[str, dict[str, Any]] = {
         "shareholders_diluted": True,
     }
 }
-```
+
+```text
 
 **Remaining**: Wire into PnL calculation (requires PR review - risky financial math
 change)
 
 ______________________________________________________________________
 
-### 🟢 **LOW: Watchlist Method Error** ✅ FIXED
+### 🟢 **LOW: Watchlist Method Error**✅ FIXED**Issue**: `add_wolf_to_watchlist.py` called non-existent method `get_all()`\
 
-**Issue**: `add_wolf_to_watchlist.py` called non-existent method `get_all()`\
 **Root Cause**: Method name typo\
 **Impact**: Script crashes when run\
 **Fix**: Changed to correct method `get_watchlist()`
@@ -80,6 +84,7 @@ ______________________________________________________________________
 **Files Changed**:
 
 - `add_wolf_to_watchlist.py` line 19
+
 
 **Before**: `wm.get_all()`\
 **After**: `wm.get_watchlist()`
@@ -104,19 +109,23 @@ ______________________________________________________________________
 
 ### Master System Test
 
-```
+```text
+
 PASS: 15
 WARN: 4
 FAIL: 0
-```
+
+```text
 
 ### Telegram Test
 
-```
+```text
+
 ✅ Test message sent: 2025-10-06T23:21:49.944121
 ✅ Bot responding correctly
 ✅ Portfolio data now shows in signal cards
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -130,11 +139,13 @@ ______________________________________________________________________
 4. ✅ Master test script (DONE)
 5. ✅ Audit reports (DONE)
 
+
 ### Requires Pull Request Review
 
 1. 🔴 **HIGH**: PnL adjustment for reverse splits (2-3 hours implementation)
 2. 🟡 **MEDIUM**: UI banner for corporate actions (30 min)
 3. 🟢 **LOW**: SSE heartbeat keepalive (15 min)
+
 
 ### Manual Testing (Post-Deploy)
 
@@ -142,6 +153,7 @@ ______________________________________________________________________
 2. ⚠️ Load test SSE stream (100+ connections)
 3. ⚠️ Verify portfolio survives server restart
 4. ⚠️ Wait 48h for forecast accuracy metrics
+
 
 ______________________________________________________________________
 

@@ -2,8 +2,8 @@
 
 ## Overview
 
-Ghost now uses **ChatGPT as its reasoning brain** while Ghost provides the data layer
-and execution. This creates a **self-healing, continuous analyst** that:
+Ghost now uses **ChatGPT as its reasoning brain**while Ghost provides the data layer
+and execution. This creates a**self-healing, continuous analyst**that:
 
 - Monitors your portfolio 24/7
 - Detects trading opportunities using real market data
@@ -11,9 +11,10 @@ and execution. This creates a **self-healing, continuous analyst** that:
 - Never forgets context (auto-rehydrates when sessions reset)
 - Costs ~$0.50-2.00/day with GPT-4o-mini
 
+
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    ChatGPT Analyst                      │
 │                 (Reasoning Engine)                      │
@@ -49,9 +50,10 @@ and execution. This creates a **self-healing, continuous analyst** that:
 │   - Telegram alerts                                    │
 │   - Order execution (future)                           │
 └─────────────────────────────────────────────────────────┘
-```
 
-## Why This Architecture?
+```text
+
+## Why This Architecture
 
 ### The Problem
 
@@ -60,13 +62,14 @@ and execution. This creates a **self-healing, continuous analyst** that:
 - Data scattered across APIs
 - No persistent memory
 
+
 ### The Solution
 
-Ghost owns the **permanent memory** (SQLite), ChatGPT provides the **reasoning**:
+Ghost owns the**permanent memory**(SQLite), ChatGPT provides the**reasoning**:
 
-| Component | Persistence | Role | |-----------|-------------|------| | **Ghost** |
-Permanent (DB) | Data, tools, execution, memory | | **ChatGPT** | Temporary (session) |
-Analysis, pattern recognition, recommendations | | **Agent Loop** | Self-healing |
+| Component | Persistence | Role | |-----------|-------------|------| | **Ghost**|
+Permanent (DB) | Data, tools, execution, memory | |**ChatGPT**| Temporary (session) |
+Analysis, pattern recognition, recommendations | |**Agent Loop**| Self-healing |
 Rehydrates context every tick, never loses state |
 
 When ChatGPT forgets or disconnects, the loop automatically:
@@ -75,49 +78,62 @@ When ChatGPT forgets or disconnects, the loop automatically:
 2. Rehydrates with fresh runtime snapshot
 3. Continues from last known state
 
+
 ## Setup
 
 ### 1. Get OpenAI API Key
 
-1. Visit https://platform.openai.com/api-keys
+1. Visit <<<<<https://platform.openai.com/api-keys>>>>>
 2. Create new key
 3. Copy to clipboard
+
 
 ### 2. Configure Environment
 
 Edit `secrets.env`:
 
 ```bash
+
 # Required
+
 OPENAI_API_KEY=sk-proj-your-key-here
 
 # Optional (defaults shown)
+
 GHOST_LLM_MODEL=gpt-4o-mini          # or gpt-4o for better accuracy
 GHOST_AGENT_TICK=300                 # 5 minutes (lower = more expensive)
 GHOST_AGENT_MAX_HISTORY=20           # Message history limit
 GHOST_AGENT_DB=./data/ghost_agent.db # State persistence path
-```
+
+```text
 
 ### 3. Restart Ghost
 
 ```bash
+
 source .venv/bin/activate
 uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload
-```
+
+```text
 
 Look for startup message:
 
-```
+```text
+
 ✅ ChatGPT Analyst attached - /agent/health /agent/state /agent/outbox
-```
+
+```text
 
 ### 4. Verify Working
 
 ```bash
-# 1. Check health
-curl http://localhost:5000/agent/health | jq
 
-# Expected:
+# 1. Check health
+
+curl <<<<<http://localhost:5000/agent/health>>>>> | jq
+
+# Expected
+
 {
   "status": "ok",
   "model": "gpt-4o-mini",
@@ -130,15 +146,18 @@ curl http://localhost:5000/agent/health | jq
 }
 
 # 2. Check conversation state
-curl http://localhost:5000/agent/state | jq '.messages | length'
+
+curl <<<<<http://localhost:5000/agent/state>>>>> | jq '.messages | length'
 
 # Expected: 2+ (system prompt + rehydration + analyst responses)
 
 # 3. Check outbox (analyst tasks)
-curl http://localhost:5000/agent/outbox | jq '.'
+
+curl <<<<<http://localhost:5000/agent/outbox>>>>> | jq '.'
 
 # Expected: [] or [{task}, {task}, ...]
-```
+
+```text
 
 ## API Endpoints
 
@@ -162,8 +181,10 @@ earnings dates | | `/api/analyst/sentiment.score` | POST | ✅ | Text sentiment 
 ### Example Tool Call
 
 ```bash
+
 # News search (what ChatGPT will call internally)
-curl -X POST http://localhost:5000/api/analyst/news.search \
+
+curl -X POST <<<<<http://localhost:5000/api/analyst/news.search>>>>> \
   -H "Authorization: Bearer ${GHOST_API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -172,7 +193,8 @@ curl -X POST http://localhost:5000/api/analyst/news.search \
     "since": "2025-10-01T00:00:00Z"
   }'
 
-# Response:
+# Response
+
 {
   "ok": true,
   "articles": [
@@ -187,21 +209,24 @@ curl -X POST http://localhost:5000/api/analyst/news.search \
   ],
   "count": 1
 }
-```
+
+```text
 
 ## Decision Cards
 
-When the analyst detects an opportunity, it emits a **Decision Card**:
+When the analyst detects an opportunity, it emits a**Decision Card**:
 
 ```json
+
 {
   "type": "decision",
   "symbol": "WOLF",
   "action": "BUY",
   "confidence": 0.85,
   "horizon": "24-72h",
-  "summary": "Strong insider buying (CEO purchased 50K shares) + options flow tilted bullish (P/C ratio 0.65) + positive earnings surprise. Technical breakout above $28 resistance with volume confirmation.",
-  
+"summary": "Strong insider buying (CEO purchased 50K shares) + options flow tilted bullish (P/C ratio 0.65) + positive
+earnings surprise. Technical breakout above $28 resistance with volume confirmation.",
+
   "catalysts": [
     {
       "type": "insider",
@@ -222,7 +247,7 @@ When the analyst detects an opportunity, it emits a **Decision Card**:
       "relevance": 0.80
     }
   ],
-  
+
   "risks": [
     {
       "type": "macro",
@@ -235,7 +260,7 @@ When the analyst detects an opportunity, it emits a **Decision Card**:
       "weight": 0.3
     }
   ],
-  
+
   "metrics": {
     "price": 27.85,
     "target": 32.00,
@@ -245,13 +270,13 @@ When the analyst detects an opportunity, it emits a **Decision Card**:
     "insider_signal": 0.8,
     "sentiment_score": 0.75
   },
-  
+
   "next_steps": [
     "Set alert at $30 for partial profit take",
     "Re-check if VIX crosses 25",
     "Monitor insider Form 4 filings next 5 days"
   ],
-  
+
   "data_sources": [
     "insiders.form4",
     "options.daily",
@@ -259,13 +284,15 @@ When the analyst detects an opportunity, it emits a **Decision Card**:
     "prices.history"
   ]
 }
-```
+
+```text
 
 ## Task Schema
 
 For system-level issues, the analyst emits **Task JSON**:
 
 ```json
+
 {
   "type": "task",
   "priority": "high",
@@ -279,60 +306,67 @@ For system-level issues, the analyst emits **Task JSON**:
   "reasoning": "Polygon returned 429 errors on last 3 WOLF price requests. Yahoo Finance also degraded.",
   "risks": ["Stale prices could cause bad predictions"],
   "checks": [
-    "curl http://localhost:5000/api/prices/WOLF",
+    "curl <<<<<http://localhost:5000/api/prices/WOLF",>>>>>
     "Check GHOST_PRIMARY_PROVIDER env var"
   ],
   "rollback": "Revert to Polygon after midnight UTC"
 }
-```
+
+```text
 
 ## Cost Estimates
 
-Model: **GPT-4o-mini** (recommended)
+Model: **GPT-4o-mini**(recommended)
 
 | Tick Interval | Ticks/Day | Tokens/Tick (avg) | Cost/Day |
 |---------------|-----------|-------------------|----------| | 5 min | 288 | ~1,000 |
 $0.50 | | 10 min | 144 | ~1,000 | $0.25 | | 30 min | 48 | ~1,000 | $0.10 |
 
-Model: **GPT-4o** (more accurate)
+Model:**GPT-4o**(more accurate)
 
 | Tick Interval | Ticks/Day | Tokens/Tick (avg) | Cost/Day |
 |---------------|-----------|-------------------|----------| | 5 min | 288 | ~1,000 |
-$5.00 | | 10 min | 144 | ~1,000 | $2.50 | | 30 min | 48 | ~1,000 | $0.85 |
+$5.00 | | 10 min | 144 | ~1,000 | $2.50 | | 30 min | 48 | ~1,000 | $0.85 |**Recommendations:**-**Development**: Use
+GPT-4o-mini with 5-10 min ticks ($0.25-0.50/day)
 
-**Recommendations:**
-
-- **Development**: Use GPT-4o-mini with 5-10 min ticks ($0.25-0.50/day)
 - **Production**: Use GPT-4o with 10 min ticks ($2.50/day) for better accuracy
 - **Budget**: Use GPT-4o-mini with 30 min ticks ($0.10/day)
+
 
 **Monthly costs:**
 
 - GPT-4o-mini (5 min): ~$15/month
 - GPT-4o (10 min): ~$75/month
 
+
 ## How It Works
 
 ### 1. Tick Cycle (every 5 minutes)
 
 ```python
+
 # Agent Loop
+
 1. Load conversation history from DB
 2. Build runtime snapshot (portfolio, prices, providers)
 3. Send to ChatGPT:
    - System prompt (identity, rules, schemas)
    - Recent messages (last 20)
    - Fresh snapshot (current state)
-4. ChatGPT analyzes and responds
-5. Parse response for actions/decisions
-6. Queue tasks to outbox
-7. Save updated state to DB
-```
+1. ChatGPT analyzes and responds
+2. Parse response for actions/decisions
+3. Queue tasks to outbox
+4. Save updated state to DB
+
+
+```text
 
 ### 2. Context Hydration
 
 ```python
+
 # When ChatGPT loses context (session reset)
+
 if response == "RESET_NEEDED":
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -340,12 +374,15 @@ if response == "RESET_NEEDED":
     ]
     save_state(messages)
     continue
-```
+
+```text
 
 ### 3. Tool Orchestration
 
 ```python
+
 # ChatGPT decides which tools to call
+
 {
   "function": "news.search",
   "arguments": {
@@ -355,16 +392,19 @@ if response == "RESET_NEEDED":
 }
 
 # Agent loop executes
+
 result = await call_tool("news.search", arguments)
 
 # Returns to ChatGPT
+
 {
   "ok": true,
   "articles": [...]
 }
 
 # ChatGPT reasons and emits Decision Card
-```
+
+```text
 
 ## Advanced Usage
 
@@ -373,40 +413,50 @@ result = await call_tool("news.search", arguments)
 Edit `ghost_agent_loop.py`, line 56 (SYSTEM_PROMPT):
 
 ```python
+
 SYSTEM_PROMPT = """You are Ghost's ChatGPT Analyst.
 
 CUSTOM RULES:
+
 - Focus on swing trades (2-5 day holds)
 - Only recommend when confidence > 80%
 - Prioritize insider buying + options flow combos
 - Avoid earnings week trades
 
+
 [rest of prompt...]
 """
-```
+
+```text
 
 ### Adjust Tick Frequency
 
 ```bash
+
 # More frequent = more responsive = higher cost
+
 GHOST_AGENT_TICK=180  # 3 minutes
 
 # Less frequent = cheaper = less responsive
+
 GHOST_AGENT_TICK=600  # 10 minutes
-```
+
+```text
 
 ### Wire to Telegram
 
 Edit `ghost_agent_loop.py`, line 555 (outbox_delivery_loop):
 
 ```python
+
 async def outbox_delivery_loop():
     while True:
         batch = grab_undelivered(20)
         for row in batch:
             payload = json.loads(row["payload_json"])
-            
-            # ADD THIS:
+
+            # ADD THIS
+
             if payload.get("type") == "decision":
                 await send_telegram_alert(
                     f"🎯 {payload['action']} {payload['symbol']} "
@@ -414,114 +464,117 @@ async def outbox_delivery_loop():
                     f"(confidence: {payload['confidence']*100:.0f}%)\n\n"
                     f"{payload['summary']}"
                 )
-            
+
             mark_delivered([row["id"]])
         await asyncio.sleep(5)
-```
+
+```text
 
 ### Add Custom Tools
 
-1. **Create endpoint in wolf_app.py:**
+1. **Create endpoint in wolf_app.py:**```python
 
-```python
+
 @APP.post("/api/analyst/custom.tool")
 async def analyst_tool_custom(...):
+
     # Your logic here
+
     return {"ok": True, "data": ...}
-```
 
-2. **Register in SYSTEM_PROMPT:**
+```text
 
-```python
+1.**Register in SYSTEM_PROMPT:**```python
+
 SYSTEM_PROMPT = """...
 Tools you can call:
+
 - custom.tool: Description of what it does
+
+
 """
-```
 
-3. **ChatGPT can now call it:**
+```text
 
-```json
+1.**ChatGPT can now call it:**```json
+
 {
   "function": "custom.tool",
   "arguments": {...}
 }
-```
+
+```text
 
 ## Troubleshooting
 
-### Analyst Not Running
+### Analyst Not Running**Symptom:**`/agent/health` shows `ticks_ok: 0`**Fix:**1. Check `OPENAI_API_KEY` is set: `echo $OPENAI_API_KEY`
 
-**Symptom:** `/agent/health` shows `ticks_ok: 0`
+1. Check server logs: `tail -f ghost_server.log | grep -i analyst`
+2. Verify API key is valid:
 
-**Fix:**
 
-1. Check `OPENAI_API_KEY` is set: `echo $OPENAI_API_KEY`
-2. Check server logs: `tail -f ghost_server.log | grep -i analyst`
-3. Verify API key is valid:
-   `curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"`
+   `curl <<<<<https://api.openai.com/v1/models>>>>> -H "Authorization: Bearer $OPENAI_API_KEY"`
 
-### Rate Limit Errors
+### Rate Limit Errors**Symptom:**`/agent/health` shows `last_error: "Rate limit exceeded"`**Fix:**1. Increase tick interval: `GHOST_AGENT_TICK=600` (10 min)
 
-**Symptom:** `/agent/health` shows `last_error: "Rate limit exceeded"`
+1. Upgrade OpenAI plan (higher rate limits)
+2. Add retry logic (already built-in, wait 1 min)
 
-**Fix:**
 
-1. Increase tick interval: `GHOST_AGENT_TICK=600` (10 min)
-2. Upgrade OpenAI plan (higher rate limits)
-3. Add retry logic (already built-in, wait 1 min)
+### Context Loss**Symptom:**ChatGPT keeps responding "I don't have context"**Fix:**1. Check DB exists: `ls -lh data/ghost_agent.db`
 
-### Context Loss
+1. Verify rehydration:
 
-**Symptom:** ChatGPT keeps responding "I don't have context"
 
-**Fix:**
+   `curl <<<<<http://localhost:5000/agent/state>>>>> | jq '.messages[1].content'`
 
-1. Check DB exists: `ls -lh data/ghost_agent.db`
-2. Verify rehydration:
-   `curl http://localhost:5000/agent/state | jq '.messages[1].content'`
-3. Force reset: `rm data/ghost_agent.db && restart server`
+1. Force reset: `rm data/ghost_agent.db && restart server`
 
-### High Costs
 
-**Symptom:** OpenAI bill higher than expected
+### High Costs**Symptom:**OpenAI bill higher than expected**Fix:**1. Use GPT-4o-mini: `GHOST_LLM_MODEL=gpt-4o-mini`
 
-**Fix:**
+1. Increase tick interval: `GHOST_AGENT_TICK=600`
+2. Reduce history: `GHOST_AGENT_MAX_HISTORY=10`
+3. Monitor usage: <<<<<https://platform.openai.com/usage>>>>>
 
-1. Use GPT-4o-mini: `GHOST_LLM_MODEL=gpt-4o-mini`
-2. Increase tick interval: `GHOST_AGENT_TICK=600`
-3. Reduce history: `GHOST_AGENT_MAX_HISTORY=10`
-4. Monitor usage: https://platform.openai.com/usage
 
 ## Testing
 
 ### Manual Test
 
 ```bash
+
 # 1. Health check
-curl http://localhost:5000/agent/health
+
+curl <<<<<http://localhost:5000/agent/health>>>>>
 
 # 2. Trigger manual tick (restart server)
+
 pkill -f uvicorn && uvicorn wolf_app:app --port 5000 &
 sleep 10
 
 # 3. Check for response
-curl http://localhost:5000/agent/state | jq '.messages[-1]'
+
+curl <<<<<http://localhost:5000/agent/state>>>>> | jq '.messages[-1]'
 
 # Expected: assistant message with analysis
-```
+
+```text
 
 ### Automated Test
 
 ```bash
+
 #!/bin/bash
+
 # test_analyst.sh
 
 echo "Testing ChatGPT Analyst..."
 
 # Test 1: Health
+
 echo "1. Health check..."
-STATUS=$(curl -s http://localhost:5000/agent/health | jq -r '.status')
+STATUS=$(curl -s <<<<<http://localhost:5000/agent/health>>>>> | jq -r '.status')
 if [ "$STATUS" = "ok" ]; then
   echo "✅ Health OK"
 else
@@ -530,8 +583,9 @@ else
 fi
 
 # Test 2: State persistence
+
 echo "2. State persistence..."
-MSG_COUNT=$(curl -s http://localhost:5000/agent/state | jq '.messages | length')
+MSG_COUNT=$(curl -s <<<<<http://localhost:5000/agent/state>>>>> | jq '.messages | length')
 if [ "$MSG_COUNT" -gt 0 ]; then
   echo "✅ State OK ($MSG_COUNT messages)"
 else
@@ -540,21 +594,25 @@ else
 fi
 
 # Test 3: Outbox delivery
+
 echo "3. Outbox delivery..."
-TASK_COUNT=$(curl -s http://localhost:5000/agent/outbox | jq 'length')
+TASK_COUNT=$(curl -s <<<<<http://localhost:5000/agent/outbox>>>>> | jq 'length')
 echo "✅ Outbox OK ($TASK_COUNT tasks)"
 
 echo "All tests passed! 🎉"
-```
+
+```text
 
 ## Next Steps
 
-1. **Week 1**: Monitor `/agent/outbox` for tasks, verify ChatGPT reasoning quality
-2. **Week 2**: Wire Decision Cards to Telegram alerts
-3. **Week 3**: Add paper trading execution (simulate trades based on decisions)
-4. **Month 1**: Track analyst accuracy (Decision Cards vs actual outcomes)
-5. **Month 2**: Auto-execute high-confidence trades (>85%) with position sizing
-6. **Month 3**: Add more tools (earnings calendars, social sentiment, sector rotation)
+1.**Week 1**: Monitor `/agent/outbox` for tasks, verify ChatGPT reasoning quality
+
+1. **Week 2**: Wire Decision Cards to Telegram alerts
+2. **Week 3**: Add paper trading execution (simulate trades based on decisions)
+3. **Month 1**: Track analyst accuracy (Decision Cards vs actual outcomes)
+4. **Month 2**: Auto-execute high-confidence trades (>85%) with position sizing
+5. **Month 3**: Add more tools (earnings calendars, social sentiment, sector rotation)
+
 
 ## FAQ
 
@@ -587,6 +645,7 @@ provides continuous monitoring + actionable recommendations.
 - Architecture: Inspired by LangChain Agents + AutoGPT persistence patterns
 - Integration: Built on Ghost's existing tool ecosystem
 - Cost optimization: Based on OpenAI's token pricing (Oct 2025)
+
 
 ______________________________________________________________________
 

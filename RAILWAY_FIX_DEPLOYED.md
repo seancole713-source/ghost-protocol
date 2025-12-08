@@ -4,9 +4,10 @@
 
 Your Railway deployment was failing with:
 
-```
+```text
 ModuleNotFoundError: No module named 'requests'
-```
+
+```text
 
 **Root Cause**: NIXPACKS wasn't installing Python dependencies before running `main.py`
 
@@ -14,88 +15,95 @@ ModuleNotFoundError: No module named 'requests'
 
 Created 3 configuration files:
 
-1. **Procfile** - Tells Railway how to start Ghost
-2. **nixpacks.toml** - Tells NIXPACKS to install dependencies
-3. **railway.toml** (updated) - Simplified configuration
+1. **Procfile**- Tells Railway how to start Ghost
+
+
+2.**nixpacks.toml**- Tells NIXPACKS to install dependencies
+3.**railway.toml**(updated) - Simplified configuration
+
 
 ## REDEPLOY NOW 🚀
 
-Railway will automatically redeploy since we pushed to `main` branch.
+Railway will automatically redeploy since we pushed to `main` branch.**Check deployment status:**```bash
 
-**Check deployment status:**
-
-```bash
 railway status
-```
 
-**Watch live logs:**
+```text**Watch live logs:**```bash
 
-```bash
 railway logs
-```
+
+```text
 
 ## WHAT TO EXPECT ✅
 
-1. **Build Phase** (2-3 minutes):
+1.**Build Phase**(2-3 minutes):
 
-   ```
+
+   ```text
+
    ✓ Detecting Python 3.12
    ✓ Installing pip dependencies from requirements.txt
    ✓ Installing: fastapi, uvicorn, requests, yfinance, etc.
-   ```
 
-2. **Start Phase** (10-20 seconds):
+   ```text
 
-   ```
+1.**Start Phase**(10-20 seconds):
+
+
+   ```text
+
    ✓ Running: python main.py
    ✓ Ghost server starting on port $PORT
    ✓ Health check: /health/detailed responding
-   ```
 
-3. **Success Indicators**:
+   ```text
+
+1.**Success Indicators**:
 
    - No more "ModuleNotFoundError"
    - Logs show: "Uvicorn running on 0.0.0.0:$PORT"
    - Health check passes
    - Railway dashboard shows "Active" status
 
+
 ## VERIFY DEPLOYMENT 🔍
 
-1. **Get your app URL:**
+1. **Get your app URL:**```bash
 
-   ```bash
+
    railway domain
-   ```
 
-2. **Test health endpoint:**
+   ```text
 
-   ```bash
-   curl https://ghost-trading-production.up.railway.app/health
-   ```
+1.**Test health endpoint:**```bash
+
+   curl <<<<<https://ghost-trading-production.up.railway.app/health>>>>>
+
+   ```text
 
    Expected: `{"ok": true, "ts": ...}`
 
-3. **Test detailed health:**
+1.**Test detailed health:**```bash
 
-   ```bash
-   curl https://ghost-trading-production.up.railway.app/health/detailed
-   ```
+   curl <<<<<https://ghost-trading-production.up.railway.app/health/detailed>>>>>
+
+   ```text
 
    Expected: Full system status with positions, AI memory, etc.
 
 ## IF STILL FAILING 🔧
 
-1. **Check Railway logs for new errors:**
+1.**Check Railway logs for new errors:**```bash
 
-   ```bash
    railway logs --tail 100
-   ```
 
-2. **Verify environment variables are set:**
+   ```text
 
-   ```bash
+1.**Verify environment variables are set:**```bash
+
    railway variables
-   ```
+
+   ```text
 
    Should show:
 
@@ -108,23 +116,26 @@ railway logs
    - WOLF_PERSIST_MODE
    - SIM_MODE
 
-3. **Manual redeploy (if auto-deploy didn't trigger):**
 
-   ```bash
+1.**Manual redeploy (if auto-deploy didn't trigger):**```bash
+
    railway up --detach
-   ```
+
+   ```text
 
 ## RESTORE POSITION DATA 💾
 
 After deployment succeeds, restore your WOLF position:
 
 ```bash
+
 APP_URL=$(railway domain)
-curl -X POST "https://$APP_URL/api/position" \
+curl -X POST "<<<<<https://$APP_URL/api/position">>>>> \
   -H "Authorization: Bearer e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0" \
   -H "Content-Type: application/json" \
   -d '{"qty": 8.41959051, "avg_cost": 359.28}'
-```
+
+```text
 
 ## FILES CHANGED 📁
 
@@ -134,21 +145,21 @@ curl -X POST "https://$APP_URL/api/position" \
 - ✅ Committed: e782608
 - ✅ Pushed to main
 
+
 ## TIMELINE ⏱️
 
-- **Push completed**: Just now
+-**Push completed**: Just now
+
 - **Railway auto-deploy**: Should start within 30 seconds
 - **Build time**: 2-3 minutes
 - **Total to live**: ~3-5 minutes
 
+
 ______________________________________________________________________
 
-**Next Steps:**
+**Next Steps:**1. Wait 30 seconds for Railway to detect push
 
-1. Wait 30 seconds for Railway to detect push
-2. Run `railway status` to check deployment
-3. Run `railway logs` to watch progress
-4. Test `/health` endpoint once deployed
-5. Restore position data
-
-**ETA to Ghost running 24/7: ~5 minutes** 🎯
+1. Run `railway status` to check deployment
+2. Run `railway logs` to watch progress
+3. Test `/health` endpoint once deployed
+4. Restore position data**ETA to Ghost running 24/7: ~5 minutes** 🎯

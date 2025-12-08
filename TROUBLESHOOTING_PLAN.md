@@ -6,83 +6,100 @@
 
 ```bash
 bash scripts/emergency_fallback.sh
-```
+
+```text
 
 This will test:
+
 - ✅ Is server responding at all?
 - ✅ Does `/health` return valid JSON?
 - ✅ Are watchlist endpoints working?
 - ✅ Is `/api/recent_alerts` still blocked?
 
+
 ### Phase 2: Check Railway Logs (2 minutes)
 
-**Railway Dashboard → Deployments → Latest Failed → Deploy Logs**
-
-Look for these critical errors:
+**Railway Dashboard → Deployments → Latest Failed → Deploy Logs**Look for these critical errors:
 
 #### A. PostgreSQL Connection Issues
-```
+
+```text
+
 Error: connection to postgres.railway.internal:5432 failed
-```
-**Fix:** Check PostgreSQL service is running, verify DATABASE_URL env var
+
+```text**Fix:**Check PostgreSQL service is running, verify DATABASE_URL env var
 
 #### B. Import Errors
-```
+
+```text
+
 ModuleNotFoundError: No module named 'X'
-```
-**Fix:** Check requirements.txt has all dependencies, rebuild may be needed
+
+```text**Fix:**Check requirements.txt has all dependencies, rebuild may be needed
 
 #### C. Still SQL Syntax Errors
-```
+
+```text
+
 ERROR: syntax error at or near "..."
-```
-**Fix:** More SQL bugs in personal_watchlist.py - run full audit
+
+```text**Fix:**More SQL bugs in personal_watchlist.py - run full audit
 
 #### D. Timeout During Startup
-```
+
+```text
+
 [GHOST STARTUP] Beginning initialization...
 [No further logs, then timeout]
-```
-**Fix:** Something blocking during startup (Redis, PostgreSQL, external API call)
+
+```text**Fix:**Something blocking during startup (Redis, PostgreSQL, external API call)
 
 ### Phase 3: Emergency Workarounds
 
 #### Option A: Disable Watchlist Scheduler (SAFEST)
 
 ```bash
+
 bash scripts/disable_watchlist_scheduler.sh
 git add wolf_app.py
 git commit -m "Emergency: disable watchlist scheduler to unblock deployment"
 git push origin main
-```
 
-**Effect:**
-- ✅ Server will start normally
+```text**Effect:**- ✅ Server will start normally
+
 - ✅ All other endpoints work
 - ❌ No automatic watchlist predictions
 - ✅ Manual predictions still work
 
+
 #### Option B: Rollback to Last Working Commit
 
 ```bash
+
 # Find last successful deployment
+
 git log --oneline -20
 
 # Rollback (example: to commit abc1234)
+
 git revert HEAD --no-edit
 git push origin main
-```
+
+```text
 
 #### Option C: Skip Watchlist Tables (Nuclear Option)
 
 Edit `core/migration_runner.py` to skip watchlist migration:
 
 ```python
+
 # Skip personal watchlist migration temporarily
+
 if "001_personal_watchlist" in migration_file:
     LOGGER.warning("⚠️ Skipping watchlist migration (emergency mode)")
     continue
-```
+
+```text
 
 Then commit and push.
 
@@ -91,25 +108,33 @@ Then commit and push.
 If SQL errors persist, run comprehensive check:
 
 ```bash
+
 # Check all SQL queries in personal_watchlist.py
+
 grep -n "execute" core/personal_watchlist.py | grep -i "interval\|%s"
 
 # Look for other parameter binding issues
+
 grep -n "cursor.execute" core/personal_watchlist.py -A 5 | grep "%s"
-```
+
+```text
 
 Common PostgreSQL gotchas:
+
 - ❌ `INTERVAL '%s minutes'` - Cannot parameterize inside string
 - ❌ `... VALUES (%s, %s, %s)` with wrong tuple length
 - ❌ Using `?` placeholders (SQLite syntax) instead of `%s`
 - ❌ Missing `::` type casts for JSON/JSONB columns
+
 
 ### Phase 5: Fallback Architecture
 
 If watchlist keeps failing, implement lazy initialization:
 
 ```python
+
 # In wolf_app.py startup
+
 try:
     from core.personal_watchlist import get_personal_watchlist_manager
     WATCHLIST_ENABLED = True
@@ -118,50 +143,72 @@ except Exception as e:
     WATCHLIST_ENABLED = False
 
 # Only start scheduler if enabled
+
 if WATCHLIST_ENABLED:
+
     # Start watchlist scheduler
+
     pass
-```
+
+```text
 
 ### Phase 6: Alternative Fixes
 
 #### Fix 1: Increase Healthcheck Timeout
+
 Edit `railway.toml`:
+
 ```toml
+
 [deploy]
 healthcheckTimeout = 300  # Increase from 100 to 300 seconds
-```
+
+```text
 
 #### Fix 2: Change Healthcheck Path
+
 Use simpler endpoint that doesn't depend on database:
+
 ```toml
+
 [deploy]
 healthcheckPath = "/api/status"  # Simpler than /health
-```
+
+```text
 
 #### Fix 3: Disable Healthcheck Temporarily
+
 ```toml
+
 [deploy]
+
 # Comment out healthcheck to allow startup
+
 # healthcheckPath = "/health"
+
 # healthcheckTimeout = 100
-```
+
+```text
 
 ### Phase 7: Debug Locally with Railway Env
 
 Simulate Railway environment locally:
 
 ```bash
+
 # Get Railway env vars
+
 railway variables
 
 # Run locally with Railway Postgres
+
 export DATABASE_URL="postgresql://user:pass@localhost:5432/ghost"
 export RAILWAY_ENVIRONMENT="local-test"
 export PORT=8080
 
 python3 wolf_app.py
-```
+
+```text
 
 Test if SQL errors reproduce locally.
 
@@ -170,37 +217,33 @@ Test if SQL errors reproduce locally.
 All three endpoints working:
 
 ```bash
+
 # Should all return {"ok": true, ...}
-curl "https://ghost-protocol-production.up.railway.app/api/v3/watchlist/enriched"
-curl "https://ghost-protocol-production.up.railway.app/api/v3/watchlist/user"
-curl "https://ghost-protocol-production.up.railway.app/api/recent_alerts?limit=5"
-```
+
+curl "<<<<<https://ghost-protocol-production.up.railway.app/api/v3/watchlist/enriched">>>>>
+curl "<<<<<https://ghost-protocol-production.up.railway.app/api/v3/watchlist/user">>>>>
+curl "<<<<<https://ghost-protocol-production.up.railway.app/api/recent_alerts?limit=5">>>>>
+
+```text
 
 ---
 
-## Quick Reference
+## Quick Reference**Check deployment status:**```bash
 
-**Check deployment status:**
-```bash
 bash scripts/monitor_deployment.sh
-```
 
-**Emergency disable watchlist:**
-```bash
+```text**Emergency disable watchlist:**```bash
+
 bash scripts/disable_watchlist_scheduler.sh
-```
 
-**Full diagnostics:**
-```bash
+```text**Full diagnostics:**```bash
+
 bash scripts/emergency_fallback.sh
-```
 
-**Railway logs in terminal:**
-```bash
+```text**Railway logs in terminal:**```bash
+
 railway logs
-```
 
----
+```text
 
-**Last Updated:** Dec 3, 2025 01:20 AM  
-**Current Commit:** 63e88e5 (PostgreSQL INTERVAL fix)
+---**Last Updated:**Dec 3, 2025 01:20 AM**Current Commit:** 63e88e5 (PostgreSQL INTERVAL fix)

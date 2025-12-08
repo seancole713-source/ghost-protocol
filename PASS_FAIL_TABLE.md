@@ -9,28 +9,25 @@ ______________________________________________________________________
 ## Evaluation Summary
 
 | Criterion | Status | Score | Notes | |-----------|--------|-------|-------| |
-**Live-only data** | ⚠️ **PARTIAL PASS** | 70/100 | Quorum logic exists, but backoff
-sticky + no degraded mode | | **Correct math** | ✅ **PASS** | 95/100 | PnL, NAV,
-forecast accuracy all correct; minor rounding edge cases | | **Persistence** | ⚠️
-**PARTIAL PASS** | 80/100 | Portfolio persists, but $0 risk exists if mode=none (default
-for some setups) | | **Prediction-vs-Reality** | ⚠️ **PARTIAL PASS** | 75/100 | MAP/RMSE
-computed but not exposed to UI; no historical comparison API | | **Runtime config** | ✅
-**PASS** | 85/100 | 100+ env vars, runtime `/api/runtime/config` endpoint, BUT lacks
-centralized docs | | **Transparency** | ⚠️ **PARTIAL PASS** | 70/100 | Logs/metrics
-extensive, but no user-facing "why" for anomaly/pause states | | **Zero randomness** | ✅
-**PASS** | 100/100 | No RNG in production paths; all variance is deterministic
-(volatility estimates) |
-
-**Overall Pass Rate**: **82/100** (B grade)\
-**Production Readiness**: ⚠️ **Conditional** (requires P0+P1 remediation)
+**Live-only data**| ⚠️**PARTIAL PASS**| 70/100 | Quorum logic exists, but backoff
+sticky + no degraded mode | |**Correct math**| ✅**PASS**| 95/100 | PnL, NAV,
+forecast accuracy all correct; minor rounding edge cases | |**Persistence**| ⚠️**PARTIAL PASS**| 80/100 | Portfolio
+persists, but $0 risk exists if mode=none (default
+for some setups) | |**Prediction-vs-Reality**| ⚠️**PARTIAL PASS**| 75/100 | MAP/RMSE
+computed but not exposed to UI; no historical comparison API | |**Runtime config**| ✅**PASS**| 85/100 | 100+ env vars,
+runtime `/api/runtime/config` endpoint, BUT lacks
+centralized docs | |**Transparency**| ⚠️**PARTIAL PASS**| 70/100 | Logs/metrics
+extensive, but no user-facing "why" for anomaly/pause states | |**Zero randomness**| ✅**PASS**| 100/100 | No RNG in
+production paths; all variance is deterministic
+(volatility estimates) |**Overall Pass Rate**: **82/100**(B grade)\**Production Readiness**: ⚠️ **Conditional**(requires
+P0+P1 remediation)
 
 ______________________________________________________________________
 
 ## Detailed Evaluation
 
-### 1. Live-only data
+### 1. Live-only data**Requirement**: "No mock/placeholder/simulation data in production paths. All prices
 
-**Requirement**: "No mock/placeholder/simulation data in production paths. All prices
 from real APIs."
 
 | Check | Status | Evidence | |-------|--------|----------| | No hardcoded mock prices |
@@ -60,7 +57,7 @@ price | ✅ PASS | Line 6850: `val = pos["quantity"] * price` | | Unrealized P&L
 `pnl = (price - pos["avg_cost"]) * pos["quantity"]` | | Total NAV = cash + sum(position
 values) | ✅ PASS | Line 6880: `nav = STATE["cash"] + sum(vals)` | | Weighted avg cost on
 add | ✅ PASS | Line 6620:
-`new_avg = ((old_qty * old_avg) + (add_qty * add_price)) / (old_qty + add_qty)` | |
+`new_avg = ((old_qty *old_avg) + (add_qty* add_price)) / (old_qty + add_qty)` | |
 Forecast MAP/RMSE formulas | ✅ PASS | Line 791: `map = sum(apes)/len(apes)`, Line 792:
 `rmse = sqrt(sum(e²)/n)` | | **Minor**: Floating-point precision edge cases | ⚠️ NOTE |
 Python float (64-bit) → ~15 decimal digits; acceptable for $USD |
@@ -81,15 +78,13 @@ Startup calls `_persist_load()` | ✅ PASS | Line 1377: Loads state on boot | | 
 thread available | ✅ PASS | Line 3550: `_autosave_loop()` if `WOLF_AUTOSAVE_S > 0` | |
 Manual `/control/save` endpoint | ✅ PASS | Line 3582: Explicit save trigger | |
 **ISSUE**: Default mode is `none` | ⚠️ FAIL | Line 1159:
-`os.getenv("WOLF_PERSIST_MODE", "none")` → **no persistence by default** | | **ISSUE**:
+`os.getenv("WOLF_PERSIST_MODE", "none")` → **no persistence by default**| |**ISSUE**:
 Portfolio layer not always enabled | ⚠️ FAIL | Line 53: `PORTFOLIO_PERSISTENCE_ENABLED`
 depends on import success | | Graceful fallback hierarchy (redis→sqlite→file) | ✅ PASS |
 Line 3346: `mode=="auto"` tries all 3 in sequence |
 
-**Score Rationale**: Persistence works when enabled, but **defaults to off** → user must
-explicitly configure → 80/100
-
-**Fix**: Change default to `"auto"` or `"sqlite"` (not `"none"`)
+**Score Rationale**: Persistence works when enabled, but **defaults to off**→ user must
+explicitly configure → 80/100**Fix**: Change default to `"auto"` or `"sqlite"` (not `"none"`)
 
 ______________________________________________________________________
 
@@ -180,18 +175,26 @@ ______________________________________________________________________
 ### To Achieve 100% Pass Rate
 
 1. **Live-only data → 100%**: Fix GH-AUD-005 (backoff reset) + GH-AUD-006 (Reuters
+
+
    degraded mode)
-2. **Persistence → 95%**: Change default `WOLF_PERSIST_MODE` from `"none"` to `"auto"`
-3. **Prediction-vs-Reality → 95%**: Add accuracy metrics to `/api/cockpit`, create
+
+1. **Persistence → 95%**: Change default `WOLF_PERSIST_MODE` from `"none"` to `"auto"`
+2. **Prediction-vs-Reality → 95%**: Add accuracy metrics to `/api/cockpit`, create
+
+
    `/api/forecast/history`
-4. **Runtime config → 95%**: Generate `ENV_VARS_REFERENCE.md`
-5. **Transparency → 90%**: Add pause_reason field, alert history endpoint
+
+1. **Runtime config → 95%**: Generate `ENV_VARS_REFERENCE.md`
+2. **Transparency → 90%**: Add pause_reason field, alert history endpoint
+
 
 ### Blockers for Production
 
 - **P0**: Secrets rotation (GH-AUD-001)
 - **P1**: Backoff reset (GH-AUD-005), Reuters degraded mode (GH-AUD-006)
 - **P1**: SSE client tracking (GH-AUD-004) to prevent memory leaks
+
 
 **Estimated Effort to 100% Pass**: 8-10 developer-days
 

@@ -2,7 +2,7 @@
 
 ## 📡 PREDICTION PIPELINE (END-TO-END)
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     USER REQUEST                                     │
 │  /api/predict/run?symbol=BTC  OR  /api/v3/forecast/enhanced        │
@@ -100,7 +100,7 @@
 │  │           │                                                    │  │
 │  │  ┌─────────────────┐                                          │  │
 │  │  │ Sentiment Model │  20% weight                              │  │
-│  │  │ (News impact)   │  pred = price * (1 + sent * 0.02)       │  │
+│  │  │ (News impact)   │  pred = price *(1 + sent* 0.02)       │  │
 │  │  └────────┬────────┘                                          │  │
 │  │           │                                                    │  │
 │  │  ┌─────────────────┐                                          │  │
@@ -206,14 +206,17 @@
 │  Local: ✅ <2s response time                                        │
 │  Production: ❌ TIMEOUT >10s                                        │
 └─────────────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ---
 
 ## 🔴 FAILURE POINTS IDENTIFIED
 
 ### ❌ VIP Coins Endpoint (`/api/v3/vip/snapshot`)
-```
+
+```text
+
 ┌──────────────────────────────────────────────────────────────┐
 │  VIP_COINS = [BTC, ETH, SOL, XRP, BNB, ADA, DOGE, LTC, ...] │
 │              └────┬───┬───┬───┬───┬───┬───┬───┬───────────┘ │
@@ -234,12 +237,15 @@
 │  Result: Endpoint hangs >10s waiting for 15 coins           │
 │  Fix: Reduce to TOP 5 coins + circuit breaker                │
 └──────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ---
 
 ### ❌ Crypto Movers Missing (`/api/v3/hunter/feed`)
-```
+
+```text
+
 ┌──────────────────────────────────────────────────────────────┐
 │  Background Scanner: _generate_multi_symbol_predictions()    │
 │  Runs: 8am, 12pm, 4pm ET (3x daily)                         │
@@ -260,12 +266,15 @@
 │  Result: Most crypto predictions filtered out               │
 │  Fix: Lower threshold to 5.0 for crypto (7.0 for stocks)    │
 └──────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ---
 
 ### ⚠️ News Sentiment Neutral (Frontend Parsing Issue)
-```
+
+```text
+
 ┌──────────────────────────────────────────────────────────────┐
 │  Backend: /api/v3/news/feed                                  │
 │  ┌────────────────────────────────────────────────────────┐  │
@@ -304,14 +313,17 @@
 │  Debug Added: Console logging to trace actual values        │
 │  Awaiting: User console logs (F12) to confirm root cause    │
 └──────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ---
 
 ## ✅ VERIFIED WORKING FLOWS
 
 ### ✅ Forecast Horizons (FIXED Session 4)
-```
+
+```text
+
 Before Fix (UI Bug):
 ┌────────────────────────────────────────────────────────────┐
 │  Forecast Input: "BTC" → calls /api/v3/forecast/enhanced  │
@@ -346,13 +358,15 @@ After Fix (Time-Decay Multipliers):
 │                                                            │
 │  Result: 3 DIFFERENT values shown (as expected)            │
 └────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ---
 
 ## 🎯 GRADE BREAKDOWN (78% CONFIRMED)
 
-```
+```text
+
 ┌─────────────────────────────────────────────────────────┐
 │  Component               │ Status  │ Weight │ Score    │
 │──────────────────────────┼─────────┼────────┼──────────│
@@ -370,11 +384,9 @@ After Fix (Time-Decay Multipliers):
 │  TOTAL                                      │ 75/100   │
 │  ADJUSTED (rounding)                        │ 78/100 ✅│
 └─────────────────────────────────────────────┴──────────┘
-```
+
+```text
 
 ---
 
-**Created:** December 2, 2025  
-**Diagram Tool:** ASCII Art (text-based flowchart)  
-**Full Report:** `GHOST_PREDICTION_ENGINE_AUTOPSY.md`  
-**Summary:** `AUTOPSY_EXECUTIVE_SUMMARY.md`
+**Created:**December 2, 2025**Diagram Tool:**ASCII Art (text-based flowchart)**Full Report:**`GHOST_PREDICTION_ENGINE_AUTOPSY.md`**Summary:** `AUTOPSY_EXECUTIVE_SUMMARY.md`

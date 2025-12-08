@@ -4,19 +4,21 @@
 
 > "Flip it and make Ghost use ChatGPT... using Ghost as its plug"
 
-**✅ DELIVERED:** ChatGPT now acts as Ghost's reasoning brain while Ghost provides all
+**✅ DELIVERED:**ChatGPT now acts as Ghost's reasoning brain while Ghost provides all
 the data tools and execution layer.
 
 ## What Got Built
 
 ### 1. Core Module (`ghost_agent_loop.py`)
 
-- **600 lines** of production-ready code
+-**600 lines**of production-ready code
+
 - Persistent conversation state (SQLite)
 - Self-healing context hydration
 - Exponential backoff retry logic
 - Background task queue
 - Health monitoring
+
 
 ### 2. Analyst Tools (7 endpoints)
 
@@ -28,6 +30,7 @@ the data tools and execution layer.
 - `company.profile` - Company fundamentals
 - `sentiment.score` - Text sentiment analysis
 
+
 ### 3. Integration Points
 
 - Auto-loads on Ghost startup
@@ -35,9 +38,10 @@ the data tools and execution layer.
 - 3 monitoring endpoints: `/agent/health`, `/agent/state`, `/agent/outbox`
 - Telegram-ready (wire in 5 lines of code)
 
+
 ## How It Works
 
-```
+```text
 ┌─────────────┐    Every 5 min    ┌──────────────┐
 │   ChatGPT   │ ◄────────────────► │ Agent Loop   │
 │  (Analyst)  │   "What's wrong?"  │ (Persistent) │
@@ -47,54 +51,51 @@ the data tools and execution layer.
                                     │ Ghost Tools  │
                                     │ (7 data APIs)│
                                     └──────────────┘
-```
 
-**Key Innovation:** When ChatGPT forgets context (session ends), Ghost automatically
-rehydrates it with fresh state. **It never truly forgets.**
+```text**Key Innovation:**When ChatGPT forgets context (session ends), Ghost automatically
 
-## Cost
+rehydrates it with fresh state.**It never truly forgets.**## Cost
 
 | Model | Tick | Cost/Day | Cost/Month | |-------|------|----------|------------| |
 GPT-4o-mini | 5 min | $0.50 | $15 | | GPT-4o-mini | 10 min | $0.25 | $7.50 | | GPT-4o |
-10 min | $2.50 | $75 |
+10 min | $2.50 | $75 |**Recommendation:**Start with GPT-4o-mini @ 5 min ticks =**$15/month**## Enable Now
 
-**Recommendation:** Start with GPT-4o-mini @ 5 min ticks = **$15/month**
+1.**Get OpenAI API Key:**<<<<<https://platform.openai.com/api-keys>>>>>
 
-## Enable Now
+1.**Add to `secrets.env`:**```bash
 
-1. **Get OpenAI API Key:** https://platform.openai.com/api-keys
-
-2. **Add to `secrets.env`:**
-
-```bash
 OPENAI_API_KEY=sk-proj-your-key-here
-```
 
-3. **Restart Ghost:**
+```text
 
-```bash
+1.**Restart Ghost:**```bash
+
 pkill -f uvicorn
 uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload
-```
 
-4. **Verify Working:**
+```text
 
-```bash
-curl http://localhost:5000/agent/health
+1.**Verify Working:**```bash
+
+curl <<<<<http://localhost:5000/agent/health>>>>>
+
 # Should show: "status": "ok"
-```
+
+```text
 
 ## What You Get
 
 ### Decision Cards (Example)
 
 ```json
+
 {
   "type": "decision",
   "symbol": "WOLF",
   "action": "BUY",
   "confidence": 0.85,
-  "summary": "Strong insider buying (CEO bought 50K shares) + bullish options flow (P/C 0.65) + earnings beat. Technical breakout above $28 with volume.",
+"summary": "Strong insider buying (CEO bought 50K shares) + bullish options flow (P/C 0.65) + earnings beat. Technical
+breakout above $28 with volume.",
   "target": 32.00,
   "stop": 26.50,
   "catalysts": [
@@ -106,50 +107,37 @@ curl http://localhost:5000/agent/health
     {"type": "macro", "note": "VIX elevated at 22", "weight": 0.4}
   ]
 }
-```
 
-ChatGPT will issue these **automatically** when it detects high-confidence setups using
+```text
+
+ChatGPT will issue these**automatically**when it detects high-confidence setups using
 Ghost's data tools.
 
-## Next Steps (After Enabling)
+## Next Steps (After Enabling)**Week 1:**- Monitor `/agent/outbox` for decisions
 
-**Week 1:**
+- Verify reasoning quality**Week 2:**- Wire Decision Cards → Telegram alerts**Week 3:**- Add paper trading (simulate trades)**Month 1:**- Track analyst accuracy
+- Tune confidence threshold**Month 2:**- Auto-execute high-confidence (>85%) trades
 
-- Monitor `/agent/outbox` for decisions
-- Verify reasoning quality
-
-**Week 2:**
-
-- Wire Decision Cards → Telegram alerts
-
-**Week 3:**
-
-- Add paper trading (simulate trades)
-
-**Month 1:**
-
-- Track analyst accuracy
-- Tune confidence threshold
-
-**Month 2:**
-
-- Auto-execute high-confidence (>85%) trades
 
 ## Files Changed
 
-1. **NEW:** `ghost_agent_loop.py` - Core analyst module (600 lines)
-2. **UPDATED:** `wolf_app.py` - Added 7 analyst tool endpoints + integration (400 lines)
-3. **UPDATED:** `secrets.env` - Added ChatGPT config section
-4. **NEW:** `CHATGPT_ANALYST.md` - Full documentation (500 lines)
-5. **NEW:** `data/ghost_agent.db` - Analyst state database (auto-created)
+1.**NEW:**`ghost_agent_loop.py` - Core analyst module (600 lines)
+2.**UPDATED:**`wolf_app.py` - Added 7 analyst tool endpoints + integration (400 lines)
+3.**UPDATED:**`secrets.env` - Added ChatGPT config section
+4.**NEW:**`CHATGPT_ANALYST.md` - Full documentation (500 lines)
+5.**NEW:**`data/ghost_agent.db` - Analyst state database (auto-created)
+
 
 ## Verification
 
 ```bash
-# Already tested ✅
-curl http://localhost:5000/agent/health
 
-# Response:
+# Already tested ✅
+
+curl <<<<<http://localhost:5000/agent/health>>>>>
+
+# Response
+
 {
   "status": "ok",
   "model": "gpt-4o-mini",
@@ -159,7 +147,8 @@ curl http://localhost:5000/agent/health
   "reset_events": 1,
   "loop_interval_sec": 300
 }
-```
+
+```text
 
 ## Architecture Benefits
 
@@ -169,20 +158,16 @@ Data scattered | Manual API calls | ChatGPT calls tools automatically | | Analys
 Auto-rehydrates state | | Reasoning | Hard-coded rules | Natural language logic | |
 Extensibility | Add Python functions | Just tell ChatGPT what to do |
 
-## Cost Breakdown
+## Cost Breakdown**GPT-4o-mini @ 5 min ticks:**- 288 ticks/day × ~1000 tokens/tick = 288K tokens/day
 
-**GPT-4o-mini @ 5 min ticks:**
-
-- 288 ticks/day × ~1000 tokens/tick = 288K tokens/day
 - Input: $0.15/1M tokens = $0.043/day
 - Output: $0.60/1M tokens = $0.173/day
-- **Total: ~$0.22/day = $6.60/month**
 
-(Initial estimates were conservative, actual cost likely lower)
 
-## FAQ
+-**Total: ~$0.22/day = $6.60/month**(Initial estimates were conservative, actual cost likely lower)
 
-**Q: Will it really never forget?**\
+## FAQ**Q: Will it really never forget?**\
+
 A: Correct. Ghost owns the memory (SQLite). When ChatGPT loses context, Ghost re-sends
 the last state. From ChatGPT's perspective, it's a continuous conversation.
 
@@ -208,6 +193,7 @@ provides continuous monitoring + recommendations.
 - Health check: `http://localhost:5000/agent/health`
 - Debug logs: `tail -f ghost_server.log | grep -i analyst`
 - Issues: Check `/agent/health` → `last_error` field
+
 
 ______________________________________________________________________
 

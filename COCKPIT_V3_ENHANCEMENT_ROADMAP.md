@@ -1,7 +1,7 @@
 # Cockpit v3 Enhancement Roadmap
 
-**Status**: Post-QA Pass - Optional Improvements  
-**Date**: December 5, 2025  
+**Status**: Post-QA Pass - Optional Improvements
+**Date**: December 5, 2025
 **Priority**: Non-blocking (all enhancements are polish/optimization)
 
 ---
@@ -10,8 +10,8 @@
 
 ### 1. Wire Watchlist Metadata Columns ⭐
 
-**Current State**: Watchlist displays symbol and price only  
-**Available Data**: Backend returns `change_pct`, `ghost_confidence`, `ghost_direction`  
+**Current State**: Watchlist displays symbol and price only
+**Available Data**: Backend returns `change_pct`, `ghost_confidence`, `ghost_direction`
 **Gap**: UI not displaying these fields despite data availability
 
 **Implementation**:
@@ -42,20 +42,24 @@ const row = `
     </td>
   </tr>
 `;
-```
 
-**CSS Addition** (`static/css/cockpit_v3.css`):
+```text
+
+**CSS Addition**(`static/css/cockpit_v3.css`):
+
 ```css
+
 .change-cell.positive { color: #00ff88; font-weight: 600; }
 .change-cell.negative { color: #ff4444; font-weight: 600; }
 .confidence-cell { color: #ffd700; font-weight: 500; }
 .ghost-dir-up { color: #00ff88; }
 .ghost-dir-down { color: #ff4444; }
 .direction-arrow { font-size: 1.2em; margin-right: 4px; }
-```
 
-**Table Header Update** (`templates/cockpit_v3.html`):
+```text**Table Header Update**(`templates/cockpit_v3.html`):
+
 ```html
+
 <!-- BEFORE -->
 <thead>
   <tr>
@@ -74,18 +78,18 @@ const row = `
     <th>Direction</th>
   </tr>
 </thead>
-```
 
-**Effort**: 30-45 minutes  
-**Impact**: High (shows full trading context per symbol)  
+```text**Effort**: 30-45 minutes
+
+**Impact**: High (shows full trading context per symbol)
 **Priority**: ⭐⭐⭐ (Recommended next)
 
 ---
 
 ### 2. Major Caps Display (BTC/ETH) ⭐
 
-**Current State**: Top-right block shows "-- / --" for BTC and ETH  
-**Available Data**: Market data exists in predictions and market endpoints  
+**Current State**: Top-right block shows "-- / --" for BTC and ETH
+**Available Data**: Market data exists in predictions and market endpoints
 **Gap**: Not wired to data source
 
 **Implementation**:
@@ -93,39 +97,40 @@ const row = `
 File: `static/js/cockpit_v3.js` (add to polling loop)
 
 ```javascript
+
 // Add new function
 async function updateMajorCaps() {
   try {
     // Fetch BTC data
     const btcResp = await fetch('/api/v3/predictions/latest?symbol=BTC');
     const btcData = await btcResp.json();
-    
+
     // Fetch ETH data
     const ethResp = await fetch('/api/v3/predictions/latest?symbol=ETH');
     const ethData = await ethResp.json();
-    
+
     // Update BTC display
     if (btcData && btcData.predictions && btcData.predictions.length > 0) {
       const btc = btcData.predictions[0];
       const btcPrice = btc.current_price || btc.price || 0;
       const btcChange = btc.change_pct || 0;
-      
+
       document.getElementById('btc-price').textContent = `$${btcPrice.toLocaleString()}`;
       document.getElementById('btc-change').textContent = `${btcChange >= 0 ? '+' : ''}${btcChange.toFixed(2)}%`;
       document.getElementById('btc-change').className = btcChange >= 0 ? 'positive' : 'negative';
     }
-    
+
     // Update ETH display
     if (ethData && ethData.predictions && ethData.predictions.length > 0) {
       const eth = ethData.predictions[0];
       const ethPrice = eth.current_price || eth.price || 0;
       const ethChange = eth.change_pct || 0;
-      
+
       document.getElementById('eth-price').textContent = `$${ethPrice.toLocaleString()}`;
       document.getElementById('eth-change').textContent = `${ethChange >= 0 ? '+' : ''}${ethChange.toFixed(2)}%`;
       document.getElementById('eth-change').className = ethChange >= 0 ? 'positive' : 'negative';
     }
-    
+
   } catch (error) {
     console.error('[MAJOR CAPS] Update failed:', error);
   }
@@ -134,10 +139,13 @@ async function updateMajorCaps() {
 // Add to initialization
 setInterval(updateMajorCaps, 5000); // Update every 5 seconds
 updateMajorCaps(); // Initial load
-```
 
-**HTML Update** (`templates/cockpit_v3.html`):
+```text
+
+**HTML Update**(`templates/cockpit_v3.html`):
+
 ```html
+
 <!-- BEFORE -->
 <div class="major-cap-item">
   <span class="symbol">BTC</span>
@@ -155,10 +163,10 @@ updateMajorCaps(); // Initial load
   <span class="price" id="eth-price">--</span>
   <span class="change" id="eth-change">--</span>
 </div>
-```
 
-**Effort**: 45 minutes  
-**Impact**: Medium (informational context)  
+```text**Effort**: 45 minutes
+
+**Impact**: Medium (informational context)
 **Priority**: ⭐⭐ (Nice to have)
 
 ---
@@ -167,24 +175,24 @@ updateMajorCaps(); // Initial load
 
 ### 3. Tiered Polling Strategy 🚀
 
-**Current State**: All endpoints polled every 300-500ms (very aggressive)  
-**Issue**: 50-100+ requests per minute creates noise and load  
+**Current State**: All endpoints polled every 300-500ms (very aggressive)
+**Issue**: 50-100+ requests per minute creates noise and load
 **Opportunity**: Tier polling by data criticality
 
 **Proposed Tiers**:
 
 | Tier | Interval | Endpoints | Rationale |
 |------|----------|-----------|-----------|
-| **Critical** | 500ms | `/api/v3/ghost/status`<br>`/api/v3/ghost/health` | Engine state must be real-time |
-| **High** | 2000ms | `/api/v3/predictions/latest`<br>`/api/v3/watchlist/user` | Trading data needs fast updates |
-| **Medium** | 5000ms | `/api/v3/ghost/feed`<br>`/api/v3/ghost/snapshot`<br>`/api/v3/ghost/enriched` | News/context less time-sensitive |
-| **Low** | 10000ms | `/api/v3/ghost/metrics`<br>`/api/v3/tracker` | Historical/aggregate data |
-
-**Implementation**:
+| **Critical**| 500ms | `/api/v3/ghost/status`<br>`/api/v3/ghost/health` | Engine state must be real-time |
+|**High**| 2000ms | `/api/v3/predictions/latest`<br>`/api/v3/watchlist/user` | Trading data needs fast updates |
+|**Medium**| 5000ms | `/api/v3/ghost/feed`<br>`/api/v3/ghost/snapshot`<br>`/api/v3/ghost/enriched` | News/context less
+time-sensitive |
+|**Low**| 10000ms | `/api/v3/ghost/metrics`<br>`/api/v3/tracker` | Historical/aggregate data |**Implementation**:
 
 File: `static/js/cockpit_v3.js`
 
 ```javascript
+
 // BEFORE (current - single aggressive interval)
 setInterval(updateAllData, 400); // Polls everything every 400ms
 
@@ -227,13 +235,16 @@ Promise.all([
 ]).then(() => {
   console.log('[COCKPIT] All data loaded');
 });
-```
+
+```text
 
 **Benefits**:
+
 - Reduce backend requests by ~60% (from 100/min to 40/min)
 - Lower network noise for debugging
 - Maintain responsiveness for critical data
 - Easier to profile performance issues
+
 
 **Metrics Before/After**:
 | Metric | Before | After | Change |
@@ -243,8 +254,8 @@ Promise.all([
 | Context data lag | 400ms | 5000ms | +4600ms |
 | Load on backend | High | Low | Significant |
 
-**Effort**: 2 hours  
-**Impact**: High (performance, stability)  
+**Effort**: 2 hours
+**Impact**: High (performance, stability)
 **Priority**: ⭐⭐⭐ (Recommended for production optimization)
 
 ---
@@ -253,8 +264,8 @@ Promise.all([
 
 ### 4. Goals Persistence 💾
 
-**Current State**: Trading goals modal fields empty on reopen  
-**User Pain**: Must re-enter goals every session  
+**Current State**: Trading goals modal fields empty on reopen
+**User Pain**: Must re-enter goals every session
 **Solution**: Persist to localStorage (or DB for multi-device)
 
 **Implementation**:
@@ -262,6 +273,7 @@ Promise.all([
 File: `static/js/cockpit_v3.js`
 
 ```javascript
+
 // Save goals on modal submit
 function saveGoals() {
   const goals = {
@@ -271,7 +283,7 @@ function saveGoals() {
     yearly: document.getElementById('goal-yearly').value,
     updated: new Date().toISOString()
   };
-  
+
   localStorage.setItem('ghost_trading_goals', JSON.stringify(goals));
   console.log('[GOALS] Saved:', goals);
 }
@@ -280,14 +292,14 @@ function saveGoals() {
 function loadGoals() {
   const saved = localStorage.getItem('ghost_trading_goals');
   if (!saved) return;
-  
+
   try {
     const goals = JSON.parse(saved);
     document.getElementById('goal-daily').value = goals.daily || '';
     document.getElementById('goal-weekly').value = goals.weekly || '';
     document.getElementById('goal-monthly').value = goals.monthly || '';
     document.getElementById('goal-yearly').value = goals.yearly || '';
-    
+
     console.log('[GOALS] Loaded:', goals);
   } catch (e) {
     console.error('[GOALS] Load failed:', e);
@@ -297,20 +309,21 @@ function loadGoals() {
 // Wire to modal events
 document.getElementById('goals-modal-open-btn').addEventListener('click', loadGoals);
 document.getElementById('goals-submit-btn').addEventListener('click', saveGoals);
-```
+
+```text
 
 **Alternative**: Server-side persistence via `/api/v3/user/goals` endpoint (requires backend changes)
 
-**Effort**: 1 hour (localStorage) / 3 hours (server-side)  
-**Impact**: Medium (UX quality of life)  
+**Effort**: 1 hour (localStorage) / 3 hours (server-side)
+**Impact**: Medium (UX quality of life)
 **Priority**: ⭐ (Low priority)
 
 ---
 
 ### 5. Symbol Switcher for Forecast 🔄
 
-**Current State**: Forecast always shows BTC  
-**User Request**: "Flip the symbol from BTC to XRP"  
+**Current State**: Forecast always shows BTC
+**User Request**: "Flip the symbol from BTC to XRP"
 **Enhancement**: Add dropdown to change forecast symbol
 
 **Implementation**:
@@ -318,6 +331,7 @@ document.getElementById('goals-submit-btn').addEventListener('click', saveGoals)
 File: `templates/cockpit_v3.html`
 
 ```html
+
 <!-- Add dropdown above forecast panel -->
 <div class="forecast-controls">
   <label>Symbol:</label>
@@ -330,21 +344,23 @@ File: `templates/cockpit_v3.html`
     <option value="SPY">SPY</option>
   </select>
 </div>
-```
+
+```text
 
 File: `static/js/cockpit_v3.js`
 
 ```javascript
+
 // Update forecast function to use selected symbol
 async function updateForecast() {
   const symbol = document.getElementById('forecast-symbol-select').value;
   const url = `/api/v3/predictions/latest?symbol=${symbol}`;
-  
+
   const resp = await fetch(url);
   const data = await resp.json();
-  
+
   console.log(`[FORECAST] Loaded for ${symbol}:`, data);
-  
+
   // ... rest of forecast rendering logic
 }
 
@@ -352,10 +368,11 @@ async function updateForecast() {
 document.getElementById('forecast-symbol-select').addEventListener('change', () => {
   updateForecast(); // Reload forecast immediately
 });
-```
 
-**Effort**: 1 hour  
-**Impact**: Medium (user flexibility)  
+```text
+
+**Effort**: 1 hour
+**Impact**: Medium (user flexibility)
 **Priority**: ⭐⭐ (Quality of life)
 
 ---
@@ -364,13 +381,13 @@ document.getElementById('forecast-symbol-select').addEventListener('change', () 
 
 **Recommended Order**:
 
-1. **⭐⭐⭐ Watchlist Metadata Columns** (30 min) - Highest impact, quickest win
-2. **⭐⭐⭐ Tiered Polling** (2 hrs) - Best performance ROI
-3. **⭐⭐ Major Caps Display** (45 min) - Contextual value
-4. **⭐⭐ Symbol Switcher** (1 hr) - User flexibility
-5. **⭐ Goals Persistence** (1 hr) - Nice to have
+1. **⭐⭐⭐ Watchlist Metadata Columns**(30 min) - Highest impact, quickest win
 
-**Total Effort**: 5-6 hours for all enhancements
+
+2.**⭐⭐⭐ Tiered Polling**(2 hrs) - Best performance ROI
+3.**⭐⭐ Major Caps Display**(45 min) - Contextual value
+4.**⭐⭐ Symbol Switcher**(1 hr) - User flexibility
+5.**⭐ Goals Persistence**(1 hr) - Nice to have**Total Effort**: 5-6 hours for all enhancements
 
 ---
 
@@ -386,40 +403,47 @@ After implementing enhancements, verify:
 - [ ] No new console errors introduced
 - [ ] Response times remain <1s for all tiers
 
+
 ---
 
 ## Long-Term Improvements (Future Consideration)
 
 ### Advanced Features (Not Prioritized)
 
-1. **WebSocket Streaming** (4-6 hours)
+1. **WebSocket Streaming**(4-6 hours)
    - Replace polling with WebSocket for real-time updates
    - Reduce latency from 500ms to <50ms
    - Requires backend WebSocket server
 
-2. **Chart Integration** (8-12 hours)
+
+1.**Chart Integration**(8-12 hours)
+
    - Add TradingView or Plotly charts for price history
    - Visual forecast overlay on price action
    - Requires historical data pipeline
 
-3. **Alert System** (4-6 hours)
+
+1.**Alert System**(4-6 hours)
+
    - Browser notifications for confidence threshold hits
    - Email/SMS alerts for high-conviction trades
    - Requires notification backend
 
-4. **Performance Dashboard** (6-8 hours)
+
+1.**Performance Dashboard**(6-8 hours)
+
    - Track prediction accuracy over time
    - P&L visualization
    - Win rate by symbol/timeframe
    - Requires accuracy tracking DB (already built in previous work)
 
+
 ---
 
 ## Conclusion
 
-Cockpit v3 UI is **production-ready** as-is. All enhancements in this roadmap are optional polish and performance optimizations.
-
-**Next Action**: Select 1-2 quick wins from the priority list and implement as time permits.
+Cockpit v3 UI is**production-ready**as-is. All enhancements in this roadmap are optional polish and performance
+optimizations.**Next Action**: Select 1-2 quick wins from the priority list and implement as time permits.
 
 **Status**: ✅ No blockers, proceed to monitoring phase
 
@@ -427,6 +451,6 @@ Cockpit v3 UI is **production-ready** as-is. All enhancements in this roadmap ar
 
 **END OF ROADMAP**
 
-Date: December 5, 2025  
-Author: Ghost Protocol Enhancement Team  
+Date: December 5, 2025
+Author: Ghost Protocol Enhancement Team
 Phase: Post-QA Pass Optimization

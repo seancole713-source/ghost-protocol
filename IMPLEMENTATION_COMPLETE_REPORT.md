@@ -2,7 +2,7 @@
 
 **Date:** November 28, 2024  
 **Commit:** ea3b476  
-**Status:** ✅ **DEPLOYED & VERIFIED**
+**Status:**✅**DEPLOYED & VERIFIED**
 
 ---
 
@@ -26,31 +26,44 @@ All critical fixes have been **successfully implemented, deployed, and tested in
 ### Issue A: Stock Provider Timeout Fix 🚨
 
 **Problem:**  
-Stock predictions (especially PACS) timing out in production after >10 seconds, then returning "All stock providers failed"
+Stock predictions (especially PACS) timing out in production after >10 seconds, then returning "All stock providers
+failed"
 
 **Root Cause:**  
-Provider HTTP timeouts set to 10-30 seconds exceeded TurboProvider's 2-second per-provider budget. Thread blocking prevented timeout mechanism from working.
+Provider HTTP timeouts set to 10-30 seconds exceeded TurboProvider's 2-second per-provider budget. Thread blocking
+prevented timeout mechanism from working.
 
 **Solution:**
+
 ```python
+
 # wolf_app.py:8846 (AlphaVantage)
+
 - r = _http_get(url, timeout=10)
 + r = _http_get(url, timeout=2)
 
+
 # wolf_app.py:8897 (Polygon)
+
 - r = _http_get(url, timeout=30)
 + r = _http_get(url, timeout=2)
-```
+
+
+```text
 
 **Verification:**
+
 ```bash
-# PACS Prediction Test (3 attempts):
+
+# PACS Prediction Test (3 attempts)
+
 Attempt 1: FAILED (684ms) - Provider cooldown
 Attempt 2: ✅ SUCCESS (1569ms, $32.16)
 Attempt 3: ✅ SUCCESS (4395ms, $32.16)
 
 # Success rate: 66% (2/3) - Acceptable for intermittent provider cooldowns
-```
+
+```text
 
 **Impact:** Stock predictions now complete within 4-5 second budget or fail fast.
 
@@ -65,8 +78,11 @@ Prediction accuracy metrics always showed 0% because evaluator script existed bu
 No cron job or background task calling `core/prediction_evaluator.py`
 
 **Solution:**
+
 ```python
+
 # wolf_app.py:3565-3585 (in @APP.on_event("startup"))
+
 async def _accuracy_evaluator_loop():
     """Background task to evaluate prediction outcomes every hour"""
     while True:
@@ -81,12 +97,15 @@ async def _accuracy_evaluator_loop():
 
 asyncio.create_task(_accuracy_evaluator_loop())
 LOGGER.info("[GHOST STARTUP] ✅ Accuracy evaluator scheduled (hourly)")
-```
+
+```text
 
 **Verification:**  
+
 - ✅ Code deployed successfully
 - ⏳ First run will occur 1 hour after server start
 - 📊 Check Railway logs for `[ACCURACY]` messages
+
 
 **Impact:** Accuracy metrics will now update hourly, providing real feedback on Ghost's predictive performance.
 
@@ -101,9 +120,13 @@ Stock predictions generated 24/7 without checking if market is open, potentially
 `_is_market_open_now()` function existed but wasn't called in prediction flow.
 
 **Solution:**
+
 ```python
+
 # wolf_app.py:5854-5865 (in run_single_prediction())
+
 # Check market hours for stocks
+
 if not is_crypto:
     is_market_open, next_open_ts = _is_market_open_now()
     if not is_market_open:
@@ -115,12 +138,15 @@ if not is_crypto:
                 "next_open_utc": next_open_ts,
             }
         )
-```
+
+```text
 
 **Verification:**  
+
 - ✅ Code deployed successfully
 - 📝 Logs will show warnings for after-hours stock predictions
 - ⏰ Next verification: Check logs during market closed hours
+
 
 **Impact:** Users and developers will be aware when predictions use potentially stale data.
 
@@ -146,6 +172,7 @@ if not is_crypto:
 3. **Timeout Fix:** All successful requests complete in <5 seconds
 4. **Crypto:** Continues to work perfectly (<1s response)
 
+
 ---
 
 ## 📊 BEFORE/AFTER COMPARISON
@@ -162,18 +189,24 @@ if not is_crypto:
 ## 🚀 DEPLOYMENT DETAILS
 
 ```bash
+
 # Commit
+
 git commit -m "fix: resolve critical stock prediction timeout + add accuracy tracking"
 
 # Deploy
+
 git push origin main
 
 # Railway Auto-Deploy
+
 - Trigger: Push to main branch
 - Build: ea3b476
 - Deploy Time: ~60 seconds
 - Status: ✅ SUCCESS
-```
+
+
+```text
 
 ---
 
@@ -186,24 +219,31 @@ git push origin main
 - [x] **No Regressions:** BTC crypto predictions still work
 - [x] **Documentation:** This file + FIXES_A_B_C_D_COMPLETE.md
 
+
 ---
 
 ## 📝 KNOWN ISSUES & NOTES
 
 ### Provider Cooldown Behavior
+
 - **Expected:** First PACS request may fail with "All providers failed"
 - **Reason:** Exponential backoff after rate limits (429 errors)
 - **Solution:** Retry after 5-10 seconds
 - **Status:** This is CORRECT behavior (prevents API abuse)
 
+
 ### Market Hours Check
+
 - **Verification Needed:** Test during market closed hours (after 4pm ET / 3pm CT)
 - **Expected Log:** `"Stock market closed, prediction may use stale data"`
 
+
 ### Accuracy Evaluator
+
 - **First Run:** 1 hour after deployment
 - **Verify:** Check Railway logs for `[ACCURACY] Running prediction evaluator...`
 - **Database:** Updates stored in `forecast_accuracy.db`
+
 
 ---
 
@@ -215,11 +255,13 @@ git push origin main
 4. ✅ **Accuracy evaluator scheduled** (hourly background task)
 5. ✅ **Market hours awareness added** (logging enabled)
 
+
 ---
 
 ## 🏁 FINAL STATUS
 
-```
+```text
+
 ╔══════════════════════════════════════════════════════════╗
 ║                                                          ║
 ║         🎉 GHOST PROTOCOL: FULLY OPERATIONAL 🎉          ║
@@ -227,7 +269,8 @@ git push origin main
 ║  All critical issues resolved and verified in production ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
-```
+
+```text
 
 ### System Health: 🟢 OPERATIONAL
 
@@ -237,20 +280,25 @@ git push origin main
 - **Market Awareness:** ✅ Enabled (logging)
 - **Response Times:** ✅ Under 5s budget
 
+
 ---
 
 ## 📞 SUPPORT & MONITORING
 
 ### Next Steps
+
 1. ⏰ Check logs in 1 hour for accuracy evaluator run
 2. 🕐 Test during market closed hours for market awareness warnings
 3. 📊 Monitor prediction success rate over 24 hours
 4. 🔍 Review Railway logs for any unexpected errors
 
+
 ### If Issues Arise
-- Check Railway logs: https://railway.app (under ghost-protocol service)
+
+- Check Railway logs: <<<<https://railway.app>>>> (under ghost-protocol service)
 - Provider backoff expected: Retry after 10 seconds
 - Accuracy metrics: Wait full 48h + 1 hour for first outcomes
+
 
 ---
 

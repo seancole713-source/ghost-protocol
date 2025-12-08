@@ -4,11 +4,12 @@
 
 Railway was failing with:
 
-```
+```text
 Attempt #7 failed with service unavailable
 1/1 replicas never became healthy!
 Healthcheck failed!
-```
+
+```text
 
 **Root Cause**: Railway detected the `Dockerfile` and used Docker build instead of
 NIXPACKS
@@ -19,25 +20,28 @@ The Dockerfile had:
 - Wrong build process (Docker vs NIXPACKS)
 - Conflicting with Procfile and nixpacks.toml
 
+
 ______________________________________________________________________
 
 ## ✅ Solution Applied
 
-1. **Renamed Dockerfile** → `Dockerfile.backup`
+1. **Renamed Dockerfile**→ `Dockerfile.backup`
 
    - Forces Railway to use NIXPACKS builder
    - Uses Procfile and nixpacks.toml configuration
 
-2. **Updated railway.toml**:
+
+1.**Updated railway.toml**:
 
    - Changed health check: `/health/detailed` → `/health` (simpler)
    - Increased timeout: 120s → 300s (5 minutes for startup)
    - Added explicit `startCommand = "python main.py"`
 
-3. **Committed and Pushed** (commit `0d91220`)
+1. **Committed and Pushed**(commit `0d91220`)
 
    - Railway will auto-detect the push
    - Auto-redeploy with new configuration
+
 
 ______________________________________________________________________
 
@@ -51,37 +55,42 @@ Railway will automatically:
 4. Install Python dependencies from `requirements.txt`
 5. Start with: `python main.py`
 6. Wait up to 5 minutes for app to become healthy
-7. Test health endpoint: `/health`
+7. Test health endpoint: `/health`**Expected deployment time: 3-5 minutes**______________________________________________________________________
 
-**Expected deployment time: 3-5 minutes**
-
-______________________________________________________________________
 
 ## 📊 How to Monitor
 
-### Check Deployment Status:
+### Check Deployment Status
 
 ```bash
+
 ./railway_manage.sh status
-```
 
-### Watch Live Logs:
+```text
+
+### Watch Live Logs
 
 ```bash
+
 ./railway_manage.sh logs
-```
 
-### Test Health When Ready:
+```text
+
+### Test Health When Ready
 
 ```bash
+
 ./railway_manage.sh health
-```
 
-### Get Deployment URL:
+```text
+
+### Get Deployment URL
 
 ```bash
+
 ./railway_manage.sh url
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -95,27 +104,30 @@ You'll know it worked when:
 - Health check passes: `{"ok": true}`
 - No "service unavailable" errors
 
+
 ______________________________________________________________________
 
 ## 🎯 What Changed
 
-### **Before (Docker build):**
+###**Before (Docker build):**```dockerfile
 
-```dockerfile
 CMD ["sh", "-c", "uvicorn wolf_app:app --host 0.0.0.0 --port ${PORT}"]
-```
+
+```text
 
 ❌ Wrong command\
 ❌ Dependencies not installed properly\
 ❌ Conflicted with Procfile
 
-### **After (NIXPACKS build):**
+###**After (NIXPACKS build):**```bash
 
-```bash
 # nixpacks.toml handles dependency installation
+
 # Procfile defines: web: python main.py
+
 # railway.toml sets health check
-```
+
+```text
 
 ✅ Correct startup command\
 ✅ Dependencies installed automatically\
@@ -129,11 +141,13 @@ ______________________________________________________________________
 - `railway.toml` → Updated health check and timeout
 - All changes pushed to GitHub (commit `0d91220`)
 
+
 ______________________________________________________________________
 
 ## ⏱️ Timeline
 
-- **Push completed**: Just now
+-**Push completed**: Just now
+
 - **Railway detecting**: Within 30 seconds
 - **Build starts**: Immediately after detection
 - **Dependencies install**: ~2 minutes
@@ -141,17 +155,20 @@ ______________________________________________________________________
 - **Health check passes**: After app is running
 - **Total time**: ~3-5 minutes
 
+
 ______________________________________________________________________
 
 ## 🆘 If Still Failing
 
-### Check logs for errors:
+### Check logs for errors
 
 ```bash
-railway logs --tail 100
-```
 
-### Look for these in logs:
+railway logs --tail 100
+
+```text
+
+### Look for these in logs
 
 ✅ "Installing pip dependencies"\
 ✅ "Successfully installed..."\
@@ -159,21 +176,27 @@ railway logs --tail 100
 ❌ "ModuleNotFoundError" (dependencies issue)\
 ❌ "Address already in use" (port conflict)
 
-### Manual redeploy:
+### Manual redeploy
 
 ```bash
+
 ./railway_manage.sh deploy
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 🎊 Next Steps
 
-1. **Wait 5 minutes** for Railway to rebuild
-2. **Check logs**: `./railway_manage.sh logs`
-3. **Test health**: `./railway_manage.sh health`
-4. **Get URL**: `./railway_manage.sh url`
-5. **Restore position**: `./railway_manage.sh restore`
+1. **Wait 5 minutes**for Railway to rebuild
+
+
+2.**Check logs**: `./railway_manage.sh logs`
+
+1. **Test health**: `./railway_manage.sh health`
+2. **Get URL**: `./railway_manage.sh url`
+3. **Restore position**: `./railway_manage.sh restore`
+
 
 ______________________________________________________________________
 
@@ -182,5 +205,7 @@ ______________________________________________________________________
 Check status in ~5 minutes with:
 
 ```bash
+
 ./railway_manage.sh health
-```
+
+```text

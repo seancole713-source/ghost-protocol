@@ -1,4 +1,5 @@
 # GHOST Health & Logs Report
+
 **Date**: October 8, 2025
 **Status**: ✅ HEALTHY (Minor Issues)
 
@@ -7,6 +8,7 @@
 ## Health Endpoint Performance
 
 ### `/health` Endpoint
+
 **Target**: < 150ms | **Result**: ✅ PASSED
 
 | Check # | HTTP Status | Response Time | Size | Status |
@@ -24,9 +26,11 @@
 ---
 
 ### `/health/detailed` Endpoint
+
 **Status**: ✅ PASSED
 
 **Response Summary**:
+
 ```json
 {
   "ok": true,
@@ -65,13 +69,15 @@
     }
   }
 }
-```
+
+```text
 
 ---
 
 ## Log Analysis (Last 500 lines)
 
 ### Summary Statistics
+
 | Metric | Count | Status |
 |--------|-------|--------|
 | Total Lines Analyzed | 500 | - |
@@ -87,13 +93,17 @@
 ### Error Analysis
 
 #### 1. yfinance Provider Failures
+
 **Count**: 18 errors
 **Severity**: LOW (Fallback working)
 **Sample**:
-```
+
+```text
+
 {"level":"error","logger":"yfinance","msg":"Failed to get ticker 'WOLF' reason: Expecting value..."}
 {"level":"error","logger":"yfinance","msg":"WOLF: No price data found, symbol may be delisted"}
-```
+
+```text
 
 **Root Cause**: WOLF ticker delisted from Yahoo Finance
 **Impact**: None - Polygon provider working as fallback
@@ -102,12 +112,16 @@
 ---
 
 #### 2. Rate Limit Warnings
+
 **Count**: 2 occurrences
 **Severity**: LOW
 **Sample**:
-```
+
+```text
+
 {"level":"warning","logger":"core.ai_memory","msg":"Vector store 'none' not available"}
-```
+
+```text
 
 **Root Cause**: Optional vector store not configured
 **Impact**: Minimal - AI memory using alternative storage
@@ -116,12 +130,16 @@
 ---
 
 #### 3. 403 Authentication Errors
+
 **Count**: 9 occurrences
 **Severity**: INFO (Expected)
 **Sample**:
-```
+
+```text
+
 {"level":"info","msg":"request","status":403,"duration_ms":8.37,"client":"127.0.0.1"}
-```
+
+```text
 
 **Root Cause**: Unauthenticated requests to protected endpoints
 **Impact**: None - Security working as designed
@@ -146,35 +164,43 @@
 ## Detailed Provider Status
 
 ### Working Providers
-1. **Polygon** ✅
+
+1. **Polygon**✅
    - Price: $26.69
    - Latency: 358ms
    - Status: Active
 
+
 ### Failed Providers
-1. **AlphaVantage** ❌
+
+1.**AlphaVantage**❌
+
    - Latency: 159ms
    - Throttled: false
    - Price: null
    - Reason: API failure
 
-2. **Yahoo Finance** ❌
+
+1.**Yahoo Finance**❌
+
    - Latency: 806ms
    - Throttled: false
    - Price: null
    - Reason: Ticker delisted
 
-3. **yfinance (library)** ❌
+
+1.**yfinance (library)**❌
+
    - Latency: 144ms
    - Throttled: false
    - Price: null
    - Reason: Ticker delisted
 
+
 ---
 
-## Uptime & Stability
+## Uptime & Stability**Server Uptime**: Active (multiple reloads detected)
 
-**Server Uptime**: Active (multiple reloads detected)
 **Last Restart**: 2025-10-08 07:09:23 UTC
 **Reload Reason**: File changes detected (auto-reload enabled)
 **Crash Count**: 0
@@ -197,44 +223,62 @@
 ## Issues & Recommendations
 
 ### Critical Issues
-**None** ✅
+
+**None**✅
 
 ### Minor Issues
 
-1. **Provider Degradation** (Severity: LOW)
+1.**Provider Degradation**(Severity: LOW)
+
    - Only 1/4 price providers working
-   - **Impact**: Quorum degraded but functional
+
+
+   -**Impact**: Quorum degraded but functional
+
    - **Recommendation**: Add backup providers (IEX, Finnhub)
    - **Priority**: Medium
 
-2. **yfinance Errors** (Severity: LOW)
+1. **yfinance Errors**(Severity: LOW)
    - WOLF ticker delisted from Yahoo Finance
-   - **Impact**: None (fallback working)
+
+
+   -**Impact**: None (fallback working)
+
    - **Recommendation**: Remove yfinance for WOLF or mark as unsupported
    - **Priority**: Low
 
-3. **Auto-reload Enabled** (Severity: INFO)
+1. **Auto-reload Enabled**(Severity: INFO)
    - Development mode auto-reload active
-   - **Impact**: Server restarts on file changes
+
+
+   -**Impact**: Server restarts on file changes
+
    - **Recommendation**: Disable --reload in production
    - **Priority**: Low (Production only)
+
 
 ---
 
 ## Log Excerpts
 
 ### Sample Successful Requests
-```
+
+```text
+
 {"ts":"2025-10-08T07:07:17.418019+00:00","level":"info","msg":"request","status":200}
 {"ts":"2025-10-08T07:07:27.055586+00:00","level":"info","msg":"request","status":200}
 {"ts":"2025-10-08T07:09:23.147673+00:00","level":"info","msg":"request","status":200}
-```
+
+```text
 
 ### Background Tasks
-```
+
+```text
+
 {"level":"info","msg":"background_price_updater_started","refresh_interval_s":7}
 {"level":"info","msg":"overnight_learning_started"}
-```
+
+```text
 
 ---
 
@@ -243,11 +287,13 @@
 **Score**: 92/100 ✅
 
 **Breakdown**:
+
 - API Responsiveness: 20/20 ✅
 - Error Rate: 17/20 ⚠️ (minor errors only)
 - Component Health: 20/20 ✅
 - Provider Availability: 15/20 ⚠️ (degraded quorum)
 - Stability: 20/20 ✅
+
 
 ---
 
@@ -258,6 +304,7 @@
 3. ⏭️ Test additional symbols (NVDA, AAPL)
 4. ⏭️ Verify cockpit UI functionality
 5. 📋 Consider adding backup providers
+
 
 ---
 

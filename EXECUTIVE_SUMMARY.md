@@ -16,6 +16,7 @@ ______________________________________________________________________
 - ✅ SEC Insider Trading (Form 4 filings)
 - ✅ CBOE Options Flow (put/call ratios, unusual volume)
 
+
 ### Phase 2: Advanced Signals + Ensemble (68% → 80%)
 
 - ✅ Short Interest Tracker (squeeze detection)
@@ -23,11 +24,13 @@ ______________________________________________________________________
 - ✅ 13F Institutional Holdings (hedge fund positions)
 - ✅ Ensemble Forecaster (4 models voting)
 
+
 ### Phase 3: Intelligence Layer (80% → 90%)
 
 - ✅ Market Regime Detection (BULL/BEAR/SIDEWAYS/VOLATILE)
 - ✅ Confidence Gating (70% threshold - trade less, win more)
 - ✅ Walk-Forward Backtesting (historical validation)
+
 
 ______________________________________________________________________
 
@@ -48,12 +51,14 @@ Ghost uses **10 predictive signals**:
 - Ensemble model voting
 - Confidence scoring
 
+
 ### 2. Intelligent Risk Management
 
 - **Regime-Aware**: Adjusts strategy based on market state
 - **Confidence-Gated**: Only trades when confidence >= 70%
 - **Ensemble Diversified**: 4 models reduce overfitting
 - **Backtested**: Validated on historical data
+
 
 ### 3. Self-Learning System
 
@@ -62,11 +67,12 @@ Ghost uses **10 predictive signals**:
 - **Explainable**: Every prediction includes reasoning
 - **Trackable**: Full history in SQLite database
 
+
 ______________________________________________________________________
 
 ## System Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                     Ghost AI v2.0                            │
 ├─────────────────────────────────────────────────────────────┤
@@ -85,7 +91,8 @@ ______________________________________________________________________
 │  API: FastAPI (10 endpoints, authenticated)                 │
 │  Background: 4 workers (alerts, schedule, autosave, learn)  │
 └─────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -98,6 +105,7 @@ ______________________________________________________________________
 - `GET /api/learning/predictions` - Historical predictions
 - `GET /api/learning/performance` - Accuracy metrics
 
+
 ### Phase 1 & 2 Signals
 
 - `GET /api/options/{symbol}` - Options flow
@@ -105,26 +113,32 @@ ______________________________________________________________________
 - `GET /api/supply_chain/{symbol}` - Macro indicators
 - `GET /api/institutional/{symbol}` - 13F holdings
 
+
 ### Phase 3 Intelligence
 
 - `GET /api/ensemble/forecast/{symbol}` - Multi-model prediction
 - `GET /api/regime/current` - Market regime
 - `GET /api/backtest/run` - Historical validation
 
+
 ______________________________________________________________________
 
 ## Verification Results
 
 ```bash
+
 # Server Health
-$ curl http://localhost:5000/health
+
+$ curl <<<<<http://localhost:5000/health>>>>>
 {"ok": true, "ts": 1759888668.5682707}
 
 # Learning Worker
+
 $ curl /api/learning/status
 {"worker_running": true, "enabled": true}
 
 # Ensemble Prediction
+
 $ curl /api/ensemble/forecast/WOLF?horizon_hours=6
 {
   "ensemble_prediction": 26.69,
@@ -138,6 +152,7 @@ $ curl /api/ensemble/forecast/WOLF?horizon_hours=6
 }
 
 # Market Regime
+
 $ curl /api/regime/current
 {
   "regime": "SIDEWAYS",
@@ -147,11 +162,10 @@ $ curl /api/regime/current
     "strategy": "range_trading"
   }
 }
-```
 
-✅ **All Core Systems Operational**
+```text
 
-______________________________________________________________________
+✅ **All Core Systems Operational**______________________________________________________________________
 
 ## Tomorrow's Workflow
 
@@ -161,6 +175,7 @@ ______________________________________________________________________
 - Checks overnight news
 - Reviews market regime
 - Prepares watchlist
+
 
 ### 9:20 AM ET - Prediction
 
@@ -173,12 +188,16 @@ ______________________________________________________________________
    - Short interest (squeeze risk)
    - Macro (VIX, SPY, SOX)
    - Technical momentum
-3. Run ensemble (4 models vote)
-4. Detect regime (SIDEWAYS currently)
-5. Calculate confidence (currently 98.8%)
-6. **Check confidence >= 70%** ✅
-7. Make prediction: $26.71 EOD (+0.07%)
-8. Store with reasoning
+1. Run ensemble (4 models vote)
+2. Detect regime (SIDEWAYS currently)
+3. Calculate confidence (currently 98.8%)
+
+
+4.**Check confidence >= 70%**✅
+
+1. Make prediction: $26.71 EOD (+0.07%)
+2. Store with reasoning
+
 
 ### 4:10 PM ET - Scoring
 
@@ -188,6 +207,7 @@ ______________________________________________________________________
 4. Update model weights
 5. Store to database
 
+
 ### 11:00 PM ET - Learning
 
 1. Today's accuracy: 99.85%
@@ -196,15 +216,18 @@ ______________________________________________________________________
 4. Generate overnight report
 5. Ready for tomorrow
 
+
 ______________________________________________________________________
 
 ## Expected Performance
 
 ### First Week (5 trading days)
 
-- **Accuracy**: 70-75%
+-**Accuracy**: 70-75%
+
 - **Confidence**: Building trust in signals
 - **Trades**: ~3-4 (high confidence only)
+
 
 ### First Month (20 trading days)
 
@@ -212,11 +235,13 @@ ______________________________________________________________________
 - **Confidence**: Ensemble stabilized
 - **Trades**: ~15 (confidence gating working)
 
+
 ### First Quarter (60 trading days)
 
 - **Accuracy**: 80-88%
 - **Confidence**: Regime detection optimized
 - **Trades**: ~45 (precision over volume)
+
 
 ### Target State (90+ trading days)
 
@@ -224,6 +249,7 @@ ______________________________________________________________________
 - **Sharpe Ratio**: 2.0+
 - **Max Drawdown**: \<15%
 - **Win Rate**: 87%+
+
 
 ______________________________________________________________________
 
@@ -238,6 +264,7 @@ ______________________________________________________________________
 5. **Stop Losses**: Regime-adjusted (6-12%)
 6. **Max Drawdown**: 15% limit (hardcoded)
 
+
 ### What Could Go Wrong
 
 - **Black Swans**: Unpredictable events (COVID, war)
@@ -245,22 +272,28 @@ ______________________________________________________________________
 - **Model Drift**: Market regime changes
 - **Overfitting**: Too much optimization
 
+
 ### Mitigation
 
-- **Confidence gate** filters uncertain predictions
-- **Multiple data sources** with fallbacks
-- **Weekly recalibration** catches drift
-- **Walk-forward testing** prevents overfitting
+- **Confidence gate**filters uncertain predictions
+
+
+-**Multiple data sources**with fallbacks
+-**Weekly recalibration**catches drift
+-**Walk-forward testing**prevents overfitting
+
 
 ______________________________________________________________________
 
 ## Documentation
 
-- **Phase 1**: `PHASE1_COMPLETE.md`
+-**Phase 1**: `PHASE1_COMPLETE.md`
+
 - **Phase 2 & 3**: `PHASE2_PHASE3_COMPLETE.md`
 - **Architecture**: `STAGE3_COMPLETE.md`, `STAGE4_COMPLETE.md`
 - **This Summary**: `EXECUTIVE_SUMMARY.md`
-- **API Docs**: http://localhost:5000/docs
+- **API Docs**: <<<<<http://localhost:5000/docs>>>>>
+
 
 ______________________________________________________________________
 
@@ -273,6 +306,7 @@ ______________________________________________________________________
 3. ✅ Check confidence calibration
 4. ✅ Review Telegram alerts
 
+
 ### Short-Term (Next 30 Days)
 
 1. Collect 20+ days of predictions
@@ -280,12 +314,14 @@ ______________________________________________________________________
 3. Calculate real Sharpe ratio
 4. Tune confidence threshold
 
+
 ### Long-Term (Next 90 Days)
 
 1. Achieve 80%+ accuracy
 2. Add more symbols to watchlist
 3. Implement auto-trading (optional)
 4. Build Grafana dashboards
+
 
 ______________________________________________________________________
 
@@ -298,12 +334,14 @@ ______________________________________________________________________
 - **Max Drawdown**: Keep < 15%
 - **Win Rate**: Target 85%+
 
+
 ### Secondary KPIs
 
 - **Confidence Calibration**: 90% conf → 90% accuracy
 - **Regime Detection**: Correct 80%+ of time
 - **Signal Quality**: All 10 signals contributing
 - **System Uptime**: 99.9%
+
 
 ______________________________________________________________________
 
@@ -312,14 +350,14 @@ ______________________________________________________________________
 Ghost AI has evolved from a simple price tracker to a sophisticated multi-signal
 prediction engine with:
 
-- ✅ **10 predictive signals** (insider, options, 13F, short, macro, news, technical)
-- ✅ **4 ensemble models** (Ghost AI, Technical, Sentiment, Momentum)
-- ✅ **Market regime detection** (BULL/BEAR/SIDEWAYS/VOLATILE)
-- ✅ **Confidence gating** (70% threshold)
-- ✅ **Auto-learning cycle** (daily at 11 PM)
-- ✅ **Historical validation** (backtesting)
+- ✅ **10 predictive signals**(insider, options, 13F, short, macro, news, technical)
+- ✅**4 ensemble models**(Ghost AI, Technical, Sentiment, Momentum)
+- ✅**Market regime detection**(BULL/BEAR/SIDEWAYS/VOLATILE)
+- ✅**Confidence gating**(70% threshold)
+- ✅**Auto-learning cycle**(daily at 11 PM)
+- ✅**Historical validation**(backtesting)**Expected Accuracy**: 80-90% starting tomorrow\
 
-**Expected Accuracy**: 80-90% starting tomorrow\
+
 **Risk Management**: Multi-layered (regime, confidence, ensemble)\
 **Explainability**: Every prediction has reasoning\
 **Production Ready**: All systems tested ✅

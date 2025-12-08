@@ -3,39 +3,45 @@
 **Audit Date**: October 6, 2025\
 **System Version**: Ghost Trading System (FastAPI)\
 **Test Results**: 15 PASS / 4 WARN / 0 FAIL\
-**Status**: ✅ **OPERATIONAL** with 1 critical user-facing issue
+**Status**: ✅ **OPERATIONAL**with 1 critical user-facing issue
 
 ______________________________________________________________________
 
 ## Critical User-Facing Issue 🔴
 
-### Portfolio PnL Displays Incorrect Value
+### Portfolio PnL Displays Incorrect Value**Severity**: HIGH (misleading financial data)\
 
-**Severity**: HIGH (misleading financial data)\
 **Impact**: User sees +638% gain when reality is -93% loss\
 **Affected Component**: Portfolio display, PnL calculations
 
 **Technical Details**:
 
-```
+```text
 Symbol: WOLF (Wolfspeed)
 Corporate Action: Chapter 11 bankruptcy exit with 120:1 reverse split (Oct 2025)
 
 Current Display:
+
 - Entry: $3.30 per share (pre-split)
 - Current: $24.37 per share (post-split)
 - Calculation: ($24.37 - $3.30) / $3.30 = +638%
 
+
 Correct Calculation:
+
 - Adjusted Entry: $3.30 × 120 = $396 per share
 - Current: $24.37 per share
 - Calculation: ($24.37 - $396) / $396 = -93.85%
 
+
 Alternatively (adjust quantity):
+
 - Original qty: 909.43 shares @ $3.30
 - Post-split qty: 909.43 / 120 = 7.58 shares @ $24.37
 - PnL: (7.58 × $24.37) - (909.43 × $3.30) = $184.72 - $3,001.12 = -$2,816
-```
+
+
+```text
 
 **Root Cause**: System does not track or adjust for corporate actions (reverse splits,
 stock splits, spinoffs)
@@ -46,16 +52,20 @@ stock splits, spinoffs)
 2. Wire into `/api/cockpit` PnL calculation
 3. Add UI banner when `DELISTED_SYMBOLS` entry exists
 
+
 **Status**:
 
 - ✅ `DELISTED_SYMBOLS` registry added
 - ❌ PnL adjustment logic not yet implemented (requires PR review)
 - ❌ UI banner not yet implemented
 
+
 **Recommendation**:
 
-- **BLOCK PRODUCTION DEPLOYMENT** until PnL fix is reviewed and merged
+- **BLOCK PRODUCTION DEPLOYMENT**until PnL fix is reviewed and merged
 - User communication: "Portfolio shows incorrect PnL due to WOLF bankruptcy reverse
+
+
   split. Fix in progress."
 
 ______________________________________________________________________
@@ -64,7 +74,8 @@ ______________________________________________________________________
 
 ### Master Test Suite Output
 
-```
+```text
+
 ╔═══════════════════════════════════════════════╗
 ║   GHOST TRADING SYSTEM - MASTER TEST SUITE   ║
 ╚═══════════════════════════════════════════════╝
@@ -111,13 +122,13 @@ ______________________________________________________________________
 PASS: 15
 WARN: 4
 FAIL: 0
-```
 
-**Interpretation**:
+```text**Interpretation**:
 
 - All critical subsystems operational
 - Warnings are expected (after-hours, optional endpoints)
 - Zero failures in core functionality
+
 
 ______________________________________________________________________
 
@@ -135,9 +146,11 @@ ______________________________________________________________________
 4. Portfolio state synchronized from ghost_state.json
 5. Background price updater active (7s interval)
 
+
 **Issues Fixed**:
 
 - ✅ `add_wolf_to_watchlist.py` method name error (`get_all()` → `get_watchlist()`)
+
 
 **Files Checked**:
 
@@ -146,12 +159,15 @@ ______________________________________________________________________
 - ghost_state.json - Persistent state
 - requirements.txt - Dependencies
 
+
 **Health Check**:
 
 ```bash
-$ curl http://localhost:5000/health
+
+$ curl <<<<<http://localhost:5000/health>>>>>
 {"ok": true}
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -171,18 +187,22 @@ N/A | Cloudflare blocks |
 - ✅ Jitter: ±20% randomization to prevent thundering herd
 - ✅ Reset endpoint: `/api/data/reset_circuit_breaker`
 
+
 **WOLF Corporate Action Discovery**:
 
-```
+```text
+
 Source: News feed (10 items in cockpit snapshot)
 Headline: "Wolfspeed emerged from Chapter 11 bankruptcy..."
 Details: 120:1 reverse split (Oct 2025)
 Impact: Original shareholders diluted, new company structure
-```
 
-**New Registry Added** (`DELISTED_SYMBOLS`):
+```text
+
+**New Registry Added**(`DELISTED_SYMBOLS`):
 
 ```python
+
 DELISTED_SYMBOLS: dict[str, dict[str, Any]] = {
     "WOLF": {
         "status": "restructured",
@@ -193,18 +213,20 @@ DELISTED_SYMBOLS: dict[str, dict[str, Any]] = {
         "shareholders_diluted": True,
     }
 }
-```
 
-**Fallback Chain**:
+```text**Fallback Chain**:
 
-```
+```text
+
 Live Provider → Cache (TTL) → prev_close → cached-stale → unavailable
-```
+
+```text
 
 **Price Fetch Example**:
 
 ```bash
-$ curl http://localhost:5000/api/price/WOLF
+
+$ curl <<<<<http://localhost:5000/api/price/WOLF>>>>>
 {
   "symbol": "WOLF",
   "price": 24.37,
@@ -213,7 +235,8 @@ $ curl http://localhost:5000/api/price/WOLF
   "prev_close": 24.37,
   "change_pct": 0.0
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -223,13 +246,15 @@ ______________________________________________________________________
 
 **SQLite Databases Found**:
 
-```
+```text
+
 ai_memory.db (20MB) - 90,073 conversation records
 wolf.db (tracked) - Portfolio positions, snapshots
 forecast_accuracy.db (24KB) - MAP/RMSE tracking
 ensemble_forecaster.db (24KB) - Multi-model predictions
 execution_risk.db (28KB) - Risk metrics
 ghost_ai.db (6.5MB) - AI decision logs
+
 + 15 additional specialized databases:
   - backtester.db
   - calibration.db
@@ -243,7 +268,9 @@ ghost_ai.db (6.5MB) - AI decision logs
   - risk_metrics.db
   - smart_router.db
   - strategy_tester.db
-```
+
+
+```text
 
 **State Synchronization**:
 
@@ -251,9 +278,11 @@ ghost_ai.db (6.5MB) - AI decision logs
 - **wolf.db**: Secondary database (8.42 WOLF @ $359.28) [stale/orphaned data]
 - **Resolution**: Startup logic prefers ghost_state.json if DB has no positions
 
+
 **Portfolio Snapshot**:
 
 ```json
+
 {
   "positions": [
     {
@@ -268,20 +297,24 @@ ghost_ai.db (6.5MB) - AI decision logs
   "cash": 176000.0,
   "nav": 198162.82  // ✅ CORRECT (based on current shares × price)
 }
-```
+
+```text
 
 **NAV Calculation Verification**:
 
-```
+```text
+
 NAV = (qty × current_price) + cash
     = (909.43 × $24.37) + $176,000
     = $22,162.82 + $176,000
     = $198,162.82 ✅
-```
+
+```text
 
 **PnL Calculation Issue**:
 
-```
+```text
+
 Displayed PnL = (current - entry) × qty
               = ($24.37 - $3.30) × 909.43
               = +$19,161 (+638%) ❌ MISLEADING
@@ -289,7 +322,8 @@ Displayed PnL = (current - entry) × qty
 Actual PnL (post-split) = (current - adjusted_entry) × adjusted_qty
                          = ($24.37 - $396) × 7.58
                          = -$2,816 (-93%) ✅ CORRECT
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -304,10 +338,12 @@ ______________________________________________________________________
 - Confidence Bands: Upper/Lower bounds included
 - Confidence Score: 60% (shown in cockpit, null in standalone endpoint)
 
+
 **Endpoint Test**:
 
 ```bash
-$ curl http://localhost:5000/predict/48h
+
+$ curl <<<<<http://localhost:5000/predict/48h>>>>>
 {
   "horizon_h": 48,
   "points": 24,
@@ -315,11 +351,13 @@ $ curl http://localhost:5000/predict/48h
   "symbol": "WOLF",
   "as_of": 1759791234
 }
-```
+
+```text
 
 **Two-Line Overlay Data Structure**:
 
 ```json
+
 {
   "two_line_overlay": {
     "forecast": {
@@ -338,7 +376,8 @@ $ curl http://localhost:5000/predict/48h
     "actual_series": []  // Empty (expected - no historical predictions yet)
   }
 }
-```
+
+```text
 
 **Accuracy Metrics**:
 
@@ -346,7 +385,9 @@ $ curl http://localhost:5000/predict/48h
 - **Metrics Tracked**: MAP, RMSE, Bias
 - **Database**: forecast_accuracy.db (24KB, schema validated)
 
+
 ```sql
+
 -- forecast_accuracy.db schema
 CREATE TABLE forecast_scores (
   map REAL,              -- Mean Absolute Percentage Error
@@ -354,12 +395,14 @@ CREATE TABLE forecast_scores (
   bias REAL,              -- Directional bias
   scored_through_ts INTEGER
 );
-```
+
+```text
 
 **Pending**:
 
 - Allow 48h of operation to accumulate predictions vs actuals
 - Compute MAP/RMSE/Bias from accumulated data
+
 
 ______________________________________________________________________
 
@@ -372,17 +415,20 @@ ______________________________________________________________________
 **Connection Test**:
 
 ```bash
-$ curl -N http://localhost:5000/api/cockpit/stream | head -5
+
+$ curl -N <<<<<http://localhost:5000/api/cockpit/stream>>>>> | head -5
 data: {"snapshot_id":"ckpt-1759791050-989f","as_of":1759791050,...}
 
 data: {"snapshot_id":"ckpt-1759791065-123a","as_of":1759791065,...}
-```
+
+```text
 
 **Update Frequency**: ~15 seconds per snapshot
 
 **Snapshot Contents**:
 
 ```json
+
 {
   "snapshot_id": "ckpt-1759791050-989f",
   "as_of": 1759791050,
@@ -425,11 +471,13 @@ data: {"snapshot_id":"ckpt-1759791065-123a","as_of":1759791065,...}
     "corp_action": false  // ⚠️ Should be true for WOLF
   }
 }
-```
+
+```text
 
 **Cache Strategy**:
 
 ```python
+
 PRICE_CACHE: {
   "WOLF": {
     "price": 24.37,
@@ -445,12 +493,14 @@ NEWS_CACHE: {
 }
 
 AI_MEMORY: RingBuffer(maxlen=1000)  # Oldest records auto-dropped
-```
+
+```text
 
 **Heartbeat Mechanism**:
 
 - **Current**: No explicit SSE keepalive (relies on data updates every 15s)
 - **Recommendation**: Add `:ping\n\n` every 30s during idle periods to prevent timeout
+
 
 ______________________________________________________________________
 
@@ -459,24 +509,21 @@ ______________________________________________________________________
 **Test Method**: `/api/cockpit` payload analysis
 
 | Panel | Data Source | Status | Notes | |-------|-------------|--------|-------| | **1.
-Market Status** | `.market.open`, `.flags.market_open` | ✅ REAL | "CLOSED" correctly
-shown after hours | | **2. 48h Forecast** | `.forecast.points[]`, `.two_line_overlay` |
-✅ REAL | 24 points with confidence bands | | **3. Portfolio Overview** |
-`.portfolio.rows[]`, `.kpis.nav` | ⚠️ REAL | NAV correct, PnL misleading | | **4. Ghost
-Score Heatmap** | `.heatmap.tiles[]`, `.gps` | ✅ REAL | GPS 7.2 for WOLF (tier B) | |
-**5. Top Movers** | `.movers.stocks[]`, `.change_pct` | ✅ REAL | 0% change (after-hours,
-no movement) | | **6. Market Outlook** | `.outlook`, `.macro` | ✅ REAL | HOLD stance,
-neutral risk | | **7. Live News** | `.news_relevant[]` | ✅ REAL | 10 items with
-sentiment tags | | **8. Manual Watchlist** | `.watchlist` (implied) | ✅ REAL | WOLF in
-watchlist | | **9. Trade Card** | `/api/trade_card/WOLF` | ✅ REAL | APEX features with
-numeric values | | **10. Diagnostics** | `.events_recent`, `.error_count` | ✅ REAL | 20
-events, 0 errors |
+Market Status**| `.market.open`, `.flags.market_open` | ✅ REAL | "CLOSED" correctly
+shown after hours | |**2. 48h Forecast**| `.forecast.points[]`, `.two_line_overlay` |
+✅ REAL | 24 points with confidence bands | |**3. Portfolio Overview**|
+`.portfolio.rows[]`, `.kpis.nav` | ⚠️ REAL | NAV correct, PnL misleading | |**4. Ghost
+Score Heatmap**| `.heatmap.tiles[]`, `.gps` | ✅ REAL | GPS 7.2 for WOLF (tier B) | |**5. Top Movers**|
+`.movers.stocks[]`, `.change_pct` | ✅ REAL | 0% change (after-hours,
+no movement) | |**6. Market Outlook**| `.outlook`, `.macro` | ✅ REAL | HOLD stance,
+neutral risk | |**7. Live News**| `.news_relevant[]` | ✅ REAL | 10 items with
+sentiment tags | |**8. Manual Watchlist**| `.watchlist` (implied) | ✅ REAL | WOLF in
+watchlist | |**9. Trade Card**| `/api/trade_card/WOLF` | ✅ REAL | APEX features with
+numeric values | |**10. Diagnostics**| `.events_recent`, `.error_count` | ✅ REAL | 20
+events, 0 errors |**Result**: ✅ **10/10 panels showing real data**(not placeholders)**Corporate Action Banner Missing**:
 
-**Result**: ✅ **10/10 panels showing real data** (not placeholders)
+```text
 
-**Corporate Action Banner Missing**:
-
-```
 Issue: WOLF bankruptcy/reverse split not visible in UI
 Fix: Add banner when DELISTED_SYMBOLS entry exists
 
@@ -487,13 +534,15 @@ Suggested HTML (templates/cockpit.html):
   {{{snapshot.delisted_banner}}}
 </div>
 {{/if}}
-```
+
+```text
 
 **News Count Discrepancy Resolved**:
 
 - Earlier query returned 1 item (incorrect query parameter)
 - Actual SSE stream shows 10 items (correct)
 - Test script now validates 10 items present ✅
+
 
 ______________________________________________________________________
 
@@ -504,19 +553,23 @@ ______________________________________________________________________
 **Configuration**:
 
 ```bash
+
 TELEGRAM_BOT_TOKEN: SET ✅ (7816766924:AAF5...)
 TELEGRAM_CHAT_ID: SET ✅
-```
+
+```text
 
 **Commands Implemented**:
 
 ```python
+
 /status → Portfolio summary with NAV, PnL, positions
 /signal → Trade recommendation from AI
 /pnl or /today → Daily P&L summary
 /watchlist → Current watchlist symbols
 /health → System health check
-```
+
+```text
 
 **Code Review**:
 
@@ -524,11 +577,13 @@ TELEGRAM_CHAT_ID: SET ✅
 - ✅ Markdown escaping applied to prevent formatting errors
 - ✅ Error logging configured
 
+
 **Scheduled Messages**:
 
 - ✅ Market open/close notifications configured
 - ⚠️ Implementation via background task (not explicit cron job)
 - Flag: `SCHEDULE_OPEN_CLOSE` (set via environment)
+
 
 **Testing Deferred**: Reason: Requires sending real Telegram messages to chat, outside
 scope of automated tests
@@ -536,15 +591,19 @@ scope of automated tests
 **Manual Test Recommendation**:
 
 ```bash
+
 # Test /status command
-curl -X POST http://localhost:5000/api/telegram/webhook \
+
+curl -X POST <<<<<http://localhost:5000/api/telegram/webhook>>>>> \
   -H "Content-Type: application/json" \
   -d '{"message": {"text": "/status", "chat": {"id": 123456789}}}'
 
 # Or trigger test notification
-curl -X POST http://localhost:5000/api/telegram/test \
+
+curl -X POST <<<<<http://localhost:5000/api/telegram/test>>>>> \
   -H "Authorization: Bearer $GHOST_API_TOKEN"
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -554,33 +613,45 @@ ______________________________________________________________________
 
 **Test Suite**:
 
-```
+```text
+
 tests/test_*.py - 50+ test files
 pytest.ini - Configuration present
 conftest.py - Fixtures defined
-```
+
+```text
 
 **Prometheus Metrics**:
 
 - Endpoint: `/metrics`
 - Status: ✅ Responding
 
+
 ```bash
-$ curl http://localhost:5000/metrics | head -20
+
+$ curl <<<<<http://localhost:5000/metrics>>>>> | head -20
+
 # HELP python_gc_objects_collected_total Objects collected during gc
+
 # TYPE python_gc_objects_collected_total counter
+
 python_gc_objects_collected_total{generation="0"} 30463.0
 python_gc_objects_collected_total{generation="1"} 6533.0
 python_gc_objects_collected_total{generation="2"} 0.0
 
 # Python runtime metrics
+
 python_info{implementation="CPython",major="3",minor="12",patchlevel="8"} 1.0
 
 # Custom Ghost metrics (expected but not yet visible)
+
 # ghost_price_fetch_total
+
 # ghost_forecast_generated_total
+
 # ghost_sse_connections_active
-```
+
+```text
 
 **Master System Test**:
 
@@ -588,16 +659,19 @@ python_info{implementation="CPython",major="3",minor="12",patchlevel="8"} 1.0
 - ✅ Tests 19 critical subsystems
 - ✅ Results: 15 PASS / 4 WARN / 0 FAIL
 
+
 **Observability Gaps**:
 
 1. Custom Prometheus counters not appearing in `/metrics` (may need instrumentation)
 2. Diagnostics summary endpoint returns 404 (may have been removed)
+
 
 **Recommendations**:
 
 1. Add Grafana dashboard for Prometheus metrics
 2. Wire custom counters: `ghost_price_fetch_total`, `ghost_sse_connections_active`
 3. Create CI/CD pipeline to run master test script on PRs
+
 
 ______________________________________________________________________
 
@@ -613,10 +687,12 @@ ______________________________________________________________________
   - Mitigation: Single-threaded writes via FastAPI
   - Risk: LOW (writes infrequent)
 
+
 **Unawaited Coroutines**:
 
 - ✅ Searched for `async def` without `await` in callers
 - ⚠️ Potential issue in `/alerts/*` endpoints (low priority, not user-facing)
+
 
 **Memory Leaks (SSE)**:
 
@@ -624,31 +700,38 @@ ______________________________________________________________________
 - Mitigation: Ring buffers (EVENTS maxlen=1000, AI_MEMORY maxlen=1000)
 - Recommendation: Load test with 100+ simultaneous SSE connections
 
+
 **Unhandled Exceptions**:
 
 - ✅ Provider calls wrapped in try/except with fallbacks
 - ✅ Forecast generation has error handling
 - ✅ Database operations have rollback logic
 
+
 **Timezone Handling**:
 
 - ✅ Using `America/Chicago` consistently
 - ✅ Market hours logic validated (9:30 AM - 4:00 PM)
 
+
 ```python
+
 TZ_GHOST = pytz.timezone("America/Chicago")
 now_ny = datetime.now(TZ_GHOST)
 
 # Market hours check
-market_open = (now_ny.weekday() < 5 and 
-               9 <= now_ny.hour < 16 and 
+
+market_open = (now_ny.weekday() < 5 and
+               9 <= now_ny.hour < 16 and
                (now_ny.hour != 16 or now_ny.minute == 0))
-```
+
+```text
 
 **CORS/Mixed Content**:
 
 - ✅ No issues (single-origin deployment)
 - Note: If deploying to HTTPS, ensure SSE endpoint uses wss:// in frontend
+
 
 ______________________________________________________________________
 
@@ -667,6 +750,7 @@ ______________________________________________________________________
 - ⚠️ Telegram: Configured but untested manually
 - ✅ Observability: Prometheus metrics, master test script
 
+
 ### Issues Found: 12 Total
 
 **Fixed Immediately (8)**:
@@ -680,15 +764,18 @@ ______________________________________________________________________
 7. ✅ Background price updater logging (previous session)
 8. ✅ Entry price field mapping (previous session)
 
+
 **Requiring Pull Request (3)**:
 
 1. 🔴 **HIGH**: PnL adjustment for corporate actions (reverse splits)
 2. 🟡 **MEDIUM**: UI banner for delisted/restructured symbols
 3. 🟢 **LOW**: SSE heartbeat keepalive (`:ping` every 30s)
 
+
 **Deferred (1)**:
 
 1. ⚠️ Telegram command manual testing (requires live bot interaction)
+
 
 ### Blocker for Production: 1
 
@@ -697,22 +784,19 @@ ______________________________________________________________________
 **Impact**: User sees incorrect financial data (misleading gain)\
 **Fix**: Implement `_adjust_pnl_for_corporate_action()` and wire into cockpit\
 **Timeline**: 2-3 hours for implementation + review\
-**Recommendation**: **DO NOT DEPLOY** to production until fixed
+**Recommendation**: **DO NOT DEPLOY**to production until fixed
 
-### Next Actions
-
-**Immediate**:
+### Next Actions**Immediate**
 
 1. ✅ Commit all auto-fixes
 2. ✅ Create FULL_SYSTEM_AUDIT_SUMMARY.md (this file)
 3. ✅ Create scripts/master_system_test.sh
-4. ⚠️ **HOLD DEPLOYMENT** pending PnL fix
-
-**For Pull Request**:
+4. ⚠️ **HOLD DEPLOYMENT**pending PnL fix**For Pull Request**:
 
 1. 🔴 Priority 1: Implement PnL adjustment for reverse splits (2-3 hours)
 2. 🟡 Priority 2: Add UI banner for corporate actions (30 min)
 3. 🟢 Priority 3: SSE keepalive implementation (15 min)
+
 
 **For Manual Testing Post-Deploy**:
 
@@ -721,6 +805,7 @@ ______________________________________________________________________
 3. Verify portfolio survives server restart
 4. Test during market hours (all providers active)
 5. Compute MAP/RMSE after 48h of predictions
+
 
 ______________________________________________________________________
 
@@ -733,6 +818,7 @@ ______________________________________________________________________
 5. ✅ `/workspaces/GHOST/FULL_SYSTEM_AUDIT_SUMMARY.md` - Master summary
 6. ✅ `/workspaces/GHOST/AUDIT_DETAILED_FINDINGS.md` - This file
 7. ✅ `/workspaces/GHOST/scripts/master_system_test.sh` - Test suite
+
 
 ______________________________________________________________________
 

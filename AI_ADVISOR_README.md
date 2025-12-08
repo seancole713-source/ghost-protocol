@@ -1,8 +1,6 @@
 # Ghost AI Advisor 🤖
 
-**Autonomous AI-powered investment advisor with 80%+ accuracy target**
-
-Ghost scans stocks + crypto markets every 30 seconds, identifies high-probability
+**Autonomous AI-powered investment advisor with 80%+ accuracy target**Ghost scans stocks + crypto markets every 30 seconds, identifies high-probability
 opportunities, and proactively tells YOU what to buy/sell.
 
 ______________________________________________________________________
@@ -11,18 +9,20 @@ ______________________________________________________________________
 
 ### Core Intelligence
 
-- ✅ **Autonomous Scanning**: Monitors stocks + crypto 24/7
+- ✅**Autonomous Scanning**: Monitors stocks + crypto 24/7
 - ✅ **AI Decisions**: Uses GPT-4 to analyze and recommend trades
 - ✅ **Learning System**: Tracks outcomes and improves over time
 - ✅ **Proactive Alerts**: Tells you what to do via Telegram
 - ✅ **Multi-Asset**: Understands both stocks AND crypto
 
+
 ### Target Performance
 
-- 🎯 **80%+ accuracy** on recommendations
-- 📈 **70%+ win rate** on trades
-- 💰 **10%+ average return** per trade
-- ⏱️ **\<5 minute** response time to opportunities
+- 🎯 **80%+ accuracy**on recommendations
+- 📈**70%+ win rate**on trades
+- 💰**10%+ average return**per trade
+- ⏱️**\<5 minute**response time to opportunities
+
 
 ______________________________________________________________________
 
@@ -32,15 +32,18 @@ ______________________________________________________________________
 
 ```bash
 ./start_ai_advisor.sh
-```
 
-This starts Ghost in **paper trading mode** with all AI features enabled.
+```text
+
+This starts Ghost in**paper trading mode**with all AI features enabled.
 
 ### 2. Activate Autonomous Scanning
 
 ```bash
-curl -X POST "http://localhost:8444/api/advisor/start"
-```
+
+curl -X POST "<<<<<http://localhost:8444/api/advisor/start">>>>>
+
+```text
 
 Ghost will now:
 
@@ -48,11 +51,14 @@ Ghost will now:
 - Find opportunities with ≥70% confidence
 - Send you Telegram alerts for top picks
 
+
 ### 3. Get Recommendations
 
 ```bash
-curl "http://localhost:8444/api/advisor/recommendations?limit=5"
-```
+
+curl "<<<<<http://localhost:8444/api/advisor/recommendations?limit=5">>>>>
+
+```text
 
 Returns Ghost's current top 5 recommendations.
 
@@ -63,35 +69,45 @@ ______________________________________________________________________
 ### Start/Stop AI Advisor
 
 ```bash
+
 # Start autonomous scanning
+
 POST /api/advisor/start
 
 # Stop scanning
+
 POST /api/advisor/stop
 
 # Trigger immediate scan
+
 POST /api/advisor/scan_now
-```
+
+```text
 
 ### Get Recommendations
 
 ```bash
+
 # Get all recommendations
+
 GET /api/advisor/recommendations
 
 # Filter by asset type
+
 GET /api/advisor/recommendations?asset_type=crypto
 
 # Filter by minimum score
+
 GET /api/advisor/recommendations?min_score=80
 
 # Combine filters
-GET /api/advisor/recommendations?asset_type=stocks&min_score=75&limit=10
-```
 
-**Response**:
+GET /api/advisor/recommendations?asset_type=stocks&min_score=75&limit=10
+
+```text**Response**:
 
 ```json
+
 {
   "opportunities": [
     {
@@ -118,18 +134,23 @@ GET /api/advisor/recommendations?asset_type=stocks&min_score=75&limit=10
   "ghost_accuracy_pct": 82.5,
   "ghost_win_rate_pct": 78.3
 }
-```
+
+```text
 
 ### Check Ghost's Performance
 
 ```bash
+
 # Get comprehensive statistics
+
 GET /api/advisor/stats
-```
+
+```text
 
 **Response**:
 
 ```json
+
 {
   "total_decisions": 156,
   "checked_outcomes": 142,
@@ -164,7 +185,8 @@ GET /api/advisor/stats
     "top_opportunity": "SOL"
   }
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -179,12 +201,14 @@ ______________________________________________________________________
 - News sentiment
 - Technical breakouts
 
+
 **Crypto**:
 
 - Price momentum (>10% 24h change)
 - Whale activity
 - Social sentiment
 - On-chain metrics
+
 
 ### 2. Opportunity Scoring (0-100)
 
@@ -194,9 +218,7 @@ Each candidate is scored based on:
 | 40% | Price strength | | Volume | 20% | Confirmation signal | | Regime | 20% | Market
 alignment | | Risk/Reward | 20% | Profit potential vs downside |
 
-**Only opportunities scoring ≥70 are recommended.**
-
-### 3. AI Analysis (GPT-4)
+**Only opportunities scoring ≥70 are recommended.**### 3. AI Analysis (GPT-4)
 
 For each high-scoring opportunity, Ghost:
 
@@ -206,6 +228,7 @@ For each high-scoring opportunity, Ghost:
 4. Filters out low-confidence (\<70%) recommendations
 5. Calculates position size and risk management
 
+
 ### 4. Learning & Improvement
 
 Ghost tracks every decision outcome:
@@ -213,9 +236,8 @@ Ghost tracks every decision outcome:
 - Records entry price, target, stop loss
 - Checks outcome after timeframe expires
 - Calculates accuracy metrics
-- Uses past learnings for future decisions
+- Uses past learnings for future decisions**Result**: Ghost gets smarter over time!
 
-**Result**: Ghost gets smarter over time!
 
 ______________________________________________________________________
 
@@ -223,7 +245,8 @@ ______________________________________________________________________
 
 When Ghost finds a high-confidence opportunity (score ≥80), you'll receive:
 
-```
+```text
+
 🤖 GHOST AI RECOMMENDATION
 
 🚀 SOL (crypto)
@@ -248,7 +271,8 @@ Stop Loss: $90.62 (-8.0%)
 ⏰ Timeframe: short-term
 
 Ghost's Track Record: 84.3% accurate on crypto
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -257,12 +281,15 @@ ______________________________________________________________________
 ### Environment Variables
 
 ```bash
+
 # AI Provider
+
 AI_PROVIDER=openai           # or "ollama"
 AGENT_MODEL=gpt-4            # Use GPT-4 for best accuracy
 OPENAI_API_KEY=sk-...
 
 # AI Advisor Settings
+
 MIN_CONFIDENCE_SCORE=70      # Only recommend if ≥70% confident
 TARGET_ACCURACY=80           # Goal: 80% accuracy
 SCAN_INTERVAL_SEC=30         # Scan every 30 seconds
@@ -270,6 +297,7 @@ AUTO_MODE=true               # Autonomous scanning
 AI_ONLY=true                 # Use AI for all decisions
 
 # Risk Management
+
 MAX_DAILY_TRADES=6
 MAX_POSITIONS=5
 DAILY_MAX_LOSS_USD=200
@@ -279,8 +307,10 @@ TAKE_PROFIT=2.0              # 100% take profit
 TRAILING_STOP_PCT=0.12       # 12% trailing stop
 
 # Paper Trading
+
 PAPER_MODE=true              # Set false for real trading
-```
+
+```text
 
 ### Tuning Accuracy
 
@@ -288,27 +318,38 @@ If Ghost's accuracy is below target:
 
 1. **Increase confidence threshold**:
 
+
    ```bash
+
    export MIN_CONFIDENCE_SCORE=80  # Be more selective
-   ```
 
-2. **Use better AI model**:
+   ```text
+
+1. **Use better AI model**:
+
 
    ```bash
+
    export AGENT_MODEL=gpt-4        # More expensive but smarter
-   ```
 
-3. **Check learning data**:
+   ```text
+
+1. **Check learning data**:
+
 
    ```bash
-   curl "http://localhost:8444/api/advisor/stats"
-   ```
+
+   curl "<<<<<http://localhost:8444/api/advisor/stats">>>>>
+
+   ```text
 
 If accuracy is consistently >85%, you can be more aggressive:
 
 ```bash
+
 export MIN_CONFIDENCE_SCORE=65  # Take more opportunities
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -317,32 +358,40 @@ ______________________________________________________________________
 ### Example 1: Get Today's Best Opportunities
 
 ```bash
-curl "http://localhost:8444/api/advisor/recommendations?min_score=80&limit=3"
-```
+
+curl "<<<<<http://localhost:8444/api/advisor/recommendations?min_score=80&limit=3">>>>>
+
+```text
 
 Returns Ghost's top 3 picks with 80%+ confidence.
 
 ### Example 2: Crypto-Only Recommendations
 
 ```bash
-curl "http://localhost:8444/api/advisor/recommendations?asset_type=crypto&min_score=75"
-```
+
+curl "<<<<<http://localhost:8444/api/advisor/recommendations?asset_type=crypto&min_score=75">>>>>
+
+```text
 
 Only show crypto opportunities.
 
 ### Example 3: Check Ghost's Recent Performance
 
 ```bash
-curl "http://localhost:8444/api/advisor/stats" | jq '.recent_30d'
-```
+
+curl "<<<<<http://localhost:8444/api/advisor/stats">>>>> | jq '.recent_30d'
+
+```text
 
 Shows Ghost's accuracy over the last 30 days.
 
 ### Example 4: Manual Scan
 
 ```bash
-curl -X POST "http://localhost:8444/api/advisor/scan_now"
-```
+
+curl -X POST "<<<<<http://localhost:8444/api/advisor/scan_now">>>>>
+
+```text
 
 Trigger immediate market scan (don't wait for schedule).
 
@@ -353,6 +402,7 @@ ______________________________________________________________________
 Ghost maintains a decision database:
 
 ```sql
+
 CREATE TABLE ai_decisions (
     id TEXT PRIMARY KEY,
     asset TEXT,              -- AAPL, BTC, etc.
@@ -365,7 +415,7 @@ CREATE TABLE ai_decisions (
     stop_loss REAL,
     expected_return_pct REAL,
     created_at REAL,
-    
+
     -- Outcome tracking
     outcome_price REAL,      -- Actual price at check time
     return_pct REAL,         -- Actual return
@@ -374,7 +424,8 @@ CREATE TABLE ai_decisions (
     hit_stop INTEGER,
     checked_at REAL
 );
-```
+
+```text
 
 **Learning Process**:
 
@@ -383,6 +434,7 @@ CREATE TABLE ai_decisions (
 3. Check actual outcome
 4. Calculate correctness & accuracy
 5. Use past similar decisions for future analysis
+
 
 ______________________________________________________________________
 
@@ -397,8 +449,10 @@ Ghost is "smart enough" when:
 **Check current performance**:
 
 ```bash
-curl "http://localhost:8444/api/advisor/stats"
-```
+
+curl "<<<<<http://localhost:8444/api/advisor/stats">>>>>
+
+```text
 
 ______________________________________________________________________
 
@@ -414,8 +468,10 @@ Ghost starts in paper trading mode by default. Test thoroughly before enabling r
 trading:
 
 ```bash
+
 export PAPER_MODE=false  # Enable real trading
-```
+
+```text
 
 ### Risk Limits
 
@@ -426,6 +482,7 @@ Multiple safety mechanisms:
 - Maximum position size (MAX_TRADE_USD=250)
 - Stop losses on every trade
 
+
 ______________________________________________________________________
 
 ## 🐛 Troubleshooting
@@ -435,43 +492,55 @@ ______________________________________________________________________
 **Check scanner status**:
 
 ```bash
-curl "http://localhost:8444/api/advisor/stats" | jq '.scanner'
-```
+
+curl "<<<<<http://localhost:8444/api/advisor/stats">>>>> | jq '.scanner'
+
+```text
 
 **Trigger manual scan**:
 
 ```bash
-curl -X POST "http://localhost:8444/api/advisor/scan_now"
-```
+
+curl -X POST "<<<<<http://localhost:8444/api/advisor/scan_now">>>>>
+
+```text
 
 **Lower confidence threshold**:
 
 ```bash
-curl "http://localhost:8444/api/advisor/recommendations?min_score=60"
-```
+
+curl "<<<<<http://localhost:8444/api/advisor/recommendations?min_score=60">>>>>
+
+```text
 
 ### AI Errors
 
 **Check AI provider**:
 
 ```bash
+
 echo $AI_PROVIDER  # Should be "openai"
 echo $OPENAI_API_KEY | head -c 10  # Should start with "sk-"
-```
+
+```text
 
 **Test AI directly**:
 
 ```bash
-curl -X POST "http://localhost:8444/api/crypto/decide?symbol=BTC"
-```
+
+curl -X POST "<<<<<http://localhost:8444/api/crypto/decide?symbol=BTC">>>>>
+
+```text
 
 ### Telegram Not Working
 
 **Check token**:
 
 ```bash
-curl "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getMe"
-```
+
+curl "<<<<<https://api.telegram.org/bot${TELEGRAM_TOKEN}/getMe">>>>>
+
+```text
 
 ______________________________________________________________________
 
@@ -484,12 +553,14 @@ ______________________________________________________________________
 - [x] Accuracy tracking
 - [x] Basic learning system
 
+
 ### Phase 2 (Current)
 
 - [ ] Portfolio tracking
 - [ ] Exchange integration (Coinbase)
 - [ ] Telegram alerts
 - [ ] Advanced learning
+
 
 ### Phase 3 (Future)
 
@@ -498,33 +569,37 @@ ______________________________________________________________________
 - [ ] UI dashboard
 - [ ] Multi-exchange support
 
+
 ______________________________________________________________________
 
 ## 💡 Tips for Best Results
 
-1. **Start with paper trading** - Test Ghost for 30 days before going live
-2. **Monitor accuracy** - Check `/api/advisor/stats` daily
-3. **Adjust thresholds** - Tune MIN_CONFIDENCE_SCORE based on performance
-4. **Use GPT-4** - More expensive but significantly better accuracy
-5. **Diversify** - Don't put all portfolio in one asset
-6. **Set stop losses** - Always protect downside
-7. **Let Ghost learn** - More decisions = better accuracy over time
+1. **Start with paper trading**- Test Ghost for 30 days before going live
+
+
+2.**Monitor accuracy**- Check `/api/advisor/stats` daily
+3.**Adjust thresholds**- Tune MIN_CONFIDENCE_SCORE based on performance
+4.**Use GPT-4**- More expensive but significantly better accuracy
+5.**Diversify**- Don't put all portfolio in one asset
+6.**Set stop losses**- Always protect downside
+7.**Let Ghost learn**- More decisions = better accuracy over time
+
 
 ______________________________________________________________________
 
-## 🤝 Support
-
-**Issues?** Check logs:
+## 🤝 Support**Issues?**Check logs
 
 ```bash
+
 tail -f ghost.log
-```
 
-**Questions?** Check the API docs:
+```text**Questions?**Check the API docs:
 
 ```bash
-curl "http://localhost:8444/docs"
-```
+
+curl "<<<<<http://localhost:8444/docs">>>>>
+
+```text
 
 ______________________________________________________________________
 
@@ -532,6 +607,5 @@ ______________________________________________________________________
 
 MIT License - See LICENSE file
 
-______________________________________________________________________
-
-**Ghost AI Advisor**: Making you a better investor, one smart decision at a time. 🚀
+______________________________________________________________________**Ghost AI Advisor**: Making you a better
+investor, one smart decision at a time. 🚀

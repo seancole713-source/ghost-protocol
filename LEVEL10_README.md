@@ -2,8 +2,8 @@
 
 ## Transformation Complete! 🎉
 
-GHOST has evolved from a **Level 8** high-functioning forecasting bot to a **Level 10**
-autonomous Smart Watcher capable of:
+GHOST has evolved from a **Level 8**high-functioning forecasting bot to a**Level 10**autonomous Smart Watcher capable
+of:
 
 - ✅ Watching 25 tickers + world events 24/7
 - ✅ Linking news → market → price automatically
@@ -11,22 +11,16 @@ autonomous Smart Watcher capable of:
 - ✅ Learning which signals worked (self-calibration)
 - ✅ Detecting algorithmic trading patterns (HFT, VWAP bots, spoofing)
 
+
 ______________________________________________________________________
 
 ## 📊 What's New - Complete Feature Matrix
 
-### 🎯 Smart Watcher System (`core/smart_watcher.py` - 1100+ lines)
+### 🎯 Smart Watcher System (`core/smart_watcher.py` - 1100+ lines)**25-Ticker Watchlist**- Track up to 25 stocks simultaneously
 
-**25-Ticker Watchlist**
-
-- Track up to 25 stocks simultaneously
 - Real-time price monitoring with Polygon.io integration
 - Auto-sentiment scoring from linked news
-- Symbol-specific signal generation
-
-**Proactive Trading Signals**
-
-- **4 Signal Types**: BUY 🟢 | SELL 🔴 | HOLD 🟡 | AVOID ⚫
+- Symbol-specific signal generation**Proactive Trading Signals**-**4 Signal Types**: BUY 🟢 | SELL 🔴 | HOLD 🟡 | AVOID ⚫
 - **Confidence Scoring**: 0-100% based on multi-factor analysis
 - **Signal Components**:
   - 40% Multi-horizon forecast
@@ -35,25 +29,26 @@ ______________________________________________________________________
   - 10% Macro regime adjustment
 - **Includes**: Target price, stop-loss, news drivers, technical factors
 
-**Self-Learning Loop**
 
-- Logs every signal outcome at +24h and +48h
+**Self-Learning Loop**- Logs every signal outcome at +24h and +48h
+
 - Calculates hit-rate per ticker and signal type
 - Tracks avg/best/worst returns
 - Auto-adjusts weighting for underperformers
-- **Outcome Types**: profitable (>2%), loss (\<-2%), neutral
 
-**Macro Risk Radar**
 
-- Background tracking of SPY/QQQ/VIX
-- **Regime Detection**: BULL / BEAR / VOLATILE / SIDEWAYS
+-**Outcome Types**: profitable (>2%), loss (\<-2%), neutral
+
+
+**Macro Risk Radar**- Background tracking of SPY/QQQ/VIX
+-**Regime Detection**: BULL / BEAR / VOLATILE / SIDEWAYS
+
 - **Risk Levels**: low / medium / high / extreme
 - **Auto-Pause**: Stops signals when VIX > 30 or extreme volatility
 - Feeds into signal confidence calculations
 
-**API Endpoints (10)**
 
-```
+**API Endpoints (10)**```text
 POST /api/watcher/add_ticker?symbol=WOLF
 DELETE /api/watcher/remove_ticker?symbol=WOLF
 GET /api/watcher/watchlist
@@ -63,153 +58,138 @@ POST /api/watcher/update_signal_outcome (learning loop)
 GET /api/watcher/performance?symbol=WOLF
 POST /api/watcher/update_macro (SPY/QQQ/VIX)
 GET /api/watcher/ticker_news?symbol=WOLF&hours=24
-```
+
+```text
 
 ______________________________________________________________________
 
-### 📄 SEC EDGAR Integration (`core/edgar_integration.py` - 600+ lines)
+### 📄 SEC EDGAR Integration (`core/edgar_integration.py` - 600+ lines)**100% Free Corporate Filings Data**
 
-**100% Free Corporate Filings Data**
+**Supported Filing Types**-**8-K**: Breaking news events (acquisitions, earnings, defaults)
 
-**Supported Filing Types**
-
-- **8-K**: Breaking news events (acquisitions, earnings, defaults)
 - **10-K**: Annual reports
 - **10-Q**: Quarterly reports
 - **13F**: Institutional holdings
 - **Form 4**: Insider transactions
 
-**Features**
 
-- Atom RSS feed monitoring for real-time filings
+**Features**- Atom RSS feed monitoring for real-time filings
+
 - CIK ↔ Ticker conversion
-- **Item Extraction** for 8-K (Item 2.02, 5.02, etc.)
-- **Urgency Assessment**: critical / high / medium / low
+
+
+-**Item Extraction**for 8-K (Item 2.02, 5.02, etc.)
+-**Urgency Assessment**: critical / high / medium / low
+
 - **Sentiment Analysis**: Keyword-based scoring (-1 to +1)
 - Rate limit: 10 requests/second (SEC compliant)
 
-**API Endpoints (3)**
 
-```
+**API Endpoints (3)**```text
+
 GET /api/edgar/recent_filings?filing_type=8-K&hours_back=24
 GET /api/edgar/company_filings?ticker=WOLF&limit=20
 GET /api/edgar/insider_transactions?ticker=AAPL&days_back=90
-```
 
-**8-K Critical Items**
+```text**8-K Critical Items**- 1.01: Material Agreement Entry
 
-- 1.01: Material Agreement Entry
 - 1.02: Material Agreement Termination
 - 2.01: Acquisition/Disposition Completion
-- 2.02: **Results of Operations** (earnings)
+- 2.02:**Results of Operations**(earnings)
 - 3.01: Delisting Notice ⚠️
 - 4.02: Non-Reliance on Financials ⚠️
 - 5.02: Officer/Director Changes
 
+
 ______________________________________________________________________
 
-### 💹 Polygon.io Integration (`core/polygon_integration.py` - 400+ lines)
+### 💹 Polygon.io Integration (`core/polygon_integration.py` - 400+ lines)**Real-Time Market Data (~$29/month Starter Plan)**
 
-**Real-Time Market Data (~$29/month Starter Plan)**
+**Features**- Real-time quotes: bid/ask/volume/timestamp
 
-**Features**
-
-- Real-time quotes: bid/ask/volume/timestamp
 - Bulk quote fetching for 25 tickers
 - 20-day average volume calculation
 - Previous close comparison
 - Corporate events calendar (earnings, dividends, splits)
 - Short interest data (higher tier)
 - Market status (open/closed)
-- Ticker search
+- Ticker search**API Endpoints (4)**```text
 
-**API Endpoints (4)**
 
-```
 GET /api/polygon/quote?symbol=WOLF
 GET /api/polygon/corporate_events?symbol=AAPL&days_ahead=30
 GET /api/polygon/market_status
-```
 
-**Rate Limits**
+```text**Rate Limits**- Free tier: 5 requests/minute (with 15-min delay)
 
-- Free tier: 5 requests/minute (with 15-min delay)
 - Starter ($29): 12 requests/second (real-time)
+
 
 ______________________________________________________________________
 
-### 🤖 Algorithmic Footprint Detection (`core/algo_footprint.py` - 700+ lines)
+### 🤖 Algorithmic Footprint Detection (`core/algo_footprint.py` - 700+ lines)**Detects Machine-Driven Trading Patterns**
 
-**Detects Machine-Driven Trading Patterns**
+**5 Pattern Types**1.**HFT Burst Detection**- Sudden spike in trade count with small lot sizes
 
-**5 Pattern Types**
-
-1. **HFT Burst Detection**
-
-   - Sudden spike in trade count with small lot sizes
    - Volume > 2x baseline + avg trade size < 0.7x baseline
-   - **Indicator**: `"Detected algorithmic momentum ignition"`
 
-2. **VWAP Bot Detection**
 
-   - Repeating trade patterns at regular intervals (15s, 30s, 60s)
+   -**Indicator**: `"Detected algorithmic momentum ignition"`
+
+1. **VWAP Bot Detection**- Repeating trade patterns at regular intervals (15s, 30s, 60s)
    - Low coefficient of variation across time segments (\<0.3)
-   - **Indicator**: `"Pattern suggests automated institutional accumulation"`
 
-3. **Spoofing Detection**
 
-   - Large orders causing spread widening that disappear quickly
+   -**Indicator**: `"Pattern suggests automated institutional accumulation"`
+
+1. **Spoofing Detection**- Large orders causing spread widening that disappear quickly
    - Spread spike > 1.5x baseline, then reverts
-   - **Indicator**: `"Detected possible spoof sequence, volatility risk ↑"`
 
-4. **Liquidity Sweep Detection**
 
-   - Rapid price movement (>0.5%) + volume spike (>2x baseline)
-   - **Indicator**: `"Liquidity sweep detected: upward/downward pressure"`
+   -**Indicator**: `"Detected possible spoof sequence, volatility risk ↑"`
 
-5. **Momentum Ignition Detection**
+1. **Liquidity Sweep Detection**- Rapid price movement (>0.5%) + volume spike (>2x baseline)
 
-   - Accelerating price + volume across multiple timeframes
+
+   -**Indicator**: `"Liquidity sweep detected: upward/downward pressure"`
+
+1. **Momentum Ignition Detection**- Accelerating price + volume across multiple timeframes
    - Momentum in same direction across 1min/2min windows
-   - **Indicator**: `"Momentum ignition detected: bullish/bearish thrust"`
 
-**Microstructure Analysis**
 
-- 300-sample circular buffers (5 minutes at 1-second resolution)
+   -**Indicator**: `"Momentum ignition detected: bullish/bearish thrust"`
+
+
+**Microstructure Analysis**- 300-sample circular buffers (5 minutes at 1-second resolution)
+
 - Tracks: price, volume, spread %, trade size
 - Statistical pattern recognition (autocorrelation, variance)
 - Confidence scoring: 0-100%
-- Risk levels: low / medium / high
+- Risk levels: low / medium / high**API Endpoints (2)**```text
 
-**API Endpoints (2)**
 
-```
 POST /api/algo/update_microstructure (feed tick data)
 GET /api/algo/patterns?symbol=WOLF&hours=24
-```
+
+```text
 
 ______________________________________________________________________
 
-### 📰 World Feed Fusion (Enhanced)
+### 📰 World Feed Fusion (Enhanced)**Previously Implemented - Now Integrated**- 8 RSS sources (Reuters, Bloomberg, FT, WSJ, MarketWatch, CNBC, Seeking Alpha)
 
-**Previously Implemented - Now Integrated**
-
-- 8 RSS sources (Reuters, Bloomberg, FT, WSJ, MarketWatch, CNBC, Seeking Alpha)
 - TextBlob NLP sentiment analysis
 - Symbol extraction and auto-linking
-- SQLite persistence
-
-**New Integrations**
-
-- ✅ Feeds into Smart Watcher `generate_signal()`
+- SQLite persistence**New Integrations**- ✅ Feeds into Smart Watcher `generate_signal()`
 - ✅ Linked to Feature Importance `sentiment_score`
 - ✅ Enriches News→Ticker connections
+
 
 ______________________________________________________________________
 
 ## 🏗️ Architecture Overview
 
-```
+```text
+
 ┌─────────────────────────────────────────────────────────────────┐
 │                     GHOST Level 10 Stack                        │
 ├─────────────────────────────────────────────────────────────────┤
@@ -249,7 +229,8 @@ ______________________________________________________________________
 │  └──────────────────────────────────────────────────────┘     │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -257,11 +238,13 @@ ______________________________________________________________________
 
 ### Allocated Budget
 
-- **Polygon.io Starter**: $29/mo (slightly over, but best real-time option)
+-**Polygon.io Starter**: $29/mo (slightly over, but best real-time option)
+
   - Real-time quotes for 25 tickers
   - Corporate events calendar
   - Market status
   - 12 requests/second
+
 
 ### Free Resources (100% Free)
 
@@ -269,11 +252,15 @@ ______________________________________________________________________
 - **World Feed Fusion**: 8 RSS sources
 - **yfinance**: Backup price data (15-min delay)
 
+
 ### Optional Upgrades (Future)
 
-- **Polygon.io Developer** ($99/mo): Extended hours, options data
-- **FinBERT Sentiment** (Free): Replace TextBlob with transformer model
-- **Alpha Vantage** ($49/mo): Technical indicators API
+- **Polygon.io Developer**($99/mo): Extended hours, options data
+
+
+-**FinBERT Sentiment**(Free): Replace TextBlob with transformer model
+-**Alpha Vantage**($49/mo): Technical indicators API
+
 
 ______________________________________________________________________
 
@@ -282,37 +269,35 @@ ______________________________________________________________________
 ### From Original Request
 
 > "Transform Ghost from a high-functioning forecasting bot (Level 8) into a 'Smart
-> Watcher + Market Hunter' (Level 10)"
+> Watcher + Market Hunter' (Level 10)"**✅ Achieved:**1. ✅**Watchlist Mode**: 25 tickers with real-time monitoring
 
-**✅ Achieved:**
+1. ✅ **Auto-News Mapping**: SEC filings + RSS → ticker linking
+2. ✅ **Symbol-Linked News Graph**: Every headline tagged with sentiment
+3. ✅ **Live Data API**: Polygon.io for real-time quotes/events
+4. ✅ **Online Calibration Loop**: Signal outcome tracking + self-adjustment
+5. ✅ **Macro Risk Radar**: SPY/QQQ/VIX auto-pause on volatility
+6. ✅ **Algo Footprint Detection**: HFT, VWAP, spoofing patterns
 
-1. ✅ **Watchlist Mode**: 25 tickers with real-time monitoring
-2. ✅ **Auto-News Mapping**: SEC filings + RSS → ticker linking
-3. ✅ **Symbol-Linked News Graph**: Every headline tagged with sentiment
-4. ✅ **Live Data API**: Polygon.io for real-time quotes/events
-5. ✅ **Online Calibration Loop**: Signal outcome tracking + self-adjustment
-6. ✅ **Macro Risk Radar**: SPY/QQQ/VIX auto-pause on volatility
-7. ✅ **Algo Footprint Detection**: HFT, VWAP, spoofing patterns
 
 ### Performance Metrics (To Be Measured)
 
-**Signal Accuracy**
+**Signal Accuracy**-**Baseline**: ~50% (random)
 
-- **Baseline**: ~50% (random)
 - **Target**: 60-65% hit rate after 30 days of learning
 - **Tracking**: Per-ticker, per-signal-type performance stats
 
-**Event Awareness**
 
-- **Baseline**: Manual news checking
+**Event Awareness**-**Baseline**: Manual news checking
+
 - **Target**: \<5 min from filing to alert (8-K critical items)
 - **Tracking**: Time from SEC publish to Ghost detection
 
-**Algo Recognition**
 
-- **Baseline**: Visual chart inspection
+**Algo Recognition**-**Baseline**: Visual chart inspection
+
 - **Target**: 70%+ confidence on major patterns (HFT, VWAP)
 - **Tracking**: Pattern detection rate vs manual review
+
 
 ______________________________________________________________________
 
@@ -321,32 +306,44 @@ ______________________________________________________________________
 ### 1. Install Dependencies
 
 ```bash
+
 pip install -r requirements.txt
+
 # New dependencies: feedparser, textblob, requests
-```
+
+```text
 
 ### 2. Set API Keys (Optional)
 
 ```bash
+
 export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"  # For real-time data
+
 # EDGAR requires no API key (100% free)
-```
+
+```text
 
 ### 3. Start Server
 
 ```bash
+
 # Using task runner
+
 make run
 
 # Or directly
+
 python -m uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload
-```
+
+```text
 
 ### 4. Test Level 10 Features
 
 ```bash
+
 python test_level10.py
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -354,90 +351,101 @@ ______________________________________________________________________
 
 ### Smart Watcher Workflow
 
-**Step 1: Build Watchlist**
+**Step 1: Build Watchlist**```bash
 
-```bash
 # Add tickers (max 25)
-curl -X POST "http://localhost:5000/api/watcher/add_ticker?symbol=WOLF"
-curl -X POST "http://localhost:5000/api/watcher/add_ticker?symbol=AAPL"
-curl -X POST "http://localhost:5000/api/watcher/add_ticker?symbol=TSLA"
+
+curl -X POST "<<<<<http://localhost:5000/api/watcher/add_ticker?symbol=WOLF">>>>>
+curl -X POST "<<<<<http://localhost:5000/api/watcher/add_ticker?symbol=AAPL">>>>>
+curl -X POST "<<<<<http://localhost:5000/api/watcher/add_ticker?symbol=TSLA">>>>>
 
 # View watchlist
-curl "http://localhost:5000/api/watcher/watchlist"
-```
 
-**Step 2: Update Real-Time Data**
+curl "<<<<<http://localhost:5000/api/watcher/watchlist">>>>>
 
-```bash
+```text**Step 2: Update Real-Time Data**```bash
+
 # Fetch quotes for all tickers (Polygon.io)
-curl -X POST "http://localhost:5000/api/watcher/update_prices"
+
+curl -X POST "<<<<<http://localhost:5000/api/watcher/update_prices">>>>>
 
 # Update macro conditions (SPY/QQQ/VIX)
-curl -X POST "http://localhost:5000/api/watcher/update_macro"
-```
 
-**Step 3: Generate Trading Signals**
+curl -X POST "<<<<<http://localhost:5000/api/watcher/update_macro">>>>>
 
-```bash
+```text**Step 3: Generate Trading Signals**```bash
+
 # Get proactive signal for WOLF
-curl -X POST "http://localhost:5000/api/watcher/generate_signal?symbol=WOLF"
 
-# Response includes:
+curl -X POST "<<<<<http://localhost:5000/api/watcher/generate_signal?symbol=WOLF">>>>>
+
+# Response includes
+
 # - signal_type: BUY/SELL/HOLD/AVOID
+
 # - confidence: 0-100%
+
 # - reason: Multi-factor explanation
+
 # - target_price: Expected target
+
 # - stop_loss: Recommended stop
+
 # - news_drivers: Top 5 headlines
+
 # - technical_factors: Feature importance
-```
 
-**Step 4: Track Performance (Learning Loop)**
+```text**Step 4: Track Performance (Learning Loop)**```bash
 
-```bash
 # After 24 hours, update outcome
-curl -X POST "http://localhost:5000/api/watcher/update_signal_outcome?signal_id=WOLF_1234567890&price_24h=105.50"
+
+curl -X POST "<<<<<http://localhost:5000/api/watcher/update_signal_outcome?signal_id=WOLF_1234567890&price_24h=105.50">>>>>
 
 # View performance stats
-curl "http://localhost:5000/api/watcher/performance?symbol=WOLF"
-```
 
-### SEC EDGAR Monitoring
+curl "<<<<<http://localhost:5000/api/watcher/performance?symbol=WOLF">>>>>
 
-**Real-Time 8-K Filings**
+```text
 
-```bash
+### SEC EDGAR Monitoring**Real-Time 8-K Filings**```bash
+
 # Get last 24 hours of breaking news
-curl "http://localhost:5000/api/edgar/recent_filings?filing_type=8-K&hours_back=24"
+
+curl "<<<<<http://localhost:5000/api/edgar/recent_filings?filing_type=8-K&hours_back=24">>>>>
 
 # Filter by company
-curl "http://localhost:5000/api/edgar/company_filings?ticker=WOLF&filing_type=8-K"
+
+curl "<<<<<http://localhost:5000/api/edgar/company_filings?ticker=WOLF&filing_type=8-K">>>>>
 
 # Track insider transactions
-curl "http://localhost:5000/api/edgar/insider_transactions?ticker=AAPL&days_back=90"
-```
 
-### Algo Footprint Detection
+curl "<<<<<http://localhost:5000/api/edgar/insider_transactions?ticker=AAPL&days_back=90">>>>>
 
-**Feed Microstructure Data**
+```text
 
-```bash
+### Algo Footprint Detection**Feed Microstructure Data**```bash
+
 # Send tick-level data (from your broker or Polygon websocket)
-curl -X POST "http://localhost:5000/api/algo/update_microstructure?symbol=WOLF&bid=100.00&ask=100.02&bid_size=500&ask_size=300&last_trade_size=100&last_trade_price=100.01&volume_1min=5000"
-```
 
-**Query Detected Patterns**
+curl -X POST "<<<<<http://localhost:5000/api/algo/update_microstructure?symbol=WOLF&bid=100.00&ask=100.02&bid_size=500&ask_size=300&last_trade_size=100&last_trade_price=100.01&volume_1min=5000">>>>>
 
-```bash
+```text**Query Detected Patterns**```bash
+
 # Get last 24 hours of algo patterns
-curl "http://localhost:5000/api/algo/patterns?symbol=WOLF&hours=24"
 
-# Response includes:
-# - pattern_type: hft_burst, vwap_bot, spoofing, etc.
+curl "<<<<<http://localhost:5000/api/algo/patterns?symbol=WOLF&hours=24">>>>>
+
+# Response includes
+
+# - pattern_type: hft_burst, vwap_bot, spoofing, etc
+
 # - confidence: 0-100%
+
 # - risk_level: low/medium/high
+
 # - recommendation: Action to take
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -446,66 +454,63 @@ ______________________________________________________________________
 ### Run Full Test Suite
 
 ```bash
+
 python test_level10.py
-```
 
-**Tests Include:**
+```text**Tests Include:**- ✅ Smart Watcher: Add tickers, generate signals, track performance
 
-- ✅ Smart Watcher: Add tickers, generate signals, track performance
 - ✅ SEC EDGAR: Fetch 8-K filings, company filings, insider trades
 - ✅ Polygon.io: Real-time quotes, market status, events calendar
 - ✅ Algo Detection: Simulate microstructure, detect patterns
 - ✅ World Feed: RSS fetching, sentiment analysis, ticker linking
 - ✅ APEX Features: Multi-horizon forecast, feature importance, goals
 
-### Manual Testing Examples
 
-**1. Test Smart Watcher Signal Generation**
+### Manual Testing Examples**1. Test Smart Watcher Signal Generation**```python
 
-```python
 import requests
 
 # Add WOLF to watchlist
-response = requests.post("http://localhost:5000/api/watcher/add_ticker?symbol=WOLF")
+
+response = requests.post("<<<<<http://localhost:5000/api/watcher/add_ticker?symbol=WOLF>>>>>")
 print(response.json())
 
 # Generate signal
-response = requests.post("http://localhost:5000/api/watcher/generate_signal?symbol=WOLF")
+
+response = requests.post("<<<<<http://localhost:5000/api/watcher/generate_signal?symbol=WOLF>>>>>")
 signal = response.json()['signal']
 
 print(f"Signal: {signal['signal_type']}")
 print(f"Confidence: {signal['confidence']}%")
 print(f"Reason: {signal['reason']}")
-```
 
-**2. Monitor 8-K Filings**
+```text**2. Monitor 8-K Filings**```python
 
-```python
 import requests
 import time
 
 # Poll every 5 minutes for new 8-K filings
+
 while True:
-    response = requests.get("http://localhost:5000/api/edgar/recent_filings?filing_type=8-K&hours_back=1")
+    response = requests.get("<<<<<http://localhost:5000/api/edgar/recent_filings?filing_type=8-K&hours_back=1>>>>>")
     filings = response.json()['filings']
-    
+
     for filing in filings:
         if filing['urgency'] == 'critical':
             print(f"🚨 CRITICAL 8-K: {filing['company_name']}")
             print(f"   Items: {filing['items']}")
             print(f"   Sentiment: {filing['sentiment_score']}")
-    
+
     time.sleep(300)  # 5 minutes
-```
 
-**3. Detect HFT Activity**
+```text**3. Detect HFT Activity**```python
 
-```python
 import requests
 
 # Simulate high-frequency trading burst
+
 for i in range(100):
-    requests.post("http://localhost:5000/api/algo/update_microstructure", params={
+    requests.post("<<<<<http://localhost:5000/api/algo/update_microstructure",>>>>> params={
         "symbol": "WOLF",
         "bid": 100.00,
         "ask": 100.01,
@@ -517,19 +522,18 @@ for i in range(100):
     })
 
 # Check for detected patterns
-response = requests.get("http://localhost:5000/api/algo/patterns?symbol=WOLF&hours=1")
+
+response = requests.get("<<<<<http://localhost:5000/api/algo/patterns?symbol=WOLF&hours=1>>>>>")
 print(response.json())
-```
+
+```text
 
 ______________________________________________________________________
 
 ## 📊 Database Schema
 
-### New SQLite Tables
+### New SQLite Tables**smart_watcher.db**```sql
 
-**smart_watcher.db**
-
-```sql
 -- Watchlist (25 tickers max)
 CREATE TABLE watchlist (
     symbol TEXT PRIMARY KEY,
@@ -607,11 +611,9 @@ CREATE TABLE news_ticker_links (
     relevance_score REAL,
     timestamp INTEGER
 );
-```
 
-**algo_patterns.db**
+```text**algo_patterns.db**```sql
 
-```sql
 -- Detected algo patterns
 CREATE TABLE algo_patterns (
     pattern_id TEXT PRIMARY KEY,
@@ -640,7 +642,8 @@ CREATE TABLE microstructure_snapshots (
     last_trade_price REAL,
     volume_1min INTEGER
 );
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -649,40 +652,44 @@ ______________________________________________________________________
 ### Environment Variables
 
 ```bash
+
 # Required for real-time data (optional)
+
 export POLYGON_API_KEY="$(railway variables get POLYGON_API_KEY)"
 
 # Optional for enhanced sentiment
+
 export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
 
 # SEC EDGAR requires User-Agent (set in code)
+
 # User-Agent: GHOST Trading Platform info@ghosttrading.ai
-```
 
-### Performance Tuning
+```text
 
-**Watchlist Size**
+### Performance Tuning**Watchlist Size**```python
 
-```python
 # In smart_watcher.py
+
 self.max_tickers = 25  # Adjust based on API rate limits
-```
 
-**Pattern Detection Sensitivity**
+```text**Pattern Detection Sensitivity**```python
 
-```python
 # In algo_footprint.py
+
 self.buffer_size = 300  # 5 minutes at 1-second resolution
+
 # Increase for smoother detection, decrease for faster alerts
-```
 
-**Signal Confidence Threshold**
+```text**Signal Confidence Threshold**```python
 
-```python
 # In smart_watcher.py, generate_signal()
+
 if confidence > 60:  # Minimum confidence to generate signal
+
     # Lower = more signals, higher = fewer but more confident
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -697,13 +704,15 @@ ______________________________________________________________________
 - [ ] Quick action icons: 🟢 Buy 🟡 Hold 🔴 Avoid
 - [ ] Last 10 trades accuracy display
 
+
 ### Phase 3: AI Experience Replay ⏳
 
 - [ ] Store all signal decisions + outcomes in SQLite
 - [ ] Meta-learning analysis: which conditions → profitable?
 - [ ] Pattern extraction: Regime × Strategy × Feature combinations
 - [ ] Feed insights back into signal weighting
-- [ ] **Expected Impact**: +25% strategic intelligence
+- [ ]**Expected Impact**: +25% strategic intelligence
+
 
 ### Phase 4: Self-Eval Agent (Apex Orchestrator) ⏳
 
@@ -714,63 +723,53 @@ ______________________________________________________________________
 - [ ] Risk coordination across all systems
 - [ ] **Expected Impact**: TBD
 
+
 ______________________________________________________________________
 
 ## 📞 Support & Troubleshooting
 
 ### Common Issues
 
-**1. Polygon.io API Key Not Working**
+**1. Polygon.io API Key Not Working**```text
 
-```
 Error: "Quote not available"
 Solution: Set environment variable POLYGON_API_KEY or use free yfinance fallback
-```
 
-**2. SEC EDGAR Rate Limit Exceeded**
+```text**2. SEC EDGAR Rate Limit Exceeded**```text
 
-```
 Error: HTTP 429 Too Many Requests
 Solution: Wait 1 second between requests (10 req/sec limit)
-```
 
-**3. Watchlist Full**
+```text**3. Watchlist Full**```text
 
-```
 Error: "Watchlist full (25 max)"
 Solution: Remove inactive tickers with DELETE /api/watcher/remove_ticker
-```
 
-**4. No Algo Patterns Detected**
+```text**4. No Algo Patterns Detected**```text
 
-```
 Issue: Microstructure buffer not yet filled
 Solution: Feed at least 60 seconds of tick data before patterns emerge
-```
+
+```text
 
 ### Debug Mode
 
 Enable verbose logging:
 
 ```python
+
 import logging
 logging.basicConfig(level=logging.DEBUG)
-```
+
+```text
 
 ______________________________________________________________________
 
-## 📜 License & Attribution
+## 📜 License & Attribution**GHOST v11.0.0 "APEX + Level 10 Edition"**- Copyright © 2025 GHOST Trading Platform
 
-**GHOST v11.0.0 "APEX + Level 10 Edition"**
-
-- Copyright © 2025 GHOST Trading Platform
 - Created by: Agent (AI Assistant)
 - Architecture: Modular FastAPI + SQLite
-- License: MIT (modify as needed)
-
-**Third-Party Dependencies**
-
-- FastAPI, Uvicorn, Pydantic (web framework)
+- License: MIT (modify as needed)**Third-Party Dependencies**- FastAPI, Uvicorn, Pydantic (web framework)
 - yfinance (market data backup)
 - feedparser (RSS feeds)
 - textblob (NLP sentiment)
@@ -778,11 +777,13 @@ ______________________________________________________________________
 - numpy, pandas (data analysis)
 - sqlite3 (persistence)
 
+
 ______________________________________________________________________
 
 ## 🎉 Achievement Unlocked
 
-```
+```text
+
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
 ║              🏆 GHOST LEVEL 10 ACHIEVED 🏆                   ║
@@ -802,23 +803,18 @@ ______________________________________________________________________
 ║  🚀 Ready for production trading!                            ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
-```
 
-**Weekly Metrics to Track:**
+```text**Weekly Metrics to Track:**1. Signal hit-rate by ticker
 
-1. Signal hit-rate by ticker
-2. Average return per signal type
-3. EDGAR alert latency (filing → notification)
-4. Algo pattern detection accuracy
-5. Macro regime prediction accuracy
-
-**Success Criteria:**
-
-- ✅ Hit-rate > 60% after 30 days
+1. Average return per signal type
+2. EDGAR alert latency (filing → notification)
+3. Algo pattern detection accuracy
+4. Macro regime prediction accuracy**Success Criteria:**- ✅ Hit-rate > 60% after 30 days
 - ✅ Avg return > 2% per profitable signal
 - ✅ EDGAR alerts < 5 min from publish
 - ✅ Algo detection confidence > 70%
 - ✅ Zero missed critical 8-K filings
+
 
 ______________________________________________________________________
 
@@ -828,6 +824,4 @@ For questions, bugs, or feature requests:
 
 - GitHub Issues: [Your Repo URL]
 - Email: info@ghosttrading.ai
-- Discord: [Community Link]
-
-**Happy Hunting! 🎯**
+- Discord: [Community Link]**Happy Hunting! 🎯**

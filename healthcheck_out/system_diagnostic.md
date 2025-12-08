@@ -1,22 +1,19 @@
 # Ghost System Diagnostic Report
 
-**Scan Time:** 2025-10-15T10:06:14.873159  
-**Base URL:** http://localhost:8444  
+**Scan Time:**2025-10-15T10:06:14.873159**Base URL:**<<<<<http://localhost:8444>>>>>
 
 ## 🎯 Overall Status
 
-- **Status:** ✅ OPERATIONAL
-- **Subsystems Healthy:** 4/5
-- **Endpoints Online:** 21/26
-- **Critical Issues:** 0
-- **Warnings:** 0
+-**Status:**✅ OPERATIONAL
+-**Subsystems Healthy:**4/5
+-**Endpoints Online:**21/26
+-**Critical Issues:**0
+-**Warnings:**0
+
 
 ## 🔍 Subsystem Details
 
-### AI Core & Prediction Engine
-
-**Status:** ✅ HEALTHY  
-**Health:** 6/6 endpoints online  
+### AI Core & Prediction Engine**Status:**✅ HEALTHY**Health:**6/6 endpoints online
 
 | Endpoint | Status | Latency | Notes |
 |----------|--------|---------|-------|
@@ -27,10 +24,7 @@
 | `/api/stage3/regime/current` | ✅ ONLINE | 2ms | {'regime': 'SIDEWAYS', 'confidence': 0.6, 'strateg |
 | `/api/snapshot` | ✅ ONLINE | 209ms | {'timestamp': 1760540774.8972857, 'portfolio': {}, |
 
-### Data Feeds (Stocks + Crypto)
-
-**Status:** ✅ HEALTHY  
-**Health:** 7/7 endpoints responding  
+### Data Feeds (Stocks + Crypto)**Status:**✅ HEALTHY**Health:**7/7 endpoints responding
 
 | Endpoint | Status | Latency | Notes |
 |----------|--------|---------|-------|
@@ -42,10 +36,7 @@
 | `/api/crypto/price/ethereum` | ⚠️ HTTP 503 | 3ms | {'detail': 'Crypto module not enabled. Set CRYPTO_ |
 | `/api/crypto/ohlcv/bitcoin?days=7` | ⚠️ HTTP 503 | 3ms | {'detail': 'Crypto module not enabled'} |
 
-### News & Sentiment Analysis
-
-**Status:** ⚠️ DEGRADED  
-**Health:** 2/3 endpoints online  
+### News & Sentiment Analysis**Status:**⚠️ DEGRADED**Health:**2/3 endpoints online
 
 | Endpoint | Status | Latency | Notes |
 |----------|--------|---------|-------|
@@ -53,10 +44,7 @@
 | `/api/news/recent` | ✅ ONLINE | 129ms | {'news': [], 'count': 0, 'timestamp': 1760540775.3 |
 | `/api/watcher/ticker_news` | ⚠️ HTTP 422 | 5ms | {'detail': [{'loc': ['query', 'symbol'], 'msg': 'f |
 
-### Cockpit UI & Frontend
-
-**Status:** ✅ HEALTHY  
-**Health:** 6/6 endpoints accessible  
+### Cockpit UI & Frontend**Status:**✅ HEALTHY**Health:**6/6 endpoints accessible
 
 | Endpoint | Status | Latency | Notes |
 |----------|--------|---------|-------|
@@ -67,10 +55,7 @@
 | `/health` | ✅ ONLINE | 2ms | {'ok': True, 'ts': 1760540775.4953885} |
 | `/static/img/neo_glass_bg.webp` | ✅ ONLINE | 3ms | OK |
 
-### Database & Backend Services
-
-**Status:** ✅ HEALTHY  
-**Health:** 3/4 services responding  
+### Database & Backend Services**Status:**✅ HEALTHY**Health:**3/4 services responding
 
 | Endpoint | Status | Latency | Notes |
 |----------|--------|---------|-------|
@@ -81,5 +66,5 @@
 
 ## 💡 Recommendations
 
-3. **Verify environment variables** - Ensure OPENAI_API_KEY, CRYPTO_ENABLED, etc. are set
-4. **Check SIM_MODE setting** - Currently set to 0 (live mode)
+1.**Verify environment variables**- Ensure OPENAI_API_KEY, CRYPTO_ENABLED, etc. are set
+2.**Check SIM_MODE setting** - Currently set to 0 (live mode)

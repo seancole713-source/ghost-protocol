@@ -45,6 +45,7 @@ Railway manual deployment **Endpoints provided**:
 - `/api/news/recent` - Recent news with time filter
 - `/api/news/sentiment/{symbol}` - News sentiment analysis
 
+
 ### 2. Top Movers (PRIORITY 2)
 
 **Add endpoint**: `/api/market/movers` **Implementation**: Query stage 1 world data for
@@ -74,30 +75,27 @@ optimization algorithm
 
 ### After Railway Deploys Current Code (b5b3a3e)
 
-**Will Work (No More Errors):**
+**Will Work (No More Errors):**- ✅ Ghost-AI v2 Agent Monitor (has `/api/agent/stats` and `/api/agent/decisions`)
 
-- ✅ Ghost-AI v2 Agent Monitor (has `/api/agent/stats` and `/api/agent/decisions`)
 - ✅ News Context (has `/api/stage1/world`)
 - ✅ Daily Accuracy Ledger (has `/api/stage2/accuracy` and `/api/stage2/forecasts`)
 - ✅ Smart Execution (has `/api/stage5/execution/analytics`)
 - ✅ Personal Portfolio (has `/api/portfolio`)
-- ✅ News Feed (will get `/api/news` and `/api/news/recent` from router)
-
-**Will Still Show Errors:**
-
-- ❌ Ghost-AI v1 Decision Preview (missing `/api/agent/decide`)
+- ✅ News Feed (will get `/api/news` and `/api/news/recent` from router)**Will Still Show Errors:**- ❌ Ghost-AI v1 Decision Preview (missing `/api/agent/decide`)
 - ❌ Top Movers (missing `/api/market/movers`)
 - ❌ Ghost Predictions "Run New Prediction" button (missing `/api/predictions/run`)
 - ❌ Provider Backoff (missing `/api/sources/status`)
 - ⚠️ Portfolio Optimization (missing `/api/stage4/portfolio/optimize`)
+
 
 ## 🎯 RECOMMENDED ACTION PLAN
 
 ### Phase 1: Deploy Current Code (NOW)
 
 1. Manually deploy commit `b5b3a3e` on Railway
-2. This will fix **6 out of 11 UI panels** immediately
+2. This will fix**6 out of 11 UI panels**immediately
 3. News feed will start working
+
 
 ### Phase 2: Add Missing Endpoints (NEXT)
 
@@ -109,33 +107,24 @@ Create these 5 endpoints to fix remaining UI panels:
 4. `/api/sources/status` - Provider backoff display
 5. `/api/stage4/portfolio/optimize` - Portfolio optimization
 
+
 ### Phase 3: Test End-to-End (FINAL)
 
 1. Verify all UI panels load without errors
 2. Test interactive features (buttons, refresh, filters)
 3. Validate data accuracy
 
-## 📝 SUMMARY
 
-**Current State:**
+## 📝 SUMMARY**Current State:**- 9/14 required endpoints exist in wolf_app.py
 
-- 9/14 required endpoints exist in wolf_app.py
 - 5/14 endpoints missing
-- News router adds 3 endpoints (in b5b3a3e)
-
-**After Railway Deploy:**
-
-- 12/14 endpoints will be available
+- News router adds 3 endpoints (in b5b3a3e)**After Railway Deploy:**- 12/14 endpoints will be available
 - 2/14 endpoints still missing (decide, movers)
-- ~85% of UI panels will work
-
-**To Reach 100%:**
-
-- Add 5 missing endpoints
+- ~85% of UI panels will work**To Reach 100%:**- Add 5 missing endpoints
 - Deploy again
 - All UI panels operational
 
-______________________________________________________________________
 
-**Next Step**: Deploy commit `b5b3a3e` to Railway manually, then create the 5 missing
+______________________________________________________________________**Next Step**: Deploy commit `b5b3a3e` to Railway
+manually, then create the 5 missing
 endpoints in a follow-up commit.

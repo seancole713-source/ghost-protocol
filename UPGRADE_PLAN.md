@@ -2,9 +2,7 @@
 
 **Version**: 1.0\
 **Date**: October 4, 2025\
-**Status**: 📋 **Ready for Implementation**
-
-______________________________________________________________________
+**Status**: 📋 **Ready for Implementation**______________________________________________________________________
 
 ## Overview
 
@@ -17,12 +15,10 @@ ______________________________________________________________________
 ## Priority Matrix
 
 | Tier | Count | Effort (days) | Risk if Deferred | Completion Target |
-|------|-------|---------------|------------------|-------------------| | **P0** | 1 |
-0.5 | 🔴 Data breach, financial loss | Immediate | | **P1** | 3 | 3-5 | 🟠 Security
-incidents, instability | 2 weeks | | **P2** | 3 | 5-7 | 🟡 Tech debt, confusion | 1 month
-|
-
-**Total Estimated Effort**: 8.5-12.5 developer-days (1.5-2.5 weeks at 1 FTE)
+|------|-------|---------------|------------------|-------------------| |**P0**| 1 |
+0.5 | 🔴 Data breach, financial loss | Immediate | |**P1**| 3 | 3-5 | 🟠 Security
+incidents, instability | 2 weeks | |**P2**| 3 | 5-7 | 🟡 Tech debt, confusion | 1 month
+|**Total Estimated Effort**: 8.5-12.5 developer-days (1.5-2.5 weeks at 1 FTE)
 
 ______________________________________________________________________
 
@@ -37,125 +33,169 @@ ______________________________________________________________________
 **Polygon**:
 
 ```bash
+
 # 1. Login to Polygon dashboard
-open https://polygon.io/dashboard/keys
+
+open <<<<<https://polygon.io/dashboard/keys>>>>>
 
 # 2. Generate new key (Dashboard UI)
+
 # → Note: Old key remains active until explicitly revoked
 
 # 3. Update Railway
+
 railway variables set POLYGON_API_KEY="<NEW_KEY>"
 
 # 4. Verify Ghost picks up new key
+
 railway logs | grep "POLYGON_KEY"
+
 # Expected: "SET (len=XX)"
 
 # 5. Revoke old key in Polygon dashboard
-```
+
+```text
 
 **AlphaVantage**:
 
 ```bash
+
 # 1. Request new key
-open "https://www.alphavantage.co/support/#api-key"
+
+open "<<<<<https://www.alphavantage.co/support/#api-key">>>>>
+
 # Fill form → receive email with new key
 
 # 2. Update Railway
+
 railway variables set ALPHAVANTAGE_API_KEY="<NEW_KEY>"
 
 # 3. Verify
+
 railway logs | grep "ALPHAVANTAGE_KEY"
 
 # Note: AlphaVantage doesn't support key revocation; old key expires naturally
-```
+
+```text
 
 **Ghost API Token**:
 
 ```bash
+
 # 1. Generate new token
+
 openssl rand -hex 32
+
 # Example output: a3f5c9d2e8b1f4a7c6e9d3b2f8a5c1e7d4b9f2a6c8e5d1b7f3a9c4e6d2b8f5a1c7
 
 # 2. Update Railway
+
 railway variables set GHOST_API_TOKEN="<NEW_TOKEN>"
 
 # 3. Update any external clients
+
 # (e.g., test scripts, monitoring tools, mobile apps)
-```
+
+```text
 
 **Telegram**:
 
 ```bash
+
 # 1. Open BotFather
-open "https://t.me/botfather"
+
+open "<<<<<https://t.me/botfather">>>>>
 
 # 2. Revoke old token
+
 /revoke
+
 # → Select Ghost bot → Confirm
 
 # 3. Generate new token
+
 /token
+
 # → Select Ghost bot → Copy new token
 
 # 4. Update Railway
+
 railway variables set TELEGRAM_BOT_TOKEN="<NEW_TOKEN>"
 
 # 5. Re-register webhook
+
 GHOST_URL=$(railway variables get RAILWAY_PUBLIC_DOMAIN)
 NEW_TOKEN="<NEW_TOKEN>"
-curl -X POST "https://api.telegram.org/bot${NEW_TOKEN}/setWebhook" \
-  -d "url=https://${GHOST_URL}/telegram/webhook"
+curl -X POST "<<<<<https://api.telegram.org/bot${NEW_TOKEN}/setWebhook">>>>> \
+  -d "url=<<<<<https://${GHOST_URL}/telegram/webhook">>>>>
 
 # 6. Verify
-curl "https://api.telegram.org/bot${NEW_TOKEN}/getWebhookInfo"
+
+curl "<<<<<https://api.telegram.org/bot${NEW_TOKEN}/getWebhookInfo">>>>>
+
 # Expected: url matches your Ghost URL
-```
+
+```text
 
 **Validation**:
 
 ```bash
-# Test each provider via Ghost health endpoint
-curl https://your-ghost-url/health/detailed | jq .
 
-# Expected output includes:
+# Test each provider via Ghost health endpoint
+
+curl <<<<<https://your-ghost-url/health/detailed>>>>> | jq .
+
+# Expected output includes
+
 # - "polygon": "ok" or "configured"
+
 # - "alphavantage": "ok" or "configured"
+
 # - "telegram": {"bot_ok": true, "webhook_set": true}
-```
+
+```text
 
 #### Step 2: Git History Cleanup (0.5 hours)
 
-**Option A: BFG Repo-Cleaner** (Recommended)
+**Option A: BFG Repo-Cleaner**(Recommended)
 
 ```bash
+
 # Install
+
 brew install bfg  # macOS
+
 # or: sudo apt-get install bfg-repo-cleaner  # Linux
 
 # Clone fresh mirror
+
 cd /tmp
 git clone --mirror git@github.com:seancole713-source/GHOST.git ghost-cleanup
 cd ghost-cleanup
 
 # Remove secrets.env from ALL commits
+
 bfg --delete-files secrets.env
 
 # Cleanup refs
+
 git reflog expire --expire=now --all
 git gc --prune=now --aggressive
 
 # Push cleaned history
+
 git push --force
 
 # Cleanup
+
 cd /workspaces/GHOST
 git fetch origin
 git reset --hard origin/main
-```
 
-**Option B: git filter-branch** (Manual)
+```text**Option B: git filter-branch**(Manual)
 
 ```bash
+
 cd /workspaces/GHOST
 
 git filter-branch --force --index-filter \
@@ -165,34 +205,46 @@ git filter-branch --force --index-filter \
 git push --force --all
 git push --force --tags
 
-# All collaborators must re-clone:
-# git clone git@github.com:seancole713-source/GHOST.git
-```
+# All collaborators must re-clone
 
-**Validation**:
+# git clone git@github.com:seancole713-source/GHOST.git
+
+```text**Validation**:
 
 ```bash
+
 # Verify secrets.env is gone from history
+
 git log --all --full-history -- secrets.env
+
 # Expected: no output
 
 # Check current working tree
+
 ls -la secrets.env
+
 # Expected: "No such file or directory" (unless recreated locally)
-```
+
+```text
 
 #### Step 3: Install Pre-Commit Hooks (0.5 hours)
 
 ```bash
+
 # Install detect-secrets
+
 pip install detect-secrets
 
 # Generate baseline
+
 detect-secrets scan --baseline .secrets.baseline
 
 # Create pre-commit hook
+
 cat > .git/hooks/pre-commit << 'EOF'
+
 #!/bin/bash
+
 detect-secrets-hook --baseline .secrets.baseline $(git diff --cached --name-only)
 if [ $? -ne 0 ]; then
   echo "❌ Potential secrets detected! Commit blocked."
@@ -205,12 +257,16 @@ EOF
 chmod +x .git/hooks/pre-commit
 
 # Test hook
+
 echo "POLYGON_API_KEY=abc123" > test_secret.txt
 git add test_secret.txt
 git commit -m "test"
+
 # Expected: Hook blocks commit, prints warning
+
 rm test_secret.txt
-```
+
+```text
 
 **Deliverables**:
 
@@ -220,6 +276,7 @@ rm test_secret.txt
 - [ ] Pre-commit hook installed
 - [ ] `.secrets.baseline` committed
 - [ ] Updated `CHANGELOG.md` with rotation date
+
 
 ______________________________________________________________________
 
@@ -234,30 +291,36 @@ ______________________________________________________________________
 **Change 1**: Add auth to `/debug/telegram_test`
 
 ```python
+
 @APP.post("/debug/telegram_test")
 async def debug_telegram_test(
     body: dict | None = None,
     credentials: HTTPAuthorizationCredentials | None = AUTH_DEP
 ):
     """Test Telegram notifications. Requires auth."""
+
     # Add auth check
+
     try:
         _require_bearer((f"Bearer {credentials.credentials}") if credentials and credentials.credentials else None)
     except Exception:
         raise HTTPException(401, "Unauthorized")
-    
+
     # Original logic
+
     try:
         msg = (body or {}).get("msg", "Ghost test message")
         _send_telegram(msg)
         return {"ok": True, "sent": msg}
     except Exception as e:
         return {"ok": False, "error": str(e)}
-```
+
+```text
 
 **Change 2**: Add auth to `/debug/prev_close`
 
 ```python
+
 @APP.post("/debug/prev_close")
 async def debug_set_prev_close(
     body: dict | None = None,
@@ -265,18 +328,21 @@ async def debug_set_prev_close(
 ):
     """Test-helper: set cached prev_close for WOLF and clear live price.
     Enabled only when SNAP_TEST_MODE is active. Requires auth."""
-    
+
     # Auth check (even in test mode)
+
     try:
         _require_bearer((f"Bearer {credentials.credentials}") if credentials and credentials.credentials else None)
     except Exception:
         raise HTTPException(401, "Unauthorized")
-    
+
     # Environment gate
+
     if os.getenv("SNAP_TEST_MODE", "0").lower() not in ("1", "true", "yes"):
         raise HTTPException(403, "forbidden")
-    
+
     # Original logic
+
     try:
         prev_close_val = (body or {}).get("prev_close")
         if prev_close_val is None:
@@ -286,14 +352,16 @@ async def debug_set_prev_close(
         raise
     except Exception:
         raise HTTPException(422, "invalid prev_close")
-    
+
     _cache_put_price(WOLF, None, pv, "prev-close")
     return {"ok": True, "prev_close": pv}
-```
+
+```text
 
 **Change 3**: Add auth to `/debug/price_diag`
 
 ```python
+
 @APP.post("/debug/price_diag")
 async def debug_set_price_diag(
     body: dict | None = None,
@@ -301,18 +369,21 @@ async def debug_set_price_diag(
 ):
     """Test-helper: set PRICE_DIAG fields to simulate quorum/anomaly.
     Enabled only when SNAP_TEST_MODE is active. Requires auth."""
-    
+
     # Auth check
+
     try:
         _require_bearer((f"Bearer {credentials.credentials}") if credentials and credentials.credentials else None)
     except Exception:
         raise HTTPException(401, "Unauthorized")
-    
+
     # Environment gate
+
     if os.getenv("SNAP_TEST_MODE", "0").lower() not in ("1", "true", "yes"):
         raise HTTPException(403, "forbidden")
-    
+
     # Original logic
+
     try:
         if isinstance(body, dict):
             for k in ("anomaly", "reason", "provider_spread", "quorum_ok"):
@@ -320,22 +391,26 @@ async def debug_set_price_diag(
                     PRICE_DIAG[k] = body[k]
     except Exception:
         pass
-    
+
     return {"ok": True, "diag": PRICE_DIAG}
-```
+
+```text
 
 **Testing**:
 
 ```python
+
 # tests/test_debug_auth.py
+
 import pytest
 
 def test_debug_telegram_requires_auth(client):
     """Debug telegram endpoint requires bearer token."""
     resp = client.post("/debug/telegram_test", json={"msg": "test"})
     assert resp.status_code == 401
-    
+
     # With auth
+
     headers = {"Authorization": f"Bearer {TEST_TOKEN}"}
     resp = client.post("/debug/telegram_test", json={"msg": "test"}, headers=headers)
     assert resp.status_code == 200
@@ -344,8 +419,9 @@ def test_debug_prev_close_requires_auth(client):
     """Debug prev_close requires auth even in test mode."""
     resp = client.post("/debug/prev_close", json={"prev_close": 25.0})
     assert resp.status_code == 401
-    
+
     # With auth
+
     headers = {"Authorization": f"Bearer {TEST_TOKEN}"}
     resp = client.post("/debug/prev_close", json={"prev_close": 25.0}, headers=headers)
     assert resp.status_code in [200, 403]  # 403 if not in SNAP_TEST_MODE
@@ -354,31 +430,39 @@ def test_debug_price_diag_requires_auth(client):
     """Debug price_diag requires auth."""
     resp = client.post("/debug/price_diag", json={"anomaly": True})
     assert resp.status_code == 401
-```
+
+```text
 
 **Validation**:
 
 ```bash
+
 # Without token (should fail)
-RAILWAY_URL="https://ghost-production-xxxx.up.railway.app"
+
+RAILWAY_URL="<<<<<https://ghost-production-xxxx.up.railway.app">>>>>
 curl -X POST "$RAILWAY_URL/debug/telegram_test" \
   -H "Content-Type: application/json" \
   -d '{"msg":"test"}'
+
 # Expected: {"detail":"Unauthorized"}, status 401
 
 # With token (should succeed)
+
 curl -X POST "$RAILWAY_URL/debug/telegram_test" \
   -H "Content-Type: application/json" \
     -H "Authorization: Bearer $(railway variables get GHOST_API_TOKEN)" \
   -d '{"msg":"test"}'
+
 # Expected: {"ok":true,"sent":"test"}, status 200
-```
+
+```text
 
 **Deliverables**:
 
 - [ ] Auth added to 3 debug endpoints
 - [ ] Tests passing (`pytest tests/test_debug_auth.py`)
 - [ ] Documented in `OPERATIONS.md`
+
 
 ______________________________________________________________________
 
@@ -387,16 +471,21 @@ ______________________________________________________________________
 #### Investigation Phase (0.5 days)
 
 ```bash
+
 # Extract both implementations
+
 sed -n '4417,4467p' wolf_app.py > sse_v1.py
 sed -n '6172,6238p' wolf_app.py > sse_v2.py
 
 # Compare
+
 diff -u sse_v1.py sse_v2.py
 
 # Check which one is called in production
+
 railway logs | grep "cockpit/stream" | tail -20
-```
+
+```text
 
 #### Implementation (1 day)
 
@@ -406,30 +495,39 @@ railway logs | grep "cockpit/stream" | tail -20
 2. If v2 has bug fixes → keep v2, remove v1
 3. If v1 is stable → keep v1, remove v2
 
+
 **Assuming v2 is newer (keep v2)**:
 
 **File**: `wolf_app.py`
 
 ```python
+
 # Delete lines 4417-4467 (old implementation)
+
 # Keep lines 6172-6238 (new implementation)
 
 # Add comment to prevent re-introduction
-# Line 6172:
+
+# Line 6172
+
 @APP.get("/api/cockpit/stream")
 async def api_cockpit_stream_v2(request: Request):
     """Server-Sent Events stream for cockpit updates.
-    
+
     NOTE: This is the canonical implementation as of 2025-10-04.
     Previous implementation removed during P1-2 consolidation.
     """
-    # ... existing implementation ...
-```
 
-**Testing** (0.5 days):
+    # ... existing implementation 
+
+```text
+
+**Testing**(0.5 days):
 
 ```python
+
 # tests/test_cockpit_stream.py
+
 import asyncio
 import pytest
 
@@ -444,29 +542,37 @@ async def test_cockpit_stream_returns_sse(client):
     async with client.stream("GET", "/api/cockpit/stream") as resp:
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "text/event-stream"
-        
+
         # Read first event
+
         chunk = await resp.aiter_bytes().__anext__()
         assert b"data:" in chunk
-```
 
-**Validation**:
+```text**Validation**:
 
 ```bash
+
 # Start Ghost
+
 uvicorn wolf_app:app --host 0.0.0.0 --port 5000
 
 # Connect SSE client
-curl -N https://your-ghost-url/api/cockpit/stream
+
+curl -N <<<<<https://your-ghost-url/api/cockpit/stream>>>>>
 
 # Expected: Stream of JSON events every 2 seconds
+
 # data: {"price":25.43,...}
+
 # data: {"price":25.44,...}
 
 # Monitor for route collision warnings in logs
+
 railway logs | grep -i "duplicate\|collision\|override"
+
 # Expected: No warnings after fix
-```
+
+```text
 
 **Deliverables**:
 
@@ -474,6 +580,7 @@ railway logs | grep -i "duplicate\|collision\|override"
 - [ ] Test passing (`pytest tests/test_cockpit_stream.py`)
 - [ ] No route collision warnings in logs
 - [ ] Updated `CHANGELOG.md`
+
 
 ______________________________________________________________________
 
@@ -488,27 +595,32 @@ ______________________________________________________________________
 **Change 1**: Update `/events` endpoint
 
 ```python
+
 @APP.get("/events")
 async def events_sse(request: Request):
     """Server-Sent Events stream for general system events.
     Auto-disconnects when client closes connection or after 1 hour."""
-    
+
     async def _event_generator():
         started = time.time()
         max_age_s = 3600  # 1 hour TTL
-        
+
         while True:
+
             # Check if client disconnected
+
             if await request.is_disconnected():
                 LOGGER.info("sse_client_disconnected", extra={"endpoint": "/events"})
                 break
-            
+
             # Check TTL
+
             if time.time() - started > max_age_s:
                 LOGGER.info("sse_ttl_expired", extra={"endpoint": "/events", "age_s": max_age_s})
                 break
-            
+
             # Build event
+
             try:
                 events_list = list(_EVENTS_RING)[-10:]  # Last 10 events
                 data = {"events": events_list, "ts": int(time.time())}
@@ -516,9 +628,9 @@ async def events_sse(request: Request):
             except Exception as e:
                 LOGGER.exception("sse_event_build_failed", extra={"error": str(e)})
                 yield f"data: {json.dumps({'error': 'event_build_failed'})}\n\n"
-            
+
             await asyncio.sleep(5)
-    
+
     return StreamingResponse(
         _event_generator(),
         media_type="text/event-stream",
@@ -528,29 +640,33 @@ async def events_sse(request: Request):
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         }
     )
-```
+
+```text
 
 **Change 2**: Update `/api/cockpit/stream`
 
 ```python
+
 @APP.get("/api/cockpit/stream")
 async def api_cockpit_stream_v2(request: Request):
     """Server-Sent Events stream for cockpit updates.
     Auto-disconnects when client closes connection or after 1 hour."""
-    
+
     async def _cockpit_generator():
         started = time.time()
         max_age_s = 3600  # 1 hour TTL
         client_id = str(uuid.uuid4())  # Unique ID for this connection
-        
+
         LOGGER.info("sse_client_connected", extra={
             "endpoint": "/api/cockpit/stream",
             "client_id": client_id
         })
-        
+
         try:
             while True:
+
                 # Check disconnect
+
                 if await request.is_disconnected():
                     LOGGER.info("sse_client_disconnected", extra={
                         "endpoint": "/api/cockpit/stream",
@@ -558,16 +674,18 @@ async def api_cockpit_stream_v2(request: Request):
                         "duration_s": int(time.time() - started)
                     })
                     break
-                
+
                 # Check TTL
+
                 if time.time() - started > max_age_s:
                     LOGGER.info("sse_ttl_expired", extra={
                         "endpoint": "/api/cockpit/stream",
                         "client_id": client_id
                     })
                     break
-                
+
                 # Build snapshot
+
                 try:
                     snap = _build_cockpit_snapshot()
                     yield f"data: {json.dumps(snap)}\n\n"
@@ -577,14 +695,14 @@ async def api_cockpit_stream_v2(request: Request):
                         "error": str(e)
                     })
                     yield f"data: {json.dumps({'error': 'snapshot_failed'})}\n\n"
-                
+
                 await asyncio.sleep(2)
         finally:
             LOGGER.info("sse_generator_stopped", extra={
                 "client_id": client_id,
                 "total_duration_s": int(time.time() - started)
             })
-    
+
     return StreamingResponse(
         _cockpit_generator(),
         media_type="text/event-stream",
@@ -594,14 +712,17 @@ async def api_cockpit_stream_v2(request: Request):
             "X-Accel-Buffering": "no",
         }
     )
-```
 
-**Monitoring** (0.5 days):
+```text
+
+**Monitoring**(0.5 days):
 
 Add Prometheus metrics for SSE tracking:
 
 ```python
+
 # Near other Prometheus metrics (around line 2000)
+
 _G_SSE_CLIENTS = Gauge(
     "ghost_sse_active_clients",
     "Number of active SSE clients",
@@ -620,72 +741,95 @@ _C_SSE_DISCONNECTS = Counter(
     ["endpoint", "reason"]
 )
 
-# Update generator code to increment metrics:
+# Update generator code to increment metrics
+
 def _cockpit_generator():
     endpoint = "/api/cockpit/stream"
     _C_SSE_CONNECTS.labels(endpoint=endpoint).inc()
     _G_SSE_CLIENTS.labels(endpoint=endpoint).inc()
-    
+
     try:
-        # ... existing while loop ...
+
+        # ... existing while loop 
+
     finally:
         _G_SSE_CLIENTS.labels(endpoint=endpoint).dec()
         _C_SSE_DISCONNECTS.labels(endpoint=endpoint, reason="natural").inc()
-```
 
-**Testing** (0.5 days):
+```text**Testing**(0.5 days):
 
 ```python
+
 # tests/test_sse_cleanup.py
+
 import asyncio
 import pytest
 
 async def test_sse_stops_on_client_disconnect(client):
     """SSE generator stops when client disconnects."""
+
     # Start streaming
+
     async with client.stream("GET", "/api/cockpit/stream") as resp:
+
         # Read one event
+
         chunk = await resp.aiter_bytes().__anext__()
         assert b"data:" in chunk
+
         # Close connection (context manager exit triggers disconnect)
-    
+
     # Check metrics
+
     metrics_resp = await client.get("/metrics")
     metrics_text = metrics_resp.text
-    
+
     # Verify disconnect was logged
+
     assert "ghost_sse_disconnects_total" in metrics_text
 
 async def test_sse_ttl_expires(client):
     """SSE generator stops after TTL expiry."""
+
     # This test requires mocking time.time() or waiting 1 hour
+
     # Simplified: verify TTL logic exists
+
     from wolf_app import api_cockpit_stream_v2
     import inspect
     source = inspect.getsource(api_cockpit_stream_v2)
     assert "max_age_s" in source
     assert "time() - started > max_age_s" in source
-```
 
-**Validation**:
+```text**Validation**:
 
 ```bash
-# Monitor SSE connections in real-time
-watch -n 1 'curl -s https://your-ghost-url/metrics | grep ghost_sse'
 
-# Expected output:
+# Monitor SSE connections in real-time
+
+watch -n 1 'curl -s <<<<<https://your-ghost-url/metrics>>>>> | grep ghost_sse'
+
+# Expected output
+
 # ghost_sse_active_clients{endpoint="/events"} 0
+
 # ghost_sse_active_clients{endpoint="/api/cockpit/stream"} 2
+
 # ghost_sse_connects_total{endpoint="/events"} 15
+
 # ghost_sse_disconnects_total{endpoint="/events",reason="natural"} 15
 
 # Simulate client disconnect
-curl -N --max-time 5 https://your-ghost-url/api/cockpit/stream
+
+curl -N --max-time 5 <<<<<https://your-ghost-url/api/cockpit/stream>>>>>
 
 # Check logs for disconnect event
+
 railway logs | grep "sse_client_disconnected"
+
 # Expected: JSON log entry with client_id and duration_s
-```
+
+```text
 
 **Deliverables**:
 
@@ -694,6 +838,7 @@ railway logs | grep "sse_client_disconnected"
 - [ ] Prometheus metrics tracking connections
 - [ ] Tests passing (`pytest tests/test_sse_cleanup.py`)
 - [ ] Logs confirm generators stop on disconnect
+
 
 ______________________________________________________________________
 
@@ -706,23 +851,30 @@ ______________________________________________________________________
 **Step 1**: Generate webhook secret
 
 ```bash
+
 # Generate random secret
+
 openssl rand -base64 32
+
 # Example: Xy9bZ3fG8kL2mN4pQ6rS8tU0vW2xY4zA6bC8dE0fG2h=
 
 # Set in Railway
+
 railway variables set TELEGRAM_WEBHOOK_SECRET="<SECRET>"
-```
+
+```text
 
 **Step 2**: Update webhook registration script
 
 **File**: `setup_telegram_webhook.sh`
 
 ```bash
+
 #!/bin/bash
+
 set -e
 
-GHOST_URL="${1:-https://ghost-production.up.railway.app}"
+GHOST_URL="${1:-<<<<<https://ghost-production.up.railway.app}">>>>>
 BOT_TOKEN="${TELEGRAM_BOT_TOKEN}"
 WEBHOOK_SECRET="${TELEGRAM_WEBHOOK_SECRET}"
 
@@ -737,7 +889,7 @@ fi
 
 echo "🔗 Setting webhook: ${GHOST_URL}/telegram/webhook"
 
-curl -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+curl -X POST "<<<<<https://api.telegram.org/bot${BOT_TOKEN}/setWebhook">>>>> \
   -d "url=${GHOST_URL}/telegram/webhook" \
   -d "secret_token=${WEBHOOK_SECRET}" \
   -d "max_connections=10" \
@@ -745,26 +897,32 @@ curl -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
 
 echo ""
 echo "✅ Webhook configured. Verify with:"
-echo "   curl https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo"
-```
+echo "   curl <<<<<https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo">>>>>
+
+```text
 
 **Step 3**: Update webhook endpoint
 
 **File**: `wolf_app.py`
 
 ```python
+
 # Near TELEGRAM_BOT_TOKEN declaration (around line 408)
+
 TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
 
 # Update webhook handler (around line 4660)
+
 @APP.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
     """Telegram bot webhook handler.
-    
+
     Validates webhook secret token to prevent spoofing.
     Commands: /status, /signal, /pnl, /today
     """
+
     # Validate webhook secret
+
     if TELEGRAM_WEBHOOK_SECRET:
         token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
         if not token or token != TELEGRAM_WEBHOOK_SECRET:
@@ -777,60 +935,77 @@ async def telegram_webhook(request: Request):
         LOGGER.warning("telegram_webhook_no_secret", extra={
             "msg": "TELEGRAM_WEBHOOK_SECRET not set; webhook validation disabled"
         })
-    
+
     # Original logic
+
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(400, "Invalid JSON")
-    
-    # ... existing command handling ...
-```
+
+    # ... existing command handling 
+
+```text
 
 **Testing**:
 
 ```python
+
 # tests/test_telegram_webhook.py
+
 def test_webhook_requires_secret(client):
     """Webhook rejects requests without valid secret."""
+
     # No secret header
+
     resp = client.post("/telegram/webhook", json={"message": {"text": "/status"}})
     assert resp.status_code == 403
-    
+
     # Invalid secret
+
     headers = {"X-Telegram-Bot-Api-Secret-Token": "wrong_secret"}
     resp = client.post("/telegram/webhook", json={"message": {"text": "/status"}}, headers=headers)
     assert resp.status_code == 403
-    
+
     # Valid secret (requires env var set in conftest)
+
     valid_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET")
     headers = {"X-Telegram-Bot-Api-Secret-Token": valid_secret}
     resp = client.post("/telegram/webhook", json={"message": {"text": "/status"}}, headers=headers)
     assert resp.status_code == 200
-```
+
+```text
 
 **Validation**:
 
 ```bash
+
 # Test webhook with invalid token
-curl -X POST https://your-ghost-url/telegram/webhook \
+
+curl -X POST <<<<<https://your-ghost-url/telegram/webhook>>>>> \
   -H "Content-Type: application/json" \
   -H "X-Telegram-Bot-Api-Secret-Token: fake_token" \
   -d '{"message":{"text":"/status"}}'
+
 # Expected: {"detail":"Invalid webhook token"}, status 403
 
 # Test webhook with valid token (from Railway)
+
 SECRET=$(railway variables get TELEGRAM_WEBHOOK_SECRET)
-curl -X POST https://your-ghost-url/telegram/webhook \
+curl -X POST <<<<<https://your-ghost-url/telegram/webhook>>>>> \
   -H "Content-Type: application/json" \
   -H "X-Telegram-Bot-Api-Secret-Token: ${SECRET}" \
   -d '{"message":{"chat":{"id":123},"text":"/status"}}'
+
 # Expected: 200 OK (command processed)
 
 # Verify Telegram can reach webhook
-curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo" | jq .
+
+curl "<<<<<https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo">>>>> | jq .
+
 # Expected: "url" matches Ghost URL, "has_custom_certificate": false
-```
+
+```text
 
 **Deliverables**:
 
@@ -839,6 +1014,7 @@ curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo" | jq .
 - [ ] Webhook validation implemented
 - [ ] Tests passing
 - [ ] Webhook re-registered with secret
+
 
 ______________________________________________________________________
 
@@ -849,40 +1025,52 @@ ______________________________________________________________________
 **Step 1**: Confirm main.py is unused
 
 ```bash
+
 # Check Railway start command
+
 railway run printenv | grep -i "command\|start"
 
 # Check if main.py is imported anywhere
+
 grep -r "import main" --exclude-dir=.venv --exclude-dir=__pycache__
 grep -r "from main import" --exclude-dir=.venv --exclude-dir=__pycache__
 
 # Expected: No results (main.py is orphaned)
-```
+
+```text
 
 **Step 2**: Extract unique routes
 
 ```bash
+
 # Compare route sets
+
 grep "@app\." main.py | cut -d'(' -f1 | sort > main_routes.txt
 grep "@APP\." wolf_app.py | cut -d'(' -f1 | sort > wolf_routes.txt
 
 # Find routes only in main.py
+
 comm -23 main_routes.txt wolf_routes.txt
 
-# Expected output (routes to migrate or confirm obsolete):
+# Expected output (routes to migrate or confirm obsolete)
+
 # @app.get("/catalog/status
+
 # @app.get("/catalog/search
+
 # @app.post("/agent/start
-```
+
+```text
 
 **Step 3**: Migrate or document
 
 ````markdown
+
 # In CHANGELOG.md or DEPRECATED.md
 
 ## Deprecated Routes (from main.py)
 
-The following routes existed in `main.py` but are **not migrated** to `wolf_app.py`:
+The following routes existed in `main.py` but are **not migrated**to `wolf_app.py`:
 
 | Route | Method | Reason |
 |-------|--------|--------|
@@ -892,18 +1080,23 @@ The following routes existed in `main.py` but are **not migrated** to `wolf_app.
 | `/api/news` | GET | Replaced by `/api/cockpit` (includes news) |
 
 If any of these are needed, they can be restored from git history:
+
 ```bash
+
 git show HEAD:main.py | grep -A 20 "def catalog_status"
-````
 
 ````
 
-**Step 4**: Archive
+````**Step 4**: Archive
+
 ```bash
+
 # Rename to indicate deprecation
+
 git mv main.py main_DEPRECATED_2025-10-04.py
 
 # Add notice to top of file
+
 cat > /tmp/deprecation_notice.txt << 'EOF'
 """
 DEPRECATED: This file is a legacy backup from pre-October 2025.
@@ -920,28 +1113,38 @@ For reference only. Will be removed in Q1 2026.
 EOF
 
 # Prepend notice
+
 cat /tmp/deprecation_notice.txt main_DEPRECATED_2025-10-04.py > /tmp/main_new.py
 mv /tmp/main_new.py main_DEPRECATED_2025-10-04.py
 
 # Commit
+
 git add main_DEPRECATED_2025-10-04.py
 git commit -m "chore: deprecate main.py, all routes migrated to wolf_app.py"
+
 ````
 
 **Validation**:
 
 ```bash
+
 # Verify Ghost still starts
+
 railway run python -c "from wolf_app import APP; print('✅ Import successful')"
 
 # Check no imports of main module
+
 rg "import.*main[^_]" --type py
+
 # Expected: No matches
 
 # Verify deprecated file has notice
+
 head -10 main_DEPRECATED_2025-10-04.py
+
 # Expected: Deprecation notice visible
-```
+
+```text
 
 **Deliverables**:
 
@@ -950,6 +1153,7 @@ head -10 main_DEPRECATED_2025-10-04.py
 - [ ] Unique routes documented as removed/obsolete
 - [ ] Tests still passing
 - [ ] Updated `CHANGELOG.md`
+
 
 ______________________________________________________________________
 
@@ -960,9 +1164,10 @@ ______________________________________________________________________
 **File**: `ENV_VARS_REFERENCE.md`
 
 ````markdown
+
 # Ghost Environment Variables Reference
 
-**Last Updated**: October 4, 2025  
+**Last Updated**: October 4, 2025
 **Version**: 1.0
 
 This document catalogs all environment variables used by Ghost, their purpose, defaults, and whether they're required.
@@ -979,7 +1184,7 @@ This document catalogs all environment variables used by Ghost, their purpose, d
 | Alerts & Notifications | 0 | 17 | 17 |
 | AI & Forecasting | 0 | 18 | 18 |
 | Observability | 0 | 8 | 8 |
-| **Total** | **1** | **60** | **61** |
+| **Total**|**1**|**60**|**61** |
 
 *At least one price provider key recommended for live data
 
@@ -1010,15 +1215,11 @@ This document catalogs all environment variables used by Ghost, their purpose, d
 
 ## 2. Price Providers
 
-**At least one required for live price data.**
-
-| Variable | Provider | Required | Free Tier | Notes |
+**At least one required for live price data.**| Variable | Provider | Required | Free Tier | Notes |
 |----------|----------|----------|-----------|-------|
 | `POLYGON_API_KEY` | Polygon.io | No | ❌ No | Most reliable, paid |
 | `ALPHAVANTAGE_API_KEY` | AlphaVantage | No | ✅ 25 req/day | Free tier sufficient for single ticker |
-| `YAHOO_FINANCE` | Yahoo (via yfinance) | No | ✅ Yes | No key required, rate limited |
-
-**Configuration**:
+| `YAHOO_FINANCE` | Yahoo (via yfinance) | No | ✅ Yes | No key required, rate limited |**Configuration**:
 
 | Variable | Purpose | Default | Notes |
 |----------|---------|---------|-------|
@@ -1053,7 +1254,7 @@ This document catalogs all environment variables used by Ghost, their purpose, d
 |----------|---------|----------|-------|
 | `TELEGRAM_BOT_TOKEN` | Bot API token | No | Get from @BotFather |
 | `TELEGRAM_CHAT_ID` | Default chat ID | No | Numeric chat ID |
-| `TELEGRAM_WEBHOOK_SECRET` | Webhook validation secret | No | **Recommended** for security |
+| `TELEGRAM_WEBHOOK_SECRET` | Webhook validation secret | No | **Recommended**for security |
 | `TELEGRAM_HEARTBEAT_ON_START` | Send startup notification | `0` | Set `1` to enable |
 
 ### Alert Configuration
@@ -1141,11 +1342,8 @@ This document catalogs all environment variables used by Ghost, their purpose, d
 
 ---
 
-## 9. Debug & Testing
+## 9. Debug & Testing**Not for production use.**| Variable | Purpose | Default | Notes |
 
-**Not for production use.**
-
-| Variable | Purpose | Default | Notes |
 |----------|---------|---------|-------|
 | `SNAP_TEST_MODE` | Enable test mode | `0` | Unlocks debug endpoints |
 | `DEBUG_POSLOG` | Position logging verbosity | `0` | Test fixtures |
@@ -1157,15 +1355,20 @@ This document catalogs all environment variables used by Ghost, their purpose, d
 ## Setup Checklist
 
 ### Minimum Viable (Local Dev)
+
 ```bash
+
 export GHOST_API_TOKEN="$(openssl rand -hex 32)"
 export ALPHAVANTAGE_API_KEY="$(railway variables get ALPHAVANTAGE_API_KEY)"
+
 # Ghost will run without Telegram; logs to console
-```
+
+```text
 
 ### Production (Railway)
 
 ```bash
+
 railway variables set \
     GHOST_API_TOKEN "$(openssl rand -hex 32)" \
     POLYGON_API_KEY "$(railway variables get POLYGON_API_KEY)" \
@@ -1180,14 +1383,17 @@ railway variables set \
     WOLF_AUTOSAVE_S 300 \
     LOG_LEVEL INFO \
     LOG_JSON 1
-```
+
+```text
 
 ______________________________________________________________________
 
 ## Validation
 
 ```bash
+
 # Check required vars are set
+
 python -c "
 import os
 required = ['GHOST_API_TOKEN']
@@ -1199,11 +1405,14 @@ else:
 "
 
 # Verify Ghost starts
+
 python -c "from wolf_app import APP; print('✅ Import successful')"
 
 # Check /api/config endpoint
-curl -s https://your-ghost-url/api/config | jq .
-```
+
+curl -s <<<<<https://your-ghost-url/api/config>>>>> | jq .
+
+```text
 
 ______________________________________________________________________
 
@@ -1211,10 +1420,13 @@ ______________________________________________________________________
 
 If you're migrating from an older Ghost version:
 
-1. **`ALPHA_VANTAGE_API_KEY`** → Now supports both `ALPHAVANTAGE_API_KEY` and legacy
+1.**`ALPHA_VANTAGE_API_KEY`**→ Now supports both `ALPHAVANTAGE_API_KEY` and legacy
+
    name
-2. **`WOLF_QTY`/`WOLF_AVG_COST`** → Deprecated; use persistence instead
-3. **`AI_DB_PATH`** → Renamed to `AI_MEMORY_DB_PATH` (old name still works)
+
+1.**`WOLF_QTY`/`WOLF_AVG_COST`**→ Deprecated; use persistence instead
+2.**`AI_DB_PATH`**→ Renamed to `AI_MEMORY_DB_PATH` (old name still works)
+
 
 ______________________________________________________________________
 
@@ -1224,14 +1436,17 @@ ______________________________________________________________________
 - `OPERATIONS.md` - Runtime operations guide
 - `GHOST_DEEP_AUDIT.md` - Security audit findings
 
-````
 
-**Validation**:
+````**Validation**:
+
 ```bash
+
 # Lint markdown
+
 markdownlint ENV_VARS_REFERENCE.md
 
 # Verify all documented vars exist in code
+
 python -c "
 import re
 doc = open('ENV_VARS_REFERENCE.md').read()
@@ -1247,6 +1462,7 @@ if extra:
 if not (missing or extra):
     print('✅ Documentation complete')
 "
+
 ````
 
 **Deliverables**:
@@ -1258,6 +1474,7 @@ if not (missing or extra):
 - [ ] Validation script passes
 - [ ] Linked from README.md
 
+
 ______________________________________________________________________
 
 ## Testing Strategy
@@ -1267,6 +1484,7 @@ ______________________________________________________________________
 Create `tests/test_upgrade_plan.py`:
 
 ```python
+
 """Regression tests for upgrade plan changes."""
 
 import pytest
@@ -1284,7 +1502,7 @@ def test_debug_endpoints_require_auth(client):
         ("/debug/prev_close", "POST"),
         ("/debug/price_diag", "POST"),
     ]
-    
+
     for path, method in debug_endpoints:
         func = getattr(client, method.lower())
         resp = func(path, json={})
@@ -1293,7 +1511,9 @@ def test_debug_endpoints_require_auth(client):
 def test_telegram_webhook_validates_secret(client):
     """Telegram webhook validates secret token."""
     resp = client.post("/telegram/webhook", json={"message": {}})
+
     # Should fail if TELEGRAM_WEBHOOK_SECRET is set
+
     assert resp.status_code in [403, 200]  # 200 if secret not configured
 
 def test_sse_includes_disconnect_check(client):
@@ -1313,14 +1533,14 @@ def test_env_vars_documented():
     """Critical env vars are documented."""
     with open("ENV_VARS_REFERENCE.md") as f:
         doc = f.read()
-    
+
     required_vars = [
         "GHOST_API_TOKEN",
         "POLYGON_API_KEY",
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_WEBHOOK_SECRET",
     ]
-    
+
     for var in required_vars:
         assert var in doc, f"{var} should be documented"
 
@@ -1330,11 +1550,14 @@ async def test_sse_stops_on_disconnect(client):
     async with client.stream("GET", "/events") as resp:
         chunk = await resp.aiter_bytes().__anext__()
         assert b"data:" in chunk
+
         # Connection will close on context exit
-    
+
     # If generator continues, it will accumulate in memory
+
     # This test verifies it stops (via metrics or internal tracking)
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -1345,55 +1568,64 @@ If any upgrade step causes issues:
 ### P0/P1 Rollback
 
 ```bash
+
 # Revert auth changes
+
 git revert <commit_hash>
 git push origin main
 railway up
 
 # Restore old secrets (if rotation failed)
+
 railway variables set POLYGON_API_KEY="<OLD_KEY>"
-# etc.
+
+# etc
 
 # Re-remove secrets.env from working tree (if accidentally committed)
+
 git rm --cached secrets.env
 git push origin main
-```
+
+```text
 
 ### P2 Rollback
 
 ```bash
+
 # Restore main.py
+
 git checkout HEAD~1 main.py
 
 # Revert webhook validation
+
 railway variables unset TELEGRAM_WEBHOOK_SECRET
+
 # Re-register webhook without secret
-```
+
+```text
 
 ______________________________________________________________________
 
 ## Success Metrics
 
-| Metric | Target | Measurement | |--------|--------|-------------| | **P0 Completion**
-| 100% | All 5 keys rotated, history cleaned | | **P1 Auth Coverage** | 100% | All debug
-endpoints require token | | **P1 Route Deduplication** | 1 impl | Zero route collision
-warnings | | **P1 SSE Leak Rate** | \<1% | Active clients / total connects < 0.01 | |
-**P2 Webhook Security** | 100% | All webhooks validate signature | | **P2
-Documentation** | 95%+ | All env vars in reference doc | | **Test Coverage** | >80% |
-pytest --cov for upgrade changes | | **Zero Regressions** | ✅ | All existing tests pass
+| Metric | Target | Measurement | |--------|--------|-------------| | **P0 Completion**| 100% | All 5 keys rotated,
+history cleaned | |**P1 Auth Coverage**| 100% | All debug
+endpoints require token | |**P1 Route Deduplication**| 1 impl | Zero route collision
+warnings | |**P1 SSE Leak Rate**| \<1% | Active clients / total connects < 0.01 | |**P2 Webhook Security**| 100% | All
+webhooks validate signature | |**P2
+Documentation**| 95%+ | All env vars in reference doc | |**Test Coverage**| >80% |
+pytest --cov for upgrade changes | |**Zero Regressions**| ✅ | All existing tests pass
 |
 
 ______________________________________________________________________
 
 ## Timeline Summary
 
-| Week | Focus | Deliverables | Effort | |------|-------|--------------|--------| |
-**Week 1** | P0 (Critical) | Keys rotated, history cleaned, pre-commit hooks | 0.5 days
-| | **Week 2** | P1 (High) | Auth on debug, SSE cleanup, route consolidation | 3-5 days
-| | **Weeks 3-4** | P2 (Medium) | Webhook validation, main.py archived, env docs | 5-7
-days |
-
-**Total Calendar Time**: 1 month (at ~50% allocation)
+| Week | Focus | Deliverables | Effort | |------|-------|--------------|--------| |**Week 1**| P0 (Critical) | Keys
+rotated, history cleaned, pre-commit hooks | 0.5 days
+| |**Week 2**| P1 (High) | Auth on debug, SSE cleanup, route consolidation | 3-5 days
+| |**Weeks 3-4**| P2 (Medium) | Webhook validation, main.py archived, env docs | 5-7
+days |**Total Calendar Time**: 1 month (at ~50% allocation)
 
 ______________________________________________________________________
 
@@ -1403,6 +1635,7 @@ ______________________________________________________________________
 - **Security Incident**: `SECURITY_INCIDENT_P0_SECRETS.md`
 - **Operations**: `OPERATIONS.md`
 - **Questions**: File issue in GitHub repo
+
 
 ______________________________________________________________________
 

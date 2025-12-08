@@ -2,13 +2,14 @@
 
 ## 🎯 Overview
 
-Successfully ingested **6,000-8,000 US stock symbols** from major exchanges into Ghost Protocol's PostgreSQL database.
+Successfully ingested **6,000-8,000 US stock symbols**from major exchanges into Ghost Protocol's PostgreSQL
+database.**Exchanges Covered**:
 
-**Exchanges Covered**:
 - NASDAQ: ~3,500 symbols
 - NYSE: ~2,500 symbols
 - AMEX: ~300 symbols
 - OTC/Pink Sheets: ~500-1,000 symbols
+
 
 **Total Universe**: ~7,000 actively traded US stocks
 
@@ -20,48 +21,61 @@ Successfully ingested **6,000-8,000 US stock symbols** from major exchanges into
 
 #### Primary: NASDAQ FTP (Official)
 
-```
+```text
 ftp://ftp.nasdaqtrader.com/SymbolDirectory/
 ├── nasdaqlisted.txt     # ~3,500 NASDAQ symbols
 └── otherlisted.txt      # ~3,000 NYSE/AMEX symbols
-```
+
+```text
 
 **Advantages**:
+
 - ✅ Official source from NASDAQ
 - ✅ Daily updates
 - ✅ Free, no API key required
 - ✅ Includes delisted flags
 
+
 **Fields Retrieved**:
+
 - Symbol ticker
 - Company name
 - Exchange
 - Market category
 - Test issue flag
 
+
 #### Secondary: Yahoo Finance Enrichment
 
 ```python
+
 import yfinance as yf
 
 ticker = yf.Ticker("AAPL")
 info = ticker.info
 
-# Enrichment data:
+# Enrichment data
+
 - sector: "Technology"
 - industry: "Consumer Electronics"
 - marketCap: 3_000_000_000_000
 - currency: "USD"
-```
+
+
+```text
 
 **Advantages**:
+
 - ✅ Sector/industry classification
 - ✅ Market capitalization
 - ✅ Latest price data
 
+
 **Limitations**:
+
 - ⚠️ Rate limited (2,000/hour)
 - ⚠️ Some symbols not found (delisted, OTC)
+
 
 ---
 
@@ -70,6 +84,7 @@ info = ticker.info
 ### `symbol_universe` Table
 
 ```sql
+
 CREATE TABLE symbol_universe (
     id SERIAL PRIMARY KEY,
     symbol TEXT UNIQUE NOT NULL,          -- e.g., "AAPL"
@@ -87,11 +102,13 @@ CREATE TABLE symbol_universe (
 
 CREATE INDEX idx_symbol_universe_symbol ON symbol_universe(symbol);
 CREATE INDEX idx_symbol_universe_active ON symbol_universe(is_active);
-```
+
+```text
 
 ### Example Records
 
 ```json
+
 [
   {
     "symbol": "AAPL",
@@ -125,7 +142,8 @@ CREATE INDEX idx_symbol_universe_active ON symbol_universe(is_active);
     "is_active": 1
   }
 ]
-```
+
+```text
 
 ---
 
@@ -134,15 +152,21 @@ CREATE INDEX idx_symbol_universe_active ON symbol_universe(is_active);
 ### Basic Usage
 
 ```bash
+
 # Set PostgreSQL connection
+
 export DATABASE_URL="postgresql://postgres:***@metro.proxy.rlwy.net:28328/railway"
 
 # Run ingestion
+
 python scripts/ingest_us_market.py
-```
+
+```text
 
 **Output**:
-```
+
+```text
+
 ============================================================
 📊 Starting US Market Symbol Ingestion
 ============================================================
@@ -177,31 +201,41 @@ python scripts/ingest_us_market.py
 📊 Invalid: 240 removed
 📊 Total Ingested: 6,123 symbols
 ============================================================
-```
+
+```text
 
 ### Advanced Options
 
 #### Skip Enrichment (Faster)
 
 ```python
+
 # Modify scripts/ingest_us_market.py
 
 def run(self):
-    # ...
+
+    
+
     # Comment out enrichment step
+
     # self._enrich_symbols()
-```
+
+```text
 
 **Duration**: ~30 seconds (vs 10-15 minutes with enrichment)
 
 #### Custom Symbol List
 
 ```python
+
 # Add custom symbols to ingestion
+
 CUSTOM_SYMBOLS = [
     ("ARKK", "ARK Innovation ETF", "NYSE", "ETF"),
     ("SPY", "SPDR S&P 500 ETF Trust", "NYSE", "ETF"),
+
     # ... more
+
 ]
 
 for symbol, name, exchange, type in CUSTOM_SYMBOLS:
@@ -212,7 +246,8 @@ for symbol, name, exchange, type in CUSTOM_SYMBOLS:
         "asset_type": type,
         ...
     }
-```
+
+```text
 
 ---
 
@@ -221,34 +256,43 @@ for symbol, name, exchange, type in CUSTOM_SYMBOLS:
 ### By Exchange
 
 ```sql
+
 SELECT exchange, COUNT(*) as count
 FROM symbol_universe
 WHERE is_active = 1
 GROUP BY exchange
 ORDER BY count DESC;
-```
+
+```text
 
 **Typical Results**:
-```
+
+```text
+
 exchange | count
 ---------|------
 NASDAQ   | 3472
 NYSE     | 2651
 AMEX     | 240
-```
+
+```text
 
 ### By Sector
 
 ```sql
+
 SELECT sector, COUNT(*) as count
 FROM symbol_universe
 WHERE is_active = 1 AND sector IS NOT NULL
 GROUP BY sector
 ORDER BY count DESC;
-```
+
+```text
 
 **Typical Results**:
-```
+
+```text
+
 sector               | count
 ---------------------|------
 Technology           | 1523
@@ -258,13 +302,15 @@ Consumer Cyclical    | 743
 Industrials          | 612
 Energy               | 342
 ...
-```
+
+```text
 
 ### By Market Cap
 
 ```sql
-SELECT 
-    CASE 
+
+SELECT
+    CASE
         WHEN market_cap >= 200000000000 THEN 'Mega Cap ($200B+)'
         WHEN market_cap >= 10000000000 THEN 'Large Cap ($10B-$200B)'
         WHEN market_cap >= 2000000000 THEN 'Mid Cap ($2B-$10B)'
@@ -276,7 +322,8 @@ FROM symbol_universe
 WHERE is_active = 1 AND market_cap IS NOT NULL
 GROUP BY cap_category
 ORDER BY MIN(market_cap) DESC;
-```
+
+```text
 
 ---
 
@@ -285,19 +332,23 @@ ORDER BY MIN(market_cap) DESC;
 ### Daily Update (Recommended)
 
 ```bash
-# Cron job: Run at 2 AM UTC daily
-0 2 * * * cd /app && python scripts/ingest_us_market.py >> logs/ingestion.log 2>&1
-```
 
-**What Gets Updated**:
+# Cron job: Run at 2 AM UTC daily
+
+0 2 ***cd /app && python scripts/ingest_us_market.py >> logs/ingestion.log 2>&1
+
+```text**What Gets Updated**:
+
 - ✅ New IPOs added automatically
 - ✅ Delisted stocks flagged (`is_active = 0`)
 - ✅ Name changes reflected
 - ✅ Market cap refreshed
 
+
 ### Manual Update for Specific Symbols
 
 ```python
+
 from core.db_engine import get_db_connection
 import yfinance as yf
 import time
@@ -306,12 +357,12 @@ symbols_to_update = ["AAPL", "MSFT", "GOOGL"]
 
 with get_db_connection() as conn:
     cursor = conn.cursor()
-    
+
     for symbol in symbols_to_update:
         try:
             ticker = yf.Ticker(symbol)
             info = ticker.info
-            
+
             cursor.execute("""
                 UPDATE symbol_universe
                 SET sector = %s, industry = %s, market_cap = %s, last_updated = %s
@@ -326,9 +377,10 @@ with get_db_connection() as conn:
             print(f"✅ Updated {symbol}")
         except Exception as e:
             print(f"❌ Failed {symbol}: {e}")
-    
+
     conn.commit()
-```
+
+```text
 
 ---
 
@@ -337,24 +389,29 @@ with get_db_connection() as conn:
 ### Get All Active Stocks
 
 ```sql
+
 SELECT symbol, name, exchange
 FROM symbol_universe
 WHERE is_active = 1 AND asset_type = 'stock'
 ORDER BY symbol;
-```
+
+```text
 
 ### Find Tech Stocks Only
 
 ```sql
+
 SELECT symbol, name, market_cap
 FROM symbol_universe
 WHERE sector = 'Technology' AND is_active = 1
 ORDER BY market_cap DESC NULLS LAST;
-```
+
+```text
 
 ### Get Symbols for Volatility Engine
 
 ```python
+
 from core.db_engine import get_db_connection
 
 with get_db_connection() as conn:
@@ -365,26 +422,30 @@ with get_db_connection() as conn:
         WHERE is_active = 1
         ORDER BY symbol
     """)
-    
+
     symbols = []
     asset_types = {}
-    
+
     for row in cursor.fetchall():
         symbols.append(row['symbol'])
         asset_types[row['symbol']] = row['asset_type']
 
 # Use in volatility engine
+
 engine.monitor_and_predict(symbols, asset_types)
-```
+
+```text
 
 ### Find Delisted Stocks
 
 ```sql
+
 SELECT symbol, name, last_updated
 FROM symbol_universe
 WHERE is_active = 0
 ORDER BY last_updated DESC;
-```
+
+```text
 
 ---
 
@@ -393,6 +454,7 @@ ORDER BY last_updated DESC;
 ### Remove Invalid Symbols
 
 ```sql
+
 -- Remove test symbols
 DELETE FROM symbol_universe
 WHERE symbol LIKE 'TEST%' OR symbol LIKE 'DEMO%';
@@ -400,11 +462,13 @@ WHERE symbol LIKE 'TEST%' OR symbol LIKE 'DEMO%';
 -- Remove symbols with no data
 DELETE FROM symbol_universe
 WHERE name IS NULL AND last_updated < EXTRACT(EPOCH FROM NOW() - INTERVAL '90 days');
-```
+
+```text
 
 ### Flag Delisted Stocks
 
 ```python
+
 import yfinance as yf
 from core.db_engine import get_db_connection
 
@@ -412,15 +476,17 @@ with get_db_connection() as conn:
     cursor = conn.cursor()
     cursor.execute("SELECT symbol FROM symbol_universe WHERE is_active = 1")
     symbols = [row['symbol'] for row in cursor.fetchall()]
-    
+
     delisted_count = 0
     for symbol in symbols:
         try:
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period="1d")
-            
+
             if hist.empty:
+
                 # No recent data - likely delisted
+
                 cursor.execute(
                     "UPDATE symbol_universe SET is_active = 0 WHERE symbol = %s",
                     (symbol,)
@@ -429,10 +495,11 @@ with get_db_connection() as conn:
                 print(f"⚠️  Flagged {symbol} as inactive")
         except:
             pass
-    
+
     conn.commit()
     print(f"Total flagged: {delisted_count}")
-```
+
+```text
 
 ---
 
@@ -441,6 +508,7 @@ with get_db_connection() as conn:
 ### Load Symbols for Prediction
 
 ```python
+
 from core.db_engine import get_db_connection
 
 def load_prediction_universe():
@@ -456,12 +524,15 @@ def load_prediction_universe():
         return cursor.fetchall()
 
 # Get top 1000 by market cap
+
 symbols = load_prediction_universe()[:1000]
-```
+
+```text
 
 ### Filter by Sector
 
 ```python
+
 def get_symbols_by_sector(sector: str):
     """Get symbols for specific sector"""
     with get_db_connection() as conn:
@@ -475,8 +546,10 @@ def get_symbols_by_sector(sector: str):
         return cursor.fetchall()
 
 # Predict only tech stocks
+
 tech_symbols = get_symbols_by_sector("Technology")
-```
+
+```text
 
 ---
 
@@ -489,11 +562,14 @@ tech_symbols = get_symbols_by_sector("Technology")
 **Fix**: NASDAQ FTP may be temporarily down. Use fallback:
 
 ```python
+
 # Modify scripts/ingest_us_market.py
+
 except Exception as e:
     LOGGER.error(f"NASDAQ FTP failed: {e}")
     self._fallback_symbols()  # Uses predefined top 100 list
-```
+
+```text
 
 ### Issue: Yahoo Finance 404 Errors
 
@@ -508,25 +584,35 @@ except Exception as e:
 **Problem**: Enrichment with Yahoo Finance can take 10-20 minutes
 
 **Solutions**:
+
 1. Skip enrichment (30 seconds total)
 2. Reduce batch size:
+
+
    ```python
+
    for i in range(0, len(symbols_list), 50):  # Was 100
-   ```
-3. Run overnight via cron
+
+   ```text
+
+1. Run overnight via cron
+
 
 ### Issue: Duplicate Symbols
 
 **Error**: `duplicate key value violates unique constraint`
 
-**Fix**: Already handled by `ON CONFLICT (symbol) DO UPDATE` in insert query. If still occurs, check for case sensitivity issues:
+**Fix**: Already handled by `ON CONFLICT (symbol) DO UPDATE` in insert query.
+If still occurs, check for case sensitivity issues:
 
 ```sql
+
 SELECT symbol, COUNT(*) as count
 FROM symbol_universe
 GROUP BY symbol
 HAVING COUNT(*) > 1;
-```
+
+```text
 
 ---
 
@@ -542,46 +628,52 @@ HAVING COUNT(*) > 1;
 - [ ] Can query symbols for prediction engine
 - [ ] Daily update cron job configured (optional)
 
+
 ---
 
 ## 📚 References
 
 - **NASDAQ FTP**: ftp://ftp.nasdaqtrader.com/SymbolDirectory/
-- **Yahoo Finance API**: https://github.com/ranaroussi/yfinance
-- **IEX Cloud** (alternative): https://iexcloud.io/docs/api/
-- **Polygon.io** (premium): https://polygon.io/stocks
+- **Yahoo Finance API**: <<<<<https://github.com/ranaroussi/yfinance>>>>>
+- **IEX Cloud**(alternative): <<<<<https://iexcloud.io/docs/api/>>>>>
+
+
+-**Polygon.io**(premium): <<<<<https://polygon.io/stocks>>>>>
+
 
 ---
 
 ## 🔮 Future Enhancements
 
-1. **International Markets**
-   - LSE (London): ~2,000 symbols
+1.**International Markets**- LSE (London): ~2,000 symbols
+
    - TSX (Toronto): ~1,500 symbols
    - ASX (Australia): ~2,000 symbols
    - Total: ~10,000 international stocks
 
-2. **Options & Derivatives**
-   - Options chains for top 500 stocks
+
+1.**Options & Derivatives**- Options chains for top 500 stocks
+
    - Futures contracts (ES, NQ, etc.)
 
-3. **ETFs & Mutual Funds**
-   - ~3,000 ETFs
+
+1.**ETFs & Mutual Funds**- ~3,000 ETFs
+
    - Sector-specific funds
 
-4. **Real-time Updates**
-   - WebSocket connection to exchanges
+
+1.**Real-time Updates**- WebSocket connection to exchanges
+
    - Instant IPO detection
    - Delisting alerts
 
----
 
-**Ingestion Status**: ✅ Complete  
-**Symbol Count**: 6,000-8,000 US stocks  
-**Update Frequency**: Daily (recommended)  
+---**Ingestion Status**: ✅ Complete
+**Symbol Count**: 6,000-8,000 US stocks
+**Update Frequency**: Daily (recommended)
 **Data Quality**: >80% enriched with sector/industry/market cap
 
 ---
 
-**Author**: Ghost Scaling Architect  
+**Author**: Ghost Scaling Architect
 **Last Updated**: November 30, 2025

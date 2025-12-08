@@ -1,22 +1,21 @@
 # 🎯 GHOST PROTOCOL PERSONAL WATCHLIST MODULE
 
-**Version:** 1.0  
-**Date:** December 2, 2025  
-**Status:** ✅ COMPLETE - Ready for Integration
+**Version:**1.0**Date:**December 2, 2025**Status:**✅ COMPLETE - Ready for Integration
 
 ---
 
 ## 📋 EXECUTIVE SUMMARY
 
-A **single-owner persistent personal watchlist** system for Ghost Protocol v3 that enables manual tracking of stocks and crypto with:
+A**single-owner persistent personal watchlist**system for Ghost Protocol v3 that enables manual tracking of stocks and
+crypto with:
 
-✅ **Postgres-backed persistence** (survives browser sessions)  
-✅ **Manual add/remove** from Cockpit UI  
-✅ **Continuous 48h predictions** (daily + intraday)  
-✅ **Telegram alerts** (market open/close + big moves)  
-✅ **Position tracking** (owns_position flag)  
-✅ **NO trade execution** (signal generation only)  
-✅ **Live data only** (SIM_MODE=0 preserved)
+✅**Postgres-backed persistence**(survives browser sessions)
+✅**Manual add/remove**from Cockpit UI
+✅**Continuous 48h predictions**(daily + intraday)
+✅**Telegram alerts**(market open/close + big moves)
+✅**Position tracking**(owns_position flag)
+✅**NO trade execution**(signal generation only)
+✅**Live data only** (SIM_MODE=0 preserved)
 
 ---
 
@@ -24,7 +23,7 @@ A **single-owner persistent personal watchlist** system for Ghost Protocol v3 th
 
 ### System Components
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                     COCKPIT UI (Browser)                         │
 │  personal_watchlist_ui.js → Add/Remove/Update symbols           │
@@ -49,11 +48,13 @@ A **single-owner persistent personal watchlist** system for Ghost Protocol v3 th
 │  - watchlist_price_snapshots                                    │
 │  - watchlist_alerts_log                                         │
 └─────────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ### Parallel Systems
 
-```
+```text
+
 ┌─────────────────────────────────────────────────────────────────┐
 │         Watchlist Prediction Scheduler (Background)              │
 │  core/watchlist_prediction_scheduler.py                         │
@@ -71,7 +72,8 @@ A **single-owner persistent personal watchlist** system for Ghost Protocol v3 th
 │  - Rate limit: 5 alerts/hour global                             │
 │  - Format: 📌 WATCHLIST prefix                                  │
 └─────────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ---
 
@@ -93,16 +95,14 @@ A **single-owner persistent personal watchlist** system for Ghost Protocol v3 th
 | `alert_threshold_pct` | REAL          | Alert if price moves ±this % (def 5%) |
 | `priority`            | INTEGER       | 1=normal, 2=high, 3=critical          |
 
-**Constraints:**
-- UNIQUE (symbol, asset_type) WHERE active = TRUE
-- CHECK (asset_type IN ('crypto', 'stock'))
-- CHECK (LENGTH(symbol) > 0 AND LENGTH(symbol) <= 20)
+**Constraints:**- UNIQUE (symbol, asset_type) WHERE active = TRUE
 
-**Indexes:**
-- idx_watchlist_symbol ON (symbol) WHERE active = TRUE
+- CHECK (asset_type IN ('crypto', 'stock'))
+- CHECK (LENGTH(symbol) > 0 AND LENGTH(symbol) <= 20)**Indexes:**- idx_watchlist_symbol ON (symbol) WHERE active = TRUE
 - idx_watchlist_asset_type ON (asset_type) WHERE active = TRUE
 - idx_watchlist_active ON (active, priority DESC, added_at DESC)
 - idx_watchlist_owns_position ON (owns_position) WHERE owns_position = TRUE AND active = TRUE
+
 
 ### 2. `watchlist_prediction_tracking`
 
@@ -122,12 +122,12 @@ Tracks prediction generation events for watchlist symbols.
 | `generated_at`        | TIMESTAMPTZ   | When prediction was generated         |
 | `reason`              | TEXT          | 'market_open', 'market_close', 'big_move', 'manual' |
 | `alert_sent`          | BOOLEAN       | TRUE if Telegram alert sent           |
-| `alert_sent_at`       | TIMESTAMPTZ   | When alert was sent                   |
+| `alert_sent_at` | TIMESTAMPTZ | When alert was sent |**Indexes:**- idx_watchlist_pred_item ON (watchlist_item_id,
+generated_at DESC)
 
-**Indexes:**
-- idx_watchlist_pred_item ON (watchlist_item_id, generated_at DESC)
 - idx_watchlist_pred_symbol ON (symbol, generated_at DESC)
 - idx_watchlist_pred_alerts ON (alert_sent, generated_at DESC)
+
 
 ### 3. `watchlist_price_snapshots`
 
@@ -141,13 +141,11 @@ High-frequency price tracking for big-move detection.
 | `price`               | REAL NOT NULL | Snapshot price                        |
 | `change_pct_24h`      | REAL          | 24h price change %                    |
 | `volume_24h`          | REAL          | 24h volume                            |
-| `snapshot_at`         | TIMESTAMPTZ   | Snapshot timestamp                    |
+| `snapshot_at` | TIMESTAMPTZ | Snapshot timestamp |**Retention:**Keep last 7 days only (manual cleanup
+job).**Indexes:**- idx_watchlist_prices_item ON (watchlist_item_id, snapshot_at DESC)
 
-**Retention:** Keep last 7 days only (manual cleanup job).
-
-**Indexes:**
-- idx_watchlist_prices_item ON (watchlist_item_id, snapshot_at DESC)
 - idx_watchlist_prices_symbol ON (symbol, snapshot_at DESC)
+
 
 ### 4. `watchlist_alerts_log`
 
@@ -168,12 +166,12 @@ Historical log of all Telegram alerts sent.
 | `telegram_sent`       | BOOLEAN       | TRUE if delivered                     |
 | `telegram_sent_at`    | TIMESTAMPTZ   | Delivery timestamp                    |
 | `telegram_chat_id`    | BIGINT        | Telegram chat ID                      |
-| `created_at`          | TIMESTAMPTZ   | Alert creation time                   |
+| `created_at` | TIMESTAMPTZ | Alert creation time |**Indexes:**- idx_watchlist_alerts_symbol ON (symbol, created_at
+DESC)
 
-**Indexes:**
-- idx_watchlist_alerts_symbol ON (symbol, created_at DESC)
 - idx_watchlist_alerts_type ON (alert_type, created_at DESC)
 - idx_watchlist_alerts_cooldown ON (symbol, alert_type, created_at DESC)
+
 
 ---
 
@@ -183,10 +181,8 @@ Base path: `/api/v3/watchlist`
 
 ### 1. `POST /api/v3/watchlist/add`
 
-Add symbol to personal watchlist (or re-activate if soft-deleted).
+Add symbol to personal watchlist (or re-activate if soft-deleted).**Request:**```json
 
-**Request:**
-```json
 {
   "symbol": "AAPL",
   "asset_type": "stock",
@@ -195,10 +191,9 @@ Add symbol to personal watchlist (or re-activate if soft-deleted).
   "alert_threshold_pct": 5.0,
   "priority": 2
 }
-```
 
-**Response:**
-```json
+```text**Response:**```json
+
 {
   "ok": true,
   "action": "added",
@@ -208,35 +203,32 @@ Add symbol to personal watchlist (or re-activate if soft-deleted).
   "owns_position": false,
   "added_at": "2025-12-02T12:34:56Z"
 }
-```
+
+```text
 
 ### 2. `POST /api/v3/watchlist/remove`
 
-Soft-delete symbol from watchlist (sets active=FALSE).
+Soft-delete symbol from watchlist (sets active=FALSE).**Request:**```json
 
-**Request:**
-```json
 {
   "symbol": "AAPL",
   "asset_type": "stock"
 }
-```
 
-**Response:**
-```json
+```text**Response:**```json
+
 {
   "ok": true,
   "symbol": "AAPL",
   "asset_type": "stock"
 }
-```
+
+```text
 
 ### 3. `GET /api/v3/watchlist/user`
 
-Get enriched watchlist with live predictions and prices.
+Get enriched watchlist with live predictions and prices.**Response:**```json
 
-**Response:**
-```json
 {
   "items": [
     {
@@ -262,39 +254,34 @@ Get enriched watchlist with live predictions and prices.
   "count": 1,
   "timestamp": 1764642576.184
 }
-```
+
+```text
 
 ### 4. `POST /api/v3/watchlist/update-position`
 
-Update the owns_position flag for a symbol.
+Update the owns_position flag for a symbol.**Request:**```json
 
-**Request:**
-```json
 {
   "symbol": "AAPL",
   "asset_type": "stock",
   "owns_position": true
 }
-```
 
-**Response:**
-```json
+```text**Response:**```json
+
 {
   "ok": true,
   "symbol": "AAPL",
   "owns_position": true
 }
-```
+
+```text
 
 ### 5. `GET /api/v3/watchlist/history/{symbol}`
 
-Get prediction history for a watchlist symbol.
+Get prediction history for a watchlist symbol.**Query Params:**- `limit` (optional, default 50): Max number of
+records**Response:**```json
 
-**Query Params:**
-- `limit` (optional, default 50): Max number of records
-
-**Response:**
-```json
 {
   "symbol": "AAPL",
   "history": [
@@ -313,36 +300,35 @@ Get prediction history for a watchlist symbol.
   ],
   "count": 1
 }
-```
+
+```text
 
 ### 6. `POST /api/v3/watchlist/trigger-prediction`
 
-Manually trigger a prediction for a watchlist symbol.
+Manually trigger a prediction for a watchlist symbol.**Request:**```json
 
-**Request:**
-```json
 {
   "symbol": "AAPL",
   "asset_type": "stock"
 }
-```
 
-**Response:**
-```json
+```text**Response:**```json
+
 {
   "ok": true,
   "symbol": "AAPL",
   "reason": "manual",
   "message": "Prediction queued"
 }
-```
+
+```text
 
 ### 7. `GET /api/v3/watchlist/stats`
 
-Get watchlist statistics.
+Get watchlist statistics.**Response:**
 
-**Response:**
 ```json
+
 {
   "total_symbols": 10,
   "stocks": 6,
@@ -357,7 +343,8 @@ Get watchlist statistics.
     }
   }
 }
-```
+
+```text
 
 ---
 
@@ -366,60 +353,77 @@ Get watchlist statistics.
 ### Step 1: Run Database Migration
 
 ```bash
+
 # Connect to Postgres (Railway or local)
+
 psql $DATABASE_URL
 
 # Run migration
+
 \i migrations/001_personal_watchlist.sql
 
 # Verify tables created
+
 \dt ghost_watchlist*
-```
+
+```text
 
 ### Step 2: Mount API Endpoints in wolf_app.py
 
 Add to `wolf_app.py`:
 
 ```python
+
 # Import personal watchlist router
+
 from api.personal_watchlist_endpoints import router as watchlist_router
 
 # Mount router
+
 APP.include_router(watchlist_router)
-```
+
+```text
 
 ### Step 3: Start Watchlist Scheduler
 
 Add to `wolf_app.py` startup:
 
 ```python
+
 from core.watchlist_prediction_scheduler import start_watchlist_scheduler, stop_watchlist_scheduler
 import atexit
 
 # Start scheduler on app startup
+
 @APP.on_event("startup")
 async def startup_watchlist_scheduler():
     start_watchlist_scheduler()
 
 # Stop scheduler on app shutdown
+
 atexit.register(stop_watchlist_scheduler)
-```
+
+```text
 
 ### Step 4: Add UI JavaScript to Cockpit HTML
 
 Add to `templates/cockpit_v3.html` (before `</body>`):
 
 ```html
+
 <!-- Personal Watchlist UI Module -->
 <script src="/static/personal_watchlist_ui.js"></script>
-```
+
+```text
 
 ### Step 5: Configure Environment Variables
 
 Add to Railway/production env:
 
 ```bash
+
 # Watchlist Scheduler
+
 WATCHLIST_SCHEDULER_ENABLED=1
 WATCHLIST_OPEN_HOUR=9          # 9 AM EST market open
 WATCHLIST_CLOSE_HOUR=16        # 4 PM EST market close
@@ -427,12 +431,14 @@ WATCHLIST_BIG_MOVE_CHECK_MINUTES=15
 WATCHLIST_BIG_MOVE_THRESHOLD_PCT=5.0
 
 # Telegram Alerts
+
 WATCHLIST_ALERTS_ENABLED=1
 WATCHLIST_ALERTS_INCLUDE_OPEN_CLOSE=1
 WATCHLIST_ALERTS_INCLUDE_BIG_MOVES=1
 WATCHLIST_ALERT_COOLDOWN_HOURS=4
 WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR=5
-```
+
+```text
 
 ---
 
@@ -445,6 +451,7 @@ WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR=5
 - [ ] `test_watchlist_prediction_scheduler()` - Scheduling logic
 - [ ] `test_watchlist_telegram_alerts()` - Alert formatting
 
+
 ### Integration Tests
 
 - [ ] Add 5 symbols (3 stocks, 2 crypto) via API
@@ -453,6 +460,7 @@ WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR=5
 - [ ] Verify predictions tracked in `watchlist_prediction_tracking`
 - [ ] Remove 1 symbol, verify soft-delete (active=FALSE)
 - [ ] Re-add removed symbol, verify re-activation
+
 
 ### End-to-End Tests
 
@@ -466,6 +474,7 @@ WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR=5
 - [ ] Click remove icon, verify symbol removed
 - [ ] Reload browser, verify watchlist persists
 
+
 ### Production Validation
 
 - [ ] Deploy to Railway with env vars set
@@ -477,43 +486,46 @@ WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR=5
 - [ ] Check alert cooldown enforcement (4h)
 - [ ] Verify global rate limit (5 alerts/hour)
 
+
 ---
 
 ## 📱 TELEGRAM ALERT FORMAT
 
 ### Market Open/Close Alert
 
-```
-📌 **WATCHLIST** – MARKET OPEN
+```text
 
-🎯 **AAPL** (STOCK)
-🔴 **48h Prediction:** DOWN
-📊 **Confidence:** 58%
-📈 **Expected Move:** -4.5%
-💰 **Current Price:** $283.10
+📌 **WATCHLIST**– MARKET OPEN
+
+🎯**AAPL**(STOCK)
+🔴**48h Prediction:**DOWN
+📊**Confidence:**58%
+📈**Expected Move:**-4.5%
+💰**Current Price:**$283.10
 
 ⚠️ You DO NOT own this yet
 
 ⏰ Ghost AI – MARKET OPEN Signal
-```
+
+```text
 
 ### Big Move Alert
 
-```
-📌 **WATCHLIST** – BIG MOVE DETECTED
+```text
 
-🎯 **BTC** (CRYPTO)
-🚀 **Price Move:** +6.2% (last 15-60 min)
-💰 **Current Price:** $87,105.40
+📌**WATCHLIST**– BIG MOVE DETECTED
 
-🟢 **48h Ghost Prediction:** UP
-📊 **Confidence:** 46%
-📈 **Expected Move:** +2.3%
+🎯**BTC**(CRYPTO)
+🚀**Price Move:**+6.2% (last 15-60 min)
+💰**Current Price:**$87,105.40
 
-✅ **You OWN this**
+🟢**48h Ghost Prediction:**UP
+📊**Confidence:**46%
+📈**Expected Move:**+2.3%
 
-⚡ Ghost AI – Intraday Alert
-```
+✅**You OWN this**⚡ Ghost AI – Intraday Alert
+
+```text
 
 ---
 
@@ -543,7 +555,8 @@ WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR=5
 
 ## 📂 FILE STRUCTURE
 
-```
+```text
+
 /workspaces/ghost-protocol/
 ├── migrations/
 │   └── 001_personal_watchlist.sql          # Database schema
@@ -555,58 +568,56 @@ WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR=5
 │   └── personal_watchlist_endpoints.py     # FastAPI REST endpoints
 └── static/
     └── personal_watchlist_ui.js            # Cockpit UI module
-```
+
+```text
 
 ---
 
 ## 🔒 SECURITY
 
-- **Single-Owner:** No multi-tenant auth (same security as existing Ghost endpoints)
-- **IP Allowlist:** Reuses existing Ghost IP protection
-- **API Token:** Optional `X-API-Token` header verification
-- **Soft Deletes:** Removed symbols can be recovered (active=FALSE, not dropped)
-- **No Auto-Trading:** System generates signals only, NO trade execution
+-**Single-Owner:**No multi-tenant auth (same security as existing Ghost endpoints)
+-**IP Allowlist:**Reuses existing Ghost IP protection
+-**API Token:**Optional `X-API-Token` header verification
+-**Soft Deletes:**Removed symbols can be recovered (active=FALSE, not dropped)
+-**No Auto-Trading:**System generates signals only, NO trade execution
+
 
 ---
 
 ## 🚨 KNOWN LIMITATIONS
 
-1. **Single Owner Only:** Not designed for multi-user/multi-tenant
-2. **No Real-Time Websockets:** Uses polling (15s intervals in UI)
-3. **No Symbol Validation:** API accepts any symbol string (validation in predictor)
-4. **Telegram Dependency:** Alerts require existing telegram_hunter setup
-5. **Price Snapshot Retention:** Manual cleanup needed (no auto-TTL in Postgres < 15)
+1.**Single Owner Only:**Not designed for multi-user/multi-tenant
+2.**No Real-Time Websockets:**Uses polling (15s intervals in UI)
+3.**No Symbol Validation:**API accepts any symbol string (validation in predictor)
+4.**Telegram Dependency:**Alerts require existing telegram_hunter setup
+5.**Price Snapshot Retention:**Manual cleanup needed (no auto-TTL in Postgres < 15)
+
 
 ---
 
 ## 🛠️ TROUBLESHOOTING
 
-### Watchlist Not Loading in UI
+### Watchlist Not Loading in UI**Symptom:**Empty watchlist despite symbols in database**Solution:**1. Check browser console for errors
 
-**Symptom:** Empty watchlist despite symbols in database  
-**Solution:**
-1. Check browser console for errors
-2. Verify `/api/v3/watchlist/user` returns data in browser network tab
-3. Check `ghost_watchlist_items` table has `active=TRUE` rows
-4. Restart scheduler if predictions not being generated
+1. Verify `/api/v3/watchlist/user` returns data in browser network tab
+2. Check `ghost_watchlist_items` table has `active=TRUE` rows
+3. Restart scheduler if predictions not being generated
 
-### Predictions Not Generating
 
-**Symptom:** No entries in `watchlist_prediction_tracking`  
-**Solution:**
-1. Check scheduler is running: `grep "Watchlist scheduler" logs/wolf_app.log`
-2. Verify `WATCHLIST_SCHEDULER_ENABLED=1` in env
-3. Check market hours (open=9 AM, close=4 PM EST)
-4. Manually trigger: `curl -X POST /api/v3/watchlist/trigger-prediction -d '{"symbol":"AAPL","asset_type":"stock"}'`
+### Predictions Not Generating**Symptom:**No entries in `watchlist_prediction_tracking`**Solution:**1. Check scheduler is running: `grep "Watchlist scheduler" logs/wolf_app.log`
 
-### Telegram Alerts Not Sending
+1. Verify `WATCHLIST_SCHEDULER_ENABLED=1` in env
+2. Check market hours (open=9 AM, close=4 PM EST)
+3. Manually trigger: `curl -X POST /api/v3/watchlist/trigger-prediction -d '{"symbol":"AAPL","asset_type":"stock"}'`
 
-**Symptom:** No alerts received despite predictions  
-**Solution:**
+
+### Telegram Alerts Not Sending**Symptom:**No alerts received despite predictions**Solution:**
+
 1. Verify `WATCHLIST_ALERTS_ENABLED=1`
 2. Check telegram_hunter configured (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
 3. Check cooldown not blocking: `SELECT * FROM watchlist_alerts_log WHERE symbol='AAPL' ORDER BY created_at DESC LIMIT 5`
 4. Check rate limit: max 5 alerts/hour global
+
 
 ---
 
@@ -621,11 +632,13 @@ WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR=5
 - [ ] Watchlist import/export (JSON/CSV)
 - [ ] Shareable watchlist URLs (read-only)
 
+
 ---
 
 ## 📝 CHANGELOG
 
 ### v1.0 (December 2, 2025)
+
 - ✅ Initial release
 - ✅ Postgres schema with 4 tables
 - ✅ 7 REST API endpoints
@@ -634,16 +647,12 @@ WATCHLIST_ALERT_GLOBAL_LIMIT_PER_HOUR=5
 - ✅ Full Cockpit UI CRUD interface
 - ✅ Single-owner persistence
 
+
 ---
 
 ## 🤝 SUPPORT
 
-**Issues:** Check troubleshooting section above  
-**Questions:** Review API endpoint documentation  
-**Bugs:** Check browser console + server logs  
+**Issues:**Check troubleshooting section above**Questions:**Review API endpoint documentation**Bugs:**Check browser console + server logs
 
----
-
-**Status:** ✅ **COMPLETE - Ready for Production Integration**  
-**Testing:** Pending database migration + wolf_app.py integration  
-**Deployment:** Railway (production) + local dev
+---**Status:**✅**COMPLETE - Ready for Production Integration**
+**Testing:**Pending database migration + wolf_app.py integration**Deployment:** Railway (production) + local dev

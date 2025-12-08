@@ -4,7 +4,7 @@
 
 The GHOST Watchlist Manager is a sophisticated system that tracks market symbols and
 filters them based on GHOST Performance Score (GPS). **Only symbols that pass the GHOST
-scoring threshold appear in "top movers"** - this is your buy signal list.
+scoring threshold appear in "top movers"**- this is your buy signal list.
 
 ______________________________________________________________________
 
@@ -12,14 +12,15 @@ ______________________________________________________________________
 
 ### Core Components
 
-1. **Watchlist Manager** (`core/watchlist_manager.py`)
+1.**Watchlist Manager**(`core/watchlist_manager.py`)
 
    - Manages watchlist symbols
    - Calculates and tracks GHOST scores
    - Filters symbols by GPS threshold
    - Maintains historical score database
 
-2. **API Endpoints** (integrated in `wolf_app.py`)
+
+1.**API Endpoints**(integrated in `wolf_app.py`)
 
    - `/api/watchlist` - Get all watchlist symbols
    - `/api/watchlist/add` - Add symbol to watchlist
@@ -27,13 +28,15 @@ ______________________________________________________________________
    - `/api/watchlist/score` - Update GHOST score for symbol
    - `/api/watchlist/history/{symbol}` - Get historical scores
    - `/api/watchlist/statistics` - Get watchlist statistics
-   - `/api/top_movers` - **Updated** - Only returns symbols with GPS ≥ threshold
+   - `/api/top_movers` -**Updated**- Only returns symbols with GPS ≥ threshold
 
-3. **Database** (`watchlist.db`)
+
+1.**Database**(`watchlist.db`)
 
    - `watchlist` table: Symbol information
    - `ghost_scores` table: Historical GPS scores
    - Indexed for fast queries
+
 
 ______________________________________________________________________
 
@@ -47,30 +50,32 @@ The GPS is calculated based on multiple market factors:
 Base Score: 5.0
 
 Momentum Scoring:
+
   - +1.5 if abs(change_pct) > 3.0%    (Strong momentum)
   - +1.0 if abs(change_pct) > 2.0%    (Good momentum)
   - +0.5 if abs(change_pct) > 1.0%    (Moderate momentum)
 
+
 Volatility Sweet Spot:
+
   - +0.5 if 0.5% ≤ abs(change_pct) ≤ 5.0%  (Not too low, not too high)
 
+
 Large Cap Stability:
+
   - +0.5 if market_cap > $50B
 
+
 High Volume Interest:
+
   - +0.3 if volume > 7,000,000
 
+
 Maximum Score: 10.0
-```
 
-### GPS Threshold
+```text
 
-**Default: 7.0**
-
-- **GPS ≥ 7.0**: Symbol appears in top movers → **Buy Signal**
-- **GPS < 7.0**: Symbol stays in watchlist → **Watch Only**
-
-______________________________________________________________________
+### GPS Threshold**Default: 7.0**-**GPS ≥ 7.0**: Symbol appears in top movers → **Buy Signal**-**GPS < 7.0**: Symbol stays in watchlist → **Watch Only**______________________________________________________________________
 
 ## 🚀 Initial Setup
 
@@ -78,23 +83,27 @@ ______________________________________________________________________
 
 All symbols from your data have been pre-configured:
 
-```
+```text
+
 WFC, SLB, HLN, CNH, KDP, CORZ, SBUX, UWMC, EQT, MDT,
 HPQ, ETSY, PBA, LVS, PGY, CTRA, HBM, MRNA, SBSW, CVS,
 KHC, M, VTRS, PDD, ELAN, CFG, CRM, ENVX, SCHW, WRD,
 NWL, CL, UAA, EBAY, IPG, NG, SIRI, CAH, WMB, PPL,
 MDU, TFC, AEO, GAP, MAT, STUB, APH, CNP, ANET, MDLZ,
 USB, CRDO
-```
+
+```text
 
 ### Population Script
 
 Run this to populate the watchlist with initial market data:
 
 ```bash
+
 cd /workspaces/GHOST
 python utils/populate_watchlist.py
-```
+
+```text
 
 This script will:
 
@@ -103,6 +112,7 @@ This script will:
 3. 🔥 Show top movers (GPS ≥ 7.0)
 4. 📈 Display statistics
 
+
 ______________________________________________________________________
 
 ## 🔌 API Usage
@@ -110,12 +120,15 @@ ______________________________________________________________________
 ### 1. Get All Watchlist Symbols
 
 ```bash
-curl http://localhost:5000/api/watchlist
-```
+
+curl <<<<<http://localhost:5000/api/watchlist>>>>>
+
+```text
 
 Response:
 
 ```json
+
 {
   "symbols": [
     {
@@ -129,29 +142,35 @@ Response:
   ],
   "count": 52
 }
-```
+
+```text
 
 ### 2. Add Symbol to Watchlist
 
 ```bash
-curl -X POST "http://localhost:5000/api/watchlist/add?symbol=TSLA&name=Tesla Inc"
-```
+
+curl -X POST "<<<<<http://localhost:5000/api/watchlist/add?symbol=TSLA&name=Tesla>>>>> Inc"
+
+```text
 
 Response:
 
 ```json
+
 {
   "success": true,
   "symbol": "TSLA",
   "name": "Tesla Inc",
   "added_at": "2025-10-05T14:35:00"
 }
-```
+
+```text
 
 ### 3. Update GHOST Score
 
 ```bash
-curl -X POST "http://localhost:5000/api/watchlist/score" \
+
+curl -X POST "<<<<<http://localhost:5000/api/watchlist/score">>>>> \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -162,11 +181,13 @@ curl -X POST "http://localhost:5000/api/watchlist/score" \
     "market_cap": 2800000000000,
     "threshold": 7.0
   }'
-```
+
+```text
 
 Response:
 
 ```json
+
 {
   "success": true,
   "symbol": "AAPL",
@@ -175,17 +196,21 @@ Response:
   "threshold": 7.0,
   "timestamp": "2025-10-05T14:40:00"
 }
-```
+
+```text
 
 ### 4. Get Top Movers (Buy Signals)
 
 ```bash
-curl "http://localhost:5000/api/top_movers?threshold=7.0&limit=20"
-```
+
+curl "<<<<<http://localhost:5000/api/top_movers?threshold=7.0&limit=20">>>>>
+
+```text
 
 Response:
 
 ```json
+
 {
   "stocks": [
     {
@@ -216,17 +241,21 @@ Response:
   "threshold": 7.0,
   "count": 15
 }
-```
+
+```text
 
 ### 5. Get Symbol History
 
 ```bash
-curl "http://localhost:5000/api/watchlist/history/AAPL?limit=10"
-```
+
+curl "<<<<<http://localhost:5000/api/watchlist/history/AAPL?limit=10">>>>>
+
+```text
 
 Response:
 
 ```json
+
 {
   "symbol": "AAPL",
   "history": [
@@ -243,17 +272,21 @@ Response:
   ],
   "count": 10
 }
-```
+
+```text
 
 ### 6. Get Watchlist Statistics
 
 ```bash
-curl http://localhost:5000/api/watchlist/statistics
-```
+
+curl <<<<<http://localhost:5000/api/watchlist/statistics>>>>>
+
+```text
 
 Response:
 
 ```json
+
 {
   "total_symbols": 52,
   "symbols_with_scores": 52,
@@ -261,23 +294,28 @@ Response:
   "average_gps_score": 6.8,
   "pass_rate_pct": 28.85
 }
-```
+
+```text
 
 ### 7. Remove Symbol
 
 ```bash
-curl -X POST "http://localhost:5000/api/watchlist/remove?symbol=TSLA"
-```
+
+curl -X POST "<<<<<http://localhost:5000/api/watchlist/remove?symbol=TSLA">>>>>
+
+```text
 
 Response:
 
 ```json
+
 {
   "success": true,
   "symbol": "TSLA",
   "deleted": true
 }
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -285,18 +323,22 @@ ______________________________________________________________________
 
 ### The GHOST Way: Watchlist → GPS Scoring → Top Movers → Buy Signal
 
-1. **Add Symbols to Watchlist**
+1.**Add Symbols to Watchlist**```bash
 
-   ```bash
    # Symbols are monitored but not actionable yet
-   curl -X POST "http://localhost:5000/api/watchlist/add?symbol=AAPL&name=Apple Inc"
-   ```
 
-2. **Calculate GPS Scores** (Automated or Manual)
+   curl -X POST "<<<<<http://localhost:5000/api/watchlist/add?symbol=AAPL&name=Apple>>>>> Inc"
+
+   ```text
+
+1.**Calculate GPS Scores**(Automated or Manual)
+
 
    ```bash
+
    # Update GPS score based on market data
-   curl -X POST "http://localhost:5000/api/watchlist/score" \
+
+   curl -X POST "<<<<<http://localhost:5000/api/watchlist/score">>>>> \
      -H "Content-Type: application/json" \
      -d '{
        "symbol": "AAPL",
@@ -304,21 +346,18 @@ ______________________________________________________________________
        "price": 175.25,
        "change_pct": 2.5
      }'
-   ```
 
-3. **Check Top Movers**
+   ```text
 
-   ```bash
+1.**Check Top Movers**```bash
+
    # Only symbols with GPS ≥ 7.0 appear here
-   curl "http://localhost:5000/api/top_movers?threshold=7.0"
-   ```
 
-4. **Buy Signal**
+   curl "<<<<<http://localhost:5000/api/top_movers?threshold=7.0">>>>>
 
-   - ✅ Symbol appears in `/api/top_movers` → **Consider buying**
-   - ⏸️ Symbol not in top movers → **Continue watching**
+   ```text
 
-______________________________________________________________________
+1.**Buy Signal**- ✅ Symbol appears in `/api/top_movers` →**Consider buying**- ⏸️ Symbol not in top movers →**Continue watching**______________________________________________________________________
 
 ## 📈 Expected Top Movers from Your Data
 
@@ -326,25 +365,28 @@ Based on the initial market data, these symbols likely pass GPS ≥ 7.0:
 
 ### High Confidence (GPS ≥ 8.0)
 
-- **PBA** (Pembina Pipeline) - +6.02% change
-- **EBAY** (eBay Inc.) - +4.26% change
-- **MAT** (Mattel) - +4.88% change
-- **NG** (NovaGold Resources) - +3.52% change
-- **NWL** (Newell Brands) - +3.55% change
+-**PBA**(Pembina Pipeline) - +6.02% change
+-**EBAY**(eBay Inc.) - +4.26% change
+-**MAT**(Mattel) - +4.88% change
+-**NG**(NovaGold Resources) - +3.52% change
+-**NWL**(Newell Brands) - +3.55% change
+
 
 ### Medium Confidence (GPS 7.0-7.9)
 
-- **SIRI** (Sirius XM) - +2.99% change
-- **MDT** (Medtronic) - +2.33% change
-- **ENVX** (Enovix) - +2.32% change
-- **STUB** (StubHub) - +2.11% change
-- **HBM** (Hudbay Minerals) - +1.88% change
+-**SIRI**(Sirius XM) - +2.99% change
+-**MDT**(Medtronic) - +2.33% change
+-**ENVX**(Enovix) - +2.32% change
+-**STUB**(StubHub) - +2.11% change
+-**HBM**(Hudbay Minerals) - +1.88% change
+
 
 ### Large Caps with Momentum
 
-- **SCHW** (Charles Schwab) - +1.49%, $170B cap
-- **CFG** (Citizens Financial) - +1.59%, $23B cap
-- **MDLZ** (Mondelez) - +1.44%, $81B cap
+-**SCHW**(Charles Schwab) - +1.49%, $170B cap
+-**CFG**(Citizens Financial) - +1.59%, $23B cap
+-**MDLZ**(Mondelez) - +1.44%, $81B cap
+
 
 ______________________________________________________________________
 
@@ -355,25 +397,30 @@ ______________________________________________________________________
 Create a cron job to update GPS scores every 5 minutes:
 
 ```python
+
 # scheduled_gps_update.py
+
 import requests
 from core.watchlist_manager import get_watchlist_manager
 
 def update_all_scores():
     watchlist_mgr = get_watchlist_manager()
     symbols = watchlist_mgr.get_watchlist()
-    
+
     for symbol_data in symbols:
         symbol = symbol_data['symbol']
-        
+
         # Fetch current price (implement your price fetcher)
+
         price, change_pct = fetch_current_price(symbol)
-        
+
         # Calculate GPS
+
         gps_score = calculate_gps(symbol, price, change_pct)
-        
+
         # Update score
-        requests.post(f"http://localhost:5000/api/watchlist/score", json={
+
+        requests.post(f"<<<<<http://localhost:5000/api/watchlist/score",>>>>> json={
             "symbol": symbol,
             "gps_score": gps_score,
             "price": price,
@@ -383,21 +430,24 @@ def update_all_scores():
 
 if __name__ == "__main__":
     update_all_scores()
-```
+
+```text
 
 ### 2. Alert System
 
 Get notified when a symbol crosses the GPS threshold:
 
 ```python
+
 def check_for_buy_signals():
-    response = requests.get("http://localhost:5000/api/top_movers?threshold=7.0")
+    response = requests.get("<<<<<http://localhost:5000/api/top_movers?threshold=7.0>>>>>")
     movers = response.json()['stocks']
-    
+
     for stock in movers:
         if stock['gps'] >= 7.5:  # High confidence
             send_alert(f"🔥 BUY SIGNAL: {stock['symbol']} - GPS {stock['gps']}")
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -406,6 +456,7 @@ ______________________________________________________________________
 ### watchlist Table
 
 ```sql
+
 CREATE TABLE watchlist (
     symbol TEXT PRIMARY KEY,
     name TEXT,
@@ -413,11 +464,13 @@ CREATE TABLE watchlist (
     last_updated TEXT,
     metadata TEXT
 );
-```
+
+```text
 
 ### ghost_scores Table
 
 ```sql
+
 CREATE TABLE ghost_scores (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT NOT NULL,
@@ -432,7 +485,8 @@ CREATE TABLE ghost_scores (
 );
 
 CREATE INDEX idx_scores_symbol_time ON ghost_scores(symbol, timestamp DESC);
-```
+
+```text
 
 ______________________________________________________________________
 
@@ -440,26 +494,32 @@ ______________________________________________________________________
 
 ### GPS Threshold Tuning
 
-- **Conservative** (GPS ≥ 8.0): Fewer signals, higher quality
-- **Balanced** (GPS ≥ 7.0): Default, good signal-to-noise ratio
-- **Aggressive** (GPS ≥ 6.0): More signals, requires more filtering
+-**Conservative**(GPS ≥ 8.0): Fewer signals, higher quality
+-**Balanced**(GPS ≥ 7.0): Default, good signal-to-noise ratio
+-**Aggressive**(GPS ≥ 6.0): More signals, requires more filtering
+
 
 ### Watchlist Management
 
-1. **Start with Quality**: Add fundamentally sound companies
-2. **Monitor GPS Trends**: Watch for symbols approaching threshold
-3. **Respect the Signal**: GPS ≥ 7.0 = Buy consideration
-4. **Review History**: Check `/api/watchlist/history/{symbol}` for patterns
+1.**Start with Quality**: Add fundamentally sound companies
+
+1. **Monitor GPS Trends**: Watch for symbols approaching threshold
+2. **Respect the Signal**: GPS ≥ 7.0 = Buy consideration
+3. **Review History**: Check `/api/watchlist/history/{symbol}` for patterns
+
 
 ### Integration with GHOST Stages
 
 The watchlist system integrates with all GHOST intelligence stages:
 
-- **Stage 1** (World Context): News sentiment affects GPS
-- **Stage 2** (Learning): GPS threshold auto-tuned based on outcomes
-- **Stage 3** (Risk/Regime): GPS adjusted for market regime
-- **Stage 4** (Portfolio): Watchlist used for optimization inputs
-- **Stage 5** (Execution): Top movers trigger order creation
+- **Stage 1**(World Context): News sentiment affects GPS
+
+
+-**Stage 2**(Learning): GPS threshold auto-tuned based on outcomes
+-**Stage 3**(Risk/Regime): GPS adjusted for market regime
+-**Stage 4**(Portfolio): Watchlist used for optimization inputs
+-**Stage 5**(Execution): Top movers trigger order creation
+
 
 ______________________________________________________________________
 
@@ -470,11 +530,14 @@ ______________________________________________________________________
 In your application:
 
 ```python
+
 # Set custom threshold
+
 custom_threshold = 7.5
 
-response = requests.get(f"http://localhost:5000/api/top_movers?threshold={custom_threshold}")
-```
+response = requests.get(f"<<<<<http://localhost:5000/api/top_movers?threshold={custom_threshold}>>>>>")
+
+```text
 
 ### Adjust GPS Calculation
 
@@ -488,20 +551,26 @@ ______________________________________________________________________
 ### Test Watchlist Operations
 
 ```bash
+
 # 1. Populate watchlist
+
 python utils/populate_watchlist.py
 
 # 2. Check watchlist
-curl http://localhost:5000/api/watchlist | jq '.count'
+
+curl <<<<<http://localhost:5000/api/watchlist>>>>> | jq '.count'
 
 # 3. Check statistics
-curl http://localhost:5000/api/watchlist/statistics | jq
+
+curl <<<<<http://localhost:5000/api/watchlist/statistics>>>>> | jq
 
 # 4. Get top movers
-curl "http://localhost:5000/api/top_movers?threshold=7.0" | jq '.stocks | length'
+
+curl "<<<<<http://localhost:5000/api/top_movers?threshold=7.0">>>>> | jq '.stocks | length'
 
 # 5. Test score update
-curl -X POST "http://localhost:5000/api/watchlist/score" \
+
+curl -X POST "<<<<<http://localhost:5000/api/watchlist/score">>>>> \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "AAPL",
@@ -512,34 +581,40 @@ curl -X POST "http://localhost:5000/api/watchlist/score" \
   }' | jq
 
 # 6. Verify in top movers
-curl "http://localhost:5000/api/top_movers?threshold=7.0" | jq '.stocks[] | select(.symbol == "AAPL")'
-```
+
+curl "<<<<<http://localhost:5000/api/top_movers?threshold=7.0">>>>> | jq '.stocks[] | select(.symbol == "AAPL")'
+
+```text
 
 ______________________________________________________________________
 
 ## 🚀 Quick Start
 
 ```bash
+
 # 1. Start GHOST server
+
 cd /workspaces/GHOST
 source .venv/bin/activate
 uvicorn wolf_app:app --host 0.0.0.0 --port 5000 --reload
 
 # 2. In another terminal, populate watchlist
+
 python utils/populate_watchlist.py
 
 # 3. Check top movers (buy signals)
-curl "http://localhost:5000/api/top_movers?threshold=7.0"
+
+curl "<<<<<http://localhost:5000/api/top_movers?threshold=7.0">>>>>
 
 # 4. Monitor in browser
-open http://localhost:5000/cockpit
-```
+
+open <<<<<http://localhost:5000/cockpit>>>>>
+
+```text
 
 ______________________________________________________________________
 
-## 📝 Summary
-
-**The GHOST Way**:
+## 📝 Summary**The GHOST Way**
 
 1. ✅ All 52 symbols added to watchlist
 2. 📊 GPS scores calculated automatically
@@ -547,11 +622,13 @@ ______________________________________________________________________
 4. 🔥 Top movers = Your buy signal list
 5. 📈 Historical tracking for pattern analysis
 
+
 **Key Insight**:
 
 - Watchlist = monitoring zone
 - Top movers = action zone
 - GPS threshold = the decision boundary
+
 
 **When you see a symbol in `/api/top_movers`, the GHOST logic has already validated it
 as a buy candidate!**
@@ -565,42 +642,55 @@ ______________________________________________________________________
 You can implement custom GPS calculation algorithms:
 
 ```python
+
 def custom_gps_calculator(symbol_data):
+
     # Your custom logic
+
     score = 5.0
-    
+
     # Technical indicators
+
     if rsi > 70:
         score += 1.0
-    
+
     # Fundamental factors
+
     if pe_ratio < 15:
         score += 0.5
-    
+
     # Sentiment analysis
+
     if news_sentiment > 0.7:
         score += 1.5
-    
+
     return min(10.0, score)
-```
+
+```text
 
 ### Multi-Timeframe Scoring
 
 Track GPS across different timeframes:
 
 ```python
+
 # 5-minute GPS
+
 gps_5m = calculate_gps(symbol, timeframe='5m')
 
 # 1-hour GPS
+
 gps_1h = calculate_gps(symbol, timeframe='1h')
 
 # 1-day GPS
+
 gps_1d = calculate_gps(symbol, timeframe='1d')
 
 # Composite score
-gps_composite = (gps_5m * 0.2) + (gps_1h * 0.3) + (gps_1d * 0.5)
-```
+
+gps_composite = (gps_5m *0.2) + (gps_1h*0.3) + (gps_1d* 0.5)
+
+```text
 
 ______________________________________________________________________
 
