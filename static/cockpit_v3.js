@@ -35,14 +35,15 @@ function initializeApp() {
     // Top Movers/Hunter: 10s (fast-moving opportunities)
     // Time display: 1s (real-time clock)
     
-    setInterval(() => updateSystemTime(), 1000);  // Clock: every 1s
-    setInterval(() => loadCockpitStatus(), 30000);  // Status: every 30s
-    setInterval(() => loadHealthScore(), 30000);  // Goals/Health: every 30s
-    setInterval(() => loadAccuracyChart(), 30000);  // Accuracy Chart: every 30s
-    setInterval(() => loadForecast(), 15000);  // Forecast: every 15s
-    setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s (includes hunter feed)
-    setInterval(() => loadWatchlistByMode(), 15000);  // Watchlist: every 15s (mode-aware)
-    setInterval(() => loadVIPCoins(), 15000);  // VIP Coins: every 15s
+    // Store intervals in window so handleModeChange can clear them for FIXED mode
+    window.updateInterval = setInterval(() => updateSystemTime(), 1000);  // Clock: every 1s
+    window.statusInterval = setInterval(() => loadCockpitStatus(), 30000);  // Status: every 30s
+    window.healthInterval = setInterval(() => loadHealthScore(), 30000);  // Goals/Health: every 30s
+    window.accuracyInterval = setInterval(() => loadAccuracyChart(), 30000);  // Accuracy Chart: every 30s
+    window.forecastInterval = setInterval(() => loadForecast(), 15000);  // Forecast: every 15s
+    window.topMoversInterval = setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s (includes hunter feed)
+    window.watchlistInterval = setInterval(() => loadWatchlistByMode(), 15000);  // Watchlist: every 15s (mode-aware)
+    window.vipInterval = setInterval(() => loadVIPCoins(), 15000);  // VIP Coins: every 15s
     
     console.log('✅ Ghost Protocol Cockpit v3 initialized');
 }
@@ -130,8 +131,31 @@ async function controlAction(action) {
 
 function handleModeChange(e) {
     const mode = e.target.value;
-    console.log('Mode changed to:', mode);
-    // Could POST to /api/cockpit/mode if endpoint exists
+    console.log('[MODE] Changed to:', mode);
+    
+    if (mode === 'fixed') {
+        // FIXED MODE: Freeze all auto-refresh intervals
+        if (window.updateInterval) clearInterval(window.updateInterval);
+        if (window.statusInterval) clearInterval(window.statusInterval);
+        if (window.topMoversInterval) clearInterval(window.topMoversInterval);
+        if (window.vipInterval) clearInterval(window.vipInterval);
+        if (window.watchlistInterval) clearInterval(window.watchlistInterval);
+        if (window.forecastInterval) clearInterval(window.forecastInterval);
+        if (window.healthInterval) clearInterval(window.healthInterval);
+        if (window.accuracyInterval) clearInterval(window.accuracyInterval);
+        
+        document.getElementById('status-text').textContent = 'FIXED MODE';
+        document.getElementById('status-text').style.color = 'var(--accent-yellow)';
+        console.log('[MODE] All intervals frozen');
+    } else {
+        // LIVE MODE: Resume auto-refresh intervals
+        document.getElementById('status-text').textContent = 'LIVE MODE';
+        document.getElementById('status-text').style.color = 'var(--accent-green)';
+        
+        // Restart all intervals
+        initializeApp();
+        console.log('[MODE] All intervals resumed');
+    }
 }
 
 function updateStatusIndicator(isActive) {
@@ -316,8 +340,11 @@ async function loadVIPCoins() {
             // This ensures consistency across the dashboard
             const xrpWatchlistData = sharedWatchlistData.find(item => item.symbol === 'XRP');
             if (xrpWatchlistData && xrpWatchlistData.change_pct !== undefined) {
+                console.log('[VIP] XRP sync - Before:', xrpData.change_24h_pct, '% (Tracker native)');
                 xrpData.change_24h_pct = xrpWatchlistData.change_pct;
-                console.log('[VIP] XRP 24h synchronized from Watchlist:', xrpData.change_24h_pct);
+                console.log('[VIP] XRP sync - After:', xrpData.change_24h_pct, '% (Watchlist synced)');
+            } else {
+                console.warn('[VIP] XRP NOT found in Watchlist - using Tracker native 24h:', xrpData.change_24h_pct, '%');
             }
             
             renderXRPTracker(xrpData);
