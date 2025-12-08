@@ -37,6 +37,7 @@ function initializeApp() {
     setInterval(() => updateSystemTime(), 1000);  // Clock: every 1s
     setInterval(() => loadCockpitStatus(), 30000);  // Status: every 30s
     setInterval(() => loadHealthScore(), 30000);  // Goals/Health: every 30s
+    setInterval(() => loadAccuracyChart(), 30000);  // Accuracy Chart: every 30s
     setInterval(() => loadForecast(), 15000);  // Forecast: every 15s
     setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s (includes hunter feed)
     setInterval(() => loadWatchlistByMode(), 15000);  // Watchlist: every 15s (mode-aware)
@@ -215,6 +216,7 @@ async function loadAllPanels() {
             loadVIPCoins(),
             loadForecast(),
             loadNews(),
+            loadAccuracyChart(),  // Add accuracy breakdown chart
             loadWatchlistByMode(),  // Use mode-aware watchlist loader
             loadHealthScore()
         ]);
