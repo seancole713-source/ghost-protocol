@@ -55,6 +55,7 @@ class CryptoPredictionEngine:
                 volatility REAL,
                 market_cap REAL,
                 volume_24h REAL,
+                features_json TEXT,
                 created_at REAL NOT NULL
             )
         """)
@@ -356,16 +357,20 @@ class CryptoPredictionEngine:
         metrics: dict,
     ):
         """Store prediction and forecast points in database"""
+        import json
+        
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
 
-        # Store prediction metadata
+        # Store prediction metadata with features for ML training
+        features_json = json.dumps(metrics)
+        
         c.execute(
             """
             INSERT INTO crypto_predictions
             (id, symbol, run_at, horizon_h, method, confidence, direction,
-             volatility, market_cap, volume_24h, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             volatility, market_cap, volume_24h, features_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 prediction_id,
@@ -378,6 +383,7 @@ class CryptoPredictionEngine:
                 metrics.get("volatility", 0),
                 metrics.get("market_cap", 0),
                 metrics.get("volume_24h", 0),
+                features_json,
                 time.time(),
             ),
         )

@@ -47,6 +47,7 @@ def _ensure_prediction_tables():
             checked INTEGER DEFAULT 0,
             checked_at INTEGER,
             error_pct REAL,
+            features_json TEXT,
             UNIQUE(symbol, predicted_at)
         )
     """

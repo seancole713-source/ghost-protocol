@@ -191,7 +191,8 @@ def init_ghost_schema():
             created_at {BIGINT} NOT NULL,
             model_version TEXT,
             provider TEXT,
-            metadata TEXT
+            metadata TEXT,
+            features_json TEXT
         )
         """,
         

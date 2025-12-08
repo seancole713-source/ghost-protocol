@@ -3800,10 +3800,19 @@ async def _post_startup_init():
             for sym, pred in _LATEST_PREDICTIONS.items():
                 confidence = pred.get("confidence", 0)
                 if confidence >= min_conf:  # Use Railway env var threshold
+                    # Calculate predicted % change from forecast array
+                    predicted_pct = 0.0
+                    forecast = pred.get("forecast", [])
+                    if forecast and len(forecast) >= 2:
+                        try:
+                            predicted_pct = ((forecast[-1] - forecast[0]) / forecast[0]) * 100
+                        except (ZeroDivisionError, TypeError):
+                            predicted_pct = 0.0
+                    
                     opportunities.append({
                         "symbol": sym,
                         "confidence": confidence,
-                        "predicted_pct": 0.0,  # TODO: Calculate from forecast
+                        "predicted_pct": round(predicted_pct, 2),
                         "action": pred.get("direction", "HOLD"),
                         "score": int(confidence * 100),  # Convert to 0-100 score
                         "timeframe_hours": pred.get("horizon_h", 48),
@@ -6399,12 +6408,16 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             else:
                 predicted_price = current_price  # FLAT
             
+            # Store features as JSON for ML training
+            import json
+            features_json = json.dumps(features)
+            
             conn.execute("""
                 INSERT INTO ghost_predictions (
                     symbol, predicted_at, check_at, predicted_price, 
                     predicted_direction, confidence, timeframe_hours, 
-                    current_price, checked
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    current_price, checked, features_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
             """, (
                 symbol,
                 int(run_at),
@@ -6413,11 +6426,12 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 direction,
                 confidence,
                 horizon_h,
-                current_price
+                current_price,
+                features_json
             ))
             conn.commit()
             conn.close()
-            LOGGER.info(f"[{symbol}] Stored in ghost_predictions table (ID={prediction_id}, direction={direction}, confidence={confidence:.1%})")
+            LOGGER.info(f"[{symbol}] Stored in ghost_predictions table (ID={prediction_id}, direction={direction}, confidence={confidence:.1%}, features={len(features)})")
         except Exception as e:
             LOGGER.error(f"[{symbol}] Failed to write to ghost_predictions table: {e}")
         

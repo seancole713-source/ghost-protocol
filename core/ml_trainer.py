@@ -205,23 +205,46 @@ def _fetch_training_data(symbol: str | None, lookback_days: int) -> list[dict]:
 def _prepare_training_data(training_data: list[dict]) -> tuple[np.ndarray, np.ndarray, list[str]]:
     """Convert training data to feature matrix and labels"""
     
-    # For now, use simple features
-    # In production, fetch full feature vectors from predictions
-    feature_names = ["confidence", "price_momentum"]
-
+    # Extract ALL features from predictions (50+ technical indicators + metadata)
+    # Each prediction has features stored in features_json column
     X = []
     y = []
+    feature_names = None
 
     for sample in training_data:
-        # Simple features
-        confidence = sample["confidence"]
-        price_change = (
-            (sample["price_at_outcome"] - sample["price_at_prediction"])
-            / sample["price_at_prediction"]
-        ) if sample["price_at_prediction"] > 0 else 0
-
-        X.append([confidence, price_change])
+        # Parse features from JSON (if available)
+        features_dict = sample.get("features", {})
+        if isinstance(features_dict, str):
+            try:
+                import json
+                features_dict = json.loads(features_dict)
+            except Exception:
+                features_dict = {}
+        
+        # If no features in this sample, use legacy 2-feature fallback
+        if not features_dict:
+            confidence = sample["confidence"]
+            price_change = (
+                (sample["price_at_outcome"] - sample["price_at_prediction"])
+                / sample["price_at_prediction"]
+            ) if sample["price_at_prediction"] > 0 else 0
+            features_dict = {"confidence": confidence, "price_momentum": price_change}
+        
+        # Extract feature names from first sample (all should have same keys)
+        if feature_names is None:
+            feature_names = sorted(features_dict.keys())
+            logger.info(f"Training with {len(feature_names)} features: {feature_names[:10]}...")
+        
+        # Extract feature vector (use 0 for missing values)
+        feature_vector = [features_dict.get(name, 0) for name in feature_names]
+        
+        X.append(feature_vector)
         y.append(sample["direction_correct"])
+
+    # Fallback if no samples (shouldn't happen but safety check)
+    if feature_names is None:
+        feature_names = ["confidence", "price_momentum"]
+        logger.warning("No features extracted, using legacy 2-feature fallback")
 
     return np.array(X), np.array(y), feature_names
 
