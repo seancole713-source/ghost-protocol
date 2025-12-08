@@ -246,7 +246,9 @@ async def start_all_background_services(
     # ============================================================================
     # PHASE 5: STAGE 1 CONTEXT ENGINE (Hourly RSS/Sentiment Refresh)
     # ============================================================================
-    context_enabled = os.getenv("STAGE1_CONTEXT_ENABLED", "1") == "1"
+    # NOTE: Context engine needs background updater implementation
+    # Disabled until start_background_updater() function is created
+    context_enabled = False  # os.getenv("STAGE1_CONTEXT_ENABLED", "1") == "1"
     
     if context_enabled:
         try:
@@ -261,7 +263,7 @@ async def start_all_background_services(
             LOGGER.error(f"❌ Stage 1 Context Engine FAILED: {e}", exc_info=True)
     else:
         _SYSTEM_STATUS["context_engine"]["status"] = "disabled"
-        LOGGER.info("⚪ Stage 1 Context Engine: DISABLED (STAGE1_CONTEXT_ENABLED=0)")
+        LOGGER.info("⚪ Stage 1 Context Engine: DISABLED (needs background updater implementation)")
     
     # ============================================================================
     # PHASE 6: MARKET SCANNER (Autonomous Opportunity Detection)
