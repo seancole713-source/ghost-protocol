@@ -13,11 +13,13 @@ Responsibilities:
 Architecture:
 - Price Refresh Loop (5-10s interval)
 - Movers Scanner (stock: scheduled CT times, crypto: 5min)
+- VIP Scanner (60s interval, Cash-App alerts for WEPE, LILPEPE, DORKL, SLOTH, APC)
 - SL/TP Monitor (60s interval, conditional on BROKER_ENABLED)
 - Scheduled Predictions (market hours only, consolidates beast_scheduler + scheduled_predictions)
 - Stage 1 Context Engine (hourly RSS/sentiment refresh)
 - Market Scanner (autonomous opportunity detection)
 - Daily Reports (07:00 CT + 20:00 CT)
+- Outcome Reconciler (60min interval, 48h accuracy measurement)
 
 Usage:
     from core.orchestrator import start_all_background_services, get_system_status
@@ -46,6 +48,7 @@ _SYSTEM_STATUS = {
     "context_engine": {"status": "stopped", "last_run": 0, "error": None},
     "market_scanner": {"status": "stopped", "last_run": 0, "error": None},
     "daily_reports": {"status": "stopped", "last_run": 0, "error": None},
+    "outcome_reconciler": {"status": "stopped", "last_run": 0, "error": None},
 }
 
 
@@ -298,6 +301,65 @@ async def start_all_background_services(
         _SYSTEM_STATUS["daily_reports"]["status"] = "failed"
         _SYSTEM_STATUS["daily_reports"]["error"] = str(e)
         LOGGER.error(f"❌ Daily Reports FAILED: {e}", exc_info=True)
+    
+    # ============================================================================
+    # PHASE 8: OUTCOME RECONCILER (48h Accuracy Measurement)
+    # ============================================================================
+    reconciler_enabled = os.getenv("OUTCOME_RECONCILER_ENABLED", "1") == "1"
+    
+    if reconciler_enabled:
+        try:
+            from services.outcome_reconciler_v2 import reconcile_outcomes_v2
+            
+            async def _outcome_reconciler_loop():
+                """
+                Background loop for reconciling prediction outcomes after 48h window closes.
+                This is CRITICAL for accuracy tracking and learning loop.
+                
+                Runs every 60 minutes to:
+                1. Find predictions where 48h has elapsed
+                2. Fetch actual prices from live providers
+                3. Calculate MAE, MAPE, RMSE, direction accuracy
+                4. Store in ghost_prediction_outcomes table
+                """
+                reconciler_interval_s = int(os.getenv("OUTCOME_RECONCILER_INTERVAL_S", "3600"))  # Default 60min
+                
+                while True:
+                    try:
+                        result = reconcile_outcomes_v2()
+                        _SYSTEM_STATUS["outcome_reconciler"]["last_run"] = int(time.time())
+                        
+                        if result["success"] > 0:
+                            LOGGER.info(
+                                f"✅ Reconciler: {result['success']} outcomes processed, "
+                                f"{result['no_data']} no data, {result['error']} errors, "
+                                f"{result['skipped']} skipped"
+                            )
+                        else:
+                            LOGGER.debug(
+                                f"Reconciler: {result['success']} outcomes (no new data this cycle)"
+                            )
+                    
+                    except Exception as e:
+                        _SYSTEM_STATUS["outcome_reconciler"]["error"] = str(e)
+                        LOGGER.error(f"Outcome reconciler error: {e}", exc_info=True)
+                    
+                    await asyncio.sleep(reconciler_interval_s)
+            
+            _TASKS["outcome_reconciler"] = asyncio.create_task(_outcome_reconciler_loop())
+            _SYSTEM_STATUS["outcome_reconciler"]["status"] = "running"
+            _SYSTEM_STATUS["outcome_reconciler"]["last_run"] = int(time.time())
+            
+            reconciler_interval_min = int(os.getenv("OUTCOME_RECONCILER_INTERVAL_S", "3600")) // 60
+            LOGGER.info(f"✅ Outcome Reconciler: STARTED ({reconciler_interval_min}min interval)")
+        
+        except Exception as e:
+            _SYSTEM_STATUS["outcome_reconciler"]["status"] = "failed"
+            _SYSTEM_STATUS["outcome_reconciler"]["error"] = str(e)
+            LOGGER.error(f"❌ Outcome Reconciler FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["outcome_reconciler"]["status"] = "disabled"
+        LOGGER.info("⚪ Outcome Reconciler: DISABLED (OUTCOME_RECONCILER_ENABLED=0)")
     
     # ============================================================================
     # ORCHESTRATION COMPLETE

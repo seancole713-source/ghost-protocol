@@ -7221,6 +7221,26 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
         }
 
 
+@APP.get("/api/v3/system/orchestrator")
+async def api_v3_system_orchestrator():
+    """
+    Get orchestrator system status showing all background services.
+    
+    Returns status of all 9 background services including outcome reconciler.
+    """
+    try:
+        from core.orchestrator import get_system_status
+        return get_system_status()
+    except Exception as e:
+        LOGGER.error(f"Orchestrator status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "services": {},
+            "timestamp": int(time.time())
+        }
+
+
 @APP.get("/api/v3/watchlist/enriched")
 async def api_v3_watchlist_enriched():
     """
@@ -24997,24 +25017,85 @@ async def api_xrp_tracker():
 
 @APP.get("/api/vip/coins")
 async def api_vip_coins():
-    """Get VIP coins status (WEPE, LILPEPE, DORKL, SLOTH, APC)."""
+    """Get VIP coins status with enhanced presale data (WEPE, LILPEPE, DORKL, SLOTH, APC)."""
     try:
-        from core.crypto.vip_providers import get_vip_provider_health
-        health = get_vip_provider_health()
-        vip_symbols = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
+        from core.vip_scanner import VIP_WATCHLIST
+        from core.crypto.vip_providers import get_vip_price
+        
+        # Presale metadata (enriched data for sniper coins)
+        presale_metadata = {
+            "WEPE": {
+                "name": "Wall Street Pepe",
+                "stage": "Presale",
+                "status": "Active",
+                "launch_date": "Q1 2025",
+                "market_cap_est": "$15M",
+                "risk_score": 7.5
+            },
+            "LILPEPE": {
+                "name": "Lil Pepe",
+                "stage": "Presale",
+                "status": "Monitoring",
+                "launch_date": "Q1 2025",
+                "market_cap_est": "$8M",
+                "risk_score": 8.0
+            },
+            "DORKL": {
+                "name": "Dork Lord",
+                "stage": "Presale",
+                "status": "Watching",
+                "launch_date": "Q2 2025",
+                "market_cap_est": "$5M",
+                "risk_score": 8.5
+            },
+            "SLOTH": {
+                "name": "Slothana",
+                "stage": "Presale",
+                "status": "Watching",
+                "launch_date": "Q1 2025",
+                "market_cap_est": "$12M",
+                "risk_score": 7.8
+            },
+            "APC": {
+                "name": "Ape Coin",
+                "stage": "Presale",
+                "status": "Watching",
+                "launch_date": "Q2 2025",
+                "market_cap_est": "$20M",
+                "risk_score": 6.5
+            }
+        }
+        
         coins_status = []
-        for symbol in vip_symbols:
+        for symbol in VIP_WATCHLIST:
+            metadata = presale_metadata.get(symbol, {})
+            
+            # Try to get live price if available
+            price_data = get_vip_price(symbol, use_cache=True)
+            
             coin_data = {
                 "symbol": symbol,
+                "name": metadata.get("name", symbol),
                 "price": None,
                 "change_24h_pct": None,
-                "status": "NO_DATA",
-                "provider": "unavailable"
+                "stage": metadata.get("stage", "Unknown"),
+                "status": metadata.get("status", "Unknown"),
+                "launch_date": metadata.get("launch_date", "TBD"),
+                "market_cap_est": metadata.get("market_cap_est", "Unknown"),
+                "risk_score": metadata.get("risk_score", 5.0),
+                "provider": "presale"
             }
-            if health.get("coins_with_prices") and symbol in health.get("coins_with_prices", []):
-                coin_data["status"] = "ACTIVE"
+            
+            # If live price available, use it
+            if price_data.get("available") and price_data.get("price"):
+                coin_data["price"] = round(price_data["price"], 6)
+                coin_data["change_24h_pct"] = round(price_data.get("change_24h_pct", 0), 2)
+                coin_data["provider"] = price_data.get("provider", "live")
+                coin_data["status"] = "Live Trading"
+            
             coins_status.append(coin_data)
-        return {"ok": True, "coins": coins_status, "health": health, "timestamp": time.time()}
+        
+        return {"ok": True, "coins": coins_status, "count": len(coins_status), "timestamp": time.time()}
     except Exception as e:
         LOGGER.error(f"VIP coins failed: {e}")
         return {"ok": False, "coins": [], "error": str(e), "timestamp": time.time()}

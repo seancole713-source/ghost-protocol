@@ -86,23 +86,66 @@ async def get_xrp_status() -> dict[str, Any]:
                 factors.append("Below $0.50")
                 confidence -= 0.1
             
-            # Normalize confidence to 0-1 range
-            confidence = max(0.0, min(1.0, (confidence + 0.5)))
-            result["confidence"] = round(confidence, 2)
-            
-            # Determine signal based on confidence
-            if confidence >= 0.7:
-                result["signal"] = "BUY"
-                result["bullish_eye"] = "🟢"  # Green = bullish
-            elif confidence >= 0.4:
-                result["signal"] = "HOLD"
-                result["bullish_eye"] = "🟡"  # Yellow = neutral
-            elif confidence >= 0.2:
-                result["signal"] = "WAIT"
-                result["bullish_eye"] = "🟡"  # Yellow = cautious
-            else:
-                result["signal"] = "SELL"
-                result["bullish_eye"] = "🔴"  # Red = bearish
+            # Check if we have a recent prediction for XRP
+            # Use prediction confidence if available (more accurate than tracker heuristics)
+            try:
+                from wolf_app import _LATEST_PREDICTIONS
+                xrp_pred = _LATEST_PREDICTIONS.get("XRP", {})
+                if xrp_pred and xrp_pred.get("confidence"):
+                    pred_confidence = xrp_pred.get("confidence", 0)
+                    # Convert to 0-1 range if it's a percentage
+                    if pred_confidence > 1:
+                        pred_confidence = pred_confidence / 100.0
+                    confidence = pred_confidence
+                    result["confidence"] = round(confidence, 2)
+                    
+                    # Use prediction direction for signal
+                    pred_direction = xrp_pred.get("direction", "FLAT")
+                    if pred_direction == "UP" and confidence >= 0.4:
+                        result["signal"] = "BUY" if confidence >= 0.6 else "HOLD"
+                        result["bullish_eye"] = "🟢" if confidence >= 0.6 else "🟡"
+                    elif pred_direction == "DOWN" and confidence >= 0.4:
+                        result["signal"] = "SELL" if confidence >= 0.6 else "WAIT"
+                        result["bullish_eye"] = "🔴" if confidence >= 0.6 else "🟡"
+                    else:
+                        result["signal"] = "HOLD"
+                        result["bullish_eye"] = "🟡"
+                    
+                    factors.append(f"Ghost prediction: {pred_direction} @ {confidence*100:.0f}%")
+                else:
+                    # Fallback to tracker heuristics if no prediction
+                    confidence = max(0.0, min(1.0, (confidence + 0.5)))
+                    result["confidence"] = round(confidence, 2)
+                    
+                    if confidence >= 0.7:
+                        result["signal"] = "BUY"
+                        result["bullish_eye"] = "🟢"
+                    elif confidence >= 0.4:
+                        result["signal"] = "HOLD"
+                        result["bullish_eye"] = "🟡"
+                    elif confidence >= 0.2:
+                        result["signal"] = "WAIT"
+                        result["bullish_eye"] = "🟡"
+                    else:
+                        result["signal"] = "SELL"
+                        result["bullish_eye"] = "🔴"
+            except Exception:
+                # Fallback to tracker heuristics
+                confidence = max(0.0, min(1.0, (confidence + 0.5)))
+                result["confidence"] = round(confidence, 2)
+                
+                if confidence >= 0.7:
+                    result["signal"] = "BUY"
+                    result["bullish_eye"] = "🟢"
+                elif confidence >= 0.4:
+                    result["signal"] = "HOLD"
+                    result["bullish_eye"] = "🟡"
+                elif confidence >= 0.2:
+                    result["signal"] = "WAIT"
+                    result["bullish_eye"] = "🟡"
+                else:
+                    result["signal"] = "SELL"
+                    result["bullish_eye"] = "🔴"
             
             result["factors"] = factors
     

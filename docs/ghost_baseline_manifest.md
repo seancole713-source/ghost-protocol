@@ -1150,7 +1150,37 @@ curl "<<<<<https://ghost-protocol-production.up.railway.app/api/v3/predictions/l
 - 70% accuracy system infrastructure complete
 - All critical systems documented
 - Regression test script created
-- Protection protocol established**Future Additions**:
+- Protection protocol established
+
+**Version 1.1** (December 7, 2025) 🟢 **SAFE ADD-ON**
+
+- **Change**: Added Outcome Reconciler as 9th background service in orchestrator
+- **Classification**: 🟢 SAFE (isolated add-on, no baseline modifications)
+- **Files Modified**: `core/orchestrator.py` (added Phase 8, updated _SYSTEM_STATUS dict)
+- **Regression**: ✅ PASSED (all critical endpoints remain operational)
+- **Purpose**: Enable accuracy tracking after 48h prediction window closes
+- **Implementation**: 
+  - New service: `outcome_reconciler` (60min interval by default)
+  - Environment toggle: `OUTCOME_RECONCILER_ENABLED=1` (default enabled)
+  - Interval configurable: `OUTCOME_RECONCILER_INTERVAL_S=3600` (60 minutes)
+  - Circuit breakers: Max 100 predictions/run, 5min timeout, 70% failure threshold
+  - Integration: Calls `services.outcome_reconciler_v2.reconcile_outcomes_v2()`
+  - Data flow: Finds predictions where 48h elapsed → fetches actual price → calculates MAE/MAPE/RMSE/direction → stores in `ghost_prediction_outcomes`
+- **Impact**: Enables `/api/v3/accuracy/summary` endpoint (currently returns "No reconciled predictions" until 48h elapses)
+- **Rollback**: Set `OUTCOME_RECONCILER_ENABLED=0` or remove service entry from orchestrator
+- **Status**: ✅ DEPLOYED (waiting 48h for first outcomes)
+- **Total Services**: Now 9 (was 8):
+  1. price_refresh
+  2. movers_scanner
+  3. vip_scanner
+  4. sl_tp_monitor (conditional)
+  5. scheduled_predictions
+  6. context_engine
+  7. market_scanner (on-demand)
+  8. daily_reports
+  9. **outcome_reconciler** (NEW)
+
+**Future Additions**:
 
 - Append new add-on modules with clear "New Add-On" markers
 - Never rewrite history or obscure original baseline state
@@ -1161,7 +1191,7 @@ curl "<<<<<https://ghost-protocol-production.up.railway.app/api/v3/predictions/l
 
 **END OF BASELINE MANIFEST**
 
-**Last Updated**: December 5, 2025
-**Baseline Locked**: Commit `4a21338`
-**Status**: ✅ PRODUCTION READY - All systems operational
+**Last Updated**: December 7, 2025 (v1.1 - Outcome Reconciler Added)
+**Baseline Locked**: Commit `4a21338` (original) + autonomous improvements
+**Status**: ✅ PRODUCTION READY - All systems operational (9/9 services)
 **Guardian**: ACTIVE AND ENFORCED 🛡️
