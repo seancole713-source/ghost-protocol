@@ -4178,11 +4178,18 @@ async def _post_startup_init():
         LOGGER.warning(f"[REDIS] Initialization deferred: {e}", extra={"component": "startup"})
 
     # ============================================================================
-    # 🎭 MASTER ORCHESTRATOR - Start AFTER startup completes (avoid circular refs)
+    # 🎭 MASTER ORCHESTRATOR - Start all background services
     # ============================================================================
-    # Note: Orchestrator will be started via lifespan event or separate async task
-    # after all wolf_app imports are complete and functions are available
-    LOGGER.info("🎭 Master Orchestrator: Will start after startup completes")
+    try:
+        from core.orchestrator import start_all_background_services
+        asyncio.create_task(start_all_background_services(
+            app=APP,
+            logger=LOGGER,
+            redis_client=None  # Will be initialized by orchestrator
+        ))
+        LOGGER.info("🎭 Master Orchestrator: Background services starting...")
+    except Exception as e:
+        LOGGER.error(f"❌ Master Orchestrator failed to start: {e}", exc_info=True)
 
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
