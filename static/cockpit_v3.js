@@ -6,6 +6,7 @@ let currentForecastSymbol = 'BTC';  // Default to BTC (has active predictions)
 let updateInterval = null;
 let watchlistMode = 'personal';  // 'personal' or 'market'
 let watchlistFilter = 'all';     // 'all', 'stocks', 'crypto'
+let sharedWatchlistData = [];    // Shared cache for cross-panel data (Major Caps, XRP VIP)
 
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => {
@@ -302,15 +303,23 @@ async function loadTopMovers() {
 async function loadVIPCoins() {
     // Load all three data sources in parallel
     try {
-        const [xrpResponse, presaleResponse, vipResponse] = await Promise.all([
+        const [xrpResponse, presaleResponse] = await Promise.all([
             fetch('/api/xrp/tracker').catch(e => ({ ok: false, error: e })),
-            fetch('/api/presale/watch').catch(e => ({ ok: false, error: e })),
-            fetch('/api/v3/vip/snapshot').catch(e => ({ ok: false, error: e }))
+            fetch('/api/presale/watch').catch(e => ({ ok: false, error: e }))
         ]);
         
-        // XRP Tracker (Priority)
+        // XRP Tracker (Priority) - Enhanced with Watchlist 24h data
         if (xrpResponse.ok) {
             const xrpData = await xrpResponse.json();
+            
+            // CRITICAL FIX: Use Watchlist 24h change instead of XRP tracker's change_24h_pct
+            // This ensures consistency across the dashboard
+            const xrpWatchlistData = sharedWatchlistData.find(item => item.symbol === 'XRP');
+            if (xrpWatchlistData && xrpWatchlistData.change_pct !== undefined) {
+                xrpData.change_24h_pct = xrpWatchlistData.change_pct;
+                console.log('[VIP] XRP 24h synchronized from Watchlist:', xrpData.change_24h_pct);
+            }
+            
             renderXRPTracker(xrpData);
         } else {
             document.getElementById('xrp-tracker').innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">XRP tracker offline</p>';
@@ -324,15 +333,15 @@ async function loadVIPCoins() {
             document.getElementById('vip-sniper-list').innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Sniper coins loading...</p>';
         }
         
-        // Major Caps (BTC, ETH reference)
-        if (vipResponse.ok) {
-            const vipData = await vipResponse.json();
-            console.log('[VIP] Major Caps raw data:', vipData.vip_coins);
-            const majors = (vipData.vip_coins || []).filter(c => ['BTC', 'ETH'].includes(c.symbol));
-            console.log('[VIP] Filtered majors (BTC/ETH):', majors);
-            renderMajorCaps(majors);
+        // CRITICAL FIX: Major Caps now uses Watchlist data (VIP snapshot is broken)
+        // Pull BTC and ETH from the shared watchlist cache
+        const majorsFromWatchlist = sharedWatchlistData.filter(item => ['BTC', 'ETH'].includes(item.symbol));
+        
+        if (majorsFromWatchlist.length > 0) {
+            console.log('[VIP] Major Caps pulled from Watchlist:', majorsFromWatchlist);
+            renderMajorCaps(majorsFromWatchlist);
         } else {
-            console.error('[VIP] Failed to load majors:', vipResponse);
+            console.warn('[VIP] No BTC/ETH found in Watchlist cache yet');
             document.getElementById('vip-majors-list').innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Loading...</p>';
         }
         
@@ -419,6 +428,7 @@ function renderVIPSniperCoins(coins) {
 }
 
 // Render Major Caps Reference (BTC, ETH)
+// UPDATED: Now accepts Watchlist data format (change_pct, no status field)
 function renderMajorCaps(coins) {
     const container = document.getElementById('vip-majors-list');
     
@@ -431,11 +441,13 @@ function renderMajorCaps(coins) {
     console.log('[VIP] Rendering', coins.length, 'major caps:', coins);
     
     container.innerHTML = coins.map(coin => {
-        const isOffline = coin.status === 'offline' || coin.price === 0;
+        // Watchlist format: {symbol, price, change_pct, ghost_confidence, ghost_direction, type}
+        const isOffline = !coin.price || coin.price === 0;
         const priceDisplay = isOffline ? '--' : `$${coin.price.toLocaleString()}`;
-        const changeClass = coin.change_pct >= 0 ? 'positive' : 'negative';
+        const changePct = coin.change_pct ?? 0;
+        const changeClass = changePct >= 0 ? 'positive' : 'negative';
         const changeDisplay = isOffline ? '--' : 
-            `${coin.change_pct >= 0 ? '+' : ''}${coin.change_pct.toFixed(2)}%`;
+            `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`;
         
         console.log(`[VIP] ${coin.symbol}: price=${priceDisplay}, change=${changeDisplay}, isOffline=${isOffline}`);
         
@@ -779,6 +791,9 @@ async function loadMarketWatchlist() {
         } else if (watchlistFilter === 'crypto') {
             filteredData = watchlistData.filter(item => item.type === 'crypto');
         }
+        
+        // CRITICAL: Populate shared cache for Major Caps and XRP VIP panels
+        sharedWatchlistData = filteredData;
         
         renderWatchlist(filteredData);
     } catch (error) {
