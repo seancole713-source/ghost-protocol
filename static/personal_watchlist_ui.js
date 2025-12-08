@@ -46,6 +46,20 @@ async function loadPersonalWatchlist() {
             }
         }));
         
+        // CRITICAL FIX: Populate sharedWatchlistData for Major Caps and XRP VIP
+        // Convert to format expected by Major Caps (same as market watchlist)
+        if (typeof sharedWatchlistData !== 'undefined') {
+            sharedWatchlistData = items.map(item => ({
+                symbol: item.symbol,
+                price: item.price || 0,
+                change_pct: item.change_pct || 0,
+                ghost_confidence: item.ghost_confidence || 0,
+                ghost_direction: item.ghost_direction || 'FLAT',
+                type: item.type || 'stock'
+            }));
+            console.log('[PERSONAL WATCHLIST] Populated sharedWatchlistData for Major Caps:', sharedWatchlistData.length, 'items');
+        }
+        
         renderPersonalWatchlist(getFilteredWatchlistItems());
         
         console.log(`[PERSONAL WATCHLIST] Loaded ${personalWatchlistState.items.length} symbols`);
@@ -78,6 +92,19 @@ async function loadWatchlistFallback() {
                 expected_move: item.change || 0
             }
         }));
+        
+        // CRITICAL FIX: Populate sharedWatchlistData for Major Caps (fallback path)
+        if (typeof sharedWatchlistData !== 'undefined') {
+            sharedWatchlistData = items.map(item => ({
+                symbol: item.symbol,
+                price: item.price || 0,
+                change_pct: item.change_pct || 0,
+                ghost_confidence: item.ghost_confidence || 0,
+                ghost_direction: item.ghost_direction || 'FLAT',
+                type: item.type || 'stock'
+            }));
+            console.log('[PERSONAL WATCHLIST] Fallback: Populated sharedWatchlistData');
+        }
         
         renderPersonalWatchlist(getFilteredWatchlistItems());
     } catch (error) {
