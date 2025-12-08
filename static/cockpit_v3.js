@@ -378,7 +378,7 @@ function renderXRPTracker(data) {
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary);">
                 <span>Eye Score: ${data.bullish_eye || 0}/100</span>
-                <span>24h: ${data.change_24h ? (data.change_24h >= 0 ? '+' : '') + data.change_24h.toFixed(2) + '%' : '--'}</span>
+                <span>24h: ${data.change_24h_pct ? (data.change_24h_pct >= 0 ? '+' : '') + data.change_24h_pct.toFixed(2) + '%' : '--'}</span>
             </div>
         </div>
     `;
