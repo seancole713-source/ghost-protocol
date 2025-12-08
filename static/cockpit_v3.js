@@ -622,6 +622,14 @@ async function loadAccuracyChart() {
         if (!response.ok) throw new Error('Failed to load accuracy data');
         
         const data = await response.json();
+        
+        // Handle API's {ok: false, error: "..."} format
+        if (!data.ok) {
+            console.log('[ACCURACY] API returned no data:', data.error);
+            renderAccuracyChart(null);
+            return;
+        }
+        
         renderAccuracyChart(data);
     } catch (error) {
         console.error('[GHOST V3] Error loading accuracy chart:', error);
@@ -644,11 +652,13 @@ function renderAccuracyChart(accuracyData) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     if (!accuracyData) {
-        // Show error message
+        // Show friendly "waiting for data" message
         ctx.fillStyle = 'var(--text-secondary)';
-        ctx.font = '14px var(--font-mono)';
+        ctx.font = '13px var(--font-mono)';
         ctx.textAlign = 'center';
-        ctx.fillText('No accuracy data available', rect.width / 2, rect.height / 2);
+        ctx.fillText('⏳ Waiting for predictions to mature...', rect.width / 2, rect.height / 2 - 10);
+        ctx.font = '11px var(--font-mono)';
+        ctx.fillText('(Predictions need 48 hours to reconcile)', rect.width / 2, rect.height / 2 + 10);
         return;
     }
     
