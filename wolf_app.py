@@ -3666,6 +3666,37 @@ async def _on_startup():
         LOGGER.error(f"prediction_store_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup (will retry on first request)
 
+    # CRITICAL: Pre-populate _LATEST_PREDICTIONS cache to prevent cold-start slowness
+    try:
+        from core.prediction_store import get_prediction_store
+        store = get_prediction_store()
+        LOGGER.info("[GHOST STARTUP] Warming _LATEST_PREDICTIONS cache...")
+        
+        # Get latest 50 predictions from database
+        recent_preds = store.get_recent_predictions(limit=50)
+        warmup_count = 0
+        
+        # Populate cache with most recent prediction per symbol
+        for pred in recent_preds:
+            symbol = pred.get("symbol")
+            if symbol and symbol not in _LATEST_PREDICTIONS:
+                _LATEST_PREDICTIONS[symbol] = {
+                    "prediction_id": pred.get("id"),
+                    "symbol": symbol,
+                    "run_at": pred.get("created_at", 0),
+                    "confidence": pred.get("confidence", 0),
+                    "direction": pred.get("direction", "FLAT"),
+                    "horizon_h": 48,
+                    "provider": pred.get("provider", "unknown"),
+                    "price_at_prediction": pred.get("price_at_prediction"),
+                }
+                warmup_count += 1
+        
+        LOGGER.info(f"[GHOST STARTUP] ✅ Cache warmed with {warmup_count} predictions")
+    except Exception as e:
+        LOGGER.error(f"cache_warmup_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup (endpoints will use DB fallback)
+
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
     
