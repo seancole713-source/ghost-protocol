@@ -7511,6 +7511,205 @@ async def _refresh_vip_cache():
         LOGGER.error(f"[VIP] Background refresh failed: {e}")
 
 
+# ============================================================================
+# DATA-ENHANCED PREDICTION ENDPOINTS
+# ============================================================================
+
+@APP.post("/api/v3/predict/enhanced")
+async def api_v3_predict_enhanced(
+    symbol: str,
+    use_cache: bool = True
+):
+    """
+    Data-enhanced prediction using multi-source market intelligence.
+    
+    Aggregates data from:
+    - CoinGecko (price, volume, market cap)
+    - DEXScreener (liquidity, DEX metrics)
+    - Fear & Greed Index (sentiment)
+    - Technical indicators (RSI, trends)
+    - CryptoPanic (news sentiment) if API key configured
+    
+    Returns prediction with:
+    - Direction (UP/DOWN/FLAT)
+    - Confidence score
+    - Data quality percentage
+    - Signal breakdown (bullish/bearish scores)
+    - Raw market features
+    
+    Args:
+        symbol: Crypto symbol (BTC, ETH, SOL, etc.)
+        use_cache: Use cached data (default: True, 5min TTL)
+    
+    Example:
+        POST /api/v3/predict/enhanced?symbol=BTC
+        
+        Response:
+        {
+            "ok": true,
+            "symbol": "BTC",
+            "direction": "UP",
+            "confidence": 0.70,
+            "data_quality": 0.714,
+            "signals": {
+                "bullish_score": 2,
+                "bearish_score": 0,
+                "rsi": 50.0,
+                "trend": "SIDEWAYS",
+                "sentiment": 0.0,
+                "fear_greed": 22
+            },
+            "features": {
+                "price": 89859.0,
+                "volume_24h": 45000000000,
+                "fear_greed_index": 22,
+                "dex_liquidity": 6500661845,
+                ...
+            },
+            "timestamp": 1733747584.23
+        }
+    """
+    try:
+        from core.data_enhanced_predictor import DataEnhancedPredictor
+        
+        async with DataEnhancedPredictor() as predictor:
+            result = await predictor.predict_with_data(symbol.upper())
+        
+        return {
+            "ok": True,
+            "symbol": result["symbol"],
+            "direction": result["direction"],
+            "confidence": result["confidence"],
+            "data_quality": result["data_quality"],
+            "signals": result.get("signals", {}),
+            "features": result.get("features", {}),
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Enhanced prediction failed for {symbol}: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "symbol": symbol.upper(),
+            "timestamp": time.time()
+        }
+
+
+@APP.get("/api/v3/vip-coins")
+async def api_v3_vip_coins_intelligence():
+    """
+    VIP coin intelligence with comprehensive market data.
+    
+    Tracks 5 high-potential coins:
+    - WEPE (Wall Street Pepe)
+    - LILPEPE (Lil Pepe)
+    - DORKL (Dork Lord)
+    - SLOTH (Slothana)
+    - APC (Alpha Protocol Coin)
+    
+    Returns for each coin:
+    - Current price
+    - 24h change %
+    - DEX liquidity (from DEXScreener)
+    - Trading volume
+    - Number of transactions
+    - Primary DEX
+    - Data quality score
+    
+    Example:
+        GET /api/v3/vip-coins
+        
+        Response:
+        {
+            "ok": true,
+            "vip_coins": [
+                {
+                    "symbol": "WEPE",
+                    "price": 0.000080,
+                    "change_24h": 5.2,
+                    "liquidity": 23000000,
+                    "volume_24h": 1500000,
+                    "txns_24h": 450,
+                    "dex": "uniswap-v2",
+                    "data_quality": 0.857,
+                    "status": "online"
+                },
+                ...
+            ],
+            "count": 5,
+            "timestamp": 1733747584.23
+        }
+    """
+    try:
+        from core.data_collector import DataCollector
+        
+        vip_symbols = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC"]
+        
+        vip_data = []
+        
+        async with DataCollector() as collector:
+            for symbol in vip_symbols:
+                try:
+                    # Get DEXScreener data for VIP coin
+                    dex_data = await collector.get_dexscreener_data(symbol)
+                    
+                    if dex_data:
+                        vip_data.append({
+                            "symbol": symbol,
+                            "price": dex_data.get("price", 0),
+                            "change_24h": dex_data.get("price_change_24h", 0),
+                            "liquidity": dex_data.get("liquidity", 0),
+                            "volume_24h": dex_data.get("volume_24h", 0),
+                            "txns_24h": dex_data.get("txns_24h", 0),
+                            "dex": dex_data.get("dex", "unknown"),
+                            "data_quality": 1.0 if dex_data.get("liquidity", 0) > 0 else 0.5,
+                            "status": "online"
+                        })
+                    else:
+                        vip_data.append({
+                            "symbol": symbol,
+                            "price": 0,
+                            "change_24h": 0,
+                            "liquidity": 0,
+                            "volume_24h": 0,
+                            "txns_24h": 0,
+                            "dex": "unknown",
+                            "data_quality": 0.0,
+                            "status": "offline"
+                        })
+                        
+                except Exception as e:
+                    LOGGER.error(f"VIP coin {symbol} data failed: {e}")
+                    vip_data.append({
+                        "symbol": symbol,
+                        "price": 0,
+                        "change_24h": 0,
+                        "liquidity": 0,
+                        "volume_24h": 0,
+                        "txns_24h": 0,
+                        "dex": "unknown",
+                        "data_quality": 0.0,
+                        "status": "error"
+                    })
+        
+        return {
+            "ok": True,
+            "vip_coins": vip_data,
+            "count": len(vip_data),
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"VIP coins intelligence failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "vip_coins": [],
+            "timestamp": time.time()
+        }
+
+
 @APP.get("/api/v3/alerts/status")
 async def api_v3_alerts_status():
     """
