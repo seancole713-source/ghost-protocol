@@ -11,7 +11,6 @@
 3. ✅**Forecast input sync**- Fixed (now shows default symbol)
 4. ✅**Market watchlist endpoint**- Implemented (`/api/v3/watchlist/market`)
 
-
 ---
 
 ## 🟡 HIGH PRIORITY (4/8 remaining)
@@ -24,7 +23,7 @@
 
 def get_xrp_tracker_data():
 
-    # ... existing bullish_eye calculation 
+    # ... existing bullish_eye calculation
 
     # NEW: Get XRP prediction confidence
 

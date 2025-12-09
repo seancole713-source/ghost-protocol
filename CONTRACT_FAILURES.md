@@ -15,17 +15,14 @@ ______________________________________________________________________
 4. ✅**test_contract_ready_endpoint**- Ready check exists!
 5. ✅**test_contract_feature_flags**- Feature flags configured!
 
-
 ### ⏭️ SKIPPED (1/9)
 
 1. ⏭️**test_contract_prediction_overlay**- Endpoint doesn't exist yet (expected)
-
 
 ### ❌ FAILING (3/9)
 
 1. ❌**test_contract_stock_price_quorum**-**404 on /api/quotes**⚠️ CRITICAL
 2. ❌**test_contract_trading_submission**-**dry_run response format mismatch**3. ❌**test_contract_prometheus_metrics**-**Empty /metrics response**
-
 
 ______________________________________________________________________
 

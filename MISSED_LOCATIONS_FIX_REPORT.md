@@ -19,7 +19,7 @@ ______________________________________________________________________
 
 ## 🚨 Why We Missed Them
 
-###**Root Cause Analysis**####**1. Incomplete Grep Search**
+### **Root Cause Analysis**####**1. Incomplete Grep Search**
 
 ```bash
 

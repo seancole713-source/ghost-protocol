@@ -15,14 +15,12 @@ ______________________________________________________________________
 - ✅ **Proactive Alerts**: Tells you what to do via Telegram
 - ✅ **Multi-Asset**: Understands both stocks AND crypto
 
-
 ### Target Performance
 
 - 🎯 **80%+ accuracy**on recommendations
 - 📈**70%+ win rate**on trades
 - 💰**10%+ average return**per trade
 - ⏱️**\<5 minute**response time to opportunities
-
 
 ______________________________________________________________________
 

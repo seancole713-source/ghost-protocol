@@ -20,7 +20,6 @@ with SQLite configurations.
 - ✅**Dual-write maintained**(writes go to both backends when PREDICTION_DUAL_WRITE=1)
 - ✅**All modules import successfully**(predictor, cockpit_v2, cockpit_v3)
 
-
 ---
 
 ## Changes Implemented

@@ -12,7 +12,6 @@ ______________________________________________________________________
 
 - No APEX explainability module implemented**What's Needed:**```text
 
-
 GET /api/apex/trade-card/{symbol}
 Returns:
 {

@@ -1,13 +1,14 @@
 # Cockpit v3 Live-Wiring Quick Reference
+
 **Date:** December 7, 2025 | **Status:** ✅ ALL PANELS WIRED | **Critical Fix:** Major Caps deployed
 
 ---
 
 ## Critical Fix Deployed ✅
 
-**Issue:** Major Caps stuck on "Loading..."  
-**Root Cause:** Personal watchlist mode (default) didn't populate `sharedWatchlistData` cache  
-**Solution:** Modified `personal_watchlist_ui.js` to populate cache for Major Caps/XRP VIP  
+**Issue:** Major Caps stuck on "Loading..."
+**Root Cause:** Personal watchlist mode (default) didn't populate `sharedWatchlistData` cache
+**Solution:** Modified `personal_watchlist_ui.js` to populate cache for Major Caps/XRP VIP
 **Commit:** `b26d601`
 
 ---
@@ -31,7 +32,7 @@
 
 ## Quick Verification (30 seconds)
 
-### After Hard Refresh (Cmd+Shift+R or Ctrl+Shift+R):
+### After Hard Refresh (Cmd+Shift+R or Ctrl+Shift+R)
 
 1. **Major Caps (CRITICAL)**
    - Shows BTC price (around $91,000) ✅
@@ -64,16 +65,19 @@
 ### Cross-Panel Consistency
 
 **Major Caps ↔ Watchlist:**
+
 - BTC: $91,116.81, -3.6% (CONSISTENT) ✅
 - ETH: $3,099.67, -1.6% (CONSISTENT) ✅
 
 **Top Movers ↔ Watchlist:**
+
 - TSLA: -2.80% vs -3.20% (DIFFERENT BY DESIGN) ⚠️
   - Top Movers = real-time hunter/feed
   - Watchlist = enriched endpoint
   - Ghost confidence matches (58%) ✅
 
 **XRP VIP ↔ Watchlist:**
+
 - VIP: +1.04% | Watchlist: -1.60% (DIFFERENT) ⚠️
   - XRP not in Watchlist → uses tracker's native 24h
   - Will sync when XRP added to Watchlist ✅
@@ -83,6 +87,7 @@
 ## Live Wiring Evidence
 
 ### 1. Header Controls → Backend
+
 ```javascript
 // START/STOP/RESET buttons
 POST /api/cockpit/start
@@ -92,6 +97,7 @@ POST /api/cockpit/reset
 ```
 
 ### 2. Forecast → Dynamic Symbol
+
 ```javascript
 // Symbol input change triggers new API call
 /api/v3/predictions/latest?symbol=BTC
@@ -100,6 +106,7 @@ POST /api/cockpit/reset
 ```
 
 ### 3. Goals → Backend Write
+
 ```javascript
 // Save Goals button
 POST /api/v3/goals/set?period=daily&target_amount=1000
@@ -108,6 +115,7 @@ POST /api/v3/goals/set?period=daily&target_amount=1000
 ```
 
 ### 4. Watchlist → Dual-Mode
+
 ```javascript
 // Personal mode (default)
 GET /api/v3/watchlist/user
@@ -123,39 +131,45 @@ GET /api/v3/watchlist/enriched
 ## Known Non-Issues (By Design)
 
 ### 1. VIP Sniper Coins - Labels Only
-**Current:** WEPE – Presale – Active  
-**Expected:** Labels only (no numeric data yet)  
-**Reason:** API returns status labels; numeric fields not implemented  
+
+**Current:** WEPE – Presale – Active
+**Expected:** Labels only (no numeric data yet)
+**Reason:** API returns status labels; numeric fields not implemented
 **Status:** ✅ NOT BROKEN - Intentional minimal design
 
 ### 2. Prediction Accuracy - Empty Chart
-**Current:** "⏳ Waiting for predictions to mature..."  
-**Expected:** Empty until 48h-old predictions reconciled  
-**Reason:** Backend returns `{ok: false, error: "No reconciled predictions found"}`  
+
+**Current:** "⏳ Waiting for predictions to mature..."
+**Expected:** Empty until 48h-old predictions reconciled
+**Reason:** Backend returns `{ok: false, error: "No reconciled predictions found"}`
 **Status:** ✅ NOT BROKEN - Waiting for data
 
 ### 3. Top Movers 24h ≠ Watchlist 24h
-**Example:** TSLA -2.80% vs -3.20%  
-**Expected:** Different values from different APIs  
-**Reason:** Different time windows/calculation methods  
+
+**Example:** TSLA -2.80% vs -3.20%
+**Expected:** Different values from different APIs
+**Reason:** Different time windows/calculation methods
 **Status:** ✅ NOT BROKEN - Ghost confidence matches (58%)
 
 ### 4. XRP VIP 24h ≠ Watchlist 24h
-**Current:** VIP +1.04% vs Watchlist -1.60%  
-**Expected:** Different when XRP not in Watchlist  
-**Reason:** XRP uses tracker's native 24h calculation  
+
+**Current:** VIP +1.04% vs Watchlist -1.60%
+**Expected:** Different when XRP not in Watchlist
+**Reason:** XRP uses tracker's native 24h calculation
 **Status:** ✅ NOT BROKEN - Will sync when XRP added to Watchlist
 
 ---
 
 ## Troubleshooting
 
-### If Major Caps Still Shows "Loading...":
+### If Major Caps Still Shows "Loading..."
 
 1. **Check cache version:**
+
    ```bash
    curl -s https://ghost-protocol-production.up.railway.app/cockpit | grep -o "v=2025120[0-9]*"
    ```
+
    Should show: `v=2025120800` or newer
 
 2. **Check console logs:**
@@ -172,22 +186,23 @@ GET /api/v3/watchlist/enriched
    - Try switching to "Market" mode
    - Major Caps should work in BOTH modes now
 
-### If Console Shows Errors:
+### If Console Shows Errors
 
-**Error:** `[WATCHLIST] personal_watchlist_ui.js not loaded`  
+**Error:** `[WATCHLIST] personal_watchlist_ui.js not loaded`
 **Fix:** Check HTML includes `<script src="/static/personal_watchlist_ui.js?v=..."></script>`
 
-**Error:** `[VIP] No BTC/ETH found in Watchlist cache yet`  
+**Error:** `[VIP] No BTC/ETH found in Watchlist cache yet`
 **Fix:** Wait 2-3 seconds for watchlist to load first, then VIP panel will populate
 
-**Error:** `sharedWatchlistData is not defined`  
+**Error:** `sharedWatchlistData is not defined`
 **Fix:** Ensure `cockpit_v3.js` declares `let sharedWatchlistData = [];` at top of file
 
 ---
 
 ## Smoke Test Commands
 
-### Test All API Endpoints:
+### Test All API Endpoints
+
 ```bash
 # Watchlist (Personal)
 curl -s https://ghost-protocol-production.up.railway.app/api/v3/watchlist/user | jq '.items[] | {symbol, price, change_pct}'
@@ -217,7 +232,8 @@ curl -s https://ghost-protocol-production.up.railway.app/api/v3/health/metrics |
 curl -s https://ghost-protocol-production.up.railway.app/api/v3/accuracy/summary | jq '{ok, error, daily_accuracy_pct}'
 ```
 
-### Verify Major Caps Data Flow:
+### Verify Major Caps Data Flow
+
 ```bash
 # 1. Check Watchlist has BTC/ETH
 curl -s https://ghost-protocol-production.up.railway.app/api/v3/watchlist/user | jq '.items[] | select(.symbol=="BTC" or .symbol=="ETH") | {symbol, price, change_pct}'
@@ -237,12 +253,14 @@ curl -s https://ghost-protocol-production.up.railway.app/api/v3/watchlist/user |
 
 ## Next Steps
 
-### For User:
+### For User
+
 1. Hard refresh browser (Cmd+Shift+R or Ctrl+Shift+R)
 2. Verify Major Caps shows BTC/ETH prices (not "Loading...")
 3. Check console for success logs (no red errors)
 
-### For Development:
+### For Development
+
 1. ✅ All panels confirmed wired to live data
 2. ⚠️ Consider adding VIP Sniper numeric fields when API ready
 3. ⏳ Monitor Accuracy Chart - will auto-populate after 48h predictions reconcile

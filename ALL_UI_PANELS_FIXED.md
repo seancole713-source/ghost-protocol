@@ -17,7 +17,6 @@ ______________________________________________________________________
 - `/api/news/recent` - Recent news within time window
 - `/api/news/sentiment/{symbol}` - News sentiment analysis
 
-
 ### Commit `f03e4b4` - UI Alias Endpoints (LATEST)
 
 ✅ Added 4 alias endpoints for UI compatibility
@@ -26,7 +25,6 @@ ______________________________________________________________________
 - `/api/sources/status` - Provider Backoff panel
 - `/api/market/movers` - Top Movers panel (redirects to `/api/top_movers`)
 - `/api/predictions/run` - Run New Prediction button
-
 
 ______________________________________________________________________
 
@@ -58,13 +56,11 @@ ______________________________________________________________________
 3. Click:**web**service
 4. Click:**Deployments**tab
 
-
 ### Step 2: Deploy Latest Commit
 
 1. Find commit:**`f03e4b4`**(feat: add UI alias endpoints for missing panels)
 2. Click:**3 dots menu (⋮)**→**"Redeploy"**3. ✅**CHECK**: **"Clear build cache"**option
 3. Click:**"Redeploy"**button
-
 
 ### Step 3: Monitor Build
 

@@ -13,7 +13,6 @@
 - ✅ **VS Code Settings**: Updated `.vscode/settings.json` to reference new cspell.json
 - ✅ **Repository**: 872 files committed in bootstrap commit
 
-
 ### New Modules Created
 
 #### 1. core/telegram_alerts.py (312 lines)
@@ -32,7 +31,6 @@
 - Format: Context + Time + Price + Prediction + Factors + Next Check
 - Confidence display: max(1%, round(conf*100)) for non-zero
 
-
 #### 2. core/cache_tools.py (162 lines)
 
 **Purpose:**Namespace-safe cache operations**Features:**
@@ -44,7 +42,6 @@
 - Pattern-based deletion with cursor pagination
 - Counts deleted keys for verification
 
-
 #### 3. core/beast_scheduler.py (245 lines)**Purpose:**Periodic market predictions and alerts**Features:**- Stock schedule (CT): 07:55 (pre-market), 09:35 (open), 12:00 (midday), 15:10 (close)
 
 - Crypto schedule: Every 2 hours on the hour (00:00, 02:00, 04:00, etc.)
@@ -54,13 +51,11 @@
 - `trigger_manual_prediction()`: Manual testing API**Watch Lists:**- Stocks: AAPL, WOLF, NVDA
 - Crypto: BTC, ETH, SOL, PEPE, WEPE, LILPEPE, DORKL, SLOTH, APC, XRP
 
-
 #### 4. tests/test_live_pipeline.py (261 lines)**Purpose:**Comprehensive integration tests**Tests:**- Price diagnostics (AAPL, WOLF, BTC)
 
 - Prediction endpoints (AAPL, BTC) with auth
 - SSE stream (status, ping, snapshot events)
 - Telegram alert format (dry run, no 0% contradictions)**Output:**Pass/fail summary with detailed diagnostics
-
 
 ### Code Quality
 
@@ -69,7 +64,6 @@
 - ✅ All imports resolved
 - ✅ Type hints included
 - ✅ Docstrings present
-
 
 ---
 
@@ -81,53 +75,45 @@
 
 1.**ENV Validation**(line ~3740)
 
-   - Add config enforcement block
-   - Fatal check for SIM_MODE != 0
-   - Log all required variables
-
+- Add config enforcement block
+- Fatal check for SIM_MODE != 0
+- Log all required variables
 
 1.**Price Provider Order**(line ~1269)
 
-   - Enforce: polygon → alphavantage → yfinance → yahoo
-   - Allow ENV override via STOCK_PRICE_SOURCE
-
+- Enforce: polygon → alphavantage → yfinance → yahoo
+- Allow ENV override via STOCK_PRICE_SOURCE
 
 1.**After-Hours Detection**(multiple locations)
 
-   - Add after_hours flag to price returns
-   - Detect when price == prev_close + market closed
-
+- Add after_hours flag to price returns
+- Detect when price == prev_close + market closed
 
 1.**SSE Enhancement**(find /api/cockpit/stream)
 
-   - Add status event on connect
-   - Add ping heartbeat every 10s
-   - Add auth error handling
-
+- Add status event on connect
+- Add ping heartbeat every 10s
+- Add auth error handling
 
 1.**New Endpoints**- Add /api/health/alerts (return last 20)
 
-   - Fix /api/regime/current (always 200 with default)
-
+- Fix /api/regime/current (always 200 with default)
 
 1.**Module Initialization**(line ~20300)
 
-   - Initialize telegram_alerts module
-   - Initialize cache_tools module
-   - Initialize beast_scheduler module
-
+- Initialize telegram_alerts module
+- Initialize cache_tools module
+- Initialize beast_scheduler module
 
 1.**Helper Functions**- Implement _get_price_for_beast()
 
-   - Implement _run_prediction_for_beast()
-
+- Implement _run_prediction_for_beast()
 
 ### Estimated Integration Time
 
 - Manual integration: 2-4 hours
 - Testing: 1-2 hours
 - Total: 3-6 hours
-
 
 ---
 
@@ -140,7 +126,6 @@
 - [x] All new modules created
 - [x] All modules linted and tested
 - [x] Implementation guide documented
-
 
 ### Post-Integration (TODO)
 
@@ -155,7 +140,6 @@
 - [ ] test_live_pipeline.py passes
 - [ ] 0×499, 0×502 errors over 5 min window
 - [ ] HEALTH_REPORT.json generated
-
 
 ---
 

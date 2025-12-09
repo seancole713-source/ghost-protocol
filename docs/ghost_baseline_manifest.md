@@ -15,13 +15,11 @@
 - Changes to baseline components require explicit approval and regression testing
 - New features must be**isolated, additive, and rollback-ready**
 
-
 **Change Classification**:
 
 - 🟢 **SAFE**: Isolated add-ons, UI polish, documentation (proceed freely)
 - 🟡 **CAUTION**: Configuration changes, query optimizations (validate thoroughly)
 - 🔴 **BASELINE**: Core logic, API contracts, database schemas (STOP and request approval)
-
 
 ---
 
@@ -246,7 +244,7 @@ _SYSTEM_STATUS = {
     "price_refresh": {"status": "running", "last_run": 1733443200, "error": None},
     "movers_scanner": {"status": "running", "last_run": 1733443200, "error": None},
 
-    
+
 
 }
 
@@ -1159,7 +1157,7 @@ curl "<<<<<https://ghost-protocol-production.up.railway.app/api/v3/predictions/l
 - **Files Modified**: `core/orchestrator.py` (added Phase 8, updated _SYSTEM_STATUS dict)
 - **Regression**: ✅ PASSED (all critical endpoints remain operational)
 - **Purpose**: Enable accuracy tracking after 48h prediction window closes
-- **Implementation**: 
+- **Implementation**:
   - New service: `outcome_reconciler` (60min interval by default)
   - Environment toggle: `OUTCOME_RECONCILER_ENABLED=1` (default enabled)
   - Interval configurable: `OUTCOME_RECONCILER_INTERVAL_S=3600` (60 minutes)

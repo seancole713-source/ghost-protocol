@@ -17,7 +17,6 @@ The personal watchlist feature is complete and integrated:
 - ✅ Prediction scheduler reads from personal watchlist tables
 - ✅ Graceful error handling when tables don't exist yet
 
-
 **Status:**Ready for deployment.
 Once migrations run, `/api/v3/watchlist/user` will return `{"items": [], "count": 0, "timestamp": ...}` on clean DB.
 
@@ -46,7 +45,6 @@ Once migrations run, `/api/v3/watchlist/user` will return `{"items": [], "count"
 
 Migration runner crashed with `KeyError: 0` before executing schema creation.**Solution Applied:**1.**Migration Runner
 Fix:**`core/migration_runner.py` lines 68-72 now safely handles `cursor.fetchone()` returning `None`:
-
 
    ```python
    result = cursor.fetchone()

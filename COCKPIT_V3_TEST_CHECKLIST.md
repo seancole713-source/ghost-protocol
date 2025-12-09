@@ -1,7 +1,9 @@
 # Cockpit v3 Quick Test Checklist
+
 **Test After Hard Refresh:** `Cmd+Shift+R` or `Ctrl+Shift+R`
 
 ## 1. Major Caps (CRITICAL FIX) ✅
+
 ```
 Expected: BTC and ETH show live prices and 24h change
 Current:  BTC ~$91,000 (-3.6%), ETH ~$3,100 (-1.6%)
@@ -15,6 +17,7 @@ Test:
 ```
 
 ## 2. XRP VIP Card ✅
+
 ```
 Expected: Shows price, signal, confidence, Eye Score, 24h change
 
@@ -27,6 +30,7 @@ Test:
 ```
 
 ## 3. Prediction Accuracy Chart ✅
+
 ```
 Expected: Friendly waiting message (not blank)
 
@@ -38,6 +42,7 @@ Test:
 ```
 
 ## 4. Goals Modal ✅
+
 ```
 Expected: Saves goals and updates Health panel
 
@@ -51,6 +56,7 @@ Test:
 ```
 
 ## 5. Watchlist Data Consistency ✅
+
 ```
 Expected: All 15 assets show complete data
 
@@ -62,6 +68,7 @@ Test:
 ```
 
 ## 6. Browser Console (NO ERRORS) ✅
+
 ```
 Expected: Green success logs, no red errors
 
@@ -74,6 +81,7 @@ Test:
 ```
 
 ## Quick Smoke Test (30 seconds)
+
 1. Hard refresh (`Cmd+Shift+R`)
 2. Check Major Caps - should show BTC ~$91,000, ETH ~$3,100
 3. Check Accuracy Chart - should show "⏳ Waiting..."
@@ -86,28 +94,32 @@ Test:
 
 ## Troubleshooting
 
-### If Major Caps still shows "--":
+### If Major Caps still shows "--"
+
 - Verify cache version: View page source, search for `v=2025120800`
 - If wrong version: Force refresh again (`Cmd+Shift+R`)
 - Check console for "[VIP] Major Caps pulled from Watchlist" log
 
-### If Goals Modal inputs are empty:
+### If Goals Modal inputs are empty
+
 - API may be slow - wait 5 seconds and try opening modal again
 - Check Network tab for `/api/v3/goals/snapshot` response
 - Should return `{ok: true, goals: {daily: 500, ...}}`
 
-### If Accuracy Chart is blank:
+### If Accuracy Chart is blank
+
 - This is expected - predictions need 48h to reconcile
 - Should show waiting message (not blank white space)
 - If completely blank: Check console for errors
 
-### If console has red errors:
+### If console has red errors
+
 - Take screenshot and report in issue
 - Note which API endpoint is failing
 - Check if error is transient (refresh and retest)
 
 ---
 
-**Created:** December 7, 2025  
-**Commit:** `724b7b0` (accuracy UX), `d50ce49` (Major Caps fix)  
+**Created:** December 7, 2025
+**Commit:** `724b7b0` (accuracy UX), `d50ce49` (Major Caps fix)
 **Status:** All issues resolved, ready for user testing

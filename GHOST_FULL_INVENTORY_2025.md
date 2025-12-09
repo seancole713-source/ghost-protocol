@@ -16,7 +16,6 @@ ______________________________________________________________________
 - ⏳ Dynamic watchlist manager via Telegram (static list)
 - ⏳ Self-learning from conversations (logs but doesn't adapt)
 
-
 ______________________________________________________________________
 
 ## 🎯 INTELLIGENCE BREAKDOWN (73/100)
@@ -29,14 +28,12 @@ ______________________________________________________________________
 - ❌ No reinforcement learning (doesn't improve from mistakes)
 - ❌ No context memory beyond current session
 
-
 ### Market Coverage:**65/100**- ✅ WOLF stock (primary): 100% coverage
 
 - ✅ Crypto (15 coins): 60% coverage
 - ✅ Top movers detection (5%+ change)
 - ❌ No altcoin universe expansion
 - ❌ No forex, commodities, indices
-
 
 ### Data Intelligence:**80/100**- ✅ 15+ data providers (Polygon, AlphaVantage, CoinGecko, Binance, etc.)
 
@@ -45,7 +42,6 @@ ______________________________________________________________________
 - ✅ Technical indicators (RSI, MACD, Bollinger)
 - ✅ Volume and momentum detection
 
-
 ### Prediction Accuracy:**72/100**- ✅ Current prediction accuracy: ~72% (tracked)
 
 - ✅ 24-hour crypto forecasts
@@ -53,7 +49,6 @@ ______________________________________________________________________
 - ✅ Confidence scoring (0-100%)
 - ❌ No backtesting validation
 - ❌ No strategy optimization loop
-
 
 ### Memory & Learning:**45/100**⚠️**WEAK POINT**- ✅ SQLite database for decisions
 
@@ -64,7 +59,6 @@ ______________________________________________________________________
 - ❌**NO user preference storage**(can't remember "I like BTC more than ETH")
 - ❌**NO learning loop**(doesn't improve from feedback)
 
-
 ### Telegram Integration:**70/100**- ✅ Receives messages
 
 - ✅ Natural language Q&A
@@ -73,7 +67,6 @@ ______________________________________________________________________
 - ⚠️**PARTIAL**: Crypto routing works but needs CRYPTO_ENABLED=1
 - ❌ **NO dynamic commands**(can't add watchlist items via chat)
 - ❌**NO conversation memory**(each message is isolated)
-
 
 ______________________________________________________________________
 
@@ -94,13 +87,12 @@ ______________________________________________________________________
 ✅ Alpaca broker integration (paper + live trading)
 ✅ Telegram commands:
 
-   - /status → Portfolio snapshot
-   - /signal → Current buy/sell recommendation
-   - /pnl → Daily profit/loss
-   - /positions → Open positions
-   - /buy SYMBOL QTY → Execute buy
-   - /sell SYMBOL → Close position
-
+- /status → Portfolio snapshot
+- /signal → Current buy/sell recommendation
+- /pnl → Daily profit/loss
+- /positions → Open positions
+- /buy SYMBOL QTY → Execute buy
+- /sell SYMBOL → Close position
 
 ```text**What Doesn't Work:**```text
 

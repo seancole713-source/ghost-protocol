@@ -14,19 +14,16 @@ ______________________________________________________________________
 - **Missed**: 18% intraday swing ($28.80-$34.19)
 - **Opening gap**: $33.52 → $30.50 (9% drop in minutes)
 
-
 ### Root Causes
 
 1. ✅ **API keys present**(AlphaVantage: `3WNNLA81KS7BG4AK`, Polygon:
 
-
    `8VIvELVXiLG30K2l1348RzSurffLM0jR`)
 
 1. ❌**Yahoo Finance rate limiting**(429 errors blocking real-time data)
-2. ❌**Stale cache**(returning yesterday's close instead of live price)
-3. ❌**No intraday volatility tracking**(missing high/low/volume data)
-4. ❌**Simple drift model**(doesn't account for gaps, momentum, volatility)
-
+1. ❌**Stale cache**(returning yesterday's close instead of live price)
+1. ❌**No intraday volatility tracking**(missing high/low/volume data)
+1. ❌**Simple drift model**(doesn't account for gaps, momentum, volatility)
 
 ______________________________________________________________________
 
@@ -37,17 +34,14 @@ ______________________________________________________________________
 1. **Switch primary provider from Yahoo to AlphaVantage**- Set `PRICE_YAHOO_FIRST=0` in Railway
    - AlphaVantage has 25 requests/day free tier (no rate limiting for hourly checks)
 
-
 1.**Add intraday price tracking**- Fetch high/low/volume from AlphaVantage `TIME_SERIES_INTRADAY`
 
-   - Store in `realized_prices` table with metadata
-
+- Store in `realized_prices` table with metadata
 
 1.**Reduce cache TTL during market hours**- Current: 5 minutes
 
-   - New: 1 minute during trading hours (9:30 AM - 4 PM ET)
-   - Off-hours: Keep 5 minutes**Expected Impact**: Real-time prices within 1 minute, no more stale $31.10
-
+- New: 1 minute during trading hours (9:30 AM - 4 PM ET)
+- Off-hours: Keep 5 minutes**Expected Impact**: Real-time prices within 1 minute, no more stale $31.10
 
 ______________________________________________________________________
 
@@ -59,23 +53,19 @@ ______________________________________________________________________
    - Widen confidence bands when ATR > threshold
    - Example: 18% intraday range → 3x wider bands
 
-
 1.**Detect and model price gaps**- Track overnight gaps (close → open)
 
-   - Adjust drift based on gap direction
-   - WOLF gap: $31.10 → $33.52 (+7.8%) then crashed
-
+- Adjust drift based on gap direction
+- WOLF gap: $31.10 → $33.52 (+7.8%) then crashed
 
 1.**Volume-weighted momentum**- High volume + price drop = strong sell signal
 
-   - Today: 2.7M volume (21% of avg 12.9M) → weak conviction
-
+- Today: 2.7M volume (21% of avg 12.9M) → weak conviction
 
 1.**News sentiment integration**- Current: Basic sentiment score
 
-   - New: Real-time news impact scoring
-   - Weight: Recent news (< 1hr) gets 3x weight**Expected Impact**: MAP drops from current ~15% to \<10%
-
+- New: Real-time news impact scoring
+- Weight: Recent news (< 1hr) gets 3x weight**Expected Impact**: MAP drops from current ~15% to \<10%
 
 ______________________________________________________________________
 
@@ -87,23 +77,19 @@ ______________________________________________________________________
    - When sector down, WOLF likely follows
    - Today: Likely sector-wide weakness
 
-
 1.**Market regime detection**- Bull market: Lower SL threshold (-5%)
 
-   - Bear market: Tighter SL (-2%)
-   - High volatility: Widen TP (+10%)
-
+- Bear market: Tighter SL (-2%)
+- High volatility: Widen TP (+10%)
 
 1.**Earnings calendar awareness**- Next WOLF earnings: Aug 20, 2025
 
-   - Increase volatility bands 2 weeks before/after
-
+- Increase volatility bands 2 weeks before/after
 
 1.**Options flow signals**(future)
 
-   - Unusual options activity
-   - Put/call ratio shifts**Expected Impact**: Ghost understands "why" moves happen, not just "what"
-
+- Unusual options activity
+- Put/call ratio shifts**Expected Impact**: Ghost understands "why" moves happen, not just "what"
 
 ______________________________________________________________________
 
@@ -115,7 +101,6 @@ ______________________________________________________________________
    - Calculate rolling MAP per time horizon
    - Auto-adjust model parameters
 
-
 1.**Regime-specific models**- Train separate models for:
 
      - Bull market
@@ -123,12 +108,10 @@ ______________________________________________________________________
      - High volatility
      - Low volatility
 
-
 1.**Feature importance analysis**- Which signals matter most?
 
-   - News sentiment? Volume? Gaps?
-   - Drop weak features, amplify strong ones**Expected Impact**: Ghost learns from mistakes, gets smarter over time
-
+- News sentiment? Volume? Gaps?
+- Drop weak features, amplify strong ones**Expected Impact**: Ghost learns from mistakes, gets smarter over time
 
 ______________________________________________________________________
 

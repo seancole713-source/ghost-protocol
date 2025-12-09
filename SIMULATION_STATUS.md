@@ -13,7 +13,6 @@ mock data)**Session Tag:**ghost_ui_full_simulation_test_v1
 4.**✅ Watchlist**- 9 tickers with live simulation
 5.**✅ News Feed**- 20 articles with sentiment data
 
-
 ### Advanced Panels
 
 1.**✅ AI Preview**- Showing GPS score, confidence, and 3 analog scenarios
@@ -29,7 +28,6 @@ mock data)**Session Tag:**ghost_ui_full_simulation_test_v1
 -**Process:**uvicorn (PID 11178, 11187)
 -**Auto-reload:**Enabled
 
-
 ## UI Access
 
 -**Primary:**<<<<<https://crispy-happiness-q7gp6xvxr9r62xv9v-5000.app.github.dev/>>>>>
@@ -37,7 +35,6 @@ mock data)**Session Tag:**ghost_ui_full_simulation_test_v1
 -**Bank:**/bank.html
 -**Markets:**/markets.html
 -**Engine:**/engine.html
-
 
 ## API Endpoints Verified
 

@@ -11,7 +11,6 @@ of:
 - ✅ Learning which signals worked (self-calibration)
 - ✅ Detecting algorithmic trading patterns (HFT, VWAP bots, spoofing)
 
-
 ______________________________________________________________________
 
 ## 📊 What's New - Complete Feature Matrix
@@ -29,16 +28,13 @@ ______________________________________________________________________
   - 10% Macro regime adjustment
 - **Includes**: Target price, stop-loss, news drivers, technical factors
 
-
 **Self-Learning Loop**- Logs every signal outcome at +24h and +48h
 
 - Calculates hit-rate per ticker and signal type
 - Tracks avg/best/worst returns
 - Auto-adjusts weighting for underperformers
 
-
 -**Outcome Types**: profitable (>2%), loss (\<-2%), neutral
-
 
 **Macro Risk Radar**- Background tracking of SPY/QQQ/VIX
 -**Regime Detection**: BULL / BEAR / VOLATILE / SIDEWAYS
@@ -46,7 +42,6 @@ ______________________________________________________________________
 - **Risk Levels**: low / medium / high / extreme
 - **Auto-Pause**: Stops signals when VIX > 30 or extreme volatility
 - Feeds into signal confidence calculations
-
 
 **API Endpoints (10)**```text
 POST /api/watcher/add_ticker?symbol=WOLF

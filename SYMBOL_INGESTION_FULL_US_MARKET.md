@@ -10,7 +10,6 @@ database.**Exchanges Covered**:
 - AMEX: ~300 symbols
 - OTC/Pink Sheets: ~500-1,000 symbols
 
-
 **Total Universe**: ~7,000 actively traded US stocks
 
 ---
@@ -214,7 +213,7 @@ python scripts/ingest_us_market.py
 
 def run(self):
 
-    
+
 
     # Comment out enrichment step
 

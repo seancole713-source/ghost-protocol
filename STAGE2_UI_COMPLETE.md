@@ -12,9 +12,9 @@ System:
 1. ✅**Daily Accuracy Ledger**- Full forecast history table with color-coded results
 2. ✅**Auto Weight-Tuning**- Manual trigger button with learning stats display
 3. ✅**UI Accuracy Chips**- Color-coded visual indicators (✅⚠️❌⏳)**Total Code Added:**- CSS: ~90 lines (chip styles + table styles)
+
 - HTML: ~77 lines (ledger section + summary + stats)
 - JavaScript: ~145 lines (loadAccuracyLedger + runAutoTuning functions)
-
 
 -**Total: ~312 lines**______________________________________________________________________
 
@@ -22,32 +22,29 @@ System:
 
 ### 1. Daily Accuracy Ledger (cockpit.html)**Location:**After Stage 1 widget, before heatmap (~line 225)**Features:**-**Forecast History Table**with 6 columns
 
-  - Date (formatted as MM/DD/YYYY)
-  - Symbol (ticker)
-  - Forecast Price ($XX.XX)
-  - Actual Price ($XX.XX)
-  - Delta (±$XX.XX with color)
-  - Result (chip with icon)
-
+- Date (formatted as MM/DD/YYYY)
+- Symbol (ticker)
+- Forecast Price ($XX.XX)
+- Actual Price ($XX.XX)
+- Delta (±$XX.XX with color)
+- Result (chip with icon)
 
 -**Accuracy Summary**(top of section):
 
-  - ✅ Correct: Count (≤2% error)
-  - ⚠️ Warning: Count (2-5% error)
-  - ❌ Wrong: Count (>5% error)
-  - ⏳ Pending: Count (no actual price yet)
-  - MAP: XX.XX% (color-coded: green ≤5%, red >5%)
-
+- ✅ Correct: Count (≤2% error)
+- ⚠️ Warning: Count (2-5% error)
+- ❌ Wrong: Count (>5% error)
+- ⏳ Pending: Count (no actual price yet)
+- MAP: XX.XX% (color-coded: green ≤5%, red >5%)
 
 -**Learning Stats**(expandable):
 
-  - Last Tune: timestamp or "Never"
-  - Tune Count: number of adjustments
-  - Current Config: JSON of active parameters**Empty State Handling:**- Shows friendly message: "No forecasts yet. Run a signal to start tracking accuracy."
+- Last Tune: timestamp or "Never"
+- Tune Count: number of adjustments
+- Current Config: JSON of active parameters**Empty State Handling:**- Shows friendly message: "No forecasts yet. Run a signal to start tracking accuracy."
 - No errors if backend returns empty array**Data Sources:**- `/api/stage2/forecasts?limit=30` - Forecast history
 - `/api/stage2/accuracy` - MAP calculation
 - `/api/stage2/learning` - Auto-tuning stats
-
 
 ______________________________________________________________________
 
@@ -66,7 +63,6 @@ ______________________________________________________________________
 - Refreshes ledger after successful tuning**Tuning Logic (backend):**- Triggers if MAP > 5% or bias > 3%
 - Adjusts confidence_threshold, bias_correction, learning_rate, etc.
 - Records change in model_memory.json
-
 
 ______________________________________________________________________
 

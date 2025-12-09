@@ -14,31 +14,28 @@
    - Properly restore contextvars before error response
    - Add X-Request-ID header to all error responses
 
-
 1.**Route Registration Verified**✅
 
-   - All critical routes are top-level @APP decorators (not conditional)
-   - No duplicate middleware functions found
-   - Routes confirmed:
-     - `/api/regime/current` (lines 11167, 16485)
-     - `/api/cache/purge` (line 10401)
-     - `/api/price/diagnostics` (line 17258)
-     - `/api/tick` (line 16480)
-     - `/api/scan/movers` (line 16615)
-     - `/api/scan/health` (line 16712)
-
+- All critical routes are top-level @APP decorators (not conditional)
+- No duplicate middleware functions found
+- Routes confirmed:
+  - `/api/regime/current` (lines 11167, 16485)
+  - `/api/cache/purge` (line 10401)
+  - `/api/price/diagnostics` (line 17258)
+  - `/api/tick` (line 16480)
+  - `/api/scan/movers` (line 16615)
+  - `/api/scan/health` (line 16712)
 
 1.**Provider Timeout Optimizations**✅
 
-   - Configuration documented in `RAILWAY_ENV_OPTIMIZATIONS.txt`
-   - Recommended settings:
-     - PRICE_PROVIDER_TIMEOUT_S=1.0 (down from 6.0)
-     - PRICE_MIN_PROVIDERS=1
-     - PRICE_REQUIRE_QUORUM=0
-     - DATA_FRESHNESS_SEC=90
-     - PRICE_CACHE_TTL=60
-     - PRICE_TTL_S=30
-
+- Configuration documented in `RAILWAY_ENV_OPTIMIZATIONS.txt`
+- Recommended settings:
+  - PRICE_PROVIDER_TIMEOUT_S=1.0 (down from 6.0)
+  - PRICE_MIN_PROVIDERS=1
+  - PRICE_REQUIRE_QUORUM=0
+  - DATA_FRESHNESS_SEC=90
+  - PRICE_CACHE_TTL=60
+  - PRICE_TTL_S=30
 
 ## Current State (Pre-Deployment)**Railway Version**: 10.3.1 (old code)
 
@@ -50,7 +47,6 @@
 - ⏱️ `/api/price/diagnostics` - Timeout (10s+)
 - ⏱️ `/api/portfolio` - Timeout (10s+)
 - ⏱️ Other endpoints - Timeouts**Root Cause**: New middleware and routes not yet deployed to Railway
-
 
 ## Deployment Instructions
 

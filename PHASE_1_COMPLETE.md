@@ -21,14 +21,12 @@ ______________________________________________________________________
 - `ghost_ai_tool_latency_seconds` (Histogram) - Tool call latency distribution
 - `ghost_ai_decision_last_ts` (Gauge) - Unix timestamp of last decision
 
-
 **Features**:
 
 - Graceful degradation if `prometheus_client` not installed
 - No-op stubs prevent crashes
 - Metrics updated at logging points (`log_ai_decision`, `log_tool_call`)
 - Exception handling prevents metric failures from breaking agent
-
 
 ______________________________________________________________________
 
@@ -54,7 +52,6 @@ GhostAgentHighDecisionRate | info | >0.5 decisions/sec | Possible oscillation |
 - Detailed description
 - Runbook with troubleshooting steps
 - Annotations for PagerDuty/Slack routing
-
 
 ______________________________________________________________________
 
@@ -100,7 +97,6 @@ ______________________________________________________________________
 - `sample_decisions` fixture - Realistic decision data
 - `sample_tool_calls` fixture - Realistic tool call data
 
-
 ______________________________________________________________________
 
 ### 4. Grafana Dashboard ✅
@@ -113,17 +109,14 @@ ______________________________________________________________________
 
 1. **Decision Confidence Gauge**- Current confidence with thresholds
 
-
 2.**Time Since Last Decision**- Minutes since last activity
 3.**Tool Success Rate**- 5-minute success rate with color coding
 4.**Decisions Per Hour**- Current decision rate
-
 
 #### Middle Row - Trends
 
 1.**Confidence Over Time**- Line graph with 1h average
 2.**Decision Rate by Action**- Stacked area chart (BUY/SELL/HOLD/NO_ACTION)
-
 
 #### Bottom Row - Details
 
@@ -140,7 +133,6 @@ ______________________________________________________________________
 - Responsive grid layout (24 columns)
 - Table with sortable columns
 - Donut chart with percentage labels
-
 
 **Import Instructions**:
 

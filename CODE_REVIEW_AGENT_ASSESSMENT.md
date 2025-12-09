@@ -446,7 +446,7 @@ def _ask_ghost_ai(question: str, chat_id: str | None = None) -> str:
 
     user_prompt = f"{context_str}\n\nCurrent question: {question}"
 
-    # ... rest of AI call 
+    # ... rest of AI call
 
     # Store exchange
 

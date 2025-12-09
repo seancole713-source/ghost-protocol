@@ -16,7 +16,6 @@ Ghost uses a **fallback chain**for price data:
 3.**Yahoo Finance Scraper**(Free - HTTP scraping)
 4.**yfinance Library**(Free - Python library)
 
-
 When API keys are**not configured**, Ghost falls back to free sources (Yahoo + yfinance).
 
 ---

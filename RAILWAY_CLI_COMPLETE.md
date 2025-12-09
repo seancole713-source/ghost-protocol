@@ -13,43 +13,38 @@
    - Deploys and tests health
    - Shows deployment URL
 
-
 1.**`redeploy.sh`**- Quick updates script
 
-   - Git commit in one command
-   - Automatic push to GitHub
-   - Triggers Railway deploy
-   - Perfect for quick iterations
-
+- Git commit in one command
+- Automatic push to GitHub
+- Triggers Railway deploy
+- Perfect for quick iterations
 
 1.**`railway_manage.sh`**- Full management CLI
 
-   - 9 commands for all Railway operations
-   - `logs`, `health`, `url`, `status`, `restart`, etc.
-   - Color-coded output
-   - Error handling built-in
-
+- 9 commands for all Railway operations
+- `logs`, `health`, `url`, `status`, `restart`, etc.
+- Color-coded output
+- Error handling built-in
 
 1.**`RAILWAY_README.md`**- Complete documentation
 
-   - Detailed usage guide
-   - Common workflows
-   - Troubleshooting
-   - Quick reference table
-
+- Detailed usage guide
+- Common workflows
+- Troubleshooting
+- Quick reference table
 
 1.**`RAILWAY_QUICKSTART.txt`**- Visual quick start
 
-   - ASCII art guide
-   - One-page reference
-   - Typical workflow examples
-
+- ASCII art guide
+- One-page reference
+- Typical workflow examples
 
 ______________________________________________________________________
 
 ## 🚀 HOW TO USE (It's Simple!)
 
-###**First Time Deployment:**```bash
+### **First Time Deployment:**```bash
 
 ./deploy_ghost.sh
 

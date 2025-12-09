@@ -13,7 +13,6 @@ empty data (`—`, `NO_DATA`, or empty arrays). This comprehensive audit identif
 
 1. **Root Causes**of the "broken" appearance
 
-
 2.**Missing Data Wiring**preventing panels from populating
 3.**Implementation Plan**to restore full functionality**Critical Finding**: The system is NOT broken - it's **under-configured and under-wired**.
 The backend endpoints exist but return empty/null data because:
@@ -21,7 +20,6 @@ The backend endpoints exist but return empty/null data because:
 - Missing API keys (POLYGON_API_KEY, ALPHAVANTAGE_API_KEY)
 - No data sources wired for most panels
 - UI error handling renders failures as empty data instead of explicit errors
-
 
 ---
 
@@ -760,7 +758,7 @@ async def api_runtime_config_set(
             raise HTTPException(422, "price_ttl_s must be 10-3600")
         globals()["PRICE_TTL_S"] = val
 
-    # ... validate other fields 
+    # ... validate other fields
 
     # Log change
 

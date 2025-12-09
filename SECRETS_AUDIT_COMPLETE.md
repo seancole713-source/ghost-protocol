@@ -99,7 +99,6 @@ ______________________________________________________________________
 - `TELEGRAM_BOT_TOKEN` - Telegram integration
 - `TELEGRAM_CHAT_ID` - Message routing
 
-
 ### Recommended (Enhanced Features)
 
 ✅ All configured:
@@ -107,7 +106,6 @@ ______________________________________________________________________
 - `GHOST_API_TOKEN` - API security
 - Portfolio persistence vars (`WOLF_*`)
 - Risk management vars (stops, limits)
-
 
 ### Optional (Nice-to-Have)
 
@@ -117,7 +115,6 @@ ______________________________________________________________________
 - Social feeds (Twitter, Reddit, Discord)
 - News feeds (Finnhub)
 - Crypto integration (Private key, RPC)
-
 
 ______________________________________________________________________
 

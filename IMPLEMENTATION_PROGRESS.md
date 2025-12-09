@@ -22,19 +22,16 @@ ______________________________________________________________________
 - Smooth transitions between themes
 - Body background adapts to theme
 
-
 **Files Modified**:
 
 - `static/ghost.css` - Added light theme CSS variables
 - `static/ghost.js` - Added theme switching logic with persistence
-
 
 **How to Use**:
 
 1. Click the sun/moon icon in the navbar
 2. Theme preference is saved automatically
 3. Works across all pages
-
 
 ______________________________________________________________________
 
@@ -80,7 +77,6 @@ ______________________________________________________________________
   - `idx_tca_symbol_time` - TCA report lookups
   - `idx_tca_performance` - Performance metrics
 
-
 **Total Indexes Added**: 19 strategic indexes\
 **Expected Performance Gain**: 5-10x speedup on hot queries\
 **Database Bloat**: Minimal (~5-10% increase in database size)
@@ -91,7 +87,6 @@ ______________________________________________________________________
 - `wolf_app.py`
 - `core/risk_engine.py`
 - `core/smart_router.py`
-
 
 ______________________________________________________________________
 
@@ -124,7 +119,6 @@ ______________________________________________________________________
   - `GET /api/cache/stats` - View cache hit rates and statistics
   - `POST /api/cache/clear` - Clear caches by type or all
 
-
 **Cache Statistics Tracked**:
 
 - Hit rate
@@ -132,17 +126,14 @@ ______________________________________________________________________
 - Cache size
 - TTL settings
 
-
 **Files Created**:
 
 - `core/cache_manager.py` (270+ lines)
-
 
 **Files Modified**:
 
 - `enhanced_price_fetcher.py` - Added caching to crypto price fetching
 - `wolf_app.py` - Added 2 cache management endpoints
-
 
 **How to Use**:
 

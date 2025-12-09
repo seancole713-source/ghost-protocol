@@ -19,19 +19,17 @@ ______________________________________________________________________
 - Remote Railway server was working
 - Local server at <<<<<http://127.0.0.1:5001/>>>>> was not running
 
-
 ### Solution
 
 1.**Installed missing dependencies:**- requests
 
-   - fastapi
-   - uvicorn
-   - duckdb
-   - vaderSentiment
-   - openai
-   - python-telegram-bot
-   - All requirements from `requirements.txt`
-
+- fastapi
+- uvicorn
+- duckdb
+- vaderSentiment
+- openai
+- python-telegram-bot
+- All requirements from `requirements.txt`
 
 1.**Started local server:**```bash
    uvicorn wolf_app:APP --host 127.0.0.1 --port 5001 --reload

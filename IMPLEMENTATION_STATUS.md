@@ -14,14 +14,12 @@
 - `send_alert()`: Sends with dedup check
 - `get_recent_alerts()`: Returns last 20 alert envelopes
 
-
 ### 2. core/cache_tools.py**Status:**✅ Created and linted**Features:**
 
 - `purge_prices(symbols)`: Namespace-safe price cache purge (DEL price:{symbol}:*)
 - `purge_alert_dedup(older_than_days)`: Clean old alert dedup keys
 - `get_cache_stats()`: Count price/alert/other keys
 - **NO FLUSHDB**- only targeted deletions
-
 
 ### 3. core/beast_scheduler.py**Status:**✅ Created and linted**Features:**- Stock schedule (CT): 07:55, 09:35, 12:00, 15:10
 
@@ -32,14 +30,12 @@
 - `trigger_manual_prediction()`: Manual testing
 - Watch lists: AAPL, WOLF, NVDA + 10 crypto symbols
 
-
 ### 4. tests/test_live_pipeline.py**Status:**✅ Created and linted**Tests:**- Price diagnostics (AAPL, WOLF, BTC)
 
 - Prediction endpoints (AAPL, BTC)
 - SSE stream (status, ping, snapshot events)
 - Telegram alert format (dry run)
 - Summary with pass/fail counts
-
 
 ## ⚠️  PENDING CHANGES TO wolf_app.py
 
@@ -125,7 +121,7 @@ else:
 
 def get_wolf_price():
 
-    # ... existing code 
+    # ... existing code
 
     # Detect if we're using prev_close as fallback
 
@@ -185,7 +181,7 @@ async def api_cockpit_stream(
 
             # Send snapshot data when available
 
-            # ... existing snapshot logic 
+            # ... existing snapshot logic
 
             yield 'event: snapshot\n'
             yield f'data: {json.dumps(snapshot_data)}\n\n'
@@ -224,7 +220,7 @@ async def api_regime_current():
     """Get current market regime (always returns 200)"""
     try:
 
-        # ... existing logic 
+        # ... existing logic
 
         if regime_data:
             return regime_data
@@ -308,7 +304,7 @@ def _get_price_for_beast(symbol: str, market: str):
 
         price_data = get_stock_price(symbol)  # Find actual function name
 
-        # ... adapt to return tuple 
+        # ... adapt to return tuple
 
     else:
 
@@ -316,7 +312,7 @@ def _get_price_for_beast(symbol: str, market: str):
 
         price_data = get_crypto_price(symbol)  # Find actual function name
 
-        # ... adapt to return tuple 
+        # ... adapt to return tuple
 
     return price_data
 
@@ -328,7 +324,7 @@ def _run_prediction_for_beast(symbol: str, market: str, horizon: str):
 
     # Use existing prediction logic
 
-    # ... adapt to return standardized dict 
+    # ... adapt to return standardized dict
 
     pass
 

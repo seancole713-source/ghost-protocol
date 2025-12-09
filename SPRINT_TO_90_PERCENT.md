@@ -20,7 +20,6 @@ environment variables\
 - `OPENAI_API_KEY=sk-proj-EpPiGZaf...`
 - `OPENAI_ORG_ID=org:jgG9PhOvU5uFkEPWKwe8Moa0`
 
-
 **Result**: ✅ Telegram bot AI Q&A now working
 
 ______________________________________________________________________
@@ -36,32 +35,27 @@ ______________________________________________________________________
 - `LOG_JSON=1`, `LOG_LEVEL=INFO`
 - `TZ=America/Chicago`
 
-
 #### Database & Cache
 
 - `DATABASE_URL=sqlite:///data/ghost.db`
 - `CACHE_MODE=redis`
 - `REDIS_URL=rediss://default:AVriAAI...` (Upstash)
 
-
 #### Portfolio
 
 - `WOLF_QTY=8.41959051`
 - `WOLF_AVG_COST=359.28`
-
 
 #### Price Providers
 
 - `ALPHAVANTAGE_API_KEY=3WNNLA81KS7BG4AK`
 - `POLYGON_API_KEY=8VIvELVXiLG30K2l1348RzSurffLM0jR`
 
-
 #### Crypto (NEW)
 
 - `CRYPTO_ENABLED=1`
 - `CRYPTO_SYMBOLS=BTC,ETH,SOL,BNB`
 - `CRYPTO_QUORUM=coingecko,binance,coinbase`
-
 
 #### Broker Integration (NEW) ⭐
 
@@ -71,7 +65,6 @@ ______________________________________________________________________
 - `ALPACA_PAPER=1` (Paper trading enabled)
 - `APCA_API_BASE_URL=<<<<<https://paper-api.alpaca.markets/v2`>>>>>
 
-
 #### Risk Management (NEW) ⭐
 
 - `RISK_MAX_POS_PCT=5` (Max 5% per position)
@@ -80,11 +73,9 @@ ______________________________________________________________________
 - `RISK_MAX_DAILY_DD_PCT=5` (Max 5% daily drawdown)
 - `RISK_KILL=0` (Kill switch OFF)
 
-
 #### Security (NEW)
 
 - `AUTH_SECRET=5e7a60f7b0e841e5a56f5b9f02e35c9c1d2af64b3a45f07e6c8b9a4e0d8b5b2a`
-
 
 **Result**: ✅ All environment variables documented in `.env.complete` and set in Railway
 
@@ -104,7 +95,6 @@ ______________________________________________________________________
 - ✅ Account info
 - ✅ Market clock (open/close times)
 - ✅ Health checks
-
 
 **Methods**:
 

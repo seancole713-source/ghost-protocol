@@ -16,7 +16,6 @@ ______________________________________________________________________
 - ✅ SEC Insider Trading (Form 4 filings)
 - ✅ CBOE Options Flow (put/call ratios, unusual volume)
 
-
 ### Phase 2: Advanced Signals + Ensemble (68% → 80%)
 
 - ✅ Short Interest Tracker (squeeze detection)
@@ -24,13 +23,11 @@ ______________________________________________________________________
 - ✅ 13F Institutional Holdings (hedge fund positions)
 - ✅ Ensemble Forecaster (4 models voting)
 
-
 ### Phase 3: Intelligence Layer (80% → 90%)
 
 - ✅ Market Regime Detection (BULL/BEAR/SIDEWAYS/VOLATILE)
 - ✅ Confidence Gating (70% threshold - trade less, win more)
 - ✅ Walk-Forward Backtesting (historical validation)
-
 
 ______________________________________________________________________
 
@@ -51,7 +48,6 @@ Ghost uses **10 predictive signals**:
 - Ensemble model voting
 - Confidence scoring
 
-
 ### 2. Intelligent Risk Management
 
 - **Regime-Aware**: Adjusts strategy based on market state
@@ -59,14 +55,12 @@ Ghost uses **10 predictive signals**:
 - **Ensemble Diversified**: 4 models reduce overfitting
 - **Backtested**: Validated on historical data
 
-
 ### 3. Self-Learning System
 
 - **Daily Cycle**: Predict at 9:20 AM, score at 4:10 PM, learn at 11 PM
 - **Auto-Tuning**: Updates model weights based on recent accuracy
 - **Explainable**: Every prediction includes reasoning
 - **Trackable**: Full history in SQLite database
-
 
 ______________________________________________________________________
 

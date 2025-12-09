@@ -16,7 +16,6 @@
 - **Port 5000**: ❌ **NOT BOUND**(nothing listening)
   - Found: Port 5000 occupied by ControlCenter and ChatGPT apps (unrelated services)
 
-
 ### ⚠️ PRIMARY ISSUE**The Ghost backend (wolf_app.py) is NOT currently running.**This is why you're getting 403 errors - there's no server to respond to requests
 
 ---

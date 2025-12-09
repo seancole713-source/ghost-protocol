@@ -30,14 +30,12 @@ ______________________________________________________________________
 - [x] Created 8 contract tests in tests/contracts/
 - [x] Established baseline (tests identify what needs building)
 
-
 ### Stream A: OpenAI Fix
 
 - [x] Verified OpenAI API keys are set in Railway
 - [x] Confirmed Authorization headers are present in code
 - [x] Verified AI_PROVIDER=openai and AGENTS_ENABLED=1
 - [x] Confirmed no auth errors in Railway logs
-
 
 **Result**: OpenAI integration is working correctly. Error user saw was likely from
 external test, not Ghost.
@@ -57,14 +55,12 @@ ______________________________________________________________________
 - ❌ Prometheus metrics per provider (need to add)
 - ❌ Plausibility guards (spike rejection)
 
-
 **Next Actions**:
 
 1. Add `ghost_price_fetch_total{provider="alphavantage"}` counter
 2. Add `ghost_price_spread{symbol="WOLF"}` gauge
 3. Add ±50% spike rejection logic
 4. Test with contract test
-
 
 **ETA**: 30 minutes
 
@@ -81,7 +77,6 @@ ______________________________________________________________________
 - ❌ Quorum logic for crypto
 - ❌ UI toggle "Stocks | Crypto"
 
-
 **Next Actions**:
 
 1. Create `core/crypto_providers.py` with Binance adapter
@@ -90,7 +85,6 @@ ______________________________________________________________________
 4. Add cache with 60s TTL
 5. Update /api/crypto/price to use quorum
 6. Add UI toggle in index.html
-
 
 **Blockers**: None\
 **ETA**: 2 hours
@@ -109,7 +103,6 @@ ______________________________________________________________________
 - ❌ Rolling MAP calculation
 - ❌ /api/predictions/history endpoint
 
-
 **Next Actions**:
 
 1. Rename UI panel title to "Ghost Prediction"
@@ -117,7 +110,6 @@ ______________________________________________________________________
 3. Implement MAP calculation helper
 4. Create /api/predictions/history?symbol=WOLF endpoint
 5. Display accuracy scoreboard table
-
 
 **Blockers**: None\
 **ETA**: 1.5 hours
@@ -138,14 +130,12 @@ ______________________________________________________________________
 - ❌ /sell AAPL command (needs implementation)
 - ❌ /positions command (needs implementation)
 
-
 **Next Actions**:
 
 1. Add /buy command handler (parse symbol and qty)
 2. Add /sell command handler (close position)
 3. Add /positions command (show all holdings with P&L)
 4. Test end-to-end with Telegram app
-
 
 **Blockers**: None\
 **ETA**: 1 hour
@@ -163,7 +153,6 @@ ______________________________________________________________________
 - ❌ ghost_prediction_mape gauge
 - ❌ ghost_risk_status gauge
 
-
 **Next Actions**:
 
 1. Add /ready endpoint with DB/cache/provider checks
@@ -171,7 +160,6 @@ ______________________________________________________________________
 3. Add counters for price fetches, predictions, trades
 4. Add gauges for MAP, risk status, portfolio value
 5. Test with `curl /metrics | grep ghost_`
-
 
 **Blockers**: None\
 **ETA**: 1 hour

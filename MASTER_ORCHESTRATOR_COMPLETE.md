@@ -21,7 +21,6 @@
 - Tracks partial fills
 - Logs all events to database
 
-
 **Configuration**:
 
 ```bash

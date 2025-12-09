@@ -19,13 +19,11 @@ status:
 -**Hunter Feed:**OPERATIONAL (crypto movers ranked by confidence)
 -**Database:**STABLE (prediction IDs incrementing sequentially)
 
-
 ### Known Limitations ⚠️
 
 -**VIP Snapshot:**Timeout (10s+) - affects VIP coins panel in UI
 -**Watchlist Enriched:**Timeout (10s+) - affects watchlist panel
 -**Stock Predictions:**Slower (1-2s) vs crypto (<100ms) but functional
-
 
 ---
 
@@ -50,7 +48,6 @@ status:
 - ✅**Directional Signals:**Mix of UP/DOWN (not stuck neutral)
 - ⚠️**Stock Latency:**700-1,600ms vs crypto 30-50ms (expected, yfinance slower)
 - ✅**No Provider Failures:**Zero "All stock providers failed" errors
-
 
 ---
 

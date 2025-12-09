@@ -12,7 +12,6 @@ Ghost 2.x successfully upgrades the prediction engine with:
 
 1. **Environment-driven crypto provider selection**(CRYPTO_QUORUM)
 
-
 2.**VIP coin price support**with graceful NO DATA handling
 3.**Ghost Score V2**- comprehensive quality/safety metric
 4.**Risk budget enforcement**for paper trading (Alpaca only)
@@ -30,7 +29,6 @@ Ghost 2.x successfully upgrades the prediction engine with:
 - **Modified**: `get_crypto_price_quorum()` - Uses environment-driven provider order
 - **Backward Compatible**: Falls back to default order if `CRYPTO_QUORUM` not set
 
-
 #### `/workspaces/ghost-protocol/core/crypto/vip_providers.py` ✨ NEW
 
 - **Purpose**: Dedicated VIP coin price provider (WEPE, LILPEPE, DORKL, SLOTH, APC)
@@ -41,13 +39,11 @@ Ghost 2.x successfully upgrades the prediction engine with:
 - **CoinGecko Integration**: Maps VIP symbols to CoinGecko IDs where available
 - **Cache**: 30-second TTL (configurable via `VIP_CACHE_TTL_S`)
 
-
 #### `/workspaces/ghost-protocol/wolf_app.py`
 
 - **Line ~17775**: Updated VIP prediction loop to use `get_vip_price()`
 - **Line ~10102**: Enhanced `/api/health/predictions` with VIP provider health
 - **NO Breaking Changes**: Existing multi-symbol logic preserved
-
 
 ### Phase 2: Ghost Score V2
 
@@ -63,12 +59,10 @@ Ghost 2.x successfully upgrades the prediction engine with:
   - Risk Behavior (25%): Position limits, drawdown compliance, SL/TP config
 - **Grades**: A+ through F with status labels (excellent → critical)
 
-
 #### `/workspaces/ghost-protocol/wolf_app.py`
 
 - **Line ~10102**: Added `ghost_score_v2` to `/api/health/predictions`
 - **Line ~15753**: Added `ghost_2x` section to `/api/cockpit` response
-
 
 ### Phase 3: Risk Budget Enforcement
 
@@ -84,12 +78,10 @@ Ghost 2.x successfully upgrades the prediction engine with:
 - **Activation**: Only when `BROKER=alpaca` AND `ALPACA_PAPER=1`
 - **Behavior**: Blocks orders that violate limits, logs detailed reasons
 
-
 #### `/workspaces/ghost-protocol/wolf_app.py`
 
 - **Line ~21000**: Integrated risk guard check into `/api/trade/submit`
 - **Returns**: `{"ok": false, "blocked_by_risk_guard": true, "risk_guard_reason": "..."}` on block
-
 
 ### Phase 4: Cockpit Enhancements
 
@@ -97,7 +89,6 @@ Ghost 2.x successfully upgrades the prediction engine with:
 
 - **Line ~15753**: Added `ghost_2x` object to cockpit snapshot
 - **New Fields**:
-
 
   ```json
   {
@@ -112,7 +103,6 @@ Ghost 2.x successfully upgrades the prediction engine with:
   ```text
 
 - **Backward Compatible**: Existing fields unchanged
-
 
 ---
 

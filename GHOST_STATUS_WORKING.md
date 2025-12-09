@@ -17,7 +17,6 @@ ______________________________________________________________________
   - `TELEGRAM_CHAT_ID`: Set (940596997)
   - `TELEGRAM_HEARTBEAT_ON_START`: Enabled
 
-
 ### Ghost AI Agent ✅
 
 - **Status**: RUNNING
@@ -26,7 +25,6 @@ ______________________________________________________________________
 - **Last Start**: 17:10:22 (3 minutes ago)
 - **Next Decision**: ~17:15:22 (in 2 minutes)
 - **Decision Count**: 13 total in database
-
 
 ### Latest Agent Decision ✅
 

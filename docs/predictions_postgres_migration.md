@@ -21,19 +21,16 @@ successfully migrated to the PostgreSQL backend on Railway.
 - Feature JSON and parameter JSON
 - Horizon and tags
 
-
 ✅**Prediction Points**(1,221 records)
 
 - Forecast points (timestamp, price pairs)
 - Actual price points (for accuracy tracking)
-
 
 ⚠️**Outcomes**(NOT migrated)
 
 - Historical outcome records from SQLite remain in SQLite only
 - This is**intentional**- outcomes are optional for live trading
 - Future predictions will create outcomes in PostgreSQL when they close
-
 
 ---
 

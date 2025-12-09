@@ -28,7 +28,6 @@
 
 - No time horizon differentiation in confidence or expected move**Fix Applied:**```javascript
 
-
 // Added time-decay confidence multipliers
 updateForecastCard(0, pred, '☀️', '24h', 1.0);   // 100% confidence
 updateForecastCard(1, pred, '⛅', '2-5d', 0.7);  // 70% confidence

@@ -17,7 +17,6 @@
 - **Reality**: META/TSLA signals with 72% confidence exist but don't appear in morning report
 - **Reality**: WOLF 0% prediction evaluated as "INCORRECT" using mismatched price providers
 
-
 **Root Causes**(mapped below):
 
 1.**0% confidence predictions**are generated and sent but treated as "real" predictions
@@ -25,12 +24,11 @@
 3.**High-confidence predictions**(72%+) are generated but not stored in scoring tables
 4.**Provider mismatch**between prediction-time (Yahoo) and evaluation-time (real-time feed)
 
-
 ---
 
 ## 📊 PHASE 1: PREDICTION LIFECYCLE MAP
 
-###**GENERATION LAYER**(How predictions are created)
+### **GENERATION LAYER**(How predictions are created)
 
 | Component | Function | Storage Destination | Confidence Range |
 |-----------|----------|-------------------|------------------|

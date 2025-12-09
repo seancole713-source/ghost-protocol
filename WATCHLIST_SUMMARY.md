@@ -6,32 +6,29 @@
 
 1.**`core/watchlist_manager.py`**(450+ lines)
 
-   - Watchlist database management
-   - GPS score calculation and tracking
-   - Top movers filtering (GPS ≥ threshold)
-   - Historical score tracking
-   - SQLite database with 2 tables
-
+- Watchlist database management
+- GPS score calculation and tracking
+- Top movers filtering (GPS ≥ threshold)
+- Historical score tracking
+- SQLite database with 2 tables
 
 1.**`wolf_app.py`**(Modified - added 6 endpoints)
 
-   - `/api/watchlist` - Get all symbols
-   - `/api/watchlist/add` - Add symbol
-   - `/api/watchlist/remove` - Remove symbol
-   - `/api/watchlist/score` - Update GPS score
-   - `/api/watchlist/history/{symbol}` - Get history
-   - `/api/watchlist/statistics` - Get stats
-
+- `/api/watchlist` - Get all symbols
+- `/api/watchlist/add` - Add symbol
+- `/api/watchlist/remove` - Remove symbol
+- `/api/watchlist/score` - Update GPS score
+- `/api/watchlist/history/{symbol}` - Get history
+- `/api/watchlist/statistics` - Get stats
 
    -**Updated `/api/top_movers`**- Only returns GPS ≥ threshold symbols
 
 1.**`utils/populate_watchlist.py`**(300+ lines)
 
-   - Initialization script
-   - Populates all 52 symbols from your data
-   - Calculates initial GPS scores
-   - Shows top movers
-
+- Initialization script
+- Populates all 52 symbols from your data
+- Calculates initial GPS scores
+- Shows top movers
 
 ______________________________________________________________________
 

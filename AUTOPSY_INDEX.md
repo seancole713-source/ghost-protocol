@@ -25,7 +25,6 @@ This autopsy generated**4 comprehensive documents**analyzing Ghost Protocol's pr
 - 📋 Required Patches (3 code changes)
 - 🎓 Lessons Learned (what worked, what failed, what to change)
 
-
 ---
 
 ### 2.**Executive Summary**(Quick Reference)**File:**[`AUTOPSY_EXECUTIVE_SUMMARY.md`](./AUTOPSY_EXECUTIVE_SUMMARY.md)**Purpose:**High-level overview for decision-makers**Contents:**- 📊 Quick Status Matrix (10 modules graded)
@@ -41,32 +40,30 @@ This autopsy generated**4 comprehensive documents**analyzing Ghost Protocol's pr
 - Stakeholder briefings
 - Priority planning
 
-
 ---
 
 ### 3.**System Flow Diagram**(Visual Guide)**File:**[`AUTOPSY_SYSTEM_DIAGRAM.md`](./AUTOPSY_SYSTEM_DIAGRAM.md)**Purpose:**Visual representation of prediction pipeline**Contents:**- 📡 Prediction Pipeline (end-to-end flow)
 
-  - Phase 1: Symbol Routing (crypto vs stock)
-  - Phase 2: Price Fetch (turbo providers)
-  - Phase 3: Feature Extraction (RSI, MACD, BB, sentiment)
-  - Phase 4: Ensemble Forecast (4-model weighted average)
-  - Phase 5: Signal Generation (BUY/SELL/HOLD thresholds)
-  - Phase 6: Storage & Caching (database + memory)
-  - Phase 7: API Response (structured JSON)
+- Phase 1: Symbol Routing (crypto vs stock)
+- Phase 2: Price Fetch (turbo providers)
+- Phase 3: Feature Extraction (RSI, MACD, BB, sentiment)
+- Phase 4: Ensemble Forecast (4-model weighted average)
+- Phase 5: Signal Generation (BUY/SELL/HOLD thresholds)
+- Phase 6: Storage & Caching (database + memory)
+- Phase 7: API Response (structured JSON)
 - 🔴 Failure Points (VIP timeout, crypto movers, news sentiment)
 - ✅ Verified Working Flows (forecast horizons fixed)
 - 🎯 Grade Breakdown (78% confirmed with component scores)**Best For:**- Understanding data flow
 - Debugging bottlenecks
 - Onboarding new developers
 
-
 ---
 
 ### 4.**Deployment Patches**(Ready-to-Apply Fixes)**File:**[`AUTOPSY_DEPLOYMENT_PATCHES.md`](./AUTOPSY_DEPLOYMENT_PATCHES.md)**Purpose:**Actionable code changes with testing plans**Contents:**- 🚨 Critical Patch #1: VIP Coins Timeout Fix
 
-  - Reduce coin list to TOP 5 (BTC, ETH, SOL, XRP, BNB)
-  - Add circuit breaker (1s timeout per coin)
-  - Complete code with testing commands
+- Reduce coin list to TOP 5 (BTC, ETH, SOL, XRP, BNB)
+- Add circuit breaker (1s timeout per coin)
+- Complete code with testing commands
 - 🚨 Critical Patch #2: Crypto Movers Threshold Fix
   - Separate GPS thresholds (7.0 stock, 5.0 crypto)
   - Update hunter feed endpoint logic
@@ -83,44 +80,39 @@ This autopsy generated**4 comprehensive documents**analyzing Ghost Protocol's pr
 - QA testing
 - Production validation
 
-
 ---
 
 ## 🎯 QUICK NAVIGATION
 
 ### By Role
 
-####**For Developers**👨‍💻
+#### **For Developers**👨‍💻
 
 1. Start with [System Diagram](./AUTOPSY_SYSTEM_DIAGRAM.md) to understand flow
 2. Read [Main Report](./GHOST_PREDICTION_ENGINE_AUTOPSY.md) Phase 1-5 for architecture
 3. Review [Deployment Patches](./AUTOPSY_DEPLOYMENT_PATCHES.md) for code changes
 4. Check [Executive Summary](./AUTOPSY_EXECUTIVE_SUMMARY.md) for testing matrix
 
-
-####**For Product Managers**📊
+#### **For Product Managers**📊
 
 1. Start with [Executive Summary](./AUTOPSY_EXECUTIVE_SUMMARY.md) for status
 2. Review grade breakdown (78% → 90%+ path)
 3. Check roadmap (5-day timeline to 90%, 15-day to 98%)
 4. Prioritize patches by impact (VIP +10%, Movers +10%, Sentiment +5%)
 
-
-####**For QA Engineers**🧪
+#### **For QA Engineers**🧪
 
 1. Review [Deployment Patches](./AUTOPSY_DEPLOYMENT_PATCHES.md) testing matrix
 2. Execute local tests (before production)
 3. Execute production tests (after deploy)
 4. Monitor success metrics (quantified targets)
 
-
-####**For Stakeholders**🎩
+#### **For Stakeholders**🎩
 
 1. Read [Executive Summary](./AUTOPSY_EXECUTIVE_SUMMARY.md) Quick Status Matrix
 2. Review grade justification (78% confirmed)
 3. Check performance metrics (local vs production)
 4. Review lessons learned (what worked/failed)
-
 
 ---
 
@@ -152,7 +144,6 @@ This autopsy generated**4 comprehensive documents**analyzing Ghost Protocol's pr
 -**After Performance (Week 2):**95% / 100 (+5% gain)
 -**After Features (Week 3):**98% / 100 (+3% gain)
 
-
 ---
 
 ## 🔬 METHODOLOGY
@@ -171,8 +162,7 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 8. ✅ SSE Pipeline — Live updates confirmed (local only)
 9. ✅ High-Stress Simulation — 12-symbol test (production blocked)
 
-1. ✅ Full Autopsy Report — Grade breakdown, roadmap, patches
-
+10. ✅ Full Autopsy Report — Grade breakdown, roadmap, patches
 
 ### Evidence Collected
 
@@ -182,7 +172,6 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 - ✅ Log analysis (CoinGecko 429 errors identified)
 - ✅ UI testing (forecast differentiation fixed)
 
-
 ### Deliverables Generated
 
 - ✅ 4 comprehensive documents (12,000+ words total)
@@ -190,7 +179,6 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 - ✅ Visual system diagram (ASCII flowchart)
 - ✅ Testing matrix (local + production)
 - ✅ Rollback plan (if patches break)
-
 
 ---
 
@@ -204,7 +192,6 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 4. ✅ Test crypto movers: Click "Crypto" tab, report assets shown
 5. ✅ Time VIP panel: Note timeout duration, check Network tab for 429 errors
 
-
 ### Short-Term (Developer — Next 24 Hours)
 
 1. Review all 4 autopsy documents
@@ -213,7 +200,6 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 4. Deploy to Railway production
 5. Verify VIP panel loads <5s
 
-
 ### Medium-Term (Team — Next Week)
 
 1. Apply Patch #2 (crypto movers threshold)
@@ -221,7 +207,6 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 3. Deploy all patches to production
 4. Monitor success metrics (quantified targets)
 5. Achieve 90%+ grade
-
 
 ---
 
@@ -234,14 +219,12 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 -**Telegram Alerter**for BUY/SELL/HOLD signals
 -**NO Broker Integration**(human-in-the-loop decision model)
 
-
 ### What Ghost Does Well ✅
 
 -**Ensemble Predictions:**4-model weighted average (ghost_ai + technical + sentiment + momentum)
 -**Fast-Fail Providers:**3s timeout, parallel fetching, cache fallback
 -**Structured Errors:**Every endpoint returns JSON (never raises exceptions)
 -**Accuracy Tracking:**48h evaluation, MAP calculation, performance stats
-
 
 ### What Ghost Struggles With ❌
 
@@ -250,14 +233,12 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 -**Synchronous Loop:**No parallelism for multi-symbol predictions (30s for 12 symbols)
 -**Missing Monitoring:**No Sentry/DataDog to trace production timeouts
 
-
 ### What to Improve Next 🔄
 
 1.**Upgrade to Paid APIs:**CoinGecko Pro ($49/mo, 500 req/min) OR Binance exclusively
 2.**Add Redis Caching:**Reduce API calls by 80% (5min TTL)
 3.**Convert to Async:**asyncio for 5x faster multi-symbol predictions
 4.**Add Monitoring:** Sentry for production error tracking
-
 
 ---
 
@@ -270,20 +251,17 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 - ✅ Implemented alert status API
 - ✅ Superman mode testing (5x each, 15/15 success)
 
-
 ### Session 2 (Mission Redefinition)
 
 - ✅ Created GHOST_MISSION.md (500+ line spec)
 - ✅ Implemented Goals V2 (% tracking: target_pct, realized_pct, model_edge_pct)
 - ✅ Documented NO BROKER constraint (signal generator only)
 
-
 ### Session 3 (Goals Enhancement)
 
 - ✅ Enhanced goals_tracker.py (3 new columns)
 - ✅ Updated cockpit_v3_live_endpoints.py (% goals endpoints)
 - ✅ Added model_edge_pct calculation (win_rate * avg_winner_move)
-
 
 ### Session 4 (UI Diagnostic & Fixes)
 
@@ -292,7 +270,6 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 - ✅ Created UI_DIAGNOSTIC_REPORT.md (400+ lines)
 - ✅ Documented VIP/movers backend fixes needed
 
-
 ### Session 5 (Full Autopsy)
 
 - ✅ Executed 10-phase diagnostic protocol
@@ -300,7 +277,6 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 - ✅ Verified 78% grade (matches user estimate)
 - ✅ Documented path to 90%+ (3 patches, 5 days)
 - ✅ Generated ready-to-deploy code changes
-
 
 ---
 
@@ -316,6 +292,5 @@ This autopsy followed the**10-phase diagnostic protocol**requested by the user:
 - Patches ready to deploy (code + tests + rollback)
 - Success metrics quantified (VIP <5s, crypto count >0, sentiment labels correct)
 - Grade improvement validated (78% → 90%+ path confirmed)
-
 
 ---**Autopsy Performed By:**GitHub Copilot (Claude Sonnet 4.5)**Date:**December 2, 2025**Status:**✅ COMPLETE — All 10 phases executed**Deliverables:**4 documents, 3 patches, 1 system diagram, 1 testing matrix**Next:** Deploy patches + achieve 90%+ grade

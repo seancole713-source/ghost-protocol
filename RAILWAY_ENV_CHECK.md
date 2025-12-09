@@ -22,18 +22,15 @@ Go to Railway dashboard and check each variable has the **correct value**, not j
 
 1.**`AI_PROVIDER` set to `ollama`**❌
 
-   - Change to: `openai`
-
+- Change to: `openai`
 
 1.**`AGENT_MODEL` not set or wrong**❌
 
-   - Set to: `gpt-4o-mini` (cheaper) or `gpt-4` (better)
-
+- Set to: `gpt-4o-mini` (cheaper) or `gpt-4` (better)
 
 1.**`AGENTS_ENABLED` set to `0`** ❌
 
-   - Change to: `1`
-
+- Change to: `1`
 
 ### 🎯 Quick Fix Checklist
 
@@ -46,13 +43,11 @@ In Railway dashboard, make sure:
 - [ ] `TELEGRAM_BOT_TOKEN` = your bot token
 - [ ] `TELEGRAM_CHAT_ID` = your chat ID
 
-
 ### 🚀 After Fixing
 
 1. Railway will auto-redeploy (takes ~2 min)
 2. Text your bot: "What would Bitcoin drop do to WOLF?"
 3. Get AI response! 🎉
-
 
 ______________________________________________________________________
 

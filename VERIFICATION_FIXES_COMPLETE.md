@@ -17,7 +17,6 @@ All critical and high-priority issues identified in the production verification 
 - ✅**Forecast panel connected**— Now fetches real predictions from API
 - ✅**Yahoo Finance crypto disabled**— Prevents 404 errors for crypto symbols
 
-
 ---
 
 ## Files Modified
@@ -38,7 +37,7 @@ _VIP_SNAPSHOT_CACHE = {"data": None, "timestamp": 0, "ttl": 300}
 
 ```text**Lines 6814-6830: Cache Check Logic**```python
 
-cache_age = time.time() - _VIP_SNAPSHOT_CACHE["timestamp"]
+cache_age = time.time() -_VIP_SNAPSHOT_CACHE["timestamp"]
 if _VIP_SNAPSHOT_CACHE["data"] and cache_age < _VIP_SNAPSHOT_CACHE["ttl"]:
     LOGGER.debug(f"[VIP] Serving cached snapshot (age: {cache_age:.1f}s)")
     return _VIP_SNAPSHOT_CACHE["data"]

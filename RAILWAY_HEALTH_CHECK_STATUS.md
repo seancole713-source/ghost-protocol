@@ -6,17 +6,14 @@ _Last updated: 2025-11-23 13:54 UTC_
 
 - `railway.toml` keeps `healthcheckPath = "/health"`, a 100 second timeout, and launches
 
-
   `uvicorn wolf_app:APP --host 0.0.0.0 --port ${PORT:-8080}` so Railway and the Docker
   container use the same entry point.
 
 - `Dockerfile` mirrors the uvicorn command in `CMD`, exposes port 8080, and leaves health
 
-
   probing to Railway (no overlapping container healthcheck directive).
 
 - `wolf_app.py` (line 1120) defines `@APP.get("/health")` that returns
-
 
   `{"status":"ok","service":"ghost-protocol","uptime":<seconds>}` without touching Redis,
   price feeds, or any other optional providers, so the endpoint responds even while startup
@@ -27,7 +24,6 @@ _Last updated: 2025-11-23 13:54 UTC_
 1. Started the app with `PYTHONPATH=/Users/studio713/ghost-protocol python3 -m uvicorn wolf_app:APP --host 127.0.0.1 --port 8080`
 2. `curl -s -D - <<<<<http://127.0.0.1:8080/health`>>>>> returned `HTTP/1.1 200 OK` in <1s:
 
-
    ```json
    HTTP/1.1 200 OK
    content-type: application/json
@@ -35,9 +31,9 @@ _Last updated: 2025-11-23 13:54 UTC_
 
    ```text
 
-1. Application logs showed no provider errors blocking `/health` response.
-2. Confirmed endpoint remains ultra-lightweight and startup-safe.
+3. Application logs showed no provider errors blocking `/health` response.
 
+4. Confirmed endpoint remains ultra-lightweight and startup-safe.
 
 ## Recent Fixes (Nov 23, 2025)
 
@@ -53,7 +49,6 @@ _Last updated: 2025-11-23 13:54 UTC_
   - Binance: "All endpoints exhausted" errors
   - Coinbase: 404 Not Found responses
 - Added significant startup latency, contributing to Railway healthcheck timeouts
-
 
 **Solution**:
 

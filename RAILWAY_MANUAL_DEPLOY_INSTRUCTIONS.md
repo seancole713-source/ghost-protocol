@@ -11,7 +11,6 @@ old code.
 - **Health Check**: Passing ✅
 - **Problem**: Railway webhook not pulling latest commits from GitHub
 
-
 ______________________________________________________________________
 
 ## 🎯 MANUAL DEPLOYMENT STEPS
@@ -22,24 +21,21 @@ ______________________________________________________________________
    - Project:**tender-benevolence**- Service:**web**1.**Navigate to Settings**- Click**Settings**tab (not Deployments)
    - Scroll to**GitHub Repo**- Current: `seancole713-source/GHOST` on branch `main`
 
-
 1.**Disconnect & Reconnect GitHub**- Click**Disconnect**button
 
-   - Confirm disconnect
-   - Click**Connect GitHub Repo**- Select: `seancole713-source/GHOST`
-   - Branch: `main`
-   - Root Directory: `/` (leave empty)
-
+- Confirm disconnect
+- Click**Connect GitHub Repo**- Select: `seancole713-source/GHOST`
+- Branch: `main`
+- Root Directory: `/` (leave empty)
 
 1.**Trigger New Deployment**- This should automatically start a new deployment
 
-   - Watch Build Logs for commit hash - should show `f03e4b4`
-   - Build should take ~2 minutes
-
+- Watch Build Logs for commit hash - should show `f03e4b4`
+- Build should take ~2 minutes
 
 1.**Verify Deployment**```bash
    curl -s <<<<<https://web-production-8e9a0.up.railway.app/openapi.json>>>>> | \
-     python3 -c "import sys,json; print(f\"Routes: {len(json.load(sys.stdin)['paths'])}\")"
+     python3 -c "import sys,json; print(f\"Routes: {len(json.load[sys.stdin]('paths'))}\")"
 
    ```text**Expected**: `Routes: 263`
 
@@ -49,12 +45,10 @@ ______________________________________________________________________
 
 1. **Go to Deployments Tab**- Click**Deployments**- You'll see list of past deployments
 
-
 1.**Look for Commit `f03e4b4`**- Look for: "feat: add UI alias endpoints for missing panels"
 
-   - If you see it: Click**⋮**→**Redeploy**→ ✅**Clear build cache**→ Confirm
-   - If you DON'T see it: Railway hasn't fetched latest commits (proceed to Option 3)
-
+- If you see it: Click**⋮**→**Redeploy**→ ✅**Clear build cache**→ Confirm
+- If you DON'T see it: Railway hasn't fetched latest commits (proceed to Option 3)
 
 ______________________________________________________________________
 
@@ -66,11 +60,11 @@ If Railway isn't showing commit `f03e4b4` in the deployments list:
 
    cd /Users/studio713/Desktop/GHOST
 
-   # Add a comment to railway.toml
+# Add a comment to railway.toml
 
    echo "# Force Railway sync: $(date)" >> railway.toml
 
-   # Commit and push
+# Commit and push
 
    git add railway.toml
    git commit -m "trigger: force Railway to sync latest commits"

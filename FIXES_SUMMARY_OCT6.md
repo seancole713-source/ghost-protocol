@@ -9,10 +9,8 @@ User reported Ghost showing **100% operational**but experiencing:
 
 1. **UI panels frozen**- no real-time updates
 
-
 4.**Ghost-AI v1 decision preview empty**5.**Market outlook fields blank**(risk: –, confidence: –)
 6.**Server not running**(task had terminated)
-
 
 ______________________________________________________________________
 

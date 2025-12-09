@@ -17,7 +17,6 @@ Latest commits (`758adea`, `492df92`, `0ae81d2`) have NOT been deployed despite 
 - ✅ railway.toml file: `/health` (correct)
 - ❌ Dockerfile HEALTHCHECK: `/ui/health` (wrong)**Result**: Railway health check FAILS → marks deployment as unhealthy → prevents traffic switching → new deployments never go live.
 
-
 ---
 
 ## 🛠️ MANUAL FIX STEPS (REQUIRED)
@@ -29,7 +28,6 @@ Latest commits (`758adea`, `492df92`, `0ae81d2`) have NOT been deployed despite 
 3. Click**Settings**tab
 4. Scroll to**Deploy**section
 5. Find**Healthcheck Path**6. Change from:
-
 
    ```text
    /ui/health
@@ -44,8 +42,7 @@ Latest commits (`758adea`, `492df92`, `0ae81d2`) have NOT been deployed despite 
 
    ```text
 
-1. Click**Update**### Step 2: Fix Dockerfile HEALTHCHECK
-
+6. Click**Update**### Step 2: Fix Dockerfile HEALTHCHECK
 
 The Dockerfile also has the wrong path. I've already prepared a fix - just need to push it:
 

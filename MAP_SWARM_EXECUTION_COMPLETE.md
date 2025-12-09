@@ -33,7 +33,6 @@
 - ✅ GET /api/crypto/predict/{symbol}
 - ✅ GET /api/crypto/watchlist
 
-
 ### Workstream D: Prometheus Metrics ✅
 
 **Status**: COMPLETE\
@@ -53,7 +52,6 @@
 - ✅ Symbol dropdowns for both asset classes
 - ✅ API integration for crypto predictions **Tests**: ✅ 1 crypto prediction in cockpit
 
-
   data
 
 ### Workstream F: Telegram Integration ✅
@@ -66,7 +64,6 @@
 - ✅ Commands: /status, /signal, /pnl, /help
 - ✅ Free-form AI Q&A with `_ask_ghost_ai()`
 - ✅ Prometheus metrics instrumentation **Needs**: `TELEGRAM_BOT_TOKEN` and
-
 
   `TELEGRAM_CHAT_ID` env vars
 
@@ -81,7 +78,6 @@
 - ✅ End-to-end system test script
 - ✅ Live API validation (all endpoints working)
 
-
 ### Workstream H: Documentation ✅
 
 **Status**: COMPLETE\
@@ -95,7 +91,6 @@
 6. start_omnibrain.sh (50 lines)
 7. test_full_system.sh (150 lines)
 8. docs/system_map.json (200+ lines)
-
 
 ### Workstream I: Deployment Preparation ✅
 

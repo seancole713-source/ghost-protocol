@@ -7,17 +7,14 @@ change must follow the steps below—no shortcuts, no placeholders.
 
 - **Start Ghost locally**on port `8080` (`uvicorn wolf_app:APP --host 127.0.0.1 --port 8080`).
 
-
 -**Export real env vars**(`.env` or Railway secrets). Do not invent temporary keys.
 -**Keep Cockpit V3 open**at `http://localhost:8080/cockpit` to verify live data.
-
 
 ## 2. Code + tests
 
 - Tackle work in small branches; avoid long-lived drift.
 - Prefer FastAPI unit coverage plus targeted scripts in `scripts/`.
 - Never comment out logic “for later”; either ship it or remove it.
-
 
 ## 3. Canonical validation (required)
 

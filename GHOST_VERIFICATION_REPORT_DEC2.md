@@ -16,7 +16,6 @@ generating live forecasts (13 predictions today)
 - ⚠️ CoinGecko rate limiting (429 errors for MATIC)
 - ⚠️ Cockpit UI missing critical Ghost-required modules**Health Score:**65/100 (Grade D)**System Uptime:**12 minutes (737 seconds)**Mode:**LIVE (SIM_MODE=0)**Version:**Ghost v3.0
 
-
 ---
 
 ## 1. DATABASE & MIGRATION STATUS
@@ -25,7 +24,6 @@ generating live forecasts (13 predictions today)
 
 - Integration: `wolf_app.py` lines 3466-3478
 - Status:**Active in startup sequence**
-
 
 **Migration files found:**```text
 migrations/
@@ -39,7 +37,6 @@ migrations/
 ```text**Expected log pattern:**- `[MIGRATION] ✅ 001_personal_watchlist.sql - applied successfully`
 
 - `[MIGRATION] ✅ 002_prediction_outcomes.sql - applied successfully`**⚠️ WARNING:**Full migration logs not visible in recent Railway output.
-
 
 Last deployment was 8 hours ago, suggesting migrations ran then but not in latest 14-minute window.
 

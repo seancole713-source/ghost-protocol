@@ -33,14 +33,12 @@ tracking failure identified and fixed. All fixes tested locally with 100% succes
 - `outcomes` table: 0 records (predictions never evaluated)
 - Production logs: "Forecast recorded: AVAX @ $14.41 (horizon=48h, id=8)" ← BUT NO DATABASE WRITES!
 
-
 **Root Cause**: Schema mismatches in `scripts/evaluate_predictions.py`
 
 1. Timestamp units: Script used milliseconds, DB uses seconds
 2. Missing columns: Script expected `asset_type`, `current_price` (don't exist)
 3. Missing JOIN: Original prices stored in separate `prediction_points` table
 4. No price API fallback: Evaluator failed in standalone mode
-
 
 ---
 

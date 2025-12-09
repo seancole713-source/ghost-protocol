@@ -22,7 +22,7 @@ ______________________________________________________________________
 
 ## 🔍 How to Verify It's Working
 
-###**Check #1**: Visit Your Railway App
+### **Check #1**: Visit Your Railway App
 
 ```text
 Your GHOST app should be live at: <your-railway-url>

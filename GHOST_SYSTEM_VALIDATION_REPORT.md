@@ -17,7 +17,6 @@
 - ⚠️ **Local Docker Stack**: PARTIAL (app starts but network connectivity issue - unrelated to code)
 - ❌ **Production Railway**: FAIL (502 Bad Gateway / timeouts)
 
-
 **Root Cause**: Production Railway deployment appears stale or misconfigured.
 Latest code fixes pushed but not yet deployed/verified.
 

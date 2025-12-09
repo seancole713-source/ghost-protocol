@@ -12,21 +12,18 @@
      - `/ai/memory/similar` → Semantic search operational
    - Persistent SQLite storage with optional vector stores
 
-
 1.**Runtime Configuration**- APPLIED
 
-   - ✅ Reuters feeds: OFF (`reuters_feeds_on: false`)
-   - ✅ Yahoo first: OFF (`yahoo_first: false`)
-   - ✅ Price TTL increased: 30s → 120s (`price_ttl_s: 120`)
-   - ✅ Open market TTL: 30s (`price_ttl_open_s: 30`)
-
+- ✅ Reuters feeds: OFF (`reuters_feeds_on: false`)
+- ✅ Yahoo first: OFF (`yahoo_first: false`)
+- ✅ Price TTL increased: 30s → 120s (`price_ttl_s: 120`)
+- ✅ Open market TTL: 30s (`price_ttl_open_s: 30`)
 
 1.**Server Launcher**- CREATED
 
-   - Created `launch_ghost.py` - Python script that loads secrets.env
-   - Confirms keys loaded: "POLYGON_API_KEY: SET", "ALPHAVANTAGE_API_KEY: SET"
-   - Server starts successfully on port 5000
-
+- Created `launch_ghost.py` - Python script that loads secrets.env
+- Confirms keys loaded: "POLYGON_API_KEY: SET", "ALPHAVANTAGE_API_KEY: SET"
+- Server starts successfully on port 5000
 
 ## ❌ BLOCKERS
 
@@ -34,7 +31,6 @@
 
 - Polygon and AlphaVantage are NEVER tried (no log entries for them)
 - Price fetches return `"provider": "unavailable"`**Root Cause:**Even though `launch_ghost.py` sets environment variables and confirms
-
 
 they're loaded, when wolf_app.py imports and evaluates these lines:
 

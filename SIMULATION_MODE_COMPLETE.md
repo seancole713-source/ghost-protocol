@@ -42,7 +42,6 @@ ______________________________________________________________________
 - Ready for frontend integration
 - Accessible at: <<<<<http://localhost:5000/simulation_data.json>>>>>
 
-
 ### Utility Scripts**3. `generate_simulation_data.py`**(~260 lines)
 
 - Generates and saves mock data to JSON
@@ -56,7 +55,6 @@ ______________________________________________________________________
 - Launches server with simulation pre-loaded
 - Sets SIM_MODE=1 environment variable
 - Alternative: Restart server with `bash start_simulation_mode.sh`
-
 
 ______________________________________________________________________
 
@@ -324,14 +322,14 @@ ______________________________________________________________________
        if is_sim_mode():
            return get_mock_portfolio()
 
-       # ... existing real data logic 
+       # ... existing real data logic
 
    @APP.get("/api/watcher/watchlist")
    async def api_watcher_get_watchlist():
        if is_sim_mode():
            return {"tickers": get_mock_watchlist(), "count": 5}
 
-       # ... existing real data logic 
+       # ... existing real data logic
 
    ```text
 

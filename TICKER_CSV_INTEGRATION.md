@@ -22,7 +22,6 @@ downloading public data.**Functionality**:
 4. ✅ Produces top 1000 tickers
 5. ✅ Writes `supported_tickers.csv`
 
-
 ### ✅ Phase 2: CSV Generation (COMPLETE)
 
 **Executed**: `python3 build_supported_tickers.py`

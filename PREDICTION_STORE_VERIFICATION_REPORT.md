@@ -13,7 +13,6 @@ backend:**ACTIVE**- ✅ Dual-write mode:**DISABLED**(safe default)
 
 - ✅ PostgreSQL backend:**IMPLEMENTED & READY**- ✅ Abstraction layer:**100% OPERATIONAL**
 
-
 **Production Evidence (from Railway logs Dec 1, 2025 @ 14:32 UTC):**```text
 Created prediction 2 for ETH with 25 forecast points
 [SQLiteBackend] Saved prediction 2 for ETH (25 points, 11ms)

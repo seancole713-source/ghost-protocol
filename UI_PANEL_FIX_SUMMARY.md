@@ -16,13 +16,11 @@ ______________________________________________________________________
 - **Display**: Shows "Market Closed" with accurate timestamp
 - **No action needed**### 2. Portfolio Overview
 
-
 -**Status**: ✅ WORKING
 
 - **Endpoint**: `/api/portfolio`
 - **Data**: NAV $48,740, 2000 WOLF @ $1.20
 - **No action needed**### 3. Ghost Score Heatmap
-
 
 -**Status**: ✅ WORKING
 
@@ -30,13 +28,11 @@ ______________________________________________________________________
 - **Display**: WOLF GPS 7.2 correctly displayed and color-coded
 - **No action needed**### 4. Top Movers
 
-
 -**Status**: ✅ WORKING
 
 - **Endpoint**: `/api/top_movers?threshold=7.0`
 - **Display**: Shows latest price movement for WOLF + watchlist tickers
 - **No action needed**### 5. Live News Feed
-
 
 -**Status**: ✅ CONNECTED
 
@@ -45,19 +41,16 @@ ______________________________________________________________________
 - **Note**: 0 articles on Sunday (expected), will populate during market hours
 - **No action needed**### 6. Diagnostics Panel
 
-
 -**Status**: ✅ ACTIVE
 
 - **Endpoint**: `/diagnostics/summary`
 - **Display**: Logging correctly, error_count: 0
 - **No action needed**### 7. Circuit Breakers / Controls Bar
 
-
 -**Status**: ✅ ACTIVE
 
 - **Features**: Mode toggles, status badges, timestamps all responding
 - **No action needed**______________________________________________________________________
-
 
 ## 🔧 FIXED ISSUES
 
@@ -69,7 +62,6 @@ ______________________________________________________________________
 
 - API returned proper JSON structure with `{symbol, gps, price}` objects
 - Watchlist data was not populated (all GPS and prices were `null`)
-
 
 **Solution Applied**:
 

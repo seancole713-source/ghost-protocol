@@ -12,7 +12,6 @@ that:
 - Displays historical performance with scoreboard
 - Provides visual overlay of forecast vs actual prices**Status:**✅ Complete end-to-end implementation (no placeholders, no SIM mode)
 
-
 ---
 
 ## Architecture

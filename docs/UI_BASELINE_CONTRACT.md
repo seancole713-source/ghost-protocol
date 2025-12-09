@@ -10,13 +10,11 @@ Only backend/data logic may change unless an approved RFC explicitly unfreezes a
 - `static/**`
 - Root HTML files: `index.html`, `markets.html`
 
-
 Allowed edits ONLY:
 
 - Bugfixes that do not add/remove DOM nodes or change class names / layout semantics.
 - Hooking to *new optional* backend fields (must degrade gracefully if missing).
 - Accessibility fixes (aria labels) with no visual shift.
-
 
 NOT allowed without RFC:
 
@@ -24,7 +22,6 @@ NOT allowed without RFC:
 - Renaming classes used in CSS
 - Removing existing IDs used by JS
 - Changing table column order
-
 
 ## Single Source of Truth
 
@@ -37,8 +34,7 @@ Resilience policy:
 
 *Always 200 with last good snapshot if current build fails (adds `flags.degraded=true` & appends `top_level:<Err>` in `fail_reasons`).* Only 503 if no successful snapshot has ever been built.
 
-* `flags.any_stale` true if any asset price > TTL (sim vs live policy).
-
+- `flags.any_stale` true if any asset price > TTL (sim vs live policy).
 
 SSE: `/api/cockpit/stream` emits the *same* shape (identical keys).
 Test hook: `POST /api/cockpit/force_fail` forces next build failure (resilience test).
@@ -52,12 +48,10 @@ Test hook: `POST /api/cockpit/force_fail` forces next build failure (resilience 
 - No duplicate rows in UI table
 - Stale: `current = null`, `stale = true`, mark_value frozen at entry
 
-
 ## Heatmap / Movers Consistency
 
 - Prices & GPS values must come from the exact same oracle used in portfolio.
 - No 0.00 placeholders — if unavailable: `price = null`, mark stale/offline.
-
 
 ## Snapshot Requirements
 

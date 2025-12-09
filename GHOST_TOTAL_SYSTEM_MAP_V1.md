@@ -1,6 +1,7 @@
 # 🏗️ GHOST PROTOCOL - TOTAL SYSTEM MAP V1.0
-**Generated**: December 7, 2025  
-**Agent**: Supreme Engineer MK-VII  
+
+**Generated**: December 7, 2025
+**Agent**: Supreme Engineer MK-VII
 **Purpose**: Complete architectural map for 70% accuracy mission
 
 ---
@@ -8,6 +9,7 @@
 ## EXECUTIVE SUMMARY
 
 **Current State**: Ghost Protocol is a **multi-engine prediction system** with:
+
 - ✅ 8 prediction engines (functioning)
 - ✅ 6 data provider layers (mixed state)
 - ✅ 5 schedulers (partially redundant)
@@ -25,6 +27,7 @@
 ### 1.1 Primary Engines (Production Active)
 
 #### Engine A: **EnsembleForecaster** 🎯 PRIMARY
+
 - **Location**: `core/ensemble_forecaster.py` (521 lines)
 - **Status**: ✅ Active, 4-model weighted ensemble
 - **Models**:
@@ -39,17 +42,20 @@
 - **Performance**: Saves weights to DB after each actual price update
 
 **Strengths**:
+
 - Multi-model redundancy (if one model fails, others compensate)
 - Self-adjusting weights based on accuracy
 - Comprehensive feature usage (price, sentiment, volume, technical indicators)
 
 **Weaknesses**:
+
 - Each model is simple (no deep learning yet)
 - Technical model needs 20+ historical prices (may fail if provider unavailable)
 - Sentiment model depends on external news API (Alpha Vantage)
 - No regime detection (treats bull/bear/sideways markets identically)
 
 #### Engine B: **EnsemblePredictor** 🔬 EXPERIMENTAL
+
 - **Location**: `core/ensemble_predictor.py` (451 lines)
 - **Status**: ⚠️ Partially implemented (model stubs, not trained)
 - **Models**:
@@ -62,6 +68,7 @@
 **Issue**: This is a **duplicate** of EnsembleForecaster but with more advanced models. DECISION NEEDED: Train and activate, or deprecate?
 
 #### Engine C: **CryptoPredictionEngine**
+
 - **Location**: `core/crypto/crypto_predictor.py` (430 lines)
 - **Status**: ✅ Active, crypto-specific
 - **Database**: `data/crypto_predictions.db` (SQLite)
@@ -70,14 +77,17 @@
 - **Features**: Market cap, volume 24h, volatility, sentiment
 
 **Strengths**:
+
 - Crypto-specific metrics (market cap, 24h volume)
 - Separate DB avoids mixing stock/crypto data
 
 **Weaknesses**:
+
 - Not using ensemble models (single engine)
 - No provider quorum (relies on single crypto provider)
 
 #### Engine D: **ML Trainer** (XGBoost Binary Classifier)
+
 - **Location**: `core/ml_trainer.py` (280 lines)
 - **Status**: ✅ Functional, trains XGBoost classifiers
 - **Model Type**: XGBoost binary classifier (UP/DOWN/FLAT)
@@ -89,6 +99,7 @@
 **Issue**: Only 2 features currently used (confidence + price_momentum). Needs 50+ features from data pillars for 70% accuracy.
 
 #### Engine E: **Backtest Engine**
+
 - **Location**: `core/backtest_engine.py` (330 lines)
 - **Status**: ✅ Functional, walk-forward analysis
 - **Features**:
@@ -105,6 +116,7 @@
 ### 1.2 Supporting Engines
 
 #### Engine F: **Goal Engine**
+
 - **Location**: `core/goal_engine.py` (600+ lines)
 - **Status**: ✅ Active
 - **Purpose**: Dynamic goal adjustment (daily/weekly/monthly/yearly targets)
@@ -112,17 +124,20 @@
 - **Features**: Auto-scaling goals based on performance
 
 #### Engine G: **Risk Engine**
+
 - **Location**: `core/risk_engine.py` (250+ lines)
 - **Status**: ✅ Active
 - **Features**: Position sizing, portfolio risk checks, alert triggers
 - **Database**: `data/risk.db` (SQLite)
 
 #### Engine H: **Volatility Engine**
+
 - **Location**: `core/volatility_engine.py` (150+ lines)
 - **Status**: ✅ Active
 - **Purpose**: ATR, Bollinger Bands, historical volatility calculations
 
 #### Engine I: **Hedging Engine**
+
 - **Location**: `core/hedging_engine.py` (120+ lines)
 - **Status**: ✅ Active
 - **Purpose**: Delta hedging, inverse position recommendations
@@ -132,6 +147,7 @@
 ### 1.3 Context & Intelligence Engines
 
 #### Engine J: **Context Engine** (Stage 1)
+
 - **Location**: `core/context_engine.py` (200+ lines)
 - **Status**: ✅ Active, hourly RSS feed refresh
 - **Data Sources**: RSS feeds, WorldFeedFusion
@@ -139,12 +155,14 @@
 - **Features**: Sector-level sentiment, macro context
 
 #### Engine K: **Accuracy Tracker** (Stage 2)
+
 - **Location**: `core/accuracy_tracker.py` (350+ lines)
 - **Status**: ✅ Active
 - **Purpose**: Real-time accuracy tracking, learning loop
 - **Database**: `data/accuracy.db` (SQLite)
 
 #### Engine L: **Regime Detector** (Stage 3)
+
 - **Location**: `core/regime_detector.py`
 - **Status**: ✅ Active
 - **Purpose**: Detect bull/bear/sideways market regimes
@@ -157,24 +175,25 @@
 ### 2.1 Stock Data Providers (Hierarchy)
 
 **Provider Chain** (waterfall fallback):
+
 1. **Polygon.io** (Paid, primary)
    - Status: ✅ API key configured in Railway
    - Rate Limit: 5 calls/min (free tier), unlimited (paid tier)
    - Latency: 150-300ms
    - Coverage: All stocks, 1-min bars, 5-min delayed (free)
-   
+
 2. **Alpha Vantage** (Paid, backup)
    - Status: ✅ API key configured in Railway
    - Rate Limit: 5 calls/min (free tier), 75 calls/min (paid tier)
    - Latency: 200-400ms
    - Coverage: Stocks + news sentiment API
-   
+
 3. **Yahoo Finance HTTP API** (Free, fallback)
    - Status: ✅ Always available
    - Rate Limit: Soft limit (~2000 requests/hour)
    - Latency: 100-200ms
    - Coverage: Stocks, ETFs, crypto
-   
+
 4. **yfinance** (Python library, last resort)
    - Status: ✅ Always available
    - Rate Limit: None (scrapes Yahoo Finance)
@@ -190,18 +209,19 @@
 ### 2.2 Crypto Data Providers
 
 **Provider Chain** (crypto-specific):
+
 1. **Binance** (Free, unlimited)
    - Status: ✅ Active
    - API: Klines, ticker, 24h stats
    - Latency: 50-150ms
    - Coverage: Top 200 cryptos
-   
+
 2. **CoinGecko** (Free, 10-50 calls/min)
    - Status: ✅ Active
    - API: Simple price, market data
    - Latency: 200-400ms
    - Coverage: 10,000+ cryptos (including microcaps)
-   
+
 3. **Coinbase** (Free, spot price)
    - Status: ✅ Active
    - API: Spot price, 24h stats
@@ -209,6 +229,7 @@
    - Coverage: Top 50 cryptos
 
 **Integration Points**:
+
 - `core/crypto/crypto_providers.py` (quorum logic)
 - `core/crypto/vip_providers.py` (VIP microcaps: WEPE, LILPEPE, DORKL, SLOTH, APC)
 
@@ -219,17 +240,18 @@
 ### 2.3 News & Sentiment Providers
 
 **Provider Chain**:
+
 1. **Alpha Vantage NEWS_SENTIMENT API** (Paid)
    - Status: ⚠️ API key missing (`ALPHA_VANTAGE_API_KEY`)
    - Features: Real-time news + sentiment scores (-1 to +1)
    - Rate Limit: 75 calls/min (paid tier)
-   
+
 2. **WorldFeedFusion** (Local aggregator)
    - Status: ✅ Active
    - Database: `data/world_feed.db`
    - Features: RSS aggregation, sector sentiment
    - Update Frequency: Hourly (via Context Engine)
-   
+
 3. **Manual RSS Feeds** (Free, backup)
    - Status: ✅ Active
    - Sources: Reuters, Bloomberg, CNBC, MarketWatch
@@ -244,6 +266,7 @@
 **Module**: `core/price_reliability.py`
 
 **Metrics Tracked**:
+
 - Success/fail/stale counts per provider
 - Average latency (ms)
 - Success rate (%)
@@ -260,6 +283,7 @@
 ### 3.1 Active Schedulers (Partially Redundant)
 
 #### Scheduler A: **Master Orchestrator** 🎭 PRIMARY
+
 - **Location**: `core/orchestrator.py` (386 lines)
 - **Status**: ✅ Active, coordinates all background services
 - **Services Managed**:
@@ -278,6 +302,7 @@
 **Issue**: Calls `beast_scheduler.start_beast_scheduler()` which creates threading-based scheduler. Mixing asyncio tasks + threads.
 
 #### Scheduler B: **Beast Scheduler** 🦁
+
 - **Location**: `core/beast_scheduler.py`
 - **Status**: ✅ Active, threading-based scheduler
 - **Schedule**:
@@ -288,6 +313,7 @@
 **Issue**: Uses `threading.Thread()` + `schedule` library. Not async-native. Can block event loop if predictions are synchronous.
 
 #### Scheduler C: **Auto-Prediction Loop** 🔄
+
 - **Location**: `core/auto_prediction_loop.py` (406 lines)
 - **Status**: ⚠️ **DISABLED** (causes server hangs)
 - **Original Design**: Background thread running predictions every 60min (market hours) or 120min (off hours)
@@ -296,11 +322,13 @@
 **ROOT CAUSE**: Blocking I/O + synchronous execution + high concurrency = server unresponsiveness
 
 **Fix Options**:
+
 1. Convert to async/await (`RUN_PREDICTION_FUNC_ASYNC`)
 2. Use Celery workers (separate process)
 3. Keep disabled, rely on Beast Scheduler only
 
 #### Scheduler D: **Scheduled Predictions** (Legacy)
+
 - **Location**: `core/scheduled_predictions.py`
 - **Status**: ⚠️ **REDUNDANT** with Beast Scheduler
 - **Schedule**: 8:00 AM, 12:00 PM, 4:00 PM ET (multi-symbol)
@@ -308,6 +336,7 @@
 **DECISION**: Deprecated in favor of Beast Scheduler (more comprehensive)
 
 #### Scheduler E: **Watchlist Prediction Scheduler**
+
 - **Location**: `core/watchlist_prediction_scheduler.py`
 - **Status**: ❓ Unknown if active (not referenced in orchestrator)
 
@@ -318,12 +347,14 @@
 ### 3.2 Background Workers (Non-Scheduler)
 
 #### Worker A: **Price Auto-Refresh**
+
 - **Function**: `wolf_app._auto_refresh_price()`
 - **Interval**: 5-10s (adaptive based on market hours)
 - **Purpose**: Keep `_LAST_PRICE` cache warm for all watchlist symbols
 - **Status**: ✅ Active via Orchestrator
 
-#### Worker B: **Outcome Reconciler** 
+#### Worker B: **Outcome Reconciler**
+
 - **Location**: `services/outcome_reconciler.py` + `services/outcome_reconciler_v2.py`
 - **Purpose**: Match predictions with actual outcomes after 48h horizon
 - **Status**: ❓ Unknown if running (not referenced in orchestrator)
@@ -332,11 +363,13 @@
 **CRITICAL**: Reconciler must run for accuracy tracking to work. Without it, accuracy will always show "No reconciled predictions".
 
 #### Worker C: **Forecast Generators** (48h, 7d, 30d)
+
 - **Functions**: `wolf_app._auto_generate_forecasts()`, `_auto_record_forecast()`, `_auto_score_forecasts()`
 - **Status**: ✅ Active via `wolf_app.py` startup
 - **Purpose**: Long-term price forecasting for WOLF symbol
 
 #### Worker D: **Intelligence Workers** (Stage 2+)
+
 - **Workers**: macro_brain_worker, liquidity_monitor, pattern_memory, reflex_trainer
 - **Location**: `core/workers/`
 - **Status**: ✅ Attempted startup (may fail silently)
@@ -350,18 +383,19 @@
 **Railway Connection**: `DATABASE_URL=postgresql://postgres:...@tender-benevolence.railway.internal:5432/railway`
 
 **Tables**:
+
 1. **ghost_predictions** (PRIMARY KEY: id)
    - Columns: symbol, run_at, horizon_h, method, confidence, direction, features_json, params_json, tag
    - Indexes: (symbol, run_at DESC)
-   
+
 2. **ghost_prediction_points** (forecast + actual curves)
    - Columns: prediction_id (FK), ts, price, price_low, price_high, confidence, kind (forecast/actual)
    - Indexes: (prediction_id, ts)
-   
+
 3. **ghost_prediction_outcomes** (reconciliation results)
    - Columns: prediction_id (FK), reconciled_at, direction_correct, mae, mape, rmse, price_at_prediction, price_at_outcome
    - Views: `v_accuracy_24h`, `v_accuracy_7d`, `v_accuracy_30d`, `v_global_accuracy`
-   
+
 4. **ghost_personal_watchlist** (user watchlist)
    - Columns: user_id, symbol, asset_type, added_at, notes, owns_position, quantity, avg_cost
    - Indexes: (user_id, symbol)
@@ -369,6 +403,7 @@
 **Status**: ✅ Active, migration complete (Dec 1, 2025)
 
 **Performance**:
+
 - Connection pooling: 2-10 connections
 - Write latency: 9-20ms (from Railway tests)
 - Query latency: <50ms for typical queries
@@ -380,29 +415,30 @@
 ### 4.2 SQLite (Fallback, Development)
 
 **Active Databases**:
+
 1. **`data/ghost_predictions.db`** (legacy, dual-write disabled)
    - Status: ⚠️ No longer primary (PostgreSQL is primary)
    - Size: ~500KB (39 predictions, 1221 points)
-   
+
 2. **`data/ensemble_forecaster.db`** (EnsembleForecaster model performance)
    - Tables: `ensemble_forecasts`, `model_performance`
-   
+
 3. **`data/crypto_predictions.db`** (CryptoPredictionEngine)
    - Tables: `crypto_predictions`, `crypto_forecast_points`
-   
+
 4. **`data/prediction_outcomes.db`** (ML training data)
    - Table: `prediction_outcomes` (for ml_trainer.py)
-   
+
 5. **`data/world_feed.db`** (Context Engine news/RSS)
-   
+
 6. **`data/goals.db`** (Goal Engine)
-   
+
 7. **`data/risk.db`** (Risk Engine)
-   
+
 8. **`data/accuracy.db`** (Accuracy Tracker)
-   
+
 9. **`data/wolf.db`** (Legacy WOLF-specific data)
-   
+
 10. **`data/backtest_results.db`** (Backtest Engine)
 
 **Issue**: 10+ separate SQLite databases = fragmentation, no cross-DB queries, harder to maintain.
@@ -418,10 +454,12 @@
 **Purpose**: Unified interface for SQLite ↔ PostgreSQL
 
 **Configuration**:
+
 - `PREDICTION_STORE_ENGINE=postgres` (Railway production)
 - `PREDICTION_DUAL_WRITE=0` (dual-write disabled after migration)
 
 **Methods**:
+
 - `save_prediction()`: Saves prediction + forecast points
 - `append_actual_points()`: Adds actual prices for accuracy calculation
 - `get_prediction()`: Fetch by ID
@@ -440,43 +478,44 @@
 **Router**: `api/cockpit_v3_live_endpoints.py` (2500+ lines)
 
 **Critical Endpoints**:
+
 1. **`/api/cockpit/start|stop|reset`** (POST)
    - Purpose: Control prediction engine
    - Status: ✅ Working (returns `{ok: true, active: true}`)
-   
+
 2. **`/api/v3/watchlist/user`** (GET)
    - Purpose: Personal watchlist (15 symbols)
    - Status: ✅ Working (BTC, ETH, XRP, etc.)
-   
+
 3. **`/api/v3/watchlist/enriched`** (GET)
    - Purpose: Market watchlist (top movers + hunter feed)
    - Status: ✅ Working
-   
+
 4. **`/api/xrp/tracker`** (GET)
    - Purpose: XRP VIP card data (price, 24h change, signal)
    - Status: ✅ Working
    - **Issue**: Returns different 24h% than watchlist (Tracker +1.2%, Watchlist -1.6%)
-   
+
 5. **`/api/presale/watch`** (GET)
    - Purpose: VIP Sniper Coins (WEPE, LILPEPE, DORKL, SLOTH, APC)
    - Status: ⚠️ Returns status labels only (no numeric data yet)
-   
+
 6. **`/api/v3/predictions/latest?symbol={X}`** (GET)
    - Purpose: Forecast widget (24h, 2-5d, 7-14d predictions)
    - Status: ✅ Working (returns different data per symbol)
-   
+
 7. **`/api/v3/news/feed?symbol={X}&limit=10`** (GET)
    - Purpose: News Feed panel
    - Status: ⚠️ Returns empty array (Alpha Vantage key missing)
-   
+
 8. **`/api/v3/goals/snapshot`** (GET)
    - Purpose: Ghost Health Score + Goals
    - Status: ✅ Working (returns ghost_score: 100, daily_goal_pct: 70%, etc.)
-   
+
 9. **`/api/v3/goals/set?period={X}&target_amount={Y}`** (POST)
    - Purpose: Save trading goals
    - Status: ✅ Working (writes to backend, persists)
-   
+
 10. **`/api/v3/accuracy/summary`** (GET)
     - Purpose: Prediction Accuracy panel
     - Status: ⚠️ Returns `{ok: false, error: "No reconciled predictions found"}`
@@ -487,15 +526,16 @@
 **Router**: `api/personal_watchlist_endpoints.py` (800+ lines)
 
 **CRUD Operations**:
+
 1. **`/api/v3/watchlist/add`** (POST)
    - Add symbol to personal watchlist
-   
+
 2. **`/api/v3/watchlist/remove`** (DELETE)
    - Remove symbol from watchlist
-   
+
 3. **`/api/v3/watchlist/update-position`** (POST)
    - Toggle ownership (Mark as Owned)
-   
+
 4. **`/api/v3/watchlist/history/{symbol}?limit=20`** (GET)
    - View prediction history (20 predictions)
 
@@ -508,6 +548,7 @@
 **Endpoint**: `/api/v3/system/diagnostics`
 
 **Returns**:
+
 ```json
 {
   "providers": {
@@ -565,6 +606,7 @@ Return {ok: true, prediction_id: X, confidence: Y, direction: Z}
 ```
 
 **Bottlenecks**:
+
 1. `get_price_for_symbol()` - 200-600ms latency (depends on provider waterfall)
 2. `EnsembleForecaster.forecast()` - 50-150ms computation
 3. PostgreSQL INSERT - 9-20ms write latency
@@ -597,6 +639,7 @@ For each pending prediction:
 **Status**: ❓ Unknown if reconciler is running
 
 **Verification Command**:
+
 ```bash
 railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pending_predictions; print(reconcile_pending_predictions())"
 ```
@@ -608,36 +651,42 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ### 7.1 Critical Accuracy Blockers (Target: 70%)
 
 #### Issue #1: **Feature Poverty** (ML Trainer)
+
 - **Current**: Only 2 features (confidence, price_momentum)
 - **Required**: 50+ features from data pillars
 - **Impact**: XGBoost accuracy capped at 65-75% without rich features
 - **Fix**: Integrate all 6 data pillars into feature extraction
 
 #### Issue #2: **No Regime Detection**
+
 - **Current**: All predictions use same logic regardless of market conditions
 - **Required**: Bull/bear/sideways regime detection with regime-specific models
 - **Impact**: Predictions fail during regime shifts (e.g., bull → bear)
 - **Fix**: Activate Regime Detector, train regime-specific models
 
 #### Issue #3: **Missing Normalization**
+
 - **Current**: Raw features passed to models (price, volume, sentiment)
 - **Required**: Z-score normalization, min-max scaling
 - **Impact**: Large-scale features (price $90k BTC) dominate small-scale features (sentiment -1 to +1)
 - **Fix**: Add normalization layer in feature engineering
 
 #### Issue #4: **No Ensemble Confidence Weighting**
+
 - **Current**: Equal weights across ensemble models (or inverse MAPE only)
 - **Required**: Dynamic confidence weighting per prediction (not per model)
 - **Impact**: Low-confidence predictions treated same as high-confidence
 - **Fix**: Implement prediction-level confidence scores
 
 #### Issue #5: **Missing Decay Systems**
+
 - **Current**: Predictions don't decay over time
 - **Required**: Confidence decay as horizon approaches (24h → 48h → 72h)
 - **Impact**: Stale predictions remain in system with high confidence
 - **Fix**: Add time-based confidence decay (exponential or linear)
 
 #### Issue #6: **No Liquidity Features**
+
 - **Current**: Volume is used, but not bid/ask spread, order book depth
 - **Required**: Liquidity metrics to avoid predictions on illiquid assets
 - **Impact**: Predictions on low-volume stocks/crypto are unreliable
@@ -648,6 +697,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ### 7.2 Infrastructure Blockers
 
 #### Issue #7: **Auto-Prediction Loop Disabled** (Server Hangs)
+
 - **Location**: `core/auto_prediction_loop.py`
 - **Status**: ⚠️ **PERMANENTLY DISABLED** (causes 100% CPU, server unresponsiveness)
 - **Root Cause**: Synchronous blocking I/O in background thread
@@ -658,12 +708,14 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
   3. Keep disabled, rely on Beast Scheduler only
 
 #### Issue #8: **Outcome Reconciler Status Unknown**
+
 - **Expected**: Background worker running every 60min to reconcile predictions with actual outcomes
 - **Current**: ❓ Unknown if running (not referenced in orchestrator.py)
 - **Impact**: Accuracy panel shows "No reconciled predictions found"
 - **Fix**: Verify reconciler is running, add to orchestrator if missing
 
 #### Issue #9: **Provider Prioritization Backwards**
+
 - **Location**: `wolf_app.py` lines 8200-8250
 - **Issue**: Provider chain prioritizes FREE sources (yfinance, Yahoo) when API keys ARE present
 - **Expected**: Should prioritize PAID sources (Polygon, Alpha Vantage) when configured
@@ -671,6 +723,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 - **Fix**: Reverse provider priority logic when API keys are configured
 
 #### Issue #10: **News API Key Missing**
+
 - **Variable**: `ALPHA_VANTAGE_API_KEY` (for NEWS_SENTIMENT API)
 - **Current**: ❌ Not configured in Railway
 - **Impact**: News Feed panel empty, sentiment features unavailable
@@ -681,6 +734,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ### 7.3 Architectural Issues
 
 #### Issue #11: **Database Fragmentation** (10+ SQLite DBs)
+
 - **Current**: 10 separate SQLite databases in `data/` directory
 - **Impact**: No cross-DB queries, harder to maintain, slower backups
 - **Fix**: Consolidate into PostgreSQL with schemas:
@@ -690,12 +744,14 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
   - `context` schema: world_feed, news, RSS
 
 #### Issue #12: **Overlapping Schedulers** (3 Active)
+
 - **Active**: Master Orchestrator + Beast Scheduler + (Auto-Prediction Loop disabled)
 - **Issue**: Beast Scheduler uses threading (not async-native)
 - **Impact**: Potential race conditions, prediction conflicts
 - **Fix**: Consolidate into single async-native scheduler
 
 #### Issue #13: **No Provider Stats Persistence**
+
 - **Current**: Provider reliability stats stored in-memory (`_PROVIDER_STATS` dict)
 - **Impact**: Stats reset on server restart, no long-term reliability analysis
 - **Fix**: Persist to `provider_stats` table in PostgreSQL
@@ -707,6 +763,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ### 8.1 External Dependencies
 
 **Required Python Packages** (45 total):
+
 - FastAPI, Uvicorn (web framework)
 - PostgreSQL: psycopg2-binary
 - Redis: redis (optional caching)
@@ -716,6 +773,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 - Utils: pydantic, python-dotenv, zoneinfo
 
 **External APIs**:
+
 - Polygon.io (stocks, paid)
 - Alpha Vantage (stocks + news, paid)
 - Binance (crypto, free)
@@ -726,6 +784,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ### 8.2 Internal Module Dependencies
 
 **Core Modules** (35 files):
+
 1. Prediction Engines: 13 files
 2. Data Providers: 6 files
 3. Schedulers: 5 files
@@ -733,6 +792,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 5. Intelligence: 8 files (context, accuracy, regime, workers)
 
 **Circular Dependencies Detected**:
+
 - `wolf_app.py` ↔ `core/orchestrator.py` (orchestrator imports wolf_app functions)
 - `core/ensemble_forecaster.py` ↔ `core/ml_trainer.py` (both load models from same directory)
 
@@ -741,6 +801,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ## 9. DEAD CODE CANDIDATES
 
 **Suspected Dead Code** (requires verification):
+
 1. `core/ensemble_predictor.py` (duplicate of ensemble_forecaster, untrained models)
 2. `core/scheduled_predictions.py` (redundant with Beast Scheduler)
 3. `core/watchlist_prediction_scheduler.py` (not referenced in orchestrator)
@@ -754,6 +815,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ## 10. MISSING COMPONENTS FOR 70% ACCURACY
 
 ### 10.1 Feature Engineering Layer
+
 - **Status**: ❌ Missing
 - **Required**: Extract 50+ features from 6 data pillars:
   - Price Engine: OHLCV, returns, volatility
@@ -765,14 +827,16 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 - **Integration Point**: Add to `wolf_app.run_prediction()` before calling EnsembleForecaster
 
 ### 10.2 Regime-Based Prediction Logic
+
 - **Status**: ⚠️ Regime Detector exists but not integrated
-- **Required**: 
+- **Required**:
   - Detect current regime (bull/bear/sideways)
   - Load regime-specific model weights
   - Adjust confidence scores based on regime
 - **Integration Point**: Call `get_regime_detector().detect_regime(symbol)` before prediction
 
 ### 10.3 Confidence Calibration System
+
 - **Status**: ❌ Missing
 - **Required**:
   - Post-prediction confidence calibration (Platt scaling)
@@ -781,6 +845,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 - **Integration Point**: Add calibration layer after ensemble prediction
 
 ### 10.4 Ensemble Model Training Pipeline
+
 - **Status**: ⚠️ XGBoost training exists, LSTM/Transformer missing
 - **Required**:
   - Train LSTM on 48h price sequences
@@ -793,6 +858,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ## 11. SYSTEM HEALTH METRICS
 
 **Current Metrics** (from diagnostics endpoint):
+
 - **Ghost Score**: 51.96 (F grade)
 - **Prediction Coverage**: 12/47 symbols (26%)
 - **Success Rate**: 48% (target: 70%)
@@ -803,6 +869,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
   - Yahoo: Working
 
 **Bottleneck Analysis**:
+
 - Free providers (yfinance, Yahoo) rate-limited
 - Paid providers (Polygon, Alpha Vantage) configured but not prioritized
 - 52% of symbols failing due to provider issues
@@ -812,6 +879,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ## 12. ACCURACY BASELINE & TARGET
 
 **Current Baseline**:
+
 - **Direction Accuracy**: 48-52% (coin flip)
 - **Confidence Calibration**: Unknown (no data yet)
 - **MAE**: Unknown
@@ -819,6 +887,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 - **RMSE**: Unknown
 
 **Target Metrics** (70% accuracy mission):
+
 - **Direction Accuracy**: ≥70% (30% better than random)
 - **Confidence Calibration**: ±5% (predicted confidence matches actual accuracy)
 - **MAE**: <2% of price (e.g., BTC $90k → MAE <$1800)
@@ -826,6 +895,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 - **RMSE**: <3% of price
 
 **Gap Analysis**:
+
 - Need +18-22% direction accuracy improvement
 - Requires 50+ features (currently 2)
 - Requires regime detection (currently missing)
@@ -837,6 +907,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ## 13. PRODUCTION READINESS ASSESSMENT
 
 ### 13.1 Infrastructure ✅ (90% Ready)
+
 - ✅ PostgreSQL primary storage (Railway)
 - ✅ Connection pooling (2-10 connections)
 - ✅ Migration system operational
@@ -845,6 +916,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 - ⚠️ Auto-prediction loop disabled (non-blocking)
 
 ### 13.2 Prediction Accuracy ❌ (48% - Target: 70%)
+
 - ❌ Feature engineering incomplete (2/50 features)
 - ❌ Regime detection not integrated
 - ❌ Confidence calibration missing
@@ -852,6 +924,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 - ⚠️ Outcome reconciler status unknown
 
 ### 13.3 Monitoring & Observability ⚠️ (60% Ready)
+
 - ✅ Prometheus metrics exposed
 - ✅ System diagnostics endpoint
 - ✅ Provider reliability tracking (in-memory)
@@ -859,6 +932,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 - ❌ No dashboard (Grafana not set up)
 
 ### 13.4 Reliability & Stability ⚠️ (70% Ready)
+
 - ✅ Graceful degradation (fallback providers)
 - ✅ Transaction safety (PostgreSQL ACID)
 - ⚠️ Auto-prediction loop disabled (potential single point of failure)
@@ -874,12 +948,14 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 **Deliverable**: "Ghost Logic Reconstruction — v2.0"
 
 **Objectives**:
+
 1. Simulate each pipeline end-to-end
 2. Validate input → processing → output correctness
 3. Detect all flawed logic, missing branches, inconsistent behaviors
 4. Identify places accuracy is capped by missing logic
 
 **Focus Areas**:
+
 1. Provider prioritization logic (reverse free/paid priority)
 2. Feature extraction completeness (2 features → 50 features)
 3. Ensemble weighting fairness (verify inverse MAPE logic)
@@ -891,6 +967,7 @@ railway run python3 -c "from services.outcome_reconciler_v2 import reconcile_pen
 ## CONCLUSION
 
 Ghost Protocol is a **sophisticated multi-engine system** with:
+
 - ✅ **Strong foundation**: PostgreSQL storage, 8 prediction engines, 6 data providers
 - ✅ **Production infrastructure**: Railway deployment, API endpoints, UI panels
 - ⚠️ **Accuracy gap**: 48% → 70% requires feature engineering + regime detection + model training
@@ -904,7 +981,7 @@ Ghost Protocol is a **sophisticated multi-engine system** with:
 
 ---
 
-**Generated by**: Ghost Protocol Supreme Engineer MK-VII  
-**Date**: December 7, 2025  
-**Version**: 1.0  
+**Generated by**: Ghost Protocol Supreme Engineer MK-VII
+**Date**: December 7, 2025
+**Version**: 1.0
 **Status**: PHASE 1 COMPLETE ✅

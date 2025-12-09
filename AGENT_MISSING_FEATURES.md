@@ -10,12 +10,10 @@ ______________________________________________________________________
 - ✅ ChatGPT Analyst loop (`ghost_agent_loop.py`) - 1288 lines
 - ✅ Decision ledger with SQLite persistence (ai_decisions, conversation_topics,
 
-
   tool_calls tables)
 
 - ✅ Tool adapter framework (`core/agent_tools.py`) - retry, validation, attribution
 - ✅ API endpoints: `/api/ai/decisions`, `/api/ai/monitor`,
-
 
   `/api/ai/monitor/symbol/{symbol}`
 
@@ -23,7 +21,6 @@ ______________________________________________________________________
 - ✅ Tool call logging with latency tracking
 - ✅ TTL cleanup (auto-expire decisions after 24h, tool calls after 30d)
 - ✅ Comprehensive test suite (17 tests passing)
-
 
 ### Agent Features Working
 
@@ -35,7 +32,6 @@ ______________________________________________________________________
 - ✅ LLM guardrails (token limits, message trimming, rate limits, secret redaction)
 - ✅ Health monitoring (`/agent/health`)
 - ✅ Outbox system for queued tasks (`/agent/outbox`)
-
 
 ______________________________________________________________________
 
@@ -50,13 +46,11 @@ ______________________________________________________________________
 - No validation of `DecisionStats`, `SymbolPerformance`, `ToolCallMetrics` dataclasses
 - Analytics functions (`compute_decision_stats`, `get_tool_metrics`) untested
 
-
 **Why It Matters**:
 
 - Can't verify monitoring calculations are correct
 - No confidence in confidence trend algorithms
 - Tool metrics might be inaccurate
-
 
 **Implementation**:
 

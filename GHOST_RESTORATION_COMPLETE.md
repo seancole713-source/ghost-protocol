@@ -20,14 +20,12 @@ ______________________________________________________________________
 
 - Verified schema:
 
-
   `(symbol, quantity, avg_cost, entry_price, entry_date, last_known_price, ...)`
 
 ### 2. Bootstrap Data Corrected**Problem:**`ghost_init_data.json` had TEST data (1000 shares @ $12.50) that overwrote
 
 your real position\**Solution:**Updated init file with YOUR verified position OR disabled bootstrap\**Files Modified:**-
 `ghost_init_data.json` → `ghost_init_data.json.bak` (disabled to prevent overwrites)
-
 
 ### 3. Persistence Layer Verified**Problem:**Portfolio not loading from database on startup\**Solution:**Confirmed `PORTFOLIO_PERSISTENCE_ENABLED=1` and `_persist_load()` working
 

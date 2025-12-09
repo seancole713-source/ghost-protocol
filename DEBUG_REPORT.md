@@ -24,7 +24,6 @@ variables not set in Codespaces**- AI_PROVIDER, AGENT_MODEL,
 1. Added `load_dotenv()` to top of wolf_app.py (line ~22)
 2. Enhanced `_is_meta()` with missing query variations (line ~10624)**VERIFICATION:**All 7 test queries now return CLEAN answers with ZERO trading
 
-
 contamination.
 
 ______________________________________________________________________
@@ -39,7 +38,6 @@ ______________________________________________________________________
 - ✅ AGENT_MODEL: gpt-4o-mini
 - ✅ AGENTS_ENABLED: 1
 - ✅ OPENAI_API_KEY: Present**Fix:**Created `/workspaces/GHOST/.env` with Railway secrets and added `load_dotenv()`
-
 
 to wolf_app.py
 

@@ -14,12 +14,10 @@
 2. Sign up with email (free account, no credit card required)
 3. Verify email
 
-
 ### Step 2: Create Cron Job
 
 1. Login and click **"Create cronjob"**
 2. Configure:
-
 
    ```text
    Title: Ghost Protocol - Daily Prediction Evaluation
@@ -38,12 +36,11 @@
 
    ```text
 
-1. Click **"Create"**### Step 3: Test Immediately
+3. Click **"Create"**### Step 3: Test Immediately
 
-1. Click the job name
-2. Click**"Execute now"**3. Wait ~10 seconds
-3. Check "Execution history" for status**Expected Response**:
-
+4. Click the job name
+5. Click**"Execute now"**3. Wait ~10 seconds
+6. Check "Execution history" for status**Expected Response**:
 
 ```json
 

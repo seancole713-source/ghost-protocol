@@ -17,7 +17,6 @@
 - [ ] `/api/v3/accuracy/summary` returns accuracy metrics
 - [ ] `/api/v3/providers/health` returns provider status
 
-
 ## Cockpit V3 UI
 
 - [ ] Top Movers panel loads crypto/stock prices
@@ -28,7 +27,6 @@
 - [ ] Ghost Score matches backend (37-92 range)
 - [ ] Goals progress shows percentages
 
-
 ## Prediction System
 
 - [ ] Feature extraction gets 20+/25 features (not 3)
@@ -37,14 +35,12 @@
 - [ ] Predictions for multiple symbols (not just WOLF)
 - [ ] Database has 30+ predictions across symbols
 
-
 ## Data Providers
 
 - [ ] Crypto providers: BTC, ETH, SOL, BNB working
 - [ ] Stock providers: AAPL, MSFT, NVDA working (if Polygon key exists)
 - [ ] Provider health tracked (not all "unknown")
 - [ ] Failures handled gracefully (no crashes)
-
 
 ## Railway + Docker
 
@@ -53,12 +49,10 @@
 - [ ] No crash loops in logs
 - [ ] Volume persistence working
 
-
 ## Blockers (External Dependencies)
 
 - ⚠️ News API key (Alpha Vantage/Finnhub) - if missing, news will be empty
 - ⚠️ Polygon stock key - if missing, stock predictions limited
 - ⚠️ ML model artifacts - if missing, use rule-based predictions
-
 
 **Status**: Starting Phase 1 fixes...

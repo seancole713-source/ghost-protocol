@@ -17,43 +17,37 @@ ______________________________________________________________________
 
 1.**✅ Portfolio Panel**- Status: Active with 1 position
 
-   - NAV: $0 (empty portfolio, ready for trading)
-   - Data Source: Live state
-
+- NAV: $0 (empty portfolio, ready for trading)
+- Data Source: Live state
 
 1.**✅ Cockpit Dashboard**- Mode: `live`
 
-   - Ticker: WOLF
-   - GPS Score: 0.0 (no position yet)
-   - Confidence: 0
-   - SSE Stream: Active, updates every 5s
-
+- Ticker: WOLF
+- GPS Score: 0.0 (no position yet)
+- Confidence: 0
+- SSE Stream: Active, updates every 5s
 
 1.**✅ 48-Hour Forecast**- Horizon: 48 hours
 
-   - Data Points: 24 (2-hour intervals)
-   - Confidence: 60%
-   - Status: Generating predictions from live data
-
+- Data Points: 24 (2-hour intervals)
+- Confidence: 60%
+- Status: Generating predictions from live data
 
 1.**✅ Watchlist**- Tickers: 9 symbols loaded
 
-   - Symbols: WOLF, AAPL, MSFT, TSLA, NVDA, GOOGL, AMZN, META, NFLX
-   - Status: Tracking real-time prices
-
+- Symbols: WOLF, AAPL, MSFT, TSLA, NVDA, GOOGL, AMZN, META, NFLX
+- Status: Tracking real-time prices
 
 1.**✅ News Feed**- Count: 5 articles displayed
 
-   - Latest Headlines:
-     - "Japan stocks soar after Takaichi wins race to head ruling party"
-     - "Bitcoin hits new high above $125,000"
-     - "Japan stocks hit record high after ruling party picks pro-stimulus Sanae
-
+- Latest Headlines:
+  - "Japan stocks soar after Takaichi wins race to head ruling party"
+  - "Bitcoin hits new high above $125,000"
+  - "Japan stocks hit record high after ruling party picks pro-stimulus Sanae
 
        Takaichi"
 
-   - Source: Live Polygon feed
-
+- Source: Live Polygon feed
 
 ### Advanced Features - OPERATIONAL
 
@@ -73,7 +67,6 @@ ______________________________________________________________________
 -**Auto-reload:**Enabled
 -**Market Status:**✅ OPEN
 
-
 ______________________________________________________________________
 
 ## UI Access Points
@@ -83,7 +76,6 @@ ______________________________________________________________________
 -**Bank:**/bank.html
 -**Markets:**/markets.html
 -**Engine:**/engine.html
-
 
 ______________________________________________________________________
 

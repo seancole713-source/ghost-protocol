@@ -20,7 +20,6 @@ The label was**hardcoded in the HTML file**at `ui_dist/index.html` line 178
 
 ### Solution Applied**3 locations updated in `ui_dist/index.html`:**1.**Line 168**- HTML comment
 
-
    ```html
    <!-- Market Status + Ghost Predictions Row -->
 

@@ -55,7 +55,6 @@
 - Success Rate: 100%
 - Throttled: No
 
-
 **Sample Response**:
 
 ```json

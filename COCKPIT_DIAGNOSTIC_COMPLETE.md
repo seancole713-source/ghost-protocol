@@ -8,12 +8,12 @@
 
 - Live Wiring: ⚠️ 4/10 (only movers/news/forecast partially work)
 - Baseline Compliance: ❌ 2/10 (missing VIP sniper coins, XRP tracker, presale radar)**Critical Issues:**1. ❌ VIP panel shows BTC/ETH/SOL/BNB/XRP (all offline) - should show WEPE/LILPEPE/DORKL/SLOTH/APC
+
 1. ❌ XRP tracker API exists but not exposed in UI
 2. ❌ Presale awareness completely missing
 3. ❌ Watchlist shows "STOCK --" for everything (wrong types, no data)
 4. ⚠️ Health metrics hard-coded (85/75/70 static values)
 5. ⚠️ START/STOP buttons work but no visible status
-
 
 ---
 
@@ -25,7 +25,6 @@
 - ✅ Backend endpoints update `STATE["active"]`**Issues:**- ❌ Status dot hidden (no initial `updateStatusIndicator()` call)
 - ❌ Text never shows "RUNNING" / "STOPPED" explicitly
 - ❌ LIVE/FIXED toggle has no effect (just console.log)**Fix:**```javascript
-
 
 // In initializeApp() - ADD:
 loadCockpitStatus();  // Load status immediately

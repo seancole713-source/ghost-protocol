@@ -8,7 +8,6 @@
 
 - Price: **$24.37**- NAV:**$205.19**- Source: `"prev-close"` (yesterday's closing price)**Difference**: 22¢ per share = **$1.85 NAV error**______________________________________________________________________
 
-
 ## 🔍 Root Cause Analysis
 
 ### 1. Cache TTL Too Long

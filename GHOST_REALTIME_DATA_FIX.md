@@ -16,31 +16,26 @@ ______________________________________________________________________
    - ✅ Works for EOD data
    - ❌ No real-time intraday on free tier
 
-
 1.**Polygon**(`8VIvELVXiLG30K2l1348RzSurffLM0jR`):
 
-   - ✅ Previous day data working
-   - ❌ Real-time requires paid plan
-   - ✅ Can get aggregates/bars with 5 min delay
-
+- ✅ Previous day data working
+- ❌ Real-time requires paid plan
+- ✅ Can get aggregates/bars with 5 min delay
 
 1.**Yahoo Finance**:
 
-   - ❌ Rate limiting (429 errors)
-   - ❌ Returning HTML instead of JSON
-   - ⚠️ Unreliable for production
-
+- ❌ Rate limiting (429 errors)
+- ❌ Returning HTML instead of JSON
+- ⚠️ Unreliable for production
 
 ### Current Situation
 
 - Ghost is stuck with **previous close ($31.10)**because all real-time sources are
 
-
   blocked/limited
 
 - Railway deployment is using stale cache
 - No way to get live intraday data without upgrading API plans
-
 
 ______________________________________________________________________
 

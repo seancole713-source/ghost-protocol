@@ -13,7 +13,6 @@ ______________________________________________________________________
 -**Auto-reload:**Enabled for development
 -**Status:**🟢 Operational
 
-
 ### 2. Position Management & Persistence ✅
 
 -**Position Loaded:**WOLF - 8.41959051 shares @ $359.40 avg cost
@@ -22,27 +21,23 @@ ______________________________________________________________________
 -**API Endpoint:**`/api/positions` returns correct data
 -**Status:**🟢 Fully Working
 
-
 ### 3. Live Price Pipeline ✅
 
 -**Providers Active:**- AlphaVantage: Working (103ms latency)
 
-  - Yahoo: Rate-limited (429 errors - expected after market hours)
-  - yfinance: Backup provider
-  - Polygon: Available (needs API key validation)
-
+- Yahoo: Rate-limited (429 errors - expected after market hours)
+- yfinance: Backup provider
+- Polygon: Available (needs API key validation)
 
 -**Price Diagnostics:**Exposed via `/diagnostics/summary`
 
-  - Last fetch provider: alphavantage
-  - Latency tracking: 103ms
-  - Quorum status: OK
-  - Fallback logic: Working
-
+- Last fetch provider: alphavantage
+- Latency tracking: 103ms
+- Quorum status: OK
+- Fallback logic: Working
 
 -**Events Stream:**Emits `price_ok` events with provider, latency, timestamp
 -**Status:**🟢 Working (with expected rate-limiting during off-hours)
-
 
 ### 4. Portfolio Math & KPIs ✅
 
@@ -50,14 +45,12 @@ ______________________________________________________________________
 -**PnL Calculation:**(Current Price – Entry Price) × Quantity
 -**Current Metrics:**- NAV: $3,026.00
 
-  - Cash: $0.00
-  - Position Value: $3,026.00 (8.41959051 shares × $359.40)
-  - PnL: $0.00 (using entry price as baseline when live price unavailable)
-
+- Cash: $0.00
+- Position Value: $3,026.00 (8.41959051 shares × $359.40)
+- PnL: $0.00 (using entry price as baseline when live price unavailable)
 
 -**Precision:**Full 8-decimal support for fractional shares
 -**Status:**🟢 Accurate
-
 
 ### 5. 48h Forecast Generation ✅
 

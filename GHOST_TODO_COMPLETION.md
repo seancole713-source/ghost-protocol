@@ -23,14 +23,12 @@ Ghost already has a**comprehensive portfolio persistence system**built in:
   - `daily_snapshots` - End-of-day portfolio snapshots
   - `cash_balances` - Cash balance tracking
 
-
 #### 🔧 Integration in `wolf_app.py`
 
 - **\_persist_load()**: Restores portfolio state on startup
 - **\_persist_save()**: Saves portfolio state automatically
 - **get_portfolio_store()**: Singleton pattern for database access
 - **PORTFOLIO_PERSISTENCE_ENABLED**: Feature flag (currently enabled)
-
 
 ### Key Features
 

@@ -13,7 +13,6 @@ ______________________________________________________________________
 - ❌ Agent produces: `"action": "HOLD", "rationale": "No positions"`
 - ❌ Agent thinks portfolio is EMPTY despite having 8.42 WOLF shares
 
-
 **Root Cause**: Agent conversation memory is stale/corrupted
 
 **Fix Required**:

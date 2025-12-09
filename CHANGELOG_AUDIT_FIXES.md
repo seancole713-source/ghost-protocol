@@ -17,7 +17,6 @@ correctly reads from positions array
 - `wolf_app.py` line 7009: Changed `_evaluate_signal()` to use helper function
 - `wolf_app.py` line 7139: Changed `_signal_card()` to use helper function
 
-
 **Before**:
 
 ```python

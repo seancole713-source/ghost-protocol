@@ -52,7 +52,6 @@ ______________________________________________________________________
 5. Click "Add Variable" for each secret above
 6. Copy the exact values (including quotes if shown)
 
-
 ### Option B: Railway CLI
 
 ```bash

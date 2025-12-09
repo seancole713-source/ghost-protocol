@@ -5,7 +5,7 @@
 
 ## 📊 What Was Deployed
 
-###**Critical Reliability Fixes**(4 P1 Issues Resolved)
+### **Critical Reliability Fixes**(4 P1 Issues Resolved)
 
 #### 1️⃣**GH-AUD-005**: Circuit Breaker Thundering Herd Prevention
 
@@ -13,11 +13,9 @@
 - **Fix**: Added ±20% jitter to exponential backoff
 - **Impact**: Prevents all clients from hammering Yahoo Finance simultaneously after
 
-
   rate limit recovery
 
 - **Test**: `test_backoff_429.py` ✅ PASSING
-
 
 ```python
 

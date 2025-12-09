@@ -17,12 +17,10 @@
 - **Energy**: XOM, CVX
 - **Macro**: VIX, TLT, GLD
 
-
 ### **Crypto (20 Core)**-**Majors**: BTC, ETH, SOL, XRP, ADA, DOGE, MATIC, AVAX
 
 - **DeFi**: UNI, AAVE, LINK, CRV
 - **Memes**: SHIB, PEPE, FLOKI, BONK
-
 
 ### **VIP Coins (High-Risk Tracking)**- WEPE, LILPEPE, DORKL, SLOTH, APC, TURBO, WOJAK**Total Universe**: 50+ assets tracked 24/7
 
@@ -36,18 +34,15 @@
 - **Horizon**: 24-48 hours
 - **Primary Validation Ticker**: **SPY**-**Secondary**: AAPL, BTC, ETH
 
-
 ### **Phase 2 (Days 11-30)**: Optimization
 
 - **Target**: 65-70% directional accuracy
 - **Confidence Threshold**: Only trade signals >70% confidence
 
-
 ### **Phase 3 (Days 31-90)**: Production Excellence
 
 - **Target**: 70-75% directional accuracy
 - **Multi-horizon**: 4h, 12h, 24h, 48h, 7d predictions
-
 
 ---
 
@@ -61,24 +56,21 @@
 4. ✅**REAL PREDICTIONS ONLY**- Every prediction must have real features
 5. ✅**MEASURABLE ACCURACY**- Track and report every prediction outcome
 
-
 ---
 
 ## 📊 DATA REQUIREMENTS
 
-###**Historical Data Depth**-**Stocks**: 2-5 years daily OHLCV minimum
+### **Historical Data Depth**-**Stocks**: 2-5 years daily OHLCV minimum
 
 - **Crypto**: 1-3 years (where available)
 - **News**: 90 days rolling sentiment archive
 - **Technical Indicators**: Computed on-the-fly from OHLCV
-
 
 ### **Real-Time Data Feeds**-**Prices**: Update every 60s (stocks), 30s (crypto)
 
 - **Volume**: Track in real-time
 - **News**: Poll every 15 minutes
 - **Movers**: Scan every 60 seconds
-
 
 ---
 
@@ -93,51 +85,44 @@
 - ✅ `OPENAI_API_KEY` - AI analysis
 - ✅ `REDIS_URL` - Caching
 
-
-###**Optional (Enhancement)**- `BINANCE_API_KEY` - Crypto volume/orderbook
+### **Optional (Enhancement)**- `BINANCE_API_KEY` - Crypto volume/orderbook
 
 - `NEWS_API_KEY` - Additional sentiment
-
 
 ---
 
 ## 🏗️ SYSTEM ARCHITECTURE
 
-###**Core Components**1.**Data Pillars**(6 modules)
+### **Core Components**1.**Data Pillars**(6 modules)
 
-   - Price History Engine
-   - Technical Indicators Calculator
-   - Volume/Volatility Analyzer
-   - World Context Tracker (SPY/VIX/macro)
-   - Sentiment/News Aggregator
-   - Flow/Orderbook Monitor
-
+- Price History Engine
+- Technical Indicators Calculator
+- Volume/Volatility Analyzer
+- World Context Tracker (SPY/VIX/macro)
+- Sentiment/News Aggregator
+- Flow/Orderbook Monitor
 
 1.**Prediction Engine**- Feature Extraction Pipeline
 
-   - ML Model Ensemble (XGBoost + LSTM)
-   - Confidence Calculator
-   - Prediction Storage (SQLite)
-
+- ML Model Ensemble (XGBoost + LSTM)
+- Confidence Calculator
+- Prediction Storage (SQLite)
 
 1.**Accuracy Engine**- Outcome Reconciliation Job
 
-   - Performance Metrics Calculator
-   - Learning Feedback Loop
-
+- Performance Metrics Calculator
+- Learning Feedback Loop
 
 1.**Hunter System**- Movers Scanner (60s interval)
 
-   - Opportunity Scorer
-   - Prediction Attachment
-
+- Opportunity Scorer
+- Prediction Attachment
 
 1.**Cockpit V3 UI**- Real-time data display
 
-   - Prediction history
-   - Accuracy dashboard
-   - Hunter feed
-
+- Prediction history
+- Accuracy dashboard
+- Hunter feed
 
 ---
 
@@ -155,8 +140,7 @@ Ghost is considered**OPERATIONAL**when:
 8. ✅ Learning loop improves accuracy weekly
 9. ✅ UI displays 100% real data (no placeholders)
 
-1. ✅ Zero simulation code paths active
-
+10. ✅ Zero simulation code paths active
 
 ---
 
@@ -164,16 +148,13 @@ Ghost is considered**OPERATIONAL**when:
 
 - Steps 1-5: Core engine + data pillars + ML model
 
-
 **Week 2 (Days 8-14)**: Intelligence
 
 - Steps 6-8: Scoring, hunter, world context
 
-
 **Week 3 (Days 15-21)**: Optimization
 
 - Steps 9-10: Learning loop + UI polish
-
 
 **Total Duration**: 21 days to full operational status
 

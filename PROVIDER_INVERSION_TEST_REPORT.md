@@ -12,7 +12,6 @@
 4. ✅ Push, rebuild, redeploy
 5. ⚠️ Confirm feature targets (partial - Yahoo rate limiting)
 
-
 ---
 
 ## CHANGES DEPLOYED

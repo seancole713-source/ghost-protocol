@@ -11,31 +11,26 @@ ______________________________________________________________________
 - ✅**Phase 3B:**3 UI test data issues fixed (hardcoded sample data → real API calls)
 - ✅**Phase 4:**Env standardization applied (AGENTS_ENABLED/AGENT_MODEL canonical;
 
-
   AI_ON/AI_MODEL kept as aliases)
 
 - ✅**Phase 4:**Debug endpoints enforce Bearer auth when GHOST_API_TOKEN is set and are
-
 
   gated by SNAP_TEST_MODE for mutating ops
 
 - ✅**Validation:**Server boot, health, cockpit, price, and AI endpoints exercised
 
-
   successfully
 
 - ⚠️**Remaining:**3 low-priority doc cleanups; 1 critical user action (rotate
 
-
   previously committed secrets)
 
-###**Codebase Health:**-**Total Lines:**15,133 (wolf_app.py main application)
+### **Codebase Health:**-**Total Lines:**15,133 (wolf_app.py main application)
 
 -**Security Status:**🔴 API keys in `secrets.env` (USER MUST ROTATE)
 -**Code Quality:**🟢 Clean (no placeholder comments, no fake endpoints)
 -**Test Coverage:**🟢 Comprehensive (58 test files with proper mocking)
 -**Documentation:**🟡 Good (a few samples still show generic placeholder wording—swap to Railway commands)
-
 
 ______________________________________________________________________
 
@@ -68,7 +63,7 @@ ______________________________________________________________________
 
 ## ⚠️**REMAINING ISSUES (Low Priority)**###**� LOW: Documentation Examples (16 instances)**______________________________________________________________________
 
-####**Issue 4: Placeholder Keys in Docs**
+#### **Issue 4: Placeholder Keys in Docs**
 
 **Files:**16 markdown files**Examples:**```bash
 
@@ -83,13 +78,13 @@ cleanup pass
 
 ______________________________________________________________________
 
-###**🟢 LOW: Legacy Migration Code (1 issue)**####**Issue 5: \_legacy_snapshot_to_decision() Active**
+### **🟢 LOW: Legacy Migration Code (1 issue)**####**Issue 5: \_legacy_snapshot_to_decision() Active**
 
 **File:**`wolf_app.py:1624`\**Current:**Function exists and runs on startup\**Purpose:**One-time migration from old AI DB format\**Problem:**Migration code in main app (should be in scripts/)\**Recommendation:** **Keep as-is**(defensive code, handles edge case)\**Impact:**None (safe, runs once if old DB exists)\**Fix Time:**0 minutes\**Action Required:**None (acceptable)
 
 ______________________________________________________________________
 
-###**🟢 LOW: Test Mock Usage (Correct)**####**Issue 6: Mock Usage in Tests (58 instances)**
+### **🟢 LOW: Test Mock Usage (Correct)**####**Issue 6: Mock Usage in Tests (58 instances)**
 
 **Files:** All test files (`tests/test_*.py`)\
 **Current:**Tests use `unittest.mock` and hardcoded test keys\**Example:**```python

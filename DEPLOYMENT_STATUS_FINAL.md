@@ -6,10 +6,8 @@
 
 - **Latest Commit:**11b31c63
 
-
 -**Deployed To:**<<<<<https://web-production-8e9a0.up.railway.app>>>>>
 -**Deployment Time:**October 13, 2025
-
 
 ______________________________________________________________________
 

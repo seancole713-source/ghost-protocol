@@ -25,7 +25,6 @@ The system now:
 - Crypto continues 24/7 (crypto markets never close)
 - Enhanced logging shows "Market OPEN" vs "Market CLOSED" status**Files Changed:**- `core/auto_prediction_loop.py` (lines 43-125)**Test Results:**```text
 
-
 ✅ Market hours function: Correctly identifies market open/closed
 ✅ Stock predictions: Skipped when market closed
 ✅ Crypto predictions: Always run regardless of market hours

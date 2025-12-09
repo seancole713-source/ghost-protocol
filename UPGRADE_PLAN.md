@@ -518,7 +518,7 @@ async def api_cockpit_stream_v2(request: Request):
     Previous implementation removed during P1-2 consolidation.
     """
 
-    # ... existing implementation 
+    # ... existing implementation
 
 ```text
 
@@ -750,7 +750,7 @@ def _cockpit_generator():
 
     try:
 
-        # ... existing while loop 
+        # ... existing while loop
 
     finally:
         _G_SSE_CLIENTS.labels(endpoint=endpoint).dec()
@@ -943,7 +943,7 @@ async def telegram_webhook(request: Request):
     except Exception:
         raise HTTPException(400, "Invalid JSON")
 
-    # ... existing command handling 
+    # ... existing command handling
 
 ```text
 
@@ -1473,7 +1473,6 @@ if not (missing or extra):
 - [ ] Setup checklist included
 - [ ] Validation script passes
 - [ ] Linked from README.md
-
 
 ______________________________________________________________________
 

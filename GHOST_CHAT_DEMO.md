@@ -13,27 +13,23 @@ are**indirect correlations**to monitor:
 
 1.**Sector Correlation (Weak)**- WOLF is a semiconductor manufacturer, not crypto-related
 
-   - However, risk-off market sentiment from crypto crashes can pressure growth stocks
-   - Tech sector often sees rotation away during crypto volatility
-
+- However, risk-off market sentiment from crypto crashes can pressure growth stocks
+- Tech sector often sees rotation away during crypto volatility
 
 1.**Your Current Position**- Holdings: `$(railway variables get WOLF_QTY)` shares @ `$$(railway variables get WOLF_AVG_COST)`
 
-   - Current Price: value from `curl -s <<<<<http://localhost:5000/api/price/WOLF>>>>> | jq .price`
-   - If Bitcoin triggers broader market selloff, WOLF could see 3-5% pullback
-
+- Current Price: value from `curl -s <<<<<http://localhost:5000/api/price/WOLF>>>>> | jq .price`
+- If Bitcoin triggers broader market selloff, WOLF could see 3-5% pullback
 
 1.**News Sentiment Context**- Recent WOLF news: `curl -s <<<<<http://localhost:5000/api/news/latest>>>>> | jq '.items[0].score'`
 
-   - Company fundamentals remain separate from crypto markets
-   - Focus on semiconductor demand, not Bitcoin price
-
+- Company fundamentals remain separate from crypto markets
+- Focus on semiconductor demand, not Bitcoin price
 
 1.**Trading Signal**- Current action: `curl -s -X POST <<<<<http://localhost:5000/ai/decide>>>>> | jq -r .action`
 
-   - Confidence: `curl -s -X POST <<<<<http://localhost:5000/ai/decide>>>>> | jq -r .confidence`
-   - Recommendation: Monitor broader tech sector, not just Bitcoin
-
+- Confidence: `curl -s -X POST <<<<<http://localhost:5000/ai/decide>>>>> | jq -r .confidence`
+- Recommendation: Monitor broader tech sector, not just Bitcoin
 
 ### ⚠️ Risks to Watch
 
@@ -42,13 +38,11 @@ are**indirect correlations**to monitor:
 - **Tech multiple compression**: Flight to safety could pressure WOLF valuation
 - **Sentiment shift**: Risk-off positioning across growth stocks
 
-
 ### ✅ Action Items
 
 1. Set stop-loss if Bitcoin drops below $50k (macro risk)
 2. Monitor NASDAQ correlation (WOLF follows tech more than crypto)
 3. Watch semiconductor sector ETFs (SOXX, SMH) for sector-specific moves
-
 
 **Bottom Line:**Bitcoin is a macro risk indicator, not a WOLF-specific driver. Focus on
 chip demand, not crypto prices.
@@ -61,28 +55,25 @@ When you ask Ghost a question, it:
 
 1.**Gathers context**from 10+ data sources:
 
-   - Current WOLF price & your position
-   - News sentiment from last 10 headlines
-   - Technical signals & indicators
-   - Market mood & macro pressure
-   - Module weights & confidence scores
-
+- Current WOLF price & your position
+- News sentiment from last 10 headlines
+- Technical signals & indicators
+- Market mood & macro pressure
+- Module weights & confidence scores
 
 1.**Sends to AI**(GPT-4 or local model) with:
 
-   - Your question
-   - Full market context
-   - Ghost's trading rules
-   - Risk analysis frameworks
-
+- Your question
+- Full market context
+- Ghost's trading rules
+- Risk analysis frameworks
 
 1.**Returns actionable advice** with:
 
-   - Direct answer to your question
-   - Supporting data from context
-   - Specific action items
-   - Risk warnings
-
+- Direct answer to your question
+- Supporting data from context
+- Specific action items
+- Risk warnings
 
 ______________________________________________________________________
 

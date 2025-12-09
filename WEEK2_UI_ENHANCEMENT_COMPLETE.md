@@ -16,16 +16,15 @@ Added a new **"🌍 World Context & Market Mood"**section to the cockpit that di
 
 -**Market Regime**: Bull/Bear/Sideways with emoji indicator
 
-  - 🐂 Bull (green) - strong uptrend
-  - 🐻 Bear (red) - strong downtrend
-  - ↔️ Sideways (yellow) - ranging market
+- 🐂 Bull (green) - strong uptrend
+- 🐻 Bear (red) - strong downtrend
+- ↔️ Sideways (yellow) - ranging market
 - **Sentiment**: Risk-on / Risk-off / Neutral
 - **Summary**: Human-readable market analysis
 - **Metrics**:
   - SPY price
   - VIX level
   - Confidence score (0-100%)
-
 
 #### Right Panel: World Context (24h)
 
@@ -36,7 +35,6 @@ Added a new **"🌍 World Context & Market Mood"**section to the cockpit that di
   - Yellow for neutral
 - **Trending Events**: Top 5 event categories (e.g., earnings, merger, product)
 - **Top Headlines**: Last 3-5 relevant headlines with bullet points
-
 
 ______________________________________________________________________
 

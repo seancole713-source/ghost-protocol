@@ -19,7 +19,6 @@ the data tools and execution layer.
 - Background task queue
 - Health monitoring
 
-
 ### 2. Analyst Tools (7 endpoints)
 
 - `news.search` - Recent news + sentiment
@@ -30,14 +29,12 @@ the data tools and execution layer.
 - `company.profile` - Company fundamentals
 - `sentiment.score` - Text sentiment analysis
 
-
 ### 3. Integration Points
 
 - Auto-loads on Ghost startup
 - Runs every 5 minutes (configurable)
 - 3 monitoring endpoints: `/agent/health`, `/agent/state`, `/agent/outbox`
 - Telegram-ready (wire in 5 lines of code)
-
 
 ## How It Works
 

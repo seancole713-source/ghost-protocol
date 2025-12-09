@@ -14,7 +14,6 @@ list with**real-time coverage of the entire U.S. stock market**.
 - ❌ Limited to pre-selected symbols
 - ❌ Quickly exhausts API quota
 
-
 ### After (Snapshot Mode) ✅
 
 - ✅ **Market-wide coverage**(all U.S. stocks across all exchanges)
@@ -23,7 +22,6 @@ list with**real-time coverage of the entire U.S. stock market**.
 - ✅ Works within free tier limits (5 calls/min = 7,200/day)
 - ✅ Returns top 20 gainers + top 20 losers = 40 movers per scan
 - ✅ Includes price, % change, volume multiplier automatically
-
 
 ## API Endpoints Used
 

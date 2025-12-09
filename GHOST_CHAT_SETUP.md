@@ -7,7 +7,6 @@ Ghost now has **conversational AI**capabilities! You can ask questions naturally
 1.**HTTP API**(`/ai/chat` endpoint)
 2.**Telegram**(text Ghost questions directly)
 
-
 ## Features
 
 ### Natural Language Q&A
@@ -19,7 +18,6 @@ Ask Ghost anything about markets and WOLF:
 - "How does news sentiment affect my position?"
 - "What's the risk of holding through earnings?"
 
-
 ### Context-Aware Responses
 
 Ghost analyzes:
@@ -30,14 +28,12 @@ Ghost analyzes:
 - Market mood & macro pressure
 - Your portfolio exposure
 
-
 ### Existing Commands Still Work
 
 - `/status` - Portfolio snapshot
 - `/signal` - Current trading signal
 - `/pnl` - Daily profit/loss
 - `/help` - Command list
-
 
 ______________________________________________________________________
 

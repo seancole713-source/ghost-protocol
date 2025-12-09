@@ -23,7 +23,6 @@
   - `ALERT_SIMPLE_FORMAT=compact|balanced|context` (default: balanced)
   - `MIN_ALERT_CONFIDENCE=0.60` (filter threshold)
 
-
 **Test Result**: ✅ All 3 formats working
 
 ### 2. Feature Diagnostics System
@@ -37,7 +36,6 @@
 - `diagnose_features()` validates data quality
 - `build_confidence_with_diagnostics()` forces confidence=0 if degraded
 - Policy: Price + 2 other signals + 3 features minimum
-
 
 **Test Result**: ✅ Correctly detects stale prices and missing features
 
@@ -57,7 +55,6 @@
   - `PRICE_SOURCE_SECONDARY=yahoo`
   - `PRICE_FRESHNESS_THRESHOLD_S=300`
 
-
 **Test Result**: ✅ Fallback working, stats tracked correctly
 
 ---
@@ -71,14 +68,12 @@
 - Syntax errors fixed (escaped quotes in telegram_alerts.py)
 - All modules pass standalone execution tests
 
-
 ### ⚠️ Partial
 
 - `wolf_app.py` imports added
 - Feature diagnostics NOT wired into prediction pipeline
 - Confidence policy NOT applied
 - Provider stats NOT exposed via API
-
 
 ### ❌ Not Implemented (Future Work)
 
@@ -89,7 +84,6 @@
 - /api/hunter/* endpoints
 - Cockpit UI integration
 - Telegram Hunter alerts
-
 
 ---
 

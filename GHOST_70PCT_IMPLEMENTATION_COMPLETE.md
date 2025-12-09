@@ -31,12 +31,10 @@ prediction accuracy.
 - Recent predictions with outcomes
 - Performance metrics (win rate, Sharpe ratio, best/worst symbols)
 
-
 **Database**: `prediction_outcomes.db`
 
 - Table: `prediction_outcomes`
 - Columns: prediction_id, symbol, predicted_at, check_at, confidence, actual_price, correct, etc.
-
 
 **Key Metrics Provided**:
 

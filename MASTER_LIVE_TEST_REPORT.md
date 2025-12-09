@@ -41,7 +41,7 @@ LIVE_MODE_READY**_______________________________________________________________
 ### DNS Reachability
 
 | Provider | Status | URL | |----------|--------|-----| | Yahoo Finance | ✅ |
-query1.finance.yahoo.com | | AlphaVantage | ✅ | www.alphavantage.co | | Polygon | ✅ |
+query1.finance.yahoo.com | | AlphaVantage | ✅ | <www.alphavantage.co> | | Polygon | ✅ |
 api.polygon.io |
 
 ### Database Initialization
@@ -50,13 +50,11 @@ api.polygon.io |
 - ✅ `ai_memory.db` (19 MB) - largest, actively used
 - ✅ Tables initialized for forecasts, orders, execution, risk, etc.
 
-
 ### Server Status
 
 - ✅ uvicorn process running (PID 29147)
 - ✅ Listening on 0.0.0.0:5000
 - ✅ Reload mode enabled
-
 
 ______________________________________________________________________
 

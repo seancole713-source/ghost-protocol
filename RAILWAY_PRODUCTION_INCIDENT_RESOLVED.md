@@ -16,7 +16,6 @@
 - 499 Client Closed Request errors (5-15 second timeouts)
 - Both V2 and V3 endpoints unreachable
 
-
 **Affected Endpoints**:
 
 - `/api/cockpit/snapshot` - 502
@@ -24,7 +23,6 @@
 - `/api/v3/cockpit/status` - 499 (5s timeout)
 - `/api/predict/run` - 499 (5s timeout)
 - All other V2/V3 endpoints - 502
-
 
 ---
 
@@ -39,7 +37,6 @@
 3. The `json` module was imported inside function scopes but not at module level
 4. When FastAPI tried to load the router on startup, module validation failed
 5. Application crashed before accepting HTTP connections
-
 
 **Evidence**:
 

@@ -15,7 +15,6 @@ Shows BTC/ETH/SOL/BNB/XRP (all offline) instead of VIP sniper coins + XRP tracke
 - `templates/cockpit_v3.html` (lines 60-67)
 - `static/cockpit_v3.js` (lines 282-342)
 
-
 ### Steps
 
 1. Add 3 new div containers to HTML: `xrp-tracker`, `vip-sniper-list`, `vip-majors-list`
@@ -23,8 +22,7 @@ Shows BTC/ETH/SOL/BNB/XRP (all offline) instead of VIP sniper coins + XRP tracke
    - `/api/xrp/tracker` → XRP bullish eye
    - `/api/presale/watch` → WEPE/LILPEPE/etc
    - `/api/v3/vip/snapshot` → BTC/ETH reference
-1. Add render functions: `renderXRPTracker()`, `renderVIPSniperCoins()`, `renderMajorCaps()`
-
+3. Add render functions: `renderXRPTracker()`, `renderVIPSniperCoins()`, `renderMajorCaps()`
 
 ### Code Snippet
 

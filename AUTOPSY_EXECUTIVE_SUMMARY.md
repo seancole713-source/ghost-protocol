@@ -30,14 +30,12 @@
 -**Fix:**Reduce to TOP 5 coins (BTC, ETH, SOL, XRP, BNB) + circuit breaker
 -**Time:**2 days
 
-
 ### 2. CRYPTO MOVERS MISSING ⚠️ INCOMPLETE FEATURE
 
 -**Root Cause:**Background scanner not returning crypto OR GPS threshold too high (>7.0)
 -**Impact:**"Crypto" tab shows empty list
 -**Fix:**Lower threshold to 5.0 + verify scanner runs every 5min
 -**Time:**2 days
-
 
 ### 3. NEWS SENTIMENT NEUTRAL ⚠️ DIAGNOSIS PENDING
 
@@ -46,14 +44,12 @@
 -**Fix:**Awaiting user console logs (F12) to confirm root cause
 -**Time:**1 day (after logs received)
 
-
 ### 4. FORECAST HORIZONS IDENTICAL ✅ ALREADY FIXED
 
 -**Root Cause:**UI copied same prediction 3x (24h, 2-5d, 7-14d all identical)
 -**Impact:**User thought forecast engine was broken (actually UI bug)
 -**Fix:**Time-decay multipliers applied (100%/70%/50% confidence)
 -**Status:**✅ DEPLOYED (Session 4)
-
 
 ---
 
@@ -67,14 +63,12 @@
 - ✅**Signal generation:**BUY/SELL/HOLD thresholds (±2% move), confidence 40-85%
 - ✅**Database:**507 predictions, 190 outcomes, 13,939 forecast points stored
 
-
 ### Frontend Modules
 
 - ✅**Watchlist:**SSE live updates, multiple symbols tracked
 - ✅**Goals:**Percentage tracking (target_pct, realized_pct, model_edge_pct)
 - ✅**Health:**Dynamic Ghost Score 92-100, accuracy stats
 - ✅**Control Bar:**START/STOP/RESET responsive
-
 
 ---
 

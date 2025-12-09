@@ -45,7 +45,6 @@ Railway manual deployment **Endpoints provided**:
 - `/api/news/recent` - Recent news with time filter
 - `/api/news/sentiment/{symbol}` - News sentiment analysis
 
-
 ### 2. Top Movers (PRIORITY 2)
 
 **Add endpoint**: `/api/market/movers` **Implementation**: Query stage 1 world data for
@@ -87,7 +86,6 @@ optimization algorithm
 - ❌ Provider Backoff (missing `/api/sources/status`)
 - ⚠️ Portfolio Optimization (missing `/api/stage4/portfolio/optimize`)
 
-
 ## 🎯 RECOMMENDED ACTION PLAN
 
 ### Phase 1: Deploy Current Code (NOW)
@@ -95,7 +93,6 @@ optimization algorithm
 1. Manually deploy commit `b5b3a3e` on Railway
 2. This will fix**6 out of 11 UI panels**immediately
 3. News feed will start working
-
 
 ### Phase 2: Add Missing Endpoints (NEXT)
 
@@ -107,13 +104,11 @@ Create these 5 endpoints to fix remaining UI panels:
 4. `/api/sources/status` - Provider backoff display
 5. `/api/stage4/portfolio/optimize` - Portfolio optimization
 
-
 ### Phase 3: Test End-to-End (FINAL)
 
 1. Verify all UI panels load without errors
 2. Test interactive features (buttons, refresh, filters)
 3. Validate data accuracy
-
 
 ## 📝 SUMMARY**Current State:**- 9/14 required endpoints exist in wolf_app.py
 
@@ -123,7 +118,6 @@ Create these 5 endpoints to fix remaining UI panels:
 - ~85% of UI panels will work**To Reach 100%:**- Add 5 missing endpoints
 - Deploy again
 - All UI panels operational
-
 
 ______________________________________________________________________**Next Step**: Deploy commit `b5b3a3e` to Railway
 manually, then create the 5 missing

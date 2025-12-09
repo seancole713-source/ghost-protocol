@@ -13,7 +13,6 @@
 4. **Provider Isolation**: One provider failure doesn't kill entire pillar
 5. **Observable**: Full diagnostics, latency tracking, health endpoints
 
-
 ---
 
 ## NEW PROVIDER STACK

@@ -18,7 +18,6 @@ Scheduled alert feature disabled by default (`ALERT_SCHEDULE_OPEN_CLOSE=0`)
 
 **Solution Implemented:**- Added to `secrets.env`:
 
-
   ```bash
   ALERT_SCHEDULE_OPEN_CLOSE=1
   SCHEDULE_WINDOW_S=600  # 10-minute window

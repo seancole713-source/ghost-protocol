@@ -17,7 +17,6 @@
 - **Entry Date**: 2025-10-06
 - **Status**: ✅ PERSISTENT (stored in DB)
 
-
 ### Note on P&L
 
 The significant negative P&L (-92.57%) is due to the 120:1 reverse stock split on 2025-10-01. This is expected and
@@ -35,7 +34,6 @@ accounted for in the system.
 - `daily_snapshots` - ✅ NAV tracking
 - `orders` - ✅ Trade history
 - `forecast_runs` - ✅ Prediction data
-
 
 ### Portfolio API Response
 

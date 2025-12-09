@@ -15,12 +15,14 @@ Ghost crashed Sunday at the 48-hour mark when the outcome reconciler attempted t
 ## The Crisis
 
 ### Timeline
+
 - **Friday 8 AM**: Ghost started, began making 48-hour predictions
 - **Saturday**: Ghost ran stably for 26+ hours
 - **Sunday (48-hour mark)**: Outcome reconciler triggered to evaluate predictions
 - **Crash**: All endpoints returned HTTP 502 (Bad Gateway) or 499 (Client Timeout)
 
 ### Symptoms
+
 ```
 Railway Logs:
 Prediction 25483 has insufficient aligned points (0), skipping
@@ -36,7 +38,9 @@ GET /api/v3/predictions/latest  499  4m 1s
 ```
 
 ### Root Cause
+
 The outcome reconciler had **zero crash protection**:
+
 1. **No batch limit** - Tried to process ALL 200+ pending predictions at once
 2. **No timeout** - Hung indefinitely trying to fetch missing price data
 3. **No circuit breaker** - Continued processing despite 100% failure rate
@@ -51,6 +55,7 @@ The outcome reconciler had **zero crash protection**:
 **Problem**: `get_pending_outcomes()` fetched ALL pending predictions with no `LIMIT` clause
 
 **Solution**:
+
 ```python
 # PostgreSQL query now includes batch limit
 cursor.execute("""
@@ -64,7 +69,8 @@ cursor.execute("""
 """, (now,))
 ```
 
-**Impact**: 
+**Impact**:
+
 - Reconciler now processes max 100 predictions per hourly run
 - Prevents overwhelming system with thousands of predictions
 - Remaining predictions processed in subsequent runs
@@ -76,6 +82,7 @@ cursor.execute("""
 **Problem**: Reconciliation ran indefinitely if predictions lacked data
 
 **Solution**:
+
 ```python
 import signal
 
@@ -83,10 +90,10 @@ def reconcile_outcomes_v2():
     # Overall timeout: 5 minutes max for entire reconciliation run
     def timeout_handler(signum, frame):
         raise TimeoutError("Reconciliation run exceeded 5 minute timeout")
-    
+
     original_handler = signal.signal(signal.SIGALRM, timeout_handler)
     signal.alarm(300)  # 5 minute timeout
-    
+
     try:
         # ... reconciliation logic ...
     finally:
@@ -95,6 +102,7 @@ def reconcile_outcomes_v2():
 ```
 
 **Impact**:
+
 - Entire reconciliation run cannot exceed 5 minutes
 - System remains responsive even during large batch processing
 - Timeout logs error and returns gracefully
@@ -106,12 +114,13 @@ def reconcile_outcomes_v2():
 **Problem**: Reconciler continued processing even with 100% failure rate
 
 **Solution**:
+
 ```python
 for idx, pred in enumerate(pending, start=1):
     result = _reconcile_single_v2(pred)
-    
+
     # Track results...
-    
+
     # CIRCUIT BREAKER: Stop if >70% failures after processing at least 10
     if idx >= 10:
         total_processed = success_count + no_data_count + error_count + skipped_count
@@ -126,6 +135,7 @@ for idx, pred in enumerate(pending, start=1):
 ```
 
 **Impact**:
+
 - Stops processing if >70% of predictions fail
 - Prevents cascade failures from taking down entire system
 - Clear logging shows when circuit breaker activates
@@ -137,34 +147,36 @@ for idx, pred in enumerate(pending, start=1):
 **Problem**: Price fetching hung indefinitely waiting for unavailable data
 
 **Solution**:
+
 ```python
 def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
     try:
         # FAST-FAIL: Set short timeout to prevent hanging
         def price_timeout_handler(signum, frame):
             raise TimeoutError("Price fetch timeout")
-        
+
         original_handler = signal.signal(signal.SIGALRM, price_timeout_handler)
         signal.alarm(10)  # 10 second timeout per price fetch
-        
+
         try:
             price = get_symbol_price(symbol)
-            
+
             if price is None:
                 LOGGER.debug(f"⚠️  unified_provider returned None for {symbol} (fast-failing)")
                 return None  # Immediate return, no retries
-            
+
             return price
         finally:
             signal.alarm(0)  # Cancel timeout
             signal.signal(signal.SIGALRM, original_handler)
-    
+
     except TimeoutError:
         LOGGER.warning(f"⏰ Price fetch timeout for {symbol} after 10s (fast-failing)")
         return None  # Fast-fail, don't retry
 ```
 
 **Impact**:
+
 - Max 10 seconds per price fetch attempt
 - Returns `None` immediately if data unavailable
 - No retries or waiting - moves to next prediction quickly
@@ -175,18 +187,20 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
 ## Verification
 
 ### Deployment
+
 ```bash
 $ git log --oneline -1
 3f2b462 🚨 CRITICAL FIX: Prevent outcome reconciler crash with batch limits...
 
 $ railway up --detach
-  Indexed                                                                                                                                                                                
-  Compressed [====================] 100%                                                                                                                                                 
-  Uploaded                                                                                                                                                                               
+  Indexed
+  Compressed [====================] 100%
+  Uploaded
   Build Logs: https://railway.com/project/.../service/...
 ```
 
 ### Health Check
+
 ```bash
 $ curl https://ghost-protocol-production.up.railway.app/health
 {"status":"ok","service":"ghost-protocol","uptime":124,"message":"Server is accepting connections"}
@@ -194,6 +208,7 @@ $ curl https://ghost-protocol-production.up.railway.app/health
 ```
 
 ### Predictions Flowing
+
 ```bash
 $ curl "https://ghost-protocol-production.up.railway.app/api/v3/predictions/latest?limit=3"
 {
@@ -237,6 +252,7 @@ $ curl "https://ghost-protocol-production.up.railway.app/api/v3/predictions/late
 The reconciler runs hourly via background thread. Next run will show:
 
 ### Success Case
+
 ```
 🔄 Starting outcome reconciliation V2...
 📊 Found 100 predictions ready for reconciliation
@@ -247,13 +263,14 @@ The reconciler runs hourly via background thread. Next run will show:
 ```
 
 ### Circuit Breaker Case (if data issues persist)
+
 ```
 🔄 Starting outcome reconciliation V2...
 📊 Found 100 predictions ready for reconciliation
 ⚠️  Prediction 25719 (BTC): No price at t0, marking no_data
 ⚠️  Prediction 25720 (ETH): No price at t0, marking no_data
 [... 8 more predictions processed ...]
-🚨 CIRCUIT BREAKER TRIGGERED: 85.0% failure rate (85/100 failed). 
+🚨 CIRCUIT BREAKER TRIGGERED: 85.0% failure rate (85/100 failed).
    Stopping reconciliation to prevent cascade failure.
 ✅ Reconciliation complete: 15 success, 85 no_data, 0 errors, 0 skipped
 ```
@@ -265,14 +282,17 @@ The reconciler runs hourly via background thread. Next run will show:
 ## Code Changes
 
 ### Files Modified
+
 1. **`core/prediction_store.py`** - Added `LIMIT 100` to PostgreSQL query
 2. **`services/outcome_reconciler_v2.py`** - Added timeout, circuit breaker, fast-fail
 
 ### Lines Changed
+
 - `prediction_store.py`: +1 line (LIMIT clause)
 - `outcome_reconciler_v2.py`: +76 lines, -16 lines (net +60 lines)
 
 ### Total Impact
+
 - **92 lines changed** across 2 files
 - **Zero breaking changes** - All changes are additive safeguards
 - **Backward compatible** - Works with existing predictions database
@@ -282,19 +302,22 @@ The reconciler runs hourly via background thread. Next run will show:
 ## Monitoring Plan
 
 ### Next 24 Hours
+
 1. **Monitor Railway logs** for reconciler runs (hourly)
 2. **Check circuit breaker** - Should NOT trigger if price data available
 3. **Verify predictions** continue flowing (currently: ETH, BTC, WOLF)
 4. **Watch for 502/499 errors** - Should be eliminated
 
 ### Success Criteria
-✅ Ghost uptime >24 hours without crash  
-✅ Reconciler runs complete within 5 minutes  
-✅ Circuit breaker only triggers during data outages  
-✅ Predictions continue flowing during reconciliation  
-✅ No HTTP 502/499 errors on any endpoint  
+
+✅ Ghost uptime >24 hours without crash
+✅ Reconciler runs complete within 5 minutes
+✅ Circuit breaker only triggers during data outages
+✅ Predictions continue flowing during reconciliation
+✅ No HTTP 502/499 errors on any endpoint
 
 ### If Problems Recur
+
 1. Check Railway logs: `railway logs | grep -i "CIRCUIT\|timeout\|reconcil"`
 2. Verify batch size: Should process ≤100 predictions per run
 3. Check timeout logs: Look for "exceeded 5 minute timeout"
@@ -305,7 +328,9 @@ The reconciler runs hourly via background thread. Next run will show:
 ## Future Enhancements (Not Urgent)
 
 ### 1. Historical Price Fetching
+
 Currently using latest price. Should implement true historical price API:
+
 ```python
 # TODO: Use historical price endpoints
 price_t0 = historical_provider.get_price_at_timestamp(symbol, run_at)
@@ -313,14 +338,18 @@ price_t1 = historical_provider.get_price_at_timestamp(symbol, t_resolve)
 ```
 
 ### 2. Reconciler Metrics
+
 Add Prometheus metrics:
+
 - `ghost_reconciler_batch_size` - How many predictions processed
 - `ghost_reconciler_success_rate` - Percentage of successful reconciliations
 - `ghost_reconciler_circuit_breaker_triggers` - How often circuit breaker activates
 - `ghost_reconciler_duration_seconds` - Time to process batch
 
 ### 3. Configurable Limits
+
 Make limits configurable via environment variables:
+
 ```bash
 RECONCILE_BATCH_SIZE=100           # Max predictions per run
 RECONCILE_TIMEOUT_SECONDS=300      # Overall timeout
@@ -329,7 +358,9 @@ RECONCILE_PRICE_TIMEOUT_SECONDS=10 # Per-price timeout
 ```
 
 ### 4. Retry Failed Predictions
+
 Add table for failed predictions to retry later:
+
 ```sql
 CREATE TABLE ghost_reconciler_retry_queue (
     prediction_id INT PRIMARY KEY,
@@ -346,41 +377,46 @@ CREATE TABLE ghost_reconciler_retry_queue (
 
 Ghost's outcome reconciler crash has been **completely fixed** with comprehensive safeguards:
 
-✅ Batch limiting prevents overwhelming system  
-✅ Timeouts prevent indefinite hangs  
-✅ Circuit breaker stops cascade failures  
-✅ Fast-fail prevents waiting on missing data  
+✅ Batch limiting prevents overwhelming system
+✅ Timeouts prevent indefinite hangs
+✅ Circuit breaker stops cascade failures
+✅ Fast-fail prevents waiting on missing data
 
 **Ghost is LIVE** and ready for 48-hour accuracy testing.
 
-**Next reconciliation run**: Within 1 hour (runs hourly)  
-**Expected result**: Clean execution or graceful circuit breaker activation  
+**Next reconciliation run**: Within 1 hour (runs hourly)
+**Expected result**: Clean execution or graceful circuit breaker activation
 
 ---
 
 ## Quick Reference
 
 ### Health Check
+
 ```bash
 curl https://ghost-protocol-production.up.railway.app/health
 ```
 
 ### View Reconciler Logs
+
 ```bash
 railway logs | grep -i reconcil
 ```
 
 ### View Circuit Breaker Activations
+
 ```bash
 railway logs | grep "CIRCUIT BREAKER"
 ```
 
 ### Check Batch Size
+
 ```bash
 railway logs | grep "Found .* predictions ready for reconciliation"
 ```
 
 ### Monitor Success Rate
+
 ```bash
 railway logs | grep "Reconciliation complete"
 ```

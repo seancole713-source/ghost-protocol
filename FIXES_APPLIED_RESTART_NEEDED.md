@@ -16,7 +16,6 @@ ______________________________________________________________________
    - `telegram_webhook()` /pnl command (line ~6442)
    - `_signal_card()` (line ~7046)**Files Modified:**`wolf_app.py`
 
-
 ______________________________________________________________________
 
 ### ✅ Fix #2: Watchlist Script Created**Problem:**WOLF not in watchlist (your primary holding missing!)**Solution:**Created `add_wolf_to_watchlist.py` script to add WOLF to watchlist**Usage:**```bash

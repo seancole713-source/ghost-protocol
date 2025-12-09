@@ -10,7 +10,6 @@
 - 🟡**Partially Working:**Top movers (data ok, no visual render), watchlist (data ok, wrong display labels)
 - ❌**Broken:**Prediction accuracy panel (empty - endpoint returns no data), market watchlist (404 endpoint), VIP sniper missing 3 coins
 
-
 ---
 
 ## 1. Global Frame & State (Header Controls)
@@ -21,7 +20,6 @@
 
 - JavaScript: `static/cockpit_v3.js` lines 106-160
 - Backend: `wolf_app.py` lines 7382-7428**Verified Behavior:**| Element | JS Handler | Backend Endpoint | State Modified | Status |
-
 
 |---------|-----------|------------------|----------------|--------|
 | START button | `controlAction('start')` | `POST /api/cockpit/start` | `STATE["active"] = True` | ✅ Works |
@@ -42,9 +40,8 @@ POST /api/cockpit/start
 
 ```text**Issues Found:**1.**LIVE/FIXED mode selector is cosmetic only**- `handleModeChange()` logs to console but does NOT post to backend
 
-   - No backend endpoint `/api/cockpit/mode` exists
-   - Selection has zero impact on data sources or behavior
-
+- No backend endpoint `/api/cockpit/mode` exists
+- Selection has zero impact on data sources or behavior
 
    -**Fix Required:**Implement mode endpoint that toggles between real-time prices vs fixed/historical snapshot**Status Text:**Dynamic - shows "RUNNING" when `STATE["active"]=true`, "STOPPED" when false
    . Not hard-coded.
@@ -57,7 +54,6 @@ POST /api/cockpit/start
 
 - JavaScript: `static/cockpit_v3.js` lines 219-288
 - Backend: `wolf_app.py` → `/api/v3/hunter/feed`**Verified Behavior:**Test Result:
-
 
 ```bash
 
@@ -505,7 +501,7 @@ async function initializeApp() {
 
 def get_xrp_tracker_data():
 
-    # ... existing bullish_eye calculation 
+    # ... existing bullish_eye calculation
 
     # NEW: Get XRP prediction confidence
 

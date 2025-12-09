@@ -32,7 +32,6 @@ ______________________________________________________________________
   - `last_good_price_ts` - freshness indicator
   - `fallback_reason` - why fallback occurred
 
-
 **Verification**:
 
 ```bash

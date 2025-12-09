@@ -12,7 +12,6 @@
 - `/cryptos` - Show current watchlist
 - `/help` - Updated to show new commands
 
-
 **Status**: ✅ **IMPLEMENTED**and**TESTED**### 3.**Persistent Watchlist Storage**✅**File**: `data/crypto_watchlist.json`\
 **Features**:
 
@@ -20,7 +19,6 @@
 - ✅ Auto-saves on changes
 - ✅ Prevents duplicates
 - ✅ Case-insensitive
-
 
 **Test Results**:
 

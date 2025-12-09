@@ -14,7 +14,6 @@
 - Position & account management
 - Market clock API
 
-
 ### 2. ✅ Added 12 Broker Endpoints to wolf_app.py
 
 **Total Lines Added**: ~600 lines
@@ -26,7 +25,6 @@
 - `GET /api/broker/account` - Account info
 - `GET /api/broker/clock` - Market hours
 
-
 **Trading**:
 
 - `POST /api/trade/submit` - Submit orders (WITH RISK CHECKS)
@@ -36,12 +34,10 @@
 - `DELETE /api/trade/orders/cancel_all` - Cancel all
 - `POST /api/trade/position/close/{symbol}` - Close position
 
-
 **Risk**:
 
 - `GET /api/risk/status` - Risk limits & current state
 - `GET /api/risk/scan_exits` - Find SL/TP triggers
-
 
 ### 3. ✅ Enhanced Risk Engine
 
@@ -50,7 +46,6 @@
 - Added `risk_check_order()` - Pre-submission validation
 - Added `scan_positions_for_exits()` - Auto SL/TP detection
 - Added `get_status()` - API-friendly output
-
 
 ### 4. ✅ All Environment Variables Set in Railway
 
@@ -64,7 +59,6 @@
 - `RISK_MAX_DAILY_DD_PCT=5` (was 15, now 5)
 - `RISK_KILL=0`
 
-
 ### 5. ✅ Created Testing Documentation
 
 **File**: `BROKER_TESTING_GUIDE.md` (350 lines)
@@ -73,7 +67,6 @@
 - curl examples for every endpoint
 - Expected responses
 - Troubleshooting guide
-
 
 ______________________________________________________________________
 

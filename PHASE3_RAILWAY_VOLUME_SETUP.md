@@ -19,13 +19,12 @@ Add a Railway persistent volume for the `/data` directory.
 
 1. **Go to your service**(Ghost Sniper Bot)
 
-
 1.**Click "Variables" tab**1.**Add Volume Mount**:
 
-   - Click "+ New Volume"
-   - **Mount Path**: `/app/data`
-   - **Size**: Start with 1GB (can increase later)
-   - Click "Add"
+- Click "+ New Volume"
+- **Mount Path**: `/app/data`
+- **Size**: Start with 1GB (can increase later)
+- Click "Add"
 
 1. **Verify Environment Variable**:
    - Check that `GHOST_PREDICT_DB=/app/data/ghost_predictions.db` is set
@@ -34,7 +33,6 @@ Add a Railway persistent volume for the `/data` directory.
 1. **Redeploy**:
    - Click "Deploy" → "Redeploy"
    - Watch logs to confirm database persists
-
 
 ---
 

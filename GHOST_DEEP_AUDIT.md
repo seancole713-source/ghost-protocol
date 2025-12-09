@@ -47,10 +47,9 @@ The following fixes provide immediate value with minimal implementation risk:
 
 1.**Add `detect-secrets` pre-commit hook**(20 min)
 
-   - Install: `pip install detect-secrets`
-   - Generate baseline: `detect-secrets scan --baseline .secrets.baseline`
-   - Create hook: See `SECURITY_INCIDENT_P0_SECRETS.md`
-
+- Install: `pip install detect-secrets`
+- Generate baseline: `detect-secrets scan --baseline .secrets.baseline`
+- Create hook: See `SECURITY_INCIDENT_P0_SECRETS.md`
 
    -**Impact**: Prevents future secret leaks
 
@@ -58,18 +57,15 @@ The following fixes provide immediate value with minimal implementation risk:
 
    - Single-line parameter addition:
 
-
      `credentials: HTTPAuthorizationCredentials | None = AUTH_DEP`
 
    - Insert `_require_bearer()` call
-
 
    -**Impact**: Closes unauthenticated Telegram spam vector
 
 1. **Add circuit breaker cooldown reset**(30 min)
 
    - Modify `_breaker_on_success()` to reset `backoff_factor` to 0
-
 
    -**Impact**: Prevents permanent provider lockout after transient 429s
 
@@ -78,7 +74,6 @@ The following fixes provide immediate value with minimal implementation risk:
    - Wrap RSS feed loop in top-level try/except
    - Return cached last-good + degraded flag on DNS failure
 
-
    -**Impact**: Prevents news feed crash → empty cockpit
 
 1. **Expose forecast accuracy in `/api/cockpit`**(30 min)
@@ -86,16 +81,13 @@ The following fixes provide immediate value with minimal implementation risk:
    - Add `"accuracy": {"map": X, "rmse": Y}` to existing snapshot
    - Function `_compute_forecast_accuracy()` already exists (line 755)
 
-
    -**Impact**: UI can display prediction quality chips
 
 1. **Add SSE TTL (1-hour max)**(25 min)
 
    - Modify 3 generators: `if time.time() - started > 3600: break`
 
-
    -**Impact**: Auto-expires stale connections → prevents memory leak
-
 
 **Total Quick Wins Effort**: ~2.3 hours\
 **Total Quick Wins Impact**: Closes 2 P1 issues, mitigates 1 P1, addresses 1 P3
@@ -181,7 +173,7 @@ async def debug_set_prev_close(body: dict | None = None):
     if os.getenv("SNAP_TEST_MODE", "0").lower() not in ("1", "true", "yes"):
         raise HTTPException(403, "forbidden")
 
-    # ... allows price override 
+    # ... allows price override
 
 # Line 6426: /debug/telegram_test
 
@@ -224,7 +216,7 @@ async def debug_set_prev_close(
 ):
     _require_bearer((f"Bearer {credentials.credentials}") if credentials else None)
 
-    # ... rest of logic 
+    # ... rest of logic
 
 @APP.post("/debug/telegram_test")
 async def debug_telegram_test(
@@ -233,7 +225,7 @@ async def debug_telegram_test(
 ):
     _require_bearer((f"Bearer {credentials.credentials}") if credentials else None)
 
-    # ... rest of logic 
+    # ... rest of logic
 
 ```text
 
@@ -381,7 +373,7 @@ async def telegram_webhook(request: Request):
 
     body = await request.json()
 
-    # ... processes commands 
+    # ... processes commands
 
 ```text
 
@@ -411,7 +403,7 @@ async def telegram_webhook(request: Request):
 
     body = await request.json()
 
-    # ... validate body structure 
+    # ... validate body structure
 
 ```text
 
@@ -545,7 +537,7 @@ UI cannot display prediction quality chips.
 
 def _compute_forecast_accuracy(forecast_points: list[dict], actual_points: list[dict]) -> dict[str, Any]:
 
-    # ... computes by-timestamp errors 
+    # ... computes by-timestamp errors
 
     summary = {
         "map": round(sum(apes) / len(apes), 6),
@@ -558,7 +550,7 @@ def _compute_forecast_accuracy(forecast_points: list[dict], actual_points: list[
 
 def _build_two_line_forecast(symbol: str = WOLF) -> dict[str, Any]:
 
-    # ... calls _compute_forecast_accuracy() 
+    # ... calls _compute_forecast_accuracy()
 
     accuracy = _compute_forecast_accuracy(forecast["points"], actual["points"])
     return {"forecast": forecast, "actual": actual, "accuracy": accuracy}
@@ -597,7 +589,7 @@ chip |**Not visible**❌ |
 
 def _build_cockpit_snapshot() -> dict[str, Any]:
 
-    # ... existing code 
+    # ... existing code
 
     snapshot["forecast"] = _forecast_summary_for_snapshot()
 
@@ -703,7 +695,7 @@ async def health_detailed():
 
     async def _run_checks():
 
-        # ... existing health checks 
+        # ... existing health checks
 
         return health_status
 
@@ -974,7 +966,7 @@ AUTH_DEP = Security(SECURITY_SCHEME)            # Line 61
 async def endpoint(credentials: HTTPAuthorizationCredentials | None = AUTH_DEP):
     _require_bearer((f"Bearer {credentials.credentials}") if credentials else None)
 
-    # ... protected logic 
+    # ... protected logic
 
 ```text
 
@@ -1248,7 +1240,7 @@ if REUTERS_FEEDS_ON:
                 r = _http_get(feed_url, timeout=8)
                 r.raise_for_status()
 
-                # ... XML parsing 
+                # ... XML parsing
 
             except Exception:
 
@@ -1256,7 +1248,7 @@ if REUTERS_FEEDS_ON:
 
                 try:
 
-                    # ... more XML parsing 
+                    # ... more XML parsing
 
                 except Exception:
                     pass  # ← Silently skip this feed URL
@@ -1299,7 +1291,7 @@ if REUTERS_FEEDS_ON:
     try:
         feed_urls = [u.strip() for u in (REUTERS_FEEDS or "").split(",") if u.strip()]
 
-        # ... existing inner loop 
+        # ... existing inner loop
 
     except Exception as e:
 

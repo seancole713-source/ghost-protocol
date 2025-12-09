@@ -10,7 +10,6 @@
 - ✅ Market regime detection
 - ✅ Accuracy tracking**Phase 2 Target**: 100% feature parity with stock module
 
-
 ______________________________________________________________________
 
 ## Phase 2 Features Breakdown

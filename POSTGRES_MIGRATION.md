@@ -32,7 +32,6 @@ Successfully migrated Ghost Protocol from SQLite to Railway PostgreSQL with full
 4.**Data Durability**- Railway automatic backups + replication
 5.**Horizontal Scaling**- Ready for read replicas
 
-
 ---
 
 ## 🗄️ Database Schema

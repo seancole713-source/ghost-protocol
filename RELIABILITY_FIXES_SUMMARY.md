@@ -76,7 +76,7 @@ refresh, sets `NEWS_CACHE['items'] = []`, causing UI to show blank news section.
 if REUTERS_FEEDS_ON:
     feed_urls = [u.strip() for u in (REUTERS_FEEDS or "").split(",") if u.strip()]
 
-    # ... feed processing 
+    # ... feed processing
 
     # NO OUTER TRY/EXCEPT
 
@@ -89,7 +89,7 @@ if REUTERS_FEEDS_ON:
     try:
         feed_urls = [u.strip() for u in (REUTERS_FEEDS or "").split(",") if u.strip()]
 
-        # ... feed processing 
+        # ... feed processing
 
     except Exception as e:
 
@@ -165,7 +165,7 @@ OOM crash.
 async def sse_events():
     async def event_gen():
 
-        # ... infinite loop with no disconnect check 
+        # ... infinite loop with no disconnect check
 
 # After
 
@@ -174,7 +174,7 @@ async def sse_events(request: Request):
     async def event_gen():
         start_time = time.time()
 
-        # ... replay recent events 
+        # ... replay recent events
 
         while True:
 
@@ -190,7 +190,7 @@ async def sse_events(request: Request):
                 print("[SSE events] Stream TTL expired (30 min), closing")
                 break
 
-            # ... rest of loop 
+            # ... rest of loop
 
 ```text
 
@@ -204,7 +204,7 @@ async def sse_events(request: Request):
 async def sse_cockpit_stream():
     async def gen():
 
-        # ... infinite loop with no disconnect check 
+        # ... infinite loop with no disconnect check
 
 # After
 
@@ -213,7 +213,7 @@ async def sse_cockpit_stream(request: Request):
     async def gen():
         start_time = time.time()
 
-        # ... send initial snapshot 
+        # ... send initial snapshot
 
         while True:
 
@@ -229,7 +229,7 @@ async def sse_cockpit_stream(request: Request):
                 print("[SSE cockpit] Stream TTL expired (30 min), closing")
                 break
 
-            # ... rest of loop 
+            # ... rest of loop
 
 ```text
 
@@ -242,7 +242,7 @@ async def sse_cockpit_stream(request: Request):
 @APP.get("/api/cockpit/stream")  # DUPLICATE!
 async def api_cockpit_stream():
 
-    # ... no disconnect check 
+    # ... no disconnect check
 
 # After
 
@@ -264,7 +264,7 @@ async def api_forecast_stream(request: Request):
                 print("[SSE forecast] Stream TTL expired (30 min), closing")
                 break
 
-            # ... rest of loop 
+            # ... rest of loop
 
 ```text
 

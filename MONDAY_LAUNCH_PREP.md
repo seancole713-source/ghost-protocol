@@ -14,7 +14,6 @@ ______________________________________________________________________
 -**Cash:**$10,000 available
 -**P&L:**Ready for real-time calculation
 
-
 ### Watchlist (5/25 tickers)
 
 - WOLF (primary focus)
@@ -23,13 +22,11 @@ ______________________________________________________________________
 - TSLA (test ticker)
 - NVDA (test ticker)
 
-
 ### Macro Tracking
 
 -**Regime:**SIDEWAYS
 -**Risk Level:**MEDIUM
 -**SPY/QQQ/VIX:**Actively monitored
-
 
 ### Data Sources (All Active)
 
@@ -41,7 +38,6 @@ ______________________________________________________________________
 - ✅ Ghost-AI v1 APEX Enhanced
 - ✅ Algo Footprint Detection
 
-
 ______________________________________________________________________
 
 ## 🧪 UI TESTING (Tonight)
@@ -50,37 +46,32 @@ ______________________________________________________________________
 
 1.**Cockpit**- [Cockpit panel](<<<<<http://localhost:5000/cockpit.htm>>>>>l)
 
-   - Real-time status
-   - Position summary
-   - AI signals
-
+- Real-time status
+- Position summary
+- AI signals
 
 1.**Portfolio/Bank**- [Portfolio/Bank panel](<<<<<http://localhost:5000/bank.htm>>>>>l)
 
-   - Position management
-   - Cash tracking
-   - P&L history
-
+- Position management
+- Cash tracking
+- P&L history
 
 1.**Markets**- [Markets panel](<<<<<http://localhost:5000/markets.htm>>>>>l)
 
-   - Watchlist view
-   - Top movers
-   - Market status
-
+- Watchlist view
+- Top movers
+- Market status
 
 1.**Engine**- [Engine panel](<<<<<http://localhost:5000/engine.htm>>>>>l)
 
-   - Ghost-AI v1 preview
-   - Feature importance
-   - Signal confidence
-
+- Ghost-AI v1 preview
+- Feature importance
+- Signal confidence
 
 1.**Main Dashboard**- [Main dashboard](<<<<<http://localhost:5000>>>>>/)
 
-   - Overview of all systems
-   - Quick actions
-
+- Overview of all systems
+- Quick actions
 
 ### Quick Test Commands
 

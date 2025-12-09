@@ -10,7 +10,6 @@
 - Market regime and risk dashboard
 - Market mood and world context
 
-
 ### What's Missing ❌
 
 All newly added endpoints returning 404:
@@ -21,7 +20,6 @@ All newly added endpoints returning 404:
 - `/api/snapshot`
 - `/api/research/snapshot/{symbol}`
 - `/api/stage5/execution/analytics`
-
 
 ## Why This Happened
 

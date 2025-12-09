@@ -18,7 +18,6 @@ ______________________________________________________________________
 - **API**: `/api/insider/{symbol}` (TODO: add endpoint)
 - **Expected Accuracy Boost**: +3-4%
 
-
 ### 2. CBOE Options Flow Tracker ✅
 
 - **Location**: `wolf_app.py` lines 4215-4360
@@ -29,7 +28,6 @@ ______________________________________________________________________
 - **Weight in Model**: 15%
 - **API**: `GET /api/options/{symbol}`
 - **Expected Accuracy Boost**: +2-3%
-
 
 ### 3. Short Interest Tracker ✅
 
@@ -42,7 +40,6 @@ ______________________________________________________________________
 - **API**: `GET /api/short_interest/{symbol}`
 - **Expected Accuracy Boost**: +2-3%
 
-
 ### 4. Supply Chain & Macro Indicators ✅
 
 - **Location**: `wolf_app.py` lines 4545-4710
@@ -52,7 +49,6 @@ ______________________________________________________________________
 - **Weight in Model**: 10%
 - **API**: `GET /api/supply_chain/{symbol}`
 - **Expected Accuracy Boost**: +3-4%
-
 
 ### 5. SEC 13F Institutional Holdings ✅
 
@@ -64,7 +60,6 @@ ______________________________________________________________________
 - **Weight in Model**: 15%
 - **API**: `GET /api/institutional/{symbol}`
 - **Expected Accuracy Boost**: +4-5%
-
 
 ### 6. Ensemble Forecaster Integration ✅
 
@@ -78,7 +73,6 @@ ______________________________________________________________________
 - **API**: `GET /api/ensemble/forecast/{symbol}?horizon_hours=24`
 - **Expected Accuracy Boost**: +2-3% (diversification reduces overfitting)
 
-
 ### Phase 2 Total Expected Accuracy: **68% → 80%**______________________________________________________________________
 
 ## 🚀 Phase 3: Regime Detection + Confidence Gating (80% → 90%)
@@ -91,7 +85,6 @@ ______________________________________________________________________
 - **Features**: Mean return, volatility, trend strength, VIX, SPY momentum
 - **Integration**: Adjusts confidence based on regime (reduce conf in VOLATILE, boost in
 
-
   trending markets)
 
 - **API**: `GET /api/regime/current`
@@ -102,7 +95,6 @@ ______________________________________________________________________
   - VOLATILE: Risk-off, reduce exposure
 - **Expected Accuracy Boost**: +3-4%
 
-
 ### 2. Confidence Gating ✅
 
 - **Location**: `wolf_app.py` learning worker (lines 5820-5850)
@@ -111,7 +103,6 @@ ______________________________________________________________________
 - **Impact**: Trade less, win more (precision over coverage)
 - **Tracking**: `should_trade` flag in daily predictions
 - **Expected Accuracy Boost**: +3-5% (by filtering low-quality predictions)
-
 
 ### 3. Walk-Forward Backtesting ✅
 
@@ -124,7 +115,6 @@ ______________________________________________________________________
 - **API**: `GET /api/backtest/run?strategy=ghost_ai&days=252`
 - **Output**: Validates Ghost's accuracy on 2020-2024 historical data
 - **Expected Accuracy Validation**: Proves 80-90% accuracy is real, not overfit
-
 
 ### Phase 3 Total Expected Accuracy: **80% → 88-90%**______________________________________________________________________
 

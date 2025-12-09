@@ -24,7 +24,6 @@
 - [ ] Add yellow "⚠ Using cached data" banner when `_degraded: true`
 - [ ] Test SSE reconnect: kill server → restart → verify UI reconnects
 
-
 ---
 
 ## News Feed
@@ -44,7 +43,6 @@
 - [ ] Add empty state: "No news available" with retry button
 - [ ] Test mixed sources: verify Reuters + Polygon combined correctly
 
-
 ---
 
 ## Portfolio Persistence
@@ -62,7 +60,6 @@
 - [ ] Test cold boot: restart → verify positions restored
 - [ ] Test autosave: make trade → wait 30s → restart → verify persisted
 - [ ] Add alert: "Portfolio persistence disabled" if mode=none
-
 
 ---
 
@@ -83,7 +80,6 @@
 - [ ] Test webhook: send `/status` command → verify response
 - [ ] Add retry logic: 3 attempts with exp backoff if Telegram down
 
-
 ---
 
 ## Markets View
@@ -101,7 +97,6 @@
 - [ ] Add stale price indicator: gray text + clock icon if >15 min old
 - [ ] Test watchlist: add/remove symbols → verify persisted
 - [ ] Test price updates: verify SSE pushes new prices to Markets view
-
 
 ---
 
@@ -121,7 +116,6 @@
 - [ ] Add uptime counter (days:hours:minutes)
 - [ ] Add toggle switches for runtime flags (requires auth)
 
-
 ---
 
 ## Security View
@@ -138,7 +132,6 @@
 - [ ] Add audit log table: timestamp, user, action, IP
 - [ ] Test 401 error: remove token → verify UI shows login prompt
 - [ ] Test 403 error: use wrong token → verify error message
-
 
 ---
 
@@ -158,7 +151,6 @@
 - [ ] Add transfer history table with timestamps
 - [ ] Add CSV export of transfer history
 
-
 ---
 
 ## Monthly View (Historical)
@@ -174,7 +166,6 @@
 - [ ] Test win rate calculation: manually verify against trades
 - [ ] Test empty state: new account → verify "No data" message
 - [ ] Add CSV export of monthly data
-
 
 ---
 
@@ -194,7 +185,6 @@
 - [ ] Test SSE reconnect: kill server → restart → verify stream resumes
 - [ ] Check console for JS errors, fix all
 
-
 ---
 
 ## Accessibility (A11Y)
@@ -210,7 +200,6 @@
 - [ ] Add ARIA labels to buttons/icons
 - [ ] Test keyboard-only navigation
 - [ ] Fix color contrast issues (e.g., gray text on white)
-
 
 ---
 
@@ -228,7 +217,6 @@
 - [ ] Test validation: enter invalid data → verify inline error messages
 - [ ] Add frontend error logging (Sentry or similar)
 
-
 ---
 
 ## Browser Compatibility
@@ -244,7 +232,6 @@
 - [ ] Test all major features in Firefox 119
 - [ ] Test all major features in Safari 17 (macOS/iOS)
 - [ ] Document unsupported browsers (IE, old Safari)
-
 
 ---
 

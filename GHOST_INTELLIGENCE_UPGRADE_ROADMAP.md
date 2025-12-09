@@ -17,12 +17,10 @@ GHOST today has:
 
 - ✅ **News aggregation**from 14 premium sources (Reuters, MarketWatch, TechCrunch,
 
-
   Investors, PYMNTS)
 
 - ✅**AI sentiment analysis**with FinBERT option (NEWS_SENTIMENT_ON=1)
 - ✅**Watchlist tracking**(10 symbols: WOLF, NVDA, PLTR, TSLA, AMD, AAPL, MSFT, GOOGL,
-
 
   META, AMZN)
 
@@ -30,7 +28,6 @@ GHOST today has:
 - ✅**AI memory system**(SQLite + optional ChromaDB for vector search)
 - ✅**Basic forecast**(drift model: 30% momentum + 1% news)
 - ✅**Accuracy tracking**(MAP/RMSE/bias metrics in core/ai_memory.py)
-
 
 ### What's Missing (7 → 10 Gap)
 
@@ -42,7 +39,6 @@ GHOST today has:
 - ❌**Long-term memory**(trade stories, market lessons)
 - ❌**Adaptive strategies**(bull/bear/sideways regime detection)
 
-
 ### Target State (10/10 Intelligence)
 
 GHOST will become:
@@ -51,18 +47,15 @@ GHOST will become:
 - 📈 **Self-improving**: Learns from forecast errors, auto-tunes models
 - 🎯 **Strategic thinker**: Multi-layer reasoning (observe → interpret → decide →
 
-
   reflect)
 
 - 🔮 **Pattern master**: Recognizes bankruptcy bounces, earnings patterns, sector
-
 
   spillovers
 
 - 📢 **Explainable**: Every decision comes with 2-line rationale + evidence
 - 📚 **Long-term learner**: Stores trade stories, reviews monthly performance
 - 🔄 **Adaptive**: Switches strategies based on market regime
-
 
 ______________________________________________________________________
 

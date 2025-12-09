@@ -11,7 +11,6 @@ Railway is now automatically deploying with these fixes:
 - ✅ `railway.toml` - Health checks and restart policies
 - ✅ `requirements.txt` - All dependencies (fastapi, requests, etc.)
 
-
 ## Current Status
 
 🔄**Railway is building and deploying now**(takes 3-5 minutes)
@@ -22,7 +21,6 @@ The deployment includes:
 2. Installing pip dependencies: fastapi, uvicorn, requests, yfinance, etc.
 3. Starting Ghost with: `python main.py`
 4. Health checks on: `/health/detailed`
-
 
 ## What to Do Next
 

@@ -17,13 +17,11 @@ Your Railway deployment is failing because the application cannot start properly
 5. Click on the latest deployment
 6. View**Build Logs**and**Deploy Logs**
 
-
 **Look for:**- ❌ Python errors
 
 - ❌ Missing dependencies
 - ❌ Port binding issues
 - ❌ Environment variable errors
-
 
 ---
 
@@ -34,7 +32,6 @@ Railway needs these environment variables set:
 1. In Railway dashboard, go to your service
 2. Click**Variables** tab
 3. Add these variables:
-
 
 ```bash
 

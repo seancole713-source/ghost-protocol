@@ -1,7 +1,7 @@
 # CYCLE #3: Feature Engineering (6 → 50+ Features)
 
-**Date**: December 7, 2025, 5:30 PM PST  
-**Status**: 🎯 DESIGN PHASE  
+**Date**: December 7, 2025, 5:30 PM PST
+**Status**: 🎯 DESIGN PHASE
 **Classification**: 🟡 CAUTION (prediction engine changes)
 
 ---
@@ -23,6 +23,7 @@
 From code archaeology:
 
 **Crypto Predictor** (`core/crypto/crypto_predictor.py`):
+
 ```python
 def _calculate_metrics(self, history, price_data):
     return {
@@ -36,6 +37,7 @@ def _calculate_metrics(self, history, price_data):
 ```
 
 **Research Blueprint** (`core/research_blueprint.py`):
+
 ```python
 def _compute_technicals(hist_df):
     return {
@@ -50,6 +52,7 @@ def _compute_technicals(hist_df):
 ```
 
 **ML Trainer** (`core/ml_trainer.py`):
+
 ```python
 def _prepare_training_data(training_data):
     feature_names = ["confidence", "price_momentum"]  # Only 2 features!
@@ -58,9 +61,9 @@ def _prepare_training_data(training_data):
 
 ### The Feature Gap
 
-**Total unique features**: 6 (crypto predictor)  
-**Research blueprint indicators**: 7 (calculated but unused by ML trainer)  
-**ML trainer features**: 2 (ignores everything)  
+**Total unique features**: 6 (crypto predictor)
+**Research blueprint indicators**: 7 (calculated but unused by ML trainer)
+**ML trainer features**: 2 (ignores everything)
 
 **Result**: Predictions based on RSI and momentum only → Low accuracy, overconfident estimates.
 
@@ -185,50 +188,50 @@ from typing import Dict, Any, Optional
 
 class TechnicalIndicators:
     """Calculate 50+ technical indicators from price/volume history"""
-    
+
     @staticmethod
     def calculate_all(df: pd.DataFrame) -> Dict[str, float]:
         """
         Calculate all indicators from OHLCV DataFrame.
-        
+
         Args:
             df: DataFrame with columns [Open, High, Low, Close, Volume]
-        
+
         Returns:
             Dict with 50+ indicator values
         """
         indicators = {}
-        
+
         # Volume indicators
         indicators.update(TechnicalIndicators._volume_indicators(df))
-        
+
         # Momentum indicators
         indicators.update(TechnicalIndicators._momentum_indicators(df))
-        
+
         # Volatility indicators
         indicators.update(TechnicalIndicators._volatility_indicators(df))
-        
+
         # Trend indicators
         indicators.update(TechnicalIndicators._trend_indicators(df))
-        
+
         # Support/Resistance
         indicators.update(TechnicalIndicators._support_resistance(df))
-        
+
         return indicators
-    
+
     @staticmethod
     def _volume_indicators(df: pd.DataFrame) -> Dict[str, float]:
         """Calculate volume-based indicators"""
         if len(df) < 20:
             return {}  # Insufficient data
-        
+
         close = df['Close'].values
         volume = df['Volume'].values
         high = df['High'].values
         low = df['Low'].values
-        
+
         indicators = {}
-        
+
         # On-Balance Volume (OBV)
         obv = np.zeros(len(close))
         obv[0] = volume[0]
@@ -241,118 +244,118 @@ class TechnicalIndicators:
                 obv[i] = obv[i-1]
         indicators['obv'] = float(obv[-1])
         indicators['obv_slope'] = float((obv[-1] - obv[-5]) / 5) if len(obv) >= 5 else 0.0
-        
+
         # VWAP (Volume Weighted Average Price) - last 20 periods
         typical_price = (high + low + close) / 3
         vwap = np.sum(typical_price[-20:] * volume[-20:]) / np.sum(volume[-20:])
         indicators['vwap'] = float(vwap)
         indicators['price_vs_vwap'] = float((close[-1] - vwap) / vwap)
-        
+
         # Volume SMA ratio
         volume_sma = np.mean(volume[-20:])
         indicators['volume_sma_ratio'] = float(volume[-1] / volume_sma) if volume_sma > 0 else 1.0
-        
+
         # Volume change 24h (if daily data)
         if len(volume) >= 2:
             indicators['volume_change_24h'] = float((volume[-1] - volume[-2]) / volume[-2]) if volume[-2] > 0 else 0.0
-        
+
         # Volume volatility
         if len(volume) >= 10:
             indicators['volume_volatility'] = float(np.std(volume[-10:]) / np.mean(volume[-10:]))
-        
+
         # TODO: CMF, MFI, ADL (require more complex calculations)
-        
+
         return indicators
-    
+
     @staticmethod
     def _momentum_indicators(df: pd.DataFrame) -> Dict[str, float]:
         """Calculate momentum indicators"""
         close = df['Close'].values
-        
+
         if len(close) < 26:
             return {}
-        
+
         indicators = {}
-        
+
         # MACD (12, 26, 9)
         ema12 = TechnicalIndicators._ema(close, 12)
         ema26 = TechnicalIndicators._ema(close, 26)
         macd = ema12[-1] - ema26[-1]
-        
+
         macd_line = ema12 - ema26
         signal_line = TechnicalIndicators._ema(macd_line, 9)
         histogram = macd_line[-1] - signal_line[-1]
-        
+
         indicators['macd'] = float(macd)
         indicators['macd_signal'] = float(signal_line[-1])
         indicators['macd_histogram'] = float(histogram)
-        
+
         # Stochastic Oscillator (14, 3, 3)
         if len(df) >= 14:
             high = df['High'].values
             low = df['Low'].values
-            
+
             lowest_low = np.min(low[-14:])
             highest_high = np.max(high[-14:])
-            
+
             if highest_high != lowest_low:
                 stoch_k = 100 * (close[-1] - lowest_low) / (highest_high - lowest_low)
             else:
                 stoch_k = 50.0
-            
+
             indicators['stochastic_k'] = float(stoch_k)
             # TODO: Stochastic %D (3-period SMA of %K)
-        
+
         # Williams %R (14)
         if len(df) >= 14:
             high = df['High'].values
             low = df['Low'].values
             williams_r = -100 * (np.max(high[-14:]) - close[-1]) / (np.max(high[-14:]) - np.min(low[-14:]))
             indicators['williams_r'] = float(williams_r)
-        
+
         # Rate of Change (10)
         if len(close) >= 10:
             roc = 100 * (close[-1] - close[-10]) / close[-10]
             indicators['roc'] = float(roc)
-        
+
         # Momentum (7d and 30d)
         if len(close) >= 7:
             indicators['momentum_7d'] = float((close[-1] - close[-7]) / close[-7])
         if len(close) >= 30:
             indicators['momentum_30d'] = float((close[-1] - close[-30]) / close[-30])
-        
+
         return indicators
-    
+
     @staticmethod
     def _volatility_indicators(df: pd.DataFrame) -> Dict[str, float]:
         """Calculate volatility indicators"""
         if len(df) < 14:
             return {}
-        
+
         high = df['High'].values
         low = df['Low'].values
         close = df['Close'].values
-        
+
         indicators = {}
-        
+
         # Average True Range (ATR-14)
-        tr = np.maximum(high[1:] - low[1:], 
+        tr = np.maximum(high[1:] - low[1:],
                        np.maximum(np.abs(high[1:] - close[:-1]),
                                  np.abs(low[1:] - close[:-1])))
         atr = np.mean(tr[-14:])
         indicators['atr'] = float(atr)
         indicators['atr_pct'] = float(atr / close[-1])
-        
+
         # Keltner Channels (20, 2*ATR)
         ema20 = TechnicalIndicators._ema(close, 20)
         indicators['keltner_upper'] = float(ema20[-1] + 2 * atr)
         indicators['keltner_lower'] = float(ema20[-1] - 2 * atr)
-        
+
         # Donchian Channels (20)
         if len(high) >= 20:
             indicators['donchian_upper'] = float(np.max(high[-20:]))
             indicators['donchian_lower'] = float(np.min(low[-20:]))
-        
+
         # Volatility metrics
         if len(close) >= 7:
             returns_7d = np.diff(close[-8:]) / close[-8:-1]
@@ -360,31 +363,31 @@ class TechnicalIndicators:
         if len(close) >= 30:
             returns_30d = np.diff(close[-31:]) / close[-31:-1]
             indicators['volatility_30d'] = float(np.std(returns_30d))
-        
+
         return indicators
-    
+
     @staticmethod
     def _trend_indicators(df: pd.DataFrame) -> Dict[str, float]:
         """Calculate trend indicators"""
         if len(df) < 26:
             return {}
-        
+
         close = df['Close'].values
         indicators = {}
-        
+
         # Exponential Moving Averages
         ema12 = TechnicalIndicators._ema(close, 12)
         ema26 = TechnicalIndicators._ema(close, 26)
-        
+
         indicators['ema_12'] = float(ema12[-1])
         indicators['ema_26'] = float(ema26[-1])
         indicators['ema_cross'] = float((ema12[-1] - ema26[-1]) / ema26[-1])
-        
+
         # Trend consistency (are multiple MAs aligned?)
         if len(close) >= 50:
             ma20 = np.mean(close[-20:])
             ma50 = np.mean(close[-50:])
-            
+
             # Check if short > medium > long (uptrend) or opposite (downtrend)
             if ema12[-1] > ma20 > ma50:
                 consistency = 1.0  # Strong uptrend
@@ -392,53 +395,53 @@ class TechnicalIndicators:
                 consistency = -1.0  # Strong downtrend
             else:
                 consistency = 0.0  # Mixed signals
-            
+
             indicators['trend_consistency'] = float(consistency)
-        
+
         # TODO: ADX, Aroon, Parabolic SAR, Supertrend (complex)
-        
+
         return indicators
-    
+
     @staticmethod
     def _support_resistance(df: pd.DataFrame) -> Dict[str, float]:
         """Calculate support/resistance levels"""
         if len(df) < 20:
             return {}
-        
+
         high = df['High'].values
         low = df['Low'].values
         close = df['Close'].values
-        
+
         indicators = {}
-        
+
         # Pivot Point (Classic)
         pivot = (high[-1] + low[-1] + close[-1]) / 3
         indicators['pivot_point'] = float(pivot)
         indicators['distance_to_pivot'] = float((close[-1] - pivot) / pivot)
-        
+
         # Fibonacci retracements (from recent swing high/low)
         if len(high) >= 20:
             swing_high = np.max(high[-20:])
             swing_low = np.min(low[-20:])
             diff = swing_high - swing_low
-            
+
             indicators['fibonacci_23.6'] = float(swing_high - 0.236 * diff)
             indicators['fibonacci_38.2'] = float(swing_high - 0.382 * diff)
             indicators['fibonacci_50.0'] = float(swing_high - 0.500 * diff)
             indicators['fibonacci_61.8'] = float(swing_high - 0.618 * diff)
-        
+
         return indicators
-    
+
     @staticmethod
     def _ema(data: np.ndarray, period: int) -> np.ndarray:
         """Calculate Exponential Moving Average"""
         alpha = 2 / (period + 1)
         ema = np.zeros(len(data))
         ema[0] = data[0]
-        
+
         for i in range(1, len(data)):
             ema[i] = alpha * data[i] + (1 - alpha) * ema[i-1]
-        
+
         return ema
 
 
@@ -461,24 +464,24 @@ def _calculate_metrics(self, history: list[dict], price_data: dict) -> dict[str,
     df = pd.DataFrame(history)
     df.columns = ['timestamp', 'price']
     df['Close'] = df['price']
-    
+
     # Need OHLCV - estimate from close if not available
     df['Open'] = df['Close'].shift(1).fillna(df['Close'])
     df['High'] = df['Close'] * 1.01  # Estimate ±1% spread
     df['Low'] = df['Close'] * 0.99
     df['Volume'] = price_data.get('volume_24h', 0)  # Use 24h volume as estimate
-    
+
     # Calculate ALL technical indicators (50+)
     from core.features.technical_indicators import calculate_technical_indicators
     indicators = calculate_technical_indicators(df)
-    
+
     # Legacy metrics (keep for backward compatibility)
     indicators['volatility'] = self._calculate_volatility(history)
     indicators['momentum'] = self._calculate_momentum(history)
     indicators['rsi'] = self._calculate_rsi([h['price'] for h in history])
     indicators['market_cap'] = price_data.get('market_cap', 0)
     indicators['volume_24h'] = price_data.get('volume_24h', 0)
-    
+
     return indicators
 ```
 
@@ -490,21 +493,21 @@ def _calculate_metrics(self, history: list[dict], price_data: dict) -> dict[str,
 def _prepare_training_data(training_data: list[dict]) -> tuple[np.ndarray, np.ndarray, list[str]]:
     """
     Convert training data to feature matrix and labels
-    
+
     NOW USES 50+ FEATURES instead of just 2
     """
-    
+
     # Fetch full feature vectors from prediction metadata
     # (stored in prediction_outcomes.metrics JSON column)
-    
+
     feature_names = []
     X = []
     y = []
-    
+
     for sample in training_data:
         # Load metrics JSON (contains all technical indicators)
         metrics = sample.get('metrics', {})
-        
+
         # Extract all numeric features
         features = []
         for key, value in sorted(metrics.items()):
@@ -512,7 +515,7 @@ def _prepare_training_data(training_data: list[dict]) -> tuple[np.ndarray, np.nd
                 if key not in feature_names:
                     feature_names.append(key)
                 features.append(value)
-        
+
         # Fallback to legacy features if metrics unavailable
         if len(features) < 10:
             features = [
@@ -520,10 +523,10 @@ def _prepare_training_data(training_data: list[dict]) -> tuple[np.ndarray, np.nd
                 sample.get('price_momentum', 0.0),
             ]
             feature_names = ['confidence', 'price_momentum']
-        
+
         X.append(features)
         y.append(sample['direction_correct'])
-    
+
     return np.array(X), np.array(y), feature_names
 ```
 
@@ -602,21 +605,23 @@ bash scripts/ghost_regression.sh
 
 ### Risk 1: NaN/Inf Values
 
-**Problem**: Insufficient historical data → NaN indicators  
+**Problem**: Insufficient historical data → NaN indicators
 **Mitigation**: Graceful fallbacks, minimum data checks, default values
 
 ### Risk 2: Performance Impact
 
-**Problem**: Calculating 50 indicators per prediction → slower  
-**Mitigation**: 
+**Problem**: Calculating 50 indicators per prediction → slower
+**Mitigation**:
+
 - Vectorized numpy operations (already fast)
 - Cache historical data (5-minute TTL)
 - Background processing (predictions run async)
 
 ### Risk 3: Overfitting
 
-**Problem**: 50 features with limited training data → overfitting  
+**Problem**: 50 features with limited training data → overfitting
 **Mitigation**:
+
 - XGBoost regularization (already configured)
 - Feature selection (keep top 20 by importance)
 - Cross-validation (already implemented)
@@ -625,10 +630,10 @@ bash scripts/ghost_regression.sh
 
 ## Implementation Timeline
 
-**Phase 1 (30 min)**: Create feature library, unit tests  
-**Phase 2 (20 min)**: Integrate into crypto predictor  
-**Phase 3 (15 min)**: Integrate into ML trainer  
-**Phase 4 (10 min)**: Regression testing, deployment  
+**Phase 1 (30 min)**: Create feature library, unit tests
+**Phase 2 (20 min)**: Integrate into crypto predictor
+**Phase 3 (15 min)**: Integrate into ML trainer
+**Phase 4 (10 min)**: Regression testing, deployment
 
 **Total**: ~75 minutes
 
@@ -651,6 +656,7 @@ bash scripts/ghost_regression.sh
 ### Verification
 
 **Dec 9, 2025**: First outcome data available
+
 - Check accuracy endpoint: `/api/v3/accuracy/summary`
 - Compare pre-fix vs post-fix predictions
 - Validate feature importance rankings
@@ -665,6 +671,6 @@ bash scripts/ghost_regression.sh
 
 ---
 
-**Next Steps**: Begin implementation (75 min estimated)  
-**Classification**: 🟡 CAUTION - Prediction engine changes require careful testing  
+**Next Steps**: Begin implementation (75 min estimated)
+**Classification**: 🟡 CAUTION - Prediction engine changes require careful testing
 **User Instruction**: "do all" - Proceed autonomously

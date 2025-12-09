@@ -15,7 +15,6 @@
 - Recent fix (commit 38e2f33): Inverted priority Polygon-first
 - Status: ✅ Working when providers available
 
-
 **Spot Price Providers**:
 
 1. **Polygon**(`POLYGON_API_KEY` required)
@@ -23,31 +22,27 @@
    - Rate: Free tier limited, paid unlimited
    - Status: Configured but hitting quotas
 
-
 1.**Yahoo Finance**(HTTP scraper)
 
-   - Coverage: Global stocks
-   - Rate: Rate-limited (429 errors frequent)
-   - Status: ⚠️ Unreliable in production
-
+- Coverage: Global stocks
+- Rate: Rate-limited (429 errors frequent)
+- Status: ⚠️ Unreliable in production
 
 1.**AlphaVantage**(`ALPHAVANTAGE_API_KEY` optional)
 
-   - Coverage: US/global stocks
-   - Rate: Free tier very limited
-   - Status: Emergency fallback only
-
+- Coverage: US/global stocks
+- Rate: Free tier very limited
+- Status: Emergency fallback only
 
 1.**yfinance**(library)
 
-   - Coverage: Global stocks
-   - Rate: Subject to Yahoo rate limits
-   - Status: ⚠️ Unreliable**Historical OHLCV**:
+- Coverage: Global stocks
+- Rate: Subject to Yahoo rate limits
+- Status: ⚠️ Unreliable**Historical OHLCV**:
 
 - `technical_engine.py`: Polygon → yfinance → CoinGecko (crypto)
 - `volume_engine.py`: Polygon → yfinance → CoinGecko (crypto)
 - Status: ✅ Working for Polygon, ⚠️ failing for Yahoo
-
 
 ### Crypto Providers
 
@@ -57,27 +52,24 @@
 
 1.**CoinGecko**(primary)
 
-   - Coverage: 10,000+ coins
-   - Rate: Free 50 calls/min
-   - Status: ✅ Working
-
+- Coverage: 10,000+ coins
+- Rate: Free 50 calls/min
+- Status: ✅ Working
 
 1.**Binance**(secondary)
 
-   - Coverage: Major pairs (BTCUSDT, ETHUSDT, etc.)
-   - Rate: Unlimited public API
-   - Status: ✅ Working for spot
-
+- Coverage: Major pairs (BTCUSDT, ETHUSDT, etc.)
+- Rate: Unlimited public API
+- Status: ✅ Working for spot
 
 1.**Coinbase**(tertiary)
 
-   - Coverage: Limited major coins
-   - Rate: Unlimited public API
-   - Status: ✅ Working**Historical OHLCV**:
+- Coverage: Limited major coins
+- Rate: Unlimited public API
+- Status: ✅ Working**Historical OHLCV**:
 
 - ❌ **NOT IMPLEMENTED**- Current: Falls back to Yahoo (doesn't have crypto)
 - Result: Crypto predictions get 0/16 technical, 0/5 volume features
-
 
 ---
 

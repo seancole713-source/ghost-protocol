@@ -19,11 +19,9 @@ decisions
 - Recent activity: Only status messages saying "No high-confidence setups detected"
 - Agent conversation shows: "The portfolio is currently empty with no positions or
 
-
   recent predictions"
 
 -**Root Cause**: Agent thinks portfolio is empty (actually has WOLF position!)
-
 
 **What Should Happen**:
 
@@ -31,7 +29,6 @@ decisions
 - Generate decisions every 5 minutes (300 seconds)
 - Create BUY/SELL/HOLD recommendations with reasoning
 - Log decisions to database for UI display
-
 
 **Fix Required**: ✅ See Fix #1 below
 
@@ -48,14 +45,12 @@ ______________________________________________________________________
 - No Telegram messages in logs
 - `TELEGRAM_HEARTBEAT_ON_START`: 0 (disabled)
 
-
 **What Should Happen**:
 
 - Heartbeat on server start
 - Alerts when agent makes decisions
 - Error notifications
 - Trade confirmations
-
 
 **Fix Required**: ✅ See Fix #2 below
 
@@ -70,7 +65,6 @@ ______________________________________________________________________
 - UI shows "conf: 60%" but this is from old data
 - "AI Decide" button shows "—" (no recent decision)
 - No fresh predictions visible
-
 
 **Root Cause**: Agent isn't generating new decisions (see Issue #1)
 
@@ -87,7 +81,6 @@ ______________________________________________________________________
 - Price providers (Polygon, Yahoo) rate-limiting after heavy testing
 - Using cached/previous close prices: $26.17 for WOLF
 - AlphaVantage: Also rate-limited
-
 
 **This is NORMAL**: System falls back to cached prices during rate limits
 
@@ -107,7 +100,6 @@ returning data correctly
 **Steps to Fix**:
 
 1. **Verify Portfolio Data is Accessible to Agent**:
-
 
 ```bash
 

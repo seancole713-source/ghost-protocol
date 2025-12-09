@@ -20,43 +20,37 @@
    - Tier system (🔥20+, ⚡15+, 📈10+, 📊6+)
    - Timeout protection (2s/symbol, 20s/scan)
 
-
 1.**Telegram Integration**(`core/telegram_alerts.py`, +75 lines)
 
-   - `send_mover_alert()` function with formatted messages
-   - Redis de-duplication (24h TTL)
-   - Key pattern: `ghost:alert:mover:{kind}:{symbol}:{tier}:{date}`
-
+- `send_mover_alert()` function with formatted messages
+- Redis de-duplication (24h TTL)
+- Key pattern: `ghost:alert:mover:{kind}:{symbol}:{tier}:{date}`
 
 1.**API Routes**(`wolf_app.py`, +169 lines)
 
-   - `GET /api/scan/movers` - Returns current movers
-   - `GET /api/scan/health` - Returns scanner health and stats
-
+- `GET /api/scan/movers` - Returns current movers
+- `GET /api/scan/health` - Returns scanner health and stats
 
 1.**Background Tasks**(`wolf_app.py`, +123 lines)
 
-   - `_auto_scan_movers()` - Main scanning loop
-   - Crypto: Every 300 seconds (5 minutes)
-   - Stocks: 43 scheduled CT times (07:55, 09:35, 09:40-15:50 every 10m, 15:58)
-   - Automatic alert sending on detection
-
+- `_auto_scan_movers()` - Main scanning loop
+- Crypto: Every 300 seconds (5 minutes)
+- Stocks: 43 scheduled CT times (07:55, 09:35, 09:40-15:50 every 10m, 15:58)
+- Automatic alert sending on detection
 
 1.**Test Suite**(`tests/test_movers.py`, 206 lines)
 
-   - TestTierLogic: 6 tests for tier thresholds
-   - TestPayloadSchema: 2 tests for API response structure
-   - TestUniverseLoading: 2 tests for VIP/watch symbol inclusion
-   - TestLiveScanning: 2 integration tests (skip if no API keys)
-
+- TestTierLogic: 6 tests for tier thresholds
+- TestPayloadSchema: 2 tests for API response structure
+- TestUniverseLoading: 2 tests for VIP/watch symbol inclusion
+- TestLiveScanning: 2 integration tests (skip if no API keys)
 
 1.**Documentation**(`docs/MOVERS_README.md`, 520 lines)
 
-   - Comprehensive thresholds and scheduling guide
-   - Tuning parameters and ENV configuration
-   - 5-step validation plan
-   - Troubleshooting and monitoring
-
+- Comprehensive thresholds and scheduling guide
+- Tuning parameters and ENV configuration
+- 5-step validation plan
+- Troubleshooting and monitoring
 
 ## Architecture
 

@@ -15,14 +15,12 @@
 -**Local:**✅ Works (100% success)
 -**Production:**❌ TIMEOUT (CoinGecko 429 errors)
 
-
 ### Solution
 
 1. Reduce VIP_COINS list from 15-20 to TOP 5 only
 2. Add circuit breaker (1s timeout per coin)
 3. Skip failed coins instead of cascading timeout
 4. Return partial results if some coins fail
-
 
 ### File to Modify**`wolf_app.py`** lines 6789-6850 (VIP snapshot endpoint)
 

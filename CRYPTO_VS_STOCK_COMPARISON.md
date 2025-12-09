@@ -40,7 +40,6 @@ ______________________________________________________________________
 - Stage 4: Portfolio Optimization (Sharpe ratio, allocations)
 - Stage 5: Smart Execution (order routing, slippage tracking)
 
-
 **Crypto Ghost**: ❌ No stage pipeline (standalone module)
 
 ______________________________________________________________________

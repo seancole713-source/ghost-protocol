@@ -10,7 +10,6 @@ state is never lost, even when:
 - Server restarts or reboots
 - Live data feeds fail
 
-
 ______________________________________________________________________
 
 ## 🏗️ Architecture
@@ -23,7 +22,6 @@ ______________________________________________________________________
 - Tracks last known price and provider
 - Updates timestamp on every change
 
-
 #### `price_history`
 
 - Historical price records with timestamps
@@ -31,19 +29,16 @@ ______________________________________________________________________
 - Records provider and market status
 - Used for fallback when live data unavailable
 
-
 #### `daily_snapshots`
 
 - End-of-day portfolio snapshots
 - Complete state: positions, prices, total value, cash
 - Used for historical comparison and forecasting
 
-
 #### `cash_balances`
 
 - Cash balances by account type
 - Supports multi-account tracking
-
 
 ______________________________________________________________________
 
@@ -53,12 +48,11 @@ ______________________________________________________________________
 
 -**`wolf_app.py`**- Integrated with existing price caching and persistence
 
-
 ### Key Integration Points
 
 1.**Price Caching (`_cache_put_price`)**```python
 
-   # Every time price is fetched, also save to database
+# Every time price is fetched, also save to database
 
    store.save_price(symbol, price, prev_close, provider, market_status)
 

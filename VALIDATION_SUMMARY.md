@@ -22,12 +22,10 @@
   - `STOCK_PRICE_SOURCE`, `CRYPTO_PRICE_SOURCE`
 - Added `uptime_seconds` field
 
-
 **Boot Logging**:
 
 - Added `[GHOST BOOT] Environment flags: {...}` log at startup
 - Helps verify Railway environment is correctly configured
-
 
 **Verification**:
 

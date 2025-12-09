@@ -26,7 +26,6 @@ placeholder (TODO comment line 85-95). No database table checks found (potential
 - Migration 002_prediction_outcomes.sql executed on startup ✅
 - Accuracy endpoint returns: `{"ok": false, "error": "No reconciled predictions found"}`
 
-
 ### Expected Evolution
 
 **Day 1 (Dec 3):**- 24h predictions start entering 48h outcome window
@@ -34,7 +33,6 @@ placeholder (TODO comment line 85-95). No database table checks found (potential
 - outcome_reconciler_v2.py begins reconciling first batch
 - Accuracy endpoint may still return empty (too few samples)**Day 2 (Dec 4):**- ~48 predictions have closed 48h windows (2 per hour × 48h = 96 samples)
 - Accuracy endpoint starts returning data: `{"ok": true, "accuracy_pct": 45-65, "total_predictions": 50-100}`
-
 
 -**CRITICAL: Expect accuracy to be volatile (40-70%) with small sample size**
 **Day 5 (Dec 7):**- ~120 reconciled predictions (5 days × 24h × 1-2 per hour)
@@ -44,14 +42,12 @@ placeholder (TODO comment line 85-95). No database table checks found (potential
 - Accuracy should cross 70% threshold (Ghost Protocol target)
 - If accuracy < 60%, investigate model drift or provider issues
 
-
 ### Known Limitations
 
 -**Price Fetching:**outcome_reconciler_v2.py uses current price instead of historical price at exact timestamp (see services/outcome_reconciler_v2.py line 170-200, TODO comment)
 .
 This is acceptable for recent predictions but may cause inaccuracy for older predictions (>24h delay in reconciliation).
 -**No Historical Price API:**Would need Polygon historical bars or Binance klines API to fix (not implemented yet).
-
 
 ---
 
@@ -70,10 +66,8 @@ This is acceptable for recent predictions but may cause inaccuracy for older pre
   - Show "Your watchlist is empty" message with "Add Symbol" button
   - Fallback to market watchlist on error
 
-
   -**DO NOT crash with 500 error or blank page**- [ ]**Check Migration Success**- Search Railway logs for `[MIGRATION] ✅ 002_prediction_outcomes.sql`
   . Should appear once on first startup after deployment.
-
 
 ### Post-Stabilization (Dec 7+)
 
@@ -89,7 +83,6 @@ This is acceptable for recent predictions but may cause inaccuracy for older pre
 
 - [ ]**Database Resilience Check**- Personal watchlist endpoints currently lack table existence checks. If `ghost_personal_watchlist` table doesn't exist, may return 500 error instead of empty list. Test by temporarily dropping table and verifying graceful degradation.
 
-
 ---
 
 ## Deep Verification Details
@@ -98,7 +91,6 @@ This is acceptable for recent predictions but may cause inaccuracy for older pre
 
 - Line 1-100: PredictionStore class with dual-write support
 - Line 1212-1245: PostgresBackend.get_pending_outcomes() SQL query:
-
 
 ```sql
 SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.direction

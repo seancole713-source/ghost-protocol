@@ -12,12 +12,10 @@ ______________________________________________________________________
 
 - 🔴 Manual Railway deployment required (Railway auto-deploy broken)
 
-
 **OPTIONAL**:
 
 - ⚪ Enable crypto module (`CRYPTO_ENABLED=1`)
 - ⚪ Test all 12 UI panels after deployment
-
 
 ### 2. "Is the crypto setup and working?"
 
@@ -31,7 +29,6 @@ ______________________________________________________________________
 - `/api/crypto/price/{symbol}` - Get live prices (40+ coins)
 - `/api/crypto/predict/run` - Generate 24h predictions
 - `/api/crypto/watchlist` - Track blue_chip, defi, meme, ai_gaming
-
 
 **Supported**: BTC, ETH, SOL, DOGE, SHIB, PEPE, FLOKI, BONK, WIF, and 30+ more
 

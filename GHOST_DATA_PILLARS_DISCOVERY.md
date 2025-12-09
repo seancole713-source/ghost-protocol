@@ -39,7 +39,6 @@ The challenge is creating unified abstraction layers while preserving all existi
   - Cache layer (2-min TTL)
   - Short-circuit optimization to avoid rate limits
 
-
 **Providers Discovered**:
 
 - Polygon (5 calls/min, 1-min bars, 5-min delayed free tier)
@@ -48,7 +47,6 @@ The challenge is creating unified abstraction layers while preserving all existi
 - CoinGecko (crypto)
 - Binance (crypto)
 - Coinbase (crypto)
-
 
 **Missing Signals**(30% gap):
 
@@ -63,7 +61,6 @@ The challenge is creating unified abstraction layers while preserving all existi
 - `/api/crypto/price/{symbol}` - Crypto prices
 - `/api/cockpit/snapshot` - Dashboard price feeds
 - `wolf_app.py` line ~16817 - Provider routing logic
-
 
 ---
 
@@ -86,7 +83,6 @@ The challenge is creating unified abstraction layers while preserving all existi
   - Volume ratio calculation (recent_vol / avg_vol)
   - Threshold checks (vol_ratio > 1.3 = strong volume)
 
-
 **Missing Signals**(70% gap):
 
 - ❌ RVOL (Relative Volume vs 30-day average)
@@ -97,7 +93,6 @@ The challenge is creating unified abstraction layers while preserving all existi
 - ❌ Options volume vs stock volume ratio
 - ❌ Order flow imbalance (buy vs sell pressure)
 - ❌ Time & Sales aggregation
-
 
 ---
 
@@ -113,7 +108,6 @@ The challenge is creating unified abstraction layers while preserving all existi
   - `get_indicator_summary()` - Signal aggregation
 - `core/momentum_detector.py` - Momentum analysis for breakouts
 - `core/regime_detector.py` - Market regime classification
-
 
 **Available Indicators**(from `AVAILABLE_INDICATORS` dict):
 

@@ -176,25 +176,21 @@ ______________________________________________________________________
 
 1. **Live-only data → 100%**: Fix GH-AUD-005 (backoff reset) + GH-AUD-006 (Reuters
 
-
    degraded mode)
 
 1. **Persistence → 95%**: Change default `WOLF_PERSIST_MODE` from `"none"` to `"auto"`
-2. **Prediction-vs-Reality → 95%**: Add accuracy metrics to `/api/cockpit`, create
-
+1. **Prediction-vs-Reality → 95%**: Add accuracy metrics to `/api/cockpit`, create
 
    `/api/forecast/history`
 
 1. **Runtime config → 95%**: Generate `ENV_VARS_REFERENCE.md`
-2. **Transparency → 90%**: Add pause_reason field, alert history endpoint
-
+1. **Transparency → 90%**: Add pause_reason field, alert history endpoint
 
 ### Blockers for Production
 
 - **P0**: Secrets rotation (GH-AUD-001)
 - **P1**: Backoff reset (GH-AUD-005), Reuters degraded mode (GH-AUD-006)
 - **P1**: SSE client tracking (GH-AUD-004) to prevent memory leaks
-
 
 **Estimated Effort to 100% Pass**: 8-10 developer-days
 

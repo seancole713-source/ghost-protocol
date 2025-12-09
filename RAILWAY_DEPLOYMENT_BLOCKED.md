@@ -15,7 +15,6 @@
   - `/api/news`, `/api/news/recent`, `/api/news/sentiment/{symbol}` (news router)
   - `/api/agent/decide`, `/api/sources/status`, `/api/market/movers`,
 
-
     `/api/predictions/run` (alias endpoints)
 
 ### ❌ Railway Status (PRODUCTION)
@@ -25,7 +24,6 @@
 - **Build Status**: ✅ Successful (96.85 seconds)
 - **Health Check**: ✅ Passing (`/health` returns 200)
 - **Problem**: **Deploying OLD CODE despite new commits on GitHub**______________________________________________________________________
-
 
 ## 🔍 INVESTIGATION RESULTS
 
@@ -37,7 +35,6 @@
 4. ✅ Waited 30+ seconds between attempts
 5. ✅ Verified all commits are on GitHub `origin/main`
 6. ❌**Railway webhook NOT firing**- No new deployments triggered
-
 
 ### Root Cause**Railway's GitHub webhook integration is not working**. Despite GitHub showing all
 

@@ -17,14 +17,15 @@ ______________________________________________________________________
 - ✅ Assistant creation and reuse (avoids duplicates)
 - ✅ Thread management for each analysis cycle
 - ✅ Normalized decision output (BUY/SELL/HOLD + confidence)**How It Works:**1. Creates or retrieves existing Ghost assistant
+
 1. Opens new thread for each analysis
 2. Sends "Analyze WOLF now" message
 3. Assistant calls tools as needed (price, news, position)
 4. Returns structured decision with rationale**Environment Variables Used:**- `OPENAI_AGENT_API_KEY` (preferred) or `OPENAI_API_KEY` (fallback)
+
 - `AGENTKIT_ENABLED=true` to enable (defaults to `false`)
 - `AGENT_MODEL` (defaults to `gpt-4o-mini`) — preferred (alias: `AI_MODEL`)
 - `AI_TIMEOUT_S` (request timeout, default 30s)
-
 
 ### 2.**Backward Compatible Agent**
 
@@ -33,7 +34,6 @@ ______________________________________________________________________
 - ✅ Falls back to simple chat completions if AgentKit disabled
 - ✅ Maintains same interface (`run_once(tool_router)`)
 - ✅ Reads env vars: `AGENTS_ENABLED` (alias: `AI_ON`), `AGENT_MODEL` (alias: `AI_MODEL`)**Usage:**```python
-
 
 from llm.agent import run_once
 

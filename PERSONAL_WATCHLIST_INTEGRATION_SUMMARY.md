@@ -26,7 +26,6 @@ operational with:
 - `watchlist_price_snapshots` - 15-minute price data for big move detection
 - `watchlist_alerts_log` - Telegram alert history with cooldown tracking**Seed Data:**7 default symbols (BTC, ETH, AAPL, TSLA, XRP, NVDA, MSFT)**Migration Status:**Ready to apply (idempotent, CREATE IF NOT EXISTS)
 
-
 ---
 
 ### 2. API Endpoints ✅ WIRED**File:**`api/personal_watchlist_endpoints.py`**Router Prefix:**`/api/v3/watchlist`**Integration:**wolf_app.py (registered BEFORE cockpit_v3 for route priority)**7 Endpoints:**1. `POST /add` - Add symbol to watchlist
@@ -37,7 +36,6 @@ operational with:
 4. `GET /history/{symbol}` - Get prediction history
 5. `POST /trigger-prediction` - Manually trigger prediction
 6. `GET /stats` - Get watchlist statistics**Security:**Reuses existing IP allowlist + GHOST_API_TOKEN header protection
-
 
 ---
 
@@ -54,7 +52,6 @@ operational with:
 - "All" tab → Shows all symbols
 - State managed via `personalWatchlistState.activeTab`
 - Called by cockpit_v3.js tab click handler
-
 
 ---
 

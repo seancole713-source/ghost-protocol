@@ -16,7 +16,6 @@ instead of expected**256 routes**(with news endpoints).
 - **News Endpoints**: 2 (`/api/news`, `/api/news/recent`)
 - **Latest Commit**: `a31ce8b` (railway: force rebuild to deploy news endpoints)
 
-
 ### Railway Production ❌
 
 - **Status**: Stuck on old deployment
@@ -24,7 +23,6 @@ instead of expected**256 routes**(with news endpoints).
 - **News Endpoints**: 0 (only has old `/api/watcher/ticker_news`)
 - **Active Deployment ID**: `265e5e86` (Railway internal hash)
 - **URL**: <<<<<https://web-production-8e9a0.up.railway.app>>>>>
-
 
 ## 🔍 Commits Pushed But Not Deployed
 

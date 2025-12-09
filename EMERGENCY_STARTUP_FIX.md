@@ -10,7 +10,6 @@ there are **454 MORE LINES**of initialization code that run synchronously:
 - Line 3730-3750: Stage 5 initialization
 - Line 3753: `_generate_forecast_grid(WOLF)` ←**BLOCKING SYNC CALL**- Line 3976: `start_auto_prediction_loop()` ←**Thread creation with print()**- Line 4012: `loop = asyncio.get_event_loop()` ←**Should be get_running_loop()**- Lines 4013-4069: Multiple `loop.create_task()` calls
 
-
 ## SYMPTOM
 
 Railway logs show "Initialization complete" then**STOP**.
@@ -27,7 +26,6 @@ accepts HTTP connections. Code after line 3636 is either:
 2. Silently crashing (exception swallowed?)
 3. Taking too long (>100s)
 
-
 ## IMMEDIATE FIX
 
 Move ALL code after line 3636 to a background task that runs AFTER
@@ -37,7 +35,7 @@ the startup event completes:
 @APP.on_event("startup")
 async def _on_startup():
 
-    # ... existing code up to line 3636 
+    # ... existing code up to line 3636
 
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
 
@@ -52,15 +50,15 @@ async def _post_startup_init():
 
     # Stage 4: Portfolio Optimization
 
-    # ... lines 3640-3664 
+    # ... lines 3640-3664
 
     # Stage 5: Order Management
 
-    # ... lines 3730-3750 
+    # ... lines 3730-3750
 
     # Background tasks
 
-    # ... lines 3753-4069 
+    # ... lines 3753-4069
 
 ```text
 

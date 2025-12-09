@@ -25,11 +25,10 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
   - Verified core/opportunity_scorer.py (384 lines) - 0-100 scoring system functional
   - Verified core/telegram_hunter.py (532 lines) - Alert system proven working
   - Checked symbol configuration:
-    * **9 stocks**: AAPL, NVDA, TSLA, META, AMZN, MSFT, SPY, QQQ, WOLF
-    * **20 crypto**: BTC, ETH, XRP, SOL, DOGE, SHIB, PEPE, FLOKI, etc.
-    * **5 VIP coins**: WEPE, LILPEPE, DORKL, SLOTH, APC
-    * **Total: 34 symbols**(exceeds 22+ requirement)
-
+    - **9 stocks**: AAPL, NVDA, TSLA, META, AMZN, MSFT, SPY, QQQ, WOLF
+    - **20 crypto**: BTC, ETH, XRP, SOL, DOGE, SHIB, PEPE, FLOKI, etc.
+    - **5 VIP coins**: WEPE, LILPEPE, DORKL, SLOTH, APC
+    - **Total: 34 symbols**(exceeds 22+ requirement)
 
 ### PHASE B: Backend Scanner Completion ✅
 
@@ -42,7 +41,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
 - **File**: core/market_scanner.py, wolf_app.py
 - **Result**: Scanner now covers ALL required symbols including VIP presale coins
 
-
 ### PHASE C: Cockpit UI Repair ✅
 
 - **Status**: COMPLETE (No changes needed)
@@ -53,7 +51,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
   - Auto-load configured: 2s delay after DOMContentLoaded
 - **Placeholders**: Minimal "—" used only for loading states (standard practice)
 - **Result**: UI already functional with live data endpoints
-
 
 ### PHASE D: SSE Stream Repair ✅
 
@@ -67,18 +64,16 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
   - Disconnect handling: Async check with graceful close
 - **Result**: SSE stream fully functional for real-time UI updates
 
-
 ### PHASE E: Telegram Alerts ✅
 
 - **Status**: COMPLETE (Proven working)
 - **Evidence**:
   - User showed working Telegram alerts:
 
-
     *"🎯 GHOST AI TRADING SIGNALS"* Real-time market status updates
     *85%+ accuracy filter active* Multiple alert types (short-term, long-term, urgent)
 
-    * Timestamp tracking operational
+    - Timestamp tracking operational
 - **Features Verified**:
   - `send_instant_alert()` - Score 80+ threshold
   - `format_opportunity_alert()` - Hunter-style formatting
@@ -86,7 +81,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
   - Daily reports: 7am + 8pm EST
   - Background loop: `daily_report_loop()` integrated
 - **Result**: Telegram alerts 100% operational (user confirmed)
-
 
 ### PHASE F: Final Verification & Commit ✅
 
@@ -100,7 +94,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
   - Push: Attempted (GitHub 500/502 errors - service issue, not code issue)
 - **Result**: All changes committed locally, ready for Railway deployment
 
-
 ---
 
 ## 📊 FINAL SYSTEM CONFIGURATION
@@ -111,17 +104,14 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
 
 - AAPL, NVDA, TSLA, META, AMZN, MSFT, SPY, QQQ, WOLF
 
-
 **Crypto (20)**:
 
 - BTC, ETH, BNB, SOL, XRP, ADA, DOGE, AVAX, DOT, MATIC
 - SHIB, LTC, UNI, LINK, ATOM, ETC, PEPE, ARB, OP, INJ
 
-
 **VIP Coins (5)**:
 
 - WEPE, LILPEPE, DORKL, SLOTH, APC
-
 
 ### API Endpoints (All Operational)
 
@@ -132,22 +122,18 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
 - `/api/scan/all` - Combined scan
 - `/api/opportunity/live` - **NEW**: Fast cached endpoint (top 5)
 
-
 **Opportunities**:
 
 - `/api/opportunities/top` - Top ranked with scoring (limit + min_confidence params)
-
 
 **Accuracy**:
 
 - `/api/accuracy` - Prediction accuracy stats (period: all/24h/7d/30d)
 
-
 **UI**:
 
 - `/opportunities` - Dashboard with 4 live panels
 - `/api/cockpit/stream` - SSE real-time updates
-
 
 ### Background Tasks
 
@@ -162,7 +148,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
   - Filters by 70%+ confidence
   - Sends instant alerts for 80+ score
 
-
 **Accuracy Tracker**:
 
 - **Interval**: 5 minutes (300s)
@@ -171,7 +156,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
   - Verifies predictions due for check
   - Compares predicted vs actual outcomes
   - Updates accuracy stats in database
-
 
 **Daily Reports**:
 
@@ -182,7 +166,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
   - Formats daily summary report
   - Sends via Telegram
   - Includes accuracy stats
-
 
 ### Scoring System
 
@@ -195,7 +178,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
 - **10 points**: Technical pattern strength
 - **10 points**: Timeframe urgency (2h=10, 48h=2)
 
-
 **Grades**:
 
 - S: 90+ (🔥 Exceptional)
@@ -205,14 +187,12 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
 - D: 50+ (😐 Weak)
 - F: <50 (⚠️ Poor)
 
-
 ### Alert Thresholds
 
 - **Instant alerts**: Score 80+
 - **Cooldown**: 4 hours per symbol
 - **Max rate**: 5 alerts per hour
 - **Daily reports**: 7am + 8pm EST
-
 
 ---
 
@@ -246,7 +226,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
    - accuracy_check_loop() - Every 5min
    - daily_report_loop() - 7am + 8pm
 
-
 ### Orchestration Phases (Dec 26, 2024)
 
 1. ✅**PHASE A**: Load context & verify health
@@ -255,7 +234,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
 4. ✅ **PHASE D**: Repair SSE stream (verified - already functional)
 5. ✅ **PHASE E**: Telegram alerts (proven working - user showed evidence)
 6. ✅ **PHASE F**: Final verification & commit (f8730ae)
-
 
 ---
 
@@ -272,7 +250,6 @@ screenshots of working Telegram alerts showing real-time market opportunities wi
 - **SSE Stream**: Real-time updates with heartbeat
 - **API Endpoints**: All 8 endpoints responding
 
-
 ### 📊 PROVEN WORKING (Evidence)
 
 User provided screenshots showing:
@@ -284,14 +261,12 @@ User provided screenshots showing:
 - ✅ Multiple alert types (short-term gains, long-term holds, urgent sells)
 - ✅ Timestamp tracking operational
 
-
 ### ❌ DISABLED FEATURES (As Intended)
 
 - Broker integration (disabled in commit dcbfacb)
 - Order execution (not part of Investment Hunter mission)
 - Account management (advisory only, no broker)
 - Mobile app (Telegram serves as mobile interface)
-
 
 ---
 

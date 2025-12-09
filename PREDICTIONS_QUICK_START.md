@@ -9,7 +9,6 @@ Ghost now sends **automatic predictions**to your Telegram:
 -**8:00 AM ET**→ Pre-market prediction (what Ghost thinks will happen)
 -**9:35 AM ET**→ Reality check (was Ghost right?)
 
-
 ______________________________________________________________________
 
 ## 🧪 TEST IT NOW

@@ -16,7 +16,6 @@ I don't work on any specific crypto coin..."
 - Timezone showed "America" (incomplete) instead of proper zone
 - Users didn't ask for time but got it anyway
 
-
 ### 2. ❌ Generic Fallback Instead of Real Intelligence**Before:**```text
 
 User: "What's the best crypto under $1?"

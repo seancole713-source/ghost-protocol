@@ -15,7 +15,6 @@ ee9a8fe (Phase 1) + fd71661 (tick) + d73d5b1 (report)
 - ✅ `GET /api/news/trending` - Returns news array (from STATE/NEWS_CACHE)
 - ✅ `POST /api/alerts/test` - Telegram test with CT timezone
 
-
 ### 2. AAPL Price Routing Fix (Phase 1)
 
 - ✅ Modified `api_price_diagnostics(symbol)` to accept parameter
@@ -23,13 +22,11 @@ ee9a8fe (Phase 1) + fd71661 (tick) + d73d5b1 (report)
 - ✅ Enforces provider order: polygon → alphavantage → yfinance → yahoo
 - ✅ Respects PRICE_STRICT_LIVE and DATA_FRESHNESS_SEC
 
-
 ### 3. ENV Validation (Phase 1)
 
 - ✅ Startup validation checks 6 critical gates
 - ✅ Sets STATE["degraded_reason"] on violations
 - ✅ Prediction endpoints return HTTP 503 when degraded
-
 
 ### 4. Tick Counter (Phase 2 - Commit fd71661)
 
@@ -37,23 +34,21 @@ ee9a8fe (Phase 1) + fd71661 (tick) + d73d5b1 (report)
 - ✅ Increments every PRICE_AUTO_REFRESH_S seconds (default 7s)
 - ✅ Enables SSE snapshot emission on state changes
 
-
 ### 5. Validation Framework (Phase 2 - Commit d73d5b1)
 
 - ✅ `acceptance_tests.sh` - 10 comprehensive tests
 - ✅ `generate_ops_report.py` - Full operational report generator
 - ✅ `restart_server.sh` - Restart orchestration script
 
-
 ## ⚠️ SERVER RESTART REQUIRED**Current Situation:**- Server running as**PID 1**(Docker main process)
 
 - Old code still loaded (tick endpoint returns empty response)
 - Cannot hot-reload from inside container
 - Need**container restart**to activate new code**Why Restart Needed:**1. Six new endpoints return 404 until new code loads
+
 1. Tick counter stays at 0 until loop starts incrementing
 2. AAPL price fix not active (still returning $17.95)
 3. All acceptance tests will fail on current server
-
 
 ## 🚀 RESTART OPTIONS
 

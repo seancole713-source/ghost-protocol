@@ -12,21 +12,18 @@ All 8 identified UI panel issues have been **fixed and enhanced**:
 
 1. ✅ **Market Status**— Now displays major indices (SPY, QQQ, VIX) with real-time
 
-
    prices
 
 1. ✅**48h Forecast**— Auto-loads on page load, displays full confidence band chart
-2. ✅**Portfolio Overview**— NEW `/api/portfolio/history` endpoint for NAV/PnL charting
-3. ✅**Ghost Score Heatmap**— Enhanced with GPS gradient colors
-4. ✅**Top Movers**— Data already present in cockpit, rendering confirmed working
-5. ✅**Live News**— Enhanced with sentiment color badges (🟢 Bullish, 🔴 Bearish, ⚪
-
+1. ✅**Portfolio Overview**— NEW `/api/portfolio/history` endpoint for NAV/PnL charting
+1. ✅**Ghost Score Heatmap**— Enhanced with GPS gradient colors
+1. ✅**Top Movers**— Data already present in cockpit, rendering confirmed working
+1. ✅**Live News**— Enhanced with sentiment color badges (🟢 Bullish, 🔴 Bearish, ⚪
 
    Neutral)
 
 1. ✅**Watchlist**— Auto-loads from `/api/watchlist`, persistence confirmed working
-2. ✅**Diagnostics**— Already functional, no changes needed
-
+1. ✅**Diagnostics**— Already functional, no changes needed
 
 ______________________________________________________________________
 

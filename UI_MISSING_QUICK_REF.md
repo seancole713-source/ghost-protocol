@@ -5,36 +5,30 @@
 -**Problem:**No `/api/apex/trade-card/{symbol}` endpoint
 -**Fix:**Build APEX explainability module (NEW FEATURE)
 
-
 ### 2.**48h Forecast**→ Returns "no_forecast"
 
 -**Problem:**No forecast data in database
 -**Fix:**Initialize forecast engine, generate first prediction
-
 
 ### 3.**Market Outlook**→ Shows "risk: -, confidence: -"
 
 -**Problem:**`market_outlook` returns `null` in cockpit
 -**Fix:**Enable Fusion AI sentiment aggregation
 
-
 ### 4.**Signals**→ Empty section
 
 -**Problem:**`signals` returns `null` in cockpit
 -**Fix:**Add `/api/signals` endpoint with trading signals
-
 
 ### 5.**Crypto Movers**→ Empty list
 
 -**Problem:**`movers.crypto` returns `[]` despite crypto enabled
 -**Fix:**Fetch 24h crypto changes and populate movers
 
-
 ### 6.**Crypto Predictions**→ Not visible
 
 -**Problem:**No crypto predictions in database
 -**Fix:**Run crypto prediction engine, store results
-
 
 ______________________________________________________________________
 
@@ -46,7 +40,6 @@ ______________________________________________________________________
 - Watchlist
 - GPS heatmap
 - Health/diagnostics
-
 
 ______________________________________________________________________
 

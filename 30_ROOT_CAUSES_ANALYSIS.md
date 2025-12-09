@@ -21,14 +21,12 @@ the server for 250+ seconds, causing cascading failures across all Cockpit panel
 -**Evidence:**Railway logs show 499 errors, health checks timing out at 4-10s
 -**Root Cause:**Synchronous `run_single_prediction()` called in loop (25s × 10 symbols)
 
-
 ### ❌ 4. Health Endpoint Slow (>500ms)
 
 -**Status:**CONFIRMED
 -**Impact:**HIGH - Basic health checks failing
 -**Evidence:**Timing out at 4-10 seconds instead of <500ms
 -**Root Cause:**Server overloaded by prediction loop
-
 
 ### ❌ 5. Cockpit HTML Cannot Load
 
@@ -37,14 +35,12 @@ the server for 250+ seconds, causing cascading failures across all Cockpit panel
 -**Evidence:**HTTP timeouts prevent page from rendering
 -**Root Cause:**Server unresponsive due to prediction loop blocking
 
-
 ### ❌ 9. Memory Exhaustion
 
 -**Status:**PROBABLE
 -**Impact:**HIGH - Railway Pro has 32GB but service may be misconfigured
 -**Evidence:**Usage shows 127 GB-minutes (sustained ~0.5GB) but peaks unknown
 -**Root Cause:**Prediction loop + external API calls accumulating memory
-
 
 ### ❌ 10. CPU Throttling
 
@@ -53,14 +49,12 @@ the server for 250+ seconds, causing cascading failures across all Cockpit panel
 -**Evidence:**2.61 vCPU-minutes usage, synchronous blocking in tight loop
 -**Root Cause:**`time.sleep()` doesn't release GIL, prediction computation intensive
 
-
 ### ⚠️ 11. Memory Leak
 
 -**Status:**PROBABLE
 -**Impact:**MEDIUM - 18-minute cycles allow garbage to accumulate
 -**Evidence:**Server becomes unresponsive after multiple cycles
 -**Root Cause:**Possible leak in price provider caching or feature extraction
-
 
 ### ⚠️ 12. GIL Contention
 
@@ -69,7 +63,6 @@ the server for 250+ seconds, causing cascading failures across all Cockpit panel
 -**Evidence:**Daemon thread `time.sleep()` still blocks event loop
 -**Root Cause:**CPython GIL architecture + synchronous I/O
 
-
 ### ❌ 13. Empty `_LATEST_PREDICTIONS` Dictionary
 
 -**Status:**CONFIRMED
@@ -77,13 +70,12 @@ the server for 250+ seconds, causing cascading failures across all Cockpit panel
 -**Evidence:**`api_v3_hunter_feed()` returns 0 predictions
 -**Root Cause:**Auto-predictions disabled to prevent server hangs
 
-
 ### ❌ 14.**SMOKING GUN - Prediction Loop Blocking**-**Status:**CONFIRMED - PRIMARY ROOT CAUSE
 
 -**Impact:**CRITICAL - Blocks entire server for 250+ seconds
 -**Evidence:**```python
 
-  # core/auto_prediction_loop.py lines 90-130
+# core/auto_prediction_loop.py lines 90-130
 
   for symbol in batch:
       result = RUN_PREDICTION_FUNC(symbol, "stock", "SHORT")  # ← BLOCKING 25s

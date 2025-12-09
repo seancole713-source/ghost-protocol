@@ -13,7 +13,6 @@
 - ❌**News feed: EMPTY**(missing ALPHA_VANTAGE_API_KEY)
 - ❌**API keys configured but NOT working**(Polygon + Alpha Vantage return false)**ROOT CAUSE:**The environment variables show keys are set (`POLYGON_API_KEY="8VIvELVXiLG30K2l1348RzSurffLM0jR"`, `ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK"`), but Ghost's provider fallback logic is**not using them correctly**. The system is falling back to free sources (yfinance/yahoo) which are rate-limited and failing for most symbols.
 
-
 ---
 
 ## SECTION A: WHAT IS PROVEN WORKING IN PRODUCTION

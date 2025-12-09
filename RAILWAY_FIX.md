@@ -14,7 +14,6 @@ Likely causes:
 3. Memory/CPU exhaustion on Railway
 4. Redis connection timeout
 
-
 ## Quick Fix
 
 ### Option 1: Force Fresh Deploy (RECOMMENDED)

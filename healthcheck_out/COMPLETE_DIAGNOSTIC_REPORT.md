@@ -41,7 +41,6 @@ though several non-critical issues have been identified.
 - The system is**working correctly**but has no historical data yet (fresh Docker build)
 - All intelligence workers are running: macro_brain_worker, liquidity_monitor, pattern_memory, reflex_trainer
 
-
 ---
 
 ### 2. Data Feeds (Stocks + Crypto) ✅**HEALTHY**
@@ -63,9 +62,9 @@ $32.57 prev close)
 - YFinance API is experiencing issues (common, not Ghost's fault)
 - Polygon API key has hit rate limits (need higher tier or rate limiting)
 - ChatGPT price provider not configured (OPENAI_API_KEY is blank)**Recommendations:**1. Enable crypto: `export CRYPTO_ENABLED=1` in docker-compose.yml
+
 1. Add OpenAI key for ChatGPT price fallback
 2. Upgrade Polygon API tier or implement rate limiting
-
 
 ---
 
@@ -83,7 +82,6 @@ functional**- Successfully fetching general market news
 - ⚠️ `/api/watcher/ticker_news` expects a `?symbol=WOLF` query parameter
 - ✅ News enrichment and sentiment analysis modules loaded**Root Cause:**-**Working as designed**- Ticker news watcher requires symbol parameter
 - Not a bug, just API design
-
 
 ---
 
@@ -108,7 +106,6 @@ redirect to /cockpit functioning (USE_NEW_COCKPIT default)
   2. Market may be closed (afterhours/weekend)
   3. Some data providers (YFinance) are having temporary issues
 
-
 ---
 
 ### 5. Database & Services ✅**HEALTHY**
@@ -127,7 +124,6 @@ redirect to /cockpit functioning (USE_NEW_COCKPIT default)
 - ✅ Redis running (required for session management)
 - ⚠️ `/api/memory/stats` not implemented (minor, non-critical)
 
-
 ---
 
 ## 🔥 Root Cause Analysis
@@ -139,7 +135,6 @@ redirect to /cockpit functioning (USE_NEW_COCKPIT default)
 - Stage 3: Continuous Improvement ✅
 - Stage 4: Portfolio Optimization ✅
 - Stage 5: Advanced Execution ✅
-
 
 **Evidence:**```text
 stage1_initialized: symbol_context_db, historical_analogies

@@ -206,7 +206,7 @@ Modify `analyst_tick()` to ALWAYS inject fresh portfolio snapshot as a user mess
 
 async def analyst_tick(llm: LLMClient):
 
-    # ... existing code 
+    # ... existing code
 
     # ALWAYS add fresh snapshot before asking for analysis
 

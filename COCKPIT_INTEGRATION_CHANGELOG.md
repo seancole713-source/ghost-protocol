@@ -17,12 +17,10 @@
 - Removed unused imports (`time` module)
 - All type hints remain compatible (Dict/List preserved for now)
 
-
 **Formatted Files:**- `core/alpaca_broker.py` ✅
 
 - `core/trading_automation.py` ✅
 - `test_alpaca_broker.py` ✅**Verification:**
-
 
 ```bash
 python -m ruff check core/alpaca_broker.py  # ✅ All checks passed!

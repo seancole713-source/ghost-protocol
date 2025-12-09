@@ -5,11 +5,11 @@
 
 ## 📦 What's Been Built
 
-###**Complete File Structure**```text
+### **Complete File Structure**```text
 
 /workspaces/GHOST/
 ├── core/crypto/                                    🆕 NEW MODULE
-│   ├── __init__.py                                 ✅ Module exports
+│   ├── **init**.py                                 ✅ Module exports
 │   ├── crypto_providers.py                         ✅ Multi-provider price system
 │   └── crypto_predictor.py                         ✅ 24h prediction engine
 │

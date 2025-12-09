@@ -11,7 +11,6 @@
 5. `tests/test_security_audit_fixes.py` - NEW: Comprehensive test suite
 6. `GHOST_SECURITY_AUDIT_FIXES.md` - NEW: Full audit report
 
-
 ______________________________________________________________________
 
 ## Critical Fixes Summary
@@ -22,7 +21,6 @@ ______________________________________________________________________
 - ✅**Cache TTL ignored**- Implemented per-entry TTL storage
 - ✅**Missing scipy**- Added to requirements.txt
 
-
 ### 2. Security Hardening (4 fixes)
 
 - ✅**API keys persistent**- SQLite tables with SHA256 hashing
@@ -30,17 +28,14 @@ ______________________________________________________________________
 - ✅**HMAC upgrade**- Proper HMAC-SHA256 with timestamp + canonical JSON
 - ✅**Input validation**- Rate limits bounded, URLs validated (SSRF prevention)
 
-
 ### 3. Stability (1 fix)
 
 - ✅**Exception logging**- Replaced silent `except: pass` with structured logging
-
 
 ### 4. Performance (2 fixes)
 
 - ✅**Async webhooks**- Converted blocking requests to httpx AsyncClient
 - ✅**Database indexes**- Added compound indexes for forecast_actuals, realized_prices
-
 
 ______________________________________________________________________
 
@@ -52,12 +47,10 @@ ______________________________________________________________________
 - Action: Re-create all keys via `/api/keys/create`
 - Keys now survive restarts
 
-
 ### ⚠️ Webhooks Must Be Re-subscribed
 
 - Old in-memory webhooks**lost**- Action: Re-subscribe via `/api/webhooks/subscribe`
 - Webhooks now survive restarts
-
 
 ______________________________________________________________________
 

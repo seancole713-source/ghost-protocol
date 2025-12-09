@@ -8,7 +8,6 @@
 2. ✅ `scripts/migrate_predictions_to_postgres.py` (226 lines) - Migration tool**Files Modified:**1. ✅ `services/predictor.py` - Refactored to use PredictionStore
 3. ✅ `wolf_app.py` - Enhanced movers + history endpoints
 
-
 ---
 
 ## What Was Built
@@ -32,7 +31,6 @@
 - ✅ `get_prediction_points()` - Forecast/actual with filtering
 - ✅ `create_outcome()` - INSERT ON CONFLICT (upsert)**Schema Mapping (SQLite → PostgreSQL):**```text
 
-
 INTEGER          → BIGSERIAL (auto-increment)
 REAL             → DOUBLE PRECISION (timestamps/prices)
 TEXT             → TEXT / VARCHAR(N)
@@ -47,7 +45,6 @@ Indexes          → All migrated
 - ✅ Duration tracking for both writes
 - ✅ Detailed failure logging with stack traces
 
-
 ### 2.**Migration Script**(`scripts/migrate_predictions_to_postgres.py`)**Features:**- ✅ Batch migration (configurable batch size)
 
 - ✅ Dry-run mode (plan without execution)
@@ -55,7 +52,6 @@ Indexes          → All migrated
 - ✅ Error handling (continue on failure)
 - ✅ Verification mode (count comparison)
 - ✅ Migrates: predictions + points + outcomes**Usage:**```bash
-
 
 # Dry run (plan only)
 

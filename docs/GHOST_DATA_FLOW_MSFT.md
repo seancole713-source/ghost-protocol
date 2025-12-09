@@ -15,7 +15,6 @@
 - `core/providers/alpha_vantage_provider.py` - Alpha Vantage API (paid, backup)
 - `yfinance` library - Free fallback
 
-
 **Data Flow**:
 
 ```text

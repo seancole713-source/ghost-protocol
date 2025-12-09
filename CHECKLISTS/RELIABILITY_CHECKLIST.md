@@ -24,7 +24,6 @@ Items**:
 - [ ] Add unit test: simulate 429 → success → 429 → verify backoff resets
 - [ ] Document backoff behavior in README
 
-
 ---
 
 ## External Data Sources
@@ -44,7 +43,6 @@ Items**:
 - [ ] Add `NEWS_CACHE["last_refresh_ts"]` to track staleness
 - [ ] Add alert: "News feed stale >30 min"
 - [ ] Test degraded mode: kill DNS → verify UI shows cached news
-
 
 ---
 
@@ -66,7 +64,6 @@ Items**:
 - [ ] Configure Railway to use `/live` for liveness, `/health` for readiness
 - [ ] Test under DB write load: verify health doesn't block
 
-
 ---
 
 ## Background Tasks & Threads
@@ -85,7 +82,6 @@ Items**:
 - [ ] Add Prometheus gauge: `background_thread_last_run_ts`
 - [ ] Add alert: "Background thread not seen in 2 minutes"
 - [ ] Test SSE cleanup: start stream, kill client, verify memory freed
-
 
 ---
 
@@ -106,7 +102,6 @@ Items**:
 - [ ] Automate backups: Railway scheduled task daily
 - [ ] Test restore: verify backup can boot cold server
 
-
 ---
 
 ## Duplicate Routes & State
@@ -123,7 +118,6 @@ Items**:
 - [ ] Rename `main.py` to `main_DEPRECATED.py` (GH-AUD-008)
 - [ ] Add threading lock for portfolio state mutations
 - [ ] Run ThreadSanitizer or manual race condition review
-
 
 ---
 
@@ -145,7 +139,6 @@ Items**:
 - [ ] Create `RUNBOOK.md` with response procedures
 - [ ] Test alert delivery: Slack/PagerDuty integration
 
-
 ---
 
 ## Graceful Degradation
@@ -165,7 +158,6 @@ Items**:
 - [ ] Document degraded mode behavior in README
 - [ ] Add E2E test: simulate all provider failures → verify UI still loads
 
-
 ---
 
 ## Deployment & Rollback
@@ -182,7 +174,6 @@ Items**:
 - [ ] Test rollback: deploy bad version → rollback → verify works
 - [ ] Add smoke test to CI/CD: deploy → curl /health → pass/fail
 - [ ] Schedule quarterly deployment drill
-
 
 ---
 
@@ -201,7 +192,6 @@ Items**:
 - [ ] Monitor memory usage over 24 hours (detect leaks)
 - [ ] Document capacity limits: max users, max trades/day
 
-
 ---
 
 ## Testing & Validation
@@ -218,7 +208,6 @@ Items**:
 - [ ] Create `test_reuters_degraded_mode.py` (GH-AUD-006 regression test)
 - [ ] Add chaos test: randomly fail 1 provider → verify quorum works
 - [ ] Schedule weekly smoke test against staging
-
 
 ---
 

@@ -24,14 +24,12 @@
 - ❌ NO feature counts returned (`feature_count: N/A`)
 - ❌ FREE-TIER providers NOT being used on Railway**Root Cause:**Railway deployment has NOT picked up the FREE-TIER provider code pushed to GitHub.
 
-
 The server is running OLD code that lacks:
 
 - Yahoo Finance provider
 - Binance OHLCV provider
 - Unified provider
 - Feature extraction wiring
-
 
 ---
 
@@ -208,7 +206,7 @@ The `predictor.create_prediction()` call is present, BUT:
 
 base_confidence = 0.45  # Start at 45%
 
-# ... adds 0.05-0.08 for each signal alignment 
+# ... adds 0.05-0.08 for each signal alignment
 
 base_confidence = max(0.40, min(0.85, base_confidence))
 

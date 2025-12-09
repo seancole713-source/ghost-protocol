@@ -20,7 +20,6 @@ The system is largely functional for crypto predictions but has several gaps tha
 - ⚠️  Market hours enforcement not fully verifiable (market closed during audit)
 - ✅ Core V3 APIs functional
 
-
 ---
 
 ## Task 1: Endpoint & Health Audit ✅ PASS

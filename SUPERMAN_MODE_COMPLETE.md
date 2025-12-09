@@ -66,7 +66,6 @@ All APIs implemented (Twitter, Reddit, Economic Calendar).
 - Trending detection based on mention volume
 - Market overview aggregation for cockpit
 
-
 **Total TODO comments removed**: 3
 
 ---
@@ -88,7 +87,6 @@ All APIs implemented (Twitter, Reddit, Economic Calendar).
 - AlphaVantage earnings fallback
 - Caching with 1-hour TTL
 
-
 **Total TODO comments removed**: 2
 
 ---
@@ -108,7 +106,6 @@ All APIs implemented (Twitter, Reddit, Economic Calendar).
 - Metadata persistence with pickle
 - Fallback to SQLite if FAISS not installed
 - Graceful error handling
-
 
 **Total TODO comments removed**: 1
 
@@ -132,7 +129,6 @@ All APIs implemented (Twitter, Reddit, Economic Calendar).
 4. ✅ Fred API (economic indicators)
 5. ✅ Polygon.io / AlphaVantage (earnings calendar)
 6. ✅ FAISS (vector search for AI memory)
-
 
 ---
 

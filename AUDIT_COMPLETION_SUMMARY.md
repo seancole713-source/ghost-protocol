@@ -46,7 +46,6 @@ Six fixes that can be completed in ≤60 minutes each:
 5.**Wrap Reuters in try/except**(30 min) → Prevents DNS crash
 6.**Add Telegram webhook validation**(30 min) → Prevents forged commands
 
-
 ______________________________________________________________________
 
 ## 🎯 Key Findings Highlights
@@ -59,19 +58,16 @@ ______________________________________________________________________
 - **Fix**: Rotate all keys + BFG cleanup + detect-secrets hook
 - **Effort**: 3 hours
 
-
 ### 🔥 P1-4: Yahoo 429 Backoff Sticky (GH-AUD-005)
 
 - **File**: wolf_app.py:2555 `_breaker_on_success()`
 - **Root Cause**: Missing `backoff_factor = 0` reset
 - **Impact**: After 3x 429 errors (240s backoff), success doesn't reset → next failure
 
-
   immediately triggers 240s instead of 30s
 
 - **Fix**: Add `b["backoff_factor"] = 0` + 20% jitter
 - **Effort**: 45 minutes
-
 
 ### 🔥 P1-5: Reuters DNS Crash (GH-AUD-006)
 
@@ -80,14 +76,12 @@ ______________________________________________________________________
 - **Fix**: Wrap in outer try/except, return cached news with `_degraded: true`
 - **Effort**: 1 hour
 
-
 ### 🟢 P3-1: Forecast Accuracy Not in UI (GH-AUD-010)
 
 - **File**: wolf_app.py:755 (function exists but not called by /api/cockpit)
 - **Impact**: MAP/RMSE computed but not exposed → UI can't show chips
 - **Fix**: Add `snapshot["forecast_accuracy"] = two_line["accuracy"]["summary"]`
 - **Effort**: 1 hour
-
 
 ______________________________________________________________________
 
@@ -104,7 +98,6 @@ ______________________________________________________________________
 - ✅ Testing & Validation (4 checks)
 - ✅ Compliance & Auditing (4 checks)
 
-
 ### Reliability Checklist (236 lines)
 
 - ✅ Circuit Breakers & Backoff (6 checks)
@@ -117,7 +110,6 @@ ______________________________________________________________________
 - ✅ Graceful Degradation (5 checks)
 - ✅ Deployment & Rollback (5 checks)
 - ✅ Capacity & Scaling (5 checks)
-
 
 ### UI Functional Checklist (266 lines)
 
@@ -135,7 +127,6 @@ ______________________________________________________________________
 - ✅ Error Handling (4 checks)
 - ✅ Browser Compatibility (4 checks)
 
-
 ______________________________________________________________________
 
 ## 🧪 Testing Recommendations
@@ -148,20 +139,17 @@ ______________________________________________________________________
 4. `test_sse_disconnect.py` (GH-AUD-004)
 5. `test_no_duplicate_routes.py` (GH-AUD-003)
 
-
 ### Security Scans (3 needed)
 
 1. `detect-secrets scan` (prevent secret leaks)
 2. `pip-audit` (dependency CVE scan)
 3. `OWASP ZAP` (web vulnerability scan)
 
-
 ### Performance Tests (3 needed)
 
 1. Load test: 100 concurrent users for 1 hour (Locust/K6)
 2. 24-hour stability test (memory leak detection)
 3. Health check latency under DB write load
-
 
 ______________________________________________________________________
 
@@ -174,7 +162,6 @@ ______________________________________________________________________
 - **Environment Variables**: 107
 - **Lines of Code**: 7,266 (wolf_app.py)
 - **Test Files**: 80+
-
 
 ______________________________________________________________________
 
@@ -199,12 +186,10 @@ ______________________________________________________________________
 
 - [ ] **Rotate 5 API keys**(GH-AUD-001): Polygon, AlphaVantage, Ghost token, Telegram
 
-
   bot token, Telegram chat ID
 
 - [ ] Run BFG Repo-Cleaner to remove secrets.env from git history
 - [ ] Verify secrets.env never pushed again
-
 
 ### Week 1 (P1 Fixes)
 
@@ -214,13 +199,11 @@ ______________________________________________________________________
 - [ ] Fix circuit breaker backoff reset + jitter (GH-AUD-005)
 - [ ] Wrap Reuters in outer try/except (GH-AUD-006)
 
-
 ### Week 2 (Testing)
 
 - [ ] Create 5 regression tests for P1 fixes
 - [ ] Run security scans (detect-secrets, pip-audit, OWASP ZAP)
 - [ ] Deploy to staging, run smoke tests
-
 
 ### Week 3-4 (P2 Fixes)
 
@@ -228,13 +211,11 @@ ______________________________________________________________________
 - [ ] Rename main.py to main_DEPRECATED.py (GH-AUD-008)
 - [ ] Create ENV_VARS_REFERENCE.md (GH-AUD-009)
 
-
 ### Month 2 (P3 Polish)
 
 - [ ] Expose forecast accuracy to UI (GH-AUD-010)
 - [ ] Add timeout to /health/detailed (GH-AUD-011)
 - [ ] Enhance UPGRADE_PLAN.md with 7-day calendar
-
 
 ______________________________________________________________________
 
@@ -277,11 +258,9 @@ and solid architecture.**Immediate action required**:
 
 1. **Rotate all API keys today**(P0-1, 3 hours)
 
-
 2.**Fix 5 P1 issues within 2 weeks**(8 hours total)
 3.**Change default persistence to "auto"**(prevents $0 boot)
 4.**Deploy with monitoring**(Railway alerts for CPU/memory/errors)
-
 
 Once P0/P1 issues resolved, GHOST achieves**~95/100 production readiness**.
 
@@ -289,6 +268,6 @@ ______________________________________________________________________
 
 **Audit Completed**: October 4, 2025, 14:30 UTC\
 **Next Review**: Q1 2026 (after P0/P1 deployment)\
-**Contact**: maintainer@ghost-trading.example
+**Contact**: <maintainer@ghost-trading.example>
 
 *End of Audit Completion Summary*

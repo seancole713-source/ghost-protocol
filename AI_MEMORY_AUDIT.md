@@ -24,11 +24,9 @@ ______________________________________________________________________
 - **Table**: `ai_memory` - stores decision history with features, outcomes, confidence
 - **Vector Store**: Currently "none" (Euclidean distance fallback), ready for
 
-
   ChromaDB/FAISS
 
 - **Cache**: 1000-item deque (`AI_MEMORY_RING`) for fast access to recent decisions
-
 
 ### 2. Core Components
 

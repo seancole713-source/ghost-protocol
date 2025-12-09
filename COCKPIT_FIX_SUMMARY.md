@@ -9,14 +9,12 @@
 The Cockpit was empty because**`_LATEST_PREDICTIONS` dictionary was empty**. This in-memory cache feeds all
 prediction-dependent UI panels.
 
-###  Why was it empty
+### Why was it empty
 
 1. **Wrong function called**- `/api/predictions/run` was calling `_generate_48h_forecast()` (old function that only writes to DB)
 
-
 2.**Missing imports**- `turbo_stock_price()` and `turbo_crypto_price()` not imported
 3.**Missing variable**- `BUDGET_S` not defined in `run_single_prediction()`
-
 
 ---
 

@@ -24,7 +24,6 @@ added fallback mechanisms. All endpoints now return live market data.
 - **Workers**: Prediction workers generating forecasts successfully
 - **Health Check**: Passing (92/100 A grade)
 
-
 ### Data Pipeline Issues ❌
 
 #### Issue 1: Top Movers Extreme Filters

@@ -24,7 +24,6 @@
 - [ ] Add auth to `/debug/price_diag` (GH-AUD-002)
 - [ ] Enable rate limiting in production: `RATE_LIMIT_WRITE_RPM=60`
 
-
 ---
 
 ## Secrets Management
@@ -43,7 +42,6 @@
 - [ ] Install `detect-secrets` pre-commit hook
 - [ ] Add `.secrets.baseline` to repo
 - [ ] Document rotation procedure in runbook
-
 
 ---
 
@@ -64,7 +62,6 @@
 - [ ] Add webhook validation to `/telegram/webhook` (GH-AUD-007)
 - [ ] Review CSP policy: ensure `script-src` not `unsafe-inline`
 
-
 ---
 
 ## Data Protection
@@ -81,7 +78,6 @@
 - [ ] Test restore procedure from backup
 - [ ] Add encrypted field support if storing bank account numbers
 
-
 ---
 
 ## Dependency Security
@@ -97,7 +93,6 @@
 - [ ] Pin all packages to exact versions (no `>=`)
 - [ ] Enable Dependabot security alerts
 - [ ] Schedule monthly dependency review
-
 
 ---
 
@@ -116,7 +111,6 @@
 - [ ] Document log retention policy (how many days?)
 - [ ] Create post-mortem template (5 Whys format)
 
-
 ---
 
 ## Testing & Validation
@@ -133,7 +127,6 @@
 - [ ] Document pen test findings if performed
 - [ ] Add security regression tests to CI/CD
 
-
 ---
 
 ## Compliance & Auditing
@@ -148,7 +141,6 @@
 - [ ] Create audit log table (user, action, timestamp, IP)
 - [ ] Define AI memory retention (e.g., keep 365 days)
 - [ ] Add `/admin/audit` endpoint for admin actions review
-
 
 ---
 

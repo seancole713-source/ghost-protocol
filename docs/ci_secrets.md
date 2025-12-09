@@ -9,11 +9,9 @@ This document lists the secrets used across workflows and what they do.
 - `ALPHAVANTAGE_API_KEY` (optional): Enables price parity checks.
 - `POLYGON_API_KEY` (optional): Enables news parity and prev-close checks.
 
-
 PR pre-merge (`pr-verify.yml`):
 
 - Uses localhost server spun up in CI; works without secrets. If you add `GHOST_API_TOKEN`, provider keys, parity checks are enriched.
-
 
 ## Deploy workflow (`deploy.yml`)
 
@@ -25,7 +23,6 @@ PR pre-merge (`pr-verify.yml`):
 - `GHOST_API_TOKEN` (optional): Bearer token used by the post-deploy verifier.
 - `ALPHAVANTAGE_API_KEY` / `POLYGON_API_KEY` (optional): Enable external parity checks during post-deploy verification.
 
-
 ## Staging workflow (`staging.yml`)
 
 - `STAGING_SSH_KEY`: Private key to SSH into the staging server.
@@ -35,7 +32,6 @@ PR pre-merge (`pr-verify.yml`):
 - `STAGING_BASE_URL`: Public base URL of the staging environment. Used by the live verifier.
 - `STAGING_GHOST_API_TOKEN` (optional): Bearer token for staging verification.
 - `ALPHAVANTAGE_API_KEY` / `POLYGON_API_KEY` (optional): Shared provider keys for parity checks.
-
 
 Notes:
 

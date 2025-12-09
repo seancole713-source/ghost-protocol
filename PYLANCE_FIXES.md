@@ -13,7 +13,6 @@ ______________________________________________________________________
 
 - Lines 304, 320: `current_bucket.isoformat()` called when `current_bucket` could be
 
-
   None
 
 **Fix**: Added None checks before calling `.isoformat()`

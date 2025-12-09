@@ -15,7 +15,6 @@
 - Logs all auto-exits to database
 - Configurable via environment variables
 
-
 **Configuration**:
 
 ```bash

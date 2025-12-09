@@ -17,11 +17,9 @@ apply_outcome_migration.py`)
 3. ⏳ Verify outcome reconciler runs successfully
 4. ⏳ Check `/api/v3/accuracy/summary` shows real percentages**Expected Timeline:**-**T+0h (Now):**Deploy code, apply migration
 
-
 -**T+48h (Dec 4):**First predictions close, outcomes calculated
 -**T+72h (Dec 5):**Sufficient data for initial accuracy assessment
 -**T+168h (Dec 9):**One week of data, 70% threshold can be evaluated
-
 
 ---
 
@@ -39,7 +37,6 @@ At t = run_at + 48h, fetch actual price using live providers:
 1. Compute: `realized_move_pct = ((price_t1 - price_t0) / price_t0) * 100`
 2. Determine actual direction:
    - `realized_move_pct > +0.25%` → **UP**- `realized_move_pct < -0.25%` →**DOWN**- `abs(realized_move_pct) <= 0.25%` →**FLAT**1. Compare: `predicted_direction == actual_direction` → ✅ correct, else ❌ wrong**Accuracy Calculation:**
-
 
 ```text
 accuracy_pct = (correct_predictions / total_evaluated_predictions) * 100

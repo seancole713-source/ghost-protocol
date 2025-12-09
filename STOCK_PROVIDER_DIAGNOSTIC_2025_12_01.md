@@ -18,7 +18,6 @@
 2. Enhanced error messages to distinguish failure types (timeouts, rate limits, no data)
 3. No database or prediction_store changes (as requested)
 
-
 ---
 
 ## Test Results

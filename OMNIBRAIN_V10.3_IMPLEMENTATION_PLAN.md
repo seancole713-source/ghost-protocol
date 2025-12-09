@@ -13,7 +13,6 @@
 - [x] Quorum consensus (median of 2+ providers)
 - [x] Database schema (crypto_predictions, crypto_forecast_points, crypto_actual_points)
 
-
 ### Phase 2: API Integration (NOW)
 
 - [ ] Add crypto routes to wolf_app.py:
@@ -25,7 +24,6 @@
 - [ ] Add Prometheus metrics for crypto operations
 - [ ] UTC timestamp handling throughout
 
-
 ### Phase 3: UI Updates (NOW)
 
 - [ ] Rename "Ghost Predictions" panel title (already correct in current HTML)
@@ -35,13 +33,11 @@
 - [ ] Local time rendering via JavaScript
 - [ ] Remove any 1970/1969 date artifacts
 
-
 ### Phase 4: Sentiment & Macro Brain
 
 - [ ] Wire NEWS_SENTIMENT_ON=1 to fetch per-symbol sentiment
 - [ ] Wire MACRO_BRAIN_ON=1 for QQQ/SOXX/SMH proxies
 - [ ] FUSION_AI_ON=1 for weighted final score
-
 
 ### Phase 5: Telegram Integration
 
@@ -50,14 +46,12 @@
 - [ ] Free-form Q&A with current data
 - [ ] Logging for webhook deliveries
 
-
 ### Phase 6: Time & Freshness Fixes
 
 - [ ] Audit all timestamps → UTC timezone-aware
 - [ ] Fix snapshot `as_of` generation
 - [ ] Add `ghost_snapshot_asof` Prometheus gauge
 - [ ] UI renders local time via JS
-
 
 ### Phase 7: Testing & Validation
 
@@ -68,7 +62,6 @@
 - [ ] UI manual verification
 - [ ] Metrics verification
 
-
 ### Phase 8: Documentation & Deployment
 
 - [ ] Update README with OmniBrain section
@@ -76,7 +69,6 @@
 - [ ] Create CHANGELOG entry for v10.3
 - [ ] Railway environment variables check
 - [ ] Deployment verification
-
 
 ______________________________________________________________________
 

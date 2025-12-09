@@ -15,7 +15,6 @@ parallel execution and self-correction\
 4. **Feature Flags**: All new behavior behind env flags
 5. **No Placeholders**: Ban mock/demo data in production
 
-
 ______________________________________________________________________
 
 ## 🔍 ROOT CAUSE ANALYSIS: BEARER AUTH ERROR

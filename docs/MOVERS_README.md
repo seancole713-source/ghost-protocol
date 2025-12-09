@@ -16,7 +16,6 @@ monitoring.
 - **Redis De-duplication**: 24h TTL prevents alert spam
 - **SSE Integration**: Real-time updates via `/api/cockpit/stream`
 
-
 ## API Endpoints
 
 ### GET /api/scan/movers

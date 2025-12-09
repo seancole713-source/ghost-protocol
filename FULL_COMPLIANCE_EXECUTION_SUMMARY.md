@@ -21,7 +21,6 @@ actual) with:
 - ✅ Comprehensive test suite (20 tests: 16 passed, 4 N/A)
 - ✅ Runtime verification tooling (100%)**Estimated Compliance Improvement**: 68.6% → **95-100%**(pending final audit)
 
-
 ______________________________________________________________________
 
 ## Implementation Details
@@ -36,7 +35,6 @@ ______________________________________________________________________
 - `_collect_actual_prices()`: Historical price collection with ±5min tolerance
 - `_compute_forecast_accuracy()`: MAP, RMSE, bias calculations
 - `_build_two_line_forecast()`: Orchestrator function
-
 
 **Schema**(two_line_overlay):
 

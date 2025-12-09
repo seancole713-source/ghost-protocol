@@ -20,7 +20,6 @@ Created 7 new API endpoints that the Ghost Cockpit UI was calling but didn't exi
 - `/api/research/snapshot/{symbol}` - Returns research data for specific symbol
 - `/api/stage5/execution/analytics` - Returns execution quality metrics**Location:**`wolf_app.py` lines 14495-14620
 
-
 #### 2.**Fixed Syntax Errors**✅
 
 - Fixed garbage text in `wolf_app.py` line 18095 (`run a full system check`)
@@ -28,19 +27,16 @@ Created 7 new API endpoints that the Ghost Cockpit UI was calling but didn't exi
 - Fixed logger references (changed `logger` to `LOGGER` throughout new endpoints)
 - Fixed FastAPI decorator stacking issue (can't use multiple `@APP.get()` on same
 
-
   function)
 
 #### 3.**Verified Server Configuration**✅
 
 - Confirmed PORT environment variable is correctly read:
 
-
   `port = int(os.getenv("PORT", "5000"))`
 
 - Updated `railway.toml` to use correct start command: `python3 wolf_app.py`
 - Health check endpoint verified: `/health` returns `{"ok": true, "ts": timestamp}`
-
 
 ______________________________________________________________________
 
@@ -59,18 +55,15 @@ ______________________________________________________________________
 - `/api/stage3/regime/current` - Returns market regime
 - `/api/stage3/risk/dashboard` - Returns risk metrics
 
-
 ### Needs Parameters (HTTP 422) ⚠️
 
 - `/api/predict/history` - Requires `symbol` parameter
 - `/api/predict/series` - Requires `symbol` parameter
 
-
 ### Still Missing (HTTP 404) ❌
 
 - `/api/news` - Created but needs server restart to load
 - `/api/news/recent` - Created but needs server restart to load
-
 
 ______________________________________________________________________
 

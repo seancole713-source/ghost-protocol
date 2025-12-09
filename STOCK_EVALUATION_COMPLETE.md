@@ -14,24 +14,21 @@ crypto) can be evaluated automatically.
 
 1.**Stock Evaluation via yfinance**- AAPL, TSLA, NVDA, MSFT, WOLF, and all 135 DEFAULT_STOCK_SYMBOLS
 
-   - Automatic fallback from turbo provider → yfinance
-   - Exponential backoff retry (3 attempts: 0.5s, 1s, 2s delays)
-   - Handles JSON parsing errors gracefully
-
+- Automatic fallback from turbo provider → yfinance
+- Exponential backoff retry (3 attempts: 0.5s, 1s, 2s delays)
+- Handles JSON parsing errors gracefully
 
 1.**Crypto Evaluation via Coinbase**- BTC, ETH, SOL, and all 52 DEFAULT_CRYPTO_SYMBOLS
 
-   - Automatic fallback from turbo provider → Coinbase public API
-   - No API key required for standalone operation
-
+- Automatic fallback from turbo provider → Coinbase public API
+- No API key required for standalone operation
 
 1.**Comprehensive Logging**
 
-   - All operations logged to `logs/evaluator.log`
-   - Per-prediction details: symbol, asset_type, direction, confidence, outcome
-   - Clear skip reasons when price data unavailable
-   - Performance metrics: total/evaluated/skipped/correct/incorrect/accuracy
-
+- All operations logged to `logs/evaluator.log`
+- Per-prediction details: symbol, asset_type, direction, confidence, outcome
+- Clear skip reasons when price data unavailable
+- Performance metrics: total/evaluated/skipped/correct/incorrect/accuracy
 
 ---
 

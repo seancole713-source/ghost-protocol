@@ -8,17 +8,14 @@ codebase and Railway service.
 
 1. **Banned tokens**: any string that literally starts with "your" followed by `_`, plus
 
-
   `your-key-here`, `dummy-`, `fake-api-key`, `changeme`, `lorem ipsum`, `test-value`,
   and related variants. Extend the list as new anti-patterns appear.
 
 1. **No stubs**: Never check in mock endpoints, fake accuracy data, or “temporary” UI
 
-
    values. If the real dependency is unavailable, fix it or block the merge.
 
 1. **Docs vs. runtime**: Documentation may *describe* placeholders only inside fenced
-
 
    code blocks. Runtime files (.py, .sh, .env, .toml, .json, etc.) may not contain the
    banned strings at all.
@@ -27,11 +24,9 @@ codebase and Railway service.
 
 - `scripts/check_no_placeholders.sh`: scans the repo, ignores vendor caches, and
 
-
   validates `/health`, `/cockpit`, `/api/v3/cockpit/version` on the current target.
 
   - Output on failure: `❌ PLACEHOLDERS FOUND – fix these before commit/push` followed
-
 
     by `file:line:value` entries.
 
@@ -39,11 +34,9 @@ codebase and Railway service.
 - `.githooks/pre-push`: runs the same script; pushes fail until all issues are fixed.
 - `.github/workflows/ghost_smoke.yml`: CI launches Ghost, waits for `/health`, then runs
 
-
   the script in `GHOST_ENV=local` mode.
 
 - `scripts/check_railway_service.sh`: reuse of the smoke routine for the live Railway
-
 
   URL (no placeholder scanning, remote-only validation).
 
@@ -51,7 +44,6 @@ codebase and Railway service.
 
 - `0`: clean scan + healthy cockpit responses.
 - `1`: placeholder detected **or** any smoke check failed. The script prints context and
-
 
   exits immediately.
 
@@ -61,11 +53,9 @@ codebase and Railway service.
 2. Develop normally, then execute `scripts/check_no_placeholders.sh` before committing.
 3. If the script points to a placeholder line, remove it and implement the real value—do
 
-
    not replace it with another fake token.
 
-1. For production, run `scripts/check_railway_service.sh <railway-url>` right after
-
+4. For production, run `scripts/check_railway_service.sh <railway-url>` right after
 
    Railway finishes deploying to confirm the live environment matches Cockpit V3.
 

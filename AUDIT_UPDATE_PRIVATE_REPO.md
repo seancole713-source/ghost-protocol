@@ -24,10 +24,8 @@ risk profile for certain findings.
 
 - **Key rotation**: **NOT required**(keys are safe in private repo)
 
-
 -**History cleanup**: **Optional**(if you want pristine git log for best practices)
 -**Pre-commit hook**: **Recommended**(prevents future accidental commits)
-
 
 ```bash
 

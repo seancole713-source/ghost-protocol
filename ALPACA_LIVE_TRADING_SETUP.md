@@ -19,30 +19,27 @@
 - ✅ Comprehensive test suite**What's Missing:**- ❌ Environment variables not configured (5-minute user task)
 - ❌ Alpaca API keys not generated (5-minute user task)
 
-
 ---
 
 ## 📋 STEP 1: GET ALPACA API KEYS
 
-###**Option A: Paper Trading (Recommended First)**1. Go to <<<<<https://alpaca.markets/>>>>>
+### **Option A: Paper Trading (Recommended First)**1. Go to <<<<<https://alpaca.markets/>>>>>
 
 1. Sign up for free account
 2. Navigate to**Paper Trading**4. Generate API keys:
    - `ALPACA_KEY_ID` (starts with PK...)
    - `ALPACA_SECRET_KEY`
 
-
-###**Option B: Live Trading (Real Money)**1. Same website, but select**Live Trading**2. Complete KYC verification
+### **Option B: Live Trading (Real Money)**1. Same website, but select**Live Trading**2. Complete KYC verification
 
 1. Fund your account
 2. Generate LIVE API keys
-
 
 5.**⚠️ EXTREME CAUTION - REAL MONEY AT RISK**---
 
 ## 📋 STEP 2: CONFIGURE ENVIRONMENT VARIABLES
 
-###**Local Testing (.env file):**```bash
+### **Local Testing (.env file):**```bash
 
 # Broker Configuration
 

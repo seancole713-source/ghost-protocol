@@ -17,14 +17,12 @@ markets, finds opportunities, and alerts you instantly.
 - Order execution system
 - Broker integration
 
-
 ### ✅ What Ghost IS
 
 - AI-powered opportunity scanner
 - Multi-signal confirmation engine
 - Accuracy-tracked prediction system
 - Real-time alert dispatcher
-
 
 ---
 
@@ -51,18 +49,15 @@ No high-conviction signals. Wait for better setups.
 
 1. 📈 MSFT
 
-
    ⚠️ $507.49 → $511.80 (0.8%)
    ✅ Confidence: 72%
 
 1. 📈 META
 
-
    ⚠️ $602.01 → $607.12 (0.8%)
    ✅ Confidence: 72%
 
 1. 📈 TSLA
-
 
    ⚠️ $408.92 → $412.39 (0.8%)
    ✅ Confidence: 72%

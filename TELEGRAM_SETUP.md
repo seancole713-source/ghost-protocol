@@ -6,7 +6,6 @@
 - Bot configured in env vars
 - Needs activation in Railway
 
-
 ## Required Environment Variables (Already in railway_env_vars.txt)
 
 ```bash

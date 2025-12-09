@@ -13,7 +13,6 @@
 - [x] BTC/ETH/XRP predictions flowing through abstraction
 - [x] Production logs show `[SQLiteBackend]` messages (correct default)
 
-
 ---
 
 ## Phase 2A: Enable Dual-Write (SQLite Primary + Postgres Secondary)**Goal:**Validate PostgreSQL writes without switching primary backend

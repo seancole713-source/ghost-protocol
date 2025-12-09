@@ -15,12 +15,10 @@ environment configuration.
 - Feature controlled by env var: `ALERT_SCHEDULE_OPEN_CLOSE`
 - Default value in `wolf_app.py` line 2126:
 
-
   `int(os.getenv("ALERT_SCHEDULE_OPEN_CLOSE", "0"))`
 
 - Was set to `"0"` (disabled)
 - Conditional startup in `wolf_app.py` line 1816:
-
 
   ```python
   if SCHEDULE_OPEN_CLOSE:

@@ -12,11 +12,10 @@
 -**Impact:**Mislead users about actual performance, claimed 85%+ even with ZERO predictions evaluated
 -**Fix Applied:**Dynamic database lookup now shows:
 
-  - Real accuracy: `"🎯 78% Accuracy (14/18 correct)"` (if outcomes evaluated)
-  - Honest pending: `"📊 Evaluating (25 predictions pending outcome)"` (if predictions exist)
-  - Honest bootstrap: `"🔄 Building prediction history (no evaluations yet)"` (if no predictions)
-  - Generic fallback only on database error: `"🤖 Smart Filter Active"`**Status:**✅ FIXED (modified `wolf_app.py` lines 10240-10270, ready for deployment)
-
+- Real accuracy: `"🎯 78% Accuracy (14/18 correct)"` (if outcomes evaluated)
+- Honest pending: `"📊 Evaluating (25 predictions pending outcome)"` (if predictions exist)
+- Honest bootstrap: `"🔄 Building prediction history (no evaluations yet)"` (if no predictions)
+- Generic fallback only on database error: `"🤖 Smart Filter Active"`**Status:**✅ FIXED (modified `wolf_app.py` lines 10240-10270, ready for deployment)
 
 ---
 
@@ -35,7 +34,6 @@
 
 - ✅**Accuracy Summary PASS:**Returns `{"ok": false, "error": "No reconciled predictions found"}` - This is HONEST (no fake data)
 - ❌**Hunter Feed FAIL:**Returns placeholder instead of real movers - This is BROKEN (backend timeout/cache issue)
-
 
 ---
 
@@ -56,20 +54,17 @@ panels wired correctly)
 
 1.**Accuracy Chart Broken:**- Function `loadAccuracyChart()` exists at `cockpit_v3.js:337`
 
-   - NEVER called in `loadAllPanels()` or any `setInterval()`
-   - Renders only horizontal line stub (Chart.js not implemented)
-
+- NEVER called in `loadAllPanels()` or any `setInterval()`
+- Renders only horizontal line stub (Chart.js not implemented)
 
    -**Fix Required:**Add to initialization + implement real Chart.js rendering
 
 1.**Hunter Feed Timeouts:**- Backend function `_refresh_hunter_feed()` takes too long
 
-   - Causes HTTP 502 "Bad Gateway" errors
-   - Returns cached placeholder: "Scanner warming up..."
-
+- Causes HTTP 502 "Bad Gateway" errors
+- Returns cached placeholder: "Scanner warming up..."
 
    -**Fix Required:**Optimize cache refresh performance or increase timeout
-
 
 ---
 

@@ -16,13 +16,11 @@ ______________________________________________________________________
 - **Total Loss**: `-$2,775.29`
 - **Loss %**: `-91.74%`
 
-
 ### Portfolio
 
 - **Cash Balance**: `$250.90` ← CORRECT!
 - **Position Value**: `$249.73`
 - **Total NAV**: `$500.63`
-
 
 ______________________________________________________________________
 
@@ -34,9 +32,8 @@ ______________________________________________________________________
    - Market is OPEN (9:30 AM - 4:00 PM ET, Mon-Fri)
    - Ghost successfully fetches from price provider
    - New price is confirmed valid
-1. **After Market Close**: Use the locked closing price until next market open
-2. **No Interpolation**: Never estimate or calculate prices between locks
-
+4. **After Market Close**: Use the locked closing price until next market open
+5. **No Interpolation**: Never estimate or calculate prices between locks
 
 ______________________________________________________________________
 

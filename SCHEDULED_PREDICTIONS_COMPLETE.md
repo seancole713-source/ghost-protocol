@@ -8,20 +8,18 @@ Ghost now sends **automated stock market predictions**at key times:
 
 1.**8:00 AM ET**- Pre-market Prediction
 
-   - Current WOLF price & status
-   - Ghost's prediction for the day (BUY/SELL/HOLD)
-   - Confidence level
-   - Key factors influencing prediction
-   - Recommended strategy
-
+- Current WOLF price & status
+- Ghost's prediction for the day (BUY/SELL/HOLD)
+- Confidence level
+- Key factors influencing prediction
+- Recommended strategy
 
 1.**9:35 AM ET**- Market Open Check (5 min after open)
 
-   - Compares 8am prediction vs actual price
-   - Shows if Ghost was CORRECT or INCORRECT
-   - Price change since prediction
-   - Accuracy tracking
-
+- Compares 8am prediction vs actual price
+- Shows if Ghost was CORRECT or INCORRECT
+- Price change since prediction
+- Accuracy tracking
 
 ### 📊 What You'll Get
 

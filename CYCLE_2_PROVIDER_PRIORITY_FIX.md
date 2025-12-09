@@ -1,7 +1,7 @@
 # CYCLE #2: Provider Priority Fix (8% → 50%+)
 
-**Date**: December 7, 2025, 5:05 PM PST  
-**Status**: ✅ DEPLOYED  
+**Date**: December 7, 2025, 5:05 PM PST
+**Status**: ✅ DEPLOYED
 **Classification**: 🟢 SAFE (priority reordering, zero new code)
 
 ---
@@ -21,6 +21,7 @@
 ### The 8% Problem
 
 From historical analysis (461 docs reviewed):
+
 - Ghost configured with Polygon API key and AlphaVantage API key
 - Both present in environment variables and test scripts
 - But provider chains prioritized FREE providers first
@@ -29,11 +30,13 @@ From historical analysis (461 docs reviewed):
 ### Why Free APIs Failed
 
 **yfinance** (Stock #1 - FREE):
+
 - Community-maintained Yahoo Finance scraper
 - Rate limits: ~2,000 requests/hour/IP
 - Often returns stale data or fails silently
 
 **Yahoo HTTP** (Stock #2 - FREE):
+
 - Direct Yahoo Finance API (unofficial)
 - Aggressive rate limiting
 - Frequently returns 429 errors
@@ -69,6 +72,7 @@ providers: List[Tuple[str, Callable[[], Any]]] = [
 ### How Provider Chain Works
 
 From `turbo_provider.py` analysis:
+
 1. **Cache check** (5-minute TTL): Return cached if available
 2. **Sequential provider calls**: Try each provider with 2s timeout
 3. **Short-circuit on success**: Return after first successful provider
@@ -126,6 +130,7 @@ $ bash scripts/ghost_regression.sh
 ### Health Monitoring
 
 Check provider health via orchestrator:
+
 ```bash
 curl https://ghost-protocol-production.up.railway.app/api/v3/system/orchestrator
 ```
@@ -139,10 +144,12 @@ Look for `provider_health` section showing success rates per provider.
 ### Crypto Still Uses Free Providers
 
 **Why**: Paid provider functions in wolf_app.py are stock-specific:
+
 - `_fetch_price_alphavantage`: Uses GLOBAL_QUOTE (stocks only)
 - `_fetch_price_polygon`: Uses ticker format (`/v2/aggs/ticker/{SYMBOL}/prev`)
 
 **Crypto needs**:
+
 - Polygon crypto endpoints: `/v2/aggs/ticker/X:{CRYPTO}USD/prev`
 - AlphaVantage crypto: `function=CURRENCY_EXCHANGE_RATE`
 
@@ -151,11 +158,13 @@ Look for `provider_health` section showing success rates per provider.
 ### API Rate Limits
 
 **AlphaVantage Free Tier**:
+
 - 500 requests/day
 - 5 requests/minute
 - Should cover 192 symbols with 5-minute cache
 
 **Polygon Paid Tier**:
+
 - Much higher limits (check specific plan)
 - Real-time and delayed data available
 
@@ -168,6 +177,7 @@ Look for `provider_health` section showing success rates per provider.
 ### Deployment Method
 
 Auto-deploy via Railway GitHub integration:
+
 1. ✅ Code committed: `098250e`
 2. ✅ Pushed to main branch
 3. ⏳ Railway auto-deploys (typically 2-3 minutes)
@@ -175,6 +185,7 @@ Auto-deploy via Railway GitHub integration:
 ### Verification Steps
 
 1. **Check Railway logs** for provider calls:
+
    ```
    Look for: "Trying provider: alphavantage" (should appear first)
    Confirm: No rate limit errors from yfinance/Yahoo
@@ -197,6 +208,7 @@ Auto-deploy via Railway GitHub integration:
 ### Why This Wasn't Fixed Before
 
 From 461 doc analysis:
+
 - **Dec 3**: OMEGA V2 Surgical Repair - Fixed HTTP 499 timeouts (symptom)
 - **Dec 4**: Cockpit V3 Complete Fix - Fixed empty arrays (symptom)
 - **Dec 4**: Provider Priority documented - Never implemented
@@ -239,9 +251,9 @@ From 461 doc analysis:
 
 ## Commit Info
 
-**Commit**: `098250e`  
-**Message**: "CYCLE #2: Provider Priority Fix - Paid APIs First"  
-**Files Changed**: `core/providers/turbo_provider.py` (6 lines, 1 file)  
+**Commit**: `098250e`
+**Message**: "CYCLE #2: Provider Priority Fix - Paid APIs First"
+**Files Changed**: `core/providers/turbo_provider.py` (6 lines, 1 file)
 **Classification**: 🟢 SAFE (priority reordering, zero breaking changes)
 
 ---

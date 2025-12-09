@@ -9,7 +9,6 @@
 - ✅ No heavy DB queries or external API calls
 - ✅ Target response time: <50ms
 
-
 ### 2. /api/predict/run Endpoint (wolf_app.py)
 
 - ✅ Added validation before expensive operations
@@ -17,7 +16,6 @@
 - ✅ Returns structured error JSON (never raises exceptions)
 - ✅ 4 second budget enforced (3s price + 1s features)
 - ✅ Turbo providers with fast-fail already implemented
-
 
 ### 3. /api/v3/watchlist/enriched (cockpit_v3_live_endpoints.py)
 
@@ -27,7 +25,6 @@
 - ✅ Each price fetch wrapped in try/except
 - ✅ Returns empty list on error (never hangs)
 
-
 ### 4. /api/v3/predictions/latest (cockpit_v3_live_endpoints.py)
 
 - ✅ Added 5 second timeout wrapper (asyncio.wait_for)
@@ -36,7 +33,6 @@
 - ✅ DB queries wrapped in try/except
 - ✅ Returns empty predictions array on error
 
-
 ### 5. /api/v3/goals/snapshot (cockpit_v3_live_endpoints.py)
 
 - ✅ Added 5 second timeout wrapper (asyncio.wait_for)
@@ -44,7 +40,6 @@
 - ✅ Core logic extracted to _get_goals_snapshot_core()
 - ✅ Nested try/except for fallback behavior
 - ✅ Returns empty goals object on error
-
 
 ## Response Format Standardization
 

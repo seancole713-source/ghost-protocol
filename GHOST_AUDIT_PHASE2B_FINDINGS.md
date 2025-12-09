@@ -251,7 +251,7 @@ ______________________________________________________________________
 def _legacy_snapshot_to_decision(row: tuple[Any, ...]) -> dict[str, Any]:
     """Convert legacy AI snapshot row to modern AIMemory decision format."""
 
-    
+
 
 ```text**Impact:**- Function is used for one-time migration from old DB format
 

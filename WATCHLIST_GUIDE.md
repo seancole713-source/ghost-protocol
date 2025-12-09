@@ -14,29 +14,26 @@ ______________________________________________________________________
 
 1.**Watchlist Manager**(`core/watchlist_manager.py`)
 
-   - Manages watchlist symbols
-   - Calculates and tracks GHOST scores
-   - Filters symbols by GPS threshold
-   - Maintains historical score database
-
+- Manages watchlist symbols
+- Calculates and tracks GHOST scores
+- Filters symbols by GPS threshold
+- Maintains historical score database
 
 1.**API Endpoints**(integrated in `wolf_app.py`)
 
-   - `/api/watchlist` - Get all watchlist symbols
-   - `/api/watchlist/add` - Add symbol to watchlist
-   - `/api/watchlist/remove` - Remove symbol from watchlist
-   - `/api/watchlist/score` - Update GHOST score for symbol
-   - `/api/watchlist/history/{symbol}` - Get historical scores
-   - `/api/watchlist/statistics` - Get watchlist statistics
-   - `/api/top_movers` -**Updated**- Only returns symbols with GPS ≥ threshold
-
+- `/api/watchlist` - Get all watchlist symbols
+- `/api/watchlist/add` - Add symbol to watchlist
+- `/api/watchlist/remove` - Remove symbol from watchlist
+- `/api/watchlist/score` - Update GHOST score for symbol
+- `/api/watchlist/history/{symbol}` - Get historical scores
+- `/api/watchlist/statistics` - Get watchlist statistics
+- `/api/top_movers` -**Updated**- Only returns symbols with GPS ≥ threshold
 
 1.**Database**(`watchlist.db`)
 
-   - `watchlist` table: Symbol information
-   - `ghost_scores` table: Historical GPS scores
-   - Indexed for fast queries
-
+- `watchlist` table: Symbol information
+- `ghost_scores` table: Historical GPS scores
+- Indexed for fast queries
 
 ______________________________________________________________________
 

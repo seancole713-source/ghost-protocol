@@ -12,18 +12,15 @@ ______________________________________________________________________
 
 1.**`_forecast_summary_for_snapshot()`**- Line ~1273
 
-   - `"label": "Stock Predictions"` → `"label": "Ghost Predictions"` (2 instances)
-
+- `"label": "Stock Predictions"` → `"label": "Ghost Predictions"` (2 instances)
 
 1.**`forecast_full` in cockpit**- Line ~12170
 
-   - `"label": "Stock Predictions"` → `"label": "Ghost Predictions"`
-
+- `"label": "Stock Predictions"` → `"label": "Ghost Predictions"`
 
 1.**`/api/forecast/overlay` endpoint**- Line ~9970
 
-   - `"label": "Stock Predictions"` → `"label": "Ghost Predictions"`
-
+- `"label": "Stock Predictions"` → `"label": "Ghost Predictions"`
 
 ______________________________________________________________________
 
@@ -34,7 +31,6 @@ ______________________________________________________________________
 -**Railway Build:**In progress (~2-3 minutes)
 -**URL:**<<<<<https://web-production-8e9a0.up.railway.app>>>>>
 
-
 ______________________________________________________________________
 
 ## Expected Result
@@ -44,7 +40,6 @@ All forecast labels will display**"Ghost Predictions"**instead of:
 - ~~"48h Forecast"~~ (original)
 - ~~"Stock Predictions"~~ (previous update)
 - ✅**"Ghost Predictions"**(MASTER COMMAND)
-
 
 ### API Responses After Deployment
 

@@ -19,62 +19,54 @@ ______________________________________________________________________
 
 1.**DOGE (Dogecoin)**🐕
 
-   - Market Cap: ~$10-15B
-   - The original meme coin
-   - Backed by Elon Musk tweets
-   - Established, relatively stable for a meme
-
+- Market Cap: ~$10-15B
+- The original meme coin
+- Backed by Elon Musk tweets
+- Established, relatively stable for a meme
 
 1.**SHIB (Shiba Inu)**🐕
 
-   - Market Cap: ~$5-8B
-   - "Dogecoin killer"
-   - ShibaSwap ecosystem
-   - Strong community
-
+- Market Cap: ~$5-8B
+- "Dogecoin killer"
+- ShibaSwap ecosystem
+- Strong community
 
 1.**PEPE (Pepe)**🐸
 
-   - Market Cap: ~$500M-2B
-   - Based on Pepe the Frog meme
-   - Explosive growth in 2023-2024
-   - High volatility
+- Market Cap: ~$500M-2B
+- Based on Pepe the Frog meme
+- Explosive growth in 2023-2024
+- High volatility
 
-
-###**Mid Tier Memes**(Growing Market Cap)
+### **Mid Tier Memes**(Growing Market Cap)
 
 1.**BONK (Bonk)**💥
 
-   - Solana-based meme coin
-   - Community-driven
-   - Gaming integrations
-
+- Solana-based meme coin
+- Community-driven
+- Gaming integrations
 
 1.**FLOKI (Floki Inu)**🐕
 
-   - Named after Elon's dog
-   - Metaverse and NFT focus
-   - Strong marketing
-
+- Named after Elon's dog
+- Metaverse and NFT focus
+- Strong marketing
 
 1.**WIF (dogwifhat)**🎩
 
-   - Solana meme coin
-   - "Dog Wif Hat" viral image
-   - Newer but trending
+- Solana meme coin
+- "Dog Wif Hat" viral image
+- Newer but trending
 
+### **Other Tracked Memes**1.**BABYDOGE (Baby Doge Coin)**👶🐕
 
-###**Other Tracked Memes**1.**BABYDOGE (Baby Doge Coin)**👶🐕
-
-   - Baby version of Dogecoin
-   - Charity focus
-
+- Baby version of Dogecoin
+- Charity focus
 
 1.**ELON (Dogelon Mars)**🚀
 
-   - Mars-themed Dogecoin fork
-   - Space meme narrative
-
+- Mars-themed Dogecoin fork
+- Space meme narrative
 
 ______________________________________________________________________
 
@@ -103,7 +95,6 @@ ______________________________________________________________________
 6.**COMP (Compound)**- Lending protocol
 7.**LINK (Chainlink)**- Also in blue chip
 
-
 ______________________________________________________________________
 
 ## 🤖**AI & Gaming Tokens (7)**Artificial Intelligence and Gaming cryptos
@@ -115,7 +106,6 @@ ______________________________________________________________________
 5.**MANA (Decentraland)**- Virtual world
 6.**AXS (Axie Infinity)**- Play-to-earn
 7.**GALA (Gala Games)**- Gaming platform
-
 
 ______________________________________________________________________
 
@@ -238,7 +228,7 @@ Example: <<<<<https://www.coingecko.com/en/coins/dogecoin>>>>> → ID is `dogeco
 
 SYMBOL_MAP = {
 
-    # ... existing coins 
+    # ... existing coins
 
     'NEWCOIN': 'coingecko-id-here',
 }

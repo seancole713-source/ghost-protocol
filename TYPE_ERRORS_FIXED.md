@@ -20,7 +20,6 @@ clarity.
 - ✅ `wolf_app.py` - 1 error fixed
 - ✅ `tests/test_security_audit_fixes.py` - 2 errors fixed
 
-
 ______________________________________________________________________
 
 ## 🔍 DETAILED FIXES

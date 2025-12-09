@@ -272,12 +272,10 @@ METHODS (10):
 
 1. __init__(memory_path=None, mape_threshold=5.0, min_samples=10) • Initialize learning
 
-
     loop • Default: data/model_memory.json • MAP threshold: Trigger retuning when > 5% •
     Min samples: Need 10+ forecasts before tuning
 
 1. \_load_memory() • Load learning history from disk • Includes: current_config,
-
 
     tune_count, history
 
@@ -285,13 +283,11 @@ METHODS (10):
 
 1. check_performance(symbol=None, days=7) • Check if model needs tuning • Returns: Dict
 
-
     with needs_tuning flag + reasons • Example output: { 'needs_tuning': True,
     'reasons': [ 'MAPE too high (7.2% > 5.0%)', 'High bias detected (4.5%)' ],
     'metrics': {...} }
 
 1. analyze_bias(metrics) • Detect systematic errors • Recommend parameter adjustments •
-
 
     Returns: Dict with analysis + recommendations • Example output: { 'bias_detected':
     True, 'bias_direction': 'over', # over-predicting 'bias_magnitude': 4.5,
@@ -302,19 +298,16 @@ METHODS (10):
 
 1. adjust_parameters(recommendations, auto_apply=False) • Apply parameter adjustments •
 
-
     If auto_apply=True, immediately updates config • Stores adjustment in history •
     Returns: Dict with changes made
 
 1. run_learning_cycle(symbol=None, days=7, auto_apply=True) • Execute full cycle: check
-
 
     → analyze → adjust • Returns: Comprehensive result dict • Example flow:
 
     1. Check performance: MAP = 7.2% (> 5% threshold)
     2. Analyze bias: Over-predicting by 4.5%
     3. Adjust: confidence_threshold 0.7 → 0.75, bias_correction → -0.045 • Example
-
 
        output: { 'cycle_run': True, 'tuning_needed': True, 'adjustments_made': True,
        'performance': {...}, 'analysis': {...}, 'adjustments': { 'changes': [...] },
@@ -327,11 +320,9 @@ METHODS (10):
     - bias_correction (-0.2 to +0.2)
     - volatility_adjustment (0.5-1.5)
 
-
 1. get_learning_history(limit=10) • Returns: Recent learning adjustments
 
 1. get_learning_stats() • Returns: Learning loop statistics • Example: { 'tune_count':
-
 
     3, 'last_tune': '2025-10-05T14:30:00Z', 'mape_threshold': 5.0, 'min_samples': 10,
     'current_config': {...}, 'history_count': 3 }

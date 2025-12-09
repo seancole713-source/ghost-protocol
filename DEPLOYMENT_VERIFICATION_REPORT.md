@@ -14,7 +14,6 @@ ______________________________________________________________________
 - ✅ `templates/cockpit.html` - UI observability panels
 - ✅ `tests/test_telegram_test_endpoint.py` - New integration test
 
-
 ### Push Status
 
 ```text

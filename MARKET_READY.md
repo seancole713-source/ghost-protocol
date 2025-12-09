@@ -12,7 +12,6 @@ ______________________________________________________________________
 - Health endpoint:**200 OK**in \<100ms
 - Server running:**localhost:5000**- No critical errors
 
-
 ### 2. Live Data Pipeline ✓
 
 -**AlphaVantage**: ✓ Working (221ms latency)
@@ -21,7 +20,6 @@ ______________________________________________________________________
 - **Yahoo**: ⚠️ Backed off (rate-limited, will recover)
 - **yfinance**: ⚠️ Backed off (will recover)
 - **Current Price**: $24.69 (live, not prev-close!)
-
 
 ### 3. Position & Portfolio ✓
 
@@ -32,22 +30,18 @@ ______________________________________________________________________
 - **NAV**: $207.88
 - **P&L**: -$2.61 (-1.24%)
 
-
 ### 4. Key Fixes Implemented Today ✓
 
 1. **Relaxed quorum for off-hours**: Now accepts 1 provider when market closed (was
 
-
    requiring ≥2)
 
 1. **Added `/api/price/WOLF` endpoint**: Manual price refresh with `force=1` parameter
-2. **Verified anomaly detection**: Pauses forecast on 60% moves, 5x jumps, or large
-
+1. **Verified anomaly detection**: Pauses forecast on 60% moves, 5x jumps, or large
 
    spread
 
 1. **Created preflight checklist**: `scripts/preflight_check.sh` for morning
-
 
    verification
 
@@ -59,14 +53,12 @@ ______________________________________________________________________
 - **Reuters Feeds**: false (disabled due to DNS issues)
 - **Forecast**: Enabled, 48h horizon, 60% confidence
 
-
 ### 6. Flags & Anomalies ✓
 
 - **Degraded**: No
 - **Price Anomaly**: No
 - **Market Open**: No (expected after hours)
 - **Using prev-close**: No (using live AlphaVantage data)
-
 
 ______________________________________________________________________
 

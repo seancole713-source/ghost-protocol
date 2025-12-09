@@ -12,7 +12,6 @@
 
 1. **Ghost‑AI v1 — Decision Preview**(line 212)
 
-
 2.**🤖 Ghost‑AI v2 — Agent Monitor**(line 221)
 3.**🌍 World Context & Market Mood**(line 283)
 4.**📊 Daily Accuracy Ledger**(line 331)
@@ -21,7 +20,6 @@
 7.**🔎 Research Snapshot**(line 561)
 8.**Ghost Prediction**(line 570)
 9.**Admin Toggles**(line 636)
-
 
 ### 🔄 PANELS TO REBUILD
 

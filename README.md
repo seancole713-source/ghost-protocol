@@ -10,7 +10,6 @@ available for demos and tests and can be toggled at runtime.
 
 - **Cockpit Dashboard**: Jinja UI with health banner; optional external React UI via
 
-
   `GHOST_UI_URL`
 
 - **AI-Powered Analysis**: Ghost Score and Fusion AI for market insights
@@ -21,24 +20,20 @@ available for demos and tests and can be toggled at runtime.
 - **Ethereum Integration**: Web3 connectivity for DeFi operations
 - **Real-time Data (Live)**: Live quotes for crypto via CoinGecko and stocks via Alpha
 
-
   Vantage (primary), Polygon (optional), yfinance (fallback). Optional SIM mode provides
   deterministic prices for demos/tests.
 
 - **Advisory-Only**: Generate signals and queue pseudo-orders; no execution
 - **Catalog**: Crypto Top-500 (CoinGecko) + S&P 500 constituents with search and paging
 
-
 ## 📋 Prerequisites
 
 - Python 3.11+
 - Optional: Alpha Vantage API key for equities, CoinGecko Pro key, Polygon key
 
-
 ## 🛠️ Local setup
 
 1. **Clone the repository:**```bash
-
 
    git clone <<<<<https://github.com/seancole713-source/GHOST.git>>>>>
    cd GHOST

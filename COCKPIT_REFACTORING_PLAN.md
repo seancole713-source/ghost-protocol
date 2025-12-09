@@ -11,7 +11,6 @@ across multiple `<script>` blocks. This creates maintenance challenges:
 - No code reuse across pages
 - Version control diffs are noisy (HTML + JS mixed)
 
-
 ## Proposed Modular Structure
 
 ### File Organization

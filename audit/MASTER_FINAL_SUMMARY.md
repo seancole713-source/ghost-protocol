@@ -13,7 +13,6 @@ Ghost is **OPERATIONAL**and ready for market open. Two critical issues were iden
 1. ✅**Telegram duplicates**- Fixed indentation bug causing 5x messages
 2. ✅**Port 5000 UI access**- Instructions provided for manual forwarding
 
-
 Server is running, all APIs responding, portfolio data persistent, forecasts active.
 
 ---
@@ -46,7 +45,6 @@ Server is running, all APIs responding, portfolio data persistent, forecasts act
 - Corrected indentation in try/except block
 - Deduplication logic now executes properly
 - `_PREMARKET_REPORT_SENT[day_key] = True` now reaches execution
-
 
 **Result**: Tomorrow's 8:00 AM report will send **only once**✅**Files Modified**:
 

@@ -20,23 +20,19 @@ ______________________________________________________________________
   - ✅ Manual price override capability (`/debug/price_override`)
 - **CRITICAL ISSUE**: **WOLF (Wolfspeed Inc.) filed Chapter 11 bankruptcy and was
 
-
   delisted from NASDAQ**- News confirms: "Wolfspeed has filed for Chapter 11 bankruptcy" (Sep 2025)
 
   - Current behavior: All providers return `null` → system falls back to cached
-
 
     `prev_close` or manual override
 
   - Price provider diagnostics stored in `PRICE_DIAG` dict with fallback reasons
 
-
 -**Endpoints**:
 
-  - `GET /api/cockpit` → Returns price with provider metadata
-  - `GET /debug/price` → Shows provider diagnostics
-  - `POST /debug/price_override` → Manual price injection
-
+- `GET /api/cockpit` → Returns price with provider metadata
+- `GET /debug/price` → Shows provider diagnostics
+- `POST /debug/price_override` → Manual price injection
 
 #### **News Aggregation**-**Status**: ✅ **FULLY WORKING**-**File**: `wolf_app.py` Lines 2752-2900 (`get_wolf_news()`)
 
@@ -49,12 +45,10 @@ ______________________________________________________________________
   - ✅ TTL caching (300s default)
 - **Live Data**: Successfully returns 10 recent WOLF headlines (verified in
 
-
   `data/last_good_cockpit.json`)
 
 - **Endpoints**:
   - `GET /api/cockpit` → Includes `news`, `news_all`, `news_relevant`, `news_signal`
-
 
 #### **48h Forecast System (Baseline)**-**Status**: ✅ **WORKING**-**File**: `wolf_app.py` Lines 487-533 (`_build_forecast_series()`)
 
@@ -63,7 +57,6 @@ ______________________________________________________________________
   - ✅ Confidence bands (1-sigma default, configurable via `PRED_Z`)
   - ✅ 2-hour step intervals, 48-hour horizon (24 points)
   - ✅ Returns:
-
 
     `{ticker, as_of, horizon_h, step_h, points:[{t,price_mid,price_lo,price_hi,pnl_mid,pnl_lo,pnl_hi}], summary}`
 
@@ -75,30 +68,25 @@ ______________________________________________________________________
   - `GET /predict/48h` → Direct forecast endpoint
   - `GET /api/forecast/overlay` → Historical overlay with actual prices
 
-
 #### **TWO-LINE OVERLAY SYSTEM**✨**NEW INFRASTRUCTURE**-**Status**: ✅ **BACKEND COMPLETE (Frontend Pending)**-**Files**
 
-  - `wolf_app.py` Lines 548-790 (grid generation, actual collection, accuracy
-
+- `wolf_app.py` Lines 548-790 (grid generation, actual collection, accuracy
 
     computation)
 
-  - Config: Lines 443-450 (runtime tunables)
+- Config: Lines 443-450 (runtime tunables)
 - **Implementation**:
   - ✅ **Aligned forecast grid**: Time-aligned grid [now, now+2h, ...now+48h] persisted
-
 
     to `data/forecast_WOLF.json`
 
   - ✅ **Smart caching**: Reuses grid if \<24h old and config unchanged
   - ✅ **Actual price collection**: `_collect_actual_prices()` fetches real prices at
 
-
     grid timestamps using provider fallback
 
   - ✅ **Accuracy metrics**: Computes MAP, RMSE, bias for aligned forecast vs actual
   - ✅ **Data schema**: Returns
-
 
     `{forecast:{asof,horizon_s,points,band,meta}, actual:{asof,points,src,latency_ms}, accuracy:{by_t,summary}}`
 
@@ -108,23 +96,19 @@ ______________________________________________________________________
   - `FORECAST_GRID_PATH` (default: `data/forecast_WOLF.json`)
   - `FORECAST_MAX_AGE_S` (default: 86400s = 24h)
 
-
 -**Endpoints**:
 
-  - `GET /api/cockpit` → Includes `two_line_overlay` field in response
-  - `GET /api/cockpit/stream` → SSE endpoint for real-time updates (emits
-
+- `GET /api/cockpit` → Includes `two_line_overlay` field in response
+- `GET /api/cockpit/stream` → SSE endpoint for real-time updates (emits
 
     `forecast_update` events every 10s)
 
-  - `GET/POST /api/runtime/config` → Expose and modify `forecast_step_s`,
-
+- `GET/POST /api/runtime/config` → Expose and modify `forecast_step_s`,
 
     `forecast_horizon_s` (triggers grid regeneration on change)
 
 - **Persistence**: Grid saved to `data/forecast_WOLF.json` with metadata
 - **⚠️ LIMITATION**: Frontend visualization NOT YET IMPLEMENTED (Task 7 pending)
-
 
 #### **Portfolio & Position Management**-**Status**: ✅ **FULLY WORKING**-**File**: `wolf_app.py` Lines 970-1200 (persistence), various endpoints
 
@@ -148,7 +132,6 @@ ______________________________________________________________________
   - `POST /api/positions/import` → Bulk import from JSON
   - `POST /control/save` → Manual state save
   - `POST /control/reset` → Reset to defaults
-
 
 #### **Alerts & Telegram Integration**-**Status**: ✅ **FULLY WORKING**-**File**: `wolf_app.py` Lines 1200-1520 (Telegram), alerts logic scattered
 
@@ -174,7 +157,6 @@ ______________________________________________________________________
   - `POST /api/alerts/hold` → Toggle HOLD mode
   - `POST /alerts/test` → Test Telegram connectivity
 
-
 #### **Runtime Configuration**-**Status**: ✅ **FULLY WORKING**+**EXTENDED FOR FORECAST**-**File**: `wolf_app.py` Lines 5109-5211
 
 - **Implementation**:
@@ -194,13 +176,11 @@ ______________________________________________________________________
   - `GET /api/runtime/config` → Current config
   - `POST /api/runtime/config` → Update config (auth required if `GHOST_API_TOKEN` set)
 
-
 #### **Prometheus Metrics & Observability**-**Status**: ✅ **FULLY WORKING**-**File**: `wolf_app.py` Lines 2412-2444, scattered throughout
 
 - **Implementation**:
   - ✅ Counters: `ghost_alerts_sent_total`, `ghost_price_fetches_total`
   - ✅ Gauges: `ghost_position_qty`, `ghost_position_avg_cost`, `ghost_pnl_abs`,
-
 
     `ghost_pnl_pct`, `ghost_snapshot_asof`
 
@@ -213,7 +193,6 @@ ______________________________________________________________________
   - `GET /live` → Liveness probe
   - `GET /api/secrets/health` → Provider connectivity test
 
-
 #### **Diagnostics & Event Stream**-**Status**: ✅ **FULLY WORKING**-**File**: `wolf_app.py` Events ring buffer (deque), Lines 3987-4007
 
 - **Implementation**:
@@ -225,7 +204,6 @@ ______________________________________________________________________
   - `GET /events` → SSE stream (heartbeat)
   - `GET /logs/recent` → Recent log entries
   - `GET /diagnostics/summary` → System diagnostics
-
 
 #### **AI & Machine Learning (Lightweight)**-**Status**: ✅ **WORKING (Basic Implementation)**-**File**: `wolf_app.py` Lines 4381-4688
 
@@ -242,7 +220,6 @@ ______________________________________________________________________
   - `POST /ai/train` → Trigger training
   - `GET /predict/metrics` → Forecast performance metrics
 
-
 ### **2. UI Components (templates/cockpit.html)**####**Cockpit Dashboard**-**Status**: ✅ **MOSTLY WORKING**(with known gaps)
 
 -**File**: `templates/cockpit.html` (912 lines)
@@ -258,46 +235,41 @@ ______________________________________________________________________
   - ✅ Admin controls (TTLs, provider toggles)
   - ✅ **Button visual feedback**(loading spinners, success pulses, error shakes)
 
-
 -**Button States**(Lines 85-145):
 
-  - ✅ `.btn-loading` (spinner animation)
-  - ✅ `.btn-success` (green pulse)
-  - ✅ `.btn-error` (red shake)
-  - ✅ `.btn-active` (glow effect)
-  - ✅ `.badge-active` (running badge glow)
-
+- ✅ `.btn-loading` (spinner animation)
+- ✅ `.btn-success` (green pulse)
+- ✅ `.btn-error` (red shake)
+- ✅ `.btn-active` (glow effect)
+- ✅ `.badge-active` (running badge glow)
 
 -**JavaScript Functions**:
 
-  - ✅ `setButtonState(btnId, state)` (Lines 371-403)
-  - ✅ Engine controls (start/stop/reset) with visual feedback
-  - ✅ `loadPortfolio()`, `loadHeatmap()`, `loadNews()`, `loadDiagnostics()`
-  - ✅ `loadForecastOverlay()` (Lines 793-822) - loads `/api/forecast/overlay`
-  - ✅ `drawForecastChart(data)` (Lines 752-792) - renders mid line + confidence band +
-
+- ✅ `setButtonState(btnId, state)` (Lines 371-403)
+- ✅ Engine controls (start/stop/reset) with visual feedback
+- ✅ `loadPortfolio()`, `loadHeatmap()`, `loadNews()`, `loadDiagnostics()`
+- ✅ `loadForecastOverlay()` (Lines 793-822) - loads `/api/forecast/overlay`
+- ✅ `drawForecastChart(data)` (Lines 752-792) - renders mid line + confidence band +
 
     actual line
 
-  - ✅ `connectCockpitStream()` - SSE connection (partial implementation)
+- ✅ `connectCockpitStream()` - SSE connection (partial implementation)
 - **⚠️ KNOWN GAPS**:
   - ❌ Two-line overlay NOT rendering (needs `two_line_overlay` data binding)
   - ❌ Accuracy chips NOT displaying (MAP, RMSE, bias chips exist but not wired to new
-
 
     data)
 
   - ❌ SSE forecast updates NOT triggering chart refresh
   - ❌ No Ghost (solid) vs Live (dashed) line differentiation in chart
 
-
 ### **3. Data Persistence & State Management**####**State Storage**-**Status**: ✅ **PRODUCTION-READY**-**Modes Supported**
 
-  - `none` - Memory only (default)
-  - `file` - JSON file (`/data/wolf_state.json`)
-  - `sqlite` - SQLite database (`/data/wolf.db`)
-  - `redis` - Redis KV store (`REDIS_URL`)
-  - `auto` - Tries Redis → SQLite → File
+- `none` - Memory only (default)
+- `file` - JSON file (`/data/wolf_state.json`)
+- `sqlite` - SQLite database (`/data/wolf.db`)
+- `redis` - Redis KV store (`REDIS_URL`)
+- `auto` - Tries Redis → SQLite → File
 - **Autosave**: 60s interval (configurable via `WOLF_AUTOSAVE_S`)
 - **Tables**(SQLite):
   - `state` (key-value for position)
@@ -306,13 +278,11 @@ ______________________________________________________________________
   - `forecast_scores` (MAP, RMSE, bias)
   - `realized_prices` (tick history)
 
-
-####**Forecast Grid Persistence**-**Status**: ✅ **WORKING**(NEW)
+#### **Forecast Grid Persistence**-**Status**: ✅ **WORKING**(NEW)
 
 -**File**: `data/forecast_WOLF.json`
 
 - **Schema**:
-
 
 ```json
 {

@@ -381,7 +381,7 @@ $ grep -r "stop_loss\|take_profit" wolf_app.py
 
 def run_single_prediction(symbol: str) -> dict:
 
-    # ... existing code 
+    # ... existing code
 
     # After confidence calculation
 
@@ -401,7 +401,7 @@ def run_single_prediction(symbol: str) -> dict:
         'take_profit': take_profit,
         'reward_risk_ratio': 3.0,
 
-        # ... rest of response 
+        # ... rest of response
 
     }
 
@@ -638,7 +638,7 @@ def calibrate_signal_weights(symbol: str, lookback_days: int = 90) -> dict:
             if pred['correct']:
                 signal_stats['MACD']['correct'] += 1
 
-        # ... repeat for all signals 
+        # ... repeat for all signals
 
     # Calculate new weights (accuracy / avg_accuracy)
 

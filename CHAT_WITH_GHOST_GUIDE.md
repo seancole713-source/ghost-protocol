@@ -10,7 +10,6 @@
 - 📈 "What are the top 3 stocks to buy today?"
 - 🔍 "Which cryptos will 10x in the next month?"
 
-
 Ghost will:
 
 1. ✅ Scan current market data in real-time
@@ -19,7 +18,6 @@ Ghost will:
 4. ✅ Show conservative, moderate & optimistic scenarios
 5. ✅ Warn you about risks
 6. ✅ Give you data-driven recommendations
-
 
 ______________________________________________________________________
 

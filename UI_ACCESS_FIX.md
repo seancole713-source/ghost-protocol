@@ -9,7 +9,6 @@ Ghost server is running on port 5000 and UI is accessible at:
 - ✅ <<<<<http://localhost:5000/index.html>>>>>
 - ✅ <<<<<http://localhost:5000/api/cockpit>>>>> (API endpoint)
 
-
 ## ❌ PROBLEM: Codespace URL Requires Auth
 
 Your Codespace URL returns **HTTP 401 Unauthorized**:

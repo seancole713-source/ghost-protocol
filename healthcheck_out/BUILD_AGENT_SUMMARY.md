@@ -15,14 +15,12 @@
 - ✅ Built and started containers successfully
 - ✅ Uvicorn running on <<<<<http://0.0.0.0:8444>>>>>
 
-
 ### 2. Comprehensive Diagnostics ✅
 
 - ✅ Tested all 26 endpoints across 5 subsystems
 - ✅ Generated detailed health reports
 - ✅ Identified root causes of all "issues"
 - ✅ Created actionable recommendations
-
 
 ---
 
@@ -44,40 +42,34 @@
 
 1.**"AI brain fails simple requests"**- ✅**AI is fully operational**- All 5 stages initialized and running
 
-   - Just needs time to accumulate historical data (system just started)
-
+- Just needs time to accumulate historical data (system just started)
 
 1.**"Predictions are inaccurate or absent"**- ✅**Predictions ARE running**- 48h forecast grid active (25 points, ghost-av1 model)
 
-   - Scheduled at 8:00 AM & 9:35 AM ET daily
-   - No history yet because system just started
-
+- Scheduled at 8:00 AM & 9:35 AM ET daily
+- No history yet because system just started
 
 1.**"Panels show errors/no data"**- ✅**UI is fully functional**- All routes return 200 OK
 
-   - "No data" is accurate (fresh system, no historical data yet)
-
+- "No data" is accurate (fresh system, no historical data yet)
 
 ### ⚠️ ACTUAL ISSUES (Non-Critical)
 
 1.**"No live data feeds"**-**PARTIAL TRUTH:**WOLF price IS live ($32.58 working)
 
-   - External API issues:
-     - Polygon: 429 rate limit (need higher tier)
-     - YFinance: Timeouts (Yahoo API instability)
-   - System using fallback prices correctly ✅
-
+- External API issues:
+  - Polygon: 429 rate limit (need higher tier)
+  - YFinance: Timeouts (Yahoo API instability)
+- System using fallback prices correctly ✅
 
 1.**"New stocks/crypto aren't discovered"**-**TRUE:**Crypto explicitly disabled
 
-   - Need to set `CRYPTO_ENABLED=1`
-   - Stock scanner/screener needs implementation
-
+- Need to set `CRYPTO_ENABLED=1`
+- Stock scanner/screener needs implementation
 
 1.**"Prod differs from local"**-**NOT TESTED:**This scan was local Docker only
 
-   - Need to run against Railway to compare
-
+- Need to run against Railway to compare
 
 ---
 
@@ -92,7 +84,6 @@
 3. Polygon API rate limits → 429 errors (need higher tier)
 4. YFinance API instability → Timeout/JSON errors (external)
 5. `/api/memory/stats` missing → 404 (non-critical)
-
 
 ---
 

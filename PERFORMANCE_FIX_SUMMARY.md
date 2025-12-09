@@ -14,7 +14,6 @@
 - All requests hanging or taking 10-20+ seconds
 - Server completely unresponsive during prediction cycles
 
-
 ### Root Cause Analysis
 
 From Railway logs:

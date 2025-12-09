@@ -251,7 +251,7 @@ _G_AI_DECISION_LAST_TS = Gauge(
 def log_ai_decision(decision: dict):
     """Log AI decision to database + update metrics."""
 
-    # ... existing code 
+    # ... existing code
 
     # Update Prometheus metrics
 
@@ -267,7 +267,7 @@ def log_ai_decision(decision: dict):
 def log_tool_call(tool_name: str, success: bool, latency_ms: float,**kwargs):
     """Log tool call to database + update metrics."""
 
-    # ... existing code 
+    # ... existing code
 
     # Update Prometheus metrics
 

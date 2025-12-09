@@ -15,12 +15,10 @@ placeholders, no stubs, no simulation data.
 1. ✅**pytest tests/test_agent_tools.py -q**→ 17 passed
 2. ✅**curl /api/ai/decisions?symbol=WOLF**→ Returns real decisions with action,
 
-
    confidence, rationale
 
-1. ✅**Railway logs**→ Tool calls + persistence, no KeyError/AttributeError
-2. ✅**Zero new env vars**unless used in code + docs + tests
-
+3. ✅**Railway logs**→ Tool calls + persistence, no KeyError/AttributeError
+4. ✅**Zero new env vars**unless used in code + docs + tests
 
 ______________________________________________________________________
 

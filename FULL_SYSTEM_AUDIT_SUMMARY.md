@@ -13,7 +13,6 @@ ______________________________________________________________________
 
 - **Providers**: ✅ Working### Issues Requiring Pull Request (Optional Enhancements)
 
-
 ### 1. ✅ PnL Adjustment for Corporate Actions - **COMPLETED**
 
 **Status**: ✅ Implemented and tested successfully\
@@ -22,7 +21,6 @@ ______________________________________________________________________
 - `wolf_app.py` line 569: Added `_adjust_pnl_for_corporate_action()` function
 - `wolf_app.py` line 9054: Wired into `/api/portfolio` endpoint
 - `wolf_app.py` line 7204: Wired into `_signal_card()` for Telegram
-
 
 **Verification**:
 

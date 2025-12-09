@@ -5,7 +5,6 @@
 - 33cd320: Background worker (499 fix)
 - c143509: Health score, goals modal, counters**Production URL:**<<<<<https://ghost-protocol-production.up.railway.app/cockpit>>>>>
 
-
 ---
 
 ## I. BEFORE YOU START
@@ -16,7 +15,6 @@
 - Open DevTools:**F12**or**Right-click → Inspect**- Switch to**Console**tab
 - Keep it open during all tests
 
-
 ### 2. Check for JavaScript Errors
 
 Look for**RED text**in console. Common issues:
@@ -24,7 +22,6 @@ Look for**RED text**in console. Common issues:
 - `Uncaught ReferenceError: initializeApp is not defined`
 - `Failed to load resource: /static/cockpit_v3.js 404`
 - `Uncaught TypeError: Cannot read property...`
-
 
 If you see errors,**copy the entire error message and report it**.
 
@@ -40,7 +37,6 @@ If you see errors,**copy the entire error message and report it**.
 
 - [ ] Timer stuck at 00:00:00
 - [ ] Timer animating correctly
-
 
 ### If Stuck, Run This in Console
 

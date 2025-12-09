@@ -16,7 +16,6 @@ implemented and integrated into wolf_app.py.
 - **Database**: Crypto-specific tables for predictions, forecasts, and accuracy tracking
 - **Supported Assets**: 40+ cryptocurrencies including BTC, ETH, meme coins, DeFi,
 
-
   AI/Gaming
 
 ### ⚠️ Activation Required

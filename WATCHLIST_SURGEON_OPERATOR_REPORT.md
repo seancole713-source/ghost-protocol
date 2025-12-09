@@ -35,56 +35,49 @@ Successfully implemented a**production-ready Personal Watchlist**system for Ghos
    - Runs before forecast table initialization
    - Non-blocking (app continues even if migrations fail)
 
-
 1.**`api/personal_watchlist_endpoints.py`**-**ALREADY EXISTS** (verified working)
 
-   - Router: `/api/v3/watchlist/*`
-   - Endpoints: `/add`, `/remove`, `/user`, `/update-position`, `/history/{symbol}`
-   - Already registered in wolf_app.py (line 24749-24750)
+- Router: `/api/v3/watchlist/*`
+- Endpoints: `/add`, `/remove`, `/user`, `/update-position`, `/history/{symbol}`
+- Already registered in wolf_app.py (line 24749-24750)
 
 1. **`core/personal_watchlist.py`**-**ALREADY EXISTS**(verified working)
    - `PersonalWatchlistManager` class
    - CRUD methods: `add_symbol()`, `remove_symbol()`, `get_watchlist()`, `get_enriched_watchlist()`
    - Enrichment: Fetches live prices + latest 48h Ghost predictions per symbol
 
-
 1.**`migrations/001_personal_watchlist.sql`**-**ALREADY EXISTS**(verified complete)
 
-   - Creates `ghost_watchlist_items` table (main storage)
-   - Creates `watchlist_prediction_tracking` table (prediction history)
-   - Creates `watchlist_price_snapshots` table (price tracking)
-   - Creates `watchlist_alerts_log` table (alert history)
-
+- Creates `ghost_watchlist_items` table (main storage)
+- Creates `watchlist_prediction_tracking` table (prediction history)
+- Creates `watchlist_price_snapshots` table (price tracking)
+- Creates `watchlist_alerts_log` table (alert history)
 
 ### Frontend (3 files - ALREADY MODIFIED in previous session)
 
 1.**`templates/cockpit_v3.html`**-**MODIFIED**- Added mode tabs: `#watchlist-mode-tabs` (Personal / Market)
 
-   - Added filter tabs: `#watchlist-filter-tabs` (Stocks / Crypto / All)
-
+- Added filter tabs: `#watchlist-filter-tabs` (Stocks / Crypto / All)
 
 1.**`static/cockpit_v3.js`**-**MODIFIED**- Added `watchlistMode` and `watchlistFilter` state variables
 
-   - Added `loadWatchlistByMode()` master router function
-   - Refactored `loadMarketWatchlist()` with filter support
-   - Updated tab switching logic to handle mode + filter tabs
-
+- Added `loadWatchlistByMode()` master router function
+- Refactored `loadMarketWatchlist()` with filter support
+- Updated tab switching logic to handle mode + filter tabs
 
 1.**`static/personal_watchlist_ui.js`**-**MODIFIED**- `loadPersonalWatchlist()` - Fetches `/api/v3/watchlist/user`
 
-   - `renderPersonalWatchlist()` - Renders with add/remove controls
-   - `showAddSymbolForm()` / `submitAddSymbol()` - Modal-based add UI
-   - `removeSymbolFromWatchlist()` - Delete with confirmation
-   - `toggleOwnership()` - Update owns_position flag
-   - `viewSymbolHistory()` - Show prediction history modal
-
+- `renderPersonalWatchlist()` - Renders with add/remove controls
+- `showAddSymbolForm()` / `submitAddSymbol()` - Modal-based add UI
+- `removeSymbolFromWatchlist()` - Delete with confirmation
+- `toggleOwnership()` - Update owns_position flag
+- `viewSymbolHistory()` - Show prediction history modal
 
 ### Documentation (1 file created)
 
 1.**`test_watchlist_endpoints.py`**-**CREATED**- Python script to test all endpoints
 
-   - Can be run locally: `python3 test_watchlist_endpoints.py`
-
+- Can be run locally: `python3 test_watchlist_endpoints.py`
 
 ---
 

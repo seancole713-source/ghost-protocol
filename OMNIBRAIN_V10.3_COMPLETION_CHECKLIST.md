@@ -11,7 +11,6 @@ ______________________________________________________________________
 - [x] `core/crypto/__init__.py` - Module exports created
 - [x] `core/crypto/crypto_providers.py` - Multi-provider (CoinGecko, Binance, Coinbase)
 
-
   ✅
 
 - [x] `core/crypto/crypto_predictor.py` - 24h prediction engine with RSI/momentum ✅
@@ -19,11 +18,9 @@ ______________________________________________________________________
 - [x] Quorum consensus (median of 2+ providers, \<1% spread) ✅
 - [x] Database schema (crypto_predictions, crypto_forecast_points, crypto_actual_points)
 
-
   ✅
 
 - [x] Watchlist categorization (default, blue_chip, defi, meme, ai_gaming, all) ✅
-
 
 ## 📋 PHASE 2: API INTEGRATION
 
@@ -39,7 +36,6 @@ ______________________________________________________________________
   - `ghost_sentiment_score{symbol}` ✅
   - `ghost_macro_confidence{scenario}` ✅
 
-
 ## 📋 PHASE 3: UI UPDATES
 
 - [ ] Update `templates/cockpit.html`:
@@ -53,7 +49,6 @@ ______________________________________________________________________
 - [ ] Add crypto price display sections
 - [ ] Test UI locally in browser
 
-
 ## 📋 PHASE 4: SENTIMENT & MACRO BRAIN
 
 - [ ] Wire NEWS_SENTIMENT_ON=1 to compute per-symbol sentiment
@@ -61,7 +56,6 @@ ______________________________________________________________________
 - [ ] FUSION_AI_ON=1 for weighted final score with explicit reasoning
 - [ ] Add sentiment scores to cockpit snapshot
 - [ ] Test sentiment scoring with real news data
-
 
 ## 📋 PHASE 5: TELEGRAM INTEGRATION
 
@@ -73,7 +67,6 @@ ______________________________________________________________________
 - [ ] Add logging for webhook deliveries
 - [ ] Test Telegram commands from mobile device
 
-
 ## 📋 PHASE 6: TIME & FRESHNESS FIXES
 
 - [ ] Audit all timestamp generation → UTC timezone-aware
@@ -82,7 +75,6 @@ ______________________________________________________________________
 - [ ] UI renders local time via JavaScript
 - [ ] Verify no 1970/1969 dates in UI or API responses
 - [ ] Test across timezones (UTC, EST, PST)
-
 
 ## 📋 PHASE 7: TESTING & VALIDATION
 
@@ -96,7 +88,6 @@ ______________________________________________________________________
 - [ ] Metrics verification: `curl <<<<<http://localhost:5000/metrics>>>>> | grep ghost_crypto`
 - [ ] UI manual check: Open <<<<<http://localhost:5000/cockpit>>>>> in browser
 - [ ] Performance test: Measure prediction generation time (\<5s)
-
 
 ## 📋 PHASE 8: DOCUMENTATION & DEPLOYMENT
 
@@ -112,7 +103,6 @@ ______________________________________________________________________
 - [ ] Deploy to Railway and test production
 - [ ] Update .vscode/settings.json (remove non-existent MCP servers)
 
-
 ______________________________________________________________________
 
 ## 🎯 ACCEPTANCE TESTS (Must Pass)
@@ -123,7 +113,6 @@ ______________________________________________________________________
 - [ ] Server starts without errors in logs
 - [ ] All imports resolve correctly
 
-
 ### Cockpit API
 
 - [ ] `GET /api/cockpit` returns valid JSON with:
@@ -133,7 +122,6 @@ ______________________________________________________________________
   - [ ] `predictions.crypto` array (if CRYPTO_ENABLED=1)
   - [ ] `status.feeds.crypto` = true (if enabled)
 
-
 ### Crypto Price API
 
 - [ ] `GET /api/crypto/price/BTC` returns:
@@ -142,7 +130,6 @@ ______________________________________________________________________
   - [ ] `confidence` between 0 and 1
   - [ ] `quorum_size >= 1`
   - [ ] `timestamp` is recent (\<60s old)
-
 
 ### Crypto Prediction API
 
@@ -154,14 +141,12 @@ ______________________________________________________________________
   - [ ] `direction` in [UP, DOWN, FLAT]
 - [ ] `GET /api/crypto/predict/BTC` returns same structure
 
-
 ### Crypto Watchlist API
 
 - [ ] `GET /api/crypto/watchlist?category=default` returns:
   - [ ] `assets` array with 5 cryptos
   - [ ] Each asset has `symbol`, `price`, `change_24h_pct`
 - [ ] `GET /api/crypto/watchlist?category=meme` returns 8+ meme coins
-
 
 ### UI Tests
 
@@ -173,7 +158,6 @@ ______________________________________________________________________
 - [ ] All timestamps show local time (not UTC raw)
 - [ ] No 1970 or 1969 dates visible
 
-
 ### Metrics Tests
 
 - [ ] `GET /metrics` includes:
@@ -183,7 +167,6 @@ ______________________________________________________________________
   - [ ] `ghost_up = 1`
   - [ ] `ghost_snapshot_asof` advances on each /api/cockpit call
 
-
 ### Telegram Tests (if configured)
 
 - [ ] `/alerts/test` sends card from Railway deployment
@@ -191,7 +174,6 @@ ______________________________________________________________________
 - [ ] `/signal` command replies with stock + crypto signals
 - [ ] `/pnl` command replies with portfolio NAV
 - [ ] Free-form question gets coherent AI answer
-
 
 ______________________________________________________________________
 
@@ -203,20 +185,17 @@ ______________________________________________________________________
 - ❌ Telegram commands not yet wired (Phase 5 pending)
 - ❌ Time fixes not audited (Phase 6 pending)
 
-
 ### Known Issues
 
 - ⚠️ WOLF ticker delisted → portfolio shows stale price
 - ⚠️ Yahoo Finance rate limiting (429 errors)
 - ⚠️ Railway caching may show old UI
 
-
 ### Mitigation
 
 - Use `prev_close` fallback for WOLF
 - Implement quorum with AlphaVantage → Polygon → Yahoo
 - Force Railway cache bust with `?v=timestamp`
-
 
 ______________________________________________________________________
 

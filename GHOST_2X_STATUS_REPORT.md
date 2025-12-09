@@ -18,7 +18,6 @@ Ghost 2.x backend is **LIVE**and**STABLE**with the following operational status:
 - **Prediction Engine**: Generating 3/8 stock predictions (37.5%) ⚠️
 - **Ghost Score**: Not yet exposed in public API ❌
 
-
 ---
 
 ## ✅ WHAT'S WORKING
@@ -32,7 +31,6 @@ Ghost 2.x backend is **LIVE**and**STABLE**with the following operational status:
 - ✅ SSE stream emitting every 5-10 seconds
 - ✅ Tick latency displaying (e.g., `tick: 245ms`)
 
-
 ### 2.**Price Providers**✅
 
 - ✅ Polygon API authenticated (`POLYGON_KEY` working)
@@ -42,12 +40,10 @@ Ghost 2.x backend is **LIVE**and**STABLE**with the following operational status:
 - ✅ Provider timeout increased from 6s to 10s (deployed)
 - ✅ No corporate action/delisted symbol locks
 
-
 ### 3.**Prediction Engine**⚠️ PARTIAL
 
 - ✅ `/api/predictions/multi/run` endpoint working
 - ✅ Generating 3/8 stock predictions:
-
 
   -**AAPL**: $272.41 → $274.72 (BUY, 0.72 confidence)
 
@@ -59,13 +55,11 @@ Ghost 2.x backend is **LIVE**and**STABLE**with the following operational status:
 - ❌ 0/8 crypto predictions (CRYPTO_ENABLED not set to 1)
 - ⚠️ 4/5 VIP coins tracked (all return NO_DATA - expected for some):
 
-
   -**LILPEPE**: NO_DATA (coingecko_id: None)
 
   - **DORKL**: NO_DATA (coingecko_id: dorkl)
   - **SLOTH**: NO_DATA (coingecko_id: None)
   - **APC**: NO_DATA (coingecko_id: None)
-
 
 **Current Prediction Counts**:
 

@@ -24,7 +24,6 @@
    - Calls: `RUN_PREDICTION_FUNC` (injected dependency)
    - **CRITICAL**: Must verify this connects to predictor.create_prediction()
 
-
 ### Database Architecture
 
 **PRIMARY SYSTEM**: `services/predictor.py` → `./data/ghost_predictions.db`

@@ -16,7 +16,6 @@
 - ✅ Alert system: Modern pipeline, no legacy code, no SQLite references
 - ✅ Postgres migration: Complete and stable
 
-
 **NO CODE CHANGES REQUIRED**. System architecture is correct and operational.
 
 ---

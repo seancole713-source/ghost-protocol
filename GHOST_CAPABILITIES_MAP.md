@@ -4,24 +4,20 @@
 
 - **Mission**: Transform Ghost into a GPT-class, self-learning trading brain with
 
-
   live-first intelligence, deep memory, explainable decisions, and automation-ready
   hooks.
 
 - **Core Strengths**: Mature FastAPI backend, rich cockpit UI, live multi-provider
-
 
   pricing (Alpha Vantage, Polygon, Yahoo/CoinGecko), SSE streaming, advisory workflows,
   alerting infrastructure, and comprehensive health/ops tooling.
 
 - **Primary Gaps**: Limited AI memory (volatile deque), single-model forecasting, WOLF
 
-
   ticker delisted, underpowered decision engine (heuristics), no regime-aware risk,
   multi-asset intelligence not unified, UI overlay incomplete.
 
 - **Immediate Priorities**: (1) Deploy new persistent AI memory, (2) migrate focus
-
 
   ticker, (3) modernize forecasting + decisioning, (4) finish prediction-vs-reality UI,
   (5) embed risk & regime intelligence.
@@ -78,17 +74,14 @@ checks before signals |
 
 - **SSE**: `/events` heartbeat + `/api/cockpit/stream` for forecast updates (backend
 
-
   complete).
 
 - **Forecast Overlay**: Backend returns `two_line_overlay` with forecast, actual,
-
 
   accuracy metrics; frontend currently missing dual-line render + accuracy chips
   binding.
 
 - **UI Baseline Contract**: `ui_dist/` provides frozen bundle; `templates/cockpit.html`
-
 
   is customizable (needs updates under `[ALLOW_UI_CHANGE]`).
 
@@ -97,32 +90,26 @@ checks before signals |
   - Surface confidence, regime badges, forecast source provenance.
   - Add memory + rationale panel, RL recommendation cards with explanations +
 
-
     confidence.
 
   - Introduce asset switcher for multi-asset intelligence.
-
 
 ## 5. Persistence, Ops & Observability
 
 - **Datastores**: SQLite (`WOLF_SQLITE_PATH`), optional Redis; forecast tables exist
 
-
   (`realized_prices`, `forecast_scores`).
 
 - **Logging**: Structured logging via `LOGGER.info`/`error`; event bus `_add_event` for
-
 
   UI diagnostics.
 
 - **Metrics**: `/metrics` exposes Prometheus counters/histograms.
 - **State Manager**: `state_manager.py` handles snapshot persistence, but
 
-
   memory/training artifacts not yet persisted.
 
 - **Upgrades**: Extend SQLite schema for AI memory (`ai_memory` table), RL stats, regime
-
 
   history. Add migrations, background vacuum, health checks.
 
@@ -149,7 +136,6 @@ sentiment, integrate into memory |
   1. Finish two-line overlay frontend (solid vs dashed, accuracy chips, SSE refresh).
   2. Migrate focus ticker from WOLF → NVDA (or configurable symbol). Update providers,
 
-
      tests, AI memory seeds.
 
 -**Phase 1**1. Deploy ensemble forecasting stack with dynamic weighting + calibration metrics
@@ -158,11 +144,9 @@ sentiment, integrate into memory |
 
   1. Launch reinforcement learning decision engine (PPO) with risk-aware scoring; log
 
-
      rationale to memory.
 
   1. Introduce market regime detector + risk engine (Kelly, VaR, drawdown guard) gating
-
 
      recommendations.
 
@@ -171,16 +155,13 @@ sentiment, integrate into memory |
   1. Persist sentiment & news embeddings, integrate into decision prompts.
   2. Add automation hooks (Telegram, webhooks) with safety rails + audit trail.
 
-
 -**Phase 3**1. Autonomous retraining schedules, drift detection, model governance dashboard.
 
   1. Advanced visualization (probability cones, scenario analysis, explainability
 
-
      panels).
 
   1. Broker-neutral API abstraction for future order execution (optional toggle).
-
 
 ## 8. Key Files & Ownership
 
@@ -202,7 +183,6 @@ tooling as capabilities grow |
 4.**Build advanced forecasting ensemble**+ calibration logging.
 5.**Implement RL + risk-aware decisioning**with explainable outputs.
 6.**Extend to multi-asset intelligence** and automation hooks.
-
 
 > This capabilities map will be versioned as we ship each phase. Update the "Current
 > Score" and Roadmap after every major release to keep Ghost aligned with the GPT-class

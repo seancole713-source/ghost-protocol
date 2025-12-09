@@ -4,12 +4,11 @@
 
 ### 1. **ALL PRICE PROVIDERS ARE FAILING**❌**Root Causes:**-**AlphaVantage**: Rate limited (25 requests/day FREE tier exceeded)
 
-  - Error: "We have detected your API key...standard API rate limit is 25 requests per
-
+- Error: "We have detected your API key...standard API rate limit is 25 requests per
 
     day"
 
-  - Status: Circuit breaker OPEN (blocked)
+- Status: Circuit breaker OPEN (blocked)
 
 - **Yahoo Finance HTTP**: Rate limited by Edge/Cloudflare
 
@@ -24,11 +23,9 @@
 
   - Returns correct price ($24.37) but excluded by
 
-
     `PROVIDER_BLOCKLIST["WOLF"] = {"polygon"}`
 
   - Status: Circuit breaker CLOSED (working) but ignored
-
 
 **Result**: Falling back to stale prev-close price ($24.37) indefinitely
 
@@ -40,7 +37,6 @@ ______________________________________________________________________
 - Code was added to `wolf_app.py` but coroutine may not be scheduled properly**Possible causes:**- Server started before code changes were deployed
 - Event loop not capturing task (silent failure)
 - Logger not writing to expected output file
-
 
 ______________________________________________________________________
 
@@ -60,7 +56,6 @@ ______________________________________________________________________
 - No positions or cash data persisted
 - User reports NAV $205.19 and -93% loss but API returns all nulls**Impact**: Portfolio display broken, can't validate user's -93% loss claim
 
-
 ______________________________________________________________________
 
 ### 4. **POLYGON WORKING BUT ARTIFICIALLY BLOCKED**⚠️**Issue:**```python
@@ -74,7 +69,6 @@ PROVIDER_BLOCKLIST: dict[str, set[str]] = {
 - But Ghost code excludes it from quorum for WOLF
 - Comment says "Acceptance: never surface polygon as provider for WOLF if it disagrees"**Result**: Only working provider is intentionally blocked!
 
-
 ______________________________________________________________________
 
 ### 5. **CIRCUIT BREAKERS STUCK IN EXPONENTIAL BACKOFF**⚠️**Current State (4:56 PM EDT):**- AlphaVantage: OPEN (blocked until ~timestamps in future)
@@ -82,7 +76,6 @@ ______________________________________________________________________
 - Yahoo: OPEN (blocked)
 - YFinance: HALF-OPEN (2 failures)
 - All have `backoff_factor` >= 1**Issue**: No automatic recovery mechanism; breakers stay tripped even if providers
-
 
 recover
 
@@ -105,7 +98,6 @@ ______________________________________________________________________
 
 1. **Remove Polygon from WOLF blocklist**(or upgrade AlphaVantage to paid tier)
 
-
    ```python
 
    # Line ~551 in wolf_app.py
@@ -120,7 +112,7 @@ ______________________________________________________________________
 
    @APP.post("/debug/reset_breakers")
    async def debug_reset_breakers():
-       for k in _PROVIDER_BREAKERS:
+       for k in_PROVIDER_BREAKERS:
            _PROVIDER_BREAKERS[k] = {"state": "closed", "failures": 0, ...}
 
    ```text

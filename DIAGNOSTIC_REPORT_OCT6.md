@@ -14,7 +14,6 @@ ______________________________________________________________________
 - **Root Cause**: JavaScript called `.join()` on array of objects instead of strings
 - **Fix**: Map objects to symbol strings before joining:
 
-
   ```javascript
   const symbolStrings = symbols.map(s =>
     typeof s === 'string' ? s : (s.symbol || s.name || String(s))
@@ -24,12 +23,10 @@ ______________________________________________________________________
 
 - **Verification**: Watchlist now shows "53 symbols: WOLF, AEO, ANET, APH..."
 
-
 ### 2. **JavaScript Error: `f.value?.toFixed is not a function` ✅ FIXED**-**File**: `ui_dist/index.html` line 680-689
 
 - **Root Cause**: Code called `.toFixed(3)` on non-numeric values
 - **Fix**: Type-check before calling toFixed:
-
 
   ```javascript
 
@@ -41,7 +38,6 @@ ______________________________________________________________________
 
 - **Verification**: APEX Trade Card renders without errors
 
-
 ### 3. **Server Not Running ✅ FIXED**-**Root Cause**: Task had terminated cleanly after previous run
 
 - **Fix**: Restarted via VS Code task "Run Ghost server (:5000)"
@@ -49,7 +45,6 @@ ______________________________________________________________________
   - PID 132828 running ✅
   - Health endpoint returns `{"ok": true}` ✅
   - Status shows `active: true, mode: live, errors: 0` ✅
-
 
 ______________________________________________________________________
 

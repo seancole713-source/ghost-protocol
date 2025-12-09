@@ -26,7 +26,6 @@ The Agent Monitor panel shows:
 - Click-friendly decision cards
 - Responsive design
 
-
 ### 2. Decision Replay Endpoint ✅
 
 **Location**: `ghost_agent_loop.py` endpoint `/api/ai/decisions/{id}/replay`
@@ -39,7 +38,6 @@ Returns complete context for debugging any decision:
 - Conversation messages
 - Aggregate statistics
 
-
 ______________________________________________________________________
 
 ## 🐛 Critical Bug Fixes
@@ -50,7 +48,6 @@ All Pylance errors resolved:
 2. ✅ **ghost_agent_loop.py lines 739-740**: Added `dt_time` import
 3. ✅ **ghost_agent_loop.py line 823**: Added fallback return
 4. ✅ **wolf_app.py line 18**: Added `timezone` import
-
 
 **Result**: Server now starts without errors! ✅
 
@@ -64,7 +61,6 @@ ______________________________________________________________________
 
 1. Click**"Refresh"**button to load data
 2. Panel**auto-refreshes every 60 seconds**###**URL**: `http://localhost:5000/cockpit`
-
 
 ______________________________________________________________________
 

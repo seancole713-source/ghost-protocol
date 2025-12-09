@@ -16,7 +16,6 @@
 5. ✅**Tracks performance**(measures accuracy, win rate, returns)
 6. ✅**Learns over time**(improves with every decision)
 
-
 ______________________________________________________________________
 
 ## What Was Built (In 2 Hours)
@@ -25,47 +24,41 @@ ______________________________________________________________________
 
 1.**`core/ai_advisor/scanner.py`**(270 lines)
 
-   - Autonomous market scanner
-   - Scans stocks + crypto in parallel
-   - Scores opportunities 0-100
-   - Returns only high-confidence plays (≥70)
-
+- Autonomous market scanner
+- Scans stocks + crypto in parallel
+- Scores opportunities 0-100
+- Returns only high-confidence plays (≥70)
 
 1.**`core/ai_advisor/accuracy_tracker.py`**(370 lines)
 
-   - Decision outcome tracking
-   - Accuracy calculation
-   - Win rate & average return metrics
-   - Learning from past patterns
-
+- Decision outcome tracking
+- Accuracy calculation
+- Win rate & average return metrics
+- Learning from past patterns
 
 ### New API Endpoints (5 endpoints)
 
 1.**`POST /api/advisor/start`**- Start autonomous scanning
 
-   - Ghost monitors markets 24/7
-
+- Ghost monitors markets 24/7
 
 1.**`POST /api/advisor/stop`**- Stop scanning
 
 1.**`GET /api/advisor/recommendations`**- Get Ghost's current top picks
 
-   - Filter by asset type (stocks/crypto)
-   - Filter by minimum confidence score
-   - Shows Ghost's accuracy stats
-
+- Filter by asset type (stocks/crypto)
+- Filter by minimum confidence score
+- Shows Ghost's accuracy stats
 
 1.**`GET /api/advisor/stats`**- Comprehensive performance metrics
 
-   - Overall accuracy, win rate, avg return
-   - Performance by asset type
-   - Recent 30-day performance
-
+- Overall accuracy, win rate, avg return
+- Performance by asset type
+- Recent 30-day performance
 
 1.**`POST /api/advisor/scan_now`**- Trigger immediate scan
 
-   - Don't wait for schedule
-
+- Don't wait for schedule
 
 ### Database Schema**New Table**: `ai_decisions`
 
@@ -75,7 +68,6 @@ ______________________________________________________________________
 - Calculates correctness
 - Enables learning
 
-
 ### Startup Script
 
 **`start_ai_advisor.sh`**- One command to launch Ghost in AI mode
@@ -84,13 +76,11 @@ ______________________________________________________________________
 - Paper trading enabled by default
 - GPT-4 for maximum accuracy
 
-
 ### Documentation
 
 1.**`AI_ADVISOR_MASTER_PLAN.md`**- Complete vision & roadmap
 2.**`AI_ADVISOR_README.md`**- Usage guide & API docs
 3.**`CRYPTO_PHASE2_ROADMAP.md`**- Path to 100% feature parity
-
 
 ______________________________________________________________________
 

@@ -14,12 +14,14 @@ You asked: **"how did you miss that before and what else have you missed?"**
 
 ### 1. Incomplete Code Path Tracing
 
-**What I Did**: 
+**What I Did**:
+
 - Read `outcome_reconciler_v2.py` logic
 - Understood it evaluates predictions after 48 hours
 - Saw it stores results in Postgres
 
 **What I Missed**:
+
 - Didn't trace **where it gets called from** (`wolf_app.py:3651`)
 - Didn't see it runs in **infinite background thread** with no supervision
 - Didn't check if `get_pending_outcomes()` had batch limits
@@ -29,6 +31,7 @@ You asked: **"how did you miss that before and what else have you missed?"**
 ### 2. No Database Query Review
 
 **What I Missed**:
+
 ```python
 # core/prediction_store.py:1227 (PostgreSQL)
 cursor.execute("""
@@ -47,6 +50,7 @@ cursor.execute("""
 ### 3. No Timeout Audit
 
 **What I Missed**: The reconciler had **zero timeout protection**:
+
 - No timeout on entire reconciliation run
 - No timeout per prediction processing
 - No timeout on price fetching
@@ -63,6 +67,7 @@ cursor.execute("""
 **Status**: ⚠️ **NEEDS REVIEW**
 
 **Code**:
+
 ```python
 def _scheduler_loop():
     """Main scheduler loop"""
@@ -76,12 +81,14 @@ def _scheduler_loop():
 ```
 
 **Risks**:
+
 - ❌ No timeout on `_check_schedule()` - could hang indefinitely
 - ❌ No circuit breaker if predictions fail repeatedly
 - ⚠️ Runs every 30 seconds - could overwhelm system if slow
 - ⚠️ No batch limits on predictions generated
 
-**Recommendation**: 
+**Recommendation**:
+
 - Add timeout to `_check_schedule()` (max 60 seconds)
 - Add circuit breaker if >5 consecutive failures
 - Add rate limiting if prediction generation is slow
@@ -93,6 +100,7 @@ def _scheduler_loop():
 **Status**: ⚠️ **NEEDS REVIEW**
 
 **Code**:
+
 ```python
 def _scheduler_loop(self):
     """Main scheduler loop (runs in background thread)."""
@@ -116,12 +124,14 @@ def _scheduler_loop(self):
 ```
 
 **Risks**:
+
 - ❌ No timeout on `_run_market_open_predictions()` - could process 1000s of symbols
 - ❌ No batch limits on watchlist size - could try to generate predictions for entire market
 - ⚠️ `_run_big_move_detection()` queries ALL watchlist symbols with no LIMIT
 - ⚠️ No error isolation - one bad symbol crashes all predictions
 
 **Recommendation**:
+
 - Add timeout to each prediction run (max 5 minutes)
 - Add batch limits: Process max 100 symbols per run
 - Add circuit breaker: Stop if >70% symbols fail
@@ -134,11 +144,12 @@ def _scheduler_loop(self):
 **Status**: ⚠️ **LEGACY CODE - STILL RUNNING?**
 
 **Code**:
+
 ```python
 def _reconciler_loop():
     """Background loop to reconcile prediction outcomes and append actual prices"""
     time.sleep(60)  # Wait 60s for server to fully start before first run
-    
+
     while not _RECONCILER_STOP.is_set():
         try:
             # 1. Append actual prices to active predictions
@@ -156,12 +167,14 @@ def _reconciler_loop():
 **CRITICAL QUESTION**: Is this still running alongside outcome_reconciler_v2?
 
 **Risks**:
+
 - ❌ Calls **old** `outcome_reconciler.reconcile_outcomes()` (not V2)
 - ❌ `_append_actual_prices()` has no batch limit - processes ALL active predictions
 - ⚠️ Runs every 5 minutes (V2 runs hourly) - could conflict
 - ⚠️ No timeout protection
 
 **Immediate Action Required**:
+
 1. Check if BOTH reconcilers are running (check Railway logs)
 2. If both running, **disable old reconciler immediately**
 3. If only old one running, **V2 protections aren't active**
@@ -175,11 +188,13 @@ def _reconciler_loop():
 **File**: `core/portfolio_persistence.py:174`
 
 **Code**:
+
 ```python
 cur.execute("SELECT * FROM portfolio_positions WHERE quantity > 0 ORDER BY symbol")
 ```
 
 **Risk**: ⚠️ **MEDIUM**
+
 - Could return 1000s of positions if portfolio grows
 - No LIMIT clause
 
@@ -192,6 +207,7 @@ cur.execute("SELECT * FROM portfolio_positions WHERE quantity > 0 ORDER BY symbo
 **File**: `core/prediction_store.py:441, 446`
 
 **Code**:
+
 ```python
 # Line 441
 "SELECT id, prediction_id, ts, kind, price FROM prediction_points WHERE prediction_id=? AND kind=? ORDER BY ts"
@@ -201,10 +217,12 @@ cur.execute("SELECT * FROM portfolio_positions WHERE quantity > 0 ORDER BY symbo
 ```
 
 **Risk**: ⚠️ **LOW-MEDIUM**
+
 - Fetches ALL points for a prediction (could be 1000s if storing minute-level data)
 - Used in API endpoints - could cause slow responses
 
-**Recommendation**: 
+**Recommendation**:
+
 - Add `LIMIT 10000` as safety net
 - Consider pagination if points can exceed 10k
 
@@ -217,6 +235,7 @@ cur.execute("SELECT * FROM portfolio_positions WHERE quantity > 0 ORDER BY symbo
 **File**: `wolf_app.py` (multiple locations)
 
 **Examples**:
+
 ```python
 # Line 2046 - No parameterization shown
 cur.execute("SELECT price FROM realized_prices WHERE ...")
@@ -231,11 +250,13 @@ for row in cur.fetchall():  # ⚠️ No row limit
 ```
 
 **Risk**: ⚠️ **MEDIUM**
+
 - If user input reaches these queries, potential SQL injection
 - Unbounded `fetchall()` calls could load entire tables into memory
 - API keys and webhooks should have LIMIT clauses
 
 **Recommendation**:
+
 1. Audit all SQL queries for parameterization
 2. Add `LIMIT 1000` to API keys/webhooks queries
 3. Use prepared statements for all user input
@@ -261,15 +282,18 @@ for row in cur.fetchall():  # ⚠️ No row limit
 ### 1. 🚨 CRITICAL: Verify Old Reconciler Status (NOW)
 
 **Check Railway logs**:
+
 ```bash
 railway logs | grep -i "outcome reconciler started\|reconciler loop"
 ```
 
 **Expected Output**:
+
 - ✅ GOOD: Only see "Starting outcome reconciliation V2" (new reconciler)
 - ❌ BAD: See both "Prediction outcome reconciler started" (old) AND "Starting outcome reconciliation V2" (new)
 
 **If BOTH are running**:
+
 - Old reconciler is **duplicating work** and **lacks protections**
 - Need to disable old reconciler immediately
 
@@ -280,17 +304,18 @@ railway logs | grep -i "outcome reconciler started\|reconciler loop"
 **File**: `core/beast_scheduler.py`
 
 **Changes Needed**:
+
 ```python
 def _check_schedule():
     """Check schedule and run predictions"""
     import signal
-    
+
     def timeout_handler(signum, frame):
         raise TimeoutError("Schedule check timeout")
-    
+
     original_handler = signal.signal(signal.SIGALRM, timeout_handler)
     signal.alarm(60)  # 60 second timeout
-    
+
     try:
         # ... existing schedule check logic ...
     finally:
@@ -305,18 +330,19 @@ def _check_schedule():
 **File**: `core/watchlist_prediction_scheduler.py`
 
 **Changes Needed**:
+
 ```python
 def _run_market_open_predictions(self):
     """Generate predictions for all watchlist stocks at market open."""
     try:
         watchlist = self._get_watchlist_symbols()
-        
+
         # ⭐ NEW: Batch limiting
         MAX_SYMBOLS_PER_RUN = 100
         if len(watchlist) > MAX_SYMBOLS_PER_RUN:
             LOGGER.warning(f"Watchlist has {len(watchlist)} symbols, limiting to {MAX_SYMBOLS_PER_RUN}")
             watchlist = watchlist[:MAX_SYMBOLS_PER_RUN]
-        
+
         # ... rest of logic ...
 ```
 
@@ -324,11 +350,13 @@ def _run_market_open_predictions(self):
 
 ### 4. 🟡 MEDIUM: Add LIMIT Clauses to Unbounded Queries (This Week)
 
-**Files**: 
+**Files**:
+
 - `core/portfolio_persistence.py:174`
 - `core/prediction_store.py:441, 446`
 
 **Changes**:
+
 ```python
 # portfolio_persistence.py:174
 cur.execute("SELECT * FROM portfolio_positions WHERE quantity > 0 ORDER BY symbol LIMIT 1000")
@@ -345,11 +373,13 @@ cur.execute("SELECT * FROM portfolio_positions WHERE quantity > 0 ORDER BY symbo
 ### 5. 🟡 MEDIUM: SQL Injection Audit (This Week)
 
 **Task**: Review all SQL queries in `wolf_app.py` for:
+
 1. Proper parameterization (use `?` or `%s` placeholders)
 2. LIMIT clauses on `fetchall()` calls
 3. User input validation before queries
 
 **Files to audit**:
+
 - `wolf_app.py` (30+ unbounded queries found)
 - `core/*.py` (lower priority, mostly uses ORM)
 
@@ -358,18 +388,21 @@ cur.execute("SELECT * FROM portfolio_positions WHERE quantity > 0 ORDER BY symbo
 ## What You Should Do Right Now
 
 ### Step 1: Check Reconciler Status
+
 ```bash
 cd /Users/studio713/ghost-protocol
 railway logs | grep -E "(outcome reconciler|reconcile_outcomes)" | tail -20
 ```
 
 **Look for**:
+
 - ❌ "Prediction outcome reconciler started" = Old reconciler (bad)
 - ✅ "Starting outcome reconciliation V2" = New reconciler (good)
 
 ### Step 2: If Old Reconciler Is Running
 
 **Option A**: Disable in code (recommended)
+
 ```python
 # wolf_app.py:~3645 - Comment out old reconciler
 # try:
@@ -379,6 +412,7 @@ railway logs | grep -E "(outcome reconciler|reconcile_outcomes)" | tail -20
 ```
 
 **Option B**: Environment variable
+
 ```bash
 # Add to Railway environment
 RECONCILER_ENABLED=0  # Disable old reconciler
@@ -387,6 +421,7 @@ RECONCILER_ENABLED=0  # Disable old reconciler
 ### Step 3: Deploy Scheduler Fixes (if you want me to)
 
 I can implement the timeout and batch limit fixes for:
+
 1. Beast Scheduler
 2. Watchlist Scheduler
 
@@ -407,6 +442,7 @@ These are **non-urgent** but should be done this week.
 ### What You Should Ask For Next Time
 
 When I say "I've fixed X", ask:
+
 - "Did you check if there are other places doing the same thing?"
 - "Did you audit the queries it uses?"
 - "Did you check if old code is still running?"

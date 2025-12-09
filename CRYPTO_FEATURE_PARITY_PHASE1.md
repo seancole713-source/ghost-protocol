@@ -22,7 +22,6 @@ Calculates prediction accuracy metrics by comparing forecasts with actual prices
 - Total predictions count
 - Accuracy percentage (100% - MAP)
 
-
 **Example**:
 
 ```bash

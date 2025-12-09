@@ -12,7 +12,6 @@
 -**Accuracy Panel empty:**No chart/metrics beneath heading
 -**News sentiment:**All items show "Neutral" (hard-coded)
 
-
 ---
 
 ## Panel Classification Matrix
@@ -43,7 +42,6 @@ Sniper, Major Caps, Health/Goals)
 
 - 🟡 Partial: 3 panels (XRP Watch, Forecast, News, Watchlist)
 - 🔴 Broken: 2 panels (Top Movers, Accuracy)
-
 
 ---
 
@@ -99,7 +97,7 @@ async def api_v3_hunter_feed(limit: int = 10):
             store = get_prediction_store()
             recent_preds = store.get_recent_predictions(limit=limit * 2)  # DB query
 
-            
+
 
 ```text
 

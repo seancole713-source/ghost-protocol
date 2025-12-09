@@ -15,37 +15,31 @@ Added to `wolf_app.py` after `/api/status`:
    - Reads from `STATE.get("tick", 0)`
    - Never returns empty dict
 
-
 1.**GET /api/regime/current**- Returns: `{"regime": str, "confidence": float, "ts": ms}`
 
-   - Reads from `STATE.get("regime")` with fallback to `{"regime": "neutral", "confidence": 0.5}`
-   - Never returns empty dict
-
+- Reads from `STATE.get("regime")` with fallback to `{"regime": "neutral", "confidence": 0.5}`
+- Never returns empty dict
 
 1.**GET /api/goals**- Returns: `{"daily": float, "weekly": float, "monthly": float, "yearly": float, "ts": ms}`
 
-   - Reads from `STATE.get("goals")` with defaults to 0
-   - Never returns empty dict
-
+- Reads from `STATE.get("goals")` with defaults to 0
+- Never returns empty dict
 
 1.**GET /api/ghost/score**- Returns: `{"ghost_score": float, "ts": ms}`
 
-   - Reads from `STATE.get("ghost_score", 0)`
-   - Never returns empty dict
-
+- Reads from `STATE.get("ghost_score", 0)`
+- Never returns empty dict
 
 1.**GET /api/news/trending**- Returns: `{"items": list, "ts": ms}`
 
-   - Reads from `STATE.get("news_trending")` with fallback to `NEWS_CACHE.get("items", [])`
-   - Empty list allowed, but never returns empty dict
-
+- Reads from `STATE.get("news_trending")` with fallback to `NEWS_CACHE.get("items", [])`
+- Empty list allowed, but never returns empty dict
 
 1.**POST /api/crypto/predict/run**- Body: `{"symbol": "BTC", "horizon_h": 48}`
 
-   - Returns: Forecast or `{"ok": false, "detail": "crypto forecast disabled"}` with HTTP 501
-   - Requires bearer auth
-   - Never returns empty dict
-
+- Returns: Forecast or `{"ok": false, "detail": "crypto forecast disabled"}` with HTTP 501
+- Requires bearer auth
+- Never returns empty dict
 
 ### ✅ TASK 2: Fix AAPL Price Routing**File**: `wolf_app.py` - `/api/price/diagnostics` endpoint
 
@@ -57,14 +51,12 @@ Added to `wolf_app.py` after `/api/status`:
 - Bypasses `FOCUS_WOLF_ONLY` check for diagnostics (allows testing)
 - Returns symbol-specific cache data instead of always WOLF cache
 
-
 **Impact**:
 
 - AAPL now routes to correct provider chain (polygon → alphavantage → yfinance → yahoo)
 - No more WOLF price returned for AAPL queries
 - Provider order enforced via `_resolve_stock_provider_order()` and `_get_provider_fetchers()`
 - `PRICE_STRICT_LIVE=1` respected by `fetch_price_live()` function
-
 
 ### ✅ TASK 3: Enforce ENV Gates on Startup
 

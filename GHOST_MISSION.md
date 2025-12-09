@@ -18,13 +18,11 @@ act—**NEVER to execute trades automatically**.
 
 - **NO BROKER INTEGRATION**for order placement
 
-
 -**NO AUTO-BUY**or**AUTO-SELL**functionality
 -**NO ORDER ROUTING**to any trading platform
 -**NO P&L TRACKING FROM BROKER**accounts
 
 - Ghost observes, predicts, and alerts—the human decides and executes
-
 
 ### 2. Single Owner Model
 
@@ -33,7 +31,6 @@ act—**NEVER to execute trades automatically**.
 - No user authentication system needed
 - Configuration via environment variables
 
-
 ### 3. Live Data Only
 
 -**NO SIMULATION MODE**for production predictions
@@ -41,7 +38,6 @@ act—**NEVER to execute trades automatically**.
 - Real market data required (Polygon, CoinGecko, Binance, etc.)
 - Cache allowed (5-min TTL) but no stale fallbacks >1 hour
 - Health checks must validate data freshness
-
 
 ---
 
@@ -58,7 +54,6 @@ act—**NEVER to execute trades automatically**.
 - Speed: Crypto <500ms, Stocks <2000ms
 - Coverage: 50+ symbols (crypto + stocks)
 
-
 ### 2.**Performance Tracking**Ghost tracks its own accuracy and theoretical performance
 
 -**Accuracy Stats:**Win rate, avg error, best/worst symbols
@@ -70,37 +65,32 @@ act—**NEVER to execute trades automatically**.
 - Track per period: daily, weekly, monthly, yearly
 - Compare realized vs. target % returns
 
-
 ### 3. **Telegram Alerts**Ghost sends actionable alerts via Telegram:**Alert Types:**1.**BUY CANDIDATE:**High upside opportunity detected
 
-   - Confidence >55%, Score >80
-   - Clear entry rationale
-   - Expected move % and timeframe
-
+- Confidence >55%, Score >80
+- Clear entry rationale
+- Expected move % and timeframe
 
 1.**EXIT / DANGER:**Downside risk if owner holds position
 
-   - Prediction shows DOWN movement
-   - Position at risk based on recent prediction
-   - Suggest EXIT or REDUCE exposure
-
+- Prediction shows DOWN movement
+- Position at risk based on recent prediction
+- Suggest EXIT or REDUCE exposure
 
 1.**DAILY REPORTS:**Morning (7am) + Evening (8pm)
 
-   - Top movers summary
-   - Ghost Score health
-   - Goal progress (% and $)
-
+- Top movers summary
+- Ghost Score health
+- Goal progress (% and $)
 
 1.**WEEKLY ACCURACY:**Performance review
 
-   - Win rate
-   - Top performers
-   - Model edge %**Alert Rules:**- Cooldown: 4 hours per symbol (no spam)
+- Win rate
+- Top performers
+- Model edge %**Alert Rules:**- Cooldown: 4 hours per symbol (no spam)
 - Max rate: 5 instant alerts per hour
 - Markdown formatting (mobile-friendly)
 - Emoji indicators (🔥⭐✨ for urgency)
-
 
 ---
 
@@ -110,80 +100,70 @@ act—**NEVER to execute trades automatically**.
 
 1.**Market Data:**- Crypto: CoinGecko, Binance, Coinbase (quorum voting)
 
-   - Stocks: Polygon (paid), yfinance, Yahoo HTTP, AlphaVantage
-   - Forex/Indices: Optional (DXY, VIX, etc.)
-
+- Stocks: Polygon (paid), yfinance, Yahoo HTTP, AlphaVantage
+- Forex/Indices: Optional (DXY, VIX, etc.)
 
 1.**Configuration:**- VIP coins list (high-priority tracking)
 
-   - Watchlist (custom symbols)
-   - Confidence threshold (MIN_ALERT_CONFIDENCE=0.55)
-   - Instant alert threshold (INSTANT_ALERT_THRESHOLD=80)
-   - Goals: daily/weekly/monthly/yearly ($ and % targets)
-
+- Watchlist (custom symbols)
+- Confidence threshold (MIN_ALERT_CONFIDENCE=0.55)
+- Instant alert threshold (INSTANT_ALERT_THRESHOLD=80)
+- Goals: daily/weekly/monthly/yearly ($ and % targets)
 
 1.**Historical Data:**- Predictions database (SQLite + Postgres)
 
-   - Outcomes tracking (48h reconciliation)
-   - Accuracy statistics
-
+- Outcomes tracking (48h reconciliation)
+- Accuracy statistics
 
 ### Processing
 
 1.**Feature Extraction:**- Technical: RSI, MACD, Bollinger Bands, momentum
 
-   - Volume: Relative volume, volume divergence
-   - Sentiment: News, social signals (Reddit, Twitter)
-   - World Context: Macro indicators (DXY, VIX, SPY)
-
+- Volume: Relative volume, volume divergence
+- Sentiment: News, social signals (Reddit, Twitter)
+- World Context: Macro indicators (DXY, VIX, SPY)
 
 1.**Ensemble Prediction:**- Multiple signal sources (5-pillar system)
 
-   - Confidence weighting
-   - Direction voting
-   - Expected move aggregation
-
+- Confidence weighting
+- Direction voting
+- Expected move aggregation
 
 1.**Opportunity Scoring:**- Multi-factor score (0-100)
 
-   - Confidence × Expected Move × Signal Count
-   - Risk-adjusted (volatility penalty)
-
+- Confidence × Expected Move × Signal Count
+- Risk-adjusted (volatility penalty)
 
 1.**Accuracy Reconciliation:**- 48-hour outcome check
 
-   - Direction correctness
-   - Price error calculation
-   - Statistics update
-
+- Direction correctness
+- Price error calculation
+- Statistics update
 
 ### Outputs
 
 1.**API Responses:**- `/api/predict/run` - Generate prediction
 
-   - `/api/v3/predictions/latest` - Cached predictions
-   - `/api/v3/vip/snapshot` - VIP coins status
-   - `/api/v3/cockpit/overview` - Dashboard data
-   - `/api/v3/alerts/status` - Alert system health
-   - `/api/v3/goals/snapshot` - Goal progress ($ + %)
-
+- `/api/v3/predictions/latest` - Cached predictions
+- `/api/v3/vip/snapshot` - VIP coins status
+- `/api/v3/cockpit/overview` - Dashboard data
+- `/api/v3/alerts/status` - Alert system health
+- `/api/v3/goals/snapshot` - Goal progress ($ + %)
 
 1.**UI Dashboard (`/cockpit`):**- Top Movers (Stocks/Crypto)
 
-   - VIP Coins Tracker
-   - Ghost Forecast (24h/7d/14d)
-   - News Feed
-   - Prediction Accuracy Chart
-   - Watchlist Grid
-   - Ghost Health Score
-
+- VIP Coins Tracker
+- Ghost Forecast (24h/7d/14d)
+- News Feed
+- Prediction Accuracy Chart
+- Watchlist Grid
+- Ghost Health Score
 
 1.**Telegram Messages:**- Formatted alerts (Markdown)
 
-   - Visual indicators (emoji)
-   - Actionable recommendations
-   - Performance summaries
-
+- Visual indicators (emoji)
+- Actionable recommendations
+- Performance summaries
 
 ---
 

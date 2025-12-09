@@ -10,7 +10,6 @@ Fixed 5 critical bugs identified during code review and error analysis:
 4. ✅ Missing entry_price field mapping in cockpit
 5. ✅ Background price updater verification
 
-
 ______________________________________________________________________
 
 ## Bug #1: Duplicate Function Definition
@@ -26,7 +25,6 @@ Two identical endpoints defined:
 - Line 8279: Basic implementation with try/catch
 - Line 8326: Enhanced implementation with logging
 
-
 ### Fix
 
 Removed duplicate at line 8279, kept the better implementation at 8326 with:
@@ -34,7 +32,6 @@ Removed duplicate at line 8279, kept the better implementation at 8326 with:
 - Comprehensive reset logic
 - Warning log entry: `"Circuit breakers manually reset via /debug/reset_breakers"`
 - Full breaker state returned in response
-
 
 ### Validation
 

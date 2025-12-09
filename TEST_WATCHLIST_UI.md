@@ -8,21 +8,18 @@
    - Kept existing Stocks/Crypto/All filter tabs (`#watchlist-filter-tabs`)
    - Both tab groups now visible in watchlist panel
 
-
 1.**static/cockpit_v3.js**- Added state variables: `watchlistMode` ('personal' | 'market'), `watchlistFilter` ('all' | 'stocks' | 'crypto')
 
-   - Added `loadWatchlistByMode()` - master router function
-   - Refactored `loadMarketWatchlist()` - existing market watchlist (now with filter support)
-   - Updated `switchTab()` - handles both mode tabs and filter tabs
-   - Updated event listeners - distinguishes `data-mode` vs `data-tab` attributes
-   - Updated interval loaders - calls `loadWatchlistByMode()` every 15s
-
+- Added `loadWatchlistByMode()` - master router function
+- Refactored `loadMarketWatchlist()` - existing market watchlist (now with filter support)
+- Updated `switchTab()` - handles both mode tabs and filter tabs
+- Updated event listeners - distinguishes `data-mode` vs `data-tab` attributes
+- Updated interval loaders - calls `loadWatchlistByMode()` every 15s
 
 1.**static/personal_watchlist_ui.js**- Removed auto-override of `loadWatchlist()`
 
-   - Now works alongside cockpit_v3.js (called when mode='personal')
-   - All CRUD functions intact: add, remove, toggle ownership, view history
-
+- Now works alongside cockpit_v3.js (called when mode='personal')
+- All CRUD functions intact: add, remove, toggle ownership, view history
 
 ## API Endpoints Used
 
@@ -34,12 +31,10 @@
 -**POST**`/api/v3/watchlist/update-position` - Update owns_position flag
 -**GET**`/api/v3/watchlist/history/{symbol}` - Get prediction history
 
-
 ### Market Watchlist
 
 -**GET**`/api/v3/watchlist/enriched` - Fetch default Ghost market watchlist with live prices
 -**GET**`/api/v3/predictions/latest?limit=100` - Fetch prediction data to enrich watchlist
-
 
 ## User Workflow
 
@@ -51,7 +46,6 @@
 4. If personal watchlist empty: Shows "Your watchlist is empty" + "Add Symbol" button
 5. If personal watchlist has items: Displays with add/remove controls
 
-
 ### Adding a Symbol to Personal Watchlist
 
 1. User clicks "➕ Add Symbol" button
@@ -61,11 +55,10 @@
    - Owns Position (checkbox)
    - Alert Threshold (number input, default 5.0%)
    - Notes (textarea, optional)
-1. User fills form and clicks "Add Symbol"
-2. POST to `/api/v3/watchlist/add`
-3. On success: Modal closes, watchlist reloads, toast notification shows
-4. Symbol now appears in personal watchlist with prediction data
-
+3. User fills form and clicks "Add Symbol"
+4. POST to `/api/v3/watchlist/add`
+5. On success: Modal closes, watchlist reloads, toast notification shows
+6. Symbol now appears in personal watchlist with prediction data
 
 ### Removing a Symbol from Personal Watchlist
 
@@ -73,7 +66,6 @@
 2. Confirmation dialog: "Remove {SYMBOL} from watchlist?"
 3. If confirmed: POST to `/api/v3/watchlist/remove`
 4. On success: Watchlist reloads, toast notification shows
-
 
 ### Switching to Market Watchlist
 
@@ -84,8 +76,7 @@
    - Fetches `/api/v3/predictions/latest` (prediction data)
    - Enriches watchlist with Ghost predictions
    - Applies filter (stocks/crypto/all based on active filter tab)
-1. Market watchlist renders with Ghost predictions (NO add/remove buttons)
-
+4. Market watchlist renders with Ghost predictions (NO add/remove buttons)
 
 ### Filter Tabs (Stocks/Crypto/All)
 
@@ -93,7 +84,6 @@
 
 - **When mode=market**: Filter is applied by `loadMarketWatchlist()` using array filter on `item.type`
 - Both modes respect the same filter tabs
-
 
 ## Testing Checklist
 

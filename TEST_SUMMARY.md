@@ -31,7 +31,6 @@ set but tests weren't passing bearer tokens.
 - `tests/test_acceptance_cockpit.py` - Added `_get_headers()` helper with Bearer token
 - `tests/test_portfolio_invariants.py` - Added authentication to all HTTP requests
 
-
 **Fix Applied**:
 
 ```python

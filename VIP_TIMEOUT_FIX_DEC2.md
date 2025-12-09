@@ -26,12 +26,11 @@ With 5 VIP coins (BTC/ETH/SOL/BNB/XRP), that's 10+ seconds just from sleeps.
 - Server triggers background refresh (doesn't block client)
 - Next request gets fresh data
 
-
 ### Code Changes**File:**`wolf_app.py` lines 6817-6900**1. Always Return Cache (Even If Stale)**```python
 
 if _VIP_SNAPSHOT_CACHE["data"]:
     if cache_age < _VIP_SNAPSHOT_CACHE["ttl"]:
-        return _VIP_SNAPSHOT_CACHE["data"]  # Fresh cache
+        return_VIP_SNAPSHOT_CACHE["data"]  # Fresh cache
     else:
 
         # Return stale cache, refresh in background

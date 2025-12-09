@@ -37,7 +37,6 @@ ______________________________________________________________________
   - [x] Backward compatibility maintained
   - [x] Error handling implemented
 
-
 ______________________________________________________________________
 
 ## Deployment Steps

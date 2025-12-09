@@ -9,7 +9,6 @@ predictions endpoint exposed at `/api/predictions/multi/run` in
 - Python environment with project dependencies installed.
 - `pytest` and `fastapi` test utilities available in the environment.
 
-
 ### How to Run the Test
 
 From the repository root:

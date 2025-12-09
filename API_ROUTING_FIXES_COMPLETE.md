@@ -13,7 +13,6 @@ Fixed critical routing issues and verified all live routes are properly register
 - Used `get_wolf_price()` for WOLF symbol (different code path)
 - AAPL diagnostics returned WOLF price (routing aliasing bug)**Solution:**```python
 
-
 # BEFORE
 
 sym = (symbol or WOLF).upper().strip()  # Default to WOLF
@@ -33,7 +32,6 @@ result = await ensure_price_cached(sym, ...)  # ALWAYS use provider chain
 
 - `GET /api/price/diagnostics?symbol=WOLF` uses same provider chain as AAPL
 - All symbols go through `ensure_price_cached()` → consistent behavior
-
 
 ### 2. Added /api/cache/purge Endpoint ✅**Purpose:**Targeted cache key deletion without flushing entire cache**Usage:**
 

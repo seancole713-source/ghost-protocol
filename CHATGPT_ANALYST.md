@@ -11,7 +11,6 @@ and execution. This creates a**self-healing, continuous analyst**that:
 - Never forgets context (auto-rehydrates when sessions reset)
 - Costs ~$0.50-2.00/day with GPT-4o-mini
 
-
 ## Architecture
 
 ```text

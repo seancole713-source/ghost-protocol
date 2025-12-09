@@ -26,7 +26,6 @@ Comprehensive test suite that validates:
 - ✅ Recent orders
 - ✅ Dry run order validation**Usage:**```bash
 
-
 # Configure environment
 
 export BROKER=alpaca
@@ -50,20 +49,18 @@ TEST 1: Import broker module
 TEST 2: Initialize broker
 ✓ Broker initialized
 
-  - Enabled: True
-  - Paper mode: True
-  - Base URL: <<<<<https://paper-api.alpaca.markets/v2>>>>>
-
+- Enabled: True
+- Paper mode: True
+- Base URL: <<<<<https://paper-api.alpaca.markets/v2>>>>>
 
 TEST 3: Health check
 ✓ Health check PASSED
 
-  - Account ID: abc123...
-  - Buying Power: $100,000.00
-  - Portfolio Value: $100,000.00
-  - Positions: 2
-  - Market Open: True
-
+- Account ID: abc123...
+- Buying Power: $100,000.00
+- Portfolio Value: $100,000.00
+- Positions: 2
+- Market Open: True
 
 ... (continues with more tests)
 

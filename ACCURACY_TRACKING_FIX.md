@@ -14,13 +14,11 @@ The comprehensive audit revealed **accuracy tracking was 0% functional**:
 - `outcomes` table had 0 records (predictions never evaluated)
 - System claimed 100% operational but was actually **85% operational**## 🔍 Root Cause Analysis
 
-
 ### Issue #1: Schema Mismatches in `scripts/evaluate_predictions.py`**Timestamp Units**
 
 - Script used milliseconds: `now_ms = int(time.time() * 1000)`
 - Database uses seconds: `run_at = 1764261065.36305` (Unix timestamp)
 - SQL queries multiplied by `3600 * 1000` instead of just `3600`
-
 
 **Missing Columns**:
 
@@ -28,13 +26,11 @@ The comprehensive audit revealed **accuracy tracking was 0% functional**:
 - Script expected `row["current_price"]` - column doesn't exist in `predictions` table
 - Actual schema: `predictions` has `id, symbol, run_at, horizon_h, method, confidence, direction, features_json, params_json, tag`
 
-
 **Missing JOIN**:
 
 - Original prices stored in `prediction_points` table with `kind='forecast'`
 - Script didn't JOIN to retrieve original_price
 - Must query: `SELECT price FROM prediction_points WHERE prediction_id = ? AND kind = 'forecast' ORDER BY ts LIMIT 1`
-
 
 ### Issue #2: Incompatible Outcomes Table Schema
 
@@ -139,7 +135,7 @@ for row in cursor.fetchall():
         "asset_type": asset_type,
         "original_price": row["original_price"],
 
-        
+
 
     })
 

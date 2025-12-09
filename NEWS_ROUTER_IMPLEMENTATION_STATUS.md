@@ -11,12 +11,10 @@
   - `GET /api/news/recent` - Get news within time window (symbol filter, minutes 1-1440)
   - `GET /api/news/sentiment/{symbol}` - Get sentiment analysis for specific symbol
 
-
 ### 2. Mounted Router in wolf_app.py
 
 - **Location**: Lines 188-200
 - **Code**:
-
 
 ```python
 _NEWS_ROUTER_MOUNTED = False

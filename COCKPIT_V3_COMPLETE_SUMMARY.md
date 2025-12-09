@@ -13,14 +13,12 @@
 -**Endpoint:**`/api/xrp/tracker`
 -**Features:**- Bullish eye indicator (🟢 Bullish / 🟡 Neutral / 🔴 Bearish)
 
-  - Signal display (BUY / HOLD / SELL) with confidence %
-  - Current price and 24h change
-  - Eye score /100
-
+- Signal display (BUY / HOLD / SELL) with confidence %
+- Current price and 24h change
+- Eye score /100
 
 -**Status:**✅ Live and working
 -**Test:**`curl <<<<<https://ghost-protocol-production.up.railway.app/api/xrp/tracker`>>>>>
-
 
 #### 🎯 VIP Sniper Coins Section
 
@@ -28,13 +26,11 @@
 -**Symbols:**WEPE, LILPEPE, DORKL, SLOTH, APC
 -**Features:**- Status tracking (Active / Monitoring / Watching)
 
-  - Price display (when available)
-  - Category labels (Presale)
-
+- Price display (when available)
+- Category labels (Presale)
 
 -**Status:**✅ Live and working
 -**Current Data:**WEPE (Active), LILPEPE (Monitoring)
-
 
 #### 📊 Major Caps Reference
 
@@ -42,12 +38,10 @@
 -**Symbols:**BTC, ETH (filtered from VIP snapshot)
 -**Features:**- Price display
 
-  - 24h change %
-  - Live/Offline status
-
+- 24h change %
+- Live/Offline status
 
 -**Status:**✅ Working (shows data when providers return prices)
-
 
 ---
 
@@ -56,7 +50,6 @@
 - ✅ Shows "RUNNING" (green) or "STOPPED" (red)
 - ✅ Updates every 30 seconds
 - ✅ Calls `/api/v3/cockpit/status` on init**Code Changes:**```javascript
-
 
 // Added in initializeApp():
 loadCockpitStatus();

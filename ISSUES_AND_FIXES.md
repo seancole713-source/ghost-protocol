@@ -6,7 +6,6 @@
 2. ❌ **Price not updating**in real-time (stuck at prev-close)
 3. ❌**WOLF not in watchlist**(only 52 other symbols)
 
-
 ______________________________________________________________________
 
 ## 🔍 ROOT CAUSE ANALYSIS
@@ -284,7 +283,7 @@ Add price data to each symbol:
 @APP.get("/api/watchlist")
 async def api_watchlist():
 
-    # ... existing code 
+    # ... existing code
 
     enriched_symbols = []
     for sym in symbols:

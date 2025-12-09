@@ -9,7 +9,6 @@ ______________________________________________________________________
 - ✅ Moved `Dockerfile.backup` → `.archive/Dockerfile.backup`
 - ✅ Moved `Dockerfile.railway-backup` → `.archive/Dockerfile.railway-backup`
 
-
 ### 2.**Placeholder Comments Removed**| File | Lines | Change | |------|-------|--------| | `wolf_app.py` | 66 | "currently
 
 not implemented" → "Optional ChatGPT" | | `wolf_app.py` | 661 | "Function not yet
@@ -35,20 +34,17 @@ required" | | `POST /ai/backfill` | Returned `{"imported": 0}` (fake success) | 
 - ✅**ADDED:**Load from `.env` or prompt user securely
 - ✅**ADDED:**Masked credential display
 
-
 #### `/workspaces/GHOST/deploy_ghost.sh`
 
 - ❌**REMOVED:**Hardcoded API keys (lines 101-104)
 - ✅**ADDED:**Interactive prompt with instructions
 - ✅**ADDED:**Manual Railway CLI commands (no hardcoded secrets)
 
-
 ### 5.**Security Hardening**
 
 - ✅ Updated `.gitignore` to include `secrets.env`, `.env`, `*.key`
 - ⚠️ **Note:**`.env.example` already exists (preserved existing)
 - ✅ Syntax validation passed: `wolf_app.py` compiles without errors
-
 
 ______________________________________________________________________
 
@@ -59,12 +55,10 @@ ______________________________________________________________________
    - AlphaVantage: <<<<<https://www.alphavantage.co/support/#api-key>>>>>
    - Telegram: Talk to @BotFather, use `/revoke`
 
-
 1.**Generate new keys**and update:
 
-   - Local: Update `/workspaces/GHOST/secrets.env` (never commit!)
-   - Railway: `railway variables set OPENAI_API_KEY=new_key` (etc.)
-
+- Local: Update `/workspaces/GHOST/secrets.env` (never commit!)
+- Railway: `railway variables set OPENAI_API_KEY=new_key` (etc.)
 
 1.**Verify old keys are revoked**______________________________________________________________________
 
@@ -74,32 +68,28 @@ Still need to scan for:
 
 1.**UI/API Mismatches**- Sample/test data in templates
 
-   - Hardcoded mock data in JavaScript
-   - Disconnected UI panels
-
+- Hardcoded mock data in JavaScript
+- Disconnected UI panels
 
 1.**Naming Convention Violations**
 
-   - `AI_ON` vs `AGENTS_ENABLED` inconsistency
-   - `AI_MODEL` vs `AGENT_MODEL` inconsistency
-   - Legacy function names (`_legacy_*`)
+- `AI_ON` vs `AGENTS_ENABLED` inconsistency
+- `AI_MODEL` vs `AGENT_MODEL` inconsistency
+- Legacy function names (`_legacy_*`)
 
 1. **Dead Code Detection**- Unused imports
    - Unreachable code paths
    - Orphaned functions
 
-
 1.**Configuration Mismatches**- Env vars referenced but not documented
 
-   - Env vars documented but not used
-   - Default values out of sync
-
+- Env vars documented but not used
+- Default values out of sync
 
 1.**Test Coverage Gaps**- Functions without tests
 
-   - Mocked data in tests
-   - Commented-out test cases
-
+- Mocked data in tests
+- Commented-out test cases
 
 ______________________________________________________________________
 
@@ -110,7 +100,6 @@ ______________________________________________________________________
 - All dead/unreachable code
 - All configuration mismatches**Estimated violations to find:**50-100 additional issues
 
-
 ______________________________________________________________________
 
 ## 📝**FILES MODIFIED**### Edited
@@ -120,18 +109,15 @@ ______________________________________________________________________
 - `/workspaces/GHOST/deploy_ghost.sh` (security hardening)
 - `/workspaces/GHOST/.gitignore` (added secrets protection)
 
-
 ### Archived
 
 - `/workspaces/GHOST/.archive/main_backup.py`
 - `/workspaces/GHOST/.archive/Dockerfile.backup`
 - `/workspaces/GHOST/.archive/Dockerfile.railway-backup`
 
-
 ### Created
 
 - `/workspaces/GHOST/.archive/` (directory)
-
 
 ______________________________________________________________________
 
@@ -140,6 +126,5 @@ ______________________________________________________________________
 - ✅ Deployment scripts: SECURED (no hardcoded keys)
 - ✅ Legacy code: ARCHIVED (not deleted, just organized)
 - ⚠️ API keys: STILL EXPOSED IN `secrets.env` (user must rotate)
-
 
 ______________________________________________________________________**Status:** Ready for Phase 2B - Deep Audit Scan
