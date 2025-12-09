@@ -258,66 +258,113 @@ class DataCollector:
     # TECHNICAL INDICATORS
     # ========================================================================
     
-    async def calculate_rsi(self, symbol: str, period: int = 14) -> Optional[float]:
-        """Calculate RSI from recent price data"""
+    async def get_coinbase_candles(self, symbol: str, granularity: int = 3600, limit: int = 50) -> Optional[List[List[float]]]:
+        """
+        Get historical candles from Coinbase Pro.
+        
+        Args:
+            symbol: Crypto symbol (BTC, ETH, SOL, etc.)
+            granularity: Candle size in seconds (3600 = 1h, 86400 = 1d)
+            limit: Number of candles to fetch (max 300)
+        
+        Returns:
+            List of candles: [[timestamp, low, high, open, close, volume], ...]
+            Or None if failed
+        """
         try:
-            # Get OHLCV data from Binance
-            pair = f"{symbol}USDT"
-            url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1h&limit={period + 1}"
+            # Coinbase Pro uses product IDs like BTC-USD
+            product_id = f"{symbol}-USD"
             
-            async with self.session.get(url) as resp:
+            # Coinbase requires explicit start/end times
+            end_time = int(time.time())
+            start_time = end_time - (granularity * limit)
+            
+            url = f"https://api.exchange.coinbase.com/products/{product_id}/candles"
+            params = {
+                'start': start_time,
+                'end': end_time,
+                'granularity': granularity
+            }
+            
+            async with self.session.get(url, params=params) as resp:
                 if resp.status == 200:
-                    klines = await resp.json()
-                    closes = [float(k[4]) for k in klines]  # Close prices
-                    
-                    # Calculate RSI
-                    deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-                    gains = [d if d > 0 else 0 for d in deltas]
-                    losses = [-d if d < 0 else 0 for d in deltas]
-                    
-                    avg_gain = sum(gains) / period
-                    avg_loss = sum(losses) / period
-                    
-                    if avg_loss == 0:
-                        return 100.0
-                    
-                    rs = avg_gain / avg_loss
-                    rsi = 100 - (100 / (1 + rs))
-                    
-                    return rsi
+                    candles = await resp.json()
+                    # Coinbase returns: [timestamp, low, high, open, close, volume]
+                    # Sort by timestamp ascending (Coinbase returns descending)
+                    candles.sort(key=lambda x: x[0])
+                    return candles
+                elif resp.status == 404:
+                    LOGGER.warning(f"Coinbase candles: {product_id} not found")
+                else:
+                    LOGGER.warning(f"Coinbase candles error: HTTP {resp.status}")
+        except Exception as e:
+            LOGGER.warning(f"Coinbase candles error for {symbol}: {e}")
+        
+        return None
+    
+    async def calculate_rsi(self, symbol: str, period: int = 14) -> Optional[float]:
+        """
+        Calculate RSI from recent price data.
+        Now uses Coinbase Pro as primary source (Binance geoblocked).
+        """
+        try:
+            # Try Coinbase Pro first (US-friendly)
+            candles = await self.get_coinbase_candles(symbol, granularity=3600, limit=period + 1)
+            
+            if candles and len(candles) >= period + 1:
+                # Extract close prices (index 4)
+                closes = [float(candle[4]) for candle in candles]
+                
+                # Calculate RSI
+                deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+                gains = [d if d > 0 else 0 for d in deltas]
+                losses = [-d if d < 0 else 0 for d in deltas]
+                
+                avg_gain = sum(gains) / period
+                avg_loss = sum(losses) / period
+                
+                if avg_loss == 0:
+                    return 100.0
+                
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+                
+                return rsi
         except Exception as e:
             LOGGER.warning(f"RSI calculation error for {symbol}: {e}")
         
         return None
     
     async def detect_trend(self, symbol: str) -> Optional[str]:
-        """Detect trend using EMA crossover"""
+        """
+        Detect trend using EMA crossover.
+        Now uses Coinbase Pro as primary source (Binance geoblocked).
+        """
         try:
-            pair = f"{symbol}USDT"
-            url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1h&limit=50"
+            # Get hourly candles for last 50 hours
+            candles = await self.get_coinbase_candles(symbol, granularity=3600, limit=50)
             
-            async with self.session.get(url) as resp:
-                if resp.status == 200:
-                    klines = await resp.json()
-                    closes = [float(k[4]) for k in klines]
-                    
-                    # Simple EMA calculation
-                    def ema(data, period):
-                        multiplier = 2 / (period + 1)
-                        ema_vals = [data[0]]
-                        for price in data[1:]:
-                            ema_vals.append((price - ema_vals[-1]) * multiplier + ema_vals[-1])
-                        return ema_vals[-1]
-                    
-                    ema_9 = ema(closes, 9)
-                    ema_21 = ema(closes, 21)
-                    
-                    if ema_9 > ema_21 * 1.01:  # 1% threshold
-                        return "UP"
-                    elif ema_9 < ema_21 * 0.99:
-                        return "DOWN"
-                    else:
-                        return "SIDEWAYS"
+            if candles and len(candles) >= 21:
+                # Extract close prices (index 4)
+                closes = [float(candle[4]) for candle in candles]
+                
+                # Simple EMA calculation
+                def ema(data, period):
+                    multiplier = 2 / (period + 1)
+                    ema_vals = [data[0]]
+                    for price in data[1:]:
+                        ema_vals.append((price - ema_vals[-1]) * multiplier + ema_vals[-1])
+                    return ema_vals[-1]
+                
+                ema_9 = ema(closes, 9)
+                ema_21 = ema(closes, 21)
+                
+                if ema_9 > ema_21 * 1.01:  # 1% threshold
+                    return "UP"
+                elif ema_9 < ema_21 * 0.99:
+                    return "DOWN"
+                else:
+                    return "SIDEWAYS"
         except Exception as e:
             LOGGER.warning(f"Trend detection error for {symbol}: {e}")
         
