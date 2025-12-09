@@ -7832,128 +7832,124 @@ async def api_v3_hunter_feed(limit: int = 10):
     Get Hunter news feed for cockpit movers/news panel.
     
     Returns recent prediction news/alerts as both 'movers' and 'feed'.
-    FIXED: Query database instead of relying on empty _LATEST_PREDICTIONS
+    OPTIMIZED: Fast in-memory path first, DB fallback only if empty
     """
     try:
-        # FALLBACK: If _LATEST_PREDICTIONS is empty, query database for recent predictions
-        if not _LATEST_PREDICTIONS:
-            LOGGER.info("[HUNTER] _LATEST_PREDICTIONS empty, querying database...")
-            try:
-                # Query database for recent predictions
-                from core.prediction_store import get_prediction_store
-                store = get_prediction_store()
-                recent_preds = store.get_recent_predictions(limit=limit * 2)  # Get more to filter
+        # FAST PATH: Use in-memory predictions if available (avoids DB query)
+        predictions = list(_LATEST_PREDICTIONS.values()) if _LATEST_PREDICTIONS else []
+        
+        # If we have in-memory predictions, use them (fast)
+        if predictions:
+            predictions.sort(key=lambda p: p.get("confidence", 0), reverse=True)
+            feed_items = []
+
+            for pred in predictions[:limit]:
+                symbol = pred.get("symbol")
+                if not symbol:
+                    continue
+
+                direction = pred.get("direction", "FLAT")
+                confidence = pred.get("confidence", 0) or 0
+                confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
                 
-                # Convert to feed format
-                feed_items = []
-                for pred in recent_preds[:limit]:
-                    symbol = pred.get("symbol")
-                    direction = pred.get("direction", "FLAT")
-                    confidence = pred.get("confidence", 0) or 0
-                    confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
-                    
-                    # Calculate expected move
-                    expected_move = pred.get("expected_move")
-                    if expected_move is None:
-                        if direction == "UP":
-                            change_pct = ((confidence_pct - 40) / 10) + 1.0
-                        elif direction == "DOWN":
-                            change_pct = -(((confidence_pct - 40) / 10) + 1.0)
-                        else:
-                            change_pct = 0.5 if confidence_pct > 50 else -0.5
+                # Calculate expected move
+                expected_move = pred.get("expected_move")
+                if expected_move is None:
+                    if direction == "UP":
+                        change_pct = ((confidence_pct - 40) / 10) + 1.0
+                    elif direction == "DOWN":
+                        change_pct = -(((confidence_pct - 40) / 10) + 1.0)
                     else:
-                        change_pct = expected_move * 100
-                    
-                    change_pct = round(change_pct, 2)
-                    
-                    feed_items.append({
-                        "symbol": symbol,
-                        "name": symbol,
-                        "title": f"Ghost predicts {symbol} {direction} ({confidence_pct:.0f}% confidence)",
-                        "sentiment": "bullish" if direction == "UP" else "bearish" if direction == "DOWN" else "neutral",
-                        "timestamp": int(pred.get("created_at", time.time())),
-                        "source": "Ghost AI",
-                        "type": "crypto" if symbol in CRYPTO_SYMBOLS else "stock",
-                        "change_pct": change_pct,
-                        "change": change_pct,
-                        "confidence": confidence_pct,
-                        "ghost_confidence": confidence_pct,
-                        "price": pred.get("price_at_prediction")
-                    })
-                
-                return {
-                    "ok": True,
-                    "movers": feed_items,
-                    "feed": feed_items,
-                    "count": len(feed_items),
-                    "timestamp": int(time.time()),
-                    "source": "database"
-                }
-            except Exception as db_error:
-                LOGGER.error(f"Database fallback failed: {db_error}")
-                # Return empty if database fails too
-                return {
-                    "ok": True,
-                    "movers": [],
-                    "feed": [],
-                    "count": 0,
-                    "timestamp": int(time.time()),
-                    "error": "No predictions available"
-                }
-        
-        # Original logic for _LATEST_PREDICTIONS
-        predictions = list(_LATEST_PREDICTIONS.values())
-        predictions.sort(key=lambda p: p.get("confidence", 0), reverse=True)
-        feed_items = []
-
-        for pred in predictions[:limit]:
-            symbol = pred.get("symbol")
-            if not symbol:
-                continue
-
-            direction = pred.get("direction", "FLAT")
-            confidence = pred.get("confidence", 0) or 0
-            confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
-            
-            # Calculate expected move as percentage directly
-            expected_move = pred.get("expected_move")
-            if expected_move is None:
-                # For UP/DOWN: scale confidence to expected move (40-85% confidence → 1-5% move)
-                # For FLAT: minimal move
-                if direction == "UP":
-                    change_pct = ((confidence_pct - 40) / 10) + 1.0  # 40% → 1%, 85% → 5.5%
-                elif direction == "DOWN":
-                    change_pct = -(((confidence_pct - 40) / 10) + 1.0)  # Negative
+                        change_pct = 0.5 if confidence_pct > 50 else -0.5
                 else:
-                    change_pct = 0.5 if confidence_pct > 50 else -0.5  # Small flat move
-            else:
-                # If expected_move exists, assume it's already a decimal (0.02 = 2%)
-                change_pct = expected_move * 100
-            
-            change_pct = round(change_pct, 2)
+                    change_pct = expected_move * 100
+                
+                change_pct = round(change_pct, 2)
 
-            feed_items.append({
-                "symbol": symbol,
-                "name": symbol,
-                "title": f"Ghost predicts {symbol} {direction} ({confidence_pct:.0f}% confidence)",
-                "sentiment": "bullish" if direction == "UP" else "bearish" if direction == "DOWN" else "neutral",
-                "timestamp": int(pred.get("run_at", time.time())),
-                "source": "Ghost AI",
-                "type": "crypto" if symbol in CRYPTO_SYMBOLS else "stock",
-                "change_pct": change_pct,
-                "change": change_pct,
-                "confidence": confidence_pct,
-                "ghost_confidence": confidence_pct,
-                "price": pred.get("price_at_prediction")
-            })
+                feed_items.append({
+                    "symbol": symbol,
+                    "name": symbol,
+                    "title": f"Ghost predicts {symbol} {direction} ({confidence_pct:.0f}% confidence)",
+                    "sentiment": "bullish" if direction == "UP" else "bearish" if direction == "DOWN" else "neutral",
+                    "timestamp": int(pred.get("run_at", time.time())),
+                    "source": "Ghost AI",
+                    "type": "crypto" if symbol in CRYPTO_SYMBOLS else "stock",
+                    "change_pct": change_pct,
+                    "change": change_pct,
+                    "confidence": confidence_pct,
+                    "ghost_confidence": confidence_pct,
+                    "price": pred.get("price_at_prediction")
+                })
+            
+            return {
+                "ok": True,
+                "movers": feed_items,
+                "feed": feed_items,
+                "count": len(feed_items),
+                "timestamp": int(time.time()),
+                "source": "memory"
+            }
         
-        return {
-            "ok": True,
-            "movers": feed_items,  # For movers panel
-            "feed": feed_items,    # For news panel
-            "count": len(feed_items),
-            "timestamp": int(time.time())
-        }
+        # SLOW PATH: Query database if no in-memory predictions (DB query can be slow)
+        LOGGER.info("[HUNTER] _LATEST_PREDICTIONS empty, querying database...")
+        try:
+            from core.prediction_store import get_prediction_store
+            store = get_prediction_store()
+            recent_preds = store.get_recent_predictions(limit=limit * 2)
+            
+            feed_items = []
+            for pred in recent_preds[:limit]:
+                symbol = pred.get("symbol")
+                direction = pred.get("direction", "FLAT")
+                confidence = pred.get("confidence", 0) or 0
+                confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
+                
+                expected_move = pred.get("expected_move")
+                if expected_move is None:
+                    if direction == "UP":
+                        change_pct = ((confidence_pct - 40) / 10) + 1.0
+                    elif direction == "DOWN":
+                        change_pct = -(((confidence_pct - 40) / 10) + 1.0)
+                    else:
+                        change_pct = 0.5 if confidence_pct > 50 else -0.5
+                else:
+                    change_pct = expected_move * 100
+                
+                change_pct = round(change_pct, 2)
+                
+                feed_items.append({
+                    "symbol": symbol,
+                    "name": symbol,
+                    "title": f"Ghost predicts {symbol} {direction} ({confidence_pct:.0f}% confidence)",
+                    "sentiment": "bullish" if direction == "UP" else "bearish" if direction == "DOWN" else "neutral",
+                    "timestamp": int(pred.get("created_at", time.time())),
+                    "source": "Ghost AI",
+                    "type": "crypto" if symbol in CRYPTO_SYMBOLS else "stock",
+                    "change_pct": change_pct,
+                    "change": change_pct,
+                    "confidence": confidence_pct,
+                    "ghost_confidence": confidence_pct,
+                    "price": pred.get("price_at_prediction")
+                })
+            
+            return {
+                "ok": True,
+                "movers": feed_items,
+                "feed": feed_items,
+                "count": len(feed_items),
+                "timestamp": int(time.time()),
+                "source": "database"
+            }
+        except Exception as db_error:
+            LOGGER.error(f"Database fallback failed: {db_error}")
+            return {
+                "ok": True,
+                "movers": [],
+                "feed": [],
+                "count": 0,
+                "timestamp": int(time.time()),
+                "error": "No predictions available"
+            }
     
     except Exception as e:
         LOGGER.error(f"Hunter feed failed: {e}", exc_info=True)
