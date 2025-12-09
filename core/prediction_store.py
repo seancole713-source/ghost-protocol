@@ -666,17 +666,24 @@ class PostgresBackend:
             if self._pool_initialized:
                 return
             
+            # Get pool configuration from environment (with sensible defaults)
+            import os
+            pool_min = int(os.getenv("POSTGRES_POOL_MIN", "10"))
+            pool_max = int(os.getenv("POSTGRES_POOL_MAX", "50"))
+            pool_timeout = int(os.getenv("POSTGRES_POOL_TIMEOUT_S", "10"))
+            
             # Retry logic for Railway Postgres connection issues
             max_retries = 3
             for attempt in range(max_retries):
                 try:
                     LOGGER.info(f"Initializing Postgres connection pool (attempt {attempt + 1}/{max_retries})...")
+                    LOGGER.info(f"Pool config: minconn={pool_min}, maxconn={pool_max}, timeout={pool_timeout}s")
                     self.pool = self.ThreadedConnectionPool(
-                        minconn=10,
-                        maxconn=50,
+                        minconn=pool_min,
+                        maxconn=pool_max,
                         dsn=DATABASE_URL,
                         cursor_factory=self.RealDictCursor,
-                        connect_timeout=10
+                        connect_timeout=pool_timeout
                     )
 
                     # Initialize schema

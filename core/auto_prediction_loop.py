@@ -18,6 +18,9 @@ RUN_PREDICTION_FUNC_ASYNC = None  # Function that runs prediction for a symbol (
 HUNTER_STOCK_SYMBOLS = []
 HUNTER_CRYPTO_SYMBOLS = []
 
+# Get configuration from environment variables
+import os
+
 # Loop control
 _LOOP_THREAD: threading.Thread | None = None
 _LOOP_STOP = threading.Event()
@@ -26,17 +29,15 @@ _LOOP_RUNNING = False  # Prevent multiple loops from starting
 
 # Deduplication cache: Track recent predictions to prevent duplicates
 _RECENT_PREDICTIONS = {}  # {symbol: timestamp}
-_DEDUP_WINDOW_S = 300  # 5 minutes - don't predict same symbol within this window
+_DEDUP_WINDOW_S = int(os.getenv("PREDICTION_DEDUP_WINDOW_S", "300"))  # Default: 5 minutes
 
 # ULTRA-LIGHT intervals for Railway free tier (512MB RAM)
-PREDICTION_INTERVAL_MARKET_HOURS = 3600  # 60 minutes (was 10min) - ULTRA-LIGHT
-PREDICTION_INTERVAL_OFF_HOURS = 7200     # 120 minutes (was 30min) - ULTRA-LIGHT  
-PREDICTION_DELAY_S = 5.0                 # 5s delay between predictions - ULTRA-LIGHT
-BATCH_SIZE = 50  # Process 50 symbols at a time in parallel
-MAX_WORKERS = 10  # Parallel workers for batch processing
-
-# PERFORMANCE FIX: Add delay between predictions to prevent resource exhaustion
-PREDICTION_DELAY_S = 2.0  # 2 second delay between predictions to reduce load
+PREDICTION_INTERVAL_MARKET_HOURS = int(os.getenv("AUTO_PREDICT_MARKET_INTERVAL_S", "3600"))  # Default: 60 min
+PREDICTION_INTERVAL_OFF_HOURS = int(os.getenv("AUTO_PREDICT_OFF_HOURS_INTERVAL_S", "7200"))  # Default: 120 min
+PREDICTION_DELAY_S = float(os.getenv("AUTO_PREDICT_DELAY_S", "2.0"))  # Default: 2s between predictions
+BATCH_SIZE = int(os.getenv("AUTO_PREDICT_BATCH_SIZE", "2"))  # Default: 2 concurrent predictions
+MAX_WORKERS = int(os.getenv("AUTO_PREDICT_MAX_WORKERS", "10"))  # Default: 10 workers
+BATCH_DELAY_S = int(os.getenv("AUTO_PREDICT_BATCH_DELAY_S", "10"))  # Default: 10s between batches
 
 # Timezone
 CHICAGO_TZ = ZoneInfo("America/Chicago")
@@ -174,8 +175,8 @@ async def _run_all_predictions_async():
             except Exception as e:
                 errors.append(f"{symbol}: {str(e)[:100]}")
         
-        # INCREASED: 10s delay between batches for Railway stability (was 5s)
-        await asyncio.sleep(10)
+        # Delay between batches for Railway stability (configurable via BATCH_DELAY_S)
+        await asyncio.sleep(BATCH_DELAY_S)
     
     # Update last run time
     _LAST_RUN_TIME = time.time()

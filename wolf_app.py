@@ -1417,9 +1417,19 @@ HTTP_POOL_ENABLED = os.getenv("HTTP_POOL_ENABLED", "1").lower() not in (
     "false",
     "no",
 )
-HTTP_POOL_SIZE = int(os.getenv("HTTP_POOL_SIZE", "10"))
+HTTP_POOL_SIZE = int(os.getenv("HTTP_POOL_SIZE", "20"))  # Increased from 10 to 20 for yfinance concurrency
 HTTP_POOL_RETRIES = int(os.getenv("HTTP_POOL_RETRIES", "2"))
 HTTP_TIMEOUT_S = float(os.getenv("HTTP_TIMEOUT_S", "8"))
+
+# Coinbase Pro configuration (used in data_collector.py for RSI/trend)
+COINBASE_PRO_ENABLED = os.getenv("COINBASE_PRO_ENABLED", "1").lower() in ("1", "true", "yes")
+COINBASE_PRO_TIMEOUT_S = float(os.getenv("COINBASE_PRO_TIMEOUT_S", "5.0"))
+COINBASE_PRO_BASE_URL = os.getenv("COINBASE_PRO_BASE_URL", "https://api.exchange.coinbase.com")
+
+# Cache TTL settings for high-traffic endpoints
+HUNTER_FEED_CACHE_TTL = int(os.getenv("HUNTER_FEED_CACHE_TTL", "30"))  # Default: 30s
+WATCHLIST_CACHE_TTL = int(os.getenv("WATCHLIST_CACHE_TTL", "60"))  # Default: 60s
+VIP_SNAPSHOT_CACHE_TTL = int(os.getenv("VIP_SNAPSHOT_CACHE_TTL", "30"))  # Default: 30s
 MACRO_BRAIN_ON = os.getenv("MACRO_BRAIN_ON", "0").lower() in ("1", "true", "yes")
 MACRO_TICKERS = os.getenv("MACRO_TICKERS", "SMH,SOXX,QQQ").split(",")
 MACRO_LOOKBACK_DAYS = int(os.getenv("MACRO_LOOKBACK_DAYS", "20"))
