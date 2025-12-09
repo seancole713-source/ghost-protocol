@@ -13,6 +13,7 @@ All data sources are API-based or scrape-safe (legal compliance).
 
 import asyncio
 import logging
+import os
 import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
@@ -207,8 +208,9 @@ class DataCollector:
     async def get_cryptopanic_sentiment(self, symbol: str) -> Dict[str, Any]:
         """CryptoPanic API - news sentiment"""
         try:
-            # Free tier: https://cryptopanic.com/developers/api/
-            url = f"https://cryptopanic.com/api/v1/posts/?auth_token=free&currencies={symbol}&filter=rising"
+            # Get API key from environment (fallback to 'free' if not set)
+            api_key = os.getenv("CRYPTOPANIC_API_KEY", "free")
+            url = f"https://cryptopanic.com/api/v1/posts/?auth_token={api_key}&currencies={symbol}&filter=rising"
             
             async with self.session.get(url) as resp:
                 if resp.status == 200:
