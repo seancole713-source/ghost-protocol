@@ -25316,6 +25316,71 @@ async def api_admin_diagnostics_predictions():
         }
 
 
+@APP.post("/api/admin/reconcile/outcomes")
+async def api_admin_reconcile_outcomes():
+    """
+    Manually trigger outcome reconciliation.
+    Finds predictions >48h old and reconciles their outcomes.
+    Returns summary of reconciliation results.
+    """
+    try:
+        LOGGER.info("[ADMIN] Manual reconciliation triggered")
+        
+        from services.outcome_reconciler_v2 import reconcile_outcomes_v2
+        
+        # Run reconciliation
+        results = reconcile_outcomes_v2()
+        
+        # Get updated counts
+        from core.prediction_store import get_prediction_store
+        store = get_prediction_store()
+        
+        if hasattr(store, 'engine') and store.engine:
+            from sqlalchemy import text
+            with store.engine.connect() as conn:
+                outcomes_total = conn.execute(text("SELECT COUNT(*) FROM ghost_prediction_outcomes")).scalar()
+                
+                # Get sample of reconciled outcomes
+                samples = conn.execute(text("""
+                    SELECT prediction_id, closed_at, hit_direction, realized_move_pct
+                    FROM ghost_prediction_outcomes
+                    ORDER BY closed_at DESC
+                    LIMIT 10
+                """)).fetchall()
+                
+                sample_data = [
+                    {
+                        "prediction_id": row[0],
+                        "closed_at": row[1],
+                        "hit": row[2] == 1,
+                        "move_pct": float(row[3]) if row[3] else None
+                    }
+                    for row in samples
+                ]
+        else:
+            outcomes_total = 0
+            sample_data = []
+        
+        return {
+            "ok": True,
+            "message": "Reconciliation completed",
+            "results": results,
+            "outcomes_total": outcomes_total,
+            "sample_outcomes": sample_data,
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"[ADMIN] Reconciliation failed: {e}")
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "timestamp": time.time()
+        }
+
+
 # ============================================================================
 # GHOST INVESTMENT HUNTER - MARKET SCANNER ENDPOINTS
 # ============================================================================
