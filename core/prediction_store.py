@@ -672,8 +672,8 @@ class PostgresBackend:
                 try:
                     LOGGER.info(f"Initializing Postgres connection pool (attempt {attempt + 1}/{max_retries})...")
                     self.pool = self.ThreadedConnectionPool(
-                        minconn=5,
-                        maxconn=25,
+                        minconn=10,
+                        maxconn=50,
                         dsn=DATABASE_URL,
                         cursor_factory=self.RealDictCursor,
                         connect_timeout=10
