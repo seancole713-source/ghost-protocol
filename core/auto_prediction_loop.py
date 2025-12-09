@@ -22,6 +22,11 @@ HUNTER_CRYPTO_SYMBOLS = []
 _LOOP_THREAD: threading.Thread | None = None
 _LOOP_STOP = threading.Event()
 _LAST_RUN_TIME = 0
+_LOOP_RUNNING = False  # Prevent multiple loops from starting
+
+# Deduplication cache: Track recent predictions to prevent duplicates
+_RECENT_PREDICTIONS = {}  # {symbol: timestamp}
+_DEDUP_WINDOW_S = 300  # 5 minutes - don't predict same symbol within this window
 
 # ULTRA-LIGHT intervals for Railway free tier (512MB RAM)
 PREDICTION_INTERVAL_MARKET_HOURS = 3600  # 60 minutes (was 10min) - ULTRA-LIGHT
@@ -54,13 +59,20 @@ def _is_market_hours():
 
 async def _run_all_predictions_async():
     """Generate predictions for ALL watchlist symbols with async/await (non-blocking)"""
-    global _LAST_RUN_TIME
+    global _LAST_RUN_TIME, _RECENT_PREDICTIONS
     
     if not RUN_PREDICTION_FUNC_ASYNC:
         LOGGER.warning("[AUTO-PREDICT] RUN_PREDICTION_FUNC_ASYNC not set, skipping")
         return
     
-    start_time = time.time()
+    # Clean up old entries from deduplication cache
+    current_time = time.time()
+    _RECENT_PREDICTIONS = {
+        sym: ts for sym, ts in _RECENT_PREDICTIONS.items()
+        if current_time - ts < _DEDUP_WINDOW_S
+    }
+    
+    start_time = current_time
     stocks_success = 0
     crypto_success = 0
     errors = []
@@ -78,21 +90,31 @@ async def _run_all_predictions_async():
         for i in range(0, stock_count, 2):  # REDUCED: 2 concurrent (was 3)
             batch = HUNTER_STOCK_SYMBOLS[i:i+2]
             
+            # Filter out recently predicted symbols (deduplication)
+            batch_filtered = [
+                s for s in batch
+                if s not in _RECENT_PREDICTIONS or (current_time - _RECENT_PREDICTIONS[s]) >= _DEDUP_WINDOW_S
+            ]
+            
+            if not batch_filtered:
+                continue  # Skip this batch if all symbols recently predicted
+            
             # Create async tasks for batch
             tasks = []
-            for symbol in batch:
+            for symbol in batch_filtered:
                 tasks.append(RUN_PREDICTION_FUNC_ASYNC(symbol))
             
             # Wait for all tasks in batch to complete
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
             # Process results
-            for symbol, result in zip(batch, results):
+            for symbol, result in zip(batch_filtered, results):
                 try:
                     if isinstance(result, Exception):
                         errors.append(f"{symbol}: {str(result)[:100]}")
                     elif result and result.get("ok"):
                         stocks_success += 1
+                        _RECENT_PREDICTIONS[symbol] = current_time  # Mark as predicted
                         if LOGGER and stocks_success % 10 == 0:
                             LOGGER.debug(f"[AUTO-PREDICT] Progress: {stocks_success}/{stock_count} stocks")
                     else:
@@ -119,21 +141,31 @@ async def _run_all_predictions_async():
     for i in range(0, crypto_count, 2):  # REDUCED: 2 concurrent (was 3)
         batch = crypto_symbols_to_process[i:i+2]
         
+        # Filter out recently predicted symbols (deduplication)
+        batch_filtered = [
+            s for s in batch
+            if s not in _RECENT_PREDICTIONS or (current_time - _RECENT_PREDICTIONS[s]) >= _DEDUP_WINDOW_S
+        ]
+        
+        if not batch_filtered:
+            continue  # Skip this batch if all symbols recently predicted
+        
         # Create async tasks for batch
         tasks = []
-        for symbol in batch:
+        for symbol in batch_filtered:
             tasks.append(RUN_PREDICTION_FUNC_ASYNC(symbol))
         
         # Wait for all tasks in batch to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Process results
-        for symbol, result in zip(batch, results):
+        for symbol, result in zip(batch_filtered, results):
             try:
                 if isinstance(result, Exception):
                     errors.append(f"{symbol}: {str(result)[:100]}")
                 elif result and result.get("ok"):
                     crypto_success += 1
+                    _RECENT_PREDICTIONS[symbol] = current_time  # Mark as predicted
                     if LOGGER and crypto_success % 10 == 0:
                         LOGGER.debug(f"[AUTO-PREDICT] Progress: {crypto_success}/{crypto_count} crypto")
                 else:
@@ -356,18 +388,26 @@ def start_auto_prediction_loop():
     # RE-ENABLED with ASYNC architecture - non-blocking predictions
     # Uses asyncio.run_in_executor to prevent server hangs
     # Top 10 crypto, 60-minute intervals for Railway Pro tier
+    global _LOOP_THREAD, _LOOP_RUNNING
+    
+    # Singleton guard: prevent multiple loops
+    if _LOOP_RUNNING:
+        print("[AUTO-PREDICT] ⚠️ Loop already running (singleton guard)")
+        if LOGGER:
+            LOGGER.warning("Auto-prediction loop already running - ignoring duplicate start request")
+        return
+    
+    if _LOOP_THREAD and _LOOP_THREAD.is_alive():
+        print("[AUTO-PREDICT] Loop already running")
+        return
+    
+    _LOOP_RUNNING = True
     print("[AUTO-PREDICT] ⚡ Starting ASYNC mode (non-blocking predictions)")
     print("[AUTO-PREDICT] ℹ️ Top 10 crypto, 60min intervals, async/await architecture")
     if LOGGER:
         LOGGER.info("⚡ Auto-predictions RE-ENABLED - ASYNC architecture")
         LOGGER.info("ℹ️ Non-blocking predictions using asyncio")
         LOGGER.info("ℹ️ Top 10 crypto, 60-minute cycles, server stays responsive")
-    
-    global _LOOP_THREAD
-    
-    if _LOOP_THREAD and _LOOP_THREAD.is_alive():
-        print("[AUTO-PREDICT] Loop already running")
-        return
     
     _LOOP_STOP.clear()
     _LOOP_THREAD = threading.Thread(
