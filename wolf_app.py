@@ -25198,6 +25198,36 @@ async def api_admin_config():
         return {"ok": False, "error": str(e), "timestamp": time.time()}
 
 
+@APP.post("/api/admin/migrate/outcomes")
+async def api_admin_migrate_outcomes():
+    """
+    Apply the ghost_prediction_outcomes migration.
+    Creates the outcomes table and accuracy views for prediction tracking.
+    Protected endpoint - requires admin access.
+    """
+    try:
+        from apply_outcome_migration import apply_outcome_migration
+        
+        LOGGER.info("[ADMIN] Starting ghost_prediction_outcomes migration...")
+        apply_outcome_migration()
+        
+        return {
+            "ok": True,
+            "message": "Migration applied successfully",
+            "table": "ghost_prediction_outcomes",
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        LOGGER.error(f"[ADMIN] Migration failed: {e}")
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "timestamp": time.time()
+        }
+
+
 # ============================================================================
 # GHOST INVESTMENT HUNTER - MARKET SCANNER ENDPOINTS
 # ============================================================================
