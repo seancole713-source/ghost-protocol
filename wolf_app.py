@@ -25228,6 +25228,94 @@ async def api_admin_migrate_outcomes():
         }
 
 
+@APP.get("/api/admin/diagnostics/predictions")
+async def api_admin_diagnostics_predictions():
+    """
+    Diagnostic endpoint to check prediction status and reconciliation readiness.
+    Returns counts of predictions by status and age.
+    """
+    try:
+        from core.prediction_store import get_prediction_store
+        import time
+        
+        store = get_prediction_store()
+        now = time.time()
+        cutoff_48h = now - (48 * 3600)
+        cutoff_7d = now - (7 * 86400)
+        
+        # Try to query production database
+        if hasattr(store, 'engine') and store.engine:
+            # Using SQLAlchemy (Postgres)
+            from sqlalchemy import text
+            with store.engine.connect() as conn:
+                # Count total predictions
+                total = conn.execute(text("SELECT COUNT(*) FROM ghost_predictions")).scalar()
+                
+                # Count predictions ready for reconciliation (>48h old)
+                ready_48h = conn.execute(text(
+                    "SELECT COUNT(*) FROM ghost_predictions WHERE run_at < :cutoff"
+                ), {"cutoff": cutoff_48h}).scalar()
+                
+                # Count predictions in last 7 days
+                recent_7d = conn.execute(text(
+                    "SELECT COUNT(*) FROM ghost_predictions WHERE run_at > :cutoff"
+                ), {"cutoff": cutoff_7d}).scalar()
+                
+                # Count outcomes
+                outcomes_total = conn.execute(text("SELECT COUNT(*) FROM ghost_prediction_outcomes")).scalar()
+                
+                # Get oldest and newest prediction
+                oldest = conn.execute(text("SELECT MIN(run_at) FROM ghost_predictions")).scalar()
+                newest = conn.execute(text("SELECT MAX(run_at) FROM ghost_predictions")).scalar()
+                
+                # Check if reconciler ran recently
+                from datetime import datetime
+                oldest_dt = datetime.fromtimestamp(oldest) if oldest else None
+                newest_dt = datetime.fromtimestamp(newest) if newest else None
+                
+                return {
+                    "ok": True,
+                    "database": "postgres",
+                    "predictions": {
+                        "total": total,
+                        "ready_for_reconciliation_48h": ready_48h,
+                        "recent_7d": recent_7d,
+                        "oldest": oldest,
+                        "oldest_date": oldest_dt.isoformat() if oldest_dt else None,
+                        "newest": newest,
+                        "newest_date": newest_dt.isoformat() if newest_dt else None,
+                        "age_days": (now - oldest) / 86400 if oldest else 0
+                    },
+                    "outcomes": {
+                        "total": outcomes_total,
+                        "reconciliation_rate": f"{outcomes_total}/{ready_48h}" if ready_48h > 0 else "0/0"
+                    },
+                    "reconciler_status": {
+                        "expected_outcomes": ready_48h,
+                        "actual_outcomes": outcomes_total,
+                        "missing": ready_48h - outcomes_total if ready_48h > 0 else 0,
+                        "working": outcomes_total > 0
+                    },
+                    "timestamp": now
+                }
+        else:
+            return {
+                "ok": False,
+                "error": "Prediction store not using Postgres engine",
+                "timestamp": now
+            }
+            
+    except Exception as e:
+        LOGGER.error(f"[ADMIN] Diagnostics failed: {e}")
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "timestamp": time.time()
+        }
+
+
 # ============================================================================
 # GHOST INVESTMENT HUNTER - MARKET SCANNER ENDPOINTS
 # ============================================================================
