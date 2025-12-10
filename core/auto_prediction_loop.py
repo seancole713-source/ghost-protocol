@@ -26,10 +26,11 @@ _LOOP_THREAD: threading.Thread | None = None
 _LOOP_STOP = threading.Event()
 _LAST_RUN_TIME = 0
 _LOOP_RUNNING = False  # Prevent multiple loops from starting
+_ACTIVE_PREDICTION_THREAD: threading.Thread | None = None  # Track active prediction worker
 
 # Deduplication cache: Track recent predictions to prevent duplicates
 _RECENT_PREDICTIONS = {}  # {symbol: timestamp}
-_DEDUP_WINDOW_S = int(os.getenv("PREDICTION_DEDUP_WINDOW_S", "300"))  # Default: 5 minutes
+_DEDUP_WINDOW_S = int(os.getenv("PREDICTION_DEDUP_WINDOW_S", "3300"))  # Default: 55 minutes (prevents duplicates within 60-min cycle)
 
 # ULTRA-LIGHT intervals for Railway free tier (512MB RAM)
 PREDICTION_INTERVAL_MARKET_HOURS = int(os.getenv("AUTO_PREDICT_MARKET_INTERVAL_S", "3600"))  # Default: 60 min
@@ -359,20 +360,26 @@ def _prediction_loop():
             )
             
             if should_run:
-                market_str = "Market hours" if is_market_open else "Off-hours"
-                print(f"[AUTO-PREDICT] {market_str} cycle starting at {datetime.now().strftime('%H:%M:%S')}")
-                
-                # Run predictions in SEPARATE background thread (fire-and-forget)
-                # This prevents blocking the prediction loop scheduler
-                prediction_thread = threading.Thread(
-                    target=_run_all_predictions,
-                    name=f"prediction-cycle-{int(now)}",
-                    daemon=True
-                )
-                prediction_thread.start()
-                
-                # Don't wait for completion - let it run in background
-                print(f"[AUTO-PREDICT] Cycle dispatched to background thread: {prediction_thread.name}")
+                # CRITICAL: Check if previous prediction cycle is still running
+                global _ACTIVE_PREDICTION_THREAD
+                if _ACTIVE_PREDICTION_THREAD and _ACTIVE_PREDICTION_THREAD.is_alive():
+                    if LOGGER:
+                        LOGGER.warning(f"[AUTO-PREDICT] Previous cycle still running ({_ACTIVE_PREDICTION_THREAD.name}), skipping new cycle to prevent duplicates")
+                else:
+                    market_str = "Market hours" if is_market_open else "Off-hours"
+                    print(f"[AUTO-PREDICT] {market_str} cycle starting at {datetime.now().strftime('%H:%M:%S')}")
+                    
+                    # Run predictions in SEPARATE background thread (fire-and-forget)
+                    # This prevents blocking the prediction loop scheduler
+                    _ACTIVE_PREDICTION_THREAD = threading.Thread(
+                        target=_run_all_predictions,
+                        name=f"prediction-cycle-{int(now)}",
+                        daemon=True
+                    )
+                    _ACTIVE_PREDICTION_THREAD.start()
+                    
+                    # Don't wait for completion - let it run in background
+                    print(f"[AUTO-PREDICT] Cycle dispatched to background thread: {_ACTIVE_PREDICTION_THREAD.name}")
             
             # Sleep for 30 seconds between checks (responsive to interval changes)
             _LOOP_STOP.wait(30.0)
