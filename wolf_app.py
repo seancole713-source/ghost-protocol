@@ -21812,6 +21812,8 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
     """
     Internal function to generate multi-symbol predictions.
     Used by both the API endpoint and scheduled Telegram alerts.
+    
+    NOW USES REAL 6H PREDICTIONS FROM POSTGRESQL (not old 48h forecasts)
 
     Returns dict with structure:
     {
@@ -21847,63 +21849,107 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "crypto": []
         }
 
-        # Generate predictions for stock symbols
+        # Get real 6h predictions from PostgreSQL backend
+        from services.postgres_backend import PostgresBackend
+        backend = PostgresBackend()
+        
+        # Generate predictions for stock symbols using REAL 6H system
         for symbol in STOCK_SYMBOLS:
             try:
-                forecast = _generate_48h_forecast(symbol)
-                if forecast.get("ok") is not False:
-                    signal = _evaluate_signal(symbol)
+                # Get latest 6h prediction from database
+                latest = backend.get_latest_prediction(symbol)
+                
+                if latest:
+                    # Calculate predicted price from current price + expected_move
+                    price_current = latest.get("price_current")
+                    expected_move_pct = latest.get("expected_move_pct", 0)
+                    
+                    if price_current and expected_move_pct:
+                        # Convert direction to multiplier
+                        direction_multiplier = 1 if latest.get("direction") == "UP" else -1
+                        price_pred_mid = price_current * (1 + (direction_multiplier * expected_move_pct / 100))
+                    else:
+                        price_pred_mid = price_current
+                    
+                    # Map direction to BUY/SELL/HOLD
+                    direction_str = latest.get("direction", "HOLD")
+                    if direction_str == "UP":
+                        action = "BUY"
+                    elif direction_str == "DOWN":
+                        action = "SELL"
+                    else:
+                        action = "HOLD"
+                    
                     prediction = {
                         "symbol": symbol,
                         "type": "stock",
-                        "price_current": forecast.get("price_now"),
-                        "price_pred_mid": forecast.get("price_pred_mid"),
-                        "confidence": forecast.get("confidence", 0.5),
-                        "direction": signal.get("action", "HOLD"),
-                        "momentum": signal.get("fused_score", 0.0),
-                        "timestamp": time.time()
+                        "price_current": price_current,
+                        "price_pred_mid": price_pred_mid,
+                        "confidence": latest.get("confidence", 0.5),
+                        "direction": action,
+                        "momentum": abs(expected_move_pct) / 10.0,  # Normalize to 0-1 scale
+                        "timestamp": latest.get("run_at", time.time()),
+                        "horizon_h": 6  # Real 6h predictions
                     }
                     results["stocks"].append(prediction)
                 else:
-                    # Log detailed failure reason
-                    error_msg = forecast.get("error") or forecast.get("message") or "unknown error"
+                    # No prediction available yet
                     failed_symbols["stocks"].append({
                         "symbol": symbol,
-                        "error": error_msg if error_msg else "live price unavailable",
-                        "raw_forecast": forecast
+                        "error": "No prediction available in database"
                     })
-                    LOGGER.warning(
-                        f"Stock forecast failed for {symbol}: {error_msg}",
-                        extra={"symbol": symbol, "error": error_msg, "forecast": forecast}
-                    )
             except Exception as e:
                 LOGGER.warning(f"Multi-prediction failed for stock {symbol}: {e}")
+                failed_symbols["stocks"].append({
+                    "symbol": symbol,
+                    "error": str(e)
+                })
                 continue
 
-        # Generate predictions for crypto symbols
+        # Generate predictions for crypto symbols using REAL 6H system
         for symbol in CRYPTO_SYMBOLS:
             try:
-                forecast = _generate_48h_forecast(symbol)
-                if forecast.get("ok") is not False:
-                    signal = _evaluate_signal(symbol)
+                # Get latest 6h prediction from database
+                latest = backend.get_latest_prediction(symbol)
+                
+                if latest:
+                    # Calculate predicted price from current price + expected_move
+                    price_current = latest.get("price_current")
+                    expected_move_pct = latest.get("expected_move_pct", 0)
+                    
+                    if price_current and expected_move_pct:
+                        # Convert direction to multiplier
+                        direction_multiplier = 1 if latest.get("direction") == "UP" else -1
+                        price_pred_mid = price_current * (1 + (direction_multiplier * expected_move_pct / 100))
+                    else:
+                        price_pred_mid = price_current
+                    
+                    # Map direction to BUY/SELL/HOLD
+                    direction_str = latest.get("direction", "HOLD")
+                    if direction_str == "UP":
+                        action = "BUY"
+                    elif direction_str == "DOWN":
+                        action = "SELL"
+                    else:
+                        action = "HOLD"
+                    
                     prediction = {
                         "symbol": symbol,
                         "type": "crypto",
-                        "price_current": forecast.get("price_now"),
-                        "price_pred_mid": forecast.get("price_pred_mid"),
-                        "confidence": forecast.get("confidence", 0.5),
-                        "direction": signal.get("action", "HOLD"),
-                        "momentum": signal.get("fused_score", 0.0),
-                        "timestamp": time.time()
+                        "price_current": price_current,
+                        "price_pred_mid": price_pred_mid,
+                        "confidence": latest.get("confidence", 0.5),
+                        "direction": action,
+                        "momentum": abs(expected_move_pct) / 10.0,  # Normalize to 0-1 scale
+                        "timestamp": latest.get("run_at", time.time()),
+                        "horizon_h": 6  # Real 6h predictions
                     }
                     results["crypto"].append(prediction)
                 else:
-                    # Log crypto failure
-                    error_reason = forecast.get("error") or forecast.get("message") or "unknown error"
+                    # No prediction available yet
                     failed_symbols["crypto"].append({
                         "symbol": symbol,
-                        "error": error_reason,
-                        "forecast_keys": list(forecast.keys()) if isinstance(forecast, dict) else None
+                        "error": "No prediction available in database"
                     })
             except Exception as e:
                 LOGGER.warning(f"Multi-prediction failed for crypto {symbol}: {e}")
@@ -21913,66 +21959,8 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
                 })
                 continue
 
-        # Generate predictions for VIP coins (using dedicated VIP provider)
-        try:
-            from core.crypto.vip_providers import get_vip_price
-
-            for symbol in VIP_COINS:
-                try:
-                    # Get VIP price (may return NO DATA)
-                    vip_data = get_vip_price(symbol, use_cache=True)
-
-                    if vip_data.get("available"):
-                        # VIP coin has real data - generate forecast
-                        forecast = _generate_48h_forecast(symbol)
-                        if forecast.get("ok") is not False:
-                            signal = _evaluate_signal(symbol)
-                            prediction = {
-                                "symbol": symbol,
-                                "type": "vip",
-                                "price_current": vip_data.get("price") or forecast.get("price_now"),
-                                "price_pred_mid": forecast.get("price_pred_mid"),
-                                "confidence": forecast.get("confidence", 0.5) * vip_data.get("confidence", 0.7),
-                                "direction": signal.get("action", "HOLD"),
-                                "momentum": signal.get("fused_score", 0.0),
-                                "timestamp": time.time(),
-                                "provider": vip_data.get("provider", "none")
-                            }
-                            results["vip"].append(prediction)
-                    else:
-                        # VIP coin has NO DATA - include with explicit status
-                        prediction = {
-                            "symbol": symbol,
-                            "type": "vip",
-                            "price_current": None,
-                            "price_pred_mid": None,
-                            "confidence": 0.0,
-                            "direction": "NO_DATA",
-                            "momentum": 0.0,
-                            "timestamp": time.time(),
-                            "provider": "none",
-                            "reason": vip_data.get("reason", "Price not available")
-                        }
-                        results["vip"].append(prediction)
-                except Exception as e:
-                    LOGGER.warning(f"Multi-prediction failed for VIP coin {symbol}: {e}")
-                    # Include failed VIP coin with error status
-                    results["vip"].append({
-                        "symbol": symbol,
-                        "type": "vip",
-                        "price_current": None,
-                        "price_pred_mid": None,
-                        "confidence": 0.0,
-                        "direction": "ERROR",
-                        "momentum": 0.0,
-                        "timestamp": time.time(),
-                        "provider": "none",
-                        "reason": str(e)
-                    })
-                    continue
-        except ImportError as ie:
-            LOGGER.error(f"VIP provider module not available: {ie}")
-            # Continue without VIP predictions if module missing
+        # Generate predictions for VIP coins (skip - not implemented yet)
+        # VIP coins will use same 6h system once added to watchlist
 
         # Update tracking globals
         _LAST_MULTI_PREDICTION_TIME = time.time()
@@ -21989,7 +21977,8 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
             "total": sum(_LAST_MULTI_PREDICTION_COUNTS.values()),
             "failed_symbols": failed_symbols if (failed_symbols["stocks"] or failed_symbols["crypto"]) else None,
             "timestamp": _LAST_MULTI_PREDICTION_TIME,
-            "cached": False
+            "cached": False,
+            "note": "Using real 6h predictions from PostgreSQL (GHOST MAXIMUM v2.0)"
         }
 
         # Cache result to prevent provider exhaustion
