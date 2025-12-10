@@ -3840,8 +3840,8 @@ async def _post_startup_init():
             # except Exception:
             #     pass
 
-            # Use _LATEST_PREDICTIONS with configurable confidence
-            min_conf = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.55"))
+            # Use _LATEST_PREDICTIONS with configurable confidence (lowered for 6h predictions)
+            min_conf = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.45"))
             opportunities = []
             for sym, pred in _LATEST_PREDICTIONS.items():
                 confidence = pred.get("confidence", 0)
@@ -12842,11 +12842,11 @@ def _rank_opportunities(predictions: list[dict]) -> dict[str, list[dict]]:
     buys.sort(key=lambda x: x["score"], reverse=True)
     sells.sort(key=lambda x: x["score"], reverse=True)
 
-    # Filter for quality:
-    # Short-term: High momentum + confidence >70% + gain >2%
-    # Long-term: High confidence >75% + gain >5%
-    short_term = [p for p in buys if p["confidence"] > 0.70 and abs(p["gain_pct"]) > 2.0 and p["momentum"] > 0.3][:5]
-    long_term = [p for p in buys if p["confidence"] > 0.75 and abs(p["gain_pct"]) > 5.0][:5]
+    # Filter for quality (UPDATED FOR 6H PREDICTIONS):
+    # Short-term (6h): confidence >45% + gain >1% (realistic for 6h timeframe)
+    # Long-term: confidence >50% + gain >2% (6h can have smaller moves)
+    short_term = [p for p in buys if p["confidence"] > 0.45 and abs(p["gain_pct"]) > 1.0 and p["momentum"] > 0.3][:5]
+    long_term = [p for p in buys if p["confidence"] > 0.50 and abs(p["gain_pct"]) > 2.0][:5]
     urgent_sells = sells[:3]  # Top 3 sell signals
 
     return {
@@ -12973,7 +12973,7 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
         message += "💤 <b>Market Status: HOLDING PATTERN</b>\n"
         message += "No high-conviction signals. Wait for better setups.\n\n"
 
-    message += "💡 <i>Ghost AI filters out noise. Only see signals >70% confidence.</i>"
+    message += "💡 <i>Ghost AI filters out noise. Only see high-confidence 6h signals (>45%).</i>"
 
     return message
 
