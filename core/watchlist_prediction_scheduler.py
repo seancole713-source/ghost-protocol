@@ -129,7 +129,13 @@ class WatchlistPredictionScheduler:
             pwm = get_personal_watchlist_manager()
             stock_symbols = pwm.get_symbols_by_type("stock", active_only=True)
 
-            LOGGER.info(f"📊 {len(stock_symbols)} stocks in watchlist")
+            # CRITICAL: Limit to 20 symbols to prevent overwhelming the system
+            MAX_SYMBOLS_PER_RUN = 20
+            if len(stock_symbols) > MAX_SYMBOLS_PER_RUN:
+                LOGGER.warning(f"⚠️  Watchlist has {len(stock_symbols)} symbols - limiting to {MAX_SYMBOLS_PER_RUN}")
+                stock_symbols = stock_symbols[:MAX_SYMBOLS_PER_RUN]
+
+            LOGGER.info(f"📊 Processing {len(stock_symbols)} stocks")
 
             for symbol in stock_symbols:
                 try:
@@ -156,7 +162,13 @@ class WatchlistPredictionScheduler:
             pwm = get_personal_watchlist_manager()
             stock_symbols = pwm.get_symbols_by_type("stock", active_only=True)
 
-            LOGGER.info(f"📊 {len(stock_symbols)} stocks in watchlist")
+            # CRITICAL: Limit to 20 symbols to prevent overwhelming the system
+            MAX_SYMBOLS_PER_RUN = 20
+            if len(stock_symbols) > MAX_SYMBOLS_PER_RUN:
+                LOGGER.warning(f"⚠️  Watchlist has {len(stock_symbols)} symbols - limiting to {MAX_SYMBOLS_PER_RUN}")
+                stock_symbols = stock_symbols[:MAX_SYMBOLS_PER_RUN]
+
+            LOGGER.info(f"📊 Processing {len(stock_symbols)} stocks")
 
             for symbol in stock_symbols:
                 try:
@@ -254,6 +266,10 @@ class WatchlistPredictionScheduler:
         try:
             from services.predictor import predict_symbol
             from core.personal_watchlist import get_personal_watchlist_manager
+
+            # CRITICAL: Add rate limiting to prevent overwhelming the system
+            # Sleep 2 seconds between predictions to prevent DB/API overload
+            time.sleep(2)
 
             # Generate prediction
             result = predict_symbol(symbol)
