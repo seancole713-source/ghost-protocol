@@ -6950,6 +6950,79 @@ async def api_run_backtest(
         }
 
 
+@APP.post("/api/v3/accuracy/simulate")
+async def api_accuracy_simulate(
+    symbols: list[str] | None = None,
+    num_predictions: int = 50,
+    days_back: int = 7
+):
+    """
+    Historical Prediction Simulation
+    
+    Simulates predictions on historical data to calculate immediate accuracy
+    without waiting 48 hours. Fetches historical prices from CoinGecko,
+    makes predictions at past timepoints, and validates against actual outcomes.
+    
+    Args:
+        symbols: List of symbols to simulate (default: top 10 crypto)
+        num_predictions: Target number of predictions to generate (default: 50)
+        days_back: How many days of history to use (default: 7)
+    
+    Returns:
+        {
+            "ok": true,
+            "accuracy_pct": 72.5,
+            "total_predictions": 50,
+            "correct_predictions": 36,
+            "high_confidence_accuracy_pct": 78.0,
+            "symbol_accuracy": {
+                "BTC": {"total": 10, "correct": 8, "accuracy_pct": 80.0},
+                ...
+            },
+            "execution_time_s": 12.3,
+            "predictions": [...]  # Sample predictions
+        }
+    """
+    try:
+        from core.historical_simulator import get_historical_simulator
+        
+        # Default symbols if not provided
+        if symbols is None:
+            symbols = ["BTC", "ETH", "SOL", "DOGE", "MATIC", "DOT", "AVAX", "LINK", "UNI", "ATOM"]
+        
+        # Validate parameters
+        if num_predictions < 10:
+            return {
+                "ok": False,
+                "error": "num_predictions must be at least 10"
+            }
+        
+        if days_back < 3:
+            return {
+                "ok": False,
+                "error": "days_back must be at least 3 (need 48h + buffer)"
+            }
+        
+        # Run simulation
+        simulator = get_historical_simulator()
+        results = await simulator.run_simulation(
+            symbols=symbols,
+            num_predictions=num_predictions,
+            days_back=days_back
+        )
+        
+        return results
+    
+    except Exception as e:
+        LOGGER.error(f"Historical simulation failed: {e}", exc_info=True)
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @APP.get("/api/v3/position/calculate")
 async def api_calculate_position(confidence: float, account_value: float = 25000.0):
     """
