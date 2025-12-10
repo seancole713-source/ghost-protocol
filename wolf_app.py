@@ -3679,36 +3679,38 @@ async def _on_startup():
         # Non-critical - continue startup (will retry on first request)
 
     # CRITICAL: Pre-populate _LATEST_PREDICTIONS cache to prevent cold-start slowness
-    try:
-        from core.prediction_store import get_prediction_store
-        store = get_prediction_store()
-        LOGGER.info("[GHOST STARTUP] Warming _LATEST_PREDICTIONS cache...")
-        
-        # Get latest 50 predictions from database
-        recent_preds = store.get_recent_predictions(limit=50)
-        warmup_count = 0
-        
-        # Populate cache with most recent prediction per symbol
-        for pred in recent_preds:
-            symbol = pred.get("symbol")
-            if symbol and symbol not in _LATEST_PREDICTIONS:
-                _LATEST_PREDICTIONS[symbol] = {
-                    "prediction_id": pred.get("id"),
-                    "symbol": symbol,
-                    "run_at": pred.get("run_at", time.time()),  # Fixed: use run_at not created_at
-                    "confidence": pred.get("confidence", 0),
-                    "direction": pred.get("direction", "FLAT"),
-                    "horizon_h": pred.get("horizon_h", 6),  # Fixed: use actual horizon_h from DB
-                    "method": pred.get("method", "unknown"),
-                    "price_at_prediction": pred.get("price_at_prediction"),
-                    "expected_move": pred.get("expected_move"),  # For hunter feed calculations
-                }
-                warmup_count += 1
-        
-        LOGGER.info(f"[GHOST STARTUP] ✅ Cache warmed with {warmup_count} predictions")
-    except Exception as e:
-        LOGGER.error(f"cache_warmup_failed: {e}", extra={"component": "startup"}, exc_info=False)
-        # Non-critical - continue startup (endpoints will use DB fallback)
+    # DISABLED TEMPORARILY: This DB query is blocking startup and causing timeouts
+    # try:
+    #     from core.prediction_store import get_prediction_store
+    #     store = get_prediction_store()
+    #     LOGGER.info("[GHOST STARTUP] Warming _LATEST_PREDICTIONS cache...")
+    #     
+    #     # Get latest 50 predictions from database
+    #     recent_preds = store.get_recent_predictions(limit=50)
+    #     warmup_count = 0
+    #     
+    #     # Populate cache with most recent prediction per symbol
+    #     for pred in recent_preds:
+    #         symbol = pred.get("symbol")
+    #         if symbol and symbol not in _LATEST_PREDICTIONS:
+    #             _LATEST_PREDICTIONS[symbol] = {
+    #                 "prediction_id": pred.get("id"),
+    #                 "symbol": symbol,
+    #                 "run_at": pred.get("run_at", time.time()),  # Fixed: use run_at not created_at
+    #                 "confidence": pred.get("confidence", 0),
+    #                 "direction": pred.get("direction", "FLAT"),
+    #                 "horizon_h": pred.get("horizon_h", 6),  # Fixed: use actual horizon_h from DB
+    #                 "method": pred.get("method", "unknown"),
+    #                 "price_at_prediction": pred.get("price_at_prediction"),
+    #                 "expected_move": pred.get("expected_move"),  # For hunter feed calculations
+    #             }
+    #             warmup_count += 1
+    #     
+    #     LOGGER.info(f"[GHOST STARTUP] ✅ Cache warmed with {warmup_count} predictions")
+    # except Exception as e:
+    #     LOGGER.error(f"cache_warmup_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    #     # Non-critical - continue startup (endpoints will use DB fallback)
+    LOGGER.info("[GHOST STARTUP] ⚠️  Cache warmup DISABLED (optimization in progress) - endpoints will populate on first request")
 
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
