@@ -6257,9 +6257,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # Log feature status for diagnostics
         LOGGER.info(f"[{symbol}] Feature status", extra={"feature_status": feature_status.to_dict()})
 
-        # Generate 48h forecast using ML prediction (enhanced logic)
-        horizon_h = 48
-        step_s = 7200  # 2 hours
+        # Generate 6h forecast using ML prediction (GHOST MAXIMUM v2.0 - optimal timeframe)
+        horizon_h = 6
+        step_s = 1800  # 30 minutes (higher resolution for 6h window)
         num_points = (horizon_h * 3600) // step_s
 
         # Determine direction using real features with DYNAMIC CONFIDENCE (40-85%)

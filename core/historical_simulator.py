@@ -282,8 +282,8 @@ class HistoricalSimulator:
             LOGGER.warning(f"No price data at prediction time for {symbol}")
             return None
 
-        # Find price 48 hours later
-        target_time = prediction_time + (48 * 3600)
+        # Find price 6 hours later (GHOST MAXIMUM v2.0 optimal horizon)
+        target_time = prediction_time + (6 * 3600)
         actual_price = None
 
         for data_point in historical_prices:
@@ -292,7 +292,7 @@ class HistoricalSimulator:
                 break
 
         if actual_price is None:
-            LOGGER.warning(f"No price data 48h later for {symbol}")
+            LOGGER.warning(f"No price data 6h later for {symbol}")
             return None
 
         # Reconstruct historical context for prediction
@@ -403,7 +403,7 @@ class HistoricalSimulator:
         # to return historical data instead of current market data
         # For now, make a standard prediction and note the context was available
 
-        prediction = await predictor.predict_with_data(symbol, horizon_h=48)
+        prediction = await predictor.predict_with_data(symbol, horizon_h=6)
 
         # Enhance prediction with historical context awareness
         prediction["historical_context"] = context
