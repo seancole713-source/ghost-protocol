@@ -27,7 +27,8 @@ function initializeApp() {
     loadAllPanels();
     
     // Pre-load goals for modal (silent load, no UI update needed)
-    loadHealthScore();
+    // PERFORMANCE FIX: Defer health score load by 500ms to prevent blocking page load
+    setTimeout(() => loadHealthScore(), 500);
     
     // OPTIMIZED: Set smart update intervals (reduced from 5s to prevent hammering)
     // Goals/Stats: 30s (slow-changing data)
@@ -511,7 +512,7 @@ function renderXRPTracker(data) {
                 </div>
                 <div style="text-align: right;">
                     <div style="font-size: 18px; font-weight: 600; color: ${signalColor};">${data.signal || 'HOLD'}</div>
-                    <div style="font-size: 12px; color: var(--text-secondary);">Confidence: ${data.confidence || 0}%</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Confidence: ${((data.confidence || 0) * 100).toFixed(0)}%</div>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary);">
@@ -673,10 +674,18 @@ function updateForecastCard6h(prediction) {
     card1.querySelector('.low-value').textContent = `${lowMove > 0 ? '+' : ''}${lowMove.toFixed(2)}%`;
     card1.querySelector('.high-value').textContent = `${highMove > 0 ? '+' : ''}${highMove.toFixed(2)}%`;
     
-    // Card 2: Target Price (show as placeholder - would need current price from API)
+    // Card 2: Target Price (fetch from shared watchlist data)
     const card2 = cards[2];
-    card2.querySelector('.current-value').textContent = '--';
-    card2.querySelector('.target-value').textContent = '--';
+    const watchlistSymbol = sharedWatchlistData.find(s => s.symbol === currentForecastSymbol);
+    if (watchlistSymbol && watchlistSymbol.price) {
+        const currentPrice = watchlistSymbol.price;
+        const targetPrice = currentPrice * (1 + (expectedMove / 100));
+        card2.querySelector('.current-value').textContent = `$${currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        card2.querySelector('.target-value').textContent = `$${targetPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    } else {
+        card2.querySelector('.current-value').textContent = '--';
+        card2.querySelector('.target-value').textContent = '--';
+    }
     
     console.log(`[FORECAST 6H] Direction=${direction}, Confidence=${confidence.toFixed(0)}%, Move=${expectedMove.toFixed(2)}%`);
 }
