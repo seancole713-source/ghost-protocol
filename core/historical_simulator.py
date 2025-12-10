@@ -24,9 +24,18 @@ class HistoricalSimulator:
         self.session: aiohttp.ClientSession | None = None
 
     async def _ensure_session(self):
-        """Ensure aiohttp session exists"""
+        """Ensure aiohttp session exists with connection pooling"""
         if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession()
+            connector = aiohttp.TCPConnector(
+                limit=50,  # Total connections
+                limit_per_host=20,  # Per-host limit
+                ttl_dns_cache=300,  # 5-minute DNS cache
+                force_close=False,  # Enable connection reuse
+            )
+            self.session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=aiohttp.ClientTimeout(total=30, connect=5),
+            )
 
     async def close(self):
         """Close aiohttp session"""

@@ -100,8 +100,18 @@ class DataCollector:
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         
-        connector = aiohttp.TCPConnector(ssl=ssl_context)
-        self.session = aiohttp.ClientSession(connector=connector)
+        # Connection pooling with limits to prevent exhaustion
+        connector = aiohttp.TCPConnector(
+            ssl=ssl_context,
+            limit=100,  # Total connections across all hosts
+            limit_per_host=30,  # Max connections per host (CoinGecko, Binance, etc.)
+            ttl_dns_cache=300,  # Cache DNS for 5 minutes
+            force_close=False,  # Reuse connections
+        )
+        self.session = aiohttp.ClientSession(
+            connector=connector,
+            timeout=aiohttp.ClientTimeout(total=10, connect=3),
+        )
         return self
         
     async def __aexit__(self, *args):

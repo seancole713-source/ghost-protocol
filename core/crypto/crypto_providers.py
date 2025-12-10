@@ -16,10 +16,16 @@ from urllib3.util.retry import Retry
 
 LOGGER = logging.getLogger(__name__)
 
-# Shared HTTP session with retry logic
+# Shared HTTP session with connection pooling and retry logic
 _session = requests.Session()
-_retry_strategy = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
-_adapter = HTTPAdapter(max_retries=_retry_strategy)
+_retry_strategy = Retry(total=2, backoff_factor=0.3, status_forcelist=[429, 500, 502, 503, 504])
+# Increase pool size from default 10 to 50 to handle concurrent requests
+_adapter = HTTPAdapter(
+    max_retries=_retry_strategy,
+    pool_connections=50,  # Total connection pools
+    pool_maxsize=50,  # Max connections per pool
+    pool_block=False,  # Don't block on full pool
+)
 _session.mount("http://", _adapter)
 _session.mount("https://", _adapter)
 
@@ -240,8 +246,8 @@ class BinanceProvider:
 
     def __init__(self):
         self.symbol_suffix = "USDT"  # Trade against USDT
-        self.max_retries = 3
-        self.base_delay = 0.5  # Start with 500ms
+        self.max_retries = 2  # Reduced from 3 to fail faster
+        self.base_delay = 0.3  # Reduced from 500ms to 300ms for faster fallback
 
     def get_price(self, symbol: str) -> dict[str, Any] | None:
         """
@@ -343,9 +349,9 @@ class CoinbaseProvider:
             return None
 
 
-# Cache for crypto prices (2-minute TTL)
+# Cache for crypto prices (5-minute TTL to reduce API load)
 _CRYPTO_CACHE: dict[str, dict[str, Any]] = {}
-_CACHE_TTL = 120  # 2 minutes
+_CACHE_TTL = 300  # 5 minutes (reduced from 2 to minimize API rate limit hits)
 
 
 def _get_crypto_cache(symbol: str) -> dict[str, Any] | None:
@@ -415,7 +421,7 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
         if name in provider_map
     ]
 
-    # Collect prices from all providers - SHORT-CIRCUIT on first success to avoid 401/451 retries
+    # Collect prices from providers - FAST SHORT-CIRCUIT on first success
     results: list[tuple[str, float, dict]] = []
 
     for name, provider in providers:
@@ -423,15 +429,14 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
             price_data = await asyncio.to_thread(provider.get_price, symbol)
             if price_data and price_data.get("price", 0) > 0:
                 results.append((name, price_data["price"], price_data))
-                LOGGER.debug(f"{name}: {symbol} = ${price_data['price']:.2f}")
-                # Short-circuit: accept first working provider to avoid slow 401/451 errors
-                if len(results) >= 1:
-                    LOGGER.info(f"Short-circuit: using {name} for {symbol} (fast-path)")
-                    break
+                LOGGER.info(f"Short-circuit: using {name} for {symbol} (fast-path)")
+                # IMMEDIATE SHORT-CIRCUIT: Use first successful provider to minimize API load
+                break  # Exit immediately on first success
         except Exception as e:
-            # Skip 401/451 immediately instead of retrying
-            if "401" in str(e) or "451" in str(e) or "Unauthorized" in str(e):
-                LOGGER.info(f"Provider {name} auth failed for {symbol}, skipping: {e}")
+            # Skip 401/451/429 immediately without retrying
+            error_str = str(e)
+            if any(code in error_str for code in ["401", "451", "429", "Unauthorized", "rate limit"]):
+                LOGGER.debug(f"Provider {name} blocked/throttled for {symbol}, skipping: {e}")
                 continue
             LOGGER.warning(f"Provider {name} failed for {symbol}: {e}")
 
