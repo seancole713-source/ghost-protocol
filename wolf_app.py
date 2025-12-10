@@ -3648,13 +3648,15 @@ async def _on_startup():
         # Non-critical - continue startup
 
     # Start Personal Watchlist Prediction Scheduler
-    try:
-        from core.watchlist_prediction_scheduler import start_watchlist_scheduler
-        start_watchlist_scheduler()
-        LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist scheduler started")
-    except Exception as e:
-        LOGGER.error(f"watchlist_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
-        # Non-critical - continue startup
+    # DISABLED TEMPORARILY: Causing system overload - will re-enable after optimization
+    # try:
+    #     from core.watchlist_prediction_scheduler import start_watchlist_scheduler
+    #     start_watchlist_scheduler()
+    #     LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist scheduler started")
+    # except Exception as e:
+    #     LOGGER.error(f"watchlist_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    #     # Non-critical - continue startup
+    LOGGER.info("[GHOST STARTUP] ⚠️  Personal watchlist scheduler DISABLED (optimization in progress)")
 
     # Start Outcome Reconciler (70% Accuracy Goal)
     try:
