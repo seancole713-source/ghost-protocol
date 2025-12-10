@@ -8515,6 +8515,21 @@ async def api_v3_hunter_feed(limit: int = 10):
     OPTIMIZED: Fast in-memory path first, DB fallback only if empty
     """
     try:
+        # EMERGENCY: If system just started (uptime < 60s), return empty feed to prevent startup deadlock
+        import time as _time_module
+        uptime_seconds = int(_time_module.time() - _START_TS)
+        if uptime_seconds < 60:
+            LOGGER.info(f"[HUNTER] System startup (uptime: {uptime_seconds}s) - returning empty feed")
+            return {
+                "ok": True,
+                "movers": [],
+                "feed": [],
+                "count": 0,
+                "timestamp": int(_time_module.time()),
+                "message": "System starting - predictions generating soon",
+                "source": "startup"
+            }
+        
         # FAST PATH: Use in-memory predictions if available (avoids DB query)
         predictions = list(_LATEST_PREDICTIONS.values()) if _LATEST_PREDICTIONS else []
         
