@@ -21850,7 +21850,7 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
         }
 
         # Get real 6h predictions from PostgreSQL backend
-        from services.postgres_backend import PostgresBackend
+        from core.prediction_store import PostgresBackend
         backend = PostgresBackend()
         
         # Generate predictions for stock symbols using REAL 6H system
