@@ -21860,16 +21860,36 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
                 latest = backend.get_latest_prediction(symbol)
                 
                 if latest:
-                    # Calculate predicted price from current price + expected_move
-                    price_current = latest.get("price_current")
-                    expected_move_pct = latest.get("expected_move_pct", 0)
+                    # Parse features_json to get current price and expected move
+                    try:
+                        features_json = latest.get("features_json")
+                        if features_json:
+                            import json
+                            features = json.loads(features_json) if isinstance(features_json, str) else features_json
+                            price_current = features.get("current_price")
+                        else:
+                            price_current = None
+                    except Exception:
+                        price_current = None
                     
+                    # Parse params_json for additional data
+                    try:
+                        params_json = latest.get("params_json")
+                        if params_json:
+                            params = json.loads(params_json) if isinstance(params_json, str) else params_json
+                            expected_move_pct = params.get("expected_move_pct", 2.0)  # Default 2%
+                        else:
+                            expected_move_pct = 2.0
+                    except Exception:
+                        expected_move_pct = 2.0
+                    
+                    # Calculate predicted price from direction and expected move
                     if price_current and expected_move_pct:
-                        # Convert direction to multiplier
                         direction_multiplier = 1 if latest.get("direction") == "UP" else -1
                         price_pred_mid = price_current * (1 + (direction_multiplier * expected_move_pct / 100))
                     else:
-                        price_pred_mid = price_current
+                        # Fallback: use default 2% move
+                        price_pred_mid = price_current * 1.02 if latest.get("direction") == "UP" else price_current * 0.98 if price_current else None
                     
                     # Map direction to BUY/SELL/HOLD
                     direction_str = latest.get("direction", "HOLD")
@@ -21913,16 +21933,36 @@ def _generate_multi_symbol_predictions() -> dict[str, Any]:
                 latest = backend.get_latest_prediction(symbol)
                 
                 if latest:
-                    # Calculate predicted price from current price + expected_move
-                    price_current = latest.get("price_current")
-                    expected_move_pct = latest.get("expected_move_pct", 0)
+                    # Parse features_json to get current price and expected move
+                    try:
+                        features_json = latest.get("features_json")
+                        if features_json:
+                            import json
+                            features = json.loads(features_json) if isinstance(features_json, str) else features_json
+                            price_current = features.get("current_price")
+                        else:
+                            price_current = None
+                    except Exception:
+                        price_current = None
                     
+                    # Parse params_json for additional data
+                    try:
+                        params_json = latest.get("params_json")
+                        if params_json:
+                            params = json.loads(params_json) if isinstance(params_json, str) else params_json
+                            expected_move_pct = params.get("expected_move_pct", 2.0)  # Default 2%
+                        else:
+                            expected_move_pct = 2.0
+                    except Exception:
+                        expected_move_pct = 2.0
+                    
+                    # Calculate predicted price from direction and expected move
                     if price_current and expected_move_pct:
-                        # Convert direction to multiplier
                         direction_multiplier = 1 if latest.get("direction") == "UP" else -1
                         price_pred_mid = price_current * (1 + (direction_multiplier * expected_move_pct / 100))
                     else:
-                        price_pred_mid = price_current
+                        # Fallback: use default 2% move
+                        price_pred_mid = price_current * 1.02 if latest.get("direction") == "UP" else price_current * 0.98 if price_current else None
                     
                     # Map direction to BUY/SELL/HOLD
                     direction_str = latest.get("direction", "HOLD")
