@@ -7237,6 +7237,127 @@ async def api_accuracy_ab_test(
         }
 
 
+@APP.post("/api/v3/ml/train")
+async def api_ml_train(min_predictions: int = 100):
+    """
+    Train ML Models on Historical Predictions
+    
+    Uses 124K+ reconciled predictions from PostgreSQL to train XGBoost models.
+    Learns which features predict outcomes and builds symbol-specific models.
+    
+    Args:
+        min_predictions: Minimum predictions per symbol to train model
+        
+    Returns:
+        {
+            "ok": true,
+            "symbols_trained": 15,
+            "total_predictions": 2847,
+            "models": {
+                "BTC": {"accuracy": 0.68, "train_samples": 380},
+                "ETH": {"accuracy": 0.65, "train_samples": 290}
+            }
+        }
+    """
+    try:
+        from core.ml_trainer import get_ml_trainer
+        
+        trainer = get_ml_trainer()
+        results = await trainer.train_from_postgres(min_predictions=min_predictions)
+        
+        return results
+        
+    except Exception as e:
+        LOGGER.error(f"ML training failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.post("/api/v3/features/analyze")
+async def api_analyze_features():
+    """
+    Analyze Feature Correlation with Accuracy
+    
+    Finds which features actually predict price movement.
+    Identifies noise features that should be dropped.
+    
+    Returns:
+        {
+            "ok": true,
+            "strong_features": [
+                ["rsi", 0.18],
+                ["price_momentum", 0.15]
+            ],
+            "weak_features": [
+                ["news_count", 0.02],
+                ["sentiment_score", -0.01]
+            ],
+            "recommendations": {
+                "keep_features": ["rsi", "price_momentum"],
+                "drop_features": ["news_count", "sentiment_score"],
+                "note_sentiment": "❌ Sentiment not helping - consider removing CryptoPanic"
+            }
+        }
+    """
+    try:
+        from core.feature_analyzer import get_feature_analyzer
+        
+        analyzer = get_feature_analyzer()
+        results = await analyzer.analyze_features()
+        
+        return results
+        
+    except Exception as e:
+        LOGGER.error(f"Feature analysis failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.post("/api/v3/confidence/calibrate")
+async def api_calibrate_confidence(min_predictions: int = 50):
+    """
+    Build Confidence Calibration Curves
+    
+    Maps predicted confidence → actual accuracy.
+    Finds quality threshold (only predict when accuracy > 65%).
+    
+    Args:
+        min_predictions: Minimum predictions needed for calibration
+        
+    Returns:
+        {
+            "ok": true,
+            "total_predictions": 2847,
+            "calibration_curve": {
+                "0.5": {"actual_accuracy": 0.48, "count": 120},
+                "0.6": {"actual_accuracy": 0.55, "count": 98},
+                "0.7": {"actual_accuracy": 0.65, "count": 85},
+                "0.8": {"actual_accuracy": 0.72, "count": 67}
+            },
+            "quality_threshold": 0.70,
+            "recommendation": "Only make predictions with confidence > 70%"
+        }
+    """
+    try:
+        from core.confidence_calibrator import get_confidence_calibrator
+        
+        calibrator = get_confidence_calibrator()
+        results = await calibrator.build_calibration(min_predictions=min_predictions)
+        
+        return results
+        
+    except Exception as e:
+        LOGGER.error(f"Confidence calibration failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
 @APP.get("/api/v3/position/calculate")
 async def api_calculate_position(confidence: float, account_value: float = 25000.0):
     """

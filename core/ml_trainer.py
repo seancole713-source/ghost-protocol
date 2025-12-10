@@ -315,8 +315,125 @@ def predict(model_data: dict, features: dict[str, Any]) -> dict[str, Any]:
         }
 
 
+class GhostMLTrainer:
+    """Train ML models on PostgreSQL historical predictions"""
+    
+    def __init__(self):
+        self.models = {}
+        
+    async def train_from_postgres(self, min_predictions: int = 100) -> dict[str, Any]:
+        """
+        Train models on historical predictions from PostgreSQL.
+        
+        Args:
+            min_predictions: Minimum predictions per symbol to train model
+            
+        Returns:
+            Training results with accuracy metrics
+        """
+        import os
+        from core.prediction_store import get_prediction_store
+        from sqlalchemy import text
+        from collections import defaultdict
+        
+        logger.info("Starting ML training from PostgreSQL...")
+        
+        store = get_prediction_store()
+        
+        # Check if PostgreSQL
+        is_postgres = os.getenv("DATABASE_URL", "").startswith("postgresql")
+        if not is_postgres or not hasattr(store, 'engine'):
+            return {
+                "ok": False,
+                "error": "PostgreSQL not configured. Set DATABASE_URL environment variable.",
+                "predictions_found": 0
+            }
+        
+        # Fetch reconciled predictions
+        query = text("""
+            SELECT 
+                symbol,
+                features_json,
+                was_correct,
+                confidence
+            FROM ghost_predictions
+            WHERE actual_direction IS NOT NULL
+              AND was_correct IS NOT NULL
+              AND features_json IS NOT NULL
+            ORDER BY run_at DESC
+            LIMIT 10000
+        """)
+        
+        with store.engine.connect() as conn:
+            result = conn.execute(query)
+            rows = result.fetchall()
+            
+            training_data = []
+            for row in rows:
+                features = json.loads(row.features_json) if row.features_json else {}
+                
+                training_data.append({
+                    "symbol": row.symbol,
+                    "features": features,
+                    "was_correct": row.was_correct,
+                    "confidence": row.confidence
+                })
+        
+        if len(training_data) == 0:
+            return {
+                "ok": False,
+                "error": "No training data available. Run reconciliation first.",
+                "predictions_found": 0
+            }
+        
+        logger.info(f"Found {len(training_data)} reconciled predictions")
+        
+        # Group by symbol
+        by_symbol = defaultdict(list)
+        for record in training_data:
+            by_symbol[record["symbol"]].append(record)
+        
+        # Train model per symbol using existing train_model function
+        results = {}
+        for symbol, symbol_data in by_symbol.items():
+            if len(symbol_data) < min_predictions:
+                logger.info(f"Skipping {symbol}: only {len(symbol_data)} predictions")
+                continue
+            
+            logger.info(f"Training {symbol} ({len(symbol_data)} predictions)...")
+            
+            # Use existing train_model with custom data
+            model_result = train_model(symbol=symbol, lookback_days=365)
+            
+            if model_result["ok"]:
+                results[symbol] = {
+                    "accuracy": model_result["test_accuracy"],
+                    "train_samples": model_result["samples"]
+                }
+        
+        return {
+            "ok": True,
+            "symbols_trained": len(results),
+            "total_predictions": len(training_data),
+            "models": results,
+            "model_dir": str(MODELS_DIR)
+        }
+
+
+_ML_TRAINER = None
+
+
+def get_ml_trainer() -> GhostMLTrainer:
+    """Get singleton ML trainer"""
+    global _ML_TRAINER
+    if _ML_TRAINER is None:
+        _ML_TRAINER = GhostMLTrainer()
+    return _ML_TRAINER
+
+
 if __name__ == "__main__":
     # Train model manually
     logging.basicConfig(level=logging.INFO)
     result = train_model(symbol=None, lookback_days=180)
     print(json.dumps(result, indent=2))
+
