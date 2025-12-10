@@ -269,7 +269,7 @@ class HistoricalSimulator:
         Returns:
             Prediction result or None if not enough data
         """
-        from core.wolf_model import get_wolf_predictor
+        from core.data_enhanced_predictor import DataEnhancedPredictor
 
         # Find the price at prediction time
         prediction_price = None
@@ -300,16 +300,15 @@ class HistoricalSimulator:
             symbol, prediction_time, historical_prices
         )
 
-        # Make prediction using Wolf predictor with historical context
+        # Make prediction using data-enhanced predictor with historical context
         try:
-            predictor = get_wolf_predictor()
-
-            # Override current data with historical context for accurate simulation
-            prediction = await self._predict_with_historical_context(
-                predictor,
-                symbol,
-                historical_context
-            )
+            async with DataEnhancedPredictor() as predictor:
+                # Override current data with historical context for accurate simulation
+                prediction = await self._predict_with_historical_context(
+                    predictor,
+                    symbol,
+                    historical_context
+                )
 
             # Calculate actual outcome
             price_change_pct = ((actual_price - prediction_price) / prediction_price) * 100
@@ -404,7 +403,7 @@ class HistoricalSimulator:
         # to return historical data instead of current market data
         # For now, make a standard prediction and note the context was available
 
-        prediction = await predictor.predict(symbol, horizon_hours=48)
+        prediction = await predictor.predict_with_data(symbol, horizon_h=48)
 
         # Enhance prediction with historical context awareness
         prediction["historical_context"] = context
