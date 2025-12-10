@@ -8577,13 +8577,18 @@ async def api_v3_hunter_feed(limit: int = 10):
             import asyncio
             from core.prediction_store import get_prediction_store
             
-            # Wrap synchronous DB call with asyncio timeout (max 3 seconds)
-            async def fetch_from_db():
+            # Wrap synchronous DB call in thread pool executor with timeout (prevents event loop blocking)
+            loop = asyncio.get_event_loop()
+            
+            def fetch_from_db_sync():
                 store = get_prediction_store()
                 return store.get_recent_predictions(limit=limit * 2)
             
             try:
-                recent_preds = await asyncio.wait_for(fetch_from_db(), timeout=3.0)
+                recent_preds = await asyncio.wait_for(
+                    loop.run_in_executor(None, fetch_from_db_sync),
+                    timeout=3.0
+                )
             except TimeoutError:
                 LOGGER.warning("[HUNTER] Database query timeout after 3s, returning empty feed")
                 return {
