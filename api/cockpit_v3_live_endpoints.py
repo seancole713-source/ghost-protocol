@@ -502,9 +502,9 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
             return None
         change = snapshot.get("change_pct", 0.0)
         
-        # GHOST PROTOCOL: Filter for meaningful moves (5%+ gain/loss)
-        # Reduced from 20% to show more market activity
-        if abs(change) < 5.0:
+        # GHOST PROTOCOL: Filter for meaningful moves (2%+ gain/loss)
+        # Lowered to 2% to capture more market opportunities
+        if abs(change) < 2.0:
             return None
         
         gps = round(change * 0.75, 2)
@@ -522,9 +522,9 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
         except Exception as e:
             LOGGER.debug(f"Could not fetch prediction confidence for {symbol}: {e}")
         
-        # GHOST PROTOCOL: Show signals with 50%+ confidence
-        # Reduced from 70% to display more opportunities
-        if real_confidence < 50:
+        # GHOST PROTOCOL: Show signals with 45%+ confidence
+        # Lowered to display more market opportunities
+        if real_confidence < 45:
             return None
         
         return {
@@ -580,11 +580,66 @@ async def _build_live_hunter_feed(limit: int = 8) -> List[Dict[str, Any]]:
 
 
 async def _refresh_hunter_feed() -> List[Dict[str, Any]]:
-    data = _fetch_hunter_feed_from_redis(limit=12)
+    """
+    Hybrid hunter feed: Blend Ghost predictions + actual market movers.
+    
+    Strategy:
+    1. Try Redis cache first (predictions + historical movers)
+    2. Fetch Polygon snapshot API for real-time market movers
+    3. Merge with Ghost predictions for comprehensive view
+    4. Sort by absolute % change (biggest movers first)
+    """
+    # Start with Redis cache (predictions + historical data)
+    redis_movers = _fetch_hunter_feed_from_redis(limit=6)
+    
+    # Fetch real-time market movers from Polygon
+    market_movers = []
+    try:
+        from app.core.movers_scanner import fetch_polygon_all_movers
+        redis_client = _get_redis()
+        polygon_movers = await fetch_polygon_all_movers(redis_client)
+        
+        # Filter for 2%+ moves
+        for mover in polygon_movers:
+            if abs(mover.get("pct_24h", 0.0)) >= 2.0:
+                market_movers.append({
+                    "symbol": mover.get("symbol", ""),
+                    "name": mover.get("symbol", ""),
+                    "type": "stock",
+                    "price": mover.get("price", 0.0),
+                    "change": mover.get("pct_24h", 0.0),
+                    "volume": 0,
+                    "confidence": 0,  # No prediction confidence for raw movers
+                    "gps": 0,
+                    "source": "market",  # Tag as market data
+                    "provider": mover.get("provider", "polygon")
+                })
+    except Exception as e:
+        LOGGER.warning(f"Failed to fetch Polygon movers for hunter feed: {e}")
+    
+    # Merge Redis + Market movers, deduplicate by symbol
+    combined = {}
+    for mover in redis_movers + market_movers:
+        symbol = mover.get("symbol", "")
+        if symbol and symbol not in combined:
+            combined[symbol] = mover
+        elif symbol and abs(mover.get("change", 0)) > abs(combined[symbol].get("change", 0)):
+            # Keep the one with bigger move
+            combined[symbol] = mover
+    
+    # Convert back to list and sort
+    data = list(combined.values())
+    data.sort(key=lambda x: abs(x.get("change", 0.0)), reverse=True)
+    data = data[:12]  # Top 12 movers
+    
+    # Fallback to live build if no data
     if not data:
         data = await _build_live_hunter_feed(limit=12)
+    
     if data:
         _set_hunter_feed_cache(data)
+    
+    LOGGER.info(f"Hunter feed refreshed: {len(data)} movers ({len(market_movers)} from market, {len(redis_movers)} from cache)")
     return data
 
 
@@ -1073,6 +1128,120 @@ async def get_ai_metrics():
             "success_rate": 0.0,
             "status": "idle",
             "last_actions": []
+        }
+
+
+@router.get("/market/movers")
+async def get_market_movers(
+    limit: int = 20,
+    min_change_pct: float = 2.0,
+    asset_type: str = "all"  # "all", "stocks", "crypto"
+):
+    """
+    Get ACTUAL market movers (not predictions) using Polygon snapshot API.
+    
+    This shows real-time gainers/losers from the market, separate from Ghost predictions.
+    Perfect for seeing what you missed (like ARCT +6.52%, XPO +5.38%, CVNA +2.48%).
+    
+    Args:
+        limit: Max number of movers to return (default 20)
+        min_change_pct: Minimum % change to include (default 2.0%)
+        asset_type: Filter by "stocks", "crypto", or "all"
+    
+    Returns:
+        {
+            "ok": True,
+            "movers": [
+                {
+                    "symbol": "ARCT",
+                    "price": 45.23,
+                    "change_pct": 6.52,
+                    "volume": 1234567,
+                    "vol_mult": 3.2,
+                    "type": "stock",
+                    "direction": "UP",
+                    "provider": "polygon_snapshot"
+                }
+            ],
+            "count": 15,
+            "timestamp": 1734567890,
+            "source": "polygon_snapshot_api"
+        }
+    """
+    try:
+        from app.core.movers_scanner import fetch_polygon_all_movers
+        
+        # Fetch from Polygon snapshot API (covers entire market)
+        redis_client = _get_redis()
+        all_movers = await fetch_polygon_all_movers(redis_client)
+        
+        if not all_movers:
+            LOGGER.warning("No movers returned from Polygon API")
+            return {
+                "ok": False,
+                "movers": [],
+                "count": 0,
+                "timestamp": time.time(),
+                "error": "Polygon API unavailable or no movers found",
+                "note": "Check POLYGON_API_KEY and USE_POLYGON_SNAPSHOTS=true"
+            }
+        
+        # Filter by change threshold
+        filtered = [
+            m for m in all_movers
+            if abs(m.get("pct_24h", 0.0)) >= min_change_pct
+        ]
+        
+        # Filter by asset type
+        if asset_type.lower() == "stocks":
+            filtered = [m for m in filtered if m.get("provider") == "polygon_snapshot"]
+        elif asset_type.lower() == "crypto":
+            filtered = [m for m in filtered if m.get("provider") != "polygon_snapshot"]
+        
+        # Sort by absolute % change (biggest movers first)
+        filtered.sort(key=lambda x: abs(x.get("pct_24h", 0.0)), reverse=True)
+        
+        # Limit results
+        movers = filtered[:limit]
+        
+        # Format for frontend
+        formatted_movers = []
+        for mover in movers:
+            pct_change = mover.get("pct_24h", 0.0)
+            formatted_movers.append({
+                "symbol": mover.get("symbol", ""),
+                "price": mover.get("price", 0.0),
+                "change_pct": round(pct_change, 2),
+                "volume": 0,  # Not available in snapshot
+                "vol_mult": mover.get("vol_mult"),
+                "type": "stock" if mover.get("provider") == "polygon_snapshot" else "crypto",
+                "direction": "UP" if pct_change > 0 else "DOWN",
+                "provider": mover.get("provider", "unknown"),
+                "tier": mover.get("tier", "bronze"),
+                "emoji": mover.get("emoji", "📊")
+            })
+        
+        return {
+            "ok": True,
+            "movers": formatted_movers,
+            "count": len(formatted_movers),
+            "timestamp": time.time(),
+            "source": "polygon_snapshot_api",
+            "filters": {
+                "min_change_pct": min_change_pct,
+                "asset_type": asset_type,
+                "limit": limit
+            }
+        }
+        
+    except Exception as exc:
+        LOGGER.error(f"Market movers endpoint failed: {exc}", exc_info=True)
+        return {
+            "ok": False,
+            "movers": [],
+            "count": 0,
+            "timestamp": time.time(),
+            "error": str(exc)[:200]
         }
 
 

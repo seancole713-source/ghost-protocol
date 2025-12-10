@@ -44,7 +44,7 @@ VIP_COINS = ["WEPE", "LILPEPE", "DORKL", "SLOTH", "APC", "XRP"]
 # Thresholds
 CRYPTO_PCT_THRESHOLD = 6.0  # |pct_24h| >= 6%
 CRYPTO_VOL_MULT_THRESHOLD = 1.5  # vol_mult >= 1.5x
-STOCK_PCT_THRESHOLD = 6.0  # |pct_24h| >= 6%
+STOCK_PCT_THRESHOLD = 2.0  # |pct_24h| >= 2% (lowered to capture more movers)
 STOCK_VOL_MULT_THRESHOLD = 1.3  # vol_mult >= 1.3x
 
 # Timeouts
