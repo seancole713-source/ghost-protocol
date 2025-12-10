@@ -38,16 +38,16 @@ class HistoricalSimulator:
     ) -> list[dict[str, Any]]:
         """
         Fetch historical hourly prices for a symbol.
-        
+
         Args:
             symbol: Trading symbol (e.g., 'BTC', 'ETH')
             days_back: How many days of history to fetch
-            
+
         Returns:
             List of {timestamp, price} dictionaries
         """
         await self._ensure_session()
-        
+
         # Map crypto symbols to CoinGecko IDs
         symbol_map = {
             "BTC": "bitcoin",
@@ -61,43 +61,69 @@ class HistoricalSimulator:
             "UNI": "uniswap",
             "ATOM": "cosmos",
         }
-        
+
         coin_id = symbol_map.get(symbol)
         if not coin_id:
             LOGGER.warning(f"No CoinGecko mapping for {symbol}")
             return []
-        
-        try:
-            # CoinGecko market_chart endpoint (free tier, 365 days max)
-            url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
-            params = {
-                "vs_currency": "usd",
-                "days": min(days_back, 365),
-                "interval": "hourly"
-            }
-            
-            async with self.session.get(url, params=params, timeout=10) as resp:
-                if resp.status != 200:
-                    LOGGER.error(f"CoinGecko API error {resp.status} for {symbol}")
+
+        # Retry logic for rate limits
+        max_retries = 3
+        retry_delay = 2  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                # CoinGecko market_chart endpoint (free tier, 365 days max)
+                url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+                params = {
+                    "vs_currency": "usd",
+                    "days": min(days_back, 365),
+                    "interval": "hourly"
+                }
+
+                # Add delay to avoid rate limits (free tier: 10-30 calls/minute)
+                import asyncio
+                if attempt > 0:
+                    await asyncio.sleep(retry_delay * attempt)
+                else:
+                    await asyncio.sleep(1.5)  # Base delay between calls
+
+                async with self.session.get(url, params=params, timeout=10) as resp:
+                    if resp.status == 429:  # Rate limited
+                        if attempt < max_retries - 1:
+                            LOGGER.warning(f"Rate limited on {symbol}, retrying in {retry_delay * (attempt + 1)}s...")
+                            continue
+                        else:
+                            LOGGER.error(f"CoinGecko rate limit exceeded for {symbol} after {max_retries} attempts")
+                            return []
+
+                    if resp.status != 200:
+                        LOGGER.error(f"CoinGecko API error {resp.status} for {symbol}")
+                        return []
+
+                    data = await resp.json()
+                    prices = data.get("prices", [])
+
+                    # Convert to our format: [{timestamp, price}]
+                    result = []
+                    for timestamp_ms, price in prices:
+                        result.append({
+                            "timestamp": timestamp_ms / 1000,  # Convert to seconds
+                            "price": price
+                        })
+
+                    LOGGER.info(f"Fetched {len(result)} historical prices for {symbol}")
+                    return result
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    LOGGER.warning(f"Error fetching {symbol} (attempt {attempt + 1}/{max_retries}): {e}")
+                    continue
+                else:
+                    LOGGER.error(f"Failed to fetch historical prices for {symbol} after {max_retries} attempts: {e}")
                     return []
-                
-                data = await resp.json()
-                prices = data.get("prices", [])
-                
-                # Convert to our format: [{timestamp, price}]
-                result = []
-                for timestamp_ms, price in prices:
-                    result.append({
-                        "timestamp": timestamp_ms / 1000,  # Convert to seconds
-                        "price": price
-                    })
-                
-                LOGGER.info(f"Fetched {len(result)} historical prices for {symbol}")
-                return result
-                
-        except Exception as e:
-            LOGGER.error(f"Failed to fetch historical prices for {symbol}: {e}")
-            return []
+
+        return []
 
     async def simulate_prediction(
         self, symbol: str, prediction_time: float, historical_prices: list[dict[str, Any]]
