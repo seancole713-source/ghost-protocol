@@ -497,6 +497,154 @@ async def daily_report_loop(get_opportunities_func, get_accuracy_func):
 # TEST HARNESS
 # ========================================
 
+# ========================================
+# PHASE 5: TRADE NOTIFICATIONS
+# ========================================
+
+
+def send_trade_notification(trade_result: dict) -> bool:
+    """
+    Send trade notification to Telegram.
+    
+    Args:
+        trade_result: Dict with trade details:
+            - action: "ENTRY" | "EXIT"
+            - symbol: str
+            - side: "buy" | "sell"
+            - shares: int
+            - entry_price: float
+            - exit_price: float (for EXIT)
+            - pnl_dollar: float (for EXIT)
+            - pnl_pct: float (for EXIT)
+            - confidence: float
+            - reason: str
+            - stop_loss_price: float
+            - take_profit_price: float
+    
+    Returns:
+        True if sent successfully
+    """
+    try:
+        action = trade_result.get("action", "UNKNOWN")
+        symbol = trade_result.get("symbol", "UNKNOWN")
+        
+        if action == "ENTRY":
+            message = _format_trade_entry(trade_result)
+        elif action == "EXIT":
+            message = _format_trade_exit(trade_result)
+        else:
+            message = f"🤖 TRADE: {action} {symbol}"
+        
+        return send_telegram_message(message, parse_mode="Markdown")
+    
+    except Exception as e:
+        logging.error(f"Error sending trade notification: {e}", exc_info=True)
+        return False
+
+
+def _format_trade_entry(trade: dict) -> str:
+    """Format trade entry notification"""
+    
+    symbol = trade.get("symbol", "UNKNOWN")
+    side = trade.get("side", "buy").upper()
+    shares = trade.get("shares", 0)
+    entry_price = trade.get("entry_price", 0)
+    confidence = trade.get("confidence", 0)
+    stop_loss = trade.get("stop_loss_price", 0)
+    take_profit = trade.get("take_profit_price", 0)
+    reason = trade.get("reason", "")
+    
+    position_value = shares * entry_price
+    
+    # Calculate risk/reward
+    risk_per_share = entry_price - stop_loss
+    reward_per_share = take_profit - entry_price
+    risk_reward_ratio = reward_per_share / risk_per_share if risk_per_share > 0 else 0
+    
+    # Emoji based on confidence
+    if confidence >= 80:
+        emoji = "🔥"
+    elif confidence >= 70:
+        emoji = "📈"
+    else:
+        emoji = "⚡"
+    
+    message = f"""
+{emoji} **TRADE EXECUTED**
+
+**{side} {symbol}**
+Shares: {shares:,}
+Entry: ${entry_price:.2f}
+Value: ${position_value:,.2f}
+
+**Targets**
+Stop Loss: ${stop_loss:.2f} ({-abs((stop_loss - entry_price) / entry_price * 100):.1f}%)
+Take Profit: ${take_profit:.2f} ({abs((take_profit - entry_price) / entry_price * 100):.1f}%)
+Risk/Reward: {risk_reward_ratio:.2f}:1
+
+**Signal**
+Confidence: {confidence:.0f}%
+{reason}
+
+_Ghost Autonomous Trading_
+""".strip()
+    
+    return message
+
+
+def _format_trade_exit(trade: dict) -> str:
+    """Format trade exit notification"""
+    
+    symbol = trade.get("symbol", "UNKNOWN")
+    side = trade.get("side", "sell").upper()
+    shares = trade.get("shares", 0)
+    entry_price = trade.get("entry_price", 0)
+    exit_price = trade.get("exit_price", 0)
+    pnl_dollar = trade.get("pnl_dollar", 0)
+    pnl_pct = trade.get("pnl_pct", 0)
+    reason = trade.get("reason", "")
+    exit_type = trade.get("exit_type", "manual")  # stop_loss, take_profit, trailing_stop, prediction_expiry, adverse_move
+    
+    # Emoji based on P&L
+    if pnl_pct >= 5:
+        emoji = "💰"
+    elif pnl_pct >= 0:
+        emoji = "✅"
+    elif pnl_pct >= -2:
+        emoji = "⚠️"
+    else:
+        emoji = "🛑"
+    
+    # Exit type display
+    exit_type_display = {
+        "stop_loss": "Stop Loss",
+        "take_profit": "Take Profit",
+        "trailing_stop": "Trailing Stop",
+        "prediction_expiry": "Time Expiry",
+        "adverse_move": "Adverse Move",
+        "manual": "Manual"
+    }.get(exit_type, exit_type)
+    
+    message = f"""
+{emoji} **TRADE CLOSED**
+
+**{symbol}**
+Shares: {shares:,}
+Entry: ${entry_price:.2f}
+Exit: ${exit_price:.2f}
+
+**Result**
+P&L: ${pnl_dollar:+,.2f} ({pnl_pct:+.2f}%)
+Exit: {exit_type_display}
+
+{reason}
+
+_Ghost Autonomous Trading_
+""".strip()
+    
+    return message
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
@@ -527,5 +675,36 @@ if __name__ == "__main__":
     print("\n=== TEST: Accuracy Update ===")
     accuracy_msg = format_accuracy_update(test_accuracy)
     print(accuracy_msg)
+
+    # Test trade notifications
+    print("\n=== TEST: Trade Entry ===")
+    test_entry = {
+        "action": "ENTRY",
+        "symbol": "AAPL",
+        "side": "buy",
+        "shares": 50,
+        "entry_price": 150.25,
+        "confidence": 78,
+        "stop_loss_price": 145.74,
+        "take_profit_price": 159.26,
+        "reason": "78% confidence BUY signal"
+    }
+    entry_msg = _format_trade_entry(test_entry)
+    print(entry_msg)
+
+    print("\n=== TEST: Trade Exit ===")
+    test_exit = {
+        "action": "EXIT",
+        "symbol": "AAPL",
+        "shares": 50,
+        "entry_price": 150.25,
+        "exit_price": 157.50,
+        "pnl_dollar": 362.50,
+        "pnl_pct": 4.82,
+        "reason": "Take profit target hit",
+        "exit_type": "take_profit"
+    }
+    exit_msg = _format_trade_exit(test_exit)
+    print(exit_msg)
 
     print("\n✅ Test formatting complete")

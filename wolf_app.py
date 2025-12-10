@@ -3671,6 +3671,41 @@ async def _on_startup():
         LOGGER.error(f"self_improvement_engine_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
+    # Stage 5: Start Autonomous Execution Engine (Phase 5 - Master Control)
+    try:
+        import asyncio as _asyncio_module
+        from core.autonomous_execution_engine import run_execution_cycle
+        import os
+        
+        execution_enabled = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
+        execution_interval = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))
+        
+        if execution_enabled:
+            async def _autonomous_execution_loop():
+                """Background task to execute trades every 5 minutes"""
+                # Wait 60s after startup before first cycle
+                await _asyncio_module.sleep(60)
+                
+                while True:
+                    try:
+                        LOGGER.info("🤖 [AUTO-EXECUTION] Starting execution cycle...")
+                        # Run in thread pool to avoid blocking asyncio
+                        loop = _asyncio_module.get_event_loop()
+                        result = await loop.run_in_executor(None, run_execution_cycle)
+                        LOGGER.info(f"🤖 [AUTO-EXECUTION] Cycle complete: {result.get('status', 'unknown')}")
+                    except Exception as exec_err:
+                        LOGGER.error(f"🤖 [AUTO-EXECUTION] Cycle error: {exec_err}", exc_info=False)
+                    
+                    await _asyncio_module.sleep(execution_interval)
+            
+            _asyncio_module.create_task(_autonomous_execution_loop())
+            LOGGER.info(f"🤖 [GHOST STARTUP] ✅ Phase 5 Autonomous Execution active (interval={execution_interval}s)")
+        else:
+            LOGGER.info("🤖 [GHOST STARTUP] Phase 5 Autonomous Execution DISABLED (set AUTO_EXECUTION_ENABLED=1 to enable)")
+    except Exception as e:
+        LOGGER.error(f"autonomous_execution_engine_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # Start Personal Watchlist Prediction Scheduler
     # DISABLED TEMPORARILY: Causing system overload - will re-enable after optimization
     # try:
