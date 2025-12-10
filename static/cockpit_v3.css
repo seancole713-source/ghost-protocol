@@ -806,3 +806,192 @@ body {
 .watchlist-mode-tabs {
     margin-bottom: 10px;
 }
+
+/* 🎯 Latest BTC Prediction Panel */
+#panel-latest-btc {
+    background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+    border: 2px solid var(--accent-green);
+    box-shadow: 0 4px 20px rgba(0, 214, 50, 0.15);
+}
+
+#panel-latest-btc .panel-header {
+    background: rgba(0, 214, 50, 0.05);
+    border-bottom: 1px solid var(--accent-green);
+}
+
+.horizon-badge {
+    background: var(--accent-green);
+    color: var(--bg-black);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.prediction-showcase {
+    padding: 20px;
+}
+
+.btc-pred-main {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.btc-pred-direction,
+.btc-pred-confidence,
+.btc-pred-move {
+    text-align: center;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+}
+
+.btc-pred-direction.bullish {
+    border-color: var(--accent-green);
+    background: rgba(0, 214, 50, 0.05);
+}
+
+.btc-pred-direction.bearish {
+    border-color: var(--accent-red);
+    background: rgba(255, 59, 48, 0.05);
+}
+
+.direction-icon {
+    font-size: 32px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.direction-label {
+    font-size: 18px;
+    font-weight: 700;
+    display: block;
+}
+
+.btc-pred-confidence .confidence-value {
+    font-size: 36px;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.btc-pred-confidence.high .confidence-value {
+    color: var(--accent-green);
+}
+
+.btc-pred-confidence.medium .confidence-value {
+    color: var(--accent-yellow);
+}
+
+.btc-pred-confidence.low .confidence-value {
+    color: var(--accent-red);
+}
+
+.confidence-label,
+.move-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btc-pred-move .move-value {
+    font-size: 28px;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+}
+
+.btc-pred-meta {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.meta-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.meta-icon {
+    font-size: 16px;
+}
+
+.pred-loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+/* Forecast Panel Enhancements */
+.forecast-info {
+    text-align: center;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+.forecast-horizon-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-yellow));
+    color: var(--bg-black);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 10px rgba(0, 214, 50, 0.3);
+}
+
+.forecast-card .bullish {
+    color: var(--accent-green);
+}
+
+.forecast-card .bearish {
+    color: var(--accent-red);
+}
+
+.forecast-card .neutral {
+    color: var(--text-secondary);
+}
+
+/* Health System Stats */
+.health-system-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent-green);
+}
+

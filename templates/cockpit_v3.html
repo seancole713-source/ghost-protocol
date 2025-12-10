@@ -38,6 +38,19 @@
     <!-- Main Container -->
     <main id="ghost-main">
         
+        <!-- 🎯 PANEL 0 - Latest BTC Prediction (6-Hour Horizon) -->
+        <section class="panel panel-highlight" id="panel-latest-btc">
+            <div class="panel-header">
+                <h2>🎯 Latest BTC Prediction</h2>
+                <span class="horizon-badge">6-HOUR HORIZON</span>
+            </div>
+            <div class="panel-body">
+                <div class="prediction-showcase" id="btc-prediction">
+                    <div class="pred-loading">⏳ Loading latest BTC prediction...</div>
+                </div>
+            </div>
+        </section>
+        
         <!-- 🟩 PANEL 1 - Top Movers -->
         <section class="panel" id="panel-movers">
             <div class="panel-header">
@@ -84,27 +97,30 @@
                 <span id="forecast-symbol-label" class="forecast-symbol-label"></span>
             </div>
             <div class="panel-body">
+                <div class="forecast-info">
+                    <span class="forecast-horizon-badge">🚀 GHOST MAXIMUM v2.0 - 6 Hour Predictions</span>
+                </div>
                 <div id="forecast-grid" class="forecast-container">
                     <div class="forecast-card">
-                        <div class="forecast-time">Next 24h</div>
-                        <div class="forecast-icon">☀️</div>
+                        <div class="forecast-time">6-Hour Forecast</div>
+                        <div class="forecast-icon">⚡</div>
                         <div class="forecast-direction">↑ BUY</div>
                         <div class="forecast-prob">Prob: <span class="prob-value">--</span>%</div>
                         <div class="forecast-move">Move: <span class="move-value">--</span>%</div>
                     </div>
                     <div class="forecast-card">
-                        <div class="forecast-time">2-5 Days</div>
-                        <div class="forecast-icon">⛅</div>
-                        <div class="forecast-direction">→ FLAT</div>
-                        <div class="forecast-prob">Prob: <span class="prob-value">--</span>%</div>
-                        <div class="forecast-move">Move: <span class="move-value">--</span>%</div>
+                        <div class="forecast-time">Expected Range</div>
+                        <div class="forecast-icon">📊</div>
+                        <div class="forecast-direction">→ RANGE</div>
+                        <div class="forecast-prob">Low: <span class="low-value">--</span></div>
+                        <div class="forecast-move">High: <span class="high-value">--</span></div>
                     </div>
                     <div class="forecast-card">
-                        <div class="forecast-time">7-14 Days</div>
-                        <div class="forecast-icon">🌤️</div>
-                        <div class="forecast-direction">↑ BUY</div>
-                        <div class="forecast-prob">Prob: <span class="prob-value">--</span>%</div>
-                        <div class="forecast-move">Move: <span class="move-value">--</span>%</div>
+                        <div class="forecast-time">Target Price</div>
+                        <div class="forecast-icon">🎯</div>
+                        <div class="forecast-direction">→ TARGET</div>
+                        <div class="forecast-prob">Current: <span class="current-value">--</span></div>
+                        <div class="forecast-move">Target: <span class="target-value">--</span></div>
                     </div>
                 </div>
             </div>
@@ -167,6 +183,20 @@
                     </div>
                     <div class="health-metrics" id="health-metrics">
                         <!-- Sub-metrics will be dynamically inserted -->
+                    </div>
+                    <div class="health-system-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">⏱️ Uptime:</span>
+                            <span class="stat-value" id="system-uptime">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">📊 Predictions Today:</span>
+                            <span class="stat-value" id="predictions-count">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">🎯 Horizon:</span>
+                            <span class="stat-value">6 Hours</span>
+                        </div>
                     </div>
                 </div>
             </div>

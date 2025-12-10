@@ -182,6 +182,22 @@ async function loadCockpitStatus() {
         if (response.ok) {
             const data = await response.json();
             updateStatusIndicator(data.active);
+            
+            // Update system stats in health panel
+            if (data.uptime_seconds !== undefined) {
+                const uptimeHours = (data.uptime_seconds / 3600).toFixed(1);
+                const uptimeEl = document.getElementById('system-uptime');
+                if (uptimeEl) {
+                    uptimeEl.textContent = `${uptimeHours}h`;
+                }
+            }
+            
+            if (data.predictions_today !== undefined) {
+                const countEl = document.getElementById('predictions-count');
+                if (countEl) {
+                    countEl.textContent = data.predictions_today || 0;
+                }
+            }
         }
     } catch (error) {
         console.error('Error loading cockpit status:', error);
@@ -237,6 +253,7 @@ async function loadAllPanels() {
     try {
         await Promise.all([
             loadCockpitSnapshot(),
+            loadLatestBTCPrediction(),  // NEW: Load 6h BTC prediction card
             loadTopMovers(),
             loadVIPCoins(),
             loadForecast(),
@@ -248,6 +265,91 @@ async function loadAllPanels() {
     } catch (error) {
         console.error('Error loading panels:', error);
     }
+}
+
+// Panel 0: Latest BTC Prediction (6-Hour Horizon) - NEW
+async function loadLatestBTCPrediction() {
+    try {
+        const response = await fetch('/api/v3/predictions/latest?symbol=BTC');
+        if (!response.ok) throw new Error('Failed to load BTC prediction');
+        
+        const data = await response.json();
+        const predictions = data.predictions || [];
+        const pred = predictions[0];
+        
+        if (!pred) {
+            renderBTCPrediction(null);
+            return;
+        }
+        
+        console.log('[BTC PREDICTION] Loaded:', pred);
+        renderBTCPrediction(pred);
+    } catch (error) {
+        console.error('[BTC PREDICTION] Error:', error);
+        renderBTCPrediction(null);
+    }
+}
+
+function renderBTCPrediction(prediction) {
+    const container = document.getElementById('btc-prediction');
+    
+    if (!prediction) {
+        container.innerHTML = '<div class="pred-loading">⏳ No BTC prediction available yet</div>';
+        return;
+    }
+    
+    const direction = prediction.direction || 'FLAT';
+    const confidence = Math.round((prediction.confidence || 0) * 100);
+    const expectedMove = (prediction.expected_move || 0).toFixed(2);
+    const horizonH = prediction.horizon_h || 6;
+    
+    // Calculate time remaining
+    const runAt = prediction.run_at || Date.now() / 1000;
+    const now = Date.now() / 1000;
+    const ageSeconds = now - runAt;
+    const ageMinutes = Math.floor(ageSeconds / 60);
+    const timeRemaining = (horizonH * 3600) - ageSeconds;
+    const hoursRemaining = Math.floor(timeRemaining / 3600);
+    const minutesRemaining = Math.floor((timeRemaining % 3600) / 60);
+    
+    // Direction styling
+    const directionIcon = direction === 'UP' ? '📈' : direction === 'DOWN' ? '📉' : '➡️';
+    const directionClass = direction === 'UP' ? 'bullish' : direction === 'DOWN' ? 'bearish' : 'neutral';
+    const directionLabel = direction === 'UP' ? 'BULLISH' : direction === 'DOWN' ? 'BEARISH' : 'NEUTRAL';
+    
+    // Confidence styling
+    const confidenceClass = confidence >= 55 ? 'high' : confidence >= 45 ? 'medium' : 'low';
+    
+    container.innerHTML = `
+        <div class="btc-pred-main">
+            <div class="btc-pred-direction ${directionClass}">
+                <span class="direction-icon">${directionIcon}</span>
+                <span class="direction-label">${directionLabel}</span>
+            </div>
+            <div class="btc-pred-confidence ${confidenceClass}">
+                <span class="confidence-value">${confidence}%</span>
+                <span class="confidence-label">Confidence</span>
+            </div>
+            <div class="btc-pred-move">
+                <span class="move-value">${expectedMove > 0 ? '+' : ''}${expectedMove}%</span>
+                <span class="move-label">Expected Move</span>
+            </div>
+        </div>
+        <div class="btc-pred-meta">
+            <div class="meta-item">
+                <span class="meta-icon">⏱️</span>
+                <span class="meta-text">${hoursRemaining}h ${minutesRemaining}m remaining</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-icon">🕐</span>
+                <span class="meta-text">Generated ${ageMinutes}m ago</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-icon">🎯</span>
+                <span class="meta-text">6-Hour Horizon (GHOST MAX v2.0)</span>
+            </div>
+        </div>
+    `;
 }
 
 // Panel 1: Top Movers
@@ -514,17 +616,10 @@ async function loadForecast() {
         if (labelEl) labelEl.textContent = `Forecast for ${currentForecastSymbol}`;
         
         console.log(`[FORECAST] Loaded for ${currentForecastSymbol}:`, pred);
-        console.log(`[FORECAST] Direction: ${pred.direction}, Confidence: ${pred.confidence}, Move: ${pred.expected_move}`);
+        console.log(`[FORECAST] Direction: ${pred.direction}, Confidence: ${pred.confidence}, Move: ${pred.expected_move}, Horizon: ${pred.horizon_h}h`);
         
-        // Generate differentiated forecasts for each timeframe
-        // 24h: Full confidence
-        updateForecastCard(0, pred, '☀️', '24h', 1.0);
-        
-        // 2-5d: Moderate confidence decay (70% of original)
-        updateForecastCard(1, pred, '⛅', '2-5d', 0.7);
-        
-        // 7-14d: Lower confidence decay (50% of original)  
-        updateForecastCard(2, pred, '🌤️', '7-14d', 0.5);
+        // NEW: Display 6-hour prediction in card 0, price range in card 1, target in card 2
+        updateForecastCard6h(pred);
     } catch (error) {
         console.error('[GHOST V3] Error loading forecast:', error);
         
@@ -532,10 +627,58 @@ async function loadForecast() {
         if (labelEl) labelEl.textContent = `❌ ${currentForecastSymbol} unavailable`;
         
         // Graceful degradation: show "no data" state
-        for (let i = 0; i < 3; i++) {
-            updateForecastCard(i, {direction: 'FLAT', confidence: 0, expected_move: 0}, ['☀️', '⛅', '🌤️'][i], ['24h', '2-5d', '7-14d'][i], 1.0);
-        }
+        const cards = document.querySelectorAll('.forecast-card');
+        cards.forEach(card => {
+            const probEl = card.querySelector('.prob-value');
+            const moveEl = card.querySelector('.move-value');
+            const lowEl = card.querySelector('.low-value');
+            const highEl = card.querySelector('.high-value');
+            const currentEl = card.querySelector('.current-value');
+            const targetEl = card.querySelector('.target-value');
+            
+            if (probEl) probEl.textContent = '--';
+            if (moveEl) moveEl.textContent = '--';
+            if (lowEl) lowEl.textContent = '--';
+            if (highEl) highEl.textContent = '--';
+            if (currentEl) currentEl.textContent = '--';
+            if (targetEl) targetEl.textContent = '--';
+        });
     }
+}
+
+function updateForecastCard6h(prediction) {
+    const cards = document.querySelectorAll('.forecast-card');
+    if (cards.length < 3) {
+        console.error('[FORECAST] Not enough cards in DOM');
+        return;
+    }
+    
+    const direction = prediction.direction || 'FLAT';
+    let confidence = (prediction.confidence || 0) * 100;
+    const expectedMove = prediction.expected_move || 0;
+    
+    // Card 0: 6-Hour Forecast (Main prediction)
+    const card0 = cards[0];
+    card0.querySelector('.forecast-direction').textContent = 
+        direction === 'UP' ? '↑ BUY' : direction === 'DOWN' ? '↓ SELL' : '→ FLAT';
+    card0.querySelector('.forecast-direction').className = 
+        `forecast-direction ${direction === 'UP' ? 'bullish' : direction === 'DOWN' ? 'bearish' : 'neutral'}`;
+    card0.querySelector('.prob-value').textContent = confidence.toFixed(0);
+    card0.querySelector('.move-value').textContent = expectedMove.toFixed(2);
+    
+    // Card 1: Expected Range (calculate from expected move)
+    const card1 = cards[1];
+    const lowMove = expectedMove * 0.5;  // Conservative estimate
+    const highMove = expectedMove * 1.5;  // Aggressive estimate
+    card1.querySelector('.low-value').textContent = `${lowMove > 0 ? '+' : ''}${lowMove.toFixed(2)}%`;
+    card1.querySelector('.high-value').textContent = `${highMove > 0 ? '+' : ''}${highMove.toFixed(2)}%`;
+    
+    // Card 2: Target Price (show as placeholder - would need current price from API)
+    const card2 = cards[2];
+    card2.querySelector('.current-value').textContent = '--';
+    card2.querySelector('.target-value').textContent = '--';
+    
+    console.log(`[FORECAST 6H] Direction=${direction}, Confidence=${confidence.toFixed(0)}%, Move=${expectedMove.toFixed(2)}%`);
 }
 
 function updateForecastCard(index, prediction, icon, timeframe, confidenceMultiplier = 1.0) {
