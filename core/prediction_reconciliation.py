@@ -149,46 +149,94 @@ class PredictionReconciliation:
         return result
 
     def _fetch_pending_predictions(self) -> list[dict[str, Any]]:
-        """Fetch predictions that need reconciliation"""
+        """Fetch predictions that need reconciliation from PostgreSQL"""
         predictions = []
 
         try:
-            with sqlite3.connect(str(PREDICTIONS_DB)) as conn:
-                # Get predictions from ghost_predictions table
-                # Look for predictions where horizon window has closed
-                now = time.time()
+            # Use PostgreSQL prediction store instead of SQLite
+            from core.prediction_store import get_prediction_store
+            import os
+            
+            store = get_prediction_store()
+            now = time.time()
+            
+            # Check if using PostgreSQL (production) or SQLite (local)
+            is_postgres = os.getenv("DATABASE_URL", "").startswith("postgresql")
+            
+            if is_postgres and hasattr(store, 'engine'):
+                # PostgreSQL query
+                from sqlalchemy import text
+                logger.info("Fetching pending predictions from PostgreSQL...")
                 
-                rows = conn.execute("""
-                    SELECT 
-                        id,
-                        symbol,
-                        run_at,
-                        horizon_h,
-                        direction,
-                        confidence,
-                        features
-                    FROM ghost_predictions
-                    WHERE run_at < ? - (horizon_h * 3600)
-                    ORDER BY run_at DESC
-                    LIMIT 100
-                """, (now,)).fetchall()
-
-                for row in rows:
-                    import json
-                    features = json.loads(row[6]) if row[6] else {}
+                with store.engine.connect() as conn:
+                    result = conn.execute(text("""
+                        SELECT 
+                            id,
+                            symbol,
+                            run_at,
+                            horizon_h,
+                            direction,
+                            confidence,
+                            features_json
+                        FROM ghost_predictions
+                        WHERE run_at < :now - (horizon_h * 3600)
+                        ORDER BY run_at DESC
+                        LIMIT 100
+                    """), {"now": now})
                     
-                    predictions.append({
-                        "id": row[0],
-                        "symbol": row[1],
-                        "run_at": row[2],
-                        "horizon_h": row[3],
-                        "direction": row[4],
-                        "confidence": row[5],
-                        "price_at_prediction": features.get("current_price", 0)
-                    })
+                    rows = result.fetchall()
+                    logger.info(f"Found {len(rows)} predictions ready for reconciliation in PostgreSQL")
+                    
+                    for row in rows:
+                        import json
+                        features = json.loads(row[6]) if row[6] else {}
+                        
+                        predictions.append({
+                            "id": row[0],
+                            "symbol": row[1],
+                            "run_at": row[2],
+                            "horizon_h": row[3],
+                            "direction": row[4],
+                            "confidence": row[5],
+                            "price_at_prediction": features.get("current_price", 0)
+                        })
+            else:
+                # Fallback to SQLite for local development
+                logger.info("Fetching pending predictions from SQLite (local)...")
+                with sqlite3.connect(str(PREDICTIONS_DB)) as conn:
+                    rows = conn.execute("""
+                        SELECT 
+                            id,
+                            symbol,
+                            run_at,
+                            horizon_h,
+                            direction,
+                            confidence,
+                            features
+                        FROM ghost_predictions
+                        WHERE run_at < ? - (horizon_h * 3600)
+                        ORDER BY run_at DESC
+                        LIMIT 100
+                    """, (now,)).fetchall()
+                    
+                    logger.info(f"Found {len(rows)} predictions ready for reconciliation in SQLite")
+
+                    for row in rows:
+                        import json
+                        features = json.loads(row[6]) if row[6] else {}
+                        
+                        predictions.append({
+                            "id": row[0],
+                            "symbol": row[1],
+                            "run_at": row[2],
+                            "horizon_h": row[3],
+                            "direction": row[4],
+                            "confidence": row[5],
+                            "price_at_prediction": features.get("current_price", 0)
+                        })
 
         except Exception as e:
-            logger.error(f"Failed to fetch pending predictions: {e}")
+            logger.error(f"Failed to fetch pending predictions: {e}", exc_info=True)
 
         return predictions
 
