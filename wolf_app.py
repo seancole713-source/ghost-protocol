@@ -3647,6 +3647,30 @@ async def _on_startup():
         LOGGER.error(f"accuracy_evaluator_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
+    # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
+    try:
+        import asyncio as _asyncio_module
+        from core.self_improvement_engine import run_improvement_cycle
+        
+        async def _self_improvement_loop():
+            """Background task to autonomously improve Ghost every hour"""
+            while True:
+                try:
+                    await _asyncio_module.sleep(3600)  # Run every hour
+                    LOGGER.info("🧠 [SELF-IMPROVEMENT] Starting autonomous improvement cycle...")
+                    # Run in thread pool to avoid blocking asyncio
+                    loop = _asyncio_module.get_event_loop()
+                    changes = await loop.run_in_executor(None, run_improvement_cycle)
+                    LOGGER.info(f"🧠 [SELF-IMPROVEMENT] Cycle complete: {changes}")
+                except Exception as improve_err:
+                    LOGGER.error(f"🧠 [SELF-IMPROVEMENT] Cycle error: {improve_err}", exc_info=False)
+        
+        _asyncio_module.create_task(_self_improvement_loop())
+        LOGGER.info("🧠 [GHOST STARTUP] ✅ Phase 4 Self-Improvement Engine active (hourly cycles)")
+    except Exception as e:
+        LOGGER.error(f"self_improvement_engine_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # Start Personal Watchlist Prediction Scheduler
     # DISABLED TEMPORARILY: Causing system overload - will re-enable after optimization
     # try:
@@ -7168,6 +7192,64 @@ async def api_accuracy_simulate_list_tasks(
             "ok": False,
             "error": str(e)
         }
+
+
+@APP.get("/api/v3/self-improvement/status")
+async def api_self_improvement_status():
+    """
+    Get Self-Improvement Engine Status (Phase 4)
+
+    Returns current state of autonomous learning system including:
+    - Iteration count (how many improvement cycles completed)
+    - Threshold history (VIX-based dynamic adjustments)
+    - Missed opportunities detected
+    - Universe expansions (symbols added to watchlist)
+    - Confidence calibration errors
+    - Performance attribution by model
+
+    Returns:
+        {
+            "ok": true,
+            "iterations": 42,
+            "current_threshold": 3.5,
+            "vix": 18.2,
+            "last_cycle": "2025-01-01T12:00:00Z",
+            "threshold_history": [
+                {"timestamp": 1735732800, "vix": 18.2, "old": 4.0, "new": 3.5}
+            ],
+            "missed_opportunities_last_24h": 5,
+            "universe_size": 63,
+            "confidence_calibration": {
+                "40-60": {"claimed": 0.5, "actual": 0.48, "error": -0.02},
+                "60-70": {"claimed": 0.65, "actual": 0.62, "error": -0.03}
+            },
+            "model_performance": {
+                "ghost_ai": {"win_rate": 0.68, "sample_size": 1200},
+                "technical": {"win_rate": 0.61, "sample_size": 1200}
+            }
+        }
+    """
+    try:
+        from core.self_improvement_engine import get_self_improvement_engine
+
+        engine = get_self_improvement_engine()
+        status = engine.get_status()
+
+        return {
+            "ok": True,
+            **status
+        }
+
+    except Exception as e:
+        LOGGER.error(f"🧠 Self-improvement status error: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": "self_improvement_status_failed",
+                "message": str(e)
+            }
+        )
 
 
 @APP.post("/api/v3/accuracy/ab_test")
