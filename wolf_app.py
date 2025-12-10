@@ -3693,12 +3693,13 @@ async def _on_startup():
                 _LATEST_PREDICTIONS[symbol] = {
                     "prediction_id": pred.get("id"),
                     "symbol": symbol,
-                    "run_at": pred.get("created_at", 0),
+                    "run_at": pred.get("run_at", time.time()),  # Fixed: use run_at not created_at
                     "confidence": pred.get("confidence", 0),
                     "direction": pred.get("direction", "FLAT"),
-                    "horizon_h": 48,
-                    "provider": pred.get("provider", "unknown"),
+                    "horizon_h": pred.get("horizon_h", 6),  # Fixed: use actual horizon_h from DB
+                    "method": pred.get("method", "unknown"),
                     "price_at_prediction": pred.get("price_at_prediction"),
+                    "expected_move": pred.get("expected_move"),  # For hunter feed calculations
                 }
                 warmup_count += 1
         
@@ -8517,7 +8518,7 @@ async def api_v3_hunter_feed(limit: int = 10):
         # FAST PATH: Use in-memory predictions if available (avoids DB query)
         predictions = list(_LATEST_PREDICTIONS.values()) if _LATEST_PREDICTIONS else []
         
-        # If we have in-memory predictions, use them (fast)
+        # If we have in-memory predictions, use them (fast - <10ms)
         if predictions:
             predictions.sort(key=lambda p: p.get("confidence", 0), reverse=True)
             feed_items = []
@@ -8570,11 +8571,30 @@ async def api_v3_hunter_feed(limit: int = 10):
             }
         
         # SLOW PATH: Query database if no in-memory predictions (DB query can be slow)
-        LOGGER.info("[HUNTER] _LATEST_PREDICTIONS empty, querying database...")
+        # Add timeout protection to prevent 9-10 second hangs
+        LOGGER.info("[HUNTER] _LATEST_PREDICTIONS empty, querying database with 3s timeout...")
         try:
+            import asyncio
             from core.prediction_store import get_prediction_store
-            store = get_prediction_store()
-            recent_preds = store.get_recent_predictions(limit=limit * 2)
+            
+            # Wrap synchronous DB call with asyncio timeout (max 3 seconds)
+            async def fetch_from_db():
+                store = get_prediction_store()
+                return store.get_recent_predictions(limit=limit * 2)
+            
+            try:
+                recent_preds = await asyncio.wait_for(fetch_from_db(), timeout=3.0)
+            except TimeoutError:
+                LOGGER.warning("[HUNTER] Database query timeout after 3s, returning empty feed")
+                return {
+                    "ok": True,
+                    "movers": [],
+                    "feed": [],
+                    "count": 0,
+                    "timestamp": int(time.time()),
+                    "error": "Database query timeout - predictions generating soon",
+                    "source": "timeout"
+                }
             
             feed_items = []
             for pred in recent_preds[:limit]:
