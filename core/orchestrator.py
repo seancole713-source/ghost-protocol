@@ -49,6 +49,7 @@ _SYSTEM_STATUS = {
     "market_scanner": {"status": "stopped", "last_run": 0, "error": None},
     "daily_reports": {"status": "stopped", "last_run": 0, "error": None},
     "outcome_reconciler": {"status": "stopped", "last_run": 0, "error": None},
+    "autonomous_execution": {"status": "stopped", "last_run": 0, "error": None},
 }
 
 
@@ -246,14 +247,16 @@ async def start_all_background_services(
     # ============================================================================
     # PHASE 5: STAGE 1 CONTEXT ENGINE (Hourly RSS/Sentiment Refresh)
     # ============================================================================
-    # NOTE: Context engine needs background updater implementation
-    # Disabled until start_background_updater() function is created
-    context_enabled = False  # os.getenv("STAGE1_CONTEXT_ENABLED", "1") == "1"
+    context_enabled = os.getenv("STAGE1_CONTEXT_ENABLED", "1") == "1"
     
     if context_enabled:
         try:
             from core.context_engine import start_background_updater
-            _TASKS["context_engine"] = asyncio.create_task(start_background_updater())
+            
+            # Start background updater with 60-minute refresh interval
+            _TASKS["context_engine"] = asyncio.create_task(
+                start_background_updater(refresh_interval_minutes=60)
+            )
             _SYSTEM_STATUS["context_engine"]["status"] = "running"
             _SYSTEM_STATUS["context_engine"]["last_run"] = int(time.time())
             LOGGER.info("✅ Stage 1 Context Engine: STARTED (hourly refresh)")
@@ -263,7 +266,7 @@ async def start_all_background_services(
             LOGGER.error(f"❌ Stage 1 Context Engine FAILED: {e}", exc_info=True)
     else:
         _SYSTEM_STATUS["context_engine"]["status"] = "disabled"
-        LOGGER.info("⚪ Stage 1 Context Engine: DISABLED (needs background updater implementation)")
+        LOGGER.info("⚪ Stage 1 Context Engine: DISABLED (set STAGE1_CONTEXT_ENABLED=1 to enable)")
     
     # ============================================================================
     # PHASE 6: MARKET SCANNER (Autonomous Opportunity Detection)
@@ -362,6 +365,36 @@ async def start_all_background_services(
     else:
         _SYSTEM_STATUS["outcome_reconciler"]["status"] = "disabled"
         LOGGER.info("⚪ Outcome Reconciler: DISABLED (OUTCOME_RECONCILER_ENABLED=0)")
+    
+    # ============================================================================
+    # PHASE 5: AUTONOMOUS EXECUTION ENGINE (Trade on Predictions)
+    # ============================================================================
+    auto_execution_enabled = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
+    
+    if auto_execution_enabled:
+        try:
+            from core.autonomous_execution_engine import start_autonomous_execution_loop
+            
+            # Get execution interval (default: 300s = 5 minutes)
+            execution_interval_s = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))
+            
+            _TASKS["autonomous_execution"] = asyncio.create_task(
+                start_autonomous_execution_loop(interval_s=execution_interval_s)
+            )
+            _SYSTEM_STATUS["autonomous_execution"]["status"] = "running"
+            _SYSTEM_STATUS["autonomous_execution"]["last_run"] = int(time.time())
+            
+            execution_interval_min = execution_interval_s // 60
+            LOGGER.info(f"✅ Autonomous Execution Engine: STARTED ({execution_interval_min}min interval)")
+            LOGGER.warning("⚠️  [AUTO-EXEC] LIVE TRADING ENABLED - Monitor positions carefully!")
+        except Exception as e:
+            _SYSTEM_STATUS["autonomous_execution"]["status"] = "failed"
+            _SYSTEM_STATUS["autonomous_execution"]["error"] = str(e)
+            LOGGER.error(f"❌ Autonomous Execution FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["autonomous_execution"]["status"] = "disabled"
+        LOGGER.info("⚪ Autonomous Execution Engine: DISABLED (set AUTO_EXECUTION_ENABLED=1 to enable)")
+        LOGGER.info("   ℹ️  Predictions will be generated but not automatically traded")
     
     # ============================================================================
     # ORCHESTRATION COMPLETE

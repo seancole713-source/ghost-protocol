@@ -565,3 +565,106 @@ def create_context_engine(
     )
 
     return WorldContextEngine(feeds, watchlist=watchlist)
+
+
+# ============================================================================
+# BACKGROUND UPDATER - Required for Orchestrator Integration
+# ============================================================================
+
+async def start_background_updater(
+    refresh_interval_minutes: int = 60,
+    db_path: str = "data/context_news.db",
+    watchlist: list[str] | None = None,
+) -> None:
+    """
+    Background task that refreshes RSS feeds every N minutes.
+    
+    This is the missing piece that enables Stage 1 Context Engine
+    to run continuously in production.
+    
+    Args:
+        refresh_interval_minutes: How often to refresh feeds (default: 60)
+        db_path: Path to context news database
+        watchlist: List of tickers to track
+    
+    Usage in orchestrator:
+        from core.context_engine import start_background_updater
+        _TASKS["context_engine"] = asyncio.create_task(
+            start_background_updater(refresh_interval_minutes=60)
+        )
+    """
+    import asyncio
+    import os
+    
+    # Default RSS feeds (25 sources)
+    default_feeds = [
+        "https://feeds.reuters.com/reuters/topNews",
+        "https://feeds.reuters.com/reuters/businessNews",
+        "https://feeds.reuters.com/reuters/companyNews",
+        "https://www.marketwatch.com/rss/topstories",
+        "https://www.marketwatch.com/rss/marketpulse",
+        "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+        "https://feeds.finance.yahoo.com/rss/2.0/headline",
+        "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+        "https://www.cnbc.com/id/10001147/device/rss/rss.html",
+        "https://feeds.bloomberg.com/markets/news.rss",
+        "https://techcrunch.com/feed/",
+        "https://www.theverge.com/rss/index.xml",
+        "https://www.wired.com/feed/rss",
+        "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=&company=&dateb=&owner=include&start=0&count=40&output=atom",
+    ]
+    
+    # Get watchlist from environment or use defaults
+    if watchlist is None:
+        watchlist_str = os.getenv("CONTEXT_WATCHLIST", "")
+        watchlist = [s.strip() for s in watchlist_str.split(",") if s.strip()] if watchlist_str else None
+    
+    # Initialize context engine
+    engine = WorldContextEngine(
+        feeds=default_feeds,
+        db_path=db_path,
+        watchlist=watchlist,
+    )
+    
+    logging.info(f"🧠 Context Engine Background Updater: STARTED")
+    logging.info(f"   Refresh interval: {refresh_interval_minutes} minutes")
+    logging.info(f"   RSS feeds: {len(default_feeds)}")
+    logging.info(f"   Watchlist: {len(engine.watchlist)} symbols")
+    
+    refresh_count = 0
+    
+    try:
+        while True:
+            try:
+                refresh_count += 1
+                logging.info(f"🔄 Context Engine: Starting refresh #{refresh_count}")
+                
+                # Refresh all RSS feeds
+                articles_added = engine.refresh()
+                
+                # Prune old articles (keep last 7 days)
+                deleted = engine.prune_old_articles(keep_days=7)
+                
+                # Get stats
+                stats = engine.get_stats()
+                
+                logging.info(
+                    f"✅ Context Engine: Refresh #{refresh_count} complete | "
+                    f"Added: {articles_added}, Deleted: {deleted}, "
+                    f"Total: {stats['total_articles']}, Last 24h: {stats['articles_last_24h']}"
+                )
+                
+                # Wait for next refresh interval
+                await asyncio.sleep(refresh_interval_minutes * 60)
+                
+            except asyncio.CancelledError:
+                logging.info("🛑 Context Engine: Background updater cancelled")
+                break
+            except Exception as e:
+                logging.error(f"❌ Context Engine: Refresh failed: {e}", exc_info=True)
+                # Continue on error, retry after 5 minutes
+                await asyncio.sleep(300)
+                
+    finally:
+        engine.close()
+        logging.info("🧠 Context Engine: Background updater stopped")

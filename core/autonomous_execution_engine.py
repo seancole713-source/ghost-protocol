@@ -44,10 +44,10 @@ LOGGER = logging.getLogger(__name__)
 AUTO_EXECUTION_ENABLED = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
 
 # Decision thresholds
-AUTO_EXECUTION_MIN_CONFIDENCE = float(os.getenv("AUTO_EXECUTION_MIN_CONFIDENCE", "70"))
-AUTO_EXECUTION_MAX_POSITIONS = int(os.getenv("AUTO_EXECUTION_MAX_POSITIONS", "5"))
+AUTO_EXECUTION_MIN_CONFIDENCE = float(os.getenv("AUTO_EXECUTION_MIN_CONFIDENCE", "60"))  # Lowered from 70 to 60
+AUTO_EXECUTION_MAX_POSITIONS = int(os.getenv("AUTO_EXECUTION_MAX_POSITIONS", "10"))  # Increased from 5 to 10
 AUTO_EXECUTION_INTERVAL_S = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))  # 5 min
-AUTO_EXECUTION_MARKET_HOURS_ONLY = os.getenv("AUTO_EXECUTION_MARKET_HOURS_ONLY", "1") == "1"
+AUTO_EXECUTION_MARKET_HOURS_ONLY = os.getenv("AUTO_EXECUTION_MARKET_HOURS_ONLY", "0") == "1"  # Allow 24/7 trading
 
 # Position sizing
 AUTO_EXECUTION_DEFAULT_KELLY_FRACTION = float(os.getenv("AUTO_EXECUTION_KELLY_FRACTION", "0.25"))
@@ -539,6 +539,96 @@ def resume_trading():
     _execution_state["circuit_breaker_active"] = False
     _execution_state["circuit_breaker_reason"] = ""
     LOGGER.info("▶️  [AUTO-EXEC] Trading resumed")
+
+
+# ============================================================================
+# BACKGROUND LOOP - For Orchestrator Integration
+# ============================================================================
+
+async def start_autonomous_execution_loop(interval_s: int = None) -> None:
+    """
+    Background task that runs autonomous execution cycles at regular intervals.
+    
+    This is the orchestrator integration point that enables fully autonomous trading.
+    
+    Args:
+        interval_s: How often to run execution cycles (default: AUTO_EXECUTION_INTERVAL_S)
+    
+    Usage in orchestrator:
+        from core.autonomous_execution_engine import start_autonomous_execution_loop
+        _TASKS["autonomous_execution"] = asyncio.create_task(
+            start_autonomous_execution_loop(interval_s=300)
+        )
+    """
+    import asyncio
+    
+    if interval_s is None:
+        interval_s = AUTO_EXECUTION_INTERVAL_S
+    
+    LOGGER.info(f"🤖 Autonomous Execution Loop: STARTED")
+    LOGGER.info(f"   Interval: {interval_s}s ({interval_s/60:.1f} minutes)")
+    LOGGER.info(f"   Min Confidence: {AUTO_EXECUTION_MIN_CONFIDENCE}%")
+    LOGGER.info(f"   Max Positions: {AUTO_EXECUTION_MAX_POSITIONS}")
+    LOGGER.info(f"   Enabled: {AUTO_EXECUTION_ENABLED}")
+    
+    if not AUTO_EXECUTION_ENABLED:
+        LOGGER.warning("⚠️  [AUTO-EXEC] Engine disabled via AUTO_EXECUTION_ENABLED=0")
+        LOGGER.info("   Set AUTO_EXECUTION_ENABLED=1 to enable autonomous trading")
+        # Still start the loop but it will skip execution
+    
+    engine = get_execution_engine()
+    cycle_count = 0
+    
+    try:
+        while True:
+            try:
+                cycle_count += 1
+                cycle_start = time.time()
+                
+                LOGGER.info(f"🔄 [AUTO-EXEC] Starting cycle #{cycle_count}")
+                
+                # Run execution cycle (synchronous, but fast)
+                result = await asyncio.to_thread(engine.run_execution_cycle)
+                
+                cycle_duration = time.time() - cycle_start
+                
+                if result.get("ok"):
+                    if result.get("trades_executed", 0) > 0:
+                        LOGGER.info(
+                            f"✅ [AUTO-EXEC] Cycle #{cycle_count} complete in {cycle_duration:.1f}s | "
+                            f"Trades: {result['trades_executed']}, "
+                            f"Evaluated: {result['predictions_evaluated']}, "
+                            f"Skipped: {result['predictions_skipped']}"
+                        )
+                    else:
+                        LOGGER.debug(
+                            f"[AUTO-EXEC] Cycle #{cycle_count} complete in {cycle_duration:.1f}s | "
+                            f"No trades executed (evaluated {result['predictions_evaluated']} predictions)"
+                        )
+                else:
+                    errors = result.get("errors", [])
+                    if errors:
+                        LOGGER.warning(
+                            f"⚠️  [AUTO-EXEC] Cycle #{cycle_count} failed: {', '.join(errors)}"
+                        )
+                
+                # Update state tracking
+                _execution_state["last_cycle_time"] = cycle_start
+                _execution_state["total_cycles"] = cycle_count
+                
+                # Wait for next interval
+                await asyncio.sleep(interval_s)
+                
+            except asyncio.CancelledError:
+                LOGGER.info("🛑 [AUTO-EXEC] Background loop cancelled")
+                break
+            except Exception as e:
+                LOGGER.error(f"❌ [AUTO-EXEC] Cycle error: {e}", exc_info=True)
+                # Continue on error, retry after 60 seconds
+                await asyncio.sleep(60)
+                
+    finally:
+        LOGGER.info("🤖 [AUTO-EXEC] Background loop stopped")
 
 
 # ============================================================================
