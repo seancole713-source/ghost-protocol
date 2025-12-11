@@ -3708,7 +3708,13 @@ async def _on_startup():
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
     
     # Schedule post-startup initialization in background (non-blocking)
-    asyncio.create_task(_post_startup_init())
+    # Use asyncio.get_running_loop() to ensure task is created in the right loop
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_post_startup_init())
+        LOGGER.info("[GHOST STARTUP] 📋 Post-startup tasks scheduled (will run in 5s)")
+    except Exception as task_err:
+        LOGGER.error(f"[GHOST STARTUP] ❌ Failed to schedule post-startup tasks: {task_err}", exc_info=True)
 
 
 async def _post_startup_init():
