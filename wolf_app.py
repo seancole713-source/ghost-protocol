@@ -3647,77 +3647,7 @@ async def _on_startup():
         LOGGER.error(f"accuracy_evaluator_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
-    # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
-    try:
-        import asyncio as _asyncio_module
-        from core.self_improvement_engine import run_improvement_cycle
-        
-        async def _self_improvement_loop():
-            """Background task to autonomously improve Ghost every hour"""
-            while True:
-                try:
-                    await _asyncio_module.sleep(3600)  # Run every hour
-                    LOGGER.info("🧠 [SELF-IMPROVEMENT] Starting autonomous improvement cycle...")
-                    # Run in thread pool to avoid blocking asyncio
-                    loop = _asyncio_module.get_event_loop()
-                    changes = await loop.run_in_executor(None, run_improvement_cycle)
-                    LOGGER.info(f"🧠 [SELF-IMPROVEMENT] Cycle complete: {changes}")
-                except Exception as improve_err:
-                    LOGGER.error(f"🧠 [SELF-IMPROVEMENT] Cycle error: {improve_err}", exc_info=False)
-        
-        _asyncio_module.create_task(_self_improvement_loop())
-        LOGGER.info("🧠 [GHOST STARTUP] ✅ Phase 4 Self-Improvement Engine active (hourly cycles)")
-    except Exception as e:
-        LOGGER.error(f"self_improvement_engine_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
-        # Non-critical - continue startup
-
-    # Stage 5: Start Autonomous Execution Engine (Phase 5 - Master Control)
-    LOGGER.info("🤖 [GHOST STARTUP] Initializing Phase 5 Autonomous Execution Engine...")
-    try:
-        import asyncio as _asyncio_module
-        from core.autonomous_execution_engine import run_execution_cycle
-        import os
-        
-        execution_enabled = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
-        execution_interval = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))
-        
-        LOGGER.info(f"🤖 [GHOST STARTUP] Phase 5 config loaded: enabled={execution_enabled}, interval={execution_interval}s")
-        
-        if execution_enabled:
-            async def _autonomous_execution_loop():
-                """Background task to execute trades every 5 minutes"""
-                # Wait 60s after startup before first cycle
-                await _asyncio_module.sleep(60)
-                
-                while True:
-                    try:
-                        LOGGER.info("🤖 [AUTO-EXECUTION] Starting execution cycle...")
-                        # Run in thread pool to avoid blocking asyncio
-                        loop = _asyncio_module.get_event_loop()
-                        result = await loop.run_in_executor(None, run_execution_cycle)
-                        LOGGER.info(f"🤖 [AUTO-EXECUTION] Cycle complete: {result.get('status', 'unknown')}")
-                    except Exception as exec_err:
-                        LOGGER.error(f"🤖 [AUTO-EXECUTION] Cycle error: {exec_err}", exc_info=True)
-                    
-                    await _asyncio_module.sleep(execution_interval)
-            
-            _asyncio_module.create_task(_autonomous_execution_loop())
-            LOGGER.info(f"🤖 [GHOST STARTUP] ✅ Phase 5 Autonomous Execution ACTIVE (interval={execution_interval}s)")
-        else:
-            LOGGER.info("🤖 [GHOST STARTUP] Phase 5 Autonomous Execution DISABLED (set AUTO_EXECUTION_ENABLED=1 to enable)")
-    except Exception as e:
-        LOGGER.error(f"🚨 [GHOST STARTUP] Phase 5 initialization FAILED: {e}", extra={"component": "startup"}, exc_info=True)
-        # Non-critical - continue startup
-
-    # Start Personal Watchlist Prediction Scheduler
-    # DISABLED TEMPORARILY: Causing system overload - will re-enable after optimization
-    # try:
-    #     from core.watchlist_prediction_scheduler import start_watchlist_scheduler
-    #     start_watchlist_scheduler()
-    #     LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist scheduler started")
-    # except Exception as e:
-    #     LOGGER.error(f"watchlist_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    #     # Non-critical - continue startup
+    # Phase 4/5 moved to _post_startup_init() to avoid blocking startup event
     LOGGER.info("[GHOST STARTUP] ⚠️  Personal watchlist scheduler DISABLED (optimization in progress)")
 
     # Start Outcome Reconciler (70% Accuracy Goal)
@@ -3880,6 +3810,61 @@ async def _post_startup_init():
         LOGGER.info("✅ Pre-Market Predictor: STARTED (7AM CT weekdays)")
     except Exception as e:
         LOGGER.error(f"premarket_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
+    # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
+    try:
+        from core.self_improvement_engine import run_improvement_cycle
+        
+        async def _self_improvement_loop():
+            """Background task to autonomously improve Ghost every hour"""
+            while True:
+                try:
+                    await asyncio.sleep(3600)  # Run every hour
+                    LOGGER.info("🧠 [SELF-IMPROVEMENT] Starting autonomous improvement cycle...")
+                    loop = asyncio.get_event_loop()
+                    changes = await loop.run_in_executor(None, run_improvement_cycle)
+                    LOGGER.info(f"🧠 [SELF-IMPROVEMENT] Cycle complete: {changes}")
+                except Exception as improve_err:
+                    LOGGER.error(f"🧠 [SELF-IMPROVEMENT] Cycle error: {improve_err}", exc_info=False)
+        
+        asyncio.create_task(_self_improvement_loop())
+        LOGGER.info("🧠 [POST-STARTUP] ✅ Phase 4 Self-Improvement Engine active (hourly cycles)")
+    except Exception as e:
+        LOGGER.error(f"self_improvement_engine_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
+    # Stage 5: Start Autonomous Execution Engine (Phase 5 - Master Control)
+    LOGGER.info("🤖 [POST-STARTUP] Initializing Phase 5 Autonomous Execution Engine...")
+    try:
+        from core.autonomous_execution_engine import run_execution_cycle
+        import os
+        
+        execution_enabled = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
+        execution_interval = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))
+        
+        LOGGER.info(f"🤖 [POST-STARTUP] Phase 5 config loaded: enabled={execution_enabled}, interval={execution_interval}s")
+        
+        if execution_enabled:
+            async def _autonomous_execution_loop():
+                """Background task to execute trades every 5 minutes"""
+                await asyncio.sleep(60)  # Wait 60s before first cycle
+                
+                while True:
+                    try:
+                        LOGGER.info("🤖 [AUTO-EXECUTION] Starting execution cycle...")
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(None, run_execution_cycle)
+                        LOGGER.info(f"🤖 [AUTO-EXECUTION] Cycle complete: {result.get('status', 'unknown')}")
+                    except Exception as exec_err:
+                        LOGGER.error(f"🤖 [AUTO-EXECUTION] Cycle error: {exec_err}", exc_info=True)
+                    
+                    await asyncio.sleep(execution_interval)
+            
+            asyncio.create_task(_autonomous_execution_loop())
+            LOGGER.info(f"🤖 [POST-STARTUP] ✅ Phase 5 Autonomous Execution ACTIVE (interval={execution_interval}s)")
+        else:
+            LOGGER.info("🤖 [POST-STARTUP] Phase 5 Autonomous Execution DISABLED (set AUTO_EXECUTION_ENABLED=1 to enable)")
+    except Exception as e:
+        LOGGER.error(f"🚨 [POST-STARTUP] Phase 5 initialization FAILED: {e}", extra={"component": "startup"}, exc_info=True)
     
     # Start Telegram daily report scheduler (Ghost Investment Hunter)
     try:
