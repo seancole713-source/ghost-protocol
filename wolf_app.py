@@ -8459,6 +8459,144 @@ async def api_v3_phase5_status():
         }
 
 
+@APP.get("/api/v3/trade/dashboard")
+async def api_v3_trade_dashboard():
+    """
+    Phase 6: Get real-time trade monitoring dashboard.
+    """
+    try:
+        from core.trade_monitor import get_dashboard_summary
+        return get_dashboard_summary()
+    except Exception as e:
+        LOGGER.error(f"Trade dashboard error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/trade/history")
+async def api_v3_trade_history(limit: int = 100):
+    """
+    Phase 6: Get recent trade history.
+    """
+    try:
+        from core.trade_monitor import get_trade_history
+        return {
+            "ok": True,
+            "trades": get_trade_history(limit),
+            "timestamp": datetime.now(UTC).isoformat()
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/analytics/report")
+async def api_v3_analytics_report():
+    """
+    Phase 7: Get comprehensive analytics report.
+    """
+    try:
+        from core.analytics_engine import get_analytics_report
+        return get_analytics_report()
+    except Exception as e:
+        LOGGER.error(f"Analytics report error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/production/status")
+async def api_v3_production_status():
+    """
+    Phase 9: Get production trading status and safety limits.
+    """
+    try:
+        from core.production_trading import get_status
+        return get_status()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/v3/production/kill-switch")
+async def api_v3_kill_switch(activate: bool, reason: str = "Manual activation"):
+    """
+    Phase 9: Activate/deactivate emergency kill switch.
+    """
+    try:
+        from core.production_trading import activate_kill_switch, get_production_controller
+        
+        controller = get_production_controller()
+        if activate:
+            controller.activate_kill_switch(reason)
+        else:
+            controller.deactivate_kill_switch()
+        
+        return {
+            "ok": True,
+            "kill_switch_active": controller.kill_switch_active,
+            "message": "Kill switch activated" if activate else "Kill switch deactivated"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/strategies/performance")
+async def api_v3_strategies_performance():
+    """
+    Phase 10: Get multi-strategy performance metrics.
+    """
+    try:
+        from core.multi_strategy_engine import get_strategy_performance
+        return get_strategy_performance()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/v3/strategies/rebalance")
+async def api_v3_strategies_rebalance():
+    """
+    Phase 10: Trigger strategy allocation rebalancing.
+    """
+    try:
+        from core.multi_strategy_engine import get_strategy_engine
+        
+        engine = get_strategy_engine()
+        engine.rebalance_allocations()
+        
+        return {
+            "ok": True,
+            "message": "Strategy allocations rebalanced",
+            "performance": engine.get_performance_summary()
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.websocket("/ws/trades")
+async def websocket_trades(websocket: WebSocket):
+    """
+    Phase 6: WebSocket endpoint for real-time trade updates.
+    """
+    await websocket.accept()
+    
+    try:
+        from core.trade_monitor import register_websocket, unregister_websocket
+        
+        register_websocket(websocket)
+        LOGGER.info("[WS] Trade monitor client connected")
+        
+        # Keep connection alive
+        while True:
+            try:
+                data = await websocket.receive_text()
+                # Echo ping/pong
+                if data == "ping":
+                    await websocket.send_text("pong")
+            except Exception as e:
+                LOGGER.warning(f"[WS] Client disconnected: {e}")
+                break
+    
+    finally:
+        unregister_websocket(websocket)
+        LOGGER.info("[WS] Trade monitor client disconnected")
+
+
 @APP.get("/api/v3/goals/set")
 async def api_v3_goals_set(period: str, target_amount: float):
     """
