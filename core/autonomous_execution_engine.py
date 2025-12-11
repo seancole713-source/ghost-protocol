@@ -241,7 +241,7 @@ class AutonomousExecutionEngine:
                         # Execute trade
                         trade_result = self._execute_trade(decision, account)
                         
-                        if trade_result["ok"]:
+                        if trade_result.get("status") == "success":
                             trades_executed += 1
                             _execution_state["trades_today"] += 1
                             _execution_state["last_trade_time"] = time.time()

@@ -3859,9 +3859,10 @@ async def _post_startup_init():
                         LOGGER.info("🤖 [AUTO-EXECUTION] Starting execution cycle...")
                         loop = asyncio.get_event_loop()
                         result = await loop.run_in_executor(None, run_execution_cycle)
-                        LOGGER.info(f"🤖 [AUTO-EXECUTION] Cycle complete: {result.get('status', 'unknown')}")
+                        status = result.get('status', 'unknown') if isinstance(result, dict) else 'unknown'
+                        LOGGER.info(f"🤖 [AUTO-EXECUTION] Cycle complete: {status}")
                     except Exception as exec_err:
-                        LOGGER.error(f"🤖 [AUTO-EXECUTION] Cycle error: {exec_err}", exc_info=True)
+                        LOGGER.error(f"🤖 [AUTO-EXECUTION] Cycle error: {exec_err}", exc_info=False)
                     
                     await asyncio.sleep(execution_interval)
             
