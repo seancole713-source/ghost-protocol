@@ -8428,6 +8428,37 @@ async def api_v3_health_metrics():
         }
 
 
+@APP.get("/api/v3/phase5/status")
+async def api_v3_phase5_status():
+    """
+    Get Phase 5 autonomous execution engine status.
+    
+    Returns current state of the autonomous trading system.
+    """
+    try:
+        from core.autonomous_execution_engine import get_execution_status
+        
+        status = get_execution_status()
+        return {
+            "ok": True,
+            "phase5": status,
+            "timestamp": datetime.now(UTC).isoformat()
+        }
+    
+    except ImportError as e:
+        return {
+            "ok": False,
+            "error": "Phase 5 module not found - not deployed",
+            "details": str(e)
+        }
+    except Exception as e:
+        LOGGER.error(f"Phase 5 status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
 @APP.get("/api/v3/goals/set")
 async def api_v3_goals_set(period: str, target_amount: float):
     """
