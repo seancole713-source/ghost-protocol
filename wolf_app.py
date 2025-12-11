@@ -3672,6 +3672,7 @@ async def _on_startup():
         # Non-critical - continue startup
 
     # Stage 5: Start Autonomous Execution Engine (Phase 5 - Master Control)
+    LOGGER.info("🤖 [GHOST STARTUP] Initializing Phase 5 Autonomous Execution Engine...")
     try:
         import asyncio as _asyncio_module
         from core.autonomous_execution_engine import run_execution_cycle
@@ -3679,6 +3680,8 @@ async def _on_startup():
         
         execution_enabled = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
         execution_interval = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))
+        
+        LOGGER.info(f"🤖 [GHOST STARTUP] Phase 5 config loaded: enabled={execution_enabled}, interval={execution_interval}s")
         
         if execution_enabled:
             async def _autonomous_execution_loop():
@@ -3694,16 +3697,16 @@ async def _on_startup():
                         result = await loop.run_in_executor(None, run_execution_cycle)
                         LOGGER.info(f"🤖 [AUTO-EXECUTION] Cycle complete: {result.get('status', 'unknown')}")
                     except Exception as exec_err:
-                        LOGGER.error(f"🤖 [AUTO-EXECUTION] Cycle error: {exec_err}", exc_info=False)
+                        LOGGER.error(f"🤖 [AUTO-EXECUTION] Cycle error: {exec_err}", exc_info=True)
                     
                     await _asyncio_module.sleep(execution_interval)
             
             _asyncio_module.create_task(_autonomous_execution_loop())
-            LOGGER.info(f"🤖 [GHOST STARTUP] ✅ Phase 5 Autonomous Execution active (interval={execution_interval}s)")
+            LOGGER.info(f"🤖 [GHOST STARTUP] ✅ Phase 5 Autonomous Execution ACTIVE (interval={execution_interval}s)")
         else:
             LOGGER.info("🤖 [GHOST STARTUP] Phase 5 Autonomous Execution DISABLED (set AUTO_EXECUTION_ENABLED=1 to enable)")
     except Exception as e:
-        LOGGER.error(f"autonomous_execution_engine_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        LOGGER.error(f"🚨 [GHOST STARTUP] Phase 5 initialization FAILED: {e}", extra={"component": "startup"}, exc_info=True)
         # Non-critical - continue startup
 
     # Start Personal Watchlist Prediction Scheduler
