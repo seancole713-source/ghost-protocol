@@ -23,6 +23,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
+# Clear Python bytecode cache to prevent stale .pyc issues
+RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+RUN find /app -type f -name "*.pyc" -delete 2>/dev/null || true
+
 # Create data directories with proper permissions for Railway volume
 # /app/data will be mounted as Railway persistent volume
 RUN mkdir -p /app/data /data /tmp/prom_multiproc && \
