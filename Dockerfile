@@ -1,4 +1,5 @@
 # Ghost Trading System - Production Dockerfile
+# Force rebuild: Phase 5 deployment
 FROM python:3.11-slim
 
 # Install system dependencies
