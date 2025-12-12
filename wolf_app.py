@@ -724,6 +724,22 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         LOGGER.info(f"✅ AUTH BYPASS: {path} (system endpoint)")
         return await call_next(request)
 
+    # Allow TO THE MOON advanced system endpoints (monitoring/analysis - public)
+    if path.startswith("/api/walk_forward_analysis/"):
+        return await call_next(request)
+    if path.startswith("/api/monte_carlo/"):
+        return await call_next(request)
+    if path.startswith("/api/momentum_shift/"):
+        return await call_next(request)
+    if path.startswith("/api/research/"):
+        return await call_next(request)
+    if path.startswith("/api/hedging/"):
+        return await call_next(request)
+    if path.startswith("/api/system_status"):
+        return await call_next(request)
+    if path.startswith("/api/agentkit/"):
+        return await call_next(request)
+
     # Also allow prediction cockpit endpoints (read-only, no auth needed)
     if request.url.path.startswith("/api/predict/"):
         return await call_next(request)
