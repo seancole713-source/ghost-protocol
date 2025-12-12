@@ -3787,6 +3787,16 @@ async def _on_startup():
         LOGGER.info("[GHOST STARTUP] 📋 Post-startup tasks scheduled (will run in 5s)")
     except Exception as task_err:
         LOGGER.error(f"[GHOST STARTUP] ❌ Failed to schedule post-startup tasks: {task_err}", exc_info=True)
+    
+    # Start AI Advisor if enabled
+    if _os_module.getenv("AI_ADVISOR_ENABLED", "0") == "1":
+        try:
+            from core.ai_advisor.scanner import start_scanner
+            loop = asyncio.get_running_loop()
+            loop.create_task(start_scanner())
+            LOGGER.info("[GHOST STARTUP] 🤖 AI Advisor autonomous scanner started (30s intervals)")
+        except Exception as advisor_err:
+            LOGGER.error(f"[GHOST STARTUP] AI Advisor start failed: {advisor_err}", exc_info=False)
 
 
 async def _post_startup_init():
@@ -10623,6 +10633,220 @@ async def api_crypto_regime_current(
 # ═══════════════════════════════════════════════════════════════════════════════
 # AI ADVISOR - Autonomous market scanner + recommendations
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+@APP.get("/api/multi_timeframe/{symbol}")
+async def api_multi_timeframe(
+    symbol: str,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Get multi-timeframe forecasts (1h, 4h, 1d, 1w)
+    
+    Returns forecasts across all timeframes with alignment score.
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("MULTI_TIMEFRAME_ENABLED", "0") != "1":
+        raise HTTPException(503, "Multi-timeframe analysis not enabled. Set MULTI_TIMEFRAME_ENABLED=1")
+    
+    try:
+        from core.multi_timeframe import _generate_timeframe_forecast
+        
+        # Generate forecasts for all timeframes
+        forecasts = {
+            "1h": _generate_timeframe_forecast(symbol, "1h", 1),
+            "4h": _generate_timeframe_forecast(symbol, "4h", 4),
+            "1d": _generate_timeframe_forecast(symbol, "1d", 24),
+            "1w": _generate_timeframe_forecast(symbol, "1w", 168),
+        }
+        
+        # Calculate alignment score (how many timeframes agree on direction)
+        directions = [f.get("direction", "FLAT") for f in forecasts.values() if f.get("ok")]
+        if directions:
+            bullish = directions.count("UP")
+            bearish = directions.count("DOWN")
+            alignment_pct = max(bullish, bearish) / len(directions) * 100
+            consensus = "UP" if bullish > bearish else "DOWN" if bearish > bullish else "FLAT"
+        else:
+            alignment_pct = 0
+            consensus = "UNKNOWN"
+        
+        return {
+            "symbol": symbol.upper(),
+            "forecasts": forecasts,
+            "alignment": {
+                "consensus_direction": consensus,
+                "alignment_pct": round(alignment_pct, 1),
+                "bullish_count": bullish if directions else 0,
+                "bearish_count": bearish if directions else 0,
+            },
+            "timestamp": int(time.time()),
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Multi-timeframe forecast failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Forecast failed: {str(e)[:200]}")
+
+
+@APP.get("/api/backtest")
+async def api_backtest(
+    symbol: str = "WOLF",
+    strategy: str = "momentum",
+    start_date: str = None,
+    end_date: str = None,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Run historical backtest on a strategy
+    
+    Strategies: momentum, mean_reversion, breakout
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("BACKTESTING_ENABLED", "0") != "1":
+        raise HTTPException(503, "Backtesting not enabled. Set BACKTESTING_ENABLED=1")
+    
+    try:
+        from core.backtester import Backtester
+        from datetime import datetime, timedelta
+        
+        # Default to last 30 days
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        if not end_date:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+        
+        backtester = Backtester()
+        results = backtester.run(
+            symbol=symbol.upper(),
+            strategy=strategy,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return {
+            "symbol": symbol.upper(),
+            "strategy": strategy,
+            "period": {"start": start_date, "end": end_date},
+            "results": results,
+            "timestamp": int(time.time()),
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Backtest failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Backtest failed: {str(e)[:200]}")
+
+
+@APP.get("/api/social_sentiment/{symbol}")
+async def api_social_sentiment(
+    symbol: str,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Get social sentiment from Twitter/Reddit
+    
+    Returns sentiment score (-1.0 to +1.0) and mention count.
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("SOCIAL_SENTIMENT_ENABLED", "0") != "1":
+        raise HTTPException(503, "Social sentiment not enabled. Set SOCIAL_SENTIMENT_ENABLED=1")
+    
+    try:
+        from core.social_sentiment import fetch_twitter_sentiment, fetch_reddit_sentiment
+        
+        # Fetch from both sources
+        twitter = fetch_twitter_sentiment(symbol.upper())
+        reddit = fetch_reddit_sentiment(symbol.upper())
+        
+        # Combine scores (weighted average)
+        twitter_score = twitter.get("sentiment_score", 0) if twitter.get("ok") else 0
+        reddit_score = reddit.get("sentiment_score", 0) if reddit.get("ok") else 0
+        twitter_count = twitter.get("mention_count", 0) if twitter.get("ok") else 0
+        reddit_count = reddit.get("mention_count", 0) if reddit.get("ok") else 0
+        
+        total_mentions = twitter_count + reddit_count
+        if total_mentions > 0:
+            combined_score = (twitter_score * twitter_count + reddit_score * reddit_count) / total_mentions
+        else:
+            combined_score = 0.0
+        
+        return {
+            "symbol": symbol.upper(),
+            "combined": {
+                "sentiment_score": round(combined_score, 3),
+                "total_mentions": total_mentions,
+                "signal": "BULLISH" if combined_score > 0.2 else "BEARISH" if combined_score < -0.2 else "NEUTRAL",
+            },
+            "twitter": twitter,
+            "reddit": reddit,
+            "timestamp": int(time.time()),
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Social sentiment fetch failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Sentiment fetch failed: {str(e)[:200]}")
+
+
+@APP.get("/api/economic_calendar")
+async def api_economic_calendar(
+    days_ahead: int = 7,
+    importance: str = "high",
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Get upcoming economic events
+    
+    Importance: high, medium, low, all
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("ECONOMIC_CALENDAR_ENABLED", "0") != "1":
+        raise HTTPException(503, "Economic calendar not enabled. Set ECONOMIC_CALENDAR_ENABLED=1")
+    
+    try:
+        from core.economic_calendar import fetch_economic_calendar
+        
+        calendar = fetch_economic_calendar(days_ahead=days_ahead, importance=importance)
+        
+        return {
+            "query": {"days_ahead": days_ahead, "importance": importance},
+            "calendar": calendar,
+            "timestamp": int(time.time()),
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Economic calendar fetch failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Calendar fetch failed: {str(e)[:200]}")
 
 
 @APP.post("/api/advisor/start")
