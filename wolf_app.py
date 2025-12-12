@@ -3829,7 +3829,7 @@ async def _post_startup_init():
     # ═══════════════════════════════════════════════════════════════════════════════
     # TO THE MOON: Use Master Orchestrator for unified service management
     # ═══════════════════════════════════════════════════════════════════════════════
-    orchestrator_enabled = _os_module.getenv("ORCHESTRATOR_ENABLED", "0") == "1"
+    orchestrator_enabled = os.getenv("ORCHESTRATOR_ENABLED", "0") == "1"
     
     if orchestrator_enabled:
         try:
