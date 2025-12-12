@@ -7,7 +7,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Dict, Literal
 
 LOGGER = logging.getLogger(__name__)
 

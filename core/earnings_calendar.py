@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Dict
 
 import aiohttp
 

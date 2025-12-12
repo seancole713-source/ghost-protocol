@@ -6,7 +6,7 @@ Portfolio heat tracking, position sizing, correlation analysis, auto-hedge
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict
 
 LOGGER = logging.getLogger(__name__)
 

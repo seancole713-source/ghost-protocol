@@ -9,7 +9,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 LOGGER = logging.getLogger(__name__)
 

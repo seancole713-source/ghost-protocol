@@ -8,7 +8,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Dict, Literal
 
 import aiohttp
 
