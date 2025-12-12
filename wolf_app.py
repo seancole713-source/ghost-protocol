@@ -8055,44 +8055,34 @@ async def api_v3_watchlist_enriched():
 
 async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
     """
-    Fetch price and change for a single symbol.
+    Fetch price and change for a single symbol using Ghost's existing price infrastructure.
     Runs concurrently for better performance.
+    
+    FIXED: Replaced yfinance (which fails in production) with ensure_price_cached()
+    which uses Polygon for stocks and CoinGecko for crypto.
     
     Returns:
         {"price": float, "change_pct": float} or exception
     """
-    import yfinance as yf
-    
     try:
-        if symbol in CRYPTO_SYMBOLS:
-            ticker = yf.Ticker(f"{symbol}-USD")
+        # Use Ghost's existing price infrastructure (Polygon/CoinGecko)
+        result = await ensure_price_cached(
+            symbol,
+            strict_live=False,  # Allow cached prices for speed
+            drop_cache=False
+        )
+        
+        if result and result.get("price"):
+            return {
+                "price": result["price"],
+                "change_pct": result.get("change_pct", 0.0)
+            }
         else:
-            ticker = yf.Ticker(symbol)
-        
-        # Try fast_info first (much faster)
-        try:
-            price = ticker.fast_info.last_price
-            # Get 1-day history for change
-            hist = ticker.history(period="1d", interval="1d")
-            if len(hist) > 0:
-                open_price = hist['Open'].iloc[0]
-                close_price = hist['Close'].iloc[-1]
-                change_pct = ((close_price - open_price) / open_price) * 100 if open_price else 0.0
-            else:
-                change_pct = 0.0
-        except Exception:
-            # Fallback to info (slower)
-            info = ticker.info
-            price = info.get('regularMarketPrice') or info.get('currentPrice')
-            change_pct = info.get('regularMarketChangePercent', 0.0)
-        
-        return {
-            "price": price,
-            "change_pct": change_pct
-        }
+            LOGGER.debug(f"No price available for {symbol}")
+            return {"price": None, "change_pct": 0.0}
     
     except Exception as e:
-        LOGGER.debug(f"yfinance failed for {symbol}: {e}")
+        LOGGER.debug(f"Price fetch failed for {symbol}: {e}")
         return {"price": None, "change_pct": 0.0}
 
 
