@@ -4312,6 +4312,25 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.exception("auto_prediction_loop_start_failed", extra={"component": "startup", "error": str(e)})
 
+    # Start Daily Predictions Engine (6:00 AM briefing with top 5 picks)
+    try:
+        from core.daily_predictions_engine import inject_dependencies, daily_briefing_task
+        
+        # Inject Ghost's actual functions
+        inject_dependencies(
+            run_prediction_func=run_single_prediction_async,
+            stock_symbols=HUNTER_STOCK_SYMBOLS,
+            crypto_symbols=HUNTER_CRYPTO_SYMBOLS
+        )
+        
+        # Start background task
+        loop = asyncio.get_running_loop()
+        loop.create_task(daily_briefing_task())
+        
+        LOGGER.info("✅ Daily Predictions Engine: STARTED (6:00 AM CT briefing, top 5 picks)")
+    except Exception as e:
+        LOGGER.exception("daily_predictions_engine_start_failed", extra={"component": "startup", "error": str(e)})
+
     # Optional heartbeat (skip price fetch to avoid blocking startup)
     try:
         if TELEGRAM_HEARTBEAT_ON_START:
