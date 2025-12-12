@@ -3820,6 +3820,8 @@ async def _post_startup_init():
     Run Stage 4/5 and background tasks AFTER server starts accepting connections.
     This prevents blocking the startup event handler.
     """
+    import os  # Explicit import to prevent UnboundLocalError
+    
     # CRITICAL: Wait 5 seconds for FastAPI to fully initialize and healthcheck to pass
     # Railway healthcheck window is 100s - we need to respond IMMEDIATELY, then run tasks
     await asyncio.sleep(5)
