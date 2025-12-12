@@ -23,6 +23,84 @@
 
 ---
 
+## 🔐 BASELINE CRYPTOGRAPHIC FINGERPRINT
+
+**Manifest Checksum (SHA-256)**:
+```
+9baa0c88d1c1b725fb90c99f5b27db7d0a5f9aca99263e82bc84c6550df97eae
+```
+
+**Baseline Commit**:
+- **Local Git**: `0301fb5` ("LOCK: Working baseline snapshot")
+- **Railway Production**: Deployment from Dec 11, 2025 (commit 7740c6f6 - external reference)
+- **Note**: Railway commit may not exist in local history due to deployment workflow
+
+**Deployment Fingerprint**:
+- **Service**: tender-benevolence (Railway us-east4-eqdc4a)
+- **Domain**: ghost-protocol-production.up.railway.app
+- **Health Check**: `/health` returns 200 in <100ms
+- **Core API Count**: 10 endpoints (100% healthy on baseline date)
+
+---
+
+## 🔒 LOCKED MODULES (BASELINE-PROTECTED)
+
+**Core Prediction Engine**:
+- `core/ghost_predictor.py` (GhostPredictor class, feature engineering, LSTM model)
+- `core/prediction_store.py` (PostgresBackend, prediction persistence)
+- `core/accuracy_tracker.py` (outcome reconciliation, accuracy calculation)
+
+**API Layer**:
+- `wolf_app.py` (FastAPI application, routes `/api/v3/*`)
+- Endpoints: `/predictions/latest`, `/accuracy/summary`, `/watchlist/user`, `/health/metrics`
+
+**Database Schema**:
+- `ghost_predictions` table (PostgreSQL primary store)
+- `ghost_forecasts` table (horizon-specific predictions)
+- `accuracy_metrics` table (historical accuracy tracking)
+
+**Background Workers**:
+- `core/orchestrator.py` (service coordination, startup sequence)
+- `workers/prediction_scheduler.py` (periodic prediction generation)
+- `workers/accuracy_reconciler.py` (outcome verification loop)
+
+**CHANGE POLICY**:
+- 🔴 Modifications to these modules require regression test + review
+- 🟡 New features must be additive (no breaking changes to existing contracts)
+- 🟢 Bug fixes allowed if covered by regression tests
+
+---
+
+## 📈 REGRESSION COVERAGE
+
+**Test Suite**: `scripts/ghost_regression.sh`
+
+**Coverage Metrics**:
+- **API Endpoints**: 11/11 (100%)
+- **Core Workflows**: Prediction generation → Storage → Retrieval → Accuracy tracking
+- **Health Checks**: System metrics, database connectivity, external API availability
+- **Performance**: <8s response time validation on all endpoints
+
+**Test Inventory**:
+1. `/health` - System health check
+2. `/api/v3/health/metrics` - Prometheus metrics export
+3. `/api/v3/cockpit/status` - UI status aggregation
+4. `/api/v3/watchlist/user` - Personal watchlist retrieval
+5. `/api/v3/watchlist/enriched` - Market-wide watchlist (fallback)
+6. `/api/v3/predictions/latest` - Latest predictions query
+7. `/api/v3/goals/snapshot` - Trading goals progress
+8. `/api/v3/accuracy/summary` - Historical accuracy stats
+9. `/api/v3/hunter/feed` - Real-time market feed
+10. `/api/xrp/tracker` - XRP VIP tracker
+11. `/api/presale/watch` - Presale monitoring
+
+**Regression Pass Criteria**:
+- All endpoints return HTTP 200
+- No timeouts (all responses <8s)
+- Zero failures (exit code 0)
+
+---
+
 ## 📸 PRODUCTION BASELINE SNAPSHOT - December 11, 2025
 
 ### Environment: Railway Production (tender-benevolence)
