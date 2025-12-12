@@ -434,6 +434,194 @@ async def start_all_background_services(
         LOGGER.info("⚪ Spike Detector: DISABLED (set SPIKE_DETECTOR_ENABLED=1 to enable)")
     
     # ============================================================================
+    # PHASE 7: DAILY PREDICTIONS ENGINE (6 AM Briefing with 5 Picks)
+    # ============================================================================
+    daily_predictions_enabled = os.getenv("DAILY_PREDICTIONS_ENABLED", "1") == "1"
+    
+    if daily_predictions_enabled:
+        try:
+            from core.daily_predictions_engine import daily_briefing_scheduler
+            
+            _TASKS["daily_predictions"] = asyncio.create_task(daily_briefing_scheduler())
+            _SYSTEM_STATUS["daily_predictions"] = {
+                "status": "running",
+                "enabled": True,
+                "last_run": int(time.time()),
+                "next_briefing": "6:00 AM CT"
+            }
+            
+            LOGGER.info("🚀 Daily Predictions Engine: STARTED")
+            LOGGER.info("   ✅ Daily briefing at 6:00 AM CT")
+            LOGGER.info("   ✅ 5 picks (3 stocks + 2 crypto)")
+            LOGGER.info("   ✅ Multi-factor scoring (technical, sentiment, momentum)")
+            LOGGER.info("   ✅ Confidence % + expected gain % + price targets")
+        except Exception as e:
+            _SYSTEM_STATUS["daily_predictions"] = {
+                "status": "failed",
+                "enabled": False,
+                "error": str(e)
+            }
+            LOGGER.error(f"❌ Daily Predictions Engine FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["daily_predictions"] = {"status": "disabled", "enabled": False}
+        LOGGER.info("⚪ Daily Predictions Engine: DISABLED (set DAILY_PREDICTIONS_ENABLED=1 to enable)")
+    
+    # ============================================================================
+    # PHASE 8: LIVE RECALCULATOR (Real-Time Position Monitoring)
+    # ============================================================================
+    live_recalculator_enabled = os.getenv("LIVE_RECALCULATOR_ENABLED", "1") == "1"
+    
+    if live_recalculator_enabled:
+        try:
+            from core.live_recalculator import live_recalculator_loop
+            
+            _TASKS["live_recalculator"] = asyncio.create_task(live_recalculator_loop())
+            _SYSTEM_STATUS["live_recalculator"] = {
+                "status": "running",
+                "enabled": True,
+                "last_run": int(time.time()),
+                "update_interval": "5 minutes"
+            }
+            
+            LOGGER.info("🚀 Live Recalculator: STARTED")
+            LOGGER.info("   ✅ Real-time monitoring (5min market hours)")
+            LOGGER.info("   ✅ Dynamic confidence/target updates")
+            LOGGER.info("   ✅ Action triggers (EXIT/ADD/TAKE_PROFITS/STOP_HIT)")
+            LOGGER.info("   ✅ Trail stop automation")
+        except Exception as e:
+            _SYSTEM_STATUS["live_recalculator"] = {
+                "status": "failed",
+                "enabled": False,
+                "error": str(e)
+            }
+            LOGGER.error(f"❌ Live Recalculator FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["live_recalculator"] = {"status": "disabled", "enabled": False}
+        LOGGER.info("⚪ Live Recalculator: DISABLED (set LIVE_RECALCULATOR_ENABLED=1 to enable)")
+    
+    # ============================================================================
+    # PHASE 9: MARKET REGIME DETECTOR (Bull/Bear/Crash Detection)
+    # ============================================================================
+    market_regime_enabled = os.getenv("MARKET_REGIME_ENABLED", "1") == "1"
+    
+    if market_regime_enabled:
+        try:
+            from core.market_regime import regime_detector_loop
+            
+            _TASKS["market_regime"] = asyncio.create_task(regime_detector_loop())
+            _SYSTEM_STATUS["market_regime"] = {
+                "status": "running",
+                "enabled": True,
+                "last_run": int(time.time())
+            }
+            
+            LOGGER.info("🚀 Market Regime Detector: STARTED")
+            LOGGER.info("   ✅ VIX analysis (fear gauge)")
+            LOGGER.info("   ✅ SPY trend (SMA50/SMA200)")
+            LOGGER.info("   ✅ Sector rotation tracking")
+        except Exception as e:
+            _SYSTEM_STATUS["market_regime"] = {
+                "status": "failed",
+                "enabled": False,
+                "error": str(e)
+            }
+            LOGGER.error(f"❌ Market Regime Detector FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["market_regime"] = {"status": "disabled", "enabled": False}
+        LOGGER.info("⚪ Market Regime Detector: DISABLED")
+    
+    # ============================================================================
+    # PHASE 10: RISK MANAGER (Portfolio Heat Tracking)
+    # ============================================================================
+    risk_manager_enabled = os.getenv("RISK_MANAGER_ENABLED", "1") == "1"
+    
+    if risk_manager_enabled:
+        try:
+            from core.risk_manager import monitor_risk_loop
+            
+            _TASKS["risk_manager"] = asyncio.create_task(monitor_risk_loop())
+            _SYSTEM_STATUS["risk_manager"] = {
+                "status": "running",
+                "enabled": True,
+                "last_run": int(time.time())
+            }
+            
+            LOGGER.info("🚀 Risk Manager: STARTED")
+            LOGGER.info("   ✅ Portfolio heat tracking (max 20%)")
+            LOGGER.info("   ✅ Position sizing (Kelly Criterion)")
+            LOGGER.info("   ✅ Correlation analysis")
+        except Exception as e:
+            _SYSTEM_STATUS["risk_manager"] = {
+                "status": "failed",
+                "enabled": False,
+                "error": str(e)
+            }
+            LOGGER.error(f"❌ Risk Manager FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["risk_manager"] = {"status": "disabled", "enabled": False}
+        LOGGER.info("⚪ Risk Manager: DISABLED")
+    
+    # ============================================================================
+    # PHASE 11: ALERT MANAGER (Clean Telegram Formatting)
+    # ============================================================================
+    alert_manager_enabled = os.getenv("ALERT_MANAGER_ENABLED", "1") == "1"
+    
+    if alert_manager_enabled:
+        try:
+            from core.alert_manager import alert_processor_loop
+            
+            _TASKS["alert_manager"] = asyncio.create_task(alert_processor_loop())
+            _SYSTEM_STATUS["alert_manager"] = {
+                "status": "running",
+                "enabled": True,
+                "last_run": int(time.time())
+            }
+            
+            LOGGER.info("🚀 Alert Manager: STARTED")
+            LOGGER.info("   ✅ Clean Telegram formatting (├─ └─ hierarchy)")
+            LOGGER.info("   ✅ Alert prioritization (CRITICAL/HIGH/NORMAL/LOW)")
+        except Exception as e:
+            _SYSTEM_STATUS["alert_manager"] = {
+                "status": "failed",
+                "enabled": False,
+                "error": str(e)
+            }
+            LOGGER.error(f"❌ Alert Manager FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["alert_manager"] = {"status": "disabled", "enabled": False}
+        LOGGER.info("⚪ Alert Manager: DISABLED")
+    
+    # ============================================================================
+    # PHASE 12: PERFORMANCE TRACKER (Win/Loss Logging)
+    # ============================================================================
+    performance_tracker_enabled = os.getenv("PERFORMANCE_TRACKER_ENABLED", "1") == "1"
+    
+    if performance_tracker_enabled:
+        try:
+            from core.performance_tracker import performance_monitor_loop
+            
+            _TASKS["performance_tracker"] = asyncio.create_task(performance_monitor_loop())
+            _SYSTEM_STATUS["performance_tracker"] = {
+                "status": "running",
+                "enabled": True,
+                "last_run": int(time.time())
+            }
+            
+            LOGGER.info("🚀 Performance Tracker: STARTED")
+            LOGGER.info("   ✅ Win/loss logging")
+            LOGGER.info("   ✅ Confidence calibration")
+        except Exception as e:
+            _SYSTEM_STATUS["performance_tracker"] = {
+                "status": "failed",
+                "enabled": False,
+                "error": str(e)
+            }
+            LOGGER.error(f"❌ Performance Tracker FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["performance_tracker"] = {"status": "disabled", "enabled": False}
+        LOGGER.info("⚪ Performance Tracker: DISABLED")
+    
+    # ============================================================================
     # ORCHESTRATION COMPLETE
     # ============================================================================
     uptime = time.time() - _START_TIME
