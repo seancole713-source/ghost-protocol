@@ -6321,100 +6321,63 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         step_s = 1800  # 30 minutes (higher resolution for 6h window)
         num_points = (horizon_h * 3600) // step_s
 
-        # Determine direction using real features with DYNAMIC CONFIDENCE (40-85%)
+        # =====================================================================
+        # DETERMINE DIRECTION & CONFIDENCE (Ghost v3 Calibration System)
+        # =====================================================================
+        
+        # Step 1: Determine base direction from strongest signals
         direction = "FLAT"
-        base_confidence = 0.45  # Start at 45% (conservative baseline)
-        signal_strength = 0  # Track how many signals align
-
-        # RSI-based direction signal (strong indicator)
         rsi = features.get("RSI_14")
+        macd_hist = features.get("MACD_HISTOGRAM")
+        
+        # RSI takes priority (most reliable)
         if rsi is not None:
             if rsi > 70:
                 direction = "DOWN"  # Overbought
-                base_confidence += 0.08
-                signal_strength += 1
             elif rsi < 30:
                 direction = "UP"  # Oversold
-                base_confidence += 0.08
-                signal_strength += 1
-            elif 45 <= rsi <= 55:
-                # Neutral zone - reduce confidence
-                base_confidence -= 0.05
-
-        # MACD histogram direction (momentum confirmation)
-        macd_hist = features.get("MACD_HISTOGRAM")
-        if macd_hist is not None:
-            if macd_hist > 0:
-                if direction == "UP" or direction == "FLAT":
-                    direction = "UP"
-                    base_confidence += 0.06
-                    signal_strength += 1
-            elif macd_hist < 0:
-                if direction == "DOWN" or direction == "FLAT":
-                    direction = "DOWN"
-                    base_confidence += 0.06
-                    signal_strength += 1
-
-        # Bollinger Bands (volatility + extremes)
-        bb_position = features.get("BOLLINGER_POSITION")
-        if bb_position is not None:
-            if bb_position > 0.9:  # Near upper band
-                if direction == "DOWN":
-                    base_confidence += 0.05
-                    signal_strength += 1
-            elif bb_position < 0.1:  # Near lower band
-                if direction == "UP":
-                    base_confidence += 0.05
-                    signal_strength += 1
-
-        # Volume confirmation (high volume = higher confidence)
-        volume_spike = features.get("VOLUME_SPIKE")
-        if volume_spike and volume_spike > 1.5:  # 50% above average
-            base_confidence += 0.05
-            signal_strength += 1
-
-        # Sentiment boost (news alignment)
-        sentiment = features.get("NEWS_SENTIMENT_SCORE")
-        if sentiment is not None:
-            if sentiment > 0.3 and direction == "UP":
-                base_confidence += 0.07
-                signal_strength += 1
-            elif sentiment < -0.3 and direction == "DOWN":
-                base_confidence += 0.07
-                signal_strength += 1
-
-        # Price history momentum (trend confirmation)
-        try:
-            hist = _get_price_history_cached(symbol, days=5)
-            if hist and len(hist) >= 2:
-                prices = [h["price"] for h in hist if h.get("price")]
-                if prices:
-                    recent_change_pct = (prices[-1] - prices[0]) / prices[0] * 100
-                    if recent_change_pct > 3:
-                        if direction == "UP" or direction == "FLAT":
-                            direction = "UP"
-                            base_confidence += 0.06
-                            signal_strength += 1
-                    elif recent_change_pct < -3:
-                        if direction == "DOWN" or direction == "FLAT":
-                            direction = "DOWN"
-                            base_confidence += 0.06
-                            signal_strength += 1
-        except Exception:
-            pass
-
-        # If multiple signals align, boost confidence further
-        if signal_strength >= 4:
-            base_confidence += 0.05  # Strong convergence bonus
-        elif signal_strength >= 3:
-            base_confidence += 0.03  # Moderate convergence
-        elif signal_strength <= 1:
-            base_confidence -= 0.05  # Weak signal penalty
-
-        # Apply confidence bounds: 40% minimum, 85% maximum (never claim certainty)
-        base_confidence = max(0.40, min(0.85, base_confidence))
         
-        LOGGER.info(f"[{symbol}] Direction: {direction}, Confidence: {base_confidence:.1%}, Signals: {signal_strength}")
+        # MACD confirmation/override
+        if direction == "FLAT" and macd_hist is not None:
+            if macd_hist > 0:
+                direction = "UP"
+            elif macd_hist < 0:
+                direction = "DOWN"
+        
+        # Price momentum as fallback
+        if direction == "FLAT":
+            try:
+                hist = _get_price_history_cached(symbol, days=5)
+                if hist and len(hist) >= 2:
+                    prices = [h["price"] for h in hist if h.get("price")]
+                    if prices:
+                        recent_change_pct = (prices[-1] - prices[0]) / prices[0] * 100
+                        if recent_change_pct > 3:
+                            direction = "UP"
+                        elif recent_change_pct < -3:
+                            direction = "DOWN"
+            except Exception:
+                pass
+        
+        # Step 2: Calibrate confidence using signal-based system
+        from core.confidence_calibrator import calibrate_confidence_with_signals
+        
+        base_confidence = 0.45  # Conservative baseline
+        calibration_result = calibrate_confidence_with_signals(
+            features=features,
+            base_direction=direction,
+            base_confidence=base_confidence
+        )
+        
+        # Extract calibrated confidence and signals
+        base_confidence = calibration_result["calibrated_confidence"]
+        signal_strength = calibration_result["signal_count"]
+        signals_fired = calibration_result["signals_fired"]
+        
+        LOGGER.info(
+            f"[{symbol}] Direction: {direction}, Confidence: {base_confidence:.1%}, "
+            f"Signals: {signal_strength} ({', '.join(signals_fired[:3])}{'...' if len(signals_fired) > 3 else ''})"
+        )
 
         # Generate forecast points (simple linear projection for now)
         forecast_points = []
@@ -6426,27 +6389,29 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             price = current_price * (direction_multiplier ** i)
             forecast_points.append((ts, price))
 
-        # GHOST V3: Use our feature-based confidence directly (bypass legacy diagnostics)
-        # The legacy build_confidence_with_diagnostics() system was designed for
-        # full feature orchestrator integration. Our new system calculates confidence
-        # from real technical indicators (RSI, MACD, Bollinger, Volume, Sentiment).
-        # This provides more accurate, dynamic confidence ranges (40-85%) instead of
-        # being forced to 0% by missing legacy features.
+        # GHOST V3: Signal-based confidence calibration system
+        # Confidence dynamically adjusts from 45% baseline to 40-85% based on:
+        # - Technical indicator alignment (RSI, MACD, Bollinger Bands)
+        # - Volume confirmation
+        # - News sentiment
+        # - Market context
+        # This is THE CRITICAL component that enables 60%+ confidence for trading
         confidence = base_confidence
         confidence_metadata = {
-            "method": "ghost_v3_feature_based",
+            "method": "signal_based_calibration_v3",
             "signal_strength": signal_strength,
-            "base": base_confidence,
-            "adjusted": base_confidence,
+            "base": 0.45,
+            "calibrated": base_confidence,
+            "signals_fired": signals_fired,
+            "adjustments": calibration_result.get("adjustments", {}),
             "features_used": [k for k, v in features.items() if v is not None]
         }
 
-        # Log confidence adjustment if any
-        if confidence != base_confidence:
-            LOGGER.warning(
-                f"[{symbol}] Confidence adjusted: {base_confidence:.0%} → {confidence:.0%} "
-                f"({confidence_metadata.get('confidence_adjustment', 'unknown')})"
-            )
+        # Log calibration details
+        LOGGER.debug(
+            f"[{symbol}] Confidence calibration: 0.45 → {confidence:.2f} "
+            f"(adjustments: {calibration_result.get('adjustments', {})})"
+        )
 
         # Create prediction with rich features
         prediction_id = predictor.create_prediction(

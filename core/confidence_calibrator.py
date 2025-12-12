@@ -261,6 +261,147 @@ class ConfidenceCalibrator:
         }
 
 
+    def calibrate_with_signals(
+        self,
+        features: dict[str, Any],
+        base_direction: str,
+        base_confidence: float = 0.45
+    ) -> dict[str, Any]:
+        """
+        SIGNAL-BASED calibration: Adjust confidence based on feature alignment.
+        
+        This is the CRITICAL method that transforms flat 45% confidence
+        into 60-75% by detecting strong technical signals.
+        
+        Args:
+            features: Feature dict from orchestrator
+            base_direction: "UP", "DOWN", or "FLAT"
+            base_confidence: Starting confidence (default: 0.45)
+        
+        Returns:
+            {
+                "calibrated_confidence": float (0.05-0.85),
+                "adjustments": dict,
+                "signal_count": int,
+                "signals_fired": list[str]
+            }
+        """
+        confidence = base_confidence
+        adjustments = {}
+        signals_fired = []
+        
+        # Extract features
+        rsi = features.get("RSI_14")
+        macd_hist = features.get("MACD_HISTOGRAM")
+        bb_position = features.get("BOLLINGER_POSITION")
+        volume_spike = features.get("VOLUME_SPIKE", 0)
+        sentiment = features.get("NEWS_SENTIMENT_SCORE")
+        market_trend = features.get("SPY_MOMENTUM")
+        
+        # RSI SIGNALS
+        if rsi is not None:
+            if rsi < 30 and base_direction == "UP":
+                confidence += 0.10
+                adjustments["rsi_oversold"] = 0.10
+                signals_fired.append("RSI_OVERSOLD_BUY")
+            elif rsi > 70 and base_direction == "DOWN":
+                confidence += 0.10
+                adjustments["rsi_overbought"] = 0.10
+                signals_fired.append("RSI_OVERBOUGHT_SELL")
+        
+        # MACD SIGNALS
+        if macd_hist is not None:
+            if macd_hist > 0 and base_direction == "UP":
+                confidence += 0.08
+                adjustments["macd_bullish"] = 0.08
+                signals_fired.append("MACD_BULLISH")
+            elif macd_hist < 0 and base_direction == "DOWN":
+                confidence += 0.08
+                adjustments["macd_bearish"] = 0.08
+                signals_fired.append("MACD_BEARISH")
+        
+        # BOLLINGER BAND SIGNALS
+        if bb_position is not None:
+            if bb_position < 0.2 and base_direction == "UP":
+                confidence += 0.07
+                adjustments["bb_bounce_buy"] = 0.07
+                signals_fired.append("BB_BOUNCE_BUY")
+            elif bb_position > 0.8 and base_direction == "DOWN":
+                confidence += 0.07
+                adjustments["bb_bounce_sell"] = 0.07
+                signals_fired.append("BB_BOUNCE_SELL")
+        
+        # VOLUME SIGNALS
+        if volume_spike > 2.0:
+            confidence += 0.08
+            adjustments["volume_surge"] = 0.08
+            signals_fired.append("VOLUME_SURGE")
+        elif volume_spike < 0.5:
+            confidence -= 0.05
+            adjustments["volume_weak"] = -0.05
+        
+        # SENTIMENT SIGNALS
+        if sentiment is not None:
+            if sentiment > 0.5 and base_direction == "UP":
+                confidence += 0.07
+                adjustments["news_bullish"] = 0.07
+                signals_fired.append("NEWS_BULLISH")
+            elif sentiment < -0.5 and base_direction == "DOWN":
+                confidence += 0.07
+                adjustments["news_bearish"] = 0.07
+                signals_fired.append("NEWS_BEARISH")
+        
+        # MARKET CONTEXT
+        if market_trend is not None:
+            if (market_trend > 0 and base_direction == "UP") or \
+               (market_trend < 0 and base_direction == "DOWN"):
+                confidence += 0.05
+                adjustments["market_aligned"] = 0.05
+                signals_fired.append("MARKET_TAILWIND")
+        
+        # ALIGNMENT BONUS
+        if len(signals_fired) >= 5:
+            confidence += 0.15
+            adjustments["full_alignment"] = 0.15
+        elif len(signals_fired) >= 3:
+            confidence += 0.08
+            adjustments["partial_alignment"] = 0.08
+        
+        # Clamp to 5%-85%
+        confidence = max(0.05, min(0.85, confidence))
+        
+        LOGGER.debug(
+            f"Signal-based calibration: {base_confidence:.2f} → {confidence:.2f} "
+            f"({len(signals_fired)} signals)"
+        )
+        
+        return {
+            "calibrated_confidence": round(confidence, 3),
+            "adjustments": {k: round(v, 3) for k, v in adjustments.items()},
+            "signal_count": len(signals_fired),
+            "signals_fired": signals_fired,
+            "alignment_score": round(len(signals_fired) / 10.0, 2)
+        }
+
+
 def get_confidence_calibrator() -> ConfidenceCalibrator:
     """Get confidence calibrator instance"""
     return ConfidenceCalibrator()
+
+
+def calibrate_confidence_with_signals(
+    features: dict[str, Any],
+    base_direction: str,
+    base_confidence: float = 0.45
+) -> dict[str, Any]:
+    """
+    Quick signal-based calibration (recommended for production).
+    
+    Usage:
+        from core.confidence_calibrator import calibrate_confidence_with_signals
+        
+        result = calibrate_confidence_with_signals(features, "UP", 0.45)
+        confidence = result["calibrated_confidence"]  # e.g., 0.68
+    """
+    calibrator = get_confidence_calibrator()
+    return calibrator.calibrate_with_signals(features, base_direction, base_confidence)

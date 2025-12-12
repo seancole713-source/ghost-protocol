@@ -136,31 +136,46 @@ class WorldContextEngine:
         """
         total_new = 0
         total_skipped = 0
+        feed_success = 0
+        feed_failed = 0
 
         for feed_url in self.feeds:
             try:
-                with request.urlopen(feed_url, timeout=10) as response:
-                    parsed = feedparser.parse(response.read())
-
+                # Use feedparser directly (handles HTTP requests internally with better compatibility)
+                parsed = feedparser.parse(feed_url)
+                
+                # Check for parsing errors
+                if hasattr(parsed, 'bozo') and parsed.bozo:
+                    if hasattr(parsed, 'bozo_exception'):
+                        logging.warning(f"Feed parse warning {feed_url}: {parsed.bozo_exception}")
+                    # Continue anyway - feedparser often sets bozo=True for minor issues
+                
                 if not parsed.entries:
-                    logging.warning(f"No entries from feed: {feed_url}")
+                    logging.warning(f"No entries from feed: {feed_url} (status: {getattr(parsed, 'status', 'unknown')})")
+                    feed_failed += 1
                     continue
 
+                feed_success += 1
+                feed_articles = 0
                 for entry in parsed.entries[:max_per_feed]:
                     if self._process_article(entry, feed_url):
                         total_new += 1
+                        feed_articles += 1
                     else:
                         total_skipped += 1
+                
+                if feed_articles > 0:
+                    logging.debug(f"✓ {feed_url}: {feed_articles} new articles")
 
-            except error.URLError as e:
-                logging.error(f"Feed fetch error {feed_url}: {e}")
             except Exception as e:
                 logging.error(f"Feed error {feed_url}: {e}")
+                feed_failed += 1
 
         logging.info(
-            f"Feed fetch complete: {total_new} new articles, {total_skipped} duplicates skipped"
+            f"Feed fetch complete: {total_new} new articles, {total_skipped} duplicates | "
+            f"Feeds: {feed_success} success, {feed_failed} failed"
         )
-        return {"new_articles": total_new, "skipped": total_skipped}
+        return {"new_articles": total_new, "skipped": total_skipped, "feeds_success": feed_success, "feeds_failed": feed_failed}
 
     def _process_article(self, entry, source: str) -> bool:
         """
@@ -539,6 +554,19 @@ class WorldContextEngine:
             "db_path": self.db_path,
         }
 
+    def refresh(self, max_per_feed: int = 20) -> int:
+        """
+        Refresh RSS feeds and return number of new articles.
+        
+        Args:
+            max_per_feed: Maximum articles to process per feed
+            
+        Returns:
+            Number of new articles added
+        """
+        result = self.fetch_and_parse(max_per_feed=max_per_feed)
+        return result.get("new_articles", 0)
+
     def close(self):
         """Close database connection."""
         self.db.close()
@@ -610,22 +638,52 @@ async def start_background_updater(
     import asyncio
     import os
     
-    # Default RSS feeds (25 sources)
+    # Default RSS feeds (25 sources) - Updated with working endpoints
     default_feeds = [
-        "https://feeds.reuters.com/reuters/topNews",
+        # Financial News (Major)
         "https://feeds.reuters.com/reuters/businessNews",
-        "https://feeds.reuters.com/reuters/companyNews",
         "https://www.marketwatch.com/rss/topstories",
-        "https://www.marketwatch.com/rss/marketpulse",
-        "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
-        "https://feeds.finance.yahoo.com/rss/2.0/headline",
         "https://www.cnbc.com/id/100003114/device/rss/rss.html",
         "https://www.cnbc.com/id/10001147/device/rss/rss.html",
-        "https://feeds.bloomberg.com/markets/news.rss",
+        "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+        
+        # Tech/Business
         "https://techcrunch.com/feed/",
         "https://www.theverge.com/rss/index.xml",
         "https://www.wired.com/feed/rss",
-        "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=&company=&dateb=&owner=include&start=0&count=40&output=atom",
+        "https://feeds.arstechnica.com/arstechnica/index",
+        "https://www.engadget.com/rss.xml",
+        
+        # Crypto-Specific
+        "https://cointelegraph.com/rss",
+        "https://www.coindesk.com/arc/outboundfeeds/rss/",
+        "https://decrypt.co/feed",
+        "https://cryptopotato.com/feed/",
+        
+        # Market Data
+        "https://www.investing.com/rss/news.rss",
+        "https://www.investing.com/rss/news_285.rss",  # Crypto news
+        
+        # Alternative/Aggregators
+        "https://news.ycombinator.com/rss",
+        "https://www.reddit.com/r/wallstreetbets/.rss",
+        "https://www.reddit.com/r/CryptoCurrency/.rss",
+        "https://www.reddit.com/r/stocks/.rss",
+        
+        # SEC Filings (important for earnings/events)
+        "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=8-K&company=&dateb=&owner=include&start=0&count=40&output=atom",
+        
+        # Seeking Alpha (if accessible)
+        "https://seekingalpha.com/market_currents.xml",
+        
+        # Yahoo Finance
+        "https://finance.yahoo.com/news/rssindex",
+        
+        # Business Insider
+        "https://markets.businessinsider.com/rss/news",
+        
+        # Bloomberg (backup)
+        "https://www.bloomberg.com/feed/podcast/etf-report.xml",
     ]
     
     # Get watchlist from environment or use defaults
