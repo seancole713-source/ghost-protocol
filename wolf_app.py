@@ -6437,9 +6437,12 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "run_at": run_at,  # Store as float timestamp
             "confidence": confidence,
             "direction": direction,
+            "action": "BUY" if direction == "UP" else "SELL" if direction == "DOWN" else "HOLD",  # For autonomous execution
             "horizon_h": horizon_h,
             "provider": price_provider,
+            "price": current_price,  # For trade decision engine
             "price_at_prediction": current_price,
+            "market": "crypto" if symbol in ["BTC", "ETH", "SOL", "XRP"] else "stock",  # Market type
             "feature_status": feature_status.to_dict(),
             "confidence_metadata": confidence_metadata,
         }
