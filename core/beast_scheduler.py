@@ -19,20 +19,38 @@ TELEGRAM_ALERTS_MODULE = None  # telegram_alerts module
 _SCHEDULER_THREAD: threading.Thread | None = None
 _SCHEDULER_STOP = threading.Event()
 
-# Watch lists - EXPANDED WITH USER'S CASH APP UNIVERSE (200+ SYMBOLS)
+# Watch lists - EXPANDED WITH 300+ HIGHEST MOMENTUM SYMBOLS FROM CASH APP
 STOCK_SYMBOLS = [
     # Tech Giants & FAANG
     "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "META", "TSLA", "AMZN",
     
-    # User's Top Gainers/Actives from Cash App
-    "YOU", "RIVN", "LULU", "RH", "VERA", "SHAK", "CCC", "IMVT", "PL", "CELC",
-    "MMYT", "EVCM", "DNLI", "BLLN", "CAE", "COGT", "SLNO", "LNTH", "OLMA", "EWTX",
-    "NAVN", "MTN", "MLYS", "GE", "CMG", "VSCO", "MOS", "CYTK", "CAVA", "ENVA",
-    "SMG", "GLPI", "OSCR", "PLMR", "LIN", "COKE", "RGC", "AJG", "ROIV", "LFST",
-    "ATAT", "PACS", "ERIE",
+    # CANNABIS MEGA MOVERS (Today's +40-70% gainers!)
+    "TLRY", "CGC", "ACB", "SNDL", "TCNNF", "YCBD", "WEED",
+    
+    # TOP GAINERS - 52 WEEK (500%+ returns)
+    "QMMM", "RGC", "TAWNF", "ABVX", "DSVSF", "CDTX", "TMC", "CELC", "TERN", "SNDK",
+    "ONDS", "QBTS", "OKLO", "BMNR", "COGT", "EOSE", "OLMA", "FNMA", "ZBIO", "SATS",
+    "PL", "FMCC", "GRAL", "BE", "VSAT",
+    
+    # TODAY'S TOP GAINERS (+10%+)
+    "YOU", "RIVN", "LULU", "RH", "VERA", "SHAK", "CCC", "IMVT", "GE", "CMG",
+    "VSCO", "MOS", "CYTK", "CAVA", "ENVA", "SMG", "GLPI", "OSCR", "PLMR", "LIN",
+    "COKE", "AJG", "ROIV", "LFST", "ATAT", "PACS", "ERIE", "WLTH", "RYM",
+    
+    # TODAY'S TOP LOSERS (High Volume)
+    "FRMI", "SEI", "MOD", "ALAB", "RCUS", "LITE", "ECG", "NTSK", "CLS", "FLNC",
+    "RMBS", "AAOI", "SMR", "FN", "COHR", "CIEN", "VRT", "ASTS", "HPP", "CRWV",
+    "PLAB", "SANM", "HUT", "TTMI", "LGN", "PRIM", "LEU", "GLW", "GLXY", "NXT",
+    "SMTC", "LBRT", "VAL", "ANET", "APH", "STRL", "VIAV", "UEC", "DQ", "STX",
+    "Q", "MKSI", "FIX", "BTDR", "SBET", "MIR", "IE", "SXI", "NVMI", "UUUU",
+    "NVT", "IOT", "CEG", "RBRK", "MU", "TSEM", "SEZL", "WDC", "MTSI", "FIG",
+    "U", "LOGI", "SIMO", "ZIM", "USAR", "WCC", "FSLR", "WRBY", "CAMT", "IPGP",
+    "PWR", "APP", "VIA", "PONY", "AMKR", "CRCL", "AAON", "ESI", "DELL", "CIFR",
+    "QS", "BLTE", "AMBA", "AG", "POWL", "JBL", "TEL", "WULF", "SITM", "IRM",
+    "FLY", "HP",
     
     # User's Original Watchlist
-    "TLRY", "TAL", "ARCT", "TME", "HIMS", "PFE", "RDFN", "BILL", "XPO",
+    "TAL", "ARCT", "TME", "HIMS", "PFE", "RDFN", "BILL", "XPO",
     
     # User's Cash App Top Holdings
     "SHOP", "AVGO", "BAC", "V", "ADBE", "ABNB",
@@ -41,7 +59,7 @@ STOCK_SYMBOLS = [
     "WOLF",
     
     # High Volume Movers
-    "SPY", "QQQ", "GME", "AMC", "PLTR", "SOFI", "LCID", "NIO",
+    "SPY", "QQQ", "GME", "AMC", "PLTR", "SOFI", "LCID", "NIO", "LRCX",
     
     # Financial/Industrial
     "GS", "JPM", "MA", "C", "WFC", "MS",
@@ -68,7 +86,7 @@ STOCK_SYMBOLS = [
     "VICI", "O", "PLD", "AMT", "CCI",
     
     # Semiconductors/Hardware
-    "AMD", "INTC", "QCOM", "AVGO", "MU", "TSM",
+    "AMD", "INTC", "QCOM", "TSM",
     
     # Cloud/SaaS
     "CRM", "ORCL", "NOW", "SNOW", "DDOG", "NET",
@@ -80,7 +98,10 @@ STOCK_SYMBOLS = [
     "BA", "LMT", "RTX", "HON", "GD",
     
     # Financial Services
-    "BLK", "SCHW", "AXP", "USB", "PNC"
+    "BLK", "SCHW", "AXP", "USB", "PNC",
+    
+    # Additional High Volume Stocks
+    "MMYT", "EVCM", "DNLI", "BLLN", "CAE", "SLNO", "LNTH", "EWTX", "NAVN", "MTN", "MLYS"
 ]
 
 CRYPTO_SYMBOLS = [
