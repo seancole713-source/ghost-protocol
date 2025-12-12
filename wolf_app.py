@@ -4112,8 +4112,6 @@ async def _post_startup_init():
     # Sync STATE from ghost_state.json if positions are missing/empty
     try:
         if not STATE.get("positions") or STATE.get("positions") == []:
-            import os
-
             ghost_state_path = os.getenv("GHOST_STATE_PATH", "ghost_state.json")
             if os.path.exists(ghost_state_path):
                 with open(ghost_state_path, encoding="utf-8") as f:
