@@ -8358,6 +8358,107 @@ async def api_v3_goals_snapshot():
     
     except Exception as e:
         LOGGER.error(f"Goals snapshot failed: {e}", exc_info=True)
+
+
+# ============================================================================
+#  OPTION A OBSERVABILITY ENDPOINTS
+# ============================================================================
+
+@APP.get("/api/v3/orchestrator/status")
+async def api_v3_orchestrator_status():
+    """
+    Get Master Orchestrator status - all background services.
+    
+    Returns:
+        - Service statuses (running/stopped/disabled)
+        - Active task count
+        - System uptime
+        - Last run times for each service
+    """
+    try:
+        from core.orchestrator import get_system_status
+        status = get_system_status()
+        return status
+    except Exception as e:
+        LOGGER.error(f"Orchestrator status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "uptime_seconds": 0,
+            "services": {},
+            "active_tasks": 0,
+            "total_services": 0
+        }
+
+
+@APP.get("/api/v3/context/stats")
+async def api_v3_context_stats():
+    """
+    Get Stage 1 Context Engine statistics.
+    
+    Returns:
+        - Total articles in database
+        - Articles from last 24 hours
+        - Last refresh time
+        - RSS source count
+        - Database age span
+    """
+    try:
+        from core.context_engine import get_context_engine
+        engine = get_context_engine()
+        
+        if engine is None:
+            return {
+                "ok": False,
+                "error": "Context engine not initialized",
+                "enabled": False
+            }
+        
+        stats = engine.get_stats()
+        stats["ok"] = True
+        stats["enabled"] = True
+        return stats
+        
+    except Exception as e:
+        LOGGER.error(f"Context stats failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "enabled": False,
+            "total_articles": 0,
+            "recent_24h": 0
+        }
+
+
+@APP.get("/api/v3/execution/status")
+async def api_v3_execution_status():
+    """
+    Get Autonomous Execution Engine status.
+    
+    Returns:
+        - Enabled/disabled state
+        - Circuit breaker status
+        - Total execution cycles run
+        - Trades executed today
+        - Last cycle/trade times
+        - Configuration (min confidence, max positions, etc.)
+    """
+    try:
+        from core.autonomous_execution_engine import get_execution_status
+        status = get_execution_status()
+        return status
+        
+    except Exception as e:
+        LOGGER.error(f"Execution status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "enabled": False,
+            "circuit_breaker_active": True,
+            "circuit_breaker_reason": "Error fetching status",
+            "total_cycles": 0,
+            "trades_today": 0
+        }
         return {
             "ok": False,
             "goals": {},

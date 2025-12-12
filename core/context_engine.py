@@ -571,6 +571,20 @@ def create_context_engine(
 # BACKGROUND UPDATER - Required for Orchestrator Integration
 # ============================================================================
 
+# Global context engine instance for API access
+_CONTEXT_ENGINE: WorldContextEngine | None = None
+
+
+def get_context_engine() -> WorldContextEngine | None:
+    """
+    Get the active context engine instance.
+    
+    Returns None if context engine is not initialized or disabled.
+    Used by API endpoints to query context statistics.
+    """
+    return _CONTEXT_ENGINE
+
+
 async def start_background_updater(
     refresh_interval_minutes: int = 60,
     db_path: str = "data/context_news.db",
@@ -620,11 +634,13 @@ async def start_background_updater(
         watchlist = [s.strip() for s in watchlist_str.split(",") if s.strip()] if watchlist_str else None
     
     # Initialize context engine
+    global _CONTEXT_ENGINE
     engine = WorldContextEngine(
         feeds=default_feeds,
         db_path=db_path,
         watchlist=watchlist,
     )
+    _CONTEXT_ENGINE = engine  # Store for API access
     
     logging.info(f"🧠 Context Engine Background Updater: STARTED")
     logging.info(f"   Refresh interval: {refresh_interval_minutes} minutes")
