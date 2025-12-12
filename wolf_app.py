@@ -3644,7 +3644,6 @@ async def _on_startup():
         import asyncio as _asyncio_module
         from core.prediction_evaluator import evaluate_pending_predictions
         from core.feedback_loop import get_feedback_loop, PredictionOutcome
-        from core.accuracy_tracker import get_accuracy_tracker
         
         async def _accuracy_evaluator_loop():
             """Background task to evaluate prediction outcomes every hour + feed to learning system"""
@@ -3660,6 +3659,7 @@ async def _on_startup():
                     # Task #4: Check for completed predictions and learn from them
                     def _process_outcomes():
                         try:
+                            from core.accuracy_tracker import get_accuracy_tracker
                             tracker = get_accuracy_tracker()
                             feedback = get_feedback_loop()
                             
