@@ -33,6 +33,9 @@ _SPIKE_CACHE: dict[str, dict] = {}
 _VOLUME_BASELINE: dict[str, float] = {}
 _LAST_ALERTS: dict[str, float] = {}
 _ALERT_COOLDOWN = 300  # 5 minutes
+_DISCOVERED_SYMBOLS: set[str] = set()  # Dynamic watchlist
+_DISCOVERY_LAST_RUN = 0
+_DISCOVERY_INTERVAL = 300  # 5 minutes
 
 
 # ============================================================================
@@ -374,18 +377,23 @@ async def scan_all_spikes(symbols: list[str]) -> dict[str, Any]:
 # CONTINUOUS BACKGROUND SCANNER
 # ============================================================================
 
-async def spike_scanner_loop(symbols: list[str]):
+async def spike_scanner_loop(base_symbols: list[str]):
     """
-    Continuous background loop for spike detection
+    Continuous background loop for spike detection.
+    Combines core watchlist + dynamically discovered symbols.
     
     Args:
-        symbols: List of tickers to monitor
+        base_symbols: Core watchlist from beast_scheduler
     """
-    LOGGER.info(f"🚀 Spike detector started - monitoring {len(symbols)} symbols")
+    LOGGER.info(f"🚀 Spike detector started - monitoring {len(base_symbols)} core symbols + dynamic market discovery")
     
     while True:
         try:
-            results = await scan_all_spikes(symbols)
+            # Get complete symbol list (core + discovered)
+            all_symbols = await get_all_tracked_symbols(base_symbols)
+            
+            # Scan for spikes
+            results = await scan_all_spikes(all_symbols)
             
             # Send alerts for opportunities
             all_opportunities = (
@@ -466,5 +474,128 @@ async def send_spike_alerts(opportunities: list[dict[str, Any]]):
             
             LOGGER.info(f"📤 Sent spike alert for {symbol}")
             
+    except Exception as e:
+        LOGGER.error(f"Failed to send spike alerts: {e}", exc_info=True)
+
+
+# ============================================================================
+# 5. DYNAMIC MARKET-WIDE DISCOVERY (CATCH EVERYTHING!)
+# ============================================================================
+
+async def discover_market_movers() -> list[str]:
+    """
+    Scan ENTIRE market for any stock/crypto spiking >10% or 10x volume.
+    Uses Polygon.io "most active" and "top gainers" endpoints.
+    
+    Returns:
+        List of newly discovered symbols with significant activity
+    """
+    global _DISCOVERY_LAST_RUN, _DISCOVERED_SYMBOLS
+    
+    discovered = []
+    
+    # Rate limit: run every 5 minutes
+    if time.time() - _DISCOVERY_LAST_RUN < _DISCOVERY_INTERVAL:
+        return discovered
+    
+    LOGGER.info("🌍 SCANNING ENTIRE MARKET for new opportunities...")
+    
+    try:
+        polygon_key = os.getenv("POLYGON_API_KEY")
+        if not polygon_key:
+            LOGGER.warning("⚠️ POLYGON_API_KEY not set - market-wide discovery disabled")
+            return discovered
+        
+        async with aiohttp.ClientSession() as session:
+            # 1. Get top gainers (stocks)
+            gainers_url = f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/gainers?apiKey={polygon_key}"
+            async with session.get(gainers_url, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if "tickers" in data:
+                        for ticker in data["tickers"][:50]:  # Top 50
+                            symbol = ticker.get("ticker")
+                            change_pct = ticker.get("todaysChangePerc", 0)
+                            
+                            if change_pct >= 10.0:  # >10% gain
+                                discovered.append(symbol)
+                                _DISCOVERED_SYMBOLS.add(symbol)
+                                LOGGER.info(f"🔥 DISCOVERED: {symbol} +{change_pct:.1f}%")
+            
+            # 2. Get most active by volume (stocks)
+            active_url = f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers?apiKey={polygon_key}"
+            async with session.get(active_url, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if "tickers" in data:
+                        # Sort by volume
+                        sorted_tickers = sorted(
+                            data["tickers"],
+                            key=lambda x: x.get("day", {}).get("v", 0),
+                            reverse=True
+                        )[:100]  # Top 100 by volume
+                        
+                        for ticker in sorted_tickers:
+                            symbol = ticker.get("ticker")
+                            volume = ticker.get("day", {}).get("v", 0)
+                            prev_volume = ticker.get("prevDay", {}).get("v", 1)
+                            
+                            if prev_volume > 0:
+                                volume_ratio = volume / prev_volume
+                                if volume_ratio >= 10.0:  # 10x volume
+                                    if symbol not in discovered:
+                                        discovered.append(symbol)
+                                        _DISCOVERED_SYMBOLS.add(symbol)
+                                        LOGGER.info(f"🔊 DISCOVERED: {symbol} (volume {volume_ratio:.1f}x)")
+            
+            # 3. Get crypto gainers (if supported)
+            crypto_url = f"https://api.polygon.io/v2/snapshot/locale/global/markets/crypto/gainers?apiKey={polygon_key}"
+            async with session.get(crypto_url, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if "tickers" in data:
+                        for ticker in data["tickers"][:30]:  # Top 30 crypto
+                            symbol = ticker.get("ticker", "").replace("X:", "")
+                            change_pct = ticker.get("todaysChangePerc", 0)
+                            
+                            if change_pct >= 15.0:  # >15% crypto gain
+                                discovered.append(symbol)
+                                _DISCOVERED_SYMBOLS.add(symbol)
+                                LOGGER.info(f"🚀 DISCOVERED CRYPTO: {symbol} +{change_pct:.1f}%")
+        
+        _DISCOVERY_LAST_RUN = time.time()
+        
+        if discovered:
+            LOGGER.info(f"✅ Market scan complete: {len(discovered)} new opportunities found")
+        else:
+            LOGGER.info("ℹ️ Market scan complete: No new high-momentum symbols")
+        
+        return discovered
+        
+    except Exception as e:
+        LOGGER.error(f"Market discovery failed: {e}", exc_info=True)
+        return discovered
+
+
+async def get_all_tracked_symbols(base_symbols: list[str]) -> list[str]:
+    """
+    Combine base watchlist + dynamically discovered symbols.
+    
+    Args:
+        base_symbols: Core watchlist from beast_scheduler
+        
+    Returns:
+        Complete list of symbols to scan
+    """
+    # Run discovery every 5 minutes
+    newly_discovered = await discover_market_movers()
+    
+    # Merge base + discovered
+    all_symbols = list(set(base_symbols) | _DISCOVERED_SYMBOLS)
+    
+    if newly_discovered:
+        LOGGER.info(f"📊 Tracking {len(all_symbols)} symbols ({len(base_symbols)} core + {len(_DISCOVERED_SYMBOLS)} discovered)")
+    
+    return all_symbols
     except Exception as e:
         LOGGER.error(f"Failed to send spike alerts: {e}")
