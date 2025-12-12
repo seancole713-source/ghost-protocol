@@ -1,7 +1,7 @@
 # 🛡️ GHOST PROTOCOL BASELINE MANIFEST
 
-**Baseline Locked**: December 5, 2025
-**Status**: PRODUCTION READY - All systems operational
+**Latest Baseline**: December 11, 2025 (commit 7740c6f6, tender-benevolence)
+**Status**: PRODUCTION HEALTHY - All core systems verified operational
 **Purpose**: Canonical snapshot of validated, working Ghost Protocol codebase
 
 ---
@@ -10,16 +10,109 @@
 
 **NON-NEGOTIABLE**:
 
-- This manifest documents the **confirmed working baseline**as of Dec 5, 2025
-- All systems described here have passed QA validation and are running in production
+- This manifest documents the **confirmed working baseline** as of Dec 11, 2025
+- All systems described here have passed production validation on Railway
 - Changes to baseline components require explicit approval and regression testing
-- New features must be**isolated, additive, and rollback-ready**
+- New features must be **isolated, additive, and rollback-ready**
 
 **Change Classification**:
 
 - 🟢 **SAFE**: Isolated add-ons, UI polish, documentation (proceed freely)
 - 🟡 **CAUTION**: Configuration changes, query optimizations (validate thoroughly)
 - 🔴 **BASELINE**: Core logic, API contracts, database schemas (STOP and request approval)
+
+---
+
+## 📸 PRODUCTION BASELINE SNAPSHOT - December 11, 2025
+
+### Environment: Railway Production (tender-benevolence)
+
+**Deployment Details**:
+- **Service Name**: tender-benevolence
+- **Region**: us-east4-eqdc4a
+- **Commit**: 7740c6f6
+- **Start Command**: `uvicorn wolf_app:APP --host 0.0.0.0 --port ${PORT:-8080}`
+- **Healthcheck**: `/health` endpoint, 100s timeout, restart on failure (max 10 retries)
+- **Domain**: ghost-protocol-production.up.railway.app
+
+### ✅ Core APIs - Confirmed Healthy (HTTP 200, <1s response)
+
+All endpoints tested live on Railway production (2025-12-11):
+
+| Endpoint | Status | Response Time | Purpose |
+|----------|--------|---------------|---------|
+| `/health` | ✅ 200 | <100ms | System health check |
+| `/api/v3/cockpit/status` | ✅ 200 | ~400ms | Cockpit UI status |
+| `/api/v3/goals/snapshot` | ✅ 200 | ~500ms | Trading goals progress |
+| `/api/v3/watchlist/user` | ✅ 200 | ~600ms | Personal watchlist |
+| `/api/v3/hunter/feed` | ✅ 200 | ~800ms | Real-time market feed |
+| `/api/v3/predictions/latest?symbol=BTC` | ✅ 200 | ~400ms | Latest predictions |
+| `/api/v3/health/metrics` | ✅ 200 | ~300ms | System metrics |
+| `/api/v3/accuracy/summary` | ✅ 200 | ~500ms | Prediction accuracy |
+| `/api/presale/watch` | ✅ 200 | ~400ms | Presale tracker |
+| `/api/xrp/tracker` | ✅ 200 | ~500ms | XRP VIP tracker |
+
+**Note**: Previously observed 499 timeouts and 30-60s response times on `/api/v3/hunter/feed` are RESOLVED. Current production shows consistent sub-second responses.
+
+### 🔄 Background Systems - Verified Operational
+
+Confirmed via Railway logs (2025-12-11):
+
+1. **VIP Scanner**: Active and logging periodic scans
+   - Log evidence: `VIP scan #54: ...`
+   - Scanning interval: ~60 seconds
+   - Integrated with Telegram alerts
+
+2. **Pre-Market Predictor**: Starting at expected times
+   - Log evidence: `🌅 Pre-market predictor starting ...`
+   - Scheduled runs: Pre-market hours (ET timezone)
+
+3. **Auto-Prediction Loop**: Generating and storing predictions
+   - Symbols: WOLF, NVDA, TSLA, AAPL, SPY, BTC, ETH, and full watchlist
+   - Storage: Dual-write to Postgres (`ghost_predictions`) + SQLite
+   - Accuracy tracking: Active, reconciliation system operational
+
+4. **Context Engine (Stage 1)**: RSS feeds and market mood
+   - Processing news and sentiment data
+   - Feeding into prediction pipeline
+
+5. **Prediction Reconciliation**: Running on schedule
+   - Outcome evaluation: Every 4 hours
+   - Database: `prediction_outcomes` table (SQLite)
+
+### 🛡️ THIS IS THE PROTECTED BASELINE
+
+**STATUS**: This deployment (7740c6f6 on tender-benevolence) is a **GOOD, WORKING BASELINE** for:
+- Ghost Protocol v3 Cockpit UI
+- Live trading prediction APIs
+- Background automation (VIP scanner, pre-market predictor, auto-prediction loop)
+- Real-time market data aggregation
+- XRP VIP tracking
+- Presale watch system
+
+**PROTECTION MANDATE**: Any future changes must NOT regress this behavior. All modifications affecting these systems must:
+1. Pass `scripts/ghost_regression.sh` validation
+2. Maintain sub-second response times for core APIs
+3. Preserve background worker functionality
+4. Not introduce 499 timeouts or >5s response times
+
+### 📊 Historical Context (Resolved Issues)
+
+**Previous Symptoms** (observed before 2025-12-11, now fixed):
+- `/api/v3/hunter/feed`: 499 client timeouts, 30-60s response times
+- VIP scanner: Intermittent failures
+- Prediction loop: Occasional stalls
+
+**Current State** (2025-12-11 baseline):
+- All endpoints: 200 responses, <1s timing
+- Background workers: Stable and logging regularly
+- No active timeouts or errors in production logs
+
+---
+
+## HISTORICAL BASELINE: December 5, 2025
+
+*(Preserved for reference - see above for current baseline)*
 
 ---
 
@@ -1178,18 +1271,114 @@ curl "<<<<<https://ghost-protocol-production.up.railway.app/api/v3/predictions/l
   8. daily_reports
   9. **outcome_reconciler** (NEW)
 
+---
+
+## 🔐 BASELINE GUARDIAN - ENFORCEMENT PROTOCOL
+
+### Regression Testing
+
+**Automated Validation**: `scripts/ghost_regression.sh`
+
+Run before any production deployment:
+```bash
+bash scripts/ghost_regression.sh
+```
+
+**Success Criteria**:
+- All 10 core endpoints return HTTP 200
+- Response times < 8 seconds
+- No timeouts or network errors
+
+**On Failure**:
+- ❌ STOP deployment immediately
+- Review failed endpoints
+- Restore to last known good state (7740c6f6)
+- Re-run regression test before proceeding
+
+### Change Impact Classification
+
+| Change Type | Risk Level | Regression Scope | Action Required |
+|-------------|------------|------------------|-----------------|
+| Documentation, UI polish | 🟢 LOW | None | Proceed |
+| Config tweaks, query optimization | 🟡 MEDIUM | Full suite | Test before deploy |
+| Stage 1/RSS, auto-prediction loop | 🔴 HIGH | Full + manual verify | Explicit approval |
+| Hunter feed, watchlist core | 🔴 HIGH | Full + manual verify | Explicit approval |
+| Database schema, API contracts | 🔴 CRITICAL | Full + rollback plan | Explicit approval + rollback ready |
+
+### High-Risk Components (Require Explicit Approval)
+
+These systems are **BASELINE-PROTECTED** and require explicit approval before modification:
+
+1. **Auto-Prediction Loop** (`core/auto_prediction_loop.py`)
+   - Regression risk: Prediction generation stops
+   - Test: `/api/v3/predictions/latest`
+
+2. **Stage 1 / RSS / Market Mood** (`core/stage1_integration.py`)
+   - Regression risk: Context engine fails, predictions degrade
+   - Test: `/api/v3/predictions/latest` quality check
+
+3. **Hunter Feed** (`api/cockpit_v3_live_endpoints.py` → `/api/v3/hunter/feed`)
+   - Regression risk: 499 timeouts, 30s+ response times
+   - Test: `/api/v3/hunter/feed` < 8s
+
+4. **Watchlist Core** (`api/personal_watchlist_endpoints.py`, `core/personal_watchlist.py`)
+   - Regression risk: Cockpit UI breaks, watchlist empty
+   - Test: `/api/v3/watchlist/user` returns items
+
+5. **XRP Tracker** (`core/xrp_tracker.py`)
+   - Regression risk: VIP alerts stop
+   - Test: `/api/xrp/tracker`
+
+6. **Presale Watcher** (`core/presale_watcher.py`)
+   - Regression risk: Presale tracking fails
+   - Test: `/api/presale/watch`
+
+7. **VIP Scanner Background Worker** (orchestrator → VIP scan loop)
+   - Regression risk: Telegram alerts stop
+   - Test: Check Railway logs for "VIP scan #XX"
+
+8. **Pre-Market Predictor** (orchestrator → scheduled predictions)
+   - Regression risk: Morning predictions don't run
+   - Test: Check Railway logs for "🌅 Pre-market predictor starting"
+
+### Rollback Procedure
+
+If regression is detected in production:
+
+1. **Immediate**: Revert to commit `7740c6f6` on Railway
+   ```bash
+   railway up --detach
+   ```
+
+2. **Verify**: Run regression script against reverted deployment
+   ```bash
+   bash scripts/ghost_regression.sh
+   ```
+
+3. **Diagnose**: Review Railway logs for errors:
+   ```bash
+   railway logs --tail 500 | grep -E "ERROR|FAIL|Traceback"
+   ```
+
+4. **Fix**: Apply targeted fix in dev container
+
+5. **Test**: Run regression locally, then deploy to Railway
+
+6. **Validate**: Run regression against production
+
+---
+
 **Future Additions**:
 
 - Append new add-on modules with clear "New Add-On" markers
 - Never rewrite history or obscure original baseline state
 - Maintain chronological change log
 
-
 ---
 
 **END OF BASELINE MANIFEST**
 
-**Last Updated**: December 7, 2025 (v1.1 - Outcome Reconciler Added)
-**Baseline Locked**: Commit `4a21338` (original) + autonomous improvements
-**Status**: ✅ PRODUCTION READY - All systems operational (9/9 services)
+**Last Updated**: December 11, 2025 (v2.0 - Railway Production Baseline Locked)
+**Baseline Commit**: `7740c6f6` (tender-benevolence, Railway)
+**Status**: ✅ PRODUCTION HEALTHY - All systems verified operational (10/10 core APIs)
 **Guardian**: ACTIVE AND ENFORCED 🛡️

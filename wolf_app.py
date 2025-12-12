@@ -8597,6 +8597,110 @@ async def websocket_trades(websocket: WebSocket):
         LOGGER.info("[WS] Trade monitor client disconnected")
 
 
+@APP.post("/api/v3/test/inject-trade")
+async def api_v3_test_inject_trade(
+    symbol: str = "AAPL",
+    confidence: float = 75.0,
+    direction: str = "UP"
+):
+    """
+    Option 3: Inject a simulated high-confidence prediction for testing.
+    Tests the entire trade pipeline end-to-end.
+    """
+    try:
+        from core.autonomous_execution_engine import run_execution_cycle
+        from core.prediction_store import get_prediction_store
+        import asyncio
+        
+        # Create fake high-confidence prediction
+        prediction_store = get_prediction_store()
+        fake_prediction = {
+            "symbol": symbol,
+            "direction": direction,
+            "confidence": confidence,
+            "target_price": 180.0 if symbol == "AAPL" else 100.0,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "features": {"test": True}
+        }
+        
+        # Store it temporarily
+        prediction_store._cache[symbol] = fake_prediction
+        
+        # Trigger execution cycle
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, run_execution_cycle)
+        
+        return {
+            "ok": True,
+            "message": f"Test trade injected: {symbol} {direction} @ {confidence}%",
+            "execution_result": result,
+            "timestamp": datetime.now(UTC).isoformat()
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Test trade injection failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/v3/alerts/test")
+async def api_v3_alerts_test(channel: str = "slack", message: str = "Test from Ghost Protocol"):
+    """
+    Option 4: Test alert system - sends test message to specified channel.
+    """
+    try:
+        from core.alert_system import send_trade_alert
+        
+        test_trade = {
+            "symbol": "TEST",
+            "side": "BUY",
+            "quantity": 1,
+            "price": 100.0,
+            "pnl": 0.0,
+            "note": message
+        }
+        
+        await send_trade_alert(test_trade)
+        
+        return {
+            "ok": True,
+            "message": f"Test alert sent to {channel}",
+            "timestamp": datetime.now(UTC).isoformat()
+        }
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/v3/alerts/test-all")
+async def api_v3_alerts_test_all():
+    """
+    Option 4: Test all configured alert channels.
+    """
+    try:
+        from core.alert_system import send_trade_alert, send_milestone_alert
+        
+        # Test trade alert
+        await send_trade_alert({
+            "symbol": "TEST",
+            "side": "BUY",
+            "quantity": 1,
+            "price": 100.0,
+            "pnl": 10.50
+        })
+        
+        # Test milestone alert
+        await send_milestone_alert("test", 100.0)
+        
+        return {
+            "ok": True,
+            "message": "Test alerts sent to all configured channels",
+            "timestamp": datetime.now(UTC).isoformat()
+        }
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/api/v3/goals/set")
 async def api_v3_goals_set(period: str, target_amount: float):
     """
