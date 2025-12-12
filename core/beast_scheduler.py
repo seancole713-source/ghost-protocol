@@ -101,7 +101,29 @@ STOCK_SYMBOLS = [
     "BLK", "SCHW", "AXP", "USB", "PNC",
     
     # Additional High Volume Stocks
-    "MMYT", "EVCM", "DNLI", "BLLN", "CAE", "SLNO", "LNTH", "EWTX", "NAVN", "MTN", "MLYS"
+    "MMYT", "EVCM", "DNLI", "BLLN", "CAE", "SLNO", "LNTH", "EWTX", "NAVN", "MTN", "MLYS",
+    
+    # COMPLETE CASH APP STOCK UNIVERSE (A-Z)
+    # A-B
+    "ABCL", "ACMR", "AA", "AEO", "APGE", "MT", "ARWR", "BEAM", "BBIO", "BTSG", "BRKR", "BMBL",
+    # C-D
+    "CSIQ", "CPRI", "CAH", "CVNA", "CNX", "DOCN", "DLTR", "DUOL", "DY",
+    # E-G
+    "EPAM", "FSLY", "FLNC", "YMM", "GKOS", "GMED", "GH", "HAL", "HAE", "HL",
+    # I-J
+    "INSP", "IQ", "ITRI", "JBHT", "JAZZ", "FROG",
+    # K-L
+    "KSS", "LMND", "LAC", "LUMN",
+    # M-O
+    "MRVL", "KSS", "NTRA", "NOK", "ONTO",
+    # P-R
+    "PAAS", "PLTK", "PLUG", "RGEN", "RIOT",
+    # S-T
+    "SOUN", "SCCO", "STLD", "SHOO", "SYM", "TNDM", "TDC", "TEVA", "TGTX", "DJT", "TWLO",
+    # U-W
+    "PATH", "UPWK", "VCYT", "VFC", "COCO", "WAT", "WFRD",
+    # User's Additional Watchlist
+    "SLV", "AMAT", "WBD", "ASML", "CAT", "XBI"
 ]
 
 CRYPTO_SYMBOLS = [
