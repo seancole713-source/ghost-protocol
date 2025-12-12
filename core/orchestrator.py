@@ -397,6 +397,43 @@ async def start_all_background_services(
         LOGGER.info("   ℹ️  Predictions will be generated but not automatically traded")
     
     # ============================================================================
+    # PHASE 6: SPIKE DETECTOR (Catch Random Price Spikes & News Catalysts)
+    # ============================================================================
+    spike_detector_enabled = os.getenv("SPIKE_DETECTOR_ENABLED", "1") == "1"
+    
+    if spike_detector_enabled:
+        try:
+            from core.spike_detector import spike_scanner_loop
+            from core.beast_scheduler import STOCK_SYMBOLS, CRYPTO_SYMBOLS
+            
+            # Combine all tracked symbols
+            all_symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS
+            
+            _TASKS["spike_detector"] = asyncio.create_task(spike_scanner_loop(all_symbols))
+            _SYSTEM_STATUS["spike_detector"] = {
+                "status": "running",
+                "enabled": True,
+                "last_run": int(time.time()),
+                "symbols_tracked": len(all_symbols)
+            }
+            
+            LOGGER.info(f"🚀 Spike Detector: STARTED (tracking {len(all_symbols)} symbols)")
+            LOGGER.info("   ✅ Pre-market spikes (>5%)")
+            LOGGER.info("   ✅ Unusual volume (10x+ average)")
+            LOGGER.info("   ✅ Breaking news/catalysts")
+            LOGGER.info("   ✅ Social sentiment surges")
+        except Exception as e:
+            _SYSTEM_STATUS["spike_detector"] = {
+                "status": "failed",
+                "enabled": False,
+                "error": str(e)
+            }
+            LOGGER.error(f"❌ Spike Detector FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["spike_detector"] = {"status": "disabled", "enabled": False}
+        LOGGER.info("⚪ Spike Detector: DISABLED (set SPIKE_DETECTOR_ENABLED=1 to enable)")
+    
+    # ============================================================================
     # ORCHESTRATION COMPLETE
     # ============================================================================
     uptime = time.time() - _START_TIME

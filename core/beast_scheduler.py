@@ -19,9 +19,44 @@ TELEGRAM_ALERTS_MODULE = None  # telegram_alerts module
 _SCHEDULER_THREAD: threading.Thread | None = None
 _SCHEDULER_STOP = threading.Event()
 
-# Watch lists
-STOCK_SYMBOLS = ["AAPL", "WOLF", "NVDA"]
-CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL", "PEPE", "WEPE", "LILPEPE", "DORKL", "SLOTH", "APC", "XRP"]
+# Watch lists - EXPANDED WITH USER SYMBOLS
+STOCK_SYMBOLS = [
+    # Tech Giants
+    "AAPL", "MSFT", "NVDA", "GOOGL", "META", "TSLA", "AMZN",
+    # User Watchlist
+    "TLRY", "TAL", "ARCT", "TME", "HIMS", "PFE", "RDFN", "BILL", "XPO",
+    # Original Tracked
+    "WOLF",
+    # High Volume Movers
+    "SPY", "QQQ", "GME", "AMC", "PLTR", "SOFI", "RIVN", "LCID", "NIO",
+    # Financial/Industrial
+    "GS", "JPM", "BAC", "V", "MA",
+    # Communication/Media
+    "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS",
+    # Energy/Utilities  
+    "XOM", "CVX", "NEE", "DUK", "SO", "D",
+    # Retail/Consumer
+    "WMT", "TGT", "COST", "HD", "LOW",
+    # Healthcare/Pharma
+    "UNH", "JNJ", "ABT", "LLY", "MRK",
+    # Transportation/Logistics
+    "UBER", "LYFT", "FDX", "UPS",
+    # Social/Emerging
+    "SNAP", "PINS", "DASH", "SQ",
+    # Real Estate
+    "VICI", "O", "PLD", "AMT", "CCI"
+]
+
+CRYPTO_SYMBOLS = [
+    # Major
+    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "DOT", "MATIC",
+    # VIP Microcaps
+    "PEPE", "WEPE", "LILPEPE", "DORKL", "SLOTH", "APC",
+    # DeFi/Layer2
+    "LINK", "UNI", "AAVE", "LDO",
+    # Meme/Trending
+    "DOGE", "SHIB", "FLOKI", "BONK"
+]
 
 # Timezone
 CHICAGO_TZ = ZoneInfo("America/Chicago")
