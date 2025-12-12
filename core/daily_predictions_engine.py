@@ -1,499 +1,309 @@
 """
-🎯 DAILY PREDICTIONS ENGINE
-Generates 5 high-confidence daily picks every morning at 6:00 AM CT
-Multi-factor scoring: Technical + Sentiment + Momentum + Macro + Risk
+🌅 DAILY PREDICTIONS ENGINE V2 - GHOST INFRASTRUCTURE
+Generates autonomous daily briefing at 6:00 AM CT with 5 top picks
+Uses actual Ghost prediction system + data pillars
 """
 
 import asyncio
 import logging
 import os
-import time
+import sys
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
-LOGGER = logging.getLogger(__name__)
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+LOGGER = logging.getLogger(__name__)
 CHICAGO_TZ = ZoneInfo("America/Chicago")
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
+# Configuration
 DAILY_PICKS_COUNT = int(os.getenv("DAILY_PICKS_COUNT", "5"))
-MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE", "60"))  # 60%
-MIN_EXPECTED_GAIN = float(os.getenv("MIN_EXPECTED_GAIN", "8"))  # 8%
-MIN_LIQUIDITY = float(os.getenv("MIN_LIQUIDITY", "1000000"))  # $1M volume
+MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE_PCT", "60"))
 STOCK_CRYPTO_MIX = os.getenv("STOCK_CRYPTO_MIX", "3:2")  # 3 stocks, 2 crypto
 
+# Will be injected by orchestrator
+RUN_PREDICTION_FUNC_ASYNC = None
+HUNTER_STOCK_SYMBOLS = []
+HUNTER_CRYPTO_SYMBOLS = []
 
-# ============================================================================
-# MULTI-FACTOR SCORING ENGINE
-# ============================================================================
 
-async def calculate_technical_score(symbol: str, asset_type: str) -> float:
+async def generate_daily_picks() -> dict[str, Any]:
     """
-    Technical analysis score (0-100)
-    RSI, MACD, Moving Averages, Volume, Chart Patterns
-    """
-    try:
-        from core.providers.turbo_provider import get_turbo_provider
-        turbo = get_turbo_provider()
-        
-        data = await turbo.get_price_async(symbol)
-        if not data:
-            return 0.0
-        
-        score = 50.0  # Neutral baseline
-        
-        # RSI (30-70 range is tradeable)
-        rsi = data.get("rsi", 50)
-        if 30 <= rsi <= 45:  # Oversold but not extreme
-            score += 15
-        elif 55 <= rsi <= 70:  # Overbought but momentum strong
-            score += 10
-        elif rsi > 80 or rsi < 20:  # Extreme - reduce score
-            score -= 20
-        
-        # MACD crossover
-        macd = data.get("macd", {})
-        if macd.get("signal") == "bullish":
-            score += 15
-        elif macd.get("signal") == "bearish":
-            score -= 10
-        
-        # Price vs moving averages
-        price = data.get("price", 0)
-        sma20 = data.get("sma20", price)
-        sma50 = data.get("sma50", price)
-        
-        if price > sma20 > sma50:  # Bullish alignment
-            score += 10
-        elif price < sma20 < sma50:  # Bearish alignment
-            score -= 10
-        
-        # Volume trend
-        volume = data.get("volume", 0)
-        avg_volume = data.get("avg_volume", 1)
-        if volume > avg_volume * 2:  # Strong volume
-            score += 10
-        
-        return min(100, max(0, score))
-        
-    except Exception as e:
-        LOGGER.error(f"Technical score failed for {symbol}: {e}")
-        return 50.0
-
-
-async def calculate_sentiment_score(symbol: str) -> float:
-    """
-    Sentiment analysis score (0-100)
-    News + Social + Options Flow
+    Generate 5 daily picks using Ghost's actual prediction system
+    Returns: {"picks": [...], "timestamp": "...", "stats": {...}}
     """
     try:
-        from core.sentiment_fusion import get_aggregated_sentiment
+        LOGGER.info("🌅 Generating daily picks at 6:00 AM CT...")
         
-        sentiment_data = await get_aggregated_sentiment(symbol)
+        if not RUN_PREDICTION_FUNC_ASYNC:
+            LOGGER.error("❌ RUN_PREDICTION_FUNC_ASYNC not injected")
+            return {"picks": [], "error": "Prediction function not available"}
         
-        # News sentiment
-        news_score = sentiment_data.get("news_sentiment", 0.0) * 30  # 0-30 points
+        # Parse stock/crypto mix
+        stock_count, crypto_count = map(int, STOCK_CRYPTO_MIX.split(":"))
         
-        # Social sentiment (Reddit, Twitter)
-        social_score = sentiment_data.get("social_sentiment", 0.0) * 25  # 0-25 points
+        # Run predictions on all watchlist symbols
+        stock_predictions = await _batch_predictions(HUNTER_STOCK_SYMBOLS[:50], "stock")
+        crypto_predictions = await _batch_predictions(HUNTER_CRYPTO_SYMBOLS[:20], "crypto")
         
-        # Options flow (bullish/bearish)
-        options_score = sentiment_data.get("options_sentiment", 0.0) * 25  # 0-25 points
+        # Filter and rank
+        stock_picks = _filter_and_rank(stock_predictions, stock_count)
+        crypto_picks = _filter_and_rank(crypto_predictions, crypto_count)
         
-        # Insider trading
-        insider_score = sentiment_data.get("insider_sentiment", 0.0) * 20  # 0-20 points
+        all_picks = stock_picks + crypto_picks
         
-        total = 50 + news_score + social_score + options_score + insider_score
-        return min(100, max(0, total))
-        
-    except Exception as e:
-        LOGGER.error(f"Sentiment score failed for {symbol}: {e}")
-        return 50.0
-
-
-async def calculate_momentum_score(symbol: str) -> float:
-    """
-    Momentum score (0-100)
-    Price velocity, breakout strength, trend acceleration
-    """
-    try:
-        from core.providers.turbo_provider import get_turbo_provider
-        turbo = get_turbo_provider()
-        
-        data = await turbo.get_price_async(symbol)
-        if not data:
-            return 50.0
-        
-        score = 50.0
-        
-        # 24hr change
-        change_24h = data.get("change_pct_24h", 0)
-        if change_24h > 10:
-            score += 20
-        elif change_24h > 5:
-            score += 10
-        elif change_24h < -10:
-            score -= 20
-        
-        # 7-day trend
-        change_7d = data.get("change_pct_7d", 0)
-        if change_7d > 20:
-            score += 15
-        elif change_7d > 10:
-            score += 10
-        
-        # Volume acceleration
-        volume = data.get("volume", 0)
-        avg_volume = data.get("avg_volume", 1)
-        volume_ratio = volume / avg_volume if avg_volume > 0 else 1
-        
-        if volume_ratio > 5:
-            score += 15
-        elif volume_ratio > 2:
-            score += 10
-        
-        return min(100, max(0, score))
-        
-    except Exception as e:
-        LOGGER.error(f"Momentum score failed for {symbol}: {e}")
-        return 50.0
-
-
-async def calculate_market_regime_score(symbol: str, asset_type: str) -> float:
-    """
-    Market regime alignment score (0-100)
-    Checks if asset aligns with broader market trend
-    """
-    try:
-        from core.market_regime import get_current_regime
-        
-        regime = await get_current_regime()
-        
-        # If market is bullish and we're going long, boost score
-        if regime["trend"] == "bullish" and asset_type == "stock":
-            return 80.0
-        elif regime["trend"] == "bearish":
-            return 30.0  # Reduce score in bear market
-        elif regime["trend"] == "crash":
-            return 10.0  # Very low score during crash
-        else:
-            return 50.0  # Neutral
-            
-    except Exception as e:
-        LOGGER.error(f"Market regime score failed: {e}")
-        return 50.0
-
-
-async def calculate_timing_score(symbol: str) -> float:
-    """
-    Entry timing score (0-100)
-    Checks if this is a good time to enter (avoid chop zones, earnings, etc.)
-    """
-    try:
-        from core.earnings_calendar import check_earnings_proximity
-        
-        # Check if earnings within 24hrs
-        has_earnings_soon = await check_earnings_proximity(symbol, hours=24)
-        if has_earnings_soon:
-            return 20.0  # Low score, risky timing
-        
-        # Check if market hours vs after-hours
-        now = datetime.now(CHICAGO_TZ)
-        if 8 <= now.hour < 15:  # Market hours
-            return 80.0
-        else:
-            return 60.0  # After hours, slightly lower
-            
-    except Exception as e:
-        LOGGER.error(f"Timing score failed for {symbol}: {e}")
-        return 50.0
-
-
-async def calculate_confidence_score(symbol: str, asset_type: str) -> dict[str, Any]:
-    """
-    Multi-factor confidence calculation
-    Returns confidence score + component scores
-    """
-    # Calculate all factors in parallel
-    results = await asyncio.gather(
-        calculate_technical_score(symbol, asset_type),
-        calculate_sentiment_score(symbol),
-        calculate_momentum_score(symbol),
-        calculate_market_regime_score(symbol, asset_type),
-        calculate_timing_score(symbol),
-        return_exceptions=True
-    )
-    
-    technical = results[0] if not isinstance(results[0], Exception) else 50.0
-    sentiment = results[1] if not isinstance(results[1], Exception) else 50.0
-    momentum = results[2] if not isinstance(results[2], Exception) else 50.0
-    regime = results[3] if not isinstance(results[3], Exception) else 50.0
-    timing = results[4] if not isinstance(results[4], Exception) else 50.0
-    
-    # Weighted average
-    confidence = (
-        technical * 0.25 +
-        sentiment * 0.20 +
-        momentum * 0.20 +
-        regime * 0.15 +
-        timing * 0.10 +
-        50 * 0.10  # Volatility score (placeholder)
-    )
-    
-    return {
-        "confidence": round(confidence, 1),
-        "technical": round(technical, 1),
-        "sentiment": round(sentiment, 1),
-        "momentum": round(momentum, 1),
-        "regime": round(regime, 1),
-        "timing": round(timing, 1)
-    }
-
-
-# ============================================================================
-# EXPECTED GAIN CALCULATOR
-# ============================================================================
-
-async def calculate_expected_gain(symbol: str, confidence: float) -> dict[str, Any]:
-    """
-    Calculate expected gain, entry, target, peak, stop prices
-    """
-    try:
-        from core.providers.turbo_provider import get_turbo_provider
-        turbo = get_turbo_provider()
-        
-        data = await turbo.get_price_async(symbol)
-        if not data:
-            return None
-        
-        current_price = data.get("price", 0)
-        if current_price == 0:
-            return None
-        
-        # Historical volatility
-        volatility = data.get("volatility", 0.02)  # 2% default
-        
-        # Base expected move (based on momentum)
-        momentum_pct = data.get("change_pct_24h", 0)
-        base_gain = abs(momentum_pct) * 1.5  # Expect 1.5x continuation
-        
-        # Adjust by confidence
-        expected_gain_pct = base_gain * (confidence / 100)
-        expected_gain_pct = max(MIN_EXPECTED_GAIN, expected_gain_pct)  # Min 8%
-        
-        # Calculate price targets
-        entry_low = current_price * 0.995  # 0.5% buffer
-        entry_high = current_price * 1.005
-        
-        target_price = current_price * (1 + expected_gain_pct * 0.75 / 100)  # Conservative
-        peak_price = current_price * (1 + expected_gain_pct * 1.3 / 100)  # Optimistic
-        stop_price = current_price * (1 - min(0.08, volatility * 2))  # 8% max stop
+        LOGGER.info(f"✅ Generated {len(all_picks)} daily picks")
         
         return {
-            "expected_gain_pct": round(expected_gain_pct, 1),
-            "current_price": round(current_price, 2),
-            "entry_low": round(entry_low, 2),
-            "entry_high": round(entry_high, 2),
-            "target": round(target_price, 2),
-            "peak": round(peak_price, 2),
-            "stop": round(stop_price, 2)
+            "picks": all_picks,
+            "timestamp": datetime.now(CHICAGO_TZ).isoformat(),
+            "stats": {
+                "total_evaluated": len(stock_predictions) + len(crypto_predictions),
+                "stocks_selected": len(stock_picks),
+                "crypto_selected": len(crypto_picks),
+                "avg_confidence": sum(p["confidence"] for p in all_picks) / len(all_picks) if all_picks else 0
+            }
         }
-        
+    
     except Exception as e:
-        LOGGER.error(f"Expected gain calculation failed for {symbol}: {e}")
-        return None
+        LOGGER.error(f"❌ Daily picks generation failed: {e}", exc_info=True)
+        return {"picks": [], "error": str(e)}
 
 
-# ============================================================================
-# CANDIDATE FILTERING & RANKING
-# ============================================================================
-
-async def scan_and_score_candidates(symbols: list[str]) -> list[dict[str, Any]]:
+async def _batch_predictions(symbols: list[str], asset_type: str) -> list[dict[str, Any]]:
     """
-    Scan all symbols, calculate scores, filter by requirements
+    Run predictions on batch of symbols using Ghost's prediction system
+    
+    Ghost's run_single_prediction_async returns:
+    {
+        "ok": bool,
+        "prediction_id": int,
+        "symbol": str,
+        "direction": str,  # "UP" or "DOWN"
+        "confidence": float,  # 0-100
+        "current_price": float,
+        "feature_count": int,
+        "available_count": int,
+        "duration_ms": int,
+        "error": str or None
+    }
     """
-    candidates = []
+    predictions = []
     
-    LOGGER.info(f"🔍 Scanning {len(symbols)} candidates for daily picks...")
+    # Run predictions with concurrency limit (match Ghost's auto_prediction_loop: 2 concurrent)
+    semaphore = asyncio.Semaphore(2)
     
-    for symbol in symbols:
-        try:
-            # Determine asset type
-            asset_type = "crypto" if len(symbol) <= 5 and symbol.isupper() else "stock"
-            
-            # Calculate confidence
-            score_data = await calculate_confidence_score(symbol, asset_type)
-            confidence = score_data["confidence"]
-            
-            # Skip if below minimum confidence
-            if confidence < MIN_CONFIDENCE:
-                continue
-            
-            # Calculate expected gain and prices
-            gain_data = await calculate_expected_gain(symbol, confidence)
-            if not gain_data:
-                continue
-            
-            expected_gain = gain_data["expected_gain_pct"]
-            
-            # Skip if below minimum expected gain
-            if expected_gain < MIN_EXPECTED_GAIN:
-                continue
-            
-            # Check liquidity (volume * price > MIN_LIQUIDITY)
-            from core.providers.turbo_provider import get_turbo_provider
-            turbo = get_turbo_provider()
-            data = await turbo.get_price_async(symbol)
-            
-            if data:
-                volume = data.get("volume", 0)
-                price = data.get("price", 0)
-                liquidity = volume * price
+    async def _predict(symbol: str):
+        async with semaphore:
+            try:
+                result = await RUN_PREDICTION_FUNC_ASYNC(symbol)
                 
-                if liquidity < MIN_LIQUIDITY:
-                    continue
-            
-            # Calculate risk-adjusted rank
-            risk_factor = 1 + (100 - confidence) / 100  # Higher confidence = lower risk
-            rank_score = (confidence * expected_gain) / risk_factor
-            
-            candidates.append({
-                "symbol": symbol,
-                "asset_type": asset_type,
-                "confidence": confidence,
-                "expected_gain": expected_gain,
-                "rank_score": rank_score,
-                "prices": gain_data,
-                "score_breakdown": score_data
-            })
-            
-        except Exception as e:
-            LOGGER.error(f"Failed to score {symbol}: {e}")
-            continue
+                if result.get("ok") and result.get("confidence", 0) >= MIN_CONFIDENCE:
+                    # Extract core fields from Ghost's prediction result
+                    predictions.append({
+                        "symbol": symbol,
+                        "asset_type": asset_type,
+                        "confidence": result.get("confidence", 0),
+                        "signal": result.get("direction", "UNKNOWN"),  # "UP" or "DOWN"
+                        "current_price": result.get("current_price"),
+                        "prediction_id": result.get("prediction_id"),
+                        "feature_count": result.get("feature_count", 0),
+                        "duration_ms": result.get("duration_ms", 0),
+                        # Calculate target/stop based on direction and confidence
+                        "expected_gain": _calculate_expected_gain(result),
+                        "target_price": _calculate_target(result),
+                        "stop_loss": _calculate_stop(result),
+                        "timestamp": datetime.now(CHICAGO_TZ).isoformat()
+                    })
+                    LOGGER.info(f"✅ [{symbol}] Confidence: {result.get('confidence', 0):.1f}% Signal: {result.get('direction')}")
+            except Exception as e:
+                LOGGER.warning(f"[{symbol}] Prediction failed: {e}")
     
-    # Sort by rank_score (highest first)
-    candidates.sort(key=lambda x: x["rank_score"], reverse=True)
+    await asyncio.gather(*[_predict(s) for s in symbols], return_exceptions=True)
     
-    LOGGER.info(f"✅ Found {len(candidates)} qualified candidates")
-    
-    return candidates
+    LOGGER.info(f"Completed {len(predictions)}/{len(symbols)} predictions for {asset_type}")
+    return predictions
 
 
-async def select_daily_picks(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _calculate_expected_gain(result: dict[str, Any]) -> float:
     """
-    Select top 5 picks with proper stock/crypto mix
+    Calculate expected gain % based on confidence and direction
+    Ghost's confidence is 0-100, higher = stronger signal
     """
-    # Parse mix ratio (e.g., "3:2" = 3 stocks, 2 crypto)
-    stock_count, crypto_count = map(int, STOCK_CRYPTO_MIX.split(":"))
+    confidence = result.get("confidence", 0)
+    direction = result.get("direction", "")
     
-    stocks = [c for c in candidates if c["asset_type"] == "stock"]
-    cryptos = [c for c in candidates if c["asset_type"] == "crypto"]
+    # Expected gain scales with confidence
+    # 60% confidence = 5% gain, 80% = 10% gain, 95% = 15% gain
+    base_gain = (confidence - 50) / 5  # 60->2%, 80->6%, 95->9%
     
-    # Select top picks
-    selected_stocks = stocks[:stock_count]
-    selected_cryptos = cryptos[:crypto_count]
-    
-    picks = selected_stocks + selected_cryptos
-    
-    # Re-rank combined list
-    picks.sort(key=lambda x: x["rank_score"], reverse=True)
-    
-    return picks[:DAILY_PICKS_COUNT]
+    if direction == "DOWN":
+        return -base_gain  # Negative for short positions
+    return base_gain
 
 
-# ============================================================================
-# DAILY BRIEFING GENERATOR
-# ============================================================================
-
-async def generate_daily_briefing() -> dict[str, Any]:
-    """
-    Main function: Generate daily briefing with 5 picks
-    """
-    start_time = time.time()
-    
-    LOGGER.info("🌅 Generating daily briefing...")
-    
-    try:
-        # Get all symbols to scan
-        from core.beast_scheduler import STOCK_SYMBOLS, CRYPTO_SYMBOLS
-        from core.spike_detector import get_all_tracked_symbols
-        
-        all_symbols = await get_all_tracked_symbols(STOCK_SYMBOLS + CRYPTO_SYMBOLS)
-        
-        # Scan and score
-        candidates = await scan_and_score_candidates(all_symbols)
-        
-        # Select top 5
-        picks = await select_daily_picks(candidates)
-        
-        # Get market context
-        from core.market_regime import get_current_regime
-        regime = await get_current_regime()
-        
-        elapsed = time.time() - start_time
-        
-        briefing = {
-            "timestamp": int(time.time()),
-            "date": datetime.now(CHICAGO_TZ).strftime("%B %d, %Y"),
-            "picks": picks,
-            "market_context": regime,
-            "candidates_scanned": len(all_symbols),
-            "candidates_qualified": len(candidates),
-            "generation_time": round(elapsed, 1)
-        }
-        
-        LOGGER.info(f"✅ Daily briefing generated in {elapsed:.1f}s - {len(picks)} picks selected")
-        
-        return briefing
-        
-    except Exception as e:
-        LOGGER.error(f"❌ Daily briefing generation failed: {e}", exc_info=True)
+def _calculate_target(result: dict[str, Any]) -> Optional[float]:
+    """Calculate target price based on expected gain"""
+    price = result.get("current_price")
+    if not price:
         return None
-
-
-async def send_daily_briefing_to_telegram(briefing: dict[str, Any]):
-    """
-    Format and send daily briefing to Telegram
-    """
-    try:
-        from core.alert_manager import send_daily_briefing_alert
-        await send_daily_briefing_alert(briefing)
-        LOGGER.info("📤 Daily briefing sent to Telegram")
-    except Exception as e:
-        LOGGER.error(f"Failed to send daily briefing: {e}", exc_info=True)
-
-
-# ============================================================================
-# SCHEDULED DAILY EXECUTION
-# ============================================================================
-
-async def daily_briefing_scheduler():
-    """
-    Runs every day at 6:00 AM CT
-    """
-    LOGGER.info("🕒 Daily briefing scheduler started")
     
+    gain_pct = _calculate_expected_gain(result)
+    return price * (1 + gain_pct / 100)
+
+
+def _calculate_stop(result: dict[str, Any]) -> Optional[float]:
+    """Calculate stop loss (2:1 risk/reward ratio)"""
+    price = result.get("current_price")
+    if not price:
+        return None
+    
+    gain_pct = _calculate_expected_gain(result)
+    stop_pct = gain_pct / 2  # Half the gain = 2:1 ratio
+    return price * (1 - abs(stop_pct) / 100)
+
+
+def _filter_and_rank(predictions: list[dict[str, Any]], count: int) -> list[dict[str, Any]]:
+    """
+    Filter and rank predictions by confidence and expected gain
+    """
+    # Filter by confidence threshold
+    filtered = [p for p in predictions if p["confidence"] >= MIN_CONFIDENCE]
+    
+    # Rank by combined score (confidence * 0.6 + expected_gain * 0.4)
+    for p in filtered:
+        p["score"] = p["confidence"] * 0.6 + p["expected_gain"] * 0.4
+    
+    # Sort by score descending
+    ranked = sorted(filtered, key=lambda x: x["score"], reverse=True)
+    
+    return ranked[:count]
+
+
+async def format_daily_briefing(picks: dict[str, Any]) -> str:
+    """
+    Format daily briefing for Telegram
+    Clean hierarchy with ├─ └─ tree structure
+    """
+    if not picks.get("picks"):
+        return "❌ No high-confidence picks today. Market conditions uncertain."
+    
+    stats = picks.get("stats", {})
+    timestamp = datetime.now(CHICAGO_TZ).strftime("%Y-%m-%d %I:%M %p CT")
+    
+    msg = "🌅 **DAILY MARKET BRIEFING**\n"
+    msg += f"📅 {timestamp}\n"
+    msg += f"📊 Evaluated {stats.get('total_evaluated', 0)} symbols\n\n"
+    
+    msg += "🎯 **TOP PICKS**\n"
+    
+    for i, pick in enumerate(picks["picks"], 1):
+        is_last = i == len(picks["picks"])
+        prefix = "└─" if is_last else "├─"
+        
+        signal_emoji = "🚀" if pick['signal'] == "UP" else "📉"
+        
+        msg += f"{prefix} **{pick['symbol']}** ({pick['asset_type'].upper()}) {signal_emoji}\n"
+        msg += f"{'   ' if is_last else '│  '}├─ Signal: {pick['signal']}\n"
+        msg += f"{'   ' if is_last else '│  '}├─ Confidence: {pick['confidence']:.1f}%\n"
+        
+        if pick.get('current_price'):
+            msg += f"{'   ' if is_last else '│  '}├─ Current: ${pick['current_price']:.2f}\n"
+        if pick.get('target_price'):
+            msg += f"{'   ' if is_last else '│  '}├─ Target: ${pick['target_price']:.2f}\n"
+        if pick.get('stop_loss'):
+            msg += f"{'   ' if is_last else '│  '}├─ Stop: ${pick['stop_loss']:.2f}\n"
+        
+        msg += f"{'   ' if is_last else '│  '}├─ Expected: {pick['expected_gain']:+.1f}%\n"
+        msg += f"{'   ' if is_last else '│  '}└─ Features: {pick.get('feature_count', 0)} indicators\n"
+        
+        if not is_last:
+            msg += "│\n"
+    
+    msg += f"\n📈 Avg Confidence: {stats.get('avg_confidence', 0):.1f}%\n"
+    msg += "⚡ Live updates every 5 minutes\n"
+    
+    return msg
+
+
+# ============================================================================
+# SCHEDULER INTEGRATION
+# ============================================================================
+
+async def daily_briefing_task():
+    """
+    Background task that runs at 6:00 AM CT daily
+    Integrates with Ghost's auto_prediction_loop
+    """
     while True:
         try:
             now = datetime.now(CHICAGO_TZ)
             
             # Check if it's 6:00 AM CT
             if now.hour == 6 and now.minute == 0:
-                briefing = await generate_daily_briefing()
+                LOGGER.info("🌅 Daily briefing time! Generating picks...")
                 
-                if briefing:
-                    await send_daily_briefing_to_telegram(briefing)
+                picks = await generate_daily_picks()
                 
-                # Sleep for 60 seconds to avoid running multiple times in same minute
-                await asyncio.sleep(60)
-            
-            # Check every 30 seconds
-            await asyncio.sleep(30)
-            
+                # Format briefing
+                briefing = await format_daily_briefing(picks)
+                
+                # Send via existing Telegram alerts
+                from core.telegram_alerts import send_alert
+                await send_alert(briefing, priority="HIGH")
+                
+                # Sleep until next day (avoid duplicate runs in same minute)
+                await asyncio.sleep(120)
+            else:
+                # Check every 30 seconds
+                await asyncio.sleep(30)
+        
         except Exception as e:
-            LOGGER.error(f"Daily briefing scheduler error: {e}", exc_info=True)
-            await asyncio.sleep(300)  # 5 min cooldown on error
+            LOGGER.error(f"❌ Daily briefing task error: {e}", exc_info=True)
+            await asyncio.sleep(60)
+
+
+def inject_dependencies(run_prediction_func, stock_symbols, crypto_symbols):
+    """
+    Inject Ghost's actual functions (called by orchestrator)
+    """
+    global RUN_PREDICTION_FUNC_ASYNC, HUNTER_STOCK_SYMBOLS, HUNTER_CRYPTO_SYMBOLS
+    RUN_PREDICTION_FUNC_ASYNC = run_prediction_func
+    HUNTER_STOCK_SYMBOLS = stock_symbols
+    HUNTER_CRYPTO_SYMBOLS = crypto_symbols
+    LOGGER.info("✅ Daily predictions engine initialized with Ghost infrastructure")
+
+
+# ============================================================================
+# MANUAL TEST ENDPOINT (for development)
+# ============================================================================
+
+async def test_daily_picks():
+    """
+    Manual test function for development
+    """
+    import sys
+    sys.path.insert(0, "/workspaces/ghost-protocol")
+    
+    # Import actual Ghost functions
+    from wolf_app import RUN_PREDICTION_FUNC_ASYNC
+    from core.beast_scheduler import HUNTER_STOCK_SYMBOLS, HUNTER_CRYPTO_SYMBOLS
+    
+    # Inject dependencies
+    inject_dependencies(RUN_PREDICTION_FUNC_ASYNC, HUNTER_STOCK_SYMBOLS, HUNTER_CRYPTO_SYMBOLS)
+    
+    # Generate picks
+    picks = await generate_daily_picks()
+    
+    # Format briefing
+    briefing = await format_daily_briefing(picks)
+    
+    print(briefing)
+    
+    return picks
+
+
+if __name__ == "__main__":
+    asyncio.run(test_daily_picks())
