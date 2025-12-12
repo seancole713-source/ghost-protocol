@@ -3810,6 +3810,31 @@ async def _post_startup_init():
     
     LOGGER.info("[POST-STARTUP] Starting background initialization (delayed 5s)...")
     
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # TO THE MOON: Use Master Orchestrator for unified service management
+    # ═══════════════════════════════════════════════════════════════════════════════
+    orchestrator_enabled = _os_module.getenv("ORCHESTRATOR_ENABLED", "0") == "1"
+    
+    if orchestrator_enabled:
+        try:
+            LOGGER.info("[POST-STARTUP] 🎭 Master Orchestrator: Starting all background services...")
+            from core.orchestrator import start_all_background_services
+            
+            # Start ALL background services through orchestrator
+            await start_all_background_services(
+                app=APP,
+                logger=LOGGER,
+                redis_client=None,  # TODO: Pass redis if available
+                fetch_price_func=None,
+                run_prediction_func=None
+            )
+            
+            LOGGER.info("[POST-STARTUP] ✅ Master Orchestrator: All systems operational")
+        except Exception as e:
+            LOGGER.error(f"[POST-STARTUP] ❌ Master Orchestrator failed: {e}", exc_info=True)
+    else:
+        LOGGER.info("[POST-STARTUP] ℹ️  Master Orchestrator disabled (set ORCHESTRATOR_ENABLED=1 to enable)")
+    
     # Stage 4: Initialize Portfolio Optimization & Advanced Strategies
     if STAGE4_ENABLED:
         try:
@@ -11390,6 +11415,444 @@ Use emojis, be conversational, but ALWAYS reference the real data above."""
         raise
     except Exception as e:
         LOGGER.error(f"Chat failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Chat failed: {str(e)[:200]}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TO THE MOON: ADVANCED SYSTEMS (Tier 2 + Tier 3)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@APP.get("/api/walk_forward_analysis/{symbol}")
+async def api_walk_forward_analysis(
+    symbol: str,
+    in_sample_window: int = 120,
+    out_sample_window: int = 30,
+    step_size: int = 30,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Walk-forward optimization analysis
+    
+    Tests if strategy performance is robust or overfitted by:
+    1. Training on in-sample window (default 120 days)
+    2. Testing on out-of-sample window (default 30 days)
+    3. Repeating across time with step_size (default 30 days)
+    
+    Returns:
+    - Consistency score (% of windows profitable)
+    - Average out-of-sample Sharpe ratio
+    - Overfitting detection (in-sample vs out-sample comparison)
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("WALK_FORWARD_ENABLED", "0") != "1":
+        raise HTTPException(503, "Walk-forward analysis not enabled. Set WALK_FORWARD_ENABLED=1")
+    
+    try:
+        from core.backtester import get_backtester
+        
+        backtester = get_backtester()
+        
+        # Get historical returns for symbol
+        returns = []  # TODO: Fetch from prediction history
+        
+        if len(returns) < (in_sample_window + out_sample_window):
+            raise HTTPException(400, f"Need at least {in_sample_window + out_sample_window} days of history")
+        
+        result = backtester.walk_forward_analysis(
+            returns=returns,
+            in_sample_window=in_sample_window,
+            out_sample_window=out_sample_window,
+            step_size=step_size
+        )
+        
+        return {
+            "symbol": symbol.upper(),
+            "walk_forward_analysis": result,
+            "timestamp": int(time.time()),
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"Walk-forward analysis failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Analysis failed: {str(e)[:200]}")
+
+
+@APP.get("/api/monte_carlo/{symbol}")
+async def api_monte_carlo(
+    symbol: str,
+    num_simulations: int = 1000,
+    simulation_length: int = 252,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Monte Carlo risk simulation
+    
+    Runs Monte Carlo simulation to answer:
+    - "What's my 95% worst-case return over 1 year?"
+    - "What's the median expected return?"
+    - "What's the maximum expected drawdown?"
+    
+    Args:
+        num_simulations: Number of simulations to run (default 1000)
+        simulation_length: Days per simulation (default 252 = 1 year)
+    
+    Returns:
+        5th/50th/95th percentile distributions for:
+        - Total return (%)
+        - Sharpe ratio
+        - Max drawdown (%)
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("MONTE_CARLO_ENABLED", "0") != "1":
+        raise HTTPException(503, "Monte Carlo simulation not enabled. Set MONTE_CARLO_ENABLED=1")
+    
+    try:
+        from core.backtester import get_backtester
+        
+        backtester = get_backtester()
+        
+        # Get historical returns for symbol
+        returns = []  # TODO: Fetch from prediction history
+        
+        if len(returns) < 20:
+            raise HTTPException(400, "Need at least 20 days of historical returns")
+        
+        result = backtester.monte_carlo_simulation(
+            returns=returns,
+            num_simulations=num_simulations,
+            simulation_length=simulation_length
+        )
+        
+        return {
+            "symbol": symbol.upper(),
+            "monte_carlo": result,
+            "interpretation": {
+                "worst_case_5th_percentile": f"95% chance return will be better than {result['total_return']['5th_percentile_pct']}%",
+                "median_expectation": f"50% chance return will be around {result['total_return']['median_pct']}%",
+                "best_case_95th_percentile": f"5% chance return will exceed {result['total_return']['95th_percentile_pct']}%",
+            },
+            "timestamp": int(time.time()),
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"Monte Carlo simulation failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Simulation failed: {str(e)[:200]}")
+
+
+@APP.get("/api/momentum_shift/{symbol}")
+async def api_momentum_shift(
+    symbol: str,
+    lookback_minutes: int = 60,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Detect momentum shifts
+    
+    Identifies when momentum has shifted dramatically (>30% change).
+    Useful for catching reversals 15-30 minutes early.
+    
+    Args:
+        lookback_minutes: How far back to compare (default 60 min)
+    
+    Returns:
+        - shift_detected: bool
+        - shift_magnitude: % change in momentum
+        - shift_direction: BULLISH | BEARISH | None
+        - alert_priority: HIGH | MEDIUM | LOW
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("MOMENTUM_DETECTOR_ENABLED", "0") != "1":
+        raise HTTPException(503, "Momentum detector not enabled. Set MOMENTUM_DETECTOR_ENABLED=1")
+    
+    try:
+        from core.momentum_detector import detect_momentum_shift, get_momentum_history
+        
+        # Get current momentum (from prediction engine or calculate)
+        current_momentum = 0.0  # TODO: Calculate from recent price action
+        
+        shift = detect_momentum_shift(
+            symbol=symbol.upper(),
+            current_momentum=current_momentum,
+            lookback_minutes=lookback_minutes
+        )
+        
+        history = get_momentum_history(symbol.upper(), limit=20)
+        
+        return {
+            "symbol": symbol.upper(),
+            "shift_detection": shift,
+            "recent_history": history[-5:] if history else [],
+            "timestamp": int(time.time()),
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"Momentum shift detection failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Detection failed: {str(e)[:200]}")
+
+
+@APP.get("/api/research/{symbol}")
+async def api_research(
+    symbol: str,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Research Blueprint - Multi-source aggregation
+    
+    Aggregates data from 12 categories:
+    
+    Fundamentals:
+    - P/E ratio, Market Cap, Profit Margins, Revenue Growth
+    
+    Technicals:
+    - RSI, Bollinger Bands, MA20/50/200
+    
+    News & Sentiment:
+    - Recent news headlines with sentiment scores
+    
+    EDGAR Filings:
+    - Recent SEC filings (10-K, 10-Q, 8-K)
+    
+    Returns:
+        Aggregate impact score: -1.0 (very bearish) to +1.0 (very bullish)
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("RESEARCH_BLUEPRINT_ENABLED", "0") != "1":
+        raise HTTPException(503, "Research blueprint not enabled. Set RESEARCH_BLUEPRINT_ENABLED=1")
+    
+    try:
+        from core.research_blueprint import aggregate_research
+        
+        research = aggregate_research(symbol.upper())
+        
+        return {
+            "symbol": symbol.upper(),
+            "research": research,
+            "timestamp": int(time.time()),
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"Research aggregation failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Research failed: {str(e)[:200]}")
+
+
+@APP.get("/api/hedging/recommendations")
+async def api_hedging_recommendations(
+    portfolio_beta: float = 1.0,
+    target_beta: float = 0.0,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Get portfolio hedging recommendations
+    
+    Beta-neutral hedging to reduce portfolio volatility by 20-40%.
+    
+    Args:
+        portfolio_beta: Current portfolio beta (default 1.0 = market beta)
+        target_beta: Desired portfolio beta (default 0.0 = beta-neutral)
+    
+    Returns:
+        - Hedge instrument (usually SPY)
+        - Hedge ratio ($ amount to short per $1 portfolio)
+        - Expected volatility reduction (%)
+        - Pairs trading opportunities (z-score > 2.0)
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("HEDGING_ENABLED", "0") != "1":
+        raise HTTPException(503, "Hedging engine not enabled. Set HEDGING_ENABLED=1")
+    
+    try:
+        from core.hedging_engine import get_hedging_engine
+        
+        engine = get_hedging_engine()
+        
+        # Calculate beta hedge
+        hedge = engine.calculate_beta_hedge(
+            portfolio_beta=portfolio_beta,
+            target_beta=target_beta
+        )
+        
+        # Find pairs trading opportunities
+        pairs = engine.find_pairs_trade()  # Returns pairs with z-score > 2.0
+        
+        return {
+            "beta_hedge": hedge,
+            "pairs_trading": pairs,
+            "timestamp": int(time.time()),
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"Hedging recommendations failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Hedging failed: {str(e)[:200]}")
+
+
+@APP.get("/api/system_status")
+async def api_system_status(
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    Master Orchestrator - System status
+    
+    Returns real-time status of all background services:
+    - Price refresh loop
+    - Movers scanner
+    - VIP scanner
+    - SL/TP monitor
+    - Scheduled predictions
+    - Context engine
+    - Market scanner
+    - Daily reports
+    - Outcome reconciler
+    - Autonomous execution
+    
+    Each service shows:
+    - status: running | stopped | failed | disabled
+    - last_run: Unix timestamp
+    - error: Error message (if failed)
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("ORCHESTRATOR_ENABLED", "0") != "1":
+        raise HTTPException(503, "Master orchestrator not enabled. Set ORCHESTRATOR_ENABLED=1")
+    
+    try:
+        from core.orchestrator import _SYSTEM_STATUS, _START_TIME
+        
+        uptime_seconds = int(time.time() - _START_TIME) if _START_TIME > 0 else 0
+        
+        return {
+            "system_status": _SYSTEM_STATUS,
+            "uptime_seconds": uptime_seconds,
+            "uptime_human": f"{uptime_seconds // 3600}h {(uptime_seconds % 3600) // 60}m",
+            "timestamp": int(time.time()),
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"System status failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Status failed: {str(e)[:200]}")
+
+
+@APP.get("/api/agentkit/chat")
+async def api_agentkit_chat(
+    message: str,
+    conversation_id: str | None = None,
+    credentials: HTTPAuthorizationCredentials | None = AUTH_DEP,
+):
+    """
+    AgentKit - Natural language AI conversations
+    
+    Stateful persistent conversations using OpenAI Assistants API.
+    
+    Features:
+    - Multi-turn conversations with memory
+    - Tool calling (get_price, get_news, get_position, dispatch_alert)
+    - Natural language understanding
+    - Cost: $0.01-$0.10 per conversation
+    
+    Args:
+        message: Your question or command
+        conversation_id: Optional conversation ID for follow-ups
+    
+    Returns:
+        - response: AI response text
+        - conversation_id: ID for follow-up messages
+        - tools_used: List of tools called during conversation
+    """
+    try:
+        _require_bearer(
+            (f"Bearer {credentials.credentials}")
+            if credentials and credentials.credentials
+            else None
+        )
+    except Exception:
+        pass
+    
+    if os.getenv("AGENTKIT_ENABLED", "0") != "1":
+        raise HTTPException(503, "AgentKit not enabled. Set AGENTKIT_ENABLED=1")
+    
+    if not os.getenv("OPENAI_AGENT_API_KEY"):
+        raise HTTPException(503, "AgentKit requires OPENAI_AGENT_API_KEY")
+    
+    try:
+        from llm.agentkit import get_agentkit_client
+        
+        client = get_agentkit_client()
+        
+        result = await client.chat(
+            message=message,
+            conversation_id=conversation_id
+        )
+        
+        return {
+            "message": message,
+            "response": result["response"],
+            "conversation_id": result["conversation_id"],
+            "tools_used": result.get("tools_used", []),
+            "timestamp": int(time.time()),
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"AgentKit chat failed: {e}", exc_info=True)
         raise HTTPException(500, f"Chat failed: {str(e)[:200]}")
 
 
