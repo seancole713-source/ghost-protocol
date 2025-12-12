@@ -3965,7 +3965,6 @@ async def _post_startup_init():
     LOGGER.info("🤖 [POST-STARTUP] Initializing Phase 5 Autonomous Execution Engine...")
     try:
         from core.autonomous_execution_engine import run_execution_cycle
-        import os
         
         execution_enabled = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
         execution_interval = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))
