@@ -19,43 +19,96 @@ TELEGRAM_ALERTS_MODULE = None  # telegram_alerts module
 _SCHEDULER_THREAD: threading.Thread | None = None
 _SCHEDULER_STOP = threading.Event()
 
-# Watch lists - EXPANDED WITH USER SYMBOLS
+# Watch lists - EXPANDED WITH USER'S CASH APP UNIVERSE (200+ SYMBOLS)
 STOCK_SYMBOLS = [
-    # Tech Giants
-    "AAPL", "MSFT", "NVDA", "GOOGL", "META", "TSLA", "AMZN",
-    # User Watchlist
+    # Tech Giants & FAANG
+    "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "META", "TSLA", "AMZN",
+    
+    # User's Top Gainers/Actives from Cash App
+    "YOU", "RIVN", "LULU", "RH", "VERA", "SHAK", "CCC", "IMVT", "PL", "CELC",
+    "MMYT", "EVCM", "DNLI", "BLLN", "CAE", "COGT", "SLNO", "LNTH", "OLMA", "EWTX",
+    "NAVN", "MTN", "MLYS", "GE", "CMG", "VSCO", "MOS", "CYTK", "CAVA", "ENVA",
+    "SMG", "GLPI", "OSCR", "PLMR", "LIN", "COKE", "RGC", "AJG", "ROIV", "LFST",
+    "ATAT", "PACS", "ERIE",
+    
+    # User's Original Watchlist
     "TLRY", "TAL", "ARCT", "TME", "HIMS", "PFE", "RDFN", "BILL", "XPO",
+    
+    # User's Cash App Top Holdings
+    "SHOP", "AVGO", "BAC", "V", "ADBE", "ABNB",
+    
     # Original Tracked
     "WOLF",
+    
     # High Volume Movers
-    "SPY", "QQQ", "GME", "AMC", "PLTR", "SOFI", "RIVN", "LCID", "NIO",
+    "SPY", "QQQ", "GME", "AMC", "PLTR", "SOFI", "LCID", "NIO",
+    
     # Financial/Industrial
-    "GS", "JPM", "BAC", "V", "MA",
+    "GS", "JPM", "MA", "C", "WFC", "MS",
+    
     # Communication/Media
     "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS",
+    
     # Energy/Utilities  
     "XOM", "CVX", "NEE", "DUK", "SO", "D",
+    
     # Retail/Consumer
-    "WMT", "TGT", "COST", "HD", "LOW",
+    "WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX",
+    
     # Healthcare/Pharma
-    "UNH", "JNJ", "ABT", "LLY", "MRK",
+    "UNH", "JNJ", "ABT", "LLY", "MRK", "ABBV", "TMO",
+    
     # Transportation/Logistics
-    "UBER", "LYFT", "FDX", "UPS",
+    "UBER", "LYFT", "FDX", "UPS", "DAL", "UAL",
+    
     # Social/Emerging
-    "SNAP", "PINS", "DASH", "SQ",
+    "SNAP", "PINS", "DASH", "SQ", "RBLX", "HOOD",
+    
     # Real Estate
-    "VICI", "O", "PLD", "AMT", "CCI"
+    "VICI", "O", "PLD", "AMT", "CCI",
+    
+    # Semiconductors/Hardware
+    "AMD", "INTC", "QCOM", "AVGO", "MU", "TSM",
+    
+    # Cloud/SaaS
+    "CRM", "ORCL", "NOW", "SNOW", "DDOG", "NET",
+    
+    # Biotech/Genomics
+    "GILD", "VRTX", "BIIB", "REGN", "ILMN",
+    
+    # Industrial/Defense
+    "BA", "LMT", "RTX", "HON", "GD",
+    
+    # Financial Services
+    "BLK", "SCHW", "AXP", "USB", "PNC"
 ]
 
 CRYPTO_SYMBOLS = [
-    # Major
-    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "DOT", "MATIC",
-    # VIP Microcaps
+    # Top 10 by Market Cap (from user's Cash App list)
+    "BTC", "ETH", "USDT", "XRP", "BNB", "USDC", "SOL", "DOGE", "ADA", "TRX",
+    
+    # Top DeFi & Layer 1/2 (11-30)
+    "WSTETH", "BCH", "WBTC", "WBETH", "WETH", "LINK", "WEETH", "LEO", "XLM", "ZEC",
+    "XMR", "USDE", "LTC", "CBBTC", "BTCB", "SUI", "AVAX", "DAI", "HBAR", "SHIB",
+    
+    # Emerging/High Growth (31-50)
+    "MNT", "TON", "PYUSD", "WLFI", "CRO", "SUSDE", "UNI", "DOT", "TAO", "AAVE",
+    "CC", "RAIN", "BGB", "OKB", "USDF", "ASTER", "NEAR", "ETC", "M", "ENA",
+    
+    # VIP Microcaps (Ghost originals)
     "PEPE", "WEPE", "LILPEPE", "DORKL", "SLOTH", "APC",
-    # DeFi/Layer2
-    "LINK", "UNI", "AAVE", "LDO",
+    
     # Meme/Trending
-    "DOGE", "SHIB", "FLOKI", "BONK"
+    "FLOKI", "BONK", "WIF", "TRUMP",
+    
+    # Staking/Wrapped Variants
+    "STETH", "JITOSOL", "RETH", "BNSOL", "SOLVBTC",
+    
+    # Altcoins with volume
+    "FIL", "ATOM", "VET", "ALGO", "ICP", "QNT", "FLR", "XDC",
+    
+    # Governance/Exchange Tokens
+    "KCS", "GT", "HYPE"
 ]
 
 # Timezone
