@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Ghost Performance Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            color: #fff;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        .card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 10px;
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+        .metric-label {
+            font-weight: 600;
+        }
+        .metric-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+        .positive {
+            color: #4ade80;
+        }
+        .negative {
+            color: #f87171;
+        }
+        .neutral {
+            color: #fbbf24;
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .refresh-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+        .refresh-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 1.5rem;
+        }
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Ghost Performance Dashboard</h1>
+            <p class="subtitle">Real-time P&L, Win Rates & Performance Metrics</p>
+        </header>
+
+        <div id="loading" class="loading">Loading dashboard...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="dashboard" style="display: none;">
+            <!-- Overall Stats -->
+            <div class="card">
+                <h2>📈 All-Time Performance</h2>
+                <div class="metric">
+                    <span class="metric-label">Total Predictions</span>
+                    <span class="metric-value" id="overall-predictions">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Win Rate</span>
+                    <span class="metric-value" id="overall-winrate">0%</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Avg Accuracy</span>
+                    <span class="metric-value" id="overall-accuracy">0%</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Avg Confidence</span>
+                    <span class="metric-value" id="overall-confidence">0%</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Avg Gain</span>
+                    <span class="metric-value" id="overall-gain">0%</span>
+                </div>
+            </div>
+
+            <!-- Period Stats Grid -->
+            <div class="grid">
+                <div class="card">
+                    <h2>📅 Today (24h)</h2>
+                    <div class="metric">
+                        <span class="metric-label">Predictions</span>
+                        <span class="metric-value" id="today-predictions">0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Win Rate</span>
+                        <span class="metric-value" id="today-winrate">0%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">W/L</span>
+                        <span class="metric-value" id="today-wl">0/0</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📆 Last 7 Days</h2>
+                    <div class="metric">
+                        <span class="metric-label">Predictions</span>
+                        <span class="metric-value" id="7d-predictions">0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Win Rate</span>
+                        <span class="metric-value" id="7d-winrate">0%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Avg Gain</span>
+                        <span class="metric-value" id="7d-gain">0%</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📊 Last 30 Days</h2>
+                    <div class="metric">
+                        <span class="metric-label">Predictions</span>
+                        <span class="metric-value" id="30d-predictions">0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Win Rate</span>
+                        <span class="metric-value" id="30d-winrate">0%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Avg Gain</span>
+                        <span class="metric-value" id="30d-gain">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Performers -->
+            <div class="card">
+                <h2>🏆 Top 10 Performers</h2>
+                <div class="table-container">
+                    <table id="top-performers">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Predictions</th>
+                                <th>Wins</th>
+                                <th>Win Rate</th>
+                                <th>Avg Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Worst Performers -->
+            <div class="card">
+                <h2>⚠️ Worst 10 Performers</h2>
+                <div class="table-container">
+                    <table id="worst-performers">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Predictions</th>
+                                <th>Wins</th>
+                                <th>Win Rate</th>
+                                <th>Avg Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Confidence Calibration -->
+            <div class="card">
+                <h2>🎯 Confidence Calibration</h2>
+                <p style="margin-bottom: 15px; opacity: 0.8;">
+                    Does Ghost's confidence match actual accuracy?
+                </p>
+                <div id="calibration-metrics"></div>
+            </div>
+
+            <center>
+                <button class="refresh-btn" onclick="loadDashboard()">🔄 Refresh Data</button>
+            </center>
+        </div>
+
+        <footer>
+            <p>Last updated: <span id="last-update">-</span></p>
+            <p>Auto-refreshes every 5 minutes</p>
+        </footer>
+    </div>
+
+    <script>
+        async function loadDashboard() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('dashboard').style.display = 'none';
+                document.getElementById('error').style.display = 'none';
+
+                const response = await fetch('/api/v3/performance/dashboard');
+                const data = await response.json();
+
+                if (!response.ok || data.error) {
+                    throw new Error(data.error || 'Failed to load dashboard');
+                }
+
+                // Update overall stats
+                const overall = data.overall || {};
+                document.getElementById('overall-predictions').textContent = overall.predictions?.toLocaleString() || '0';
+                document.getElementById('overall-winrate').textContent = overall.win_rate + '%' || '0%';
+                document.getElementById('overall-winrate').className = getColorClass(overall.win_rate);
+                document.getElementById('overall-accuracy').textContent = overall.avg_accuracy + '%' || '0%';
+                document.getElementById('overall-confidence').textContent = overall.avg_confidence + '%' || '0%';
+                document.getElementById('overall-gain').textContent = (overall.avg_gain_pct > 0 ? '+' : '') + overall.avg_gain_pct + '%';
+                document.getElementById('overall-gain').className = getColorClass(overall.avg_gain_pct);
+
+                // Update period stats
+                updatePeriod('today', data.today || {});
+                updatePeriod('7d', data.last_7d || {});
+                updatePeriod('30d', data.last_30d || {});
+
+                // Update top performers
+                updateTable('top-performers', data.top_performers || []);
+
+                // Update worst performers
+                updateTable('worst-performers', data.worst_performers || []);
+
+                // Update calibration
+                updateCalibration(data.confidence_calibration || {});
+
+                // Update timestamp
+                document.getElementById('last-update').textContent = new Date(data.generated_at).toLocaleString();
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = '❌ Error: ' + error.message;
+            }
+        }
+
+        function updatePeriod(period, data) {
+            document.getElementById(`${period}-predictions`).textContent = data.predictions || '0';
+            
+            const winrate = data.win_rate || 0;
+            document.getElementById(`${period}-winrate`).textContent = winrate + '%';
+            document.getElementById(`${period}-winrate`).className = 'metric-value ' + getColorClass(winrate);
+            
+            if (period === 'today') {
+                document.getElementById(`${period}-wl`).textContent = `${data.wins || 0}/${data.losses || 0}`;
+            } else {
+                const gain = data.avg_gain_pct || 0;
+                document.getElementById(`${period}-gain`).textContent = (gain > 0 ? '+' : '') + gain + '%';
+                document.getElementById(`${period}-gain`).className = 'metric-value ' + getColorClass(gain);
+            }
+        }
+
+        function updateTable(tableId, data) {
+            const tbody = document.querySelector(`#${tableId} tbody`);
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No data available</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td><strong>${item.symbol}</strong></td>
+                    <td>${item.predictions}</td>
+                    <td>${item.wins}</td>
+                    <td class="${getColorClass(item.win_rate)}">${item.win_rate}%</td>
+                    <td>${item.avg_confidence}%</td>
+                `;
+            });
+        }
+
+        function updateCalibration(data) {
+            const container = document.getElementById('calibration-metrics');
+            container.innerHTML = '';
+
+            if (Object.keys(data).length === 0) {
+                container.innerHTML = '<p style="opacity: 0.6;">Not enough data for calibration analysis</p>';
+                return;
+            }
+
+            for (const [range, metrics] of Object.entries(data)) {
+                if (metrics.predictions < 10) continue; // Skip ranges with too few predictions
+
+                const div = document.createElement('div');
+                div.className = 'metric';
+                div.innerHTML = `
+                    <span class="metric-label">${range} confidence</span>
+                    <span class="metric-value ${getColorClass(100 - metrics.calibration_error)}">
+                        ${metrics.actual_accuracy}% actual (±${metrics.calibration_error}%)
+                    </span>
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        function getColorClass(value) {
+            if (value >= 65) return 'positive';
+            if (value >= 50) return 'neutral';
+            return 'negative';
+        }
+
+        // Load on page load
+        loadDashboard();
+
+        // Auto-refresh every 5 minutes
+        setInterval(loadDashboard, 300000);
+    </script>
+</body>
+</html>

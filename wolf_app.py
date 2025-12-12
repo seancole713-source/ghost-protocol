@@ -57,7 +57,7 @@ from xml.etree import ElementTree as ET
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request, Response, Security, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import (
@@ -4331,6 +4331,18 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.exception("daily_predictions_engine_start_failed", extra={"component": "startup", "error": str(e)})
 
+    # Start Performance Dashboard Monitoring
+    try:
+        from core.performance_dashboard import dashboard_monitoring_loop
+        
+        # Start background monitoring task
+        loop = asyncio.get_running_loop()
+        loop.create_task(dashboard_monitoring_loop())
+        
+        LOGGER.info("✅ Performance Dashboard: STARTED (hourly monitoring, win rate alerts)")
+    except Exception as e:
+        LOGGER.exception("performance_dashboard_start_failed", extra={"component": "startup", "error": str(e)})
+
     # Optional heartbeat (skip price fetch to avoid blocking startup)
     try:
         if TELEGRAM_HEARTBEAT_ON_START:
@@ -7098,6 +7110,131 @@ async def api_accuracy_performance(days: int = 30):
         LOGGER.error(f"Performance metrics failed: {e}", exc_info=True)
         return {
             "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/performance/dashboard")
+async def api_performance_dashboard():
+    """
+    📊 GHOST PERFORMANCE DASHBOARD - "Is Ghost Making Money?"
+    ========================================================
+    
+    Comprehensive real-time performance metrics showing:
+    - Overall P&L and win rates (all-time, today, 7d, 30d)
+    - Top & worst performing symbols
+    - Confidence calibration (is Ghost overconfident?)
+    - Recent predictions with outcomes
+    
+    This answers the critical question: **Is Ghost actually profitable?**
+    
+    Returns:
+        {
+            "overall": {
+                "predictions": 1500,
+                "win_rate": 68.2,
+                "avg_accuracy": 70.1,
+                "avg_gain_pct": 2.3
+            },
+            "today": {"predictions": 12, "win_rate": 75.0},
+            "last_7d": {"predictions": 84, "win_rate": 69.0},
+            "last_30d": {"predictions": 320, "win_rate": 68.5},
+            "top_performers": [
+                {"symbol": "WOLF", "win_rate": 82.0, "predictions": 45}
+            ],
+            "worst_performers": [...],
+            "confidence_calibration": {
+                "60-70%": {"actual_accuracy": 62.0, "calibration_error": 3.0},
+                "70-80%": {"actual_accuracy": 74.0, "calibration_error": 1.0}
+            },
+            "recent_predictions": [...]
+        }
+    """
+    try:
+        from core.performance_dashboard import get_dashboard_metrics
+        
+        metrics = get_dashboard_metrics()
+        return metrics
+    
+    except Exception as e:
+        LOGGER.error(f"Performance dashboard failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "overall": {"predictions": 0, "win_rate": 0}
+        }
+
+
+@APP.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_ui():
+    """
+    📊 Interactive Performance Dashboard UI
+    
+    Beautiful web interface showing:
+    - Real-time P&L metrics
+    - Win rates across different time periods
+    - Top/worst performing symbols
+    - Confidence calibration analysis
+    
+    Auto-refreshes every 5 minutes.
+    """
+    try:
+        from pathlib import Path
+        
+        # Read the dashboard HTML template
+        template_path = Path(__file__).parent / "templates" / "dashboard.html"
+        
+        if not template_path.exists():
+            return HTMLResponse(
+                content="<h1>Dashboard template not found</h1>",
+                status_code=404
+            )
+        
+        with open(template_path, "r") as f:
+            html_content = f.read()
+        
+        return HTMLResponse(content=html_content)
+    
+    except Exception as e:
+        LOGGER.error(f"Dashboard UI failed: {e}", exc_info=True)
+        return HTMLResponse(
+            content=f"<h1>Error loading dashboard</h1><p>{str(e)}</p>",
+            status_code=500
+        )
+
+
+@APP.get("/api/v3/calibration/report")
+async def api_calibration_report():
+    """
+    🎯 Prediction Calibration Report
+    
+    Shows how well Ghost's confidence matches actual accuracy.
+    
+    Returns:
+        {
+            "status": "good" | "needs_calibration",
+            "overall_calibration_error": 2.3,
+            "platt_params": {"a": 1.2, "b": -0.1},
+            "bins": {
+                "60-70%": {
+                    "predictions": 45,
+                    "expected_accuracy": 60,
+                    "actual_accuracy": 62.2,
+                    "calibration_error": 2.2
+                }
+            }
+        }
+    """
+    try:
+        from core.prediction_calibration import get_calibration_report
+        
+        report = get_calibration_report()
+        return report
+    
+    except Exception as e:
+        LOGGER.error(f"Calibration report failed: {e}", exc_info=True)
+        return {
+            "status": "error",
             "error": str(e)
         }
 
