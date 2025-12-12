@@ -440,9 +440,9 @@ async def start_all_background_services(
     
     if daily_predictions_enabled:
         try:
-            from core.daily_predictions_engine import daily_briefing_scheduler
+            from core.daily_predictions_engine import daily_briefing_task
             
-            _TASKS["daily_predictions"] = asyncio.create_task(daily_briefing_scheduler())
+            _TASKS["daily_predictions"] = asyncio.create_task(daily_briefing_task())
             _SYSTEM_STATUS["daily_predictions"] = {
                 "status": "running",
                 "enabled": True,

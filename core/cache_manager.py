@@ -9,7 +9,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from threading import RLock
-from typing import Any, TypeVar
+from typing import Any, Dict, TypeVar
 
 T = TypeVar("T")
 
