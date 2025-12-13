@@ -597,5 +597,3 @@ async def get_all_tracked_symbols(base_symbols: list[str]) -> list[str]:
         LOGGER.info(f"📊 Tracking {len(all_symbols)} symbols ({len(base_symbols)} core + {len(_DISCOVERED_SYMBOLS)} discovered)")
     
     return all_symbols
-    except Exception as e:
-        LOGGER.error(f"Failed to send spike alerts: {e}")
