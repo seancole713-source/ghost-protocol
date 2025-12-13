@@ -1,0 +1,4 @@
+git add docs/architecture/ghost_pipeline.mmd
+git commit -m "docs: add Ghost Protocol decision pipeline diagram"
+git push origin main
+
