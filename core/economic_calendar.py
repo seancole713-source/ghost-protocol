@@ -214,49 +214,6 @@ def fetch_earnings_calendar(symbol: str | None = None, days_ahead: int = 14) -> 
     except Exception as e:
         logger.error(f"Failed to fetch earnings calendar: {e}")
         return {"ok": False, "error": str(e), "earnings": []}
-    """
-    Fetch upcoming earnings announcements.
-    
-    Critical for trading - earnings can move stock 10%+ in minutes.
-    
-    Args:
-        symbol: Specific stock (None = all upcoming)
-        days_ahead: Look ahead window
-        
-    Returns:
-        Dict with earnings dates, estimates, historical beat/miss
-    """
-    cache_key = f"earnings_{symbol}_{days_ahead}"
-    cached = CALENDAR_CACHE.get(cache_key)
-    
-    if cached and (time.time() - cached["timestamp"]) < CACHE_TTL_SECONDS:
-        return cached["data"]
-    
-    try:
-        # TODO: Implement earnings calendar API
-        # Sources: Alpha Vantage, Yahoo Finance, or Polygon.io
-        
-        result = {
-            "ok": True,
-            "symbol": symbol,
-            "upcoming_earnings": [],
-            "timestamp": datetime.now(UTC).isoformat()
-        }
-        
-        CALENDAR_CACHE[cache_key] = {
-            "data": result,
-            "timestamp": time.time()
-        }
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch earnings calendar: {e}")
-        return {
-            "ok": False,
-            "error": str(e),
-            "upcoming_earnings": []
-        }
 
 
 def get_upcoming_events(hours_ahead: int = 24) -> list[dict[str, Any]]:

@@ -364,7 +364,7 @@ class WatchlistTelegramAlerter:
                     change_pct=move_pct,
                     message=message,
                     telegram_sent=True,
-                    telegram_chat_id=None,  # TODO: Get from config
+                    telegram_chat_id=None,  # Stored in watchlist_item.telegram_chat_id if configured
                 )
             else:
                 LOGGER.warning(f"⚠️  Could not log alert: watchlist item not found for {symbol}")

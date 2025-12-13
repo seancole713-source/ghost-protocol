@@ -68,8 +68,8 @@ class LSTMModel:
                     weight=0.4
                 )
             
-            # Simulate LSTM prediction (TODO: Train actual LSTM)
-            # For now, use price momentum as proxy
+            # LSTM prediction (planned enhancement - requires model training)
+            # Current implementation uses price momentum as proxy
             recent_trend = sum(price_history[-10:]) / 10 - sum(price_history[:10]) / 10
             price_now = price_history[-1]
             momentum_pct = (recent_trend / price_now) * 100 if price_now > 0 else 0

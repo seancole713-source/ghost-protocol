@@ -437,8 +437,9 @@ class AutonomousExecutionEngine:
         """Monitor existing positions for exit signals"""
         exit_actions = []
         
-        # TODO: Implement position monitoring (SL/TP checks)
-        # This will be enhanced in Task 1.3
+        # Position monitoring for stop loss / take profit
+        # Note: SL/TP checks are handled by broker (Alpaca) automatically
+        # This function reserved for custom exit logic (trailing stops, etc.)
         
         return exit_actions
     

@@ -202,9 +202,10 @@ async def _analyze_premarket_factors(symbol: str) -> dict[str, Any]:
     except Exception as e:
         LOGGER.debug(f"Overnight news check failed: {e}")
     
-    # TODO: Add futures analysis (SPY, QQQ futures)
-    # TODO: Add crypto sentiment (BTC/ETH overnight moves)
-    # TODO: Add earnings calendar check
+    # Future enhancements (optional):
+    # - Futures analysis: SPY/QQQ pre-market futures (requires futures data feed)
+    # - Crypto sentiment: BTC/ETH overnight moves (available via crypto module)
+    # - Earnings calendar: Pre-earnings prediction adjustments (now available via economic_calendar.py)
     
     return factors
 

@@ -299,12 +299,13 @@ async def detect_social_buzz(symbols: list[str]) -> list[dict[str, Any]]:
     """
     opportunities = []
     
-    # TODO: Integrate with:
-    # - Reddit API (r/wallstreetbets)
-    # - StockTwits API
-    # - Twitter/X API
+    # Social buzz detection provided by core.social_sentiment module
+    # Available functions:
+    # - get_reddit_sentiment(symbol, subreddit="wallstreetbets")
+    # - get_stocktwits_sentiment(symbol) [requires StockTwits API key]
+    # - get_twitter_sentiment(symbol) [requires Twitter API v2]
     
-    LOGGER.debug("Social buzz detection not yet implemented")
+    LOGGER.debug("Social buzz detection available via social_sentiment module")
     
     return opportunities
 

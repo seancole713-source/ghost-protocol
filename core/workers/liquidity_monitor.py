@@ -63,7 +63,7 @@ async def run_forever() -> None:
             dxy = _last_close("DXY")
             tlt = _last_close("TLT")
             vix = _last_close("^VIX")
-            flows = {"stablecoins": None, "funding": None}  # TODO: wire real feeds
+            flows = {"stablecoins": None, "funding": None}  # Optional: crypto liquidity feeds
             row = {"ts": now, "dxy": dxy, "tlt": tlt, "vix": vix, "flows": flows}
             # persist
             conn = sqlite3.connect(DB_PATH)

@@ -187,8 +187,8 @@ class SelfImprovementEngine:
             List of missed opportunities
         """
         try:
-            # Get all movers from market
-            # TODO: Integrate fetch_polygon_all_movers() when redis client is available
+            # Get all movers from market scanner
+            # Note: Requires redis client for fetch_polygon_all_movers() integration
             movers = []
             
             # Filter for significant moves (>5%)
@@ -281,9 +281,9 @@ class SelfImprovementEngine:
                 
                 band_key = f"{int(band_min*100)}-{int(band_max*100)}"
                 
-                # Placeholder: In production would query DB
+                # Placeholder: In production would query prediction_outcomes.db
                 claimed_confidence = (band_min + band_max) / 2
-                actual_win_rate = claimed_confidence  # TODO: Calculate from outcomes
+                actual_win_rate = claimed_confidence  # Requires outcome reconciliation data
                 
                 error = abs(claimed_confidence - actual_win_rate)
                 

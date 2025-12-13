@@ -177,8 +177,9 @@ class PositionSizer:
         total_risk_pct = (total_risk_dollar / total_capital_used) if total_capital_used > 0 else 0
         available_capital = self.total_capital - total_capital_used
         
-        # Simple correlation risk (TODO: Calculate actual correlation)
-        correlation_risk = min(len(open_positions) / 10, 1.0)  # More positions = higher correlation risk
+        # Correlation risk approximation (increases with position count)
+        # Note: Full correlation matrix requires historical price data
+        correlation_risk = min(len(open_positions) / 10, 1.0)
         
         return PortfolioRisk(
             total_capital=self.total_capital,

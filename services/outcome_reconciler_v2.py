@@ -232,9 +232,8 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
         from services.unified_provider import get_symbol_price
         
         # Get current price (closest available to timestamp)
-        # Note: For historical prices, we would need to use specific historical endpoints
-        # For now, we use the unified provider which fetches latest price
-        # TODO: Implement true historical price fetching for exact timestamps
+        # Note: Historical price fetching requires time-series API (polygon.io historical endpoint)
+        # Current implementation uses latest price as approximation
         
         price = get_symbol_price(symbol)
         

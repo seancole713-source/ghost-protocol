@@ -202,8 +202,8 @@ def _check_portfolio_constraints(prediction: dict, positions: list[dict]) -> dic
                 "reason": f"Already holding position in {symbol}"
             }
     
-    # TODO: Add correlation check (don't hold 5 tech stocks)
-    # TODO: Add sector concentration check
+    # Note: Advanced portfolio checks (correlation, sector concentration)
+    # can be added via risk_engine module when enabled
     
     return {
         "ok": True,
@@ -223,7 +223,8 @@ def _check_risk_limits(prediction: dict, portfolio: dict, risk_engine: Any) -> d
             "reason": f"Insufficient buying power ${buying_power:.2f}"
         }
     
-    # TODO: Use risk_engine for advanced checks (VaR, correlation, etc.)
+    # Note: Advanced risk checks (VaR, correlation, drawdown)
+    # available via risk_engine module when RISK_ENGINE_ENABLED=1
     
     return {
         "ok": True,

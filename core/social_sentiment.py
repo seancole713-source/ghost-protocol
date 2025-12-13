@@ -234,12 +234,13 @@ def fetch_reddit_sentiment(symbol: str, subreddit: str = "wallstreetbets") -> di
         return cached["data"]
     
     try:
-        # TODO: Implement Reddit API (PRAW) integration
-        # Requires REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT
-        
+        # Reddit API (PRAW) integration
         reddit_id = os.getenv("REDDIT_CLIENT_ID")
-        if not reddit_id:
-            logger.warning("REDDIT_CLIENT_ID not set - Reddit sentiment unavailable")
+        reddit_secret = os.getenv("REDDIT_CLIENT_SECRET")
+        reddit_agent = os.getenv("REDDIT_USER_AGENT", "Ghost:v1.0 (by /u/ghost_trader)")
+        
+        if not reddit_id or not reddit_secret:
+            logger.warning("Reddit API credentials not set - using graceful fallback")
             return {
                 "ok": False,
                 "error": "Reddit API not configured",
@@ -247,27 +248,94 @@ def fetch_reddit_sentiment(symbol: str, subreddit: str = "wallstreetbets") -> di
                 "mention_count": 0
             }
         
-        # Real implementation would:
-        # 1. Search r/wallstreetbets for posts mentioning symbol
-        # 2. Analyze post titles, body text, and top comments
-        # 3. Detect bullish keywords (moon, rocket, diamond hands, etc.)
-        # 4. Detect bearish keywords (dump, crash, puts, etc.)
-        # 5. Weight by upvotes and comment count
-        # 6. Track "YOLO" posts (high conviction plays)
+        # Attempt PRAW import (optional dependency)
+        try:
+            import praw
+        except ImportError:
+            logger.warning("praw library not installed - Reddit sentiment unavailable")
+            return {
+                "ok": False,
+                "error": "praw library not installed (pip install praw)",
+                "sentiment_score": 0.0,
+                "mention_count": 0
+            }
         
-        result = {
-            "ok": True,
-            "symbol": symbol,
-            "subreddit": subreddit,
-            "sentiment_score": 0.0,  # -1.0 to +1.0
-            "mention_count": 0,
-            "hot_posts": [],
-            "yolo_count": 0,  # Number of high-conviction "YOLO" posts
-            "bull_count": 0,  # Bullish mentions
-            "bear_count": 0,  # Bearish mentions
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "source": "reddit"
-        }
+        # Initialize Reddit client
+        reddit = praw.Reddit(
+            client_id=reddit_id,
+            client_secret=reddit_secret,
+            user_agent=reddit_agent
+        )
+        
+        # Search for symbol mentions in subreddit
+        mentions = []
+        bullish_keywords = [
+            "moon", "rocket", "diamond", "hands", "buy", "calls",
+            "bullish", "pump", "squeeze", "yolo", "tendies", "apes", "hodl"
+        ]
+        bearish_keywords = [
+            "dump", "crash", "puts", "bearish", "short", "sell", "rug",
+            "scam", "dead", "bankruptcy", "baghold"
+        ]
+        
+        # Search recent posts (limit to prevent rate limiting)
+        for submission in reddit.subreddit(subreddit).search(
+            symbol, time_filter="day", limit=50
+        ):
+            text = (submission.title + " " + submission.selftext).lower()
+            
+            bullish_score = sum(1 for kw in bullish_keywords if kw in text)
+            bearish_score = sum(1 for kw in bearish_keywords if kw in text)
+            
+            # Weight by engagement
+            engagement_weight = min(submission.score / 100, 5.0)
+            
+            mentions.append({
+                "title": submission.title,
+                "score": submission.score,
+                "comments": submission.num_comments,
+                "bullish": bullish_score * engagement_weight,
+                "bearish": bearish_score * engagement_weight,
+                "url": submission.url
+            })
+        
+        if not mentions:
+            result = {
+                "ok": True,
+                "symbol": symbol,
+                "subreddit": subreddit,
+                "sentiment_score": 0.0,
+                "mention_count": 0,
+                "top_posts": [],
+                "timestamp": datetime.now(UTC).isoformat()
+            }
+        else:
+            # Calculate aggregate sentiment
+            total_bullish = sum(m["bullish"] for m in mentions)
+            total_bearish = sum(m["bearish"] for m in mentions)
+            
+            # Normalize to -1.0 to +1.0 scale
+            if total_bullish + total_bearish > 0:
+                sentiment = (total_bullish - total_bearish) / (total_bullish + total_bearish)
+            else:
+                sentiment = 0.0
+            
+            # Get top 3 posts by engagement
+            top_posts = sorted(mentions, key=lambda x: x["score"], reverse=True)[:3]
+            
+            result = {
+                "ok": True,
+                "symbol": symbol,
+                "subreddit": subreddit,
+                "sentiment_score": round(sentiment, 3),
+                "mention_count": len(mentions),
+                "top_posts": [{
+                    "title": p["title"],
+                    "score": p["score"],
+                    "url": p["url"]
+                } for p in top_posts],
+                "timestamp": datetime.now(UTC).isoformat()
+            }
         
         SENTIMENT_CACHE[cache_key] = {
             "data": result,
@@ -343,11 +411,53 @@ def get_trending_stocks(min_mentions: int = 50) -> list[dict[str, Any]]:
     Returns:
         List of trending stocks with sentiment scores
     """
-    # TODO: Implement trending detection
-    # Would track mention volume over time and detect spikes
-    # Compare current 1h volume vs 24h average
+    # Trending detection: Compare recent volume vs historical average
+    try:
+        import praw
+    except ImportError:
+        logger.warning("praw not installed - trending detection unavailable")
+        return []
     
-    return []
+    reddit_id = os.getenv("REDDIT_CLIENT_ID")
+    reddit_secret = os.getenv("REDDIT_CLIENT_SECRET")
+    
+    if not reddit_id or not reddit_secret:
+        return []  # Graceful fallback
+    
+    try:
+        reddit = praw.Reddit(
+            client_id=reddit_id,
+            client_secret=reddit_secret,
+            user_agent=os.getenv("REDDIT_USER_AGENT", "Ghost:v1.0")
+        )
+        
+        # Track mention counts for common tickers
+        common_symbols = ["SPY", "QQQ", "AAPL", "TSLA", "NVDA", "GME", "AMC"]
+        trending = []
+        
+        for symbol in common_symbols:
+            # Count recent mentions (1 hour)
+            recent_count = sum(
+                1 for _ in reddit.subreddit("wallstreetbets").search(
+                    symbol, time_filter="hour", limit=100
+                )
+            )
+            
+            # Only include if above threshold
+            if recent_count >= min_mentions:
+                sentiment = get_reddit_sentiment(symbol)
+                trending.append({
+                    "symbol": symbol,
+                    "mentions": recent_count,
+                    "sentiment": sentiment.get("sentiment_score", 0.0)
+                })
+        
+        # Sort by mention count
+        return sorted(trending, key=lambda x: x["mentions"], reverse=True)
+    
+    except Exception as e:
+        logger.error(f"Trending detection failed: {e}")
+        return []
 
 
 # Sentiment adjustment for Ghost predictions

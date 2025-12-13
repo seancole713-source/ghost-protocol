@@ -1096,8 +1096,33 @@ async def get_risk_snapshot(symbol: str = "WOLF"):
 async def get_recent_predictions(symbol: str = "WOLF", limit: int = 10):
     """Get recent prediction history"""
     try:
-        # TODO: Query prediction database
-        return []
+        # Query prediction database for recent history
+        from core.database_utils import get_db_path
+        import sqlite3
+        
+        db_path = get_db_path("ghost_predictions.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT symbol, forecast_direction, confidence, forecast_timeframe, created_at
+            FROM ghost_predictions
+            WHERE symbol = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (symbol, limit))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{
+            "symbol": row[0],
+            "direction": row[1],
+            "confidence": row[2],
+            "timeframe": row[3],
+            "timestamp": row[4]
+        } for row in rows]
+    
     except Exception as e:
         LOGGER.error(f"Recent predictions error: {e}")
         return []

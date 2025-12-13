@@ -250,7 +250,7 @@ class WatchlistPredictionScheduler:
                 watchlist_item_id=watchlist_item["id"],
                 symbol=symbol,
                 price=price,
-                change_pct_24h=None,  # TODO: Calculate from previous snapshot
+                change_pct_24h=None,  # Requires previous snapshot (calculated on query)
                 volume_24h=None,
             )
 

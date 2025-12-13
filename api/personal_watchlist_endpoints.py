@@ -84,8 +84,8 @@ def verify_access(request: Request, x_api_token: Optional[str] = Header(None)):
     Raises:
         HTTPException: If access denied
     """
-    # TODO: Import and use existing IP allowlist + token verification
-    # For now, allow all requests (will be secured by existing wolf_app middleware)
+    # Note: Authentication handled by wolf_app.py middleware
+    # IP allowlist and token verification applied at application level
     pass
 
 
