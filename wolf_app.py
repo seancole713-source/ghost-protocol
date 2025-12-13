@@ -3838,13 +3838,46 @@ async def _post_startup_init():
             LOGGER.info("[POST-STARTUP] 🎭 Master Orchestrator: Starting all background services...")
             from core.orchestrator import start_all_background_services
             
+            # Create wrapper functions for beast_scheduler callbacks
+            def beast_fetch_price(symbol: str, market: str):
+                """Wrapper for beast_scheduler GET_PRICE_FUNC"""
+                try:
+                    if market == "crypto":
+                        from core.crypto.crypto_providers import get_crypto_price_quorum
+                        result = get_crypto_price_quorum(symbol)
+                        if result and result.get("price"):
+                            return (result["price"], result["price"], result.get("provider", "unknown"), False)
+                    else:
+                        # Stock price - use turbo provider
+                        from core.providers.turbo_provider import turbo_stock_price
+                        price_data = turbo_stock_price(symbol)
+                        if price_data and price_data.get("price"):
+                            return (price_data["price"], price_data.get("prev_close"), price_data.get("provider", "unknown"), False)
+                    return None
+                except Exception as e:
+                    LOGGER.warning(f"beast_fetch_price failed for {symbol}: {e}")
+                    return None
+            
+            def beast_run_prediction(symbol: str, market: str, horizon: str):
+                """Wrapper for beast_scheduler RUN_PREDICTION_FUNC"""
+                try:
+                    # Run async prediction in sync context
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    result = loop.run_until_complete(run_single_prediction_async(symbol))
+                    loop.close()
+                    return result
+                except Exception as e:
+                    LOGGER.warning(f"beast_run_prediction failed for {symbol}: {e}")
+                    return {"ok": False, "error": str(e)}
+            
             # Start ALL background services through orchestrator
             await start_all_background_services(
                 app=APP,
                 logger=LOGGER,
                 redis_client=None,  # TODO: Pass redis if available
-                fetch_price_func=None,
-                run_prediction_func=None
+                fetch_price_func=beast_fetch_price,
+                run_prediction_func=beast_run_prediction
             )
             
             LOGGER.info("[POST-STARTUP] ✅ Master Orchestrator: All systems operational")
