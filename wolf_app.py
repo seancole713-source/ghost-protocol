@@ -3818,14 +3818,30 @@ async def _post_startup_init():
     """
     Run Stage 4/5 and background tasks AFTER server starts accepting connections.
     This prevents blocking the startup event handler.
+    
+    ARCHITECTURE SPLIT: Only runs background services in WORKER_MODE.
+    Web mode stays lightweight and responsive.
     """
     # NOTE: Uses global 'os' imported at line 12 - no local import needed
     
-    # CRITICAL: Wait 2 seconds for FastAPI to fully initialize and healthcheck to pass
-    # Railway healthcheck window is 100s - we need to respond IMMEDIATELY, then run tasks
+    # CRITICAL: Check if this is WORKER mode or WEB mode
+    WORKER_MODE = os.getenv("WORKER_MODE") == "1"
+    
+    if not WORKER_MODE:
+        LOGGER.info("[WEB MODE] Background engines DISABLED - web server will respond quickly")
+        LOGGER.info("[WEB MODE] To enable background services, deploy a separate worker with WORKER_MODE=1")
+        return  # EXIT - no background work in web mode
+    
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # WORKER MODE ONLY - Everything below runs ONLY in dedicated worker process
+    # ═══════════════════════════════════════════════════════════════════════════════
+    
+    LOGGER.info("[WORKER MODE] Starting background services (orchestrator, auto-predict, execution engine)...")
+    
+    # CRITICAL: Wait 2 seconds for worker process to fully initialize
     await asyncio.sleep(2)
     
-    LOGGER.info("[POST-STARTUP] Starting background initialization (delayed 2s)...")
+    LOGGER.info("[WORKER] Starting background initialization (delayed 2s)...")
     
     # NOTE: Postgres pool initialization removed - will lazy-init on first request
     # Startup must complete in <100s for Railway healthcheck, Postgres can take 30s+
@@ -4475,21 +4491,27 @@ async def _post_startup_init():
         LOGGER.warning(f"[REDIS] Initialization deferred: {e}", extra={"component": "startup"})
 
     # ============================================================================
-    # 🎭 MASTER ORCHESTRATOR - Start all background services
+    # 🎭 MASTER ORCHESTRATOR - Start all background services (WORKER MODE ONLY)
     # ============================================================================
-    try:
-        from core.orchestrator import start_all_background_services
-        asyncio.create_task(start_all_background_services(
-            app=APP,
-            logger=LOGGER,
-            redis_client=None  # Will be initialized by orchestrator
-        ))
-        LOGGER.info("🎭 Master Orchestrator: Background services starting...")
-    except Exception as e:
-        LOGGER.error(f"❌ Master Orchestrator failed to start: {e}", exc_info=True)
+    WORKER_MODE = os.getenv("WORKER_MODE") == "1"
+    
+    if WORKER_MODE:
+        try:
+            from core.orchestrator import start_all_background_services
+            asyncio.create_task(start_all_background_services(
+                app=APP,
+                logger=LOGGER,
+                redis_client=None  # Will be initialized by orchestrator
+            ))
+            LOGGER.info("🎭 [WORKER] Master Orchestrator: Background services starting...")
+        except Exception as e:
+            LOGGER.error(f"❌ [WORKER] Master Orchestrator failed to start: {e}", exc_info=True)
+    else:
+        LOGGER.info("[WEB MODE] Master Orchestrator skipped - deploy separate worker service")
 
     # Final startup confirmation
-    LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
+    mode = "WORKER" if WORKER_MODE else "WEB"
+    LOGGER.info(f"[GHOST STARTUP] ✅ Initialization complete - {mode} mode ready")
 
 
 
