@@ -3752,16 +3752,10 @@ async def _on_startup():
         LOGGER.error(f"outcome_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
-    # CRITICAL: Initialize prediction store pool EAGERLY to prevent first-request blocking
-    try:
-        from services.predictor import predictor
-        # Force pool initialization during startup (not on first request)
-        LOGGER.info("[GHOST STARTUP] Initializing prediction store pool...")
-        predictor.store._ensure_pool()
-        LOGGER.info("[GHOST STARTUP] ✅ Prediction store pool ready")
-    except Exception as e:
-        LOGGER.error(f"prediction_store_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
-        # Non-critical - continue startup (will retry on first request)
+    # CRITICAL: Initialize prediction store pool in BACKGROUND to prevent blocking HTTP server
+    # Moving to _post_startup_init() to avoid blocking the startup event handler
+    # Database connections can take 10-30s on Railway, which blocks ALL HTTP requests
+    LOGGER.info("[GHOST STARTUP] ⚠️  Prediction store pool will initialize in background (non-blocking)")
 
     # CRITICAL: Pre-populate _LATEST_PREDICTIONS cache to prevent cold-start slowness
     # DISABLED TEMPORARILY: This DB query is blocking startup and causing timeouts
@@ -3831,7 +3825,19 @@ async def _post_startup_init():
     # Railway healthcheck window is 100s - we need to respond IMMEDIATELY, then run tasks
     await asyncio.sleep(2)
     
-    LOGGER.info("[POST-STARTUP] Starting background initialization (delayed 5s)...")
+    LOGGER.info("[POST-STARTUP] Starting background initialization (delayed 2s)...")
+    
+    # Initialize prediction store pool in background (can take 10-30s on Railway)
+    try:
+        LOGGER.info("[POST-STARTUP] Initializing Postgres connection pool...")
+        from services.predictor import predictor
+        # Run in executor to avoid blocking event loop
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, predictor.store._ensure_pool)
+        LOGGER.info("[POST-STARTUP] ✅ Postgres pool initialized")
+    except Exception as pool_err:
+        LOGGER.error(f"[POST-STARTUP] Postgres pool init failed: {pool_err}", exc_info=True)
+        LOGGER.warning("[POST-STARTUP] Endpoints will initialize pool on first request")
     
     # ═══════════════════════════════════════════════════════════════════════════════
     # TO THE MOON: Use Master Orchestrator for unified service management
