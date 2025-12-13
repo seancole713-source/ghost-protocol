@@ -1208,13 +1208,18 @@ async def _cockpit_page(request: Request):
     """Serve Ghost v3 cockpit - ALWAYS V3, no fallback to legacy versions."""
     try:
         # Always serve V3 cockpit with Jinja2 template rendering
-        return _TEMPLATES.TemplateResponse(
+        response = _TEMPLATES.TemplateResponse(
             "cockpit_v3.html",
             {
                 "request": request,
                 "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", "")
             }
         )
+        # CRITICAL: Prevent browser caching to force fresh JS load
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
     except Exception as e:
         # Error fallback - return basic HTML error page
         LOGGER.error(f"Failed to render cockpit_v3.html: {e}")
