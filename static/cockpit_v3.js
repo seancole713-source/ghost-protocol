@@ -251,21 +251,25 @@ function switchTab(tabsContainer, tabType) {
 
 // Load All Panels
 async function loadAllPanels() {
-    try {
-        await Promise.all([
-            loadCockpitSnapshot(),
-            loadLatestBTCPrediction(),  // NEW: Load 6h BTC prediction card
-            loadTopMovers(),
-            loadVIPCoins(),
-            loadForecast(),
-            loadNews(),
-            loadAccuracyChart(),  // Add accuracy breakdown chart
-            loadWatchlistByMode(),  // Use mode-aware watchlist loader
-            loadHealthScore()
-        ]);
-    } catch (error) {
-        console.error('Error loading panels:', error);
-    }
+    // PERFORMANCE FIX: Load panels independently without blocking
+    // Don't wait for slow endpoints (hunter feed) to show fast data
+    
+    // Fast panels - load first (no await)
+    loadCockpitSnapshot().catch(e => console.error('Snapshot error:', e));
+    loadLatestBTCPrediction().catch(e => console.error('BTC prediction error:', e));
+    loadWatchlistByMode().catch(e => console.error('Watchlist error:', e));
+    loadForecast().catch(e => console.error('Forecast error:', e));
+    loadAccuracyChart().catch(e => console.error('Accuracy error:', e));
+    
+    // Slow panels - load in background (may take 10-30s on first load)
+    setTimeout(() => {
+        loadTopMovers().catch(e => console.error('Top movers error:', e));
+        loadVIPCoins().catch(e => console.error('VIP coins error:', e));
+        loadNews().catch(e => console.error('News error:', e));
+        loadHealthScore().catch(e => console.error('Health score error:', e));
+    }, 100);
+    
+    console.log('✅ Fast panels loaded, slow panels loading in background');
 }
 
 // Panel 0: Latest BTC Prediction (6-Hour Horizon) - NEW
@@ -357,7 +361,7 @@ function renderBTCPrediction(prediction) {
 async function loadTopMovers() {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);  // 10s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 3000);  // 3s timeout (hunter can be slow on first load)
         
         const response = await fetch('/api/v3/hunter/feed', { signal: controller.signal });
         clearTimeout(timeoutId);
