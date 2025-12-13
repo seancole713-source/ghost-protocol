@@ -126,12 +126,28 @@ class CoinGeckoProvider:
 
     def __init__(self):
         self.last_call = 0
-        # Increased from 1.2s to 2.0s to prevent 429 rate limit errors
-        # Conservative rate: 30 calls/min instead of 50 calls/min
-        self.min_interval = 2.0  # 30 calls/min = 2.0s between calls
+        # PERFORMANCE FIX: Increased from 2.0s to 5.0s to prevent 429 spam
+        # Ultra-conservative rate: 12 calls/min instead of 30 calls/min
+        self.min_interval = 5.0  # 12 calls/min = 5.0s between calls
+        
+        # Circuit breaker: skip CoinGecko if too many 429s
+        self.consecutive_429s = 0
+        self.circuit_open = False
+        self.circuit_open_until = 0.0
 
     def _rate_limit(self):
-        """Enforce rate limiting (2s minimum between calls)"""
+        """Enforce rate limiting (5s minimum between calls) + circuit breaker"""
+        # Check circuit breaker
+        if self.circuit_open:
+            if time.time() < self.circuit_open_until:
+                LOGGER.debug(f"CoinGecko circuit open for {self.circuit_open_until - time.time():.0f}s more")
+                raise Exception("CoinGecko circuit breaker open - too many 429s")
+            else:
+                # Reset circuit breaker
+                LOGGER.info("CoinGecko circuit breaker reset - trying again")
+                self.circuit_open = False
+                self.consecutive_429s = 0
+        
         elapsed = time.time() - self.last_call
         if elapsed < self.min_interval:
             sleep_time = self.min_interval - elapsed
@@ -179,6 +195,11 @@ class CoinGeckoProvider:
 
             response = _session.get(url, params=params, timeout=10)
             response.raise_for_status()
+            
+            # Reset 429 counter on success
+            if self.consecutive_429s > 0:
+                LOGGER.info(f"CoinGecko recovered - resetting 429 counter from {self.consecutive_429s}")
+                self.consecutive_429s = 0
 
             data = response.json()
             if coin_id not in data:
@@ -198,7 +219,31 @@ class CoinGeckoProvider:
             }
 
         except Exception as e:
-            LOGGER.warning(f"CoinGecko fetch failed for {symbol}: {e}")
+            # Track 429 errors and open circuit breaker
+            if "429" in str(e) or "Too Many Requests" in str(e):
+                self.consecutive_429s += 1
+                if self.consecutive_429s >= 3:
+                    self.circuit_open = True
+                    self.circuit_open_until = time.time() + 300  # 5 minutes
+                    LOGGER.error(f"CoinGecko circuit breaker OPENED - {self.consecutive_429s} consecutive 429s - disabled for 5min")
+                else:
+                    LOGGER.warning(f"CoinGecko 429 #{self.consecutive_429s} for {symbol} - circuit opens at 3")
+            else:
+                LOGGER.warning(f"CoinGecko fetch failed for {symbol}: {e}")
+            return None
+
+        except Exception as e:
+            # Track 429 errors and open circuit breaker
+            if "429" in str(e) or "Too Many Requests" in str(e):
+                self.consecutive_429s += 1
+                if self.consecutive_429s >= 3:
+                    self.circuit_open = True
+                    self.circuit_open_until = time.time() + 300  # 5 minutes
+                    LOGGER.error(f"CoinGecko circuit breaker OPENED - {self.consecutive_429s} consecutive 429s - disabled for 5min")
+                else:
+                    LOGGER.warning(f"CoinGecko 429 #{self.consecutive_429s} for {symbol} - circuit opens at 3")
+            else:
+                LOGGER.warning(f"CoinGecko fetch failed for {symbol}: {e}")
             return None
 
     def get_historical(self, symbol: str, days: int = 7) -> list[dict] | None:
@@ -349,9 +394,10 @@ class CoinbaseProvider:
             return None
 
 
-# Cache for crypto prices (5-minute TTL to reduce API load)
+# Cache for crypto prices (15-minute TTL to reduce API load)
+# PERFORMANCE FIX: Increased from 5min to 15min to prevent CoinGecko 429 spam
 _CRYPTO_CACHE: dict[str, dict[str, Any]] = {}
-_CACHE_TTL = 300  # 5 minutes (reduced from 2 to minimize API rate limit hits)
+_CACHE_TTL = 900  # 15 minutes (was 300s - caused too many API calls)
 
 
 def _get_crypto_cache(symbol: str) -> dict[str, Any] | None:

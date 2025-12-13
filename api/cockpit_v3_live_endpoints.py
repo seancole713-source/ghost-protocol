@@ -367,9 +367,10 @@ async def get_crypto_top_movers(limit: int = 6) -> List[Dict[str, Any]]:
 
 
 # Hunter feed cache + refresh controls
+# PERFORMANCE FIX: Increased from 45s to 5min to prevent constant API hammering
 _HUNTER_FEED_CACHE: Dict[str, Any] = {"data": [], "timestamp": 0.0}
-_HUNTER_FEED_TTL_SECONDS = 45
-_HUNTER_FEED_REFRESH_MIN_GAP = 15
+_HUNTER_FEED_TTL_SECONDS = 300  # 5 minutes (was 45s - caused constant refreshes)
+_HUNTER_FEED_REFRESH_MIN_GAP = 60  # 1 minute between refreshes (was 15s)
 _HUNTER_FEED_REFRESH_TASK: Optional["asyncio.Task[List[Dict[str, Any]]]"] = None
 _HUNTER_FEED_LAST_REFRESH = 0.0
 
@@ -1004,43 +1005,64 @@ async def generate_prediction(symbol: str):
 
 @router.get("/hunter/feed")
 async def get_hunter_feed():
-    """Serve hunter feed data from cache, kicking off refreshes in the background."""
-    cached = _get_cached_hunter_feed()
-    if cached:
-        if time.time() - _HUNTER_FEED_CACHE.get("timestamp", 0.0) > (
-            _HUNTER_FEED_TTL_SECONDS / 2
-        ):
+    """Serve hunter feed data from cache, kicking off refreshes in the background.
+    
+    PERFORMANCE FIX: Always return cached data immediately (even if stale)
+    instead of waiting for refresh. This fixes 1-3min cockpit load times.
+    """
+    # CRITICAL: Check cache FIRST - even if expired, return stale data
+    cached_data = _HUNTER_FEED_CACHE.get("data", [])
+    cache_age = time.time() - _HUNTER_FEED_CACHE.get("timestamp", 0.0)
+    
+    # If cache exists (even stale), return it immediately and trigger background refresh
+    if cached_data and len(cached_data) > 0:
+        # Trigger background refresh if cache is getting old (>2.5 min)
+        if cache_age > (_HUNTER_FEED_TTL_SECONDS / 2):
             try:
                 _schedule_hunter_feed_refresh()
             except RuntimeError:
                 pass
-        return {"movers": cached, "timestamp": time.time()}
-
+        
+        return {
+            "movers": list(cached_data),
+            "timestamp": time.time(),
+            "cache_age_seconds": int(cache_age)
+        }
+    
+    # No cache exists - trigger refresh and wait MAXIMUM 10 seconds
     try:
         _schedule_hunter_feed_refresh(force=True)
     except RuntimeError:
         pass
-
-    for _ in range(3):
+    
+    # Wait max 10 seconds for first data (prevents 1min+ timeouts)
+    for attempt in range(25):  # 25 × 0.4s = 10s max
         await asyncio.sleep(0.4)
-        cached = _get_cached_hunter_feed()
-        if cached:
-            return {"movers": cached, "timestamp": time.time()}
-
+        cached_data = _HUNTER_FEED_CACHE.get("data", [])
+        if cached_data and len(cached_data) > 0:
+            return {
+                "movers": list(cached_data),
+                "timestamp": time.time(),
+                "cache_age_seconds": 0
+            }
+    
+    # Timeout - return fallback
+    LOGGER.warning("Hunter feed timeout after 10s - returning fallback")
     return {
         "movers": [
             {
                 "symbol": "BTC",
                 "type": "crypto",
-                "name": "Bitcoin",
+                "name": "Bitcoin (Loading...)",
                 "price": 0.0,
                 "change": 0.0,
                 "volume": 0,
                 "confidence": 0,
-                "note": "Scanner warming up - check back in 60 seconds",
+                "note": "Scanner warming up - refresh in 30 seconds",
             }
         ],
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "cache_age_seconds": -1
     }
 
 
