@@ -4490,28 +4490,11 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.warning(f"[REDIS] Initialization deferred: {e}", extra={"component": "startup"})
 
-    # ============================================================================
-    # 🎭 MASTER ORCHESTRATOR - Start all background services (WORKER MODE ONLY)
-    # ============================================================================
-    WORKER_MODE = os.getenv("WORKER_MODE") == "1"
-    
-    if WORKER_MODE:
-        try:
-            from core.orchestrator import start_all_background_services
-            asyncio.create_task(start_all_background_services(
-                app=APP,
-                logger=LOGGER,
-                redis_client=None  # Will be initialized by orchestrator
-            ))
-            LOGGER.info("🎭 [WORKER] Master Orchestrator: Background services starting...")
-        except Exception as e:
-            LOGGER.error(f"❌ [WORKER] Master Orchestrator failed to start: {e}", exc_info=True)
-    else:
-        LOGGER.info("[WEB MODE] Master Orchestrator skipped - deploy separate worker service")
+    # NOTE: Master Orchestrator is started earlier in this function when
+    # `ORCHESTRATOR_ENABLED=1`. Do not start it again here (prevents duplicates).
 
-    # Final startup confirmation
-    mode = "WORKER" if WORKER_MODE else "WEB"
-    LOGGER.info(f"[GHOST STARTUP] ✅ Initialization complete - {mode} mode ready")
+    # Final worker confirmation
+    LOGGER.info("[GHOST STARTUP] ✅ Worker background initialization complete")
 
 
 
@@ -8710,7 +8693,40 @@ async def api_v3_orchestrator_status():
     """
     try:
         from core.orchestrator import get_system_status
-        status = get_system_status()
+        status = get_system_status() or {}
+
+        # Add deployment-mode context (helps debug Railway web/worker split)
+        worker_mode = os.getenv("WORKER_MODE") == "1"
+        orchestrator_enabled = os.getenv("ORCHESTRATOR_ENABLED", "0") == "1"
+
+        services = status.get("services") or {}
+        running = 0
+        failed = 0
+        disabled = 0
+        other = 0
+        failing_services: list[str] = []
+
+        for name, svc in services.items():
+            svc_status = (svc or {}).get("status")
+            if svc_status == "running":
+                running += 1
+            elif svc_status == "failed":
+                failed += 1
+                failing_services.append(str(name))
+            elif svc_status == "disabled":
+                disabled += 1
+            else:
+                other += 1
+
+        status["mode"] = "WORKER" if worker_mode else "WEB"
+        status["orchestrator_enabled"] = orchestrator_enabled
+        status["summary"] = {
+            "running": running,
+            "failed": failed,
+            "disabled": disabled,
+            "other": other,
+            "failing_services": sorted(failing_services),
+        }
         return status
     except Exception as e:
         LOGGER.error(f"Orchestrator status failed: {e}", exc_info=True)
