@@ -3827,9 +3827,9 @@ async def _post_startup_init():
     """
     import os  # Explicit import to prevent UnboundLocalError
     
-    # CRITICAL: Wait 5 seconds for FastAPI to fully initialize and healthcheck to pass
+    # CRITICAL: Wait 2 seconds for FastAPI to fully initialize and healthcheck to pass
     # Railway healthcheck window is 100s - we need to respond IMMEDIATELY, then run tasks
-    await asyncio.sleep(5)
+    await asyncio.sleep(2)
     
     LOGGER.info("[POST-STARTUP] Starting background initialization (delayed 5s)...")
     
