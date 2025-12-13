@@ -3827,17 +3827,8 @@ async def _post_startup_init():
     
     LOGGER.info("[POST-STARTUP] Starting background initialization (delayed 2s)...")
     
-    # Initialize prediction store pool in background (can take 10-30s on Railway)
-    try:
-        LOGGER.info("[POST-STARTUP] Initializing Postgres connection pool...")
-        from services.predictor import predictor
-        # Run in executor to avoid blocking event loop
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, predictor.store._ensure_pool)
-        LOGGER.info("[POST-STARTUP] ✅ Postgres pool initialized")
-    except Exception as pool_err:
-        LOGGER.error(f"[POST-STARTUP] Postgres pool init failed: {pool_err}", exc_info=True)
-        LOGGER.warning("[POST-STARTUP] Endpoints will initialize pool on first request")
+    # NOTE: Postgres pool initialization removed - will lazy-init on first request
+    # Startup must complete in <100s for Railway healthcheck, Postgres can take 30s+
     
     # ═══════════════════════════════════════════════════════════════════════════════
     # TO THE MOON: Use Master Orchestrator for unified service management
