@@ -384,20 +384,9 @@ class UnifiedProvider:
         - Crypto: Known crypto symbols in Binance mapping
         - Stock: Everything else (AAPL, MSFT, SPY, etc.)
         """
-        symbol_upper = symbol.upper()
-        
-        # Known crypto symbols (from Binance provider)
-        crypto_symbols = set(self.binance_ohlcv.get_supported_symbols())
-        if symbol_upper in crypto_symbols:
-            return True
-        
-        # Common stock patterns (has digits, longer than 5 chars, ends in numbers)
-        if any(c.isdigit() for c in symbol):
-            return False
-        
-        # Length heuristic: crypto usually <= 5 chars, stocks can be longer
-        # But check against known crypto list first (most reliable)
-        return False  # Default to stock (Yahoo will handle it)
+        from core.asset_classification import is_crypto_symbol
+
+        return is_crypto_symbol(symbol)
     
     def _track_request(self, provider: str) -> None:
         """Track provider request"""

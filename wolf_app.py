@@ -6936,6 +6936,58 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         if degraded:
             should_predict = False
 
+        # STRICT FAIL-CLOSED (production-grade): if critical pillars are missing/degraded,
+        # do not create/store a prediction at all.
+        def _truthy(v: str | None) -> bool:
+            return str(v or "").strip().lower() in {"1", "true", "yes", "on"}
+
+        strict_fail_closed = (
+            _truthy(os.getenv("PREDICT_FAIL_CLOSED", "0"))
+            or _truthy(os.getenv("PRICE_STRICT_LIVE", "0"))
+            or _truthy(os.getenv("ENFORCE_LIVE", "0"))
+        )
+
+        def _parse_ratio(v: object) -> tuple[int, int]:
+            try:
+                s = str(v or "")
+                left = s.split()[0]
+                a, b = left.split("/", 1)
+                return int(a), int(b)
+            except Exception:
+                return 0, 0
+
+        pillar_availability = feature_data.get("feature_availability") or {}
+        price_avail, _ = _parse_ratio(pillar_availability.get("price_engine"))
+        tech_avail, _ = _parse_ratio(pillar_availability.get("technical_engine"))
+        vol_avail, _ = _parse_ratio(pillar_availability.get("volume_engine"))
+
+        if strict_fail_closed and (degraded or price_avail <= 0 or tech_avail <= 0 or vol_avail <= 0):
+            duration_ms = int((time.monotonic() - start) * 1000)
+            reason = (
+                f"fail_closed: degraded={degraded}, "
+                f"pillars(price/tech/vol)={price_avail}/{tech_avail}/{vol_avail}"
+            )
+            LOGGER.warning(
+                f"[{symbol}] FAIL-CLOSED: {reason}",
+                extra={
+                    "symbol": symbol,
+                    "duration_ms": duration_ms,
+                    "availability_pct": round(feature_avail_pct, 1),
+                    "pillar_breakdown": pillar_availability,
+                },
+            )
+            return {
+                "ok": False,
+                "symbol": symbol,
+                "direction": "ERROR",
+                "confidence": 0.0,
+                "current_price": current_price,
+                "feature_count": int(feature_data.get("feature_count") or 0),
+                "available_count": int(feature_data.get("available_count") or 0),
+                "duration_ms": duration_ms,
+                "error": reason,
+            }
+
         # Generate forecast points (simple linear projection for now)
         forecast_points = []
         direction_multiplier = 1.01 if direction == "UP" else (0.99 if direction == "DOWN" else 1.0)
@@ -7005,6 +7057,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         if not should_predict:
             action = "HOLD"
 
+        from core.asset_classification import is_crypto_symbol as _is_crypto_symbol
+
         _LATEST_PREDICTIONS[symbol] = {
             "prediction_id": prediction_id,
             "symbol": symbol,
@@ -7016,7 +7070,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "provider": price_provider,
             "price": current_price,  # For trade decision engine
             "price_at_prediction": current_price,
-            "market": "crypto" if symbol in ["BTC", "ETH", "SOL", "XRP"] else "stock",  # Market type
+            "market": "crypto" if _is_crypto_symbol(symbol) else "stock",  # Market type
             "feature_status": feature_status.to_dict(),
             "confidence_metadata": confidence_metadata,
             "should_predict": bool(should_predict),

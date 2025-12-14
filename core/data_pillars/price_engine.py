@@ -283,42 +283,9 @@ class PriceEngine(BasePillar):
         Returns:
             True if crypto, False if stock/ETF
         """
-        # Known crypto list from crypto_providers.py
-        CRYPTO_SYMBOLS = {
-            "BTC",
-            "ETH",
-            "SOL",
-            "BNB",
-            "XRP",
-            "ADA",
-            "AVAX",
-            "DOT",
-            "MATIC",
-            "LINK",
-            "UNI",
-            "AAVE",
-            "MKR",
-            "CRV",
-            "SUSHI",
-            "COMP",
-            "DOGE",
-            "SHIB",
-            "PEPE",
-            "FLOKI",
-            "BONK",
-            "WIF",
-            "BABYDOGE",
-            "ELON",
-            "FET",
-            "AGIX",
-            "RNDR",
-            "SAND",
-            "MANA",
-            "AXS",
-            "GALA",
-        }
+        from core.asset_classification import is_crypto_symbol
 
-        return symbol.upper() in CRYPTO_SYMBOLS
+        return is_crypto_symbol(symbol)
 
     def get_signal_names(self) -> list[str]:
         """

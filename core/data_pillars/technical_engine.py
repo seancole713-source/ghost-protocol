@@ -360,11 +360,9 @@ class TechnicalEngine(BasePillar):
 
     def _is_crypto_symbol(self, symbol: str) -> bool:
         """Detect if symbol is cryptocurrency"""
-        CRYPTO_SYMBOLS = {
-            "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX",
-            "DOT", "MATIC", "LINK", "UNI", "AAVE", "MKR", "CRV"
-        }
-        return symbol.upper() in CRYPTO_SYMBOLS
+        from core.asset_classification import is_crypto_symbol
+
+        return is_crypto_symbol(symbol)
 
     def _calculate_indicators(self, df: pd.DataFrame, symbol: str) -> list[DataSignal]:
         """

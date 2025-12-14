@@ -104,11 +104,9 @@ class FlowEngine(BasePillar):
 
     def _is_crypto_symbol(self, symbol: str) -> bool:
         """Detect if symbol is crypto"""
-        CRYPTO_SYMBOLS = {
-            "BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "MATIC", "AVAX",
-            "UNI", "AAVE", "LINK", "SHIB", "PEPE", "FLOKI", "BONK"
-        }
-        return symbol.upper() in CRYPTO_SYMBOLS
+        from core.asset_classification import is_crypto_symbol
+
+        return is_crypto_symbol(symbol)
 
     def _create_unavailable_signals(self) -> list[DataSignal]:
         """Create unavailable signals when data missing"""
