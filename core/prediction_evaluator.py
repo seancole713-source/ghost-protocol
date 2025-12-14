@@ -11,6 +11,7 @@ Run this as a cron job every hour:
 """
 
 import logging
+import os
 import sqlite3
 import sys
 import time
@@ -27,7 +28,41 @@ logging.basicConfig(
 )
 LOGGER = logging.getLogger(__name__)
 
-DB_PATH = "data/wolf.db"
+DB_PATH = os.getenv("WOLF_SQLITE_PATH", "data/wolf.db")
+
+
+def _ensure_touch_columns(conn: sqlite3.Connection) -> None:
+    """Ensure wolf.db ghost_predictions has columns needed for touch-target evaluation."""
+    cur = conn.cursor()
+    cols = [r[1] for r in cur.execute("PRAGMA table_info(ghost_predictions)").fetchall()]
+
+    def _add(col: str, ddl: str) -> None:
+        if col in cols:
+            return
+        cur.execute(f"ALTER TABLE ghost_predictions ADD COLUMN {ddl}")
+
+    _add("window_first", "window_first REAL")
+    _add("window_last", "window_last REAL")
+    _add("window_high", "window_high REAL")
+    _add("window_low", "window_low REAL")
+    _add("target_price", "target_price REAL")
+    _add("stage5_ok", "stage5_ok INTEGER")
+    _add("stage6_ok", "stage6_ok INTEGER")
+    _add("gate", "gate TEXT")
+    _add("touch_calibrated_1pct", "touch_calibrated_1pct REAL")
+    _add("touch_calibrated_0_5pct", "touch_calibrated_0_5pct REAL")
+    _add("touch_calibration_samples", "touch_calibration_samples INTEGER")
+    _add("touch_conf_band", "touch_conf_band TEXT")
+    _add("touch_1pct", "touch_1pct INTEGER")
+    _add("touch_0_5pct", "touch_0_5pct INTEGER")
+    _add("correct_1pct", "correct_1pct INTEGER")
+    _add("correct_0_5pct", "correct_0_5pct INTEGER")
+    _add("direction_consistent", "direction_consistent INTEGER")
+    _add("eval_version", "eval_version TEXT")
+    # Keep schema compatible with prediction logging in wolf_app.py
+    _add("features_json", "features_json TEXT")
+
+    conn.commit()
 
 
 def get_current_price(symbol: str) -> Optional[float]:
@@ -86,7 +121,15 @@ def evaluate_pending_predictions() -> Dict:
             "skipped": int
         }
     """
+    # Ensure base tables exist (fresh DB safe)
+    try:
+        from core.prediction_tracker import _ensure_prediction_tables
+        _ensure_prediction_tables()
+    except Exception:
+        pass
+
     conn = sqlite3.connect(DB_PATH)
+    _ensure_touch_columns(conn)
     cur = conn.cursor()
     
     now = int(time.time())
@@ -108,36 +151,34 @@ def evaluate_pending_predictions() -> Dict:
     incorrect_count = 0
     skipped_count = 0
     
+    from core.target_touch_evaluator import evaluate_prediction_row
+
     for pred in pending:
         pred_id, symbol, pred_at, check_at, pred_price, direction, start_price, confidence = pred
-        
-        # Fetch outcome price
-        outcome_price = get_current_price(symbol)
-        
-        if not outcome_price or outcome_price <= 0:
-            LOGGER.warning(f"⏩ Skipping {symbol} (prediction {pred_id}): Could not fetch outcome price")
+
+        eval_result = evaluate_prediction_row(
+            conn,
+            symbol=symbol,
+            predicted_at=int(pred_at),
+            check_at=int(check_at),
+            predicted_price=float(pred_price) if pred_price is not None else None,
+            predicted_direction=direction,
+            current_price=float(start_price) if start_price is not None else None,
+        )
+
+        if not eval_result.ok:
+            LOGGER.warning(
+                f"⏩ Skipping {symbol} (prediction {pred_id}): {eval_result.reason}"
+            )
             skipped_count += 1
             continue
-        
-        # Calculate price change percentage
-        price_change_pct = ((outcome_price - start_price) / start_price) * 100
-        
-        # Determine actual direction based on 1% threshold
-        if price_change_pct > 1.0:
-            actual_direction = "UP"
-        elif price_change_pct < -1.0:
-            actual_direction = "DOWN"
-        else:
-            actual_direction = "FLAT"
-        
-        # Check if prediction was correct
-        is_correct = 1 if direction == actual_direction else 0
-        
-        # Calculate error percentage
-        error_pct = abs(outcome_price - pred_price) / start_price * 100
-        
+
+        is_correct = int(eval_result.correct_1pct or 0)
+        is_correct_exec = int(eval_result.correct_0_5pct or 0)
+
         # Update database
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE ghost_predictions
             SET checked = 1,
                 checked_at = ?,
@@ -145,30 +186,52 @@ def evaluate_pending_predictions() -> Dict:
                 outcome_direction = ?,
                 outcome_pct = ?,
                 correct = ?,
-                error_pct = ?
+                error_pct = ?,
+                window_first = ?,
+                window_last = ?,
+                window_high = ?,
+                window_low = ?,
+                touch_1pct = ?,
+                touch_0_5pct = ?,
+                correct_1pct = ?,
+                correct_0_5pct = ?,
+                direction_consistent = ?,
+                eval_version = ?
             WHERE id = ?
-        """, (
-            now,
-            outcome_price,
-            actual_direction,
-            price_change_pct,
-            is_correct,
-            error_pct,
-            pred_id
-        ))
-        
+            """,
+            (
+                now,
+                float(eval_result.window_last) if eval_result.window_last is not None else None,
+                eval_result.outcome_direction,
+                float(eval_result.outcome_pct) if eval_result.outcome_pct is not None else None,
+                is_correct,
+                float(eval_result.error_pct) if eval_result.error_pct is not None else None,
+                float(eval_result.window_first) if eval_result.window_first is not None else None,
+                float(eval_result.window_last) if eval_result.window_last is not None else None,
+                float(eval_result.window_high) if eval_result.window_high is not None else None,
+                float(eval_result.window_low) if eval_result.window_low is not None else None,
+                int(eval_result.touch_1pct or 0),
+                int(eval_result.touch_0_5pct or 0),
+                int(eval_result.correct_1pct or 0),
+                int(eval_result.correct_0_5pct or 0),
+                int(eval_result.direction_consistent or 0),
+                "touch-v1",
+                pred_id,
+            ),
+        )
+
         evaluated_count += 1
         if is_correct:
             correct_count += 1
         else:
             incorrect_count += 1
-        
-        # Log result
+
         result_emoji = "✅" if is_correct else "❌"
+        exec_tag = " (exec)" if is_correct_exec else ""
         LOGGER.info(
-            f"{result_emoji} {symbol}: "
-            f"predicted={direction}, actual={actual_direction}, "
-            f"change={price_change_pct:+.2f}%, confidence={confidence:.1%}"
+            f"{result_emoji} {symbol}: touch_1pct={int(eval_result.touch_1pct or 0)} "
+            f"touch_0_5pct={int(eval_result.touch_0_5pct or 0)} dir_ok={int(eval_result.direction_consistent or 0)} "
+            f"confidence={confidence:.1%}{exec_tag}"
         )
     
     conn.commit()

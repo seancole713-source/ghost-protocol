@@ -307,7 +307,7 @@ def fetch_reddit_sentiment(symbol: str, subreddit: str = "wallstreetbets") -> di
                 "sentiment_score": 0.0,
                 "mention_count": 0,
                 "top_posts": [],
-                "timestamp": datetime.now(UTC).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         else:
             # Calculate aggregate sentiment
@@ -334,7 +334,7 @@ def fetch_reddit_sentiment(symbol: str, subreddit: str = "wallstreetbets") -> di
                     "score": p["score"],
                     "url": p["url"]
                 } for p in top_posts],
-                "timestamp": datetime.now(UTC).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         SENTIMENT_CACHE[cache_key] = {
@@ -445,7 +445,7 @@ def get_trending_stocks(min_mentions: int = 50) -> list[dict[str, Any]]:
             
             # Only include if above threshold
             if recent_count >= min_mentions:
-                sentiment = get_reddit_sentiment(symbol)
+                sentiment = fetch_reddit_sentiment(symbol)
                 trending.append({
                     "symbol": symbol,
                     "mentions": recent_count,

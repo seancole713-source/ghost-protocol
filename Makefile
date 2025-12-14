@@ -1,13 +1,15 @@
 # Helpful shortcuts
 # Use: make help
 
-.PHONY: help verify-live run dev lint test dev-verify
+.PHONY: help verify-live run dev lint lint-full test dev-verify
 
 help:
 	@echo "Available targets:"
 	@echo "  make run           - Run FastAPI locally on :5000"
 	@echo "  make dev           - Install deps and run locally"
 	@echo "  make verify-live   - Run utils/verify_live.py against GHOST_URL (default http://127.0.0.1:5000)"
+	@echo "  make lint          - Fast lint (syntax/undefined-name)"
+	@echo "  make lint-full     - Full repo lint (may be noisy)"
 
 run:
 	uvicorn wolf_app:app --host 0.0.0.0 --port 5000
@@ -25,7 +27,12 @@ verify-live:
 	python utils/verify_live.py
 
 lint:
-	ruff .
+	# CI-safe lint: catch real breakages without blocking on repo-wide style debt
+	# E9: syntax errors, F7/F82: name errors, F63: invalid escape sequences
+	ruff check --select E9,F63,F7,F82 core services api utils tests
+
+lint-full:
+	ruff check .
 
 test:
 	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q

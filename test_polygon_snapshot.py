@@ -9,6 +9,11 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    import pytest  # type: ignore
+except Exception:  # pragma: no cover
+    pytest = None
+
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
@@ -18,8 +23,13 @@ os.environ["USE_POLYGON_SNAPSHOTS"] = "true"
 os.environ["POLYGON_API_KEY"] = os.getenv("POLYGON_API_KEY", "")
 
 if not os.environ["POLYGON_API_KEY"]:
-    print("❌ ERROR: POLYGON_API_KEY not set")
-    print("   Set it with: export POLYGON_API_KEY=\"$(railway variables get POLYGON_API_KEY)\"")
+    msg = (
+        "POLYGON_API_KEY not set; skipping Polygon snapshot integration checks. "
+        "(Set POLYGON_API_KEY to run these.)"
+    )
+    if pytest is not None:
+        pytest.skip(msg, allow_module_level=True)
+    print(f"❌ ERROR: {msg}")
     sys.exit(1)
 
 from app.core.movers_scanner import (

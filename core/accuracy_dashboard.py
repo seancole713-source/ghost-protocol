@@ -21,8 +21,10 @@ Date: 2025-01-15
 
 import logging
 import os
+import sqlite3
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 try:
@@ -33,6 +35,11 @@ except ImportError:
     HAS_PSYCOPG2 = False
 
 LOGGER = logging.getLogger("ghost.accuracy_dashboard")
+
+
+# Optional legacy SQLite backing for some helper views in this module.
+# Defaults to the Wolf SQLite DB if present.
+ACCURACY_DB = Path(os.getenv("ACCURACY_DB_PATH") or os.getenv("WOLF_SQLITE_PATH") or "data/wolf.db")
 
 
 class AccuracyDashboard:
@@ -115,29 +122,27 @@ class AccuracyDashboard:
             with conn:
                 cursor = conn.cursor()
 
-                # Total reconciled predictions (those with outcomes)
-                cursor.execute("""
-                    SELECT COUNT(*) FROM ghost_prediction_outcomes
+                # Outcome summary from PostgreSQL outcomes table
+                cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS total_outcomes,
+                        SUM(CASE WHEN status = 'completed' AND hit_direction IS NOT NULL THEN 1 ELSE 0 END) AS evaluated,
+                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) AS correct,
+                        SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) AS incorrect
+                    FROM ghost_prediction_outcomes
                     WHERE closed_at >= %s
-                """, (cutoff_dt,))
-                summary["reconciled"] = cursor.fetchone()[0]
-                summary["total_predictions"] = summary["reconciled"]  # For now, only count reconciled
+                    """,
+                    (cutoff_dt,),
+                )
+                row = cursor.fetchone() or (0, 0, 0, 0)
+                total_outcomes, evaluated, correct, incorrect = [int(x or 0) for x in row]
 
-                # Correct predictions
-                cursor = conn.execute("""
-                    SELECT COUNT(*) FROM prediction_outcomes
-                    WHERE predicted_at >= ?
-                    AND correct = 1
-                """, (cutoff_ts,))
-                summary["correct"] = cursor.fetchone()[0]
-
-                # Incorrect predictions
-                cursor = conn.execute("""
-                    SELECT COUNT(*) FROM prediction_outcomes
-                    WHERE predicted_at >= ?
-                    AND correct = 0
-                """, (cutoff_ts,))
-                summary["incorrect"] = cursor.fetchone()[0]
+                summary["total_predictions"] = total_outcomes
+                summary["reconciled"] = evaluated
+                summary["correct"] = correct
+                summary["incorrect"] = incorrect
+                summary["pending"] = max(0, total_outcomes - evaluated)
 
                 # Calculate accuracy
                 if summary["reconciled"] > 0:

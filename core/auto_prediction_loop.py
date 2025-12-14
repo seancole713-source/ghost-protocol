@@ -132,12 +132,11 @@ async def _run_all_predictions_async():
             LOGGER.info(f"[AUTO-PREDICT] Market CLOSED - skipping {stock_count} stock predictions")
     
     # Run crypto predictions (24/7 - crypto markets never close)
-    # ULTRA-LIGHT: Top 10 crypto only for Railway free tier
-    TOP_CRYPTO_LIMIT = 10  # BTC, ETH, BNB, SOL, XRP, ADA, DOGE, DOT, MATIC, AVAX
-    crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_LIMIT]
+    # Process ALL crypto symbols (no artificial limits - scales to 1000+ coins)
+    crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS
     crypto_count = len(crypto_symbols_to_process)
     if LOGGER:
-        LOGGER.info(f"[AUTO-PREDICT] ASYNC: Processing {crypto_count}/{len(HUNTER_CRYPTO_SYMBOLS)} top crypto with concurrency")
+        LOGGER.info(f"[AUTO-PREDICT] ASYNC: Processing {crypto_count} crypto symbols with concurrency")
     
     # Process crypto with async concurrency (2 at a time for stability)
     for i in range(0, crypto_count, 2):  # REDUCED: 2 concurrent (was 3)

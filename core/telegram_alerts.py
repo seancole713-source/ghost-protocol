@@ -21,7 +21,167 @@ DEFAULT_TZ = "America/Chicago"
 # Alert style configuration
 ALERT_STYLE = os.getenv("ALERT_STYLE", "simple")  # Default to "simple" (Cash App style), was "verbose"
 ALERT_SIMPLE_FORMAT = os.getenv("ALERT_SIMPLE_FORMAT", "cashapp")  # "cashapp" (default), "compact", "balanced", "context"
-MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.60"))
+MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.70"))
+
+
+def _fmt_price(v: Any) -> str:
+    try:
+        fv = float(v)
+        if fv == 0.0:
+            return "$0.00"
+        if abs(fv) >= 100:
+            return f"${fv:,.2f}"
+        return f"${fv:,.4f}"
+    except Exception:
+        return "?"
+
+
+def _pct(a: Any, b: Any) -> float | None:
+    try:
+        fa = float(a)
+        fb = float(b)
+        if fb == 0:
+            return None
+        return (fa - fb) / fb * 100.0
+    except Exception:
+        return None
+
+
+def format_touch_target_signal(
+    *,
+    symbol: str,
+    prediction: dict[str, Any],
+    price_meta: dict[str, Any],
+) -> str:
+    """Format a prediction into the touch-target + gating spec (plain text).
+
+    Uses:
+      - target is "hit" if price touches within horizon window AND direction is correct
+      - Stage5 = calibrated touch >= 0.70 at ±1.0%
+      - Stage6 = calibrated touch >= 0.70 at ±0.5%
+    """
+    # Core fields
+    horizon_h = int(prediction.get("horizon_h") or 48)
+    confidence = float(prediction.get("confidence") or 0.0)
+
+    expected_move_pct = prediction.get("expected_move_pct")
+    try:
+        expected_move_pct_f = None if expected_move_pct is None else float(expected_move_pct)
+    except Exception:
+        expected_move_pct_f = None
+
+    action = str(prediction.get("action") or "HOLD").upper()
+    direction = str(prediction.get("direction") or "").upper()
+    if not direction:
+        direction = "UP" if action == "BUY" else "DOWN" if action == "SELL" else "FLAT"
+
+    dir_emoji = "🟢" if direction == "UP" else "🔴" if direction == "DOWN" else "⚪"
+
+    # Prices
+    entry_price = prediction.get("entry_price")
+    if entry_price is None:
+        entry_price = price_meta.get("price")
+
+    target_price = (
+        prediction.get("target_price")
+        if prediction.get("target_price") is not None
+        else prediction.get("take_profit")
+        if prediction.get("take_profit") is not None
+        else prediction.get("take_profit_price")
+    )
+    stop_loss = (
+        prediction.get("stop_loss")
+        if prediction.get("stop_loss") is not None
+        else prediction.get("stop_loss_price")
+    )
+
+    target_pct = _pct(target_price, entry_price)
+    stop_pct = _pct(stop_loss, entry_price)
+
+    # Calibration / gating
+    stage5_ok = bool(prediction.get("stage5_ok"))
+    stage6_ok = bool(prediction.get("stage6_ok"))
+    gate = str(prediction.get("gate") or "").upper()
+    if not gate:
+        gate = "EXECUTION" if stage6_ok else "ANALYSIS" if stage5_ok else "MONITOR"
+
+    p1 = prediction.get("touch_calibrated_1pct")
+    p05 = prediction.get("touch_calibrated_0_5pct")
+    try:
+        p1s = "?" if p1 is None else f"{float(p1):.0%}"
+    except Exception:
+        p1s = "?"
+    try:
+        p05s = "?" if p05 is None else f"{float(p05):.0%}"
+    except Exception:
+        p05s = "?"
+
+    s5 = "✅ Stage5 OK" if stage5_ok else "❌ Stage5 Not OK"
+    s6 = "✅ Stage6 OK" if stage6_ok else "❌ Stage6 Not OK"
+
+    # Human-facing risk label based on calibrated win prob when present.
+    # Use execution tier if known; otherwise fall back to analysis tier; otherwise raw confidence.
+    risk_p = None
+    for cand in (p05, p1, confidence):
+        try:
+            if cand is None:
+                continue
+            risk_p = float(cand)
+            break
+        except Exception:
+            continue
+
+    risk_label = "UNKNOWN"
+    if risk_p is not None:
+        if risk_p >= 0.85:
+            risk_label = "LOW RISK (85%+)"
+        elif risk_p >= 0.70:
+            risk_label = "OK (>=70%)"
+        elif risk_p >= 0.45:
+            risk_label = "HIGH RISK (<70%)"
+        else:
+            risk_label = "VERY HIGH RISK (<45%)"
+
+    require_stage6 = os.getenv("AUTO_EXECUTION_REQUIRE_STAGE6", "1").strip() not in ("0", "false", "False")
+    auto_status = "ENABLED (Stage6)" if (not require_stage6 or stage6_ok) else "BLOCKED (Stage6 required)"
+
+    pid = prediction.get("prediction_id") or prediction.get("id") or ""
+    pid_line = f"ID: {pid}" if pid else None
+
+    lines = [
+        f"🚦 GHOST SIGNAL — {gate}",
+        f"{symbol} {dir_emoji} {direction} — Horizon: {horizon_h}h",
+        f"Entry: {_fmt_price(entry_price)}",
+    ]
+
+    tp_line = f"Target (touch): {_fmt_price(target_price)}"
+    if target_pct is not None:
+        tp_line += f" ({target_pct:+.2f}%)"
+    lines.append(tp_line)
+
+    sl_line = f"Stop: {_fmt_price(stop_loss)}"
+    if stop_pct is not None:
+        sl_line += f" ({stop_pct:+.2f}%)"
+    lines.append(sl_line)
+
+    if expected_move_pct_f is not None:
+        lines.append(f"Expected move (model): {expected_move_pct_f:+.2f}%")
+
+    lines += [
+        "",
+        f"Model confidence: {confidence:.0%}",
+        f"Risk: {risk_label}",
+        "Calibrated touch probability:",
+        f"• ±1.0% (Analysis): {p1s} ({s5})",
+        f"• ±0.5% (Execution): {p05s} ({s6})",
+        "",
+        f"Win rule: touches target anytime within {horizon_h}h AND correct direction.",
+        f"Auto-trade: {auto_status}",
+    ]
+    if pid_line:
+        lines.append(pid_line)
+
+    return "\n".join(lines)
 
 
 @dataclass
@@ -341,11 +501,30 @@ def send_alert(
             LOGGER.info(f"Skipping 0% confidence alert: {market}/{symbol}/{horizon_bucket}")
         return False
     
-    # Check minimum confidence threshold
-    if confidence < MIN_ALERT_CONFIDENCE:
-        if LOGGER:
-            LOGGER.info(f"Skipping low confidence alert ({confidence:.0%} < {MIN_ALERT_CONFIDENCE:.0%}): {market}/{symbol}")
-        return False
+    # If touch-target gating is present, enforce the 70% gate on calibrated probabilities.
+    # Stage5 represents analysis tier (±1.0%). Stage6 represents execution tier (±0.5%).
+    # By default, require Stage5 at minimum to send alerts.
+    has_gate_fields = any(
+        k in prediction
+        for k in (
+            "stage5_ok",
+            "stage6_ok",
+            "touch_calibrated_1pct",
+            "touch_calibrated_0_5pct",
+            "gate",
+        )
+    )
+    if has_gate_fields:
+        if not bool(prediction.get("stage5_ok")):
+            if LOGGER:
+                LOGGER.info(f"Skipping gated alert (<70% Stage5): {market}/{symbol}")
+            return False
+    else:
+        # Fallback to raw confidence threshold
+        if confidence < MIN_ALERT_CONFIDENCE:
+            if LOGGER:
+                LOGGER.info(f"Skipping low confidence alert ({confidence:.0%} < {MIN_ALERT_CONFIDENCE:.0%}): {market}/{symbol}")
+            return False
     
     # Check deduplication
     if not should_send_alert(market, symbol, horizon_bucket):
@@ -353,8 +532,21 @@ def send_alert(
             LOGGER.info(f"Skipping duplicate alert: {market}/{symbol}/{horizon_bucket}")
         return False
 
-    # Render message based on ALERT_STYLE
-    if ALERT_STYLE == "simple":
+    # Prefer touch-target + gating format when provided by the prediction payload.
+    has_touch_gate_fields = any(
+        k in prediction
+        for k in (
+            "target_price",
+            "stage5_ok",
+            "stage6_ok",
+            "gate",
+            "touch_calibrated_1pct",
+            "touch_calibrated_0_5pct",
+        )
+    )
+    if has_touch_gate_fields:
+        message = format_touch_target_signal(symbol=symbol, prediction=prediction, price_meta=price_meta)
+    elif ALERT_STYLE == "simple":
         # Build Alert DTO
         price = price_meta.get("price", 0.0)
         prev_close = price_meta.get("prev_close", 0.0)

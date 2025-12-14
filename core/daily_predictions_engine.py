@@ -20,7 +20,11 @@ CHICAGO_TZ = ZoneInfo("America/Chicago")
 
 # Configuration
 DAILY_PICKS_COUNT = int(os.getenv("DAILY_PICKS_COUNT", "5"))
-MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE_PCT", "60"))
+
+# Confidence gating: Ghost core returns confidence as 0.0-1.0.
+# Allow env var to be specified either as 0.70 or 70.
+_min_conf_raw = float(os.getenv("MIN_CONFIDENCE_PCT", os.getenv("MIN_CONFIDENCE", "70")))
+MIN_CONFIDENCE = _min_conf_raw / 100.0 if _min_conf_raw > 1.0 else _min_conf_raw
 STOCK_CRYPTO_MIX = os.getenv("STOCK_CRYPTO_MIX", "3:2")  # 3 stocks, 2 crypto
 
 # Will be injected by orchestrator
@@ -100,24 +104,34 @@ async def _batch_predictions(symbols: list[str], asset_type: str) -> list[dict[s
             try:
                 result = await RUN_PREDICTION_FUNC_ASYNC(symbol)
                 
-                if result.get("ok") and result.get("confidence", 0) >= MIN_CONFIDENCE:
+                if result.get("ok") and float(result.get("confidence", 0) or 0) >= MIN_CONFIDENCE:
                     # Extract core fields from Ghost's prediction result
+                    confidence = float(result.get("confidence", 0) or 0)
+                    expected_move_pct = result.get("expected_move_pct")
+                    try:
+                        expected_move_pct_f = None if expected_move_pct is None else float(expected_move_pct)
+                    except Exception:
+                        expected_move_pct_f = None
+
                     predictions.append({
                         "symbol": symbol,
                         "asset_type": asset_type,
-                        "confidence": result.get("confidence", 0),
+                        "confidence": confidence,
                         "signal": result.get("direction", "UNKNOWN"),  # "UP" or "DOWN"
                         "current_price": result.get("current_price"),
                         "prediction_id": result.get("prediction_id"),
                         "feature_count": result.get("feature_count", 0),
                         "duration_ms": result.get("duration_ms", 0),
-                        # Calculate target/stop based on direction and confidence
-                        "expected_gain": _calculate_expected_gain(result),
-                        "target_price": _calculate_target(result),
-                        "stop_loss": _calculate_stop(result),
+                        # Prefer model-derived expected move when available
+                        "expected_gain": expected_move_pct_f if expected_move_pct_f is not None else _calculate_expected_gain(result),
+                        "target_price": result.get("target_price") if result.get("target_price") is not None else _calculate_target(result),
+                        "stop_loss": result.get("stop_loss") if result.get("stop_loss") is not None else _calculate_stop(result),
+                        "stage5_ok": bool(result.get("stage5_ok", False)),
+                        "stage6_ok": bool(result.get("stage6_ok", False)),
+                        "gate": result.get("gate", "MONITOR"),
                         "timestamp": datetime.now(CHICAGO_TZ).isoformat()
                     })
-                    LOGGER.info(f"✅ [{symbol}] Confidence: {result.get('confidence', 0):.1f}% Signal: {result.get('direction')}")
+                    LOGGER.info(f"✅ [{symbol}] Confidence: {confidence:.0%} Signal: {result.get('direction')}")
             except Exception as e:
                 LOGGER.warning(f"[{symbol}] Prediction failed: {e}")
     
@@ -132,12 +146,12 @@ def _calculate_expected_gain(result: dict[str, Any]) -> float:
     Calculate expected gain % based on confidence and direction
     Ghost's confidence is 0-100, higher = stronger signal
     """
-    confidence = result.get("confidence", 0)
+    confidence = float(result.get("confidence", 0) or 0)
     direction = result.get("direction", "")
     
-    # Expected gain scales with confidence
-    # 60% confidence = 5% gain, 80% = 10% gain, 95% = 15% gain
-    base_gain = (confidence - 50) / 5  # 60->2%, 80->6%, 95->9%
+    # Expected gain scales with confidence (0.0-1.0)
+    # 0.70 -> ~4%, 0.85 -> ~7%, 0.95 -> ~9%
+    base_gain = max(0.0, (confidence - 0.60)) * 30.0
     
     if direction == "DOWN":
         return -base_gain  # Negative for short positions
@@ -170,11 +184,13 @@ def _filter_and_rank(predictions: list[dict[str, Any]], count: int) -> list[dict
     Filter and rank predictions by confidence and expected gain
     """
     # Filter by confidence threshold
-    filtered = [p for p in predictions if p["confidence"] >= MIN_CONFIDENCE]
+    # Enforce the same 70% gate used for Telegram alerts.
+    filtered = [p for p in predictions if p["confidence"] >= MIN_CONFIDENCE and bool(p.get("stage5_ok", True))]
     
     # Rank by combined score (confidence * 0.6 + expected_gain * 0.4)
     for p in filtered:
-        p["score"] = p["confidence"] * 0.6 + p["expected_gain"] * 0.4
+        # Score: prioritize gated confidence, then expected move magnitude.
+        p["score"] = (p["confidence"] * 100.0) * 0.75 + abs(float(p.get("expected_gain") or 0.0)) * 0.25
     
     # Sort by score descending
     ranked = sorted(filtered, key=lambda x: x["score"], reverse=True)
@@ -193,11 +209,11 @@ async def format_daily_briefing(picks: dict[str, Any]) -> str:
     stats = picks.get("stats", {})
     timestamp = datetime.now(CHICAGO_TZ).strftime("%Y-%m-%d %I:%M %p CT")
     
-    msg = "🌅 **DAILY MARKET BRIEFING**\n"
+    msg = "🌅 DAILY MARKET BRIEFING\n"
     msg += f"📅 {timestamp}\n"
     msg += f"📊 Evaluated {stats.get('total_evaluated', 0)} symbols\n\n"
     
-    msg += "🎯 **TOP PICKS**\n"
+    msg += "🎯 TOP PICKS (>=70%)\n"
     
     for i, pick in enumerate(picks["picks"], 1):
         is_last = i == len(picks["picks"])
@@ -205,9 +221,10 @@ async def format_daily_briefing(picks: dict[str, Any]) -> str:
         
         signal_emoji = "🚀" if pick['signal'] == "UP" else "📉"
         
-        msg += f"{prefix} **{pick['symbol']}** ({pick['asset_type'].upper()}) {signal_emoji}\n"
+        msg += f"{prefix} {pick['symbol']} ({pick['asset_type'].upper()}) {signal_emoji}\n"
         msg += f"{'   ' if is_last else '│  '}├─ Signal: {pick['signal']}\n"
-        msg += f"{'   ' if is_last else '│  '}├─ Confidence: {pick['confidence']:.1f}%\n"
+        msg += f"{'   ' if is_last else '│  '}├─ Confidence: {pick['confidence']:.0%}\n"
+        msg += f"{'   ' if is_last else '│  '}├─ Gate: {pick.get('gate','MONITOR')}\n"
         
         if pick.get('current_price'):
             msg += f"{'   ' if is_last else '│  '}├─ Current: ${pick['current_price']:.2f}\n"
@@ -216,13 +233,13 @@ async def format_daily_briefing(picks: dict[str, Any]) -> str:
         if pick.get('stop_loss'):
             msg += f"{'   ' if is_last else '│  '}├─ Stop: ${pick['stop_loss']:.2f}\n"
         
-        msg += f"{'   ' if is_last else '│  '}├─ Expected: {pick['expected_gain']:+.1f}%\n"
+        msg += f"{'   ' if is_last else '│  '}├─ Expected: {float(pick.get('expected_gain') or 0.0):+.1f}%\n"
         msg += f"{'   ' if is_last else '│  '}└─ Features: {pick.get('feature_count', 0)} indicators\n"
         
         if not is_last:
             msg += "│\n"
     
-    msg += f"\n📈 Avg Confidence: {stats.get('avg_confidence', 0):.1f}%\n"
+    msg += f"\n📈 Avg Confidence: {float(stats.get('avg_confidence', 0) or 0):.0%}\n"
     msg += "⚡ Live updates every 5 minutes\n"
     
     return msg
@@ -250,9 +267,16 @@ async def daily_briefing_task():
                 # Format briefing
                 briefing = await format_daily_briefing(picks)
                 
-                # Send via existing Telegram alerts
-                from core.telegram_alerts import send_alert
-                await send_alert(briefing, priority="HIGH")
+                # Send via configured Telegram sender
+                try:
+                    from core import telegram_alerts
+
+                    if telegram_alerts.TELEGRAM_SEND_FUNC and telegram_alerts.TELEGRAM_CHAT_ID:
+                        telegram_alerts.TELEGRAM_SEND_FUNC(telegram_alerts.TELEGRAM_CHAT_ID, briefing)
+                    else:
+                        LOGGER.warning("Telegram not configured for daily briefing")
+                except Exception as e:
+                    LOGGER.warning(f"Daily briefing send failed: {e}")
                 
                 # Sleep until next day (avoid duplicate runs in same minute)
                 await asyncio.sleep(120)

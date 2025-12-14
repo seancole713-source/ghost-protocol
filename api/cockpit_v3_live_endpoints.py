@@ -69,6 +69,24 @@ def calculate_ghost_score_v1() -> Dict[str, Any]:
     }
 
 
+def _get_redis():
+    """Best-effort Redis client for optional caching.
+
+    Returns a redis client or None if REDIS_URL is not set or redis is unavailable.
+    """
+
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    if not redis_url:
+        return None
+    try:
+        import redis  # type: ignore
+
+        return redis.from_url(redis_url, decode_responses=True)
+    except Exception as exc:  # pragma: no cover - optional dependency
+        LOGGER.warning("Redis unavailable: %s", exc)
+        return None
+
+
 def _derive_provider_redundancy() -> Optional[float]:
     """Estimate crypto provider redundancy from configured quorum."""
     try:

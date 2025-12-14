@@ -4,6 +4,8 @@ Test Scheduled Predictions
 Tests the prediction commands via Telegram
 """
 
+import os
+
 import requests
 
 BASE_URL = os.getenv("GHOST_BASE_URL", "http://localhost:8080")
@@ -32,24 +34,29 @@ def send_command(cmd):
         print(f"❌ Exception: {e}")
 
 
-print("\n" + "=" * 60)
-print("🧪 TESTING SCHEDULED PREDICTIONS")
-print("=" * 60)
+def main() -> None:
+    print("\n" + "=" * 60)
+    print("🧪 TESTING SCHEDULED PREDICTIONS")
+    print("=" * 60)
 
-# Test 1: Help command (should show prediction commands)
-send_command("/help")
+    # Test 1: Help command (should show prediction commands)
+    send_command("/help")
 
-# Test 2: Force prediction
-send_command("/predict")
+    # Test 2: Force prediction
+    send_command("/predict")
 
-# Test 3: Check prediction accuracy
-send_command("/check")
+    # Test 3: Check prediction accuracy
+    send_command("/check")
 
-print("\n" + "=" * 60)
-print("✅ TEST COMPLETE")
-print("=" * 60)
-print("\nCheck your Telegram bot for Ghost's responses!")
-print("You should see:")
-print("  1. Updated help text with prediction commands")
-print("  2. Pre-market prediction with current price & signal")
-print("  3. Prediction accuracy check (comparison)")
+    print("\n" + "=" * 60)
+    print("✅ TEST COMPLETE")
+    print("=" * 60)
+    print("\nCheck your Telegram bot for Ghost's responses!")
+    print("You should see:")
+    print("  1. Updated help text with prediction commands")
+    print("  2. Pre-market prediction with current price & signal")
+    print("  3. Prediction accuracy check (comparison)")
+
+
+if __name__ == "__main__":
+    main()

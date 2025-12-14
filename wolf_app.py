@@ -1318,14 +1318,42 @@ DEFAULT_STOCK_SYMBOLS = [
 ]
 
 DEFAULT_CRYPTO_SYMBOLS = [
-    # Top 50 by market cap + trading volume
-    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX",
-    "DOT", "MATIC", "SHIB", "LTC", "UNI", "LINK", "ATOM", "ETC",
-    "PEPE", "ARB", "OP", "INJ", "TIA", "SUI", "APT", "SEI",
-    "FTM", "NEAR", "ALGO", "VET", "FIL", "AAVE", "MKR", "SNX",
-    "COMP", "CRV", "1INCH", "BAL", "SUSHI", "YFI", "LDO", "RPL",
-    "IMX", "SAND", "MANA", "AXS", "GALA", "ENJ", "CHZ", "FLOW",
-    "ICP", "HBAR", "QNT", "RUNE"
+    # Top 200+ by market cap + trading volume (expandable to 1000+)
+    # Major Layer 1s
+    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT", "MATIC", "SHIB", "LTC", 
+    "TRX", "TON", "ATOM", "ETC", "XLM", "XMR", "BCH", "ALGO", "VET", "ICP", "HBAR", "FIL",
+    "APT", "SUI", "SEI", "INJ", "TIA", "NEAR", "FTM", "KAVA", "ROSE", "OSMO", "CELO", "ZIL",
+    # Layer 2s & Scaling
+    "ARB", "OP", "STRK", "MANTA", "METIS", "IMX", "LRC", "BOBA",
+    # DeFi Protocols
+    "UNI", "LINK", "AAVE", "MKR", "SNX", "COMP", "CRV", "SUSHI", "YFI", "LDO", "RPL",
+    "BAL", "1INCH", "DYDX", "GMX", "GNS", "PENDLE", "CVX", "FXS", "FRAX", "RAI",
+    # Meme Coins
+    "PEPE", "WIF", "BONK", "FLOKI", "BABYDOGE", "ELON", "SAMO", "LADYS", "TURBO", "MEME",
+    # NFT & Gaming
+    "SAND", "MANA", "AXS", "GALA", "ENJ", "CHZ", "FLOW", "APE", "ILV", "MAGIC", "PIXEL",
+    # Privacy
+    "DASH", "ZEC", "SCRT", "BEAM",
+    # Storage & Infrastructure  
+    "AR", "STORJ", "GRT", "RNDR", "ANKR", "POKT",
+    # Oracle & Data
+    "BAND", "TRB", "DIA",
+    # Exchange Tokens
+    "CRO", "FTT", "OKB", "HT", "LEO", "KCS", "GT", "MX",
+    # Stablecoins & Wrapped Assets
+    "WBTC", "STETH", "USDT", "USDC", "DAI", "BUSD", "TUSD", "USDP", "GUSD",
+    # AI & Data
+    "FET", "AGIX", "OCEAN", "NMR", "RLC",
+    # Real World Assets
+    "ONDO", "MPL", "CFG", "POLS",
+    # Emerging DeFi
+    "JOE", "LYRA", "VELO", "HOOK", "MAV", "RDNT", "CANTO", "RUNE", "QNT",
+    # Additional High-Volume Coins
+    "THETA", "EGLD", "XTZ", "MINA", "ONE", "HIVE", "ICX", "QTUM", "WAVES", "ZEN",
+    "KDA", "FLUX", "ERG", "RVN", "DGB", "SYS", "ARRR", "FIRO", "XVG", "NAV",
+    # Top 100-200 Extended
+    "OMG", "SNT", "ANT", "MLN", "REP", "NMR", "LOOM", "MANA", "ENJ", "BAT",
+    "ZRX", "STORJ", "DENT", "CVC", "GNO", "DNT", "FUN", "RLC", "MYST", "TNT"
 ]
 
 # Load from environment or use defaults
@@ -3541,11 +3569,13 @@ async def _on_startup():
     # Initialize Telegram alerts module (CRITICAL for VIP scanner, movers, daily reports)
     try:
         from core import telegram_alerts
-        from core.telegram_hunter import send_telegram_message
+        
+        # NOTE: core.telegram_alerts expects TELEGRAM_SEND_FUNC(chat_id, text) -> bool.
+        # Use the local HTML sender to avoid signature mismatches.
         
         # Inject dependencies
         telegram_alerts.REDIS_CLIENT = _get_redis()
-        telegram_alerts.TELEGRAM_SEND_FUNC = send_telegram_message
+        telegram_alerts.TELEGRAM_SEND_FUNC = _tg_send_chat_message
         telegram_alerts.TELEGRAM_CHAT_ID = TELEGRAM_CHAT_ID
         telegram_alerts.LOGGER = LOGGER
         
@@ -3836,6 +3866,29 @@ async def _post_startup_init():
         LOGGER.info("[WEB MODE] Background engines DISABLED - web server will respond quickly")
         LOGGER.info("[WEB MODE] To enable background services, deploy a separate worker with WORKER_MODE=1")
         return  # EXIT - no background work in web mode
+
+    # Start price recorder for touch-target evaluation (worker-only)
+    try:
+        from core.prediction_price_recorder import price_recording_loop
+
+        def _fetch_price_for_recorder(sym: str) -> float | None:
+            sym = (sym or "").upper().strip()
+            if not sym:
+                return None
+            is_crypto_local = sym in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(sym) == "crypto"
+            if is_crypto_local:
+                res = turbo_crypto_price(sym, max_budget_s=2.0)
+            else:
+                res = turbo_stock_price(sym, max_budget_s=2.0)
+            if res and res.get("ok") and res.get("price"):
+                return float(res["price"])
+            return None
+
+        loop = asyncio.get_running_loop()
+        loop.create_task(price_recording_loop(_fetch_price_for_recorder))
+        LOGGER.info("[WORKER MODE] ✅ Price recorder started (touch-target evaluation)")
+    except Exception as e:
+        LOGGER.error(f"[WORKER MODE] price recorder failed to start: {e}", exc_info=False)
     
     # ═══════════════════════════════════════════════════════════════════════════════
     # WORKER MODE ONLY - Everything below runs ONLY in dedicated worker process
@@ -4374,14 +4427,14 @@ async def _post_startup_init():
 
     # Start Daily Predictions Engine (6:00 AM briefing with top 5 picks)
     try:
-        from core.daily_predictions_engine import inject_dependencies, daily_briefing_task
+        from core.daily_predictions_engine import daily_briefing_task
         
         # Inject Ghost's actual functions
-        inject_dependencies(
-            run_prediction_func=run_single_prediction_async,
-            stock_symbols=HUNTER_STOCK_SYMBOLS,
-            crypto_symbols=HUNTER_CRYPTO_SYMBOLS
-        )
+        # Inject via module globals (lightweight, avoids circular imports)
+        from core import daily_predictions_engine as _dpe
+        _dpe.RUN_PREDICTION_FUNC_ASYNC = run_single_prediction_async
+        _dpe.HUNTER_STOCK_SYMBOLS = HUNTER_STOCK_SYMBOLS
+        _dpe.HUNTER_CRYPTO_SYMBOLS = HUNTER_CRYPTO_SYMBOLS
         
         # Start background task
         loop = asyncio.get_running_loop()
@@ -6612,6 +6665,13 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             price = current_price * (direction_multiplier ** i)
             forecast_points.append((ts, price))
 
+        # Expected move over horizon (from forecast endpoints)
+        try:
+            forecast_end_price = float(forecast_points[-1][1]) if forecast_points else None
+            expected_move_pct = ((forecast_end_price - current_price) / current_price) * 100.0 if forecast_end_price and current_price else None
+        except Exception:
+            expected_move_pct = None
+
         # GHOST V3: Signal-based confidence calibration system
         # Confidence dynamically adjusts from 45% baseline to 40-85% based on:
         # - Technical indicator alignment (RSI, MACD, Bollinger Bands)
@@ -6670,6 +6730,51 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "confidence_metadata": confidence_metadata,
         }
 
+        if expected_move_pct is not None:
+            _LATEST_PREDICTIONS[symbol]["expected_move_pct"] = expected_move_pct
+
+        # Trade parameters (used for both execution and touch-target evaluation)
+        entry_price = current_price
+        stop_loss = round(entry_price * 0.98, 2)   # -2% stop
+        take_profit = round(entry_price * 1.06, 2)  # +6% target (3:1 R/R)
+
+        # Touch-target calibration + gating (Stage 5/6)
+        try:
+            from core.touch_calibration_sqlite import calibrate_touch_confidence
+
+            touch_cal = calibrate_touch_confidence(symbol, confidence)
+            _LATEST_PREDICTIONS[symbol].update(
+                {
+                    "entry_price": entry_price,
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "target_price": take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price,
+                    "touch_calibrated_1pct": touch_cal.calibrated_1pct,
+                    "touch_calibrated_0_5pct": touch_cal.calibrated_0_5pct,
+                    "touch_calibration_samples": touch_cal.sample_size,
+                    "touch_conf_band": touch_cal.band,
+                    "stage5_ok": touch_cal.stage5_ok,
+                    "stage6_ok": touch_cal.stage6_ok,
+                    "gate": touch_cal.gate,
+                }
+            )
+        except Exception:
+            _LATEST_PREDICTIONS[symbol].update(
+                {
+                    "entry_price": entry_price,
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "target_price": take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price,
+                    "touch_calibrated_1pct": None,
+                    "touch_calibrated_0_5pct": None,
+                    "touch_calibration_samples": 0,
+                    "touch_conf_band": None,
+                    "stage5_ok": False,
+                    "stage6_ok": False,
+                    "gate": "MONITOR",
+                }
+            )
+
         # Register prediction for accuracy tracking (48h evaluation) + FEEDBACK LOOP (Task #4)
         try:
             from core.accuracy_tracker import get_accuracy_tracker
@@ -6703,19 +6808,29 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         except Exception as e:
             LOGGER.warning(f"[{symbol}] Accuracy tracking registration failed: {e}")
 
-        # ALSO write to ghost_predictions table for Telegram accuracy display
+        # ALSO write to ghost_predictions table for touch-target evaluation + UI
         try:
             import sqlite3
-            db_path = "data/wolf.db"
+            # Ensure tables exist (and include newer columns like features_json)
+            from core import prediction_tracker as _pt  # noqa: F401
+
+            db_path = WOLF_SQLITE_PATH
             conn = sqlite3.connect(db_path)
-            
-            # Calculate predicted price based on direction
-            if direction == "UP":
-                predicted_price = current_price * 1.025  # +2.5%
-            elif direction == "DOWN":
-                predicted_price = current_price * 0.975  # -2.5%
+
+            # Ensure schema supports touch-target + gating columns
+            try:
+                from core.prediction_evaluator import _ensure_touch_columns
+                _ensure_touch_columns(conn)
+            except Exception:
+                pass
+
+            # Align target with returned trade params
+            predicted_price = take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price
+            # Use model-derived expected move if available; otherwise fall back to TP/SL derived pct.
+            if expected_move_pct is not None:
+                predicted_pct = float(expected_move_pct)
             else:
-                predicted_price = current_price  # FLAT
+                predicted_pct = ((predicted_price - current_price) / current_price) * 100 if current_price else 0.0
             
             # Store features as JSON for ML training
             import json
@@ -6724,18 +6839,30 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             conn.execute("""
                 INSERT INTO ghost_predictions (
                     symbol, predicted_at, check_at, predicted_price, 
-                    predicted_direction, confidence, timeframe_hours, 
-                    current_price, checked, features_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                    predicted_direction, predicted_pct, confidence, timeframe_hours, 
+                    current_price, target_price, stage5_ok, stage6_ok, gate,
+                    touch_calibrated_1pct, touch_calibrated_0_5pct, touch_calibration_samples, touch_conf_band,
+                    checked, features_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 symbol,
                 int(run_at),
                 int(run_at + (horizon_h * 3600)),
                 predicted_price,
                 direction,
+                float(predicted_pct),
                 confidence,
                 horizon_h,
                 current_price,
+                float(_LATEST_PREDICTIONS[symbol].get("target_price") or predicted_price),
+                1 if _LATEST_PREDICTIONS[symbol].get("stage5_ok") else 0,
+                1 if _LATEST_PREDICTIONS[symbol].get("stage6_ok") else 0,
+                str(_LATEST_PREDICTIONS[symbol].get("gate") or "MONITOR"),
+                _LATEST_PREDICTIONS[symbol].get("touch_calibrated_1pct"),
+                _LATEST_PREDICTIONS[symbol].get("touch_calibrated_0_5pct"),
+                int(_LATEST_PREDICTIONS[symbol].get("touch_calibration_samples") or 0),
+                _LATEST_PREDICTIONS[symbol].get("touch_conf_band"),
+                0,
                 features_json
             ))
             conn.commit()
@@ -6743,11 +6870,6 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             LOGGER.info(f"[{symbol}] Stored in ghost_predictions table (ID={prediction_id}, direction={direction}, confidence={confidence:.1%}, features={len(features)})")
         except Exception as e:
             LOGGER.error(f"[{symbol}] Failed to write to ghost_predictions table: {e}")
-        
-        # Calculate stop loss and take profit (3:1 reward/risk ratio)
-        entry_price = current_price
-        stop_loss = round(entry_price * 0.98, 2)   # -2% stop
-        take_profit = round(entry_price * 1.06, 2)  # +6% target (3:1 R/R)
         
         # Calculate total duration
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -6764,6 +6886,13 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "entry_price": entry_price,
             "stop_loss": stop_loss,
             "take_profit": take_profit,
+            "target_price": take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price,
+            "stage5_ok": bool(_LATEST_PREDICTIONS[symbol].get("stage5_ok")),
+            "stage6_ok": bool(_LATEST_PREDICTIONS[symbol].get("stage6_ok")),
+            "gate": _LATEST_PREDICTIONS[symbol].get("gate", "MONITOR"),
+            "touch_calibrated_1pct": _LATEST_PREDICTIONS[symbol].get("touch_calibrated_1pct"),
+            "touch_calibrated_0_5pct": _LATEST_PREDICTIONS[symbol].get("touch_calibrated_0_5pct"),
+            "expected_move_pct": expected_move_pct,
             "reward_risk_ratio": 3.0,
             "feature_count": feature_data["feature_count"],
             "available_count": feature_data["available_count"],
@@ -6964,6 +7093,23 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
             "symbol": symbol,
             "days": days
         }
+
+
+@APP.get("/api/v3/accuracy/target_touch")
+async def api_accuracy_target_touch(symbol: str | None = None, days: int = 30):
+    """Target-touch accuracy (hit target within horizon).
+
+    Returns both tiers:
+    - `accuracy_touch_1pct` (analysis, ±1.0%)
+    - `accuracy_touch_0_5pct` (execution, ±0.5%)
+    """
+    try:
+        from core.touch_accuracy_metrics import get_touch_accuracy_summary
+
+        return get_touch_accuracy_summary(days=days, symbol=symbol)
+    except Exception as e:
+        LOGGER.error(f"Target-touch accuracy failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e), "symbol": symbol, "days": days}
 
 
 @APP.post("/api/v3/accuracy/reconcile")
@@ -8021,6 +8167,32 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                     recent_preds = store.get_recent_predictions(limit=100)
                     symbol_pred = next((p for p in recent_preds if p.get("symbol") == symbol.upper()), None)
                     if symbol_pred:
+                        # Optional enrichment from wolf.db (touch gating)
+                        gate_fields: dict[str, Any] = {}
+                        try:
+                            import sqlite3 as _sqlite3
+                            with _sqlite3.connect(WOLF_SQLITE_PATH) as _c:
+                                _c.row_factory = _sqlite3.Row
+                                r = _c.execute(
+                                    """
+                                    SELECT target_price, stage5_ok, stage6_ok, gate
+                                    FROM ghost_predictions
+                                    WHERE symbol = ?
+                                    ORDER BY predicted_at DESC
+                                    LIMIT 1
+                                    """,
+                                    (symbol.upper(),),
+                                ).fetchone()
+                                if r:
+                                    gate_fields = {
+                                        "target_price": r["target_price"],
+                                        "stage5_ok": bool(r["stage5_ok"]) if "stage5_ok" in r.keys() and r["stage5_ok"] is not None else False,
+                                        "stage6_ok": bool(r["stage6_ok"]) if "stage6_ok" in r.keys() and r["stage6_ok"] is not None else False,
+                                        "gate": r["gate"] if "gate" in r.keys() and r["gate"] is not None else "MONITOR",
+                                    }
+                        except Exception:
+                            gate_fields = {}
+
                         predictions_list.append({
                             "symbol": symbol.upper(),
                             "direction": symbol_pred.get("direction", "FLAT"),
@@ -8029,12 +8201,40 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                             "horizon_h": 48,
                             "run_at": symbol_pred.get("created_at", 0),
                             "price_at_prediction": symbol_pred.get("price_at_prediction"),
-                            "created_at": symbol_pred.get("created_at")
+                            "created_at": symbol_pred.get("created_at"),
+                            **gate_fields,
                         })
                 else:
                     # Get latest N predictions
                     recent_preds = store.get_recent_predictions(limit=limit)
                     for pred in recent_preds:
+                        gate_fields: dict[str, Any] = {}
+                        try:
+                            sym = (pred.get("symbol") or "").upper().strip()
+                            if sym:
+                                import sqlite3 as _sqlite3
+                                with _sqlite3.connect(WOLF_SQLITE_PATH) as _c:
+                                    _c.row_factory = _sqlite3.Row
+                                    r = _c.execute(
+                                        """
+                                        SELECT target_price, stage5_ok, stage6_ok, gate
+                                        FROM ghost_predictions
+                                        WHERE symbol = ?
+                                        ORDER BY predicted_at DESC
+                                        LIMIT 1
+                                        """,
+                                        (sym,),
+                                    ).fetchone()
+                                    if r:
+                                        gate_fields = {
+                                            "target_price": r["target_price"],
+                                            "stage5_ok": bool(r["stage5_ok"]) if "stage5_ok" in r.keys() and r["stage5_ok"] is not None else False,
+                                            "stage6_ok": bool(r["stage6_ok"]) if "stage6_ok" in r.keys() and r["stage6_ok"] is not None else False,
+                                            "gate": r["gate"] if "gate" in r.keys() and r["gate"] is not None else "MONITOR",
+                                        }
+                        except Exception:
+                            gate_fields = {}
+
                         predictions_list.append({
                             "symbol": pred.get("symbol"),
                             "direction": pred.get("direction", "FLAT"),
@@ -8043,7 +8243,8 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                             "horizon_h": 48,
                             "run_at": pred.get("created_at", 0),
                             "price_at_prediction": pred.get("price_at_prediction"),
-                            "created_at": pred.get("created_at")
+                            "created_at": pred.get("created_at"),
+                            **gate_fields,
                         })
                 
                 return {
@@ -8074,6 +8275,10 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                     "expected_move": pred.get("confidence", 0) * 5,  # Estimate 5% move at full confidence
                     "horizon_h": pred.get("horizon_h", 48),
                     "run_at": pred.get("run_at", 0),
+                    "target_price": pred.get("target_price"),
+                    "stage5_ok": bool(pred.get("stage5_ok", False)),
+                    "stage6_ok": bool(pred.get("stage6_ok", False)),
+                    "gate": pred.get("gate", "MONITOR"),
                 })
                 LOGGER.info(
                     f"[API] Served prediction {prediction_id} for {symbol.upper()} from cache "
@@ -8089,6 +8294,10 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                     "expected_move": pred.get("confidence", 0) * 5,
                     "horizon_h": pred.get("horizon_h", 48),
                     "run_at": pred.get("run_at", 0),
+                    "target_price": pred.get("target_price"),
+                    "stage5_ok": bool(pred.get("stage5_ok", False)),
+                    "stage6_ok": bool(pred.get("stage6_ok", False)),
+                    "gate": pred.get("gate", "MONITOR"),
                 })
         
         return {
@@ -9326,23 +9535,49 @@ async def api_v3_cockpit_status():
         health_score = 0
         total_predictions = 0
         try:
-            from core.prediction_store import get_prediction_store
-            store = get_prediction_store()
-            recent = store.get_recent_predictions(limit=100)
-            
-            # Count predictions from last 24 hours
-            from datetime import datetime, timedelta
-            cutoff = (datetime.now() - timedelta(hours=24)).timestamp()
-            recent_24h = [p for p in recent if p.get('timestamp', 0) > cutoff]
-            
+            # Source of truth: wolf.db (touch-target evaluator + calibration).
+            import sqlite3 as _sqlite3
+
+            try:
+                from core import prediction_tracker as _pt  # noqa: F401
+            except Exception:
+                pass
+
+            cutoff = int(time.time()) - (24 * 3600)
+            with _sqlite3.connect(WOLF_SQLITE_PATH) as _c:
+                row = _c.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM ghost_predictions
+                    WHERE predicted_at >= ?
+                    """,
+                    (cutoff,),
+                ).fetchone()
+                total_predictions = int(row[0] or 0) if row else 0
+
             # Health score: 10 points per prediction in last 24h, max 100
-            total_predictions = len(recent_24h)
             health_score = min(100, total_predictions * 10)
         except Exception as e:
-            LOGGER.warning(f"Could not calculate health score from DB: {e}")
-            # Fallback to old method
-            total_predictions = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
-            health_score = min(100, total_predictions * 5)
+            LOGGER.warning(f"Could not calculate health score from wolf.db: {e}")
+            # Fallback: prediction_store (may be different DB)
+            try:
+                from core.prediction_store import get_prediction_store
+
+                store = get_prediction_store()
+                recent = store.get_recent_predictions(limit=200)
+
+                from datetime import datetime, timedelta
+
+                cutoff_ts = (datetime.now() - timedelta(hours=24)).timestamp()
+                recent_24h = [p for p in recent if float(p.get("timestamp", 0) or 0) > cutoff_ts]
+
+                total_predictions = len(recent_24h)
+                health_score = min(100, total_predictions * 10)
+            except Exception as e2:
+                LOGGER.warning(f"Could not calculate health score from prediction_store: {e2}")
+                # Final fallback to old counters
+                total_predictions = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
+                health_score = min(100, total_predictions * 5)
         
         # Calculate grade based on score
         if health_score >= 90:
@@ -9787,14 +10022,11 @@ def _generate_multi_symbol_predictions():
         try:
             result = run_single_prediction(symbol)
             if result.get("ok"):
-                # Only count as success if confidence >= 10% (real prediction, not diagnostic)
+                # Count all successful predictions (removed artificial 10% threshold)
                 confidence = result.get("confidence", 0)
-                if confidence >= 0.10:
-                    stocks_success += 1
-                    duration_ms = result.get("duration_ms", 0)
-                    LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%}, {duration_ms}ms)")
-                else:
-                    LOGGER.info(f"Hunter prediction skipped (low confidence): {symbol}")
+                stocks_success += 1
+                duration_ms = result.get("duration_ms", 0)
+                LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%}, {duration_ms}ms)")
             else:
                 errors.append(f"{symbol}: {result.get('error', 'unknown')}")
         except Exception as e:
@@ -9806,14 +10038,11 @@ def _generate_multi_symbol_predictions():
         try:
             result = run_single_prediction(symbol)
             if result.get("ok"):
-                # Only count as success if confidence >= 10% (real prediction, not diagnostic)
+                # Count all successful predictions (removed artificial 10% threshold)
                 confidence = result.get("confidence", 0)
-                if confidence >= 0.10:
-                    crypto_success += 1
-                    duration_ms = result.get("duration_ms", 0)
-                    LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%}, {duration_ms}ms)")
-                else:
-                    LOGGER.info(f"Hunter prediction skipped (low confidence): {symbol}")
+                crypto_success += 1
+                duration_ms = result.get("duration_ms", 0)
+                LOGGER.info(f"Hunter prediction generated: {symbol} (confidence: {confidence:.0%}, {duration_ms}ms)")
             else:
                 errors.append(f"{symbol}: {result.get('error', 'unknown')}")
         except Exception as e:

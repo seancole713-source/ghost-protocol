@@ -48,6 +48,7 @@ AUTO_EXECUTION_MIN_CONFIDENCE = float(os.getenv("AUTO_EXECUTION_MIN_CONFIDENCE",
 AUTO_EXECUTION_MAX_POSITIONS = int(os.getenv("AUTO_EXECUTION_MAX_POSITIONS", "10"))  # Increased from 5 to 10
 AUTO_EXECUTION_INTERVAL_S = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))  # 5 min
 AUTO_EXECUTION_MARKET_HOURS_ONLY = os.getenv("AUTO_EXECUTION_MARKET_HOURS_ONLY", "0") == "1"  # Allow 24/7 trading
+AUTO_EXECUTION_REQUIRE_STAGE6 = os.getenv("AUTO_EXECUTION_REQUIRE_STAGE6", "1") == "1"
 
 # Position sizing
 AUTO_EXECUTION_DEFAULT_KELLY_FRACTION = float(os.getenv("AUTO_EXECUTION_KELLY_FRACTION", "0.25"))
@@ -355,6 +356,8 @@ class AutonomousExecutionEngine:
                 if isinstance(pred, dict):
                     confidence = pred.get("confidence", 0)
                     if confidence >= self.min_confidence:
+                        if AUTO_EXECUTION_REQUIRE_STAGE6 and not bool(pred.get("stage6_ok", False)):
+                            continue
                         pred["symbol"] = symbol
                         predictions.append(pred)
             
