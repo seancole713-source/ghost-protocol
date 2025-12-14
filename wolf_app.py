@@ -22996,6 +22996,7 @@ async def api_status():
             "PRICE_STRICT_LIVE": os.getenv("PRICE_STRICT_LIVE", "0"),
             "PRICE_REQUIRE_QUORUM": os.getenv("PRICE_REQUIRE_QUORUM", "0"),
             "PREDICT_REQUIRE_PRICE_QUORUM": os.getenv("PREDICT_REQUIRE_PRICE_QUORUM", "0"),
+            "PRICE_MIN_PROVIDERS": os.getenv("PRICE_MIN_PROVIDERS", ""),
             "STOCK_PRICE_SOURCE": os.getenv("STOCK_PRICE_SOURCE", "polygon"),
             "CRYPTO_PRICE_SOURCE": os.getenv("CRYPTO_PRICE_SOURCE", "coingecko"),
         }

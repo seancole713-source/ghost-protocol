@@ -446,72 +446,6 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
     """
     symbol = symbol.upper()
 
-    # Check cache
-    if use_cache:
-        cached = _get_crypto_cache(symbol)
-        if cached:
-            LOGGER.debug(f"Crypto price cache hit for {symbol}")
-            return cached
-
-    # Initialize providers based on environment configuration
-    provider_order = _get_crypto_provider_order()
-    provider_map = {
-        "coingecko": CoinGeckoProvider(),
-        "binance": BinanceProvider(),
-        "coinbase": CoinbaseProvider(),
-    }
-    
-    providers = [
-        (name, provider_map[name]) 
-        for name in provider_order 
-        if name in provider_map
-    ]
-
-    # Collect prices from providers - FAST SHORT-CIRCUIT on first success
-    results: list[tuple[str, float, dict]] = []
-
-    for name, provider in providers:
-        try:
-            price_data = await asyncio.to_thread(provider.get_price, symbol)
-            if price_data and price_data.get("price", 0) > 0:
-                results.append((name, price_data["price"], price_data))
-                LOGGER.info(f"Short-circuit: using {name} for {symbol} (fast-path)")
-                # IMMEDIATE SHORT-CIRCUIT: Use first successful provider to minimize API load
-                break  # Exit immediately on first success
-        except Exception as e:
-            # Skip 401/451/429 immediately without retrying
-            error_str = str(e)
-            if any(code in error_str for code in ["401", "451", "429", "Unauthorized", "rate limit"]):
-                LOGGER.debug(f"Provider {name} blocked/throttled for {symbol}, skipping: {e}")
-                continue
-            LOGGER.warning(f"Provider {name} failed for {symbol}: {e}")
-
-    if not results:
-        LOGGER.error(f"All crypto providers failed for {symbol}")
-        return None
-
-    # Calculate quorum
-    prices = [r[1] for r in results]
-    median_price = sorted(prices)[len(prices) // 2]
-
-    # Check spread
-    if len(prices) > 1:
-        spread = (max(prices) - min(prices)) / median_price
-    else:
-        spread = 0.0
-
-    # Determine confidence based on quorum size and spread
-    if len(results) >= 3 and spread < 0.01:  # 3 providers, <1% spread
-        confidence = 0.95
-    elif len(results) >= 2 and spread < 0.02:  # 2 providers, <2% spread
-        confidence = 0.85
-    elif len(results) >= 2:
-        confidence = 0.75
-    else:
-        confidence = 0.65  # Single provider
-
-
-    # If quorum is required, we must collect multiple provider prices (fail-closed).
     def _truthy(v: str | None) -> bool:
         return str(v or "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -522,13 +456,84 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
         min_providers = max(1, int(os.getenv("PRICE_MIN_PROVIDERS", "1")))
     except Exception:
         min_providers = 1
-    # Use primary provider's data (CoinGecko) for extra fields
-    primary_data = results[0][2]
 
+    # Check cache (but never allow cached single-provider values to bypass quorum enforcement)
+    if use_cache:
+        cached = _get_crypto_cache(symbol)
+        if isinstance(cached, dict):
+            cached_quorum = int(cached.get("quorum_size") or 0)
+            if require_quorum and cached_quorum < min_providers:
+                LOGGER.info(
+                    f"Crypto price cache bypassed for {symbol}: quorum_size={cached_quorum} < min_providers={min_providers}"
+                )
+            else:
+                LOGGER.debug(f"Crypto price cache hit for {symbol}")
+                return cached
+
+    # Initialize providers based on environment configuration
+    provider_order = _get_crypto_provider_order()
+    provider_map = {
+        "coingecko": CoinGeckoProvider(),
+        "binance": BinanceProvider(),
+        "coinbase": CoinbaseProvider(),
+    }
+
+    providers = [(name, provider_map[name]) for name in provider_order if name in provider_map]
+
+    # Collect prices from providers.
+    # When quorum is NOT required, short-circuit on first success to minimize API load.
+    results: list[tuple[str, float, dict]] = []
+
+    for name, provider in providers:
+        try:
+            price_data = await asyncio.to_thread(provider.get_price, symbol)
+            if price_data and price_data.get("price", 0) > 0:
+                results.append((name, float(price_data["price"]), price_data))
+                if not require_quorum:
+                    LOGGER.info(f"Short-circuit: using {name} for {symbol} (fast-path)")
+                    break
+                if len(results) >= min_providers:
+                    # We have enough providers for quorum; stop to limit API load.
+                    break
+        except Exception as e:
+            error_str = str(e)
+            if any(code in error_str for code in ["401", "451", "429", "Unauthorized", "rate limit"]):
+                LOGGER.debug(f"Provider {name} blocked/throttled for {symbol}, skipping: {e}")
+                continue
+            LOGGER.warning(f"Provider {name} failed for {symbol}: {e}")
+
+    if not results:
+        LOGGER.error(f"All crypto providers failed for {symbol}")
+        return None
+
+    if require_quorum and len(results) < min_providers:
+        LOGGER.warning(
+            f"Crypto quorum failed for {symbol}: only {len(results)}/{min_providers} providers returned prices"
+        )
+        return None
+
+    prices = [r[1] for r in results]
+    median_price = sorted(prices)[len(prices) // 2]
+
+    if len(prices) > 1:
+        spread = (max(prices) - min(prices)) / median_price
+    else:
+        spread = 0.0
+
+    if len(results) >= 3 and spread < 0.01:
+        confidence = 0.95
+    elif len(results) >= 2 and spread < 0.02:
+        confidence = 0.85
+    elif len(results) >= 2:
+        confidence = 0.75
+    else:
+        confidence = 0.65
+
+    primary_data = results[0][2]
     result = {
         "symbol": symbol,
         "price": median_price,
-        "provider": results[0][0],  # Credit primary provider
+        "provider": results[0][0],
         "confidence": confidence,
         "quorum_size": len(results),
         "spread": spread,
@@ -538,7 +543,6 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
         "volume_24h": primary_data.get("volume_24h", 0),
     }
 
-    # Cache result
     _set_crypto_cache(symbol, result)
 
     LOGGER.info(
@@ -548,12 +552,6 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
     )
 
     return result
-
-    if require_quorum and len(results) < min_providers:
-        LOGGER.warning(
-            f"Crypto quorum failed for {symbol}: only {len(results)}/{min_providers} providers returned prices"
-        )
-        return None
 
 
 # Default watchlists by category
