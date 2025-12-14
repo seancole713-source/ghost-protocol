@@ -3901,6 +3901,143 @@ async def _post_startup_init():
         LOGGER.info("✅ Auto-Prediction Loop: STARTED (ASYNC, non-blocking, 60-min interval)")
     except Exception as e:
         LOGGER.exception("auto_prediction_loop_start_failed", extra={"component": "startup", "error": str(e)})
+
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # Telegram Signal Dispatcher (runs in ALL modes)
+    # Enforces >=70% (via core.telegram_alerts) and sends MULTIPLE signals per cycle.
+    # ═══════════════════════════════════════════════════════════════════════════════
+    try:
+        from core import telegram_alerts as _telegram_alerts
+
+        dispatch_enabled = os.getenv("GHOST_SIGNAL_DISPATCH_ENABLED", "1").strip() not in ("0", "false", "False")
+        dispatch_interval_s = int(os.getenv("GHOST_SIGNAL_DISPATCH_INTERVAL_S", "3600"))
+        max_per_cycle = int(os.getenv("GHOST_SIGNAL_MAX_PER_CYCLE", "5"))
+
+        # Avoid repeats within the process (Redis dedup still provides daily protection)
+        _last_sent_pred_id: dict[str, int] = {}
+
+        def _horizon_bucket(h: int) -> str:
+            try:
+                h = int(h)
+            except Exception:
+                h = 48
+            return f"{h}h"
+
+        async def _signal_dispatch_loop():
+            if not dispatch_enabled:
+                LOGGER.info("[SIGNALS] Telegram signal dispatch disabled (GHOST_SIGNAL_DISPATCH_ENABLED=0)")
+                return
+
+            # Only dispatch if Telegram is configured.
+            if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+                LOGGER.warning("[SIGNALS] Telegram not configured; signal dispatch paused")
+                return
+
+            # Initial delay so prediction loop can populate cache.
+            await asyncio.sleep(20)
+
+            while True:
+                try:
+                    candidates: list[tuple[float, str, dict[str, Any]]] = []
+                    for sym, pred in list(_LATEST_PREDICTIONS.items()):
+                        if not isinstance(pred, dict):
+                            continue
+                        symbol = (sym or pred.get("symbol") or "").upper().strip()
+                        if not symbol:
+                            continue
+
+                        direction = str(pred.get("direction") or "").upper()
+                        action = str(pred.get("action") or "").upper()
+                        if direction in ("", "ERROR"):
+                            continue
+                        if direction == "FLAT" or action in ("HOLD", "WATCH"):
+                            continue
+
+                        # Ensure we only send once per symbol per prediction_id in-process.
+                        try:
+                            pid = int(pred.get("prediction_id") or pred.get("id") or 0)
+                        except Exception:
+                            pid = 0
+                        if pid and _last_sent_pred_id.get(symbol) == pid:
+                            continue
+
+                        # Rank: prefer calibrated execution prob, then analysis, then raw confidence
+                        rank = 0.0
+                        for k in ("touch_calibrated_0_5pct", "touch_calibrated_1pct", "confidence"):
+                            try:
+                                v = pred.get(k)
+                                if v is None:
+                                    continue
+                                rank = float(v)
+                                break
+                            except Exception:
+                                continue
+
+                        candidates.append((rank, symbol, pred))
+
+                    # Highest confidence/calibration first
+                    candidates.sort(key=lambda t: t[0], reverse=True)
+
+                    sent = 0
+                    for _, symbol, pred in candidates:
+                        if sent >= max_per_cycle:
+                            break
+
+                        market = pred.get("market")
+                        if not market:
+                            try:
+                                market = "crypto" if _classify_symbol_category(symbol) == "crypto" else "stock"
+                            except Exception:
+                                market = "stock"
+
+                        horizon_h = pred.get("horizon_h") or 48
+                        hb = _horizon_bucket(int(horizon_h))
+
+                        price_now = pred.get("price")
+                        if price_now is None:
+                            price_now = pred.get("current_price")
+                        if price_now is None:
+                            price_now = pred.get("entry_price")
+
+                        price_meta = {
+                            "price": price_now,
+                            "prev_close": pred.get("price_at_prediction") or price_now,
+                            "provider": pred.get("provider") or "unknown",
+                        }
+
+                        # Send (send_alert enforces >=70% gate and dedup)
+                        ok = await asyncio.to_thread(
+                            _telegram_alerts.send_alert,
+                            symbol,
+                            str(market),
+                            hb,
+                            pred,
+                            price_meta,
+                        )
+                        if ok:
+                            sent += 1
+                            try:
+                                pid = int(pred.get("prediction_id") or pred.get("id") or 0)
+                                if pid:
+                                    _last_sent_pred_id[symbol] = pid
+                            except Exception:
+                                pass
+
+                    if sent > 0:
+                        LOGGER.info(f"[SIGNALS] ✅ Sent {sent} Telegram signals (cycle)")
+                    else:
+                        LOGGER.info("[SIGNALS] No qualifying >=70% signals this cycle (MONITOR only)")
+
+                except Exception as dispatch_err:
+                    LOGGER.error(f"[SIGNALS] Dispatch loop error: {dispatch_err}", exc_info=False)
+
+                await asyncio.sleep(max(60, dispatch_interval_s))
+
+        loop = asyncio.get_running_loop()
+        loop.create_task(_signal_dispatch_loop())
+        LOGGER.info("[GHOST STARTUP] ✅ Telegram signal dispatcher scheduled")
+    except Exception as e:
+        LOGGER.error(f"signal_dispatcher_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
     # CRITICAL: Check if this is WORKER mode or WEB mode
     WORKER_MODE = os.getenv("WORKER_MODE") == "1"
