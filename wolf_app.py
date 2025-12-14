@@ -3652,9 +3652,14 @@ async def _on_startup():
         
         async def _accuracy_evaluator_loop():
             """Background task to evaluate prediction outcomes every hour + feed to learning system"""
+            # Run once immediately on startup, then hourly
+            first_run = True
             while True:
                 try:
-                    await _asyncio_module.sleep(3600)  # Run every hour
+                    if not first_run:
+                        await _asyncio_module.sleep(3600)  # Run every hour (skip sleep on first iteration)
+                    first_run = False
+                    
                     LOGGER.info("[ACCURACY] Running prediction evaluator + feedback loop...")
                     
                     # Run in thread pool to avoid blocking asyncio
@@ -6998,7 +7003,7 @@ async def api_evaluate_predictions():
     Manually trigger prediction evaluation.
     
     Evaluates all expired predictions (horizon has passed) and writes outcomes.
-    This is the same logic as the daily cron job.
+    This is the same logic as the hourly background task.
     
     Returns:
         {
@@ -7011,70 +7016,33 @@ async def api_evaluate_predictions():
         }
     """
     try:
-        import subprocess
         import time as time_module
-        from pathlib import Path
+        from core.prediction_evaluator import evaluate_pending_predictions
         
-        start_time = time_module.time()
+        start = time_module.time()
         
-        # Determine script path (works both locally and on Railway)
-        script_path = Path(__file__).parent / "scripts" / "evaluate_predictions.py"
+        # Run evaluator directly (not via subprocess)
+        result = evaluate_pending_predictions()
         
-        # Run the evaluator script
-        result = subprocess.run(
-            ["python3", str(script_path)],
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
+        execution_time = time_module.time() - start
         
-        execution_time = time_module.time() - start_time
-        
-        # Parse output for metrics
-        evaluated = 0
-        correct = 0
-        accuracy = 0.0
-        
-        if result.returncode == 0:
-            # Try to extract metrics from output
-            for line in result.stdout.split('\n'):
-                if 'Evaluated:' in line:
-                    parts = line.split('Evaluated:')[1].strip().split('/')
-                    if len(parts) == 2:
-                        evaluated = int(parts[0])
-                if 'Correct:' in line and '(' in line:
-                    parts = line.split('Correct:')[1].strip().split('/')
-                    if len(parts) >= 2:
-                        correct = int(parts[0])
-                        pct_str = parts[1].split('(')[1].split('%')[0]
-                        accuracy = float(pct_str) / 100.0
-            
-            return {
-                "ok": True,
-                "evaluated": evaluated,
-                "correct": correct,
-                "accuracy": accuracy,
-                "execution_time_s": round(execution_time, 2),
-                "output": result.stdout[-500:] if len(result.stdout) > 500 else result.stdout  # Last 500 chars
-            }
-        else:
-            return {
-                "ok": False,
-                "error": f"Evaluator script failed with code {result.returncode}",
-                "stderr": result.stderr[-500:] if result.stderr else "",
-                "execution_time_s": round(execution_time, 2)
-            }
-    
-    except subprocess.TimeoutExpired:
         return {
-            "ok": False,
-            "error": "Evaluation timed out (>60s)"
+            "ok": True,
+            "evaluated": result.get("evaluated", 0),
+            "correct": result.get("correct", 0),
+            "incorrect": result.get("incorrect", 0),
+            "skipped": result.get("skipped", 0),
+            "accuracy_pct": result.get("accuracy_pct", 0),
+            "execution_time_s": round(execution_time, 2),
+            "message": f"Evaluated {result.get('evaluated', 0)} predictions"
         }
+    
     except Exception as e:
         LOGGER.error(f"Evaluation failed: {e}", exc_info=True)
         return {
             "ok": False,
-            "error": str(e)
+            "error": str(e),
+            "evaluated": 0
         }
 
 
