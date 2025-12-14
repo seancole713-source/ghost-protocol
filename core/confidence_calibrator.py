@@ -332,11 +332,11 @@ class ConfidenceCalibrator:
                 signals_fired.append("BB_BOUNCE_SELL")
         
         # VOLUME SIGNALS
-        if volume_spike > 2.0:
+        if volume_spike is not None and volume_spike > 2.0:
             confidence += 0.08
             adjustments["volume_surge"] = 0.08
             signals_fired.append("VOLUME_SURGE")
-        elif volume_spike < 0.5:
+        elif volume_spike is not None and volume_spike < 0.5:
             confidence -= 0.05
             adjustments["volume_weak"] = -0.05
         

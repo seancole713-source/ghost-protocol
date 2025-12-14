@@ -368,11 +368,13 @@ class UnifiedProvider:
         try:
             import yfinance as yf
             ticker = yf.Ticker(symbol)
-            hist = ticker.history(period=\"1d\")
+            hist = ticker.history(period="1d")
             if not hist.empty:
-                return {\"price\": float(hist['Close'].iloc[-1]), \"provider\": \"yfinance\"}
+                return {"price": float(hist['Close'].iloc[-1]), "provider": "yfinance"}
         except Exception as e:
-            LOGGER.debug(f\"yfinance fallback failed for {symbol}: {e}\")\n        \n        return None
+            LOGGER.debug(f"yfinance fallback failed for {symbol}: {e}")
+        
+        return None
     
     def _is_crypto(self, symbol: str) -> bool:
         """
