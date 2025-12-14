@@ -22954,18 +22954,18 @@ async def api_v3_regression_telegram_test(request: Request):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return {"ok": False, "error": "telegram_not_configured"}
 
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    tag = str(body.get("tag") or "REGRESSION_TEST").strip()[:40]
-
+    # Exact template required by regression spec.
+    ts = datetime.now(UTC).isoformat()
     msg = (
-        f"[REGRESSION TEST] {tag}\n"
-        f"ts_utc={datetime.now(UTC).isoformat()}\n"
-        f"git_sha={_get_git_sha() or 'unknown'}\n"
-        f"base=/api/v3/regression/telegram-test"
+        "🔍 GHOST PROTOCOL — REGRESSION TEST\n\n"
+        "Status: TELEGRAM PIPELINE VERIFIED\n"
+        "Environment: PRODUCTION (Railway)\n"
+        f"Timestamp (UTC): {ts}\n\n"
+        "This is a controlled system test.\n"
+        "• No trade signal generated\n"
+        "• No capital at risk\n"
+        "• No prediction executed\n\n"
+        "If you received this message, Ghost Protocol can successfully send Telegram notifications end-to-end."
     )
 
     ok = await asyncio.to_thread(_tg_send_chat_message, TELEGRAM_CHAT_ID, msg)
