@@ -148,12 +148,12 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
         price_t0 = _get_price_at_time(symbol, run_at)
         if price_t0 is None:
             LOGGER.warning(f"⚠️  No price at t0 for {symbol} (pred {pred_id}), marking no_data")
-            _store_outcome_no_data(pred_id, run_at, t_resolve, pred_direction, pred_confidence,
+            _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
                                    "Could not fetch price at prediction time")
             return "no_data"
     except Exception as e:
         LOGGER.error(f"❌ Failed to fetch t0 price for {symbol}: {e}")
-        _store_outcome_no_data(pred_id, run_at, t_resolve, pred_direction, pred_confidence,
+        _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
                                f"Error fetching t0 price: {str(e)[:100]}")
         return "no_data"
     
@@ -162,12 +162,12 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
         price_t1 = _get_price_at_time(symbol, t_resolve)
         if price_t1 is None:
             LOGGER.warning(f"⚠️  No price at t1 for {symbol} (pred {pred_id}), marking no_data")
-            _store_outcome_no_data(pred_id, run_at, t_resolve, pred_direction, pred_confidence,
+            _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
                                    "Could not fetch price at resolution time (t+48h)")
             return "no_data"
     except Exception as e:
         LOGGER.error(f"❌ Failed to fetch t1 price for {symbol}: {e}")
-        _store_outcome_no_data(pred_id, run_at, t_resolve, pred_direction, pred_confidence,
+        _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
                                f"Error fetching t1 price: {str(e)[:100]}")
         return "no_data"
     
@@ -189,6 +189,7 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
     try:
         _store_outcome_success(
             prediction_id=pred_id,
+            symbol=symbol,
             closed_at=t_resolve,
             price_at_prediction=price_t0,
             price_at_resolution=price_t1,
@@ -250,6 +251,7 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
 
 def _store_outcome_success(
     prediction_id: int,
+    symbol: str,
     closed_at: float,
     price_at_prediction: float,
     price_at_resolution: float,
@@ -271,7 +273,8 @@ def _store_outcome_success(
         # Insert outcome
         cursor.execute("""
             INSERT INTO ghost_prediction_outcomes (
-                prediction_id, 
+                prediction_id,
+                symbol,
                 closed_at, 
                 price_at_prediction, 
                 price_at_resolution,
@@ -285,7 +288,8 @@ def _store_outcome_success(
                 resolution_provider,
                 status
             ) VALUES (
-                %s, 
+                %s,
+                %s,
                 to_timestamp(%s), 
                 %s, 
                 %s,
@@ -300,6 +304,7 @@ def _store_outcome_success(
                 %s
             )
             ON CONFLICT (prediction_id) DO UPDATE SET
+                symbol = EXCLUDED.symbol,
                 closed_at = EXCLUDED.closed_at,
                 price_at_resolution = EXCLUDED.price_at_resolution,
                 realized_move_pct = EXCLUDED.realized_move_pct,
@@ -308,6 +313,7 @@ def _store_outcome_success(
                 status = EXCLUDED.status
         """, (
             prediction_id,
+            symbol,
             closed_at,
             price_at_prediction,
             price_at_resolution,
@@ -331,6 +337,7 @@ def _store_outcome_success(
 
 def _store_outcome_no_data(
     prediction_id: int,
+    symbol: str,
     run_at: float,
     resolve_at: float,
     predicted_direction: str,
@@ -350,7 +357,8 @@ def _store_outcome_no_data(
         # price_at_prediction and price_at_resolution are NOT NULL, so use 0.0 as sentinel
         cursor.execute("""
             INSERT INTO ghost_prediction_outcomes (
-                prediction_id, 
+                prediction_id,
+                symbol,
                 closed_at, 
                 price_at_prediction,
                 price_at_resolution,
@@ -361,7 +369,8 @@ def _store_outcome_no_data(
                 notes,
                 resolution_method
             ) VALUES (
-                %s, 
+                %s,
+                %s,
                 to_timestamp(%s), 
                 %s,
                 %s,
@@ -373,6 +382,7 @@ def _store_outcome_no_data(
                 %s
             )
             ON CONFLICT (prediction_id) DO UPDATE SET
+                symbol = EXCLUDED.symbol,
                 closed_at = EXCLUDED.closed_at,
                 price_at_prediction = EXCLUDED.price_at_prediction,
                 price_at_resolution = EXCLUDED.price_at_resolution,
@@ -380,6 +390,7 @@ def _store_outcome_no_data(
                 notes = EXCLUDED.notes
         """, (
             prediction_id,
+            symbol,
             resolve_at,
             0.0,  # Sentinel value for missing price_at_prediction
             0.0,  # Sentinel value for missing price_at_resolution

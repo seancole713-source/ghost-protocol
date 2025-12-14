@@ -138,10 +138,30 @@ class AccuracyDashboardV2:
                                 result["correct"] / result["total"], 3
                             )
 
-                    # By-symbol breakdown - DISABLED (symbol not in ghost_prediction_outcomes table)
-                    # TODO: Add symbol column to ghost_prediction_outcomes or join with predictions table
-                    # For now, by_symbol will remain empty
+                    # By-symbol breakdown (now using symbol column)
+                    cursor.execute("""
+                        SELECT
+                            symbol,
+                            COUNT(*) as total,
+                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+                        FROM ghost_prediction_outcomes
+                        WHERE closed_at >= %s
+                        AND status = 'completed'
+                        AND symbol IS NOT NULL
+                        GROUP BY symbol
+                        ORDER BY total DESC
+                        LIMIT 20
+                    """, (cutoff_dt,))
+                    
+                    symbol_results = cursor.fetchall()
                     summary["by_symbol"] = {}
+                    for row in symbol_results:
+                        if row["total"] > 0:
+                            summary["by_symbol"][row["symbol"]] = {
+                                "accuracy": round(row["correct"] / row["total"], 3),
+                                "total": row["total"],
+                                "correct": row["correct"]
+                            }
 
                     # By-confidence band (using predicted_confidence)
                     cursor.execute("""
@@ -296,10 +316,53 @@ class AccuracyDashboardV2:
                     wins = result["wins"] if result and result["wins"] is not None else 0
                     win_rate = wins / total if total > 0 else 0.0
 
-                    # Best/worst symbols - DISABLED (symbol not in ghost_prediction_outcomes table)
-                    # TODO: Add symbol column or join with predictions table
+                    # Best/worst symbols (now using symbol column)
                     best_symbol = None
                     worst_symbol = None
+                    
+                    cursor.execute("""
+                        SELECT
+                            symbol,
+                            COUNT(*) as total,
+                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+                        FROM ghost_prediction_outcomes
+                        WHERE closed_at >= NOW() - INTERVAL '30 days'
+                        AND status = 'completed'
+                        AND symbol IS NOT NULL
+                        GROUP BY symbol
+                        HAVING COUNT(*) >= 5
+                        ORDER BY (SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END)::float / COUNT(*)) DESC
+                        LIMIT 1
+                    """)
+                    best_row = cursor.fetchone()
+                    if best_row:
+                        best_symbol = {
+                            "symbol": best_row["symbol"],
+                            "accuracy": round(best_row["correct"] / best_row["total"], 3),
+                            "count": best_row["total"]
+                        }
+                    
+                    cursor.execute("""
+                        SELECT
+                            symbol,
+                            COUNT(*) as total,
+                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+                        FROM ghost_prediction_outcomes
+                        WHERE closed_at >= NOW() - INTERVAL '30 days'
+                        AND status = 'completed'
+                        AND symbol IS NOT NULL
+                        GROUP BY symbol
+                        HAVING COUNT(*) >= 5
+                        ORDER BY (SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END)::float / COUNT(*)) ASC
+                        LIMIT 1
+                    """)
+                    worst_row = cursor.fetchone()
+                    if worst_row:
+                        worst_symbol = {
+                            "symbol": worst_row["symbol"],
+                            "accuracy": round(worst_row["correct"] / worst_row["total"], 3),
+                            "count": worst_row["total"]
+                        }
 
                     return {
                         "win_rate": round(win_rate, 3),
