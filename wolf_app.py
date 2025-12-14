@@ -3651,6 +3651,43 @@ async def _on_startup():
             LOGGER.error(f"stage2_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
             # Non-critical - continue startup
 
+    # Confidence calibration auto-builder (non-blocking)
+    # Keeps calibration curves fresh so outcomes influence future signal confidence.
+    try:
+        from core.confidence_calibrator import get_confidence_calibrator
+
+        calib_enabled = _os_module.getenv("CONFIDENCE_CALIBRATION_AUTOBUILD_ENABLED", "1").strip() not in ("0", "false", "False")
+        calib_interval_s = int(_os_module.getenv("CONFIDENCE_CALIBRATION_AUTOBUILD_INTERVAL_S", "21600"))  # 6h
+        calib_min_predictions = int(_os_module.getenv("CONFIDENCE_CALIBRATION_MIN_PREDICTIONS", "50"))
+
+        async def _calibration_builder_loop():
+            if not calib_enabled:
+                LOGGER.info("[CALIBRATION] Auto-build disabled")
+                return
+
+            await asyncio.sleep(60)  # let DB/services come up
+            while True:
+                try:
+                    calibrator = get_confidence_calibrator()
+                    res = await calibrator.build_calibration(min_predictions=calib_min_predictions)
+                    if res.get("ok"):
+                        LOGGER.info(
+                            f"[CALIBRATION] ✅ Updated curves: total={res.get('total_predictions')} "
+                            f"quality_threshold={res.get('quality_threshold')}"
+                        )
+                    else:
+                        LOGGER.info(f"[CALIBRATION] Skipped: {res.get('error') or 'not ready'}")
+                except Exception as e:
+                    LOGGER.error(f"[CALIBRATION] Auto-build error: {e}", exc_info=False)
+
+                await asyncio.sleep(max(600, calib_interval_s))
+
+        loop = asyncio.get_running_loop()
+        loop.create_task(_calibration_builder_loop())
+        LOGGER.info("[GHOST STARTUP] ✅ Confidence calibration auto-builder scheduled")
+    except Exception as e:
+        LOGGER.error(f"calibration_autobuilder_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+
     # Stage 3: Initialize Continuous Improvement System
     if STAGE3_ENABLED:
         try:
@@ -3951,6 +3988,9 @@ async def _post_startup_init():
                         if direction in ("", "ERROR"):
                             continue
                         if direction == "FLAT" or action in ("HOLD", "WATCH"):
+                            continue
+
+                        if pred.get("should_predict") is False:
                             continue
 
                         # Ensure we only send once per symbol per prediction_id in-process.
@@ -6806,20 +6846,62 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             base_confidence=base_confidence
         )
         
-        # Extract calibrated confidence and signals
-        base_confidence = calibration_result["calibrated_confidence"]
-        signal_strength = calibration_result["signal_count"]
-        signals_fired = calibration_result["signals_fired"]
+        # Extract signal-calibrated confidence and signals
+        signal_confidence = float(calibration_result.get("calibrated_confidence") or base_confidence)
+        signal_strength = int(calibration_result.get("signal_count") or 0)
+        signals_fired = calibration_result.get("signals_fired") or []
         
-        # Boost confidence further if ensemble agrees strongly
-        if ensemble_prediction.confidence > 0.7 and ensemble_prediction.direction == direction:
-            base_confidence = min(base_confidence * 1.15, 0.95)  # +15% bonus for ensemble alignment
-            LOGGER.info(f"[{symbol}] 🚀 Ensemble alignment bonus: +15% confidence")
+        # Fuse ensemble confidence with signal calibration (money-reality: prefer model agreement)
+        try:
+            ensemble_conf = float(getattr(ensemble_prediction, "confidence", 0.0) or 0.0)
+        except Exception:
+            ensemble_conf = 0.0
+
+        base_confidence = max(signal_confidence, ensemble_conf)
+
+        # Optional synergy bonus (only when BOTH strong ensemble + multiple signals)
+        if ensemble_conf >= 0.75 and ensemble_prediction.direction == direction and signal_strength >= 3:
+            base_confidence = min(base_confidence + 0.05, 0.95)
+            LOGGER.info(f"[{symbol}] 🚀 Ensemble+signals synergy: +5% confidence")
         
         LOGGER.info(
             f"[{symbol}] Direction: {direction}, Confidence: {base_confidence:.1%}, "
             f"Signals: {signal_strength} ({', '.join(signals_fired[:3])}{'...' if len(signals_fired) > 3 else ''})"
         )
+
+        # Degraded-data guardrail: if too few features are available, force MONITOR-only behavior.
+        # This prevents low-signal, low-quality predictions from becoming Telegram signals.
+        try:
+            min_features_for_signal = int(os.getenv("MIN_FEATURES_FOR_SIGNAL", "10"))
+            min_availability_pct = float(os.getenv("MIN_FEATURE_AVAILABILITY_PCT", "50"))
+            available = int(feature_data.get("available_count") or 0)
+            total = int(feature_data.get("feature_count") or 0)
+            availability_pct = (available / total * 100.0) if total else 0.0
+            degraded = available < min_features_for_signal or availability_pct < min_availability_pct
+        except Exception:
+            degraded = False
+
+        # Outcome-driven confidence calibration (Postgres-backed, if available).
+        # This makes confidence honest and ensures yesterday's outcomes affect tomorrow's signals.
+        cal = None
+        should_predict = True
+        expected_accuracy = base_confidence
+        try:
+            from core.confidence_calibrator import get_confidence_calibrator
+
+            calibrator = get_confidence_calibrator()
+            cal = calibrator.calibrate_confidence(base_confidence, symbol=symbol)
+            expected_accuracy = float(cal.get("expected_accuracy", base_confidence))
+            should_predict = bool(cal.get("should_predict", True))
+
+            # Use calibrated expected accuracy as the confidence we expose downstream.
+            base_confidence = expected_accuracy
+        except Exception:
+            pass
+
+        # Apply degraded guardrail last (never signal on degraded inputs)
+        if degraded:
+            should_predict = False
 
         # Generate forecast points (simple linear projection for now)
         forecast_points = []
@@ -6845,12 +6927,17 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # - News sentiment
         # - Market context
         # This is THE CRITICAL component that enables 60%+ confidence for trading
-        confidence = base_confidence
+        confidence = float(base_confidence)
         confidence_metadata = {
             "method": "signal_based_calibration_v3",
             "signal_strength": signal_strength,
             "base": 0.45,
-            "calibrated": base_confidence,
+            "signal_confidence": round(signal_confidence, 3),
+            "ensemble_confidence": round(ensemble_conf, 3) if 'ensemble_conf' in locals() else None,
+            "calibrated_expected_accuracy": round(expected_accuracy, 3),
+            "should_predict": bool(should_predict),
+            "degraded": bool(degraded),
+            "calibration": cal or {},
             "signals_fired": signals_fired,
             "adjustments": calibration_result.get("adjustments", {}),
             "features_used": [k for k, v in features.items() if v is not None]
@@ -6880,13 +6967,18 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         )
 
         # Wire to in-memory store for /api/cockpit consumption
+        # If calibration says "don't predict", keep the prediction for monitoring but mark HOLD.
+        action = "BUY" if direction == "UP" else "SELL" if direction == "DOWN" else "HOLD"
+        if not should_predict:
+            action = "HOLD"
+
         _LATEST_PREDICTIONS[symbol] = {
             "prediction_id": prediction_id,
             "symbol": symbol,
             "run_at": run_at,  # Store as float timestamp
             "confidence": confidence,
             "direction": direction,
-            "action": "BUY" if direction == "UP" else "SELL" if direction == "DOWN" else "HOLD",  # For autonomous execution
+            "action": action,  # For autonomous execution / telegram gating
             "horizon_h": horizon_h,
             "provider": price_provider,
             "price": current_price,  # For trade decision engine
@@ -6894,6 +6986,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "market": "crypto" if symbol in ["BTC", "ETH", "SOL", "XRP"] else "stock",  # Market type
             "feature_status": feature_status.to_dict(),
             "confidence_metadata": confidence_metadata,
+            "should_predict": bool(should_predict),
         }
 
         if expected_move_pct is not None:

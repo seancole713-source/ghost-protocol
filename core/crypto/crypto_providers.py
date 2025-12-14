@@ -630,6 +630,28 @@ _COINGECKO_IDS = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
     "SOL": "solana",
+    # Expanded coverage for common watchlist assets
+    "XMR": "monero",
+    "TON": "the-open-network",
+    "TRX": "tron",
+    "XLM": "stellar",
+    "ALGO": "algorand",
+    "ETC": "ethereum-classic",
+    "ATOM": "cosmos",
+    "BCH": "bitcoin-cash",
+    "ADA": "cardano",
+    "AVAX": "avalanche-2",
+    "DOT": "polkadot",
+    "LINK": "chainlink",
+    "MATIC": "matic-network",
+    "UNI": "uniswap",
+    "AAVE": "aave",
+    "DOGE": "dogecoin",
+    "SHIB": "shiba-inu",
+    "PEPE": "pepe",
+    "FLOKI": "floki",
+    "BONK": "bonk",
+    "WIF": "dogwifhat",
 }
 
 
