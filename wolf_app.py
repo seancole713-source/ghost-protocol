@@ -22968,8 +22968,8 @@ async def api_v3_regression_telegram_test(request: Request):
         "If you received this message, Ghost Protocol can successfully send Telegram notifications end-to-end."
     )
 
-    ok = await asyncio.to_thread(_tg_send_chat_message, TELEGRAM_CHAT_ID, msg)
-    return {"ok": bool(ok)}
+    ok_all, deliveries = await asyncio.to_thread(send_telegram_detailed, msg)
+    return {"ok": bool(ok_all), "deliveries": deliveries}
 
 
 
