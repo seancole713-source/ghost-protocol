@@ -3787,44 +3787,65 @@ async def _on_startup():
         LOGGER.error(f"outcome_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
-    # CRITICAL: Initialize prediction store pool in BACKGROUND to prevent blocking HTTP server
-    # Moving to _post_startup_init() to avoid blocking the startup event handler
-    # Database connections can take 10-30s on Railway, which blocks ALL HTTP requests
-    LOGGER.info("[GHOST STARTUP] ⚠️  Prediction store pool will initialize in background (non-blocking)")
+    # CRITICAL: Initialize prediction store tables EARLY to prevent "table not found" errors
+    # Do NOT wait for full pool init - just ensure tables exist
+    try:
+        from core.prediction_store import get_prediction_store
+        store = get_prediction_store()
+        # Force table initialization (quick operation, ~50ms)
+        if hasattr(store.backend, '_init_db'):
+            store.backend._init_db()
+        LOGGER.info("[GHOST STARTUP] ✅ Prediction store tables initialized")
+    except Exception as e:
+        LOGGER.warning(f"[GHOST STARTUP] Prediction store init skipped: {e}", exc_info=False)
+    
+    # Pool initialization will happen in background during first query
+    LOGGER.info("[GHOST STARTUP] ⚠️  Prediction store pool will initialize on first use (non-blocking)")
 
     # CRITICAL: Pre-populate _LATEST_PREDICTIONS cache to prevent cold-start slowness
-    # DISABLED TEMPORARILY: This DB query is blocking startup and causing timeouts
-    # try:
-    #     from core.prediction_store import get_prediction_store
-    #     store = get_prediction_store()
-    #     LOGGER.info("[GHOST STARTUP] Warming _LATEST_PREDICTIONS cache...")
-    #     
-    #     # Get latest 50 predictions from database
-    #     recent_preds = store.get_recent_predictions(limit=50)
-    #     warmup_count = 0
-    #     
-    #     # Populate cache with most recent prediction per symbol
-    #     for pred in recent_preds:
-    #         symbol = pred.get("symbol")
-    #         if symbol and symbol not in _LATEST_PREDICTIONS:
-    #             _LATEST_PREDICTIONS[symbol] = {
-    #                 "prediction_id": pred.get("id"),
-    #                 "symbol": symbol,
-    #                 "run_at": pred.get("run_at", time.time()),  # Fixed: use run_at not created_at
-    #                 "confidence": pred.get("confidence", 0),
-    #                 "direction": pred.get("direction", "FLAT"),
-    #                 "horizon_h": pred.get("horizon_h", 6),  # Fixed: use actual horizon_h from DB
-    #                 "method": pred.get("method", "unknown"),
-    #                 "price_at_prediction": pred.get("price_at_prediction"),
-    #                 "expected_move": pred.get("expected_move"),  # For hunter feed calculations
-    #             }
-    #             warmup_count += 1
-    #     
-    #     LOGGER.info(f"[GHOST STARTUP] ✅ Cache warmed with {warmup_count} predictions")
-    # except Exception as e:
-    #     LOGGER.error(f"cache_warmup_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    #     # Non-critical - continue startup (endpoints will use DB fallback)
-    LOGGER.info("[GHOST STARTUP] ⚠️  Cache warmup DISABLED (optimization in progress) - endpoints will populate on first request")
+    # RE-ENABLED with timeout protection (2s max) to prevent blocking startup
+    try:
+        async def _warmup_cache_with_timeout():
+            try:
+                from core.prediction_store import get_prediction_store
+                store = get_prediction_store()
+                LOGGER.info("[GHOST STARTUP] Warming _LATEST_PREDICTIONS cache (2s max)...")
+                
+                # Get latest 50 predictions from database with timeout
+                recent_preds = await asyncio.wait_for(
+                    asyncio.to_thread(store.get_recent_predictions, limit=50),
+                    timeout=2.0
+                )
+                warmup_count = 0
+                
+                # Populate cache with most recent prediction per symbol
+                for pred in recent_preds:
+                    symbol = pred.get("symbol")
+                    if symbol and symbol not in _LATEST_PREDICTIONS:
+                        _LATEST_PREDICTIONS[symbol] = {
+                            "prediction_id": pred.get("id"),
+                            "symbol": symbol,
+                            "run_at": pred.get("run_at", time.time()),
+                            "confidence": pred.get("confidence", 0),
+                            "direction": pred.get("direction", "FLAT"),
+                            "horizon_h": pred.get("horizon_h", 6),
+                            "method": pred.get("method", "unknown"),
+                            "price_at_prediction": pred.get("price_at_prediction"),
+                            "expected_move": pred.get("expected_move"),
+                        }
+                        warmup_count += 1
+                
+                LOGGER.info(f"[GHOST STARTUP] ✅ Cache warmed with {warmup_count} predictions")
+            except asyncio.TimeoutError:
+                LOGGER.warning("[GHOST STARTUP] Cache warmup timeout (2s) - endpoints will use DB fallback")
+            except Exception as e:
+                LOGGER.error(f"cache_warmup_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        
+        # Run warmup in background (non-blocking)
+        loop = asyncio.get_running_loop()
+        loop.create_task(_warmup_cache_with_timeout())
+    except Exception as e:
+        LOGGER.error(f"cache_warmup_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
@@ -12796,6 +12817,24 @@ def _get_provider_fetchers(
 ) -> list[tuple[str, Callable[[], tuple[float | None, float | None, str]]]]:
     sym = symbol.upper()
     fetchers: list[tuple[str, callable]] = []
+    
+    # CRITICAL FIX: Route crypto symbols to crypto providers (not stock providers)
+    # This prevents Yahoo Finance 429 rate limit errors for crypto symbols
+    is_crypto = sym in HUNTER_CRYPTO_SYMBOLS or sym in CRYPTO_SYMBOLS or _classify_symbol_category(sym) == "crypto"
+    
+    if is_crypto:
+        # Use crypto-specific providers for crypto symbols
+        try:
+            from core.providers.turbo_provider import turbo_crypto_price
+            def crypto_fetcher():
+                result = turbo_crypto_price(sym, max_budget_s=2.0)
+                if result and result.get("ok") and result.get("price"):
+                    return (result["price"], None, result.get("provider", "crypto"))
+                return (None, None, "")
+            fetchers.append(("crypto_turbo", crypto_fetcher))
+        except Exception as e:
+            LOGGER.debug(f"Crypto provider unavailable for {sym}: {e}")
+        return fetchers
     
     # Strategy: Always include yfinance and yahoo as free fallbacks
     # Only add paid providers if keys are present
