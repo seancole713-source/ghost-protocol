@@ -1,0 +1,143 @@
+{
+  "timestamp": "2025-12-14T01:33:47.471134",
+  "base_url": "https://ghost-protocol-production.up.railway.app",
+  "sections": {
+    "landing_page": {
+      "status": "FAIL",
+      "findings": [
+        "Error: Page.goto: Timeout 10000ms exceeded.\nCall log:\n  - navigating to \"https://ghost-protocol-production.up.railway.app/\", waiting until \"load\"\n"
+      ],
+      "screenshots": []
+    },
+    "cockpit_panels": {
+      "status": "FAIL",
+      "panels": {},
+      "screenshots": [],
+      "error": "Page.goto: Timeout 15000ms exceeded.\nCall log:\n  - navigating to \"https://ghost-protocol-production.up.railway.app/cockpit\", waiting until \"load\"\n"
+    },
+    "api_endpoints": {
+      "status": "PASS",
+      "endpoints": {
+        "/api/v3/predictions/latest": {
+          "description": "Latest predictions",
+          "status": null,
+          "latency_ms": null,
+          "response_body": null,
+          "error": "APIRequestContext.get: Timeout 30000ms exceeded.\nCall log:\n  - \u2192 GET https://ghost-protocol-production.up.railway.app/api/v3/predictions/latest\n    - user-agent: Ghost-UI-Audit/1.0\n    - accept: */*\n    - accept-encoding: gzip,deflate,br\n"
+        },
+        "/api/v3/accuracy/summary": {
+          "description": "Accuracy metrics",
+          "status": null,
+          "latency_ms": null,
+          "response_body": null,
+          "error": "APIRequestContext.get: Route.fetch: Timeout 30000ms exceeded.\nCall log:\n  - \u2192 GET https://ghost-protocol-production.up.railway.app/cockpit\n    - user-agent: Ghost-UI-Audit/1.0\n    - accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\n    - accept-encoding: gzip,deflate,br\n    - upgrade-insecure-requests: 1\n    - sec-ch-ua: \"HeadlessChrome\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"\n    - sec-ch-ua-mobile: ?0\n    - sec-ch-ua-platform: \"Windows\"\n"
+        },
+        "/api/v3/performance/dashboard": {
+          "description": "Performance dashboard",
+          "status": 200,
+          "latency_ms": 4112.06,
+          "response_body": {
+            "overall": {
+              "predictions": 0,
+              "wins": 0,
+              "losses": 0,
+              "win_rate": 0,
+              "avg_accuracy": 0,
+              "avg_confidence": 0,
+              "avg_gain_pct": 0
+            },
+            "today": {
+              "predictions": 0,
+              "wins": 0,
+              "losses": 0,
+              "win_rate": 0,
+              "avg_gain_pct": 0
+            },
+            "last_7d": {
+              "predictions": 0,
+              "wins": 0,
+              "losses": 0,
+              "win_rate": 0,
+              "avg_gain_pct": 0
+            },
+            "last_30d": {
+              "predictions": 0,
+              "wins": 0,
+              "losses": 0,
+              "win_rate": 0,
+              "avg_gain_pct": 0
+            },
+            "by_asset_type": {
+              "stocks": {
+                "predictions": 0,
+                "win_rate": 0
+              },
+              "crypto": {
+                "predictions": 0,
+                "win_rate": 0
+              }
+            },
+            "recent_predictions": [],
+            "top_performers": [],
+            "worst_performers": [],
+            "confidence_calibration": {},
+            "generated_at": "2025-12-14T01:34:46.738161"
+          },
+          "error": null
+        },
+        "/api/v3/live_recalculator/status": {
+          "description": "Live recalculator status",
+          "status": 200,
+          "latency_ms": 60.61,
+          "response_body": {
+            "ok": true,
+            "enabled": true,
+            "db_path": "/app/data/live_recalculator.db",
+            "tables": [
+              "exit_signals",
+              "position_snapshots",
+              "sqlite_sequence"
+            ],
+            "latest_ts": 0,
+            "snapshots": [],
+            "exit_signals": []
+          },
+          "error": null
+        }
+      }
+    },
+    "console_errors": {
+      "status": "PASS",
+      "total_messages": 0,
+      "errors": [],
+      "warnings": []
+    },
+    "reliability_loop": {
+      "status": "PASS",
+      "iterations": 3,
+      "results": [
+        {
+          "iteration": 1,
+          "timestamp": "2025-12-14T01:34:47.170671",
+          "success": true,
+          "errors": [],
+          "screenshot": "ui_verification_screenshots/reliability_iteration_1.png"
+        },
+        {
+          "iteration": 2,
+          "timestamp": "2025-12-14T01:34:51.219135",
+          "success": true,
+          "errors": [],
+          "screenshot": "ui_verification_screenshots/reliability_iteration_2.png"
+        },
+        {
+          "iteration": 3,
+          "timestamp": "2025-12-14T01:34:54.678621",
+          "success": true,
+          "errors": [],
+          "screenshot": "ui_verification_screenshots/reliability_iteration_3.png"
+        }
+      ]
+    }
+  }
+}
