@@ -510,6 +510,18 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
     else:
         confidence = 0.65  # Single provider
 
+
+    # If quorum is required, we must collect multiple provider prices (fail-closed).
+    def _truthy(v: str | None) -> bool:
+        return str(v or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    require_quorum = _truthy(os.getenv("PRICE_REQUIRE_QUORUM", "0")) or _truthy(
+        os.getenv("PREDICT_REQUIRE_PRICE_QUORUM", "0")
+    )
+    try:
+        min_providers = max(1, int(os.getenv("PRICE_MIN_PROVIDERS", "1")))
+    except Exception:
+        min_providers = 1
     # Use primary provider's data (CoinGecko) for extra fields
     primary_data = results[0][2]
 
@@ -536,6 +548,12 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
     )
 
     return result
+
+    if require_quorum and len(results) < min_providers:
+        LOGGER.warning(
+            f"Crypto quorum failed for {symbol}: only {len(results)}/{min_providers} providers returned prices"
+        )
+        return None
 
 
 # Default watchlists by category
