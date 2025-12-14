@@ -4021,10 +4021,12 @@ async def _post_startup_init():
         
         execution_enabled = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
         execution_interval = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))
+        orchestrator_enabled = os.getenv("ORCHESTRATOR_ENABLED", "0") == "1"
+        worker_mode = os.getenv("WORKER_MODE", "0") == "1"
         
         LOGGER.info(f"🤖 [POST-STARTUP] Phase 5 config loaded: enabled={execution_enabled}, interval={execution_interval}s")
         
-        if execution_enabled:
+        if execution_enabled and not orchestrator_enabled and not worker_mode:
             async def _autonomous_execution_loop():
                 """Background task to execute trades every 5 minutes"""
                 await asyncio.sleep(60)  # Wait 60s before first cycle
@@ -4043,6 +4045,8 @@ async def _post_startup_init():
             
             asyncio.create_task(_autonomous_execution_loop())
             LOGGER.info(f"🤖 [POST-STARTUP] ✅ Phase 5 Autonomous Execution ACTIVE (interval={execution_interval}s)")
+        elif execution_enabled and (orchestrator_enabled or worker_mode):
+            LOGGER.info("🤖 [POST-STARTUP] Phase 5 loop skipped (orchestrator/worker will manage execution)")
         else:
             LOGGER.info("🤖 [POST-STARTUP] Phase 5 Autonomous Execution DISABLED (set AUTO_EXECUTION_ENABLED=1 to enable)")
     except Exception as e:
@@ -8812,6 +8816,118 @@ async def api_v3_execution_status():
             "ok": False,
             "goals": {},
             "error": str(e)
+        }
+
+
+@APP.get("/api/v3/live_recalculator/status")
+async def api_v3_live_recalculator_status(limit_snapshots: int = 50, limit_signals: int = 50):
+    """Get latest live recalculator snapshots and exit signals.
+
+    Reads from `data/live_recalculator.db` written by `core.live_recalculator`.
+
+    Args:
+        limit_snapshots: Max number of snapshot rows to return (default 50)
+        limit_signals: Max number of exit signal rows to return (default 50)
+    """
+    try:
+        import sqlite3
+        from pathlib import Path
+
+        db_path = Path(__file__).parent / "data" / "live_recalculator.db"
+
+        if not db_path.exists():
+            return {
+                "ok": False,
+                "enabled": False,
+                "error": "live_recalculator.db not found",
+                "db_path": str(db_path),
+                "latest_ts": 0,
+                "snapshots": [],
+                "exit_signals": [],
+            }
+
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+
+        # Detect tables
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {r[0] for r in (cur.fetchall() or [])}
+
+        snapshots: list[dict] = []
+        signals: list[dict] = []
+        latest_ts = 0
+
+        if "position_snapshots" in tables:
+            cur.execute(
+                """
+                SELECT ts, symbol, qty, avg_entry_price, current_price, unrealized_pl, unrealized_plpc
+                FROM position_snapshots
+                ORDER BY ts DESC, id DESC
+                LIMIT ?
+                """,
+                (max(1, min(int(limit_snapshots), 500)),),
+            )
+            rows = cur.fetchall() or []
+            for (ts, symbol, qty, avg_entry, current_price, upl, uplpc) in rows:
+                latest_ts = max(latest_ts, int(ts or 0))
+                snapshots.append(
+                    {
+                        "ts": int(ts or 0),
+                        "symbol": symbol,
+                        "qty": qty,
+                        "avg_entry_price": avg_entry,
+                        "current_price": current_price,
+                        "unrealized_pl": upl,
+                        "unrealized_plpc": uplpc,
+                    }
+                )
+
+        if "exit_signals" in tables:
+            cur.execute(
+                """
+                SELECT ts, symbol, type, reason, pnl_pct, entry_price, current_price
+                FROM exit_signals
+                ORDER BY ts DESC, id DESC
+                LIMIT ?
+                """,
+                (max(1, min(int(limit_signals), 500)),),
+            )
+            rows = cur.fetchall() or []
+            for (ts, symbol, typ, reason, pnl_pct, entry_price, current_price) in rows:
+                latest_ts = max(latest_ts, int(ts or 0))
+                signals.append(
+                    {
+                        "ts": int(ts or 0),
+                        "symbol": symbol,
+                        "type": typ,
+                        "reason": reason,
+                        "pnl_pct": pnl_pct,
+                        "entry_price": entry_price,
+                        "current_price": current_price,
+                    }
+                )
+
+        conn.close()
+
+        return {
+            "ok": True,
+            "enabled": True,
+            "db_path": str(db_path),
+            "tables": sorted(list(tables)),
+            "latest_ts": latest_ts,
+            "snapshots": snapshots,
+            "exit_signals": signals,
+        }
+
+    except Exception as e:
+        LOGGER.error(f"Live recalculator status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "enabled": False,
+            "error": str(e),
+            "latest_ts": 0,
+            "snapshots": [],
+            "exit_signals": [],
         }
 
 

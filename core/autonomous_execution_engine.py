@@ -196,9 +196,9 @@ class AutonomousExecutionEngine:
             
             # Check risk limits
             risk_check = self._check_risk_limits(account)
-            if not risk_check["ok"]:
+            if not risk_check.get("ok", False):
                 result["ok"] = False
-                result["errors"].extend(risk_check["errors"])
+                result["errors"].extend(risk_check.get("errors", [risk_check.get("reason", "Risk limits blocked trading")]))
                 return result
             
             # Get predictions to evaluate
@@ -241,7 +241,7 @@ class AutonomousExecutionEngine:
                         # Execute trade
                         trade_result = self._execute_trade(decision, account)
                         
-                        if trade_result.get("status") == "success":
+                        if trade_result.get("ok") is True:
                             trades_executed += 1
                             _execution_state["trades_today"] += 1
                             _execution_state["last_trade_time"] = time.time()
@@ -251,7 +251,7 @@ class AutonomousExecutionEngine:
                             
                             LOGGER.info(f"✅ [AUTO-EXEC] Trade executed: {trade_result['summary']}")
                         else:
-                            result["errors"].append(f"{symbol}: {trade_result['error']}")
+                            result["errors"].append(f"{symbol}: {trade_result.get('error', 'Trade failed')}")
                     else:
                         result["predictions_skipped"] += 1
                         LOGGER.debug(f"[AUTO-EXEC] Skipped {symbol}: {decision['reason']}")
@@ -312,6 +312,8 @@ class AutonomousExecutionEngine:
     def _check_risk_limits(self, account: dict) -> dict[str, Any]:
         """Check if risk limits allow trading"""
         
+        errors: list[str] = []
+
         # Check daily loss limit
         portfolio_value = account["portfolio_value"]
         start_value = _execution_state["portfolio_start_value"]
@@ -321,7 +323,10 @@ class AutonomousExecutionEngine:
             
             if daily_loss_pct <= -AUTO_EXECUTION_MAX_DAILY_LOSS_PCT:
                 self._activate_circuit_breaker(f"Daily loss {daily_loss_pct:.1f}% exceeds {AUTO_EXECUTION_MAX_DAILY_LOSS_PCT}%")
-                return {"status": "circuit_breaker", "reason": f"Daily loss {abs(daily_loss_pct):.1f}% exceeds limit {AUTO_EXECUTION_MAX_DAILY_LOSS_PCT}%"}
+                errors.append(
+                    f"Daily loss {abs(daily_loss_pct):.1f}% exceeds limit {AUTO_EXECUTION_MAX_DAILY_LOSS_PCT}%"
+                )
+                return {"ok": False, "status": "circuit_breaker", "reason": errors[-1], "errors": errors}
         
         # Check drawdown limit
         peak_value = _execution_state["portfolio_peak_value"]
@@ -330,9 +335,10 @@ class AutonomousExecutionEngine:
             
             if drawdown_pct > AUTO_EXECUTION_MAX_DRAWDOWN_PCT:
                 self._activate_circuit_breaker(f"Drawdown {drawdown_pct:.1f}% exceeds {AUTO_EXECUTION_MAX_DRAWDOWN_PCT}%")
-                return {"status": "circuit_breaker", "reason": f"Drawdown {drawdown_pct:.1f}% exceeds limit {AUTO_EXECUTION_MAX_DRAWDOWN_PCT}%"}
+                errors.append(f"Drawdown {drawdown_pct:.1f}% exceeds limit {AUTO_EXECUTION_MAX_DRAWDOWN_PCT}%")
+                return {"ok": False, "status": "circuit_breaker", "reason": errors[-1], "errors": errors}
         
-        return {"status": "ok", "reason": "Risk limits OK"}
+        return {"ok": True, "status": "ok", "reason": "Risk limits OK", "errors": []}
     
     def _get_predictions(self) -> list[dict]:
         """Get latest predictions from cache"""
@@ -410,11 +416,13 @@ class AutonomousExecutionEngine:
             if not order:
                 return {
                     "ok": False,
+                    "status": "error",
                     "error": "Order submission failed"
                 }
             
             return {
                 "ok": True,
+                "status": "success",
                 "order_id": order.get("id"),
                 "symbol": symbol,
                 "side": side,
@@ -430,6 +438,7 @@ class AutonomousExecutionEngine:
             LOGGER.error(f"[AUTO-EXEC] Trade execution error: {e}", exc_info=True)
             return {
                 "ok": False,
+                "status": "error",
                 "error": str(e)
             }
     
