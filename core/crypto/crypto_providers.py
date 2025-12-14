@@ -30,9 +30,9 @@ _session.mount("http://", _adapter)
 _session.mount("https://", _adapter)
 
 # Provider configuration from environment
-# CoinGecko DISABLED - hitting 429 rate limits even at 2.0s interval
-# Use only Binance (primary) and Coinbase (secondary) for reliable service
-_DEFAULT_CRYPTO_QUORUM = ["binance", "coinbase"]  # coingecko removed
+# In strict quorum mode we need >=2 providers; Binance.com is often 451-blocked.
+# Default order favors Binance.US then broad fallback providers.
+_DEFAULT_CRYPTO_QUORUM = ["binance", "coingecko", "coinbase", "cryptocompare"]
 _CRYPTO_QUORUM_ORDER = None  # Lazy-loaded from env
 
 
@@ -122,6 +122,13 @@ class CoinGeckoProvider:
         "MOG": "mog-coin",
         "TURBO": "turbo",
         "WOJAK": "wojak",
+
+        # Common alts (needed for production watchlists)
+        "TRX": "tron",
+        "TON": "the-open-network",
+        "XLM": "stellar",
+        "ETC": "ethereum-classic",
+        "XMR": "monero",
     }
 
     def __init__(self):
@@ -302,8 +309,8 @@ class BinanceProvider:
         """
         binance_symbol = f"{symbol.upper()}{self.symbol_suffix}"
         
-        # Try primary endpoint first, then US fallback
-        urls = [self.REST_URL, self.REST_URL_US]
+        # Prefer Binance.US first (Binance.com is frequently 451-blocked)
+        urls = [self.REST_URL_US, self.REST_URL]
         
         for base_url in urls:
             for attempt in range(self.max_retries):
@@ -394,6 +401,43 @@ class CoinbaseProvider:
             return None
 
 
+class CryptoCompareProvider:
+    """CryptoCompare price API (broad symbol coverage).
+
+    Optional API key via `CRYPTOCOMPARE_API_KEY` (not required for light usage).
+    """
+
+    BASE_URL = "https://min-api.cryptocompare.com"
+
+    def __init__(self):
+        self.api_key = os.getenv("CRYPTOCOMPARE_API_KEY", "").strip() or None
+
+    def get_price(self, symbol: str) -> dict[str, Any] | None:
+        try:
+            url = f"{self.BASE_URL}/data/price"
+            params = {"fsym": symbol.upper(), "tsyms": "USD"}
+            headers = {}
+            if self.api_key:
+                headers["authorization"] = f"Apikey {self.api_key}"
+
+            response = _session.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+
+            data = response.json() if response.content else {}
+            if not isinstance(data, dict) or "USD" not in data:
+                return None
+
+            return {
+                "symbol": symbol.upper(),
+                "price": float(data.get("USD", 0) or 0),
+                "last_updated": int(time.time()),
+                "provider": "cryptocompare",
+            }
+        except Exception as e:
+            LOGGER.warning(f"CryptoCompare fetch failed for {symbol}: {e}")
+            return None
+
+
 # Cache for crypto prices (15-minute TTL to reduce API load)
 # PERFORMANCE FIX: Increased from 5min to 15min to prevent CoinGecko 429 spam
 _CRYPTO_CACHE: dict[str, dict[str, Any]] = {}
@@ -476,6 +520,7 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
         "coingecko": CoinGeckoProvider(),
         "binance": BinanceProvider(),
         "coinbase": CoinbaseProvider(),
+        "cryptocompare": CryptoCompareProvider(),
     }
 
     providers = [(name, provider_map[name]) for name in provider_order if name in provider_map]
