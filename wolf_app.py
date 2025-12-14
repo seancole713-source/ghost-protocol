@@ -74,6 +74,35 @@ from core.concurrency import AsyncRateLimiter
 from core.price_quorum import PriceDecision, PriceProvider, get_price_quorum
 from core.providers.turbo_provider import turbo_stock_price, turbo_crypto_price
 
+
+def _is_truthy(v: str | None) -> bool:
+    if v is None:
+        return False
+    return v.strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _is_live_enforced() -> bool:
+    """Return True when simulation must be disabled and data must be live.
+
+    This is an additive production guardrail. It is intentionally env-driven.
+    """
+    return _is_truthy(os.getenv("ENFORCE_LIVE", "0"))
+
+
+def _get_git_sha() -> str | None:
+    for k in (
+        "RAILWAY_GIT_COMMIT_SHA",
+        "GIT_COMMIT",
+        "COMMIT_SHA",
+        "SOURCE_VERSION",
+        "RENDER_GIT_COMMIT",
+        "VERCEL_GIT_COMMIT_SHA",
+    ):
+        v = (os.getenv(k) or "").strip()
+        if v:
+            return v
+    return None
+
 # Ghost Hunter Phase 1 imports
 try:
     from core.feature_diagnostics import diagnose_features, build_confidence_with_diagnostics
@@ -1151,10 +1180,14 @@ async def health_check():
         # Return immediately without checking any initialization state
         # This allows healthcheck to pass while background initialization continues
         return {
-            "status": "ok", 
-            "service": "ghost-protocol", 
+            "status": "ok",
+            "service": "ghost-protocol",
             "uptime": int(time.time() - _START_TS),
-            "message": "Server is accepting connections"
+            "message": "Server is accepting connections",
+            "sim_mode": int(os.getenv("SIM_MODE", "0") or "0"),
+            "enforce_live": _is_live_enforced(),
+            "git_sha": _get_git_sha(),
+            "build_ts": os.getenv("RAILWAY_DEPLOYMENT_ID") or os.getenv("RAILWAY_STATIC_URL"),
         }
     except Exception as e:
         # Even if uptime calculation fails, return OK (server is responding)
@@ -22713,10 +22746,16 @@ async def ui_mode(body: ModeBody, credentials: HTTPAuthorizationCredentials | No
     except Exception:
         pass
     # enabled True => live, False => sim
-    enabled = (
-        bool(body.enabled) if body.enabled is not None else (STATE.get("mode", "live") != "live")
-    )
-    STATE["mode"] = "live" if enabled else "sim"
+    if _is_live_enforced():
+        # Fail-closed in production: SIM must never be enabled.
+        if body.enabled is not None and bool(body.enabled) is False:
+            raise HTTPException(status_code=403, detail="SIM mode disabled (ENFORCE_LIVE=1)")
+        STATE["mode"] = "live"
+    else:
+        enabled = (
+            bool(body.enabled) if body.enabled is not None else (STATE.get("mode", "live") != "live")
+        )
+        STATE["mode"] = "live" if enabled else "sim"
     _add_event("mode", "Mode updated", {"mode": STATE["mode"]})
     return {"ok": True, "mode": STATE["mode"]}
 
@@ -22780,6 +22819,8 @@ async def ui_bank_add_position(
 @APP.get("/api/simulation_data")
 async def api_simulation_data():
     """Serve simulation data for UI validation testing."""
+    if _is_live_enforced() or os.getenv("SIM_MODE", "0") == "0":
+        raise HTTPException(status_code=404, detail="simulation_disabled")
     import json
     import os
 
@@ -22795,6 +22836,103 @@ async def api_simulation_data():
         data = json.load(f)
 
     return data
+
+
+@APP.get("/api/v3/accuracy/tracker/status")
+async def api_v3_accuracy_tracker_status():
+    """Expose Stage2 forecast accuracy-tracker DB status (facts-only)."""
+    try:
+        import sqlite3
+        from core.accuracy_tracker import DB_PATH as _DB_PATH
+
+        db_path = str(_DB_PATH)
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute("SELECT COUNT(*), MAX(timestamp) FROM forecasts").fetchone()
+        total = int(row[0] or 0) if row else 0
+        last_ts = float(row[1] or 0) if row else 0.0
+        return {"ok": True, "db_path": db_path, "rows_total": total, "last_forecast_ts": last_ts}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+@APP.get("/api/v3/accuracy/metrics")
+async def api_v3_accuracy_metrics(days: int = 30, symbol: str | None = None):
+    """Directional hit-rate + MAPE from PredictionStore outcomes (facts-only)."""
+    try:
+        from core.prediction_store import get_prediction_store
+
+        store = get_prediction_store()
+        since_ts = time.time() - max(1, int(days)) * 86400
+
+        symbols: list[str]
+        if symbol:
+            symbols = [symbol.upper().strip()]
+        else:
+            # Keep it bounded: compute for symbols we actively track.
+            symbols = sorted(set((STOCK_SYMBOLS or []) + (CRYPTO_SYMBOLS or [])))
+
+        total_n = 0
+        total_hits = 0
+        map_vals: list[float] = []
+        band_hits = 0
+
+        per_symbol: dict[str, dict[str, Any]] = {}
+        for sym in symbols:
+            rows = store.get_predictions_with_outcomes_since(sym, since_ts)
+            n = len(rows)
+            if n <= 0:
+                continue
+            hits = 0
+            sym_map_vals: list[float] = []
+            sym_band_hits = 0
+            for r in rows:
+                try:
+                    hits += 1 if int(r.get("hit_direction") or 0) == 1 else 0
+                except Exception:
+                    pass
+                try:
+                    mv = r.get("map")
+                    if mv is not None:
+                        mvf = float(mv)
+                        sym_map_vals.append(mvf)
+                        # Secondary tolerance band: MAPE <= 1.0% (default band).
+                        if mvf <= 1.0:
+                            sym_band_hits += 1
+                except Exception:
+                    pass
+
+            total_n += n
+            total_hits += hits
+            map_vals.extend(sym_map_vals)
+            band_hits += sym_band_hits
+
+            per_symbol[sym] = {
+                "n": n,
+                "hit_rate": (hits / n) if n else None,
+                "mape_pct": (sum(sym_map_vals) / len(sym_map_vals)) if sym_map_vals else None,
+                "within_1pct_band_rate": (sym_band_hits / len(sym_map_vals)) if sym_map_vals else None,
+            }
+
+        hit_rate = (total_hits / total_n) if total_n else None
+        mape = (sum(map_vals) / len(map_vals)) if map_vals else None
+        band_rate = (band_hits / len(map_vals)) if map_vals else None
+
+        return {
+            "ok": True,
+            "window_days": int(days),
+            "since_ts": since_ts,
+            "overall": {
+                "n": total_n,
+                "directional_hit_rate": hit_rate,
+                "mape_pct": mape,
+                "within_1pct_band_rate": band_rate,
+                "gate_min_hit_rate": 0.70,
+                "band_tolerance_pct": 1.0,
+            },
+            "per_symbol": per_symbol,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 

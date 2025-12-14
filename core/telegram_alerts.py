@@ -24,6 +24,56 @@ ALERT_SIMPLE_FORMAT = os.getenv("ALERT_SIMPLE_FORMAT", "cashapp")  # "cashapp" (
 MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.70"))
 
 
+def format_daily_digest_cashapp(
+    *,
+    as_of_iso: str,
+    window_label: str,
+    picks: list[dict[str, Any]],
+    tz: str = DEFAULT_TZ,
+) -> str:
+    """Cash-App-style daily list.
+
+    Each pick dict should include:
+      symbol, predicted_pct (float), confidence (0..1), why (str)
+    """
+    try:
+        local_tz = ZoneInfo(tz)
+    except Exception:
+        local_tz = None
+
+    header = f"GHOST — Daily Picks\nAs of: {as_of_iso}\nWindow: {window_label}"
+    lines: list[str] = [header, ""]
+
+    if not picks:
+        lines.append("No picks (gate closed): live data/news unavailable OR <70% confidence.")
+        return "\n".join(lines)
+
+    for p in picks:
+        sym = str(p.get("symbol") or "").upper().strip()
+        pred = p.get("predicted_pct")
+        conf = p.get("confidence")
+        why = str(p.get("why") or "").strip()
+
+        try:
+            pred_f = float(pred)
+            pred_s = f"{pred_f:+.2f}%"
+        except Exception:
+            pred_s = "?%"
+
+        try:
+            conf_f = float(conf)
+            conf_s = f"{int(round(conf_f * 100)):d}%"
+        except Exception:
+            conf_s = "?%"
+
+        # One-line per pick, then one "why" line.
+        lines.append(f"{sym}  {pred_s}  ({conf_s})")
+        if why:
+            lines.append(f"- {why[:160]}")
+
+    return "\n".join(lines)
+
+
 def _fmt_price(v: Any) -> str:
     try:
         fv = float(v)

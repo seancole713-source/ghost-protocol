@@ -437,7 +437,9 @@ def _maybe_install_compat_middleware():
 # Mode endpoints
 @app.get("/api/mode")
 async def api_mode_get():
-    return {"mode": ("sim" if SIM_ENABLED else "live"), "sim_seed": SIM_SEED}
+    if os.getenv("ENFORCE_LIVE", "0").strip().lower() in ("1", "true", "yes", "y", "on"):
+        return {"mode": "live", "sim_seed": SIM_SEED, "enforce_live": True}
+    return {"mode": ("sim" if SIM_ENABLED else "live"), "sim_seed": SIM_SEED, "enforce_live": False}
 
 
 class _ModeBody(BaseModel):
@@ -448,11 +450,16 @@ class _ModeBody(BaseModel):
 @app.post("/api/mode")
 async def api_mode_set(p: _ModeBody):
     global SIM_ENABLED, SIM_SEED
+    if os.getenv("ENFORCE_LIVE", "0").strip().lower() in ("1", "true", "yes", "y", "on"):
+        # Production guardrail: do not allow toggling into simulation.
+        if p.enabled is not None and bool(p.enabled) is False:
+            return JSONResponse({"ok": False, "error": "SIM mode disabled (ENFORCE_LIVE=1)", "mode": "live"}, status_code=403)
+        SIM_ENABLED = False
     if p.enabled is not None:
         SIM_ENABLED = bool(p.enabled)
     if p.seed is not None:
         SIM_SEED = int(p.seed)
-    return {"mode": ("sim" if SIM_ENABLED else "live"), "sim_seed": SIM_SEED}
+    return {"mode": ("sim" if SIM_ENABLED else "live"), "sim_seed": SIM_SEED, "enforce_live": os.getenv("ENFORCE_LIVE", "0")}
 
 
 # Bank endpoints
