@@ -3854,18 +3854,40 @@ async def _post_startup_init():
     Run Stage 4/5 and background tasks AFTER server starts accepting connections.
     This prevents blocking the startup event handler.
     
-    ARCHITECTURE SPLIT: Only runs background services in WORKER_MODE.
-    Web mode stays lightweight and responsive.
+    ARCHITECTURE SPLIT: Heavy background services run only in WORKER_MODE.
+    Core prediction loop runs in ALL modes for continuous predictions.
     """
     # NOTE: Uses global 'os' imported at line 12 - no local import needed
+    
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # CRITICAL: Auto-Prediction Loop runs in ALL modes (web + worker)
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # Start Auto-Prediction Loop BEFORE checking WORKER_MODE
+    # This ensures predictions generate even in web-only deployments
+    try:
+        from core import auto_prediction_loop
+        
+        # Inject dependencies (both sync and async versions)
+        auto_prediction_loop.LOGGER = LOGGER
+        auto_prediction_loop.RUN_PREDICTION_FUNC = run_prediction
+        auto_prediction_loop.RUN_PREDICTION_FUNC_ASYNC = run_single_prediction_async
+        auto_prediction_loop.HUNTER_STOCK_SYMBOLS = HUNTER_STOCK_SYMBOLS
+        auto_prediction_loop.HUNTER_CRYPTO_SYMBOLS = HUNTER_CRYPTO_SYMBOLS
+        
+        # Start the loop
+        auto_prediction_loop.start_auto_prediction_loop()
+        
+        LOGGER.info("✅ Auto-Prediction Loop: STARTED (ASYNC, non-blocking, 60-min interval)")
+    except Exception as e:
+        LOGGER.exception("auto_prediction_loop_start_failed", extra={"component": "startup", "error": str(e)})
     
     # CRITICAL: Check if this is WORKER mode or WEB mode
     WORKER_MODE = os.getenv("WORKER_MODE") == "1"
     
     if not WORKER_MODE:
-        LOGGER.info("[WEB MODE] Background engines DISABLED - web server will respond quickly")
-        LOGGER.info("[WEB MODE] To enable background services, deploy a separate worker with WORKER_MODE=1")
-        return  # EXIT - no background work in web mode
+        LOGGER.info("[WEB MODE] Heavy background engines DISABLED (predictions still running)")
+        LOGGER.info("[WEB MODE] To enable all background services, deploy a separate worker with WORKER_MODE=1")
+        return  # EXIT - no heavy background work in web mode
 
     # Start price recorder for touch-target evaluation (worker-only)
     try:
@@ -4407,23 +4429,9 @@ async def _post_startup_init():
     except Exception:
         LOGGER.exception("scheduled_predictions_start_failed", extra={"component": "startup"})
 
-    # Start Auto-Prediction Loop (async architecture for non-blocking predictions)
-    try:
-        from core import auto_prediction_loop
-        
-        # Inject dependencies (both sync and async versions)
-        auto_prediction_loop.LOGGER = LOGGER
-        auto_prediction_loop.RUN_PREDICTION_FUNC = run_prediction
-        auto_prediction_loop.RUN_PREDICTION_FUNC_ASYNC = run_single_prediction_async
-        auto_prediction_loop.HUNTER_STOCK_SYMBOLS = HUNTER_STOCK_SYMBOLS
-        auto_prediction_loop.HUNTER_CRYPTO_SYMBOLS = HUNTER_CRYPTO_SYMBOLS
-        
-        # Start the loop
-        auto_prediction_loop.start_auto_prediction_loop()
-        
-        LOGGER.info("✅ Auto-Prediction Loop: STARTED (ASYNC, non-blocking, 60-min interval)")
-    except Exception as e:
-        LOGGER.exception("auto_prediction_loop_start_failed", extra={"component": "startup", "error": str(e)})
+    # NOTE: Auto-Prediction Loop now started earlier in _post_startup_init() (before WORKER_MODE check)
+    # This ensures predictions run in ALL deployment modes, not just worker mode
+    # See lines ~3855-3886 for the actual startup code
 
     # Start Daily Predictions Engine (6:00 AM briefing with top 5 picks)
     try:
