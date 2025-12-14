@@ -190,9 +190,37 @@ class UnifiedProvider:
         
         Priority: Binance → CoinGecko → Coinbase
         """
-        # TODO: Implement provider chain
-        # For now, placeholder
-        LOGGER.warning(f"Crypto spot price not yet implemented for {symbol}")
+        # Try Binance first
+        try:
+            result = self.binance.get_price(symbol)
+            if result and result.get("price"):
+                self._track_success("binance")
+                return result
+        except Exception as e:
+            self._track_failure("binance")
+            LOGGER.debug(f"Binance failed for {symbol}: {e}")
+        
+        # Try CoinGecko
+        try:
+            result = self.coingecko.get_price(symbol)
+            if result and result.get("price"):
+                self._track_success("coingecko")
+                return result
+        except Exception as e:
+            self._track_failure("coingecko")
+            LOGGER.debug(f"CoinGecko failed for {symbol}: {e}")
+        
+        # Try Coinbase
+        try:
+            result = self.coinbase.get_price(symbol)
+            if result and result.get("price"):
+                self._track_success("coinbase")
+                return result
+        except Exception as e:
+            self._track_failure("coinbase")
+            LOGGER.debug(f"Coinbase failed for {symbol}: {e}")
+        
+        LOGGER.warning(f"All crypto providers failed for {symbol}")
         return None
     
     def _get_stock_spot_price(self, symbol: str) -> Optional[dict]:
@@ -201,9 +229,39 @@ class UnifiedProvider:
         
         Priority: Polygon → Yahoo → yfinance
         """
-        # TODO: Implement provider chain
-        # For now, placeholder
-        LOGGER.warning(f"Stock spot price not yet implemented for {symbol}")
+        # Try Polygon first
+        try:
+            result = self.polygon.get_price(symbol)
+            if result and result.get("price"):
+                self._track_success("polygon")
+                return result
+        except Exception as e:
+            self._track_failure("polygon")
+            LOGGER.debug(f"Polygon failed for {symbol}: {e}")
+        
+        # Try Yahoo Finance
+        try:
+            result = self.yahoo.get_price(symbol)
+            if result and result.get("price"):
+                self._track_success("yahoo")
+                return result
+        except Exception as e:
+            self._track_failure("yahoo")
+            LOGGER.debug(f"Yahoo failed for {symbol}: {e}")
+        
+        # Try yfinance fallback
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="1d")
+            if not hist.empty:
+                self._track_success("yfinance")
+                return {"price": float(hist['Close'].iloc[-1]), "provider": "yfinance"}
+        except Exception as e:
+            self._track_failure("yfinance")
+            LOGGER.debug(f"yfinance failed for {symbol}: {e}")
+        
+        LOGGER.warning(f"All stock providers failed for {symbol}")
         return None
     
     def _get_crypto_ohlcv(
@@ -307,9 +365,14 @@ class UnifiedProvider:
         
         # FALLBACK: yfinance (FREE)
         LOGGER.warning(f"[STOCK] {symbol}: Yahoo failed, trying yfinance...")
-        # TODO: Implement yfinance fallback
-        
-        return None
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period=\"1d\")
+            if not hist.empty:
+                return {\"price\": float(hist['Close'].iloc[-1]), \"provider\": \"yfinance\"}
+        except Exception as e:
+            LOGGER.debug(f\"yfinance fallback failed for {symbol}: {e}\")\n        \n        return None
     
     def _is_crypto(self, symbol: str) -> bool:
         """

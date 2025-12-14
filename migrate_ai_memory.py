@@ -105,7 +105,7 @@ new_append_func = '''def _ai_memory_append(row: dict[str, Any]) -> None:
         try:
             decision = {
                 'ts': int(row.get("ts") or time.time()),
-                'symbol': 'WOLF',  # TODO: Make dynamic
+                'symbol': row.get('symbol', 'WOLF').upper(),  # Dynamic symbol from row data
                 'price': row.get("price"),
                 'prev_close': row.get("prev"),
                 'news_score': row.get("news_score"),

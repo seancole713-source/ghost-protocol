@@ -1,0 +1,62 @@
+================================================================================
+RAILWAY ENVIRONMENT VARIABLE FIXES - COPY & PASTE READY
+================================================================================
+
+🚨 CRITICAL FIX #1: WORKER_MODE
+--------------------------------
+Current (BROKEN): WORKER_MODE="1 so t"
+Fixed Value:      WORKER_MODE=0
+
+Instructions:
+1. Go to Railway Dashboard → Your Project → Variables
+2. Find WORKER_MODE
+3. Delete the current value
+4. Set to: 0
+5. Redeploy
+
+
+🚨 CRITICAL FIX #2: GHOST_BASE_URL
+-----------------------------------
+Current: GHOST_BASE_URL="https://ghost-sniper-bot-seancole713-production.up.railway.app"
+Status:  Returns 404 - likely wrong domain
+
+Instructions:
+1. Go to Railway Dashboard → Your Project → Settings → Domains
+2. Copy the ACTUAL domain shown (might be: ghost-protocol-production.up.railway.app)
+3. Go to Variables tab
+4. Update GHOST_BASE_URL to match the real domain with https://
+5. Redeploy
+
+
+================================================================================
+QUICK VERIFICATION AFTER FIX
+================================================================================
+
+Run this command after redeployment completes (~5 min):
+
+curl https://YOUR-ACTUAL-DOMAIN.up.railway.app/health
+
+Expected Response:
+{
+  "status": "ok",
+  "timestamp": "2025-12-14T...",
+  "services": {
+    "database": "connected",
+    "redis": "connected"
+  }
+}
+
+
+================================================================================
+ALL OTHER VARIABLES ARE CORRECT ✅
+================================================================================
+
+These are verified and working:
+- Database: PostgreSQL + Redis connected
+- APIs: OpenAI, Polygon, Alpaca, Telegram configured
+- Crypto: CoinGecko + Binance quorum enabled
+- Predictions: SQLite store, 50 per cycle limit
+- Risk: 5% max drawdown, 3%/6% SL/TP
+- Features: Orchestrator, Volatility, Monte Carlo enabled
+
+Only the 2 variables above need fixing.
