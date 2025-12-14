@@ -8374,6 +8374,9 @@ async def api_v3_watchlist_enriched():
     """
     try:
         watchlist_data = []
+        
+        # Configurable watchlist size (default: 50, expandable to 200+)
+        watchlist_limit = int(os.getenv("WATCHLIST_DISPLAY_LIMIT", "50"))
 
         if _LATEST_PREDICTIONS:
             sorted_preds = sorted(
@@ -8387,7 +8390,7 @@ async def api_v3_watchlist_enriched():
                 if not symbol or symbol in deduped:
                     continue
                 deduped.append(symbol)
-                if len(deduped) >= 20:
+                if len(deduped) >= watchlist_limit:
                     break
             symbols_to_check = deduped
         else:
