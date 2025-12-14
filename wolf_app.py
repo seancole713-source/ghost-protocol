@@ -6961,11 +6961,14 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         tech_avail, _ = _parse_ratio(pillar_availability.get("technical_engine"))
         vol_avail, _ = _parse_ratio(pillar_availability.get("volume_engine"))
 
-        if strict_fail_closed and (degraded or price_avail <= 0 or tech_avail <= 0 or vol_avail <= 0):
+        missing_price_pillar = current_price is None and price_avail <= 0
+
+        if strict_fail_closed and (degraded or missing_price_pillar or tech_avail <= 0 or vol_avail <= 0):
             duration_ms = int((time.monotonic() - start) * 1000)
             reason = (
                 f"fail_closed: degraded={degraded}, "
-                f"pillars(price/tech/vol)={price_avail}/{tech_avail}/{vol_avail}"
+                f"pillars(price/tech/vol)={price_avail}/{tech_avail}/{vol_avail}, "
+                f"has_current_price={current_price is not None}"
             )
             LOGGER.warning(
                 f"[{symbol}] FAIL-CLOSED: {reason}",
