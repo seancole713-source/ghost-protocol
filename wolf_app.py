@@ -22935,6 +22935,43 @@ async def api_v3_accuracy_metrics(days: int = 30, symbol: str | None = None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+@APP.post("/api/v3/regression/telegram-test")
+async def api_v3_regression_telegram_test(request: Request):
+    """Send a single controlled Telegram message for regression auditing.
+
+    Guardrails:
+    - requires REGRESSION_ALLOW_TELEGRAM_TEST=1
+    - requires X-Regression-Key header matching REGRESSION_KEY
+    """
+    allow = _is_truthy(os.getenv("REGRESSION_ALLOW_TELEGRAM_TEST", "0"))
+    key_required = (os.getenv("REGRESSION_KEY") or "").strip()
+    key_got = (request.headers.get("x-regression-key") or "").strip()
+
+    if not allow:
+        raise HTTPException(status_code=403, detail="telegram_regression_test_disabled")
+    if not key_required or key_got != key_required:
+        raise HTTPException(status_code=403, detail="invalid_regression_key")
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return {"ok": False, "error": "telegram_not_configured"}
+
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    tag = str(body.get("tag") or "REGRESSION_TEST").strip()[:40]
+
+    msg = (
+        f"[REGRESSION TEST] {tag}\n"
+        f"ts_utc={datetime.now(UTC).isoformat()}\n"
+        f"git_sha={_get_git_sha() or 'unknown'}\n"
+        f"base=/api/v3/regression/telegram-test"
+    )
+
+    ok = await asyncio.to_thread(_tg_send_chat_message, TELEGRAM_CHAT_ID, msg)
+    return {"ok": bool(ok)}
+
+
 
 
 # --- Canary Route to Test Exception Handling ---
