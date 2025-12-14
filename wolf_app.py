@@ -1431,7 +1431,7 @@ print(
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 TICK_INTERVAL_S = int(os.getenv("TICK_INTERVAL_S", "5"))
-PRICE_TTL_S = int(os.getenv("PRICE_TTL_S", "30"))
+PRICE_TTL_S = int(os.getenv("PRICE_TTL_S", "60"))  # Increased from 30s for better caching
 # Increased TTL during market hours to avoid rate limits (was 5s, now 60s)
 # This prevents hammering APIs and getting 429 errors
 PRICE_TTL_OPEN_S = int(os.getenv("PRICE_TTL_OPEN_S", "60"))
@@ -1477,7 +1477,7 @@ COINBASE_PRO_BASE_URL = os.getenv("COINBASE_PRO_BASE_URL", "https://api.exchange
 
 # Cache TTL settings for high-traffic endpoints
 HUNTER_FEED_CACHE_TTL = int(os.getenv("HUNTER_FEED_CACHE_TTL", "30"))  # Default: 30s
-WATCHLIST_CACHE_TTL = int(os.getenv("WATCHLIST_CACHE_TTL", "60"))  # Default: 60s
+WATCHLIST_CACHE_TTL = int(os.getenv("WATCHLIST_CACHE_TTL", "120"))  # Default: 120s (increased for performance)
 VIP_SNAPSHOT_CACHE_TTL = int(os.getenv("VIP_SNAPSHOT_CACHE_TTL", "30"))  # Default: 30s
 MACRO_BRAIN_ON = os.getenv("MACRO_BRAIN_ON", "0").lower() in ("1", "true", "yes")
 MACRO_TICKERS = os.getenv("MACRO_TICKERS", "SMH,SOXX,QQQ").split(",")
