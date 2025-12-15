@@ -216,11 +216,12 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
 
 def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
     """
-    Fetch price for symbol at given timestamp using live providers.
+    Fetch price for symbol at given timestamp using historical data when possible.
     
-    Uses the same provider stack as predictions:
-    - Crypto: unified_provider with crypto quorum
-    - Stocks: Polygon, AlphaVantage, Yahoo Finance
+    Attempts:
+    1. Check if prediction store has recorded prices near this timestamp
+    2. Try Polygon historical bars (minute-level precision for recent data)
+    3. Fall back to current price as approximation
     
     FAST-FAIL: Returns None immediately if price unavailable.
     Does not retry or wait - prevents hanging on missing data.
@@ -229,20 +230,93 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
         Price as float, or None if unavailable
     """
     try:
-        # Import providers
-        from services.unified_provider import get_symbol_price
+        from datetime import datetime
+        import requests
         
-        # Get current price (closest available to timestamp)
-        # Note: Historical price fetching requires time-series API (polygon.io historical endpoint)
-        # Current implementation uses latest price as approximation
+        # Try to get recorded price from prediction store (most accurate)
+        try:
+            from core.prediction_store import get_prediction_store
+            store = get_prediction_store()
+            # Look for predictions made within ±10 minutes of target timestamp
+            # that have recorded price_at_prediction
+            time_window = 600  # 10 minutes
+            recent_preds = store.backend.query(
+                "SELECT price_at_prediction FROM predictions "
+                "WHERE symbol = ? AND run_at BETWEEN ? AND ? "
+                "AND price_at_prediction IS NOT NULL "
+                "ORDER BY ABS(run_at - ?) LIMIT 1",
+                (symbol, timestamp - time_window, timestamp + time_window, timestamp)
+            )
+            if recent_preds and recent_preds[0] and recent_preds[0][0]:
+                price = float(recent_preds[0][0])
+                LOGGER.debug(f"✅ Found recorded price for {symbol} at {datetime.fromtimestamp(timestamp)}: ${price:.2f}")
+                return price
+        except Exception as e:
+            LOGGER.debug(f"Could not query prediction store for historical price: {e}")
         
-        price = get_symbol_price(symbol)
+        # If we're within 1 hour of current time, use live price
+        now = time.time()
+        if abs(now - timestamp) < 3600:
+            try:
+                from services.unified_provider import get_symbol_price
+                price = get_symbol_price(symbol)
+                if price is not None:
+                    return price
+            except Exception as e:
+                LOGGER.debug(f"Could not get live price: {e}")
         
-        if price is None:
-            LOGGER.debug(f"⚠️  unified_provider returned None for {symbol} (fast-failing)")
-            return None
+        # For older timestamps (1h-30d back), try Polygon historical bars
+        # Use hour-level aggregates which are available on free tier
+        api_key = os.getenv("POLYGON_API_KEY")
+        if api_key and abs(now - timestamp) < 2592000:  # Within 30 days
+            try:
+                dt = datetime.fromtimestamp(timestamp)
+                # Use date-based range for better compatibility
+                # Add ±1 day buffer to ensure we capture the target timestamp
+                from datetime import timedelta
+                target_date = dt.date()
+                start_date = (target_date - timedelta(days=1)).strftime("%Y-%m-%d")
+                end_date = (target_date + timedelta(days=1)).strftime("%Y-%m-%d")
+                
+                # Try hourly bars first (more precise for intraday)
+                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/hour/{start_date}/{end_date}"
+                params = {"apiKey": api_key, "sort": "asc", "limit": 1000}
+                
+                response = requests.get(url, params=params, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    results = data.get("results", [])
+                    
+                    if results:
+                        # Find bar closest to target timestamp (results have "t" in milliseconds)
+                        closest_bar = min(results, key=lambda r: abs(r["t"]/1000 - timestamp))
+                        price = float(closest_bar["c"])  # Close price
+                        bar_time = closest_bar["t"] / 1000
+                        time_diff_hours = abs(bar_time - timestamp) / 3600
+                        
+                        # Only accept if within 12 hours (reasonable for 48h window)
+                        if time_diff_hours < 12:
+                            LOGGER.debug(f"✅ Polygon historical price for {symbol} at {dt}: ${price:.2f} (±{time_diff_hours:.1f}h)")
+                            return price
+                        else:
+                            LOGGER.debug(f"⚠️  Closest Polygon bar for {symbol} is {time_diff_hours:.1f}h away")
+                    else:
+                        LOGGER.debug(f"⚠️  No Polygon bars found for {symbol} in date range {start_date} to {end_date}")
+                else:
+                    LOGGER.debug(f"⚠️  Polygon API returned status {response.status_code} for {symbol}")
+            except Exception as e:
+                LOGGER.debug(f"Polygon historical fetch failed for {symbol}: {e}")
         
-        return price
+        # Last resort: if within 24h, use current price (acceptable approximation)
+        if abs(now - timestamp) < 86400:
+            price = get_symbol_price(symbol)
+            if price is not None:
+                LOGGER.debug(f"⚠️  Using current price as approximation for {symbol}")
+                return price
+        
+        # Can't get historical data - mark as no_data
+        LOGGER.debug(f"⚠️  No historical price available for {symbol} at {datetime.fromtimestamp(timestamp)}")
+        return None
         
     except Exception as e:
         LOGGER.debug(f"❌ Error fetching price for {symbol} (fast-failing): {e}")
