@@ -4459,8 +4459,14 @@ async def _post_startup_init():
             return opportunities[:10]  # Top 10
 
         async def get_accuracy_stats(period="24h"):
-            """Get accuracy stats for daily report from ghost_predictions table"""
-            return calculate_accuracy(period)
+            """Get accuracy stats for daily report from ghost_predictions table (SQLite)"""
+            from core.prediction_tracker import calculate_accuracy
+            stats = calculate_accuracy(period)
+            # Transform to format expected by Telegram report
+            return {
+                "accuracy_pct": stats.get("accuracy_pct", 0.0),
+                "total_predictions": stats.get("total_predictions", 0)
+            }
 
         _asyncio_module.create_task(daily_report_loop(get_top_opportunities, get_accuracy_stats))
         LOGGER.info("telegram_daily_reports_started", extra={"component": "startup"})
@@ -7501,26 +7507,49 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
         }
     """
     try:
-        from core.prediction_reconciliation import get_reconciliation
+        # Use SQLite accuracy data (prediction_evaluator.py system)
+        from core.prediction_tracker import calculate_accuracy
         
-        reconciliation = get_reconciliation()
-        metrics = reconciliation.calculate_accuracy_metrics(symbol=symbol, period_days=days)
+        # Map days to period string
+        if days <= 1:
+            period = "24h"
+        elif days <= 7:
+            period = "7d"
+        elif days <= 30:
+            period = "30d"
+        else:
+            period = "all"
         
-        # If no reconciled predictions yet, return zero metrics instead of error
-        if not metrics.get("ok") and "No reconciled predictions" in metrics.get("error", ""):
+        stats = calculate_accuracy(period)
+        
+        # Filter by symbol if requested
+        if symbol:
+            # TODO: Add symbol filtering to calculate_accuracy function
+            # For now, return all data with symbol filter note
             return {
                 "ok": True,
-                "accuracy_pct": 0.0,
-                "total_predictions": 0,
-                "resolved_predictions": 0,
-                "correct_predictions": 0,
-                "avg_confidence": 0.0,
-                "symbol": symbol or "ALL",
+                "accuracy_pct": stats.get("accuracy_pct", 0.0),
+                "total_predictions": stats.get("total_predictions", 0),
+                "resolved_predictions": stats.get("total_predictions", 0),
+                "correct_predictions": stats.get("correct_predictions", 0),
+                "avg_confidence": 0.0,  # Not tracked in SQLite system
+                "symbol": symbol,
                 "period_days": days,
-                "message": "Waiting for predictions to resolve (48h)"
+                "note": "Symbol filtering not yet implemented for SQLite accuracy data"
             }
         
-        return metrics
+        return {
+            "ok": True,
+            "accuracy_pct": stats.get("accuracy_pct", 0.0),
+            "total_predictions": stats.get("total_predictions", 0),
+            "resolved_predictions": stats.get("total_predictions", 0),
+            "correct_predictions": stats.get("correct_predictions", 0),
+            "avg_confidence": 0.0,  # Not tracked in SQLite system
+            "avg_error_pct": stats.get("avg_error_pct", 0.0),
+            "symbol": "ALL",
+            "period_days": days,
+            "data_source": "sqlite_evaluator"
+        }
     
     except Exception as e:
         LOGGER.error(f"Accuracy summary failed: {e}", exc_info=True)
