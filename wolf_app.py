@@ -1177,13 +1177,36 @@ async def health_check():
     confirms the FastAPI server is alive and can accept HTTP requests.
     """
     try:
+        # Check database connectivity
+        db_status = "unknown"
+        prediction_store_status = "unknown"
+        try:
+            import sqlite3
+            conn = sqlite3.connect(WOLF_SQLITE_PATH)
+            conn.execute("SELECT 1").fetchone()
+            conn.close()
+            db_status = "connected"
+        except Exception:
+            db_status = "error"
+        
+        try:
+            from core.prediction_store import get_prediction_store
+            store = get_prediction_store()
+            store.get_recent_predictions(limit=1)
+            prediction_store_status = "connected"
+        except Exception:
+            prediction_store_status = "error"
+        
         # Return immediately without checking any initialization state
         # This allows healthcheck to pass while background initialization continues
         return {
             "status": "ok",
             "service": "ghost-protocol",
             "uptime": int(time.time() - _START_TS),
+            "uptime_seconds": int(time.time() - _START_TS),
             "message": "Server is accepting connections",
+            "database": db_status,
+            "prediction_store": prediction_store_status,
             "sim_mode": int(os.getenv("SIM_MODE", "0") or "0"),
             "enforce_live": _is_live_enforced(),
             "git_sha": _get_git_sha(),
@@ -7483,6 +7506,20 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
         reconciliation = get_reconciliation()
         metrics = reconciliation.calculate_accuracy_metrics(symbol=symbol, period_days=days)
         
+        # If no reconciled predictions yet, return zero metrics instead of error
+        if not metrics.get("ok") and "No reconciled predictions" in metrics.get("error", ""):
+            return {
+                "ok": True,
+                "accuracy_pct": 0.0,
+                "total_predictions": 0,
+                "resolved_predictions": 0,
+                "correct_predictions": 0,
+                "avg_confidence": 0.0,
+                "symbol": symbol or "ALL",
+                "period_days": days,
+                "message": "Waiting for predictions to resolve (48h)"
+            }
+        
         return metrics
     
     except Exception as e:
@@ -8593,14 +8630,19 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                         except Exception:
                             gate_fields = {}
 
+                        current_price = symbol_pred.get("price_at_prediction", 0)
                         predictions_list.append({
+                            "prediction_id": symbol_pred.get("id"),
                             "symbol": symbol.upper(),
                             "direction": symbol_pred.get("direction", "FLAT"),
                             "confidence": symbol_pred.get("confidence", 0),
                             "expected_move": symbol_pred.get("confidence", 0) * 5,
                             "horizon_h": 48,
                             "run_at": symbol_pred.get("created_at", 0),
-                            "price_at_prediction": symbol_pred.get("price_at_prediction"),
+                            "price_at_prediction": current_price,
+                            "entry_price": current_price,
+                            "stop_loss": round(current_price * 0.98, 2) if current_price else None,
+                            "take_profit": round(current_price * 1.06, 2) if current_price else None,
                             "created_at": symbol_pred.get("created_at"),
                             **gate_fields,
                         })
@@ -8635,14 +8677,19 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                         except Exception:
                             gate_fields = {}
 
+                        current_price = pred.get("price_at_prediction", 0)
                         predictions_list.append({
+                            "prediction_id": pred.get("id"),
                             "symbol": pred.get("symbol"),
                             "direction": pred.get("direction", "FLAT"),
                             "confidence": pred.get("confidence", 0),
                             "expected_move": pred.get("confidence", 0) * 5,
                             "horizon_h": 48,
                             "run_at": pred.get("created_at", 0),
-                            "price_at_prediction": pred.get("price_at_prediction"),
+                            "price_at_prediction": current_price,
+                            "entry_price": current_price,
+                            "stop_loss": round(current_price * 0.98, 2) if current_price else None,
+                            "take_profit": round(current_price * 1.06, 2) if current_price else None,
                             "created_at": pred.get("created_at"),
                             **gate_fields,
                         })
@@ -8668,13 +8715,19 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
             pred = _LATEST_PREDICTIONS.get(symbol.upper())
             if pred:
                 prediction_id = pred.get("prediction_id")
+                current_price = pred.get("price", pred.get("price_at_prediction", 0))
                 predictions_list.append({
+                    "prediction_id": prediction_id,
                     "symbol": symbol.upper(),
                     "direction": pred.get("direction", "FLAT"),
                     "confidence": pred.get("confidence", 0),
                     "expected_move": pred.get("confidence", 0) * 5,  # Estimate 5% move at full confidence
                     "horizon_h": pred.get("horizon_h", 48),
                     "run_at": pred.get("run_at", 0),
+                    "price_at_prediction": current_price,
+                    "entry_price": pred.get("entry_price", current_price),
+                    "stop_loss": pred.get("stop_loss"),
+                    "take_profit": pred.get("take_profit"),
                     "target_price": pred.get("target_price"),
                     "stage5_ok": bool(pred.get("stage5_ok", False)),
                     "stage6_ok": bool(pred.get("stage6_ok", False)),
@@ -8687,13 +8740,19 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
         else:
             # Get latest N predictions from in-memory store
             for sym, pred in list(_LATEST_PREDICTIONS.items())[:limit]:
+                current_price = pred.get("price", pred.get("price_at_prediction", 0))
                 predictions_list.append({
+                    "prediction_id": pred.get("prediction_id"),
                     "symbol": sym,
                     "direction": pred.get("direction", "FLAT"),
                     "confidence": pred.get("confidence", 0),
                     "expected_move": pred.get("confidence", 0) * 5,
                     "horizon_h": pred.get("horizon_h", 48),
                     "run_at": pred.get("run_at", 0),
+                    "price_at_prediction": current_price,
+                    "entry_price": pred.get("entry_price", current_price),
+                    "stop_loss": pred.get("stop_loss"),
+                    "take_profit": pred.get("take_profit"),
                     "target_price": pred.get("target_price"),
                     "stage5_ok": bool(pred.get("stage5_ok", False)),
                     "stage6_ok": bool(pred.get("stage6_ok", False)),
