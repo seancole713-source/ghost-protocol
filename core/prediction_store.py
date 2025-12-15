@@ -41,6 +41,87 @@ if PREDICTION_STORE_ENGINE == "postgres" and not IS_POSTGRES_AVAILABLE:
     PREDICTION_STORE_ENGINE = "sqlite"
 
 
+class PredictionRejected(Exception):
+    """Raised when strict fail-closed rules reject persistence."""
+
+
+def _truthy(v: str | None) -> bool:
+    return str(v or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _parse_ratio(v: object) -> tuple[int, int]:
+    """Parse values like "15/15" into (15, 15)."""
+    try:
+        s = str(v or "").strip()
+        left = s.split()[0]
+        a, b = left.split("/", 1)
+        return int(a), int(b)
+    except Exception:
+        return 0, 0
+
+
+def _should_strict_fail_closed() -> bool:
+    # Mirror the production intent used elsewhere: if live is enforced, fail closed.
+    return (
+        _truthy(os.getenv("PREDICT_FAIL_CLOSED", "0"))
+        or _truthy(os.getenv("PRICE_STRICT_LIVE", "0"))
+        or _truthy(os.getenv("ENFORCE_LIVE", "0"))
+    )
+
+
+def _fail_closed_reason_from_features(features: dict[str, Any]) -> str | None:
+    """Return a rejection reason if inputs look degraded, else None.
+
+    This is intentionally defensive and only triggers when metadata is present.
+    """
+    if not _should_strict_fail_closed():
+        return None
+
+    # Optional: overall feature availability
+    available = features.get("available_count")
+    total = features.get("feature_count")
+    availability_pct = features.get("feature_availability_pct")
+
+    try:
+        min_features_for_signal = int(os.getenv("MIN_FEATURES_FOR_SIGNAL", "10"))
+    except Exception:
+        min_features_for_signal = 10
+    try:
+        min_availability_pct = float(os.getenv("MIN_FEATURE_AVAILABILITY_PCT", "50"))
+    except Exception:
+        min_availability_pct = 50.0
+
+    degraded = False
+    if isinstance(available, (int, float)):
+        degraded = degraded or int(available) < min_features_for_signal
+    if isinstance(availability_pct, (int, float)):
+        degraded = degraded or float(availability_pct) < min_availability_pct
+    elif isinstance(available, (int, float)) and isinstance(total, (int, float)) and float(total) > 0:
+        degraded = degraded or ((float(available) / float(total)) * 100.0) < min_availability_pct
+
+    # Optional: pillar breakdown
+    pillar_breakdown = features.get("pillar_breakdown") or features.get("feature_availability")
+    if isinstance(pillar_breakdown, dict):
+        price_avail, _ = _parse_ratio(pillar_breakdown.get("price_engine"))
+        tech_avail, _ = _parse_ratio(pillar_breakdown.get("technical_engine"))
+        vol_avail, _ = _parse_ratio(pillar_breakdown.get("volume_engine"))
+
+        # If we have pillar info, treat missing tech/vol as fatal in strict mode.
+        if tech_avail <= 0 or vol_avail <= 0:
+            return (
+                f"fail_closed_store: pillars(price/tech/vol)={price_avail}/{tech_avail}/{vol_avail}, "
+                f"available/total={available}/{total}, availability_pct={availability_pct}"
+            )
+
+    if degraded and (available is not None or availability_pct is not None or total is not None):
+        return (
+            f"fail_closed_store: degraded=True, available/total={available}/{total}, "
+            f"availability_pct={availability_pct}"
+        )
+
+    return None
+
+
 class PredictionStore:
     """
     Unified interface for prediction storage.
@@ -78,6 +159,11 @@ class PredictionStore:
         Returns:
             prediction_id (int) from primary backend
         """
+        # Production-grade fail-closed: reject persistence on degraded inputs.
+        reason = _fail_closed_reason_from_features(features or {})
+        if reason:
+            raise PredictionRejected(reason)
+
         primary_backend_name = self.backend.__class__.__name__
         
         # Write to primary backend

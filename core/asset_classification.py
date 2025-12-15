@@ -1,9 +1,17 @@
 """Asset classification helpers.
 
 Keep this minimal and dependency-free.
+
+Design goals:
+- Single source of truth for crypto-vs-stock routing.
+- Runtime extensibility so higher-level apps (e.g., `wolf_app.py`) can register
+    their active crypto universe without introducing circular imports.
 """
 
 from __future__ import annotations
+
+import os
+from typing import Iterable
 
 
 # Curated crypto universe used by free-tier providers in this repo.
@@ -62,6 +70,33 @@ CRYPTO_SYMBOLS: set[str] = {
     "AXS",
     "GALA",
 }
+
+
+def register_crypto_symbols(symbols: Iterable[str] | None) -> int:
+    """Register additional crypto symbols at runtime.
+
+    Returns the number of new symbols added.
+    """
+    if not symbols:
+        return 0
+    before = len(CRYPTO_SYMBOLS)
+    for sym in symbols:
+        if sym is None:
+            continue
+        s = str(sym).strip().upper()
+        if s:
+            CRYPTO_SYMBOLS.add(s)
+    return len(CRYPTO_SYMBOLS) - before
+
+
+def _load_env_extras() -> None:
+    extras = os.getenv("CRYPTO_SYMBOLS_EXTRA", "")
+    if not extras.strip():
+        return
+    register_crypto_symbols([s for s in extras.split(",")])
+
+
+_load_env_extras()
 
 
 def is_crypto_symbol(symbol: str) -> bool:

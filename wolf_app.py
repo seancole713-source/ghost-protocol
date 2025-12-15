@@ -7062,9 +7062,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         )
 
         # Create prediction with rich features
+        from core.prediction_store import PredictionRejected
+        
         try:
-            from core.prediction_store import PredictionRejected
-
             prediction_id = predictor.create_prediction(
                 symbol=symbol,
                 forecast_points=forecast_points,
