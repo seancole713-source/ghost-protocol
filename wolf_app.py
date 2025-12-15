@@ -1421,6 +1421,16 @@ HUNTER_STOCK_SYMBOLS = DEFAULT_STOCK_SYMBOLS  # Use full expanded list
 # Includes DeFi, Layer 1/2, NFT, Meme coins, and emerging tokens
 HUNTER_CRYPTO_SYMBOLS = DEFAULT_CRYPTO_SYMBOLS  # Use full expanded list
 
+# Keep crypto-vs-stock routing consistent across the repo (providers/pillars/etc.).
+# We register the runtime crypto universe here to avoid circular imports.
+try:
+    from core.asset_classification import register_crypto_symbols as _register_crypto_symbols
+
+    _register_crypto_symbols(CRYPTO_SYMBOLS)
+    _register_crypto_symbols(HUNTER_CRYPTO_SYMBOLS)
+except Exception:
+    pass
+
 def _classify_symbol_category(symbol: str) -> str:
     """
     Classify symbol into category: 'stocks', 'crypto', or 'vip'.
@@ -3749,6 +3759,7 @@ async def _on_startup():
         import asyncio as _asyncio_module
         from core.prediction_evaluator import evaluate_pending_predictions
         from core.feedback_loop import get_feedback_loop, PredictionOutcome
+        from core.learning_loop import get_learning_loop
         
         async def _accuracy_evaluator_loop():
             """Background task to evaluate prediction outcomes every hour + feed to learning system"""
@@ -3829,6 +3840,19 @@ async def _on_startup():
                             
                             if outcomes_processed > 0:
                                 LOGGER.info(f"[FEEDBACK LOOP] ✅ Processed {outcomes_processed} outcomes for learning")
+                                
+                                # Trigger learning loop to update weights if enough outcomes
+                                try:
+                                    learning = get_learning_loop()
+                                    check = learning.check_performance(symbol=None, days=7)
+                                    if check.get("needs_tuning"):
+                                        analysis = learning.analyze_bias(check["metrics"])
+                                        recs = analysis.get("recommendations", [])
+                                        if recs:
+                                            learning.adjust_parameters(recs, auto_apply=True)
+                                            LOGGER.info(f"[LEARNING] ✅ Applied {len(recs)} parameter adjustments")
+                                except Exception as learn_err:
+                                    LOGGER.debug(f"[LEARNING] Learning cycle skipped: {learn_err}")
                         
                         except Exception as feedback_err:
                             LOGGER.error(f"[FEEDBACK LOOP] Error processing outcomes: {feedback_err}", exc_info=False)
@@ -7038,21 +7062,48 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         )
 
         # Create prediction with rich features
-        prediction_id = predictor.create_prediction(
-            symbol=symbol,
-            forecast_points=forecast_points,
-            method="ghost-data-pillars-v1",
-            confidence=confidence,
-            direction=direction,
-            features={
+        try:
+            from core.prediction_store import PredictionRejected
+
+            prediction_id = predictor.create_prediction(
+                symbol=symbol,
+                forecast_points=forecast_points,
+                method="ghost-data-pillars-v1",
+                confidence=confidence,
+                direction=direction,
+                features={
+                    "current_price": current_price,
+                    "feature_count": feature_data["feature_count"],
+                    "available_count": feature_data["available_count"],
+                    "feature_availability_pct": round(feature_avail_pct, 1),
+                    "pillar_breakdown": pillar_availability,
+                    **features  # Include all extracted features
+                },
+                params={"horizon_h": horizon_h, "step_s": step_s},
+                tag="",
+            )
+        except PredictionRejected as e:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            LOGGER.warning(
+                f"[{symbol}] FAIL-CLOSED (store): {e}",
+                extra={
+                    "symbol": symbol,
+                    "duration_ms": duration_ms,
+                    "availability_pct": round(feature_avail_pct, 1),
+                    "pillar_breakdown": pillar_availability,
+                },
+            )
+            return {
+                "ok": False,
+                "symbol": symbol,
+                "direction": "ERROR",
+                "confidence": 0.0,
                 "current_price": current_price,
-                "feature_count": feature_data["feature_count"],
-                "available_count": feature_data["available_count"],
-                **features  # Include all extracted features
-            },
-            params={"horizon_h": horizon_h, "step_s": step_s},
-            tag="",
-        )
+                "feature_count": int(feature_data.get("feature_count") or 0),
+                "available_count": int(feature_data.get("available_count") or 0),
+                "duration_ms": duration_ms,
+                "error": str(e),
+            }
 
         # Wire to in-memory store for /api/cockpit consumption
         # If calibration says "don't predict", keep the prediction for monitoring but mark HOLD.
@@ -9153,7 +9204,8 @@ async def api_v3_alerts_status():
             "telegram_enabled": telegram_configured,
             "alert_count_1h": recent_alerts,
             "last_alert_timestamp": last_alert_time if last_alert_time > 0 else None,
-            "min_confidence_threshold": float(os.getenv("MIN_ALERT_CONFIDENCE", "0.55")),
+            "min_alert_confidence": 0.70,  # From touch_calibration_sqlite.py stage5/stage6 gates
+            "min_confidence_threshold": float(os.getenv("MIN_ALERT_CONFIDENCE", "0.55")),  # Legacy field
             "instant_alert_threshold": int(os.getenv("INSTANT_ALERT_THRESHOLD", "80")),
             "status": "active" if telegram_configured else "not_configured",
             "timestamp": time.time()
