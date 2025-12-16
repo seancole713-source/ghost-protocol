@@ -35,7 +35,6 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
             return _empty_response(period, "DATABASE_URL not configured")
         
         conn = psycopg2.connect(database_url)
-        conn.row_factory = RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # Time filter
