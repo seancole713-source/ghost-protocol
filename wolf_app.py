@@ -4648,6 +4648,11 @@ async def _post_startup_init():
         _start_alert_worker()
     except Exception:
         LOGGER.exception("alert_worker_start_failed", extra={"component": "startup"})
+    # Start accuracy tracking worker for real-time monitoring
+    try:
+        _start_accuracy_tracker()
+    except Exception:
+        LOGGER.exception("accuracy_tracker_start_failed", extra={"component": "startup"})
     # Start open/close scheduler (optional)
     try:
         if SCHEDULE_OPEN_CLOSE:
@@ -7596,9 +7601,114 @@ async def api_live_accuracy(symbol: str | None = None):
         LOGGER.error(f"Live accuracy failed: {e}", exc_info=True)
         return {
             "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/accuracy/trending")
+async def api_accuracy_trending(hours: int = 24):
+    """
+    Get accuracy trending over time.
+    
+    Shows how accuracy has changed over recent hours, with statistics
+    and trend analysis (improving/declining/stable).
+    
+    Args:
+        hours: Lookback period in hours (default 24)
+    
+    Returns:
+        {
+            "ok": true,
+            "period_hours": 24,
+            "data_points": 288,
+            "current_accuracy": 90.0,
+            "avg_accuracy": 87.5,
+            "min_accuracy": 75.0,
+            "max_accuracy": 95.0,
+            "trend": "improving",
+            "history": [
+                {"timestamp": 1234567890, "accuracy_pct": 85.0},
+                ...
+            ]
+        }
+    """
+    try:
+        from core.accuracy_tracking import get_accuracy_trending
+        return get_accuracy_trending(hours=hours)
+    
+    except Exception as e:
+        LOGGER.error(f"Accuracy trending failed: {e}", exc_info=True)
+        return {
+            "ok": False,
             "error": str(e),
-            "symbol": symbol,
-            "days": days
+            "period_hours": hours
+        }
+
+
+@APP.get("/api/v3/accuracy/confidence_correlation")
+async def api_confidence_correlation():
+    """
+    Analyze correlation between confidence scores and actual accuracy.
+    
+    Shows if high-confidence predictions are actually more accurate,
+    grouped into confidence buckets (60-70%, 70-80%, etc.).
+    
+    Returns:
+        {
+            "ok": true,
+            "confidence_buckets": {
+                "60-70%": {"count": 10, "accuracy": 85.0, "correct": 8},
+                "70-80%": {"count": 20, "accuracy": 90.0, "correct": 18}
+            },
+            "correlation": "positive",
+            "message": "Higher confidence predictions are 5% more accurate",
+            "total_predictions": 30
+        }
+    """
+    try:
+        from core.accuracy_tracking import get_confidence_correlation
+        return get_confidence_correlation()
+    
+    except Exception as e:
+        LOGGER.error(f"Confidence correlation failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/accuracy/alerts")
+async def api_accuracy_alerts(threshold: float = 70.0):
+    """
+    Check if accuracy has dropped below threshold.
+    
+    Alert system for monitoring prediction performance degradation.
+    
+    Args:
+        threshold: Accuracy percentage threshold (default 70%)
+    
+    Returns:
+        {
+            "ok": true,
+            "alert": true/false,
+            "current_accuracy": 65.0,
+            "threshold": 70.0,
+            "message": "⚠️ Accuracy dropped below 70% (currently 65%)",
+            "symbols_affected": ["BTC", "ETH"],
+            "wrong_count": 2,
+            "total_predictions": 10
+        }
+    """
+    try:
+        from core.accuracy_tracking import check_accuracy_alerts
+        return check_accuracy_alerts(threshold=threshold)
+    
+    except Exception as e:
+        LOGGER.error(f"Accuracy alerts failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "alert": False,
+            "error": str(e)
         }
 
 
@@ -15732,6 +15842,49 @@ def _reconciler_loop():
         finally:
             # Wait 5 minutes between reconciliation runs
             _RECONCILER_STOP.wait(300.0)
+
+
+# ── Live Accuracy Tracking Worker ────────────────────────────────────────────────
+_ACCURACY_TRACKER: threading.Thread | None = None
+_ACCURACY_STOP = threading.Event()
+
+
+def _start_accuracy_tracker():
+    """Start background thread to track accuracy snapshots every 5 min"""
+    global _ACCURACY_TRACKER
+    if _ACCURACY_TRACKER is None or not _ACCURACY_TRACKER.is_alive():
+        _ACCURACY_STOP.clear()
+        _ACCURACY_TRACKER = threading.Thread(
+            target=_accuracy_tracking_loop, name="accuracy-tracker", daemon=True
+        )
+        _ACCURACY_TRACKER.start()
+        LOGGER.info("Live accuracy tracker started")
+
+
+def _stop_accuracy_tracker():
+    """Stop accuracy tracker gracefully"""
+    try:
+        _ACCURACY_STOP.set()
+        if _ACCURACY_TRACKER and _ACCURACY_TRACKER.is_alive():
+            _ACCURACY_TRACKER.join(timeout=2.0)
+    except Exception:
+        pass
+
+
+def _accuracy_tracking_loop():
+    """Background loop to record accuracy snapshots for trending analysis"""
+    # Sleep first on startup to avoid blocking server initialization
+    time.sleep(120)  # Wait 2 minutes for server to fully start
+    
+    while not _ACCURACY_STOP.is_set():
+        try:
+            from core.accuracy_tracking import record_accuracy_snapshot
+            record_accuracy_snapshot()
+        except Exception as e:
+            LOGGER.error(f"Accuracy tracking error: {e}", exc_info=True)
+        finally:
+            # Record snapshot every 5 minutes
+            _ACCURACY_STOP.wait(300.0)
 
 
 def _get_price_quorum(symbol: str, asset_type: str = "stock") -> dict[str, Any] | None:
