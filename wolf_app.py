@@ -4459,14 +4459,9 @@ async def _post_startup_init():
             return opportunities[:10]  # Top 10
 
         async def get_accuracy_stats(period="24h"):
-            """Get accuracy stats for daily report from ghost_predictions table (SQLite)"""
-            from core.prediction_tracker import calculate_accuracy
-            stats = calculate_accuracy(period)
-            # Transform to format expected by Telegram report
-            return {
-                "accuracy_pct": stats.get("accuracy_pct", 0.0),
-                "total_predictions": stats.get("total_predictions", 0)
-            }
+            """Get accuracy stats for daily report from Postgres (persistent)"""
+            from core.postgres_accuracy import get_accuracy_stats_postgres
+            return get_accuracy_stats_postgres(period)
 
         _asyncio_module.create_task(daily_report_loop(get_top_opportunities, get_accuracy_stats))
         LOGGER.info("telegram_daily_reports_started", extra={"component": "startup"})
@@ -7507,8 +7502,8 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
         }
     """
     try:
-        # Use SQLite accuracy data (prediction_evaluator.py system)
-        from core.prediction_tracker import calculate_accuracy
+        # Use Postgres accuracy data (persistent across deployments)
+        from core.postgres_accuracy import calculate_accuracy_postgres
         
         # Map days to period string
         if days <= 1:
@@ -7520,7 +7515,7 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
         else:
             period = "all"
         
-        stats = calculate_accuracy(period)
+        stats = calculate_accuracy_postgres(period)
         
         # Filter by symbol if requested
         if symbol:
