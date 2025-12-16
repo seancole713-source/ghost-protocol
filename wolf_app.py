@@ -7548,6 +7548,52 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
     
     except Exception as e:
         LOGGER.error(f"Accuracy summary failed: {e}", exc_info=True)
+
+
+@APP.get("/api/v3/accuracy/live")
+async def api_live_accuracy(symbol: str | None = None):
+    """
+    Get real-time accuracy for active predictions.
+    
+    Shows how current predictions are performing RIGHT NOW
+    by comparing against live market prices, before 48h evaluation.
+    
+    Args:
+        symbol: Filter by symbol (optional, e.g., "BTC", "ETH")
+    
+    Returns:
+        {
+            "ok": true,
+            "current_accuracy_pct": 90.0,
+            "total_predictions": 10,
+            "correct_now": 9,
+            "wrong_now": 1,
+            "predictions": [
+                {
+                    "symbol": "BTC",
+                    "direction": "DOWN",
+                    "entry_price": 105500.0,
+                    "current_price": 105200.0,
+                    "price_change_pct": -0.28,
+                    "is_correct_now": true,
+                    "status": "✅ CORRECT",
+                    "age_hours": 0.25,
+                    "hours_until_eval": 47.75
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        from core.live_accuracy import get_live_accuracy_dashboard, get_live_accuracy_by_symbol
+        
+        if symbol:
+            return get_live_accuracy_by_symbol(symbol.upper())
+        else:
+            return get_live_accuracy_dashboard()
+    
+    except Exception as e:
+        LOGGER.error(f"Live accuracy failed: {e}", exc_info=True)
         return {
             "ok": False,
             "error": str(e),
