@@ -15195,7 +15195,7 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
     opportunities = _rank_opportunities(all_predictions)
 
     # Build message header
-    now_str = datetime.now(ZoneInfo("America/New_York") if ZoneInfo else None).strftime("%I:%M %p %Z") if ZoneInfo else datetime.now().strftime("%I:%M %p")
+    now_str = datetime.now(ZoneInfo("America/Chicago") if ZoneInfo else None).strftime("%I:%M %p %Z") if ZoneInfo else datetime.now().strftime("%I:%M %p")
 
     # Get REAL accuracy from database (no lies!)
     try:
@@ -15301,7 +15301,7 @@ def _format_multi_symbol_telegram_message_legacy(predictions_data: dict[str, Any
     counts = predictions_data.get("counts", {})
 
     # Build message header
-    now_str = datetime.now(ZoneInfo("America/New_York") if ZoneInfo else None).strftime("%I:%M %p %Z") if ZoneInfo else datetime.now().strftime("%I:%M %p")
+    now_str = datetime.now(ZoneInfo("America/Chicago") if ZoneInfo else None).strftime("%I:%M %p %Z") if ZoneInfo else datetime.now().strftime("%I:%M %p")
 
     message = f"""📊 <b>GHOST MULTI-SYMBOL PREDICTIONS</b>
 ⏰ Time: {now_str}
