@@ -13,10 +13,14 @@ Every day at 6 AM, Ghost:
    - Ghost confidence
 4. Continuously monitors and updates the top 10
 5. Replaces lowest performer when better opportunity found
+
+DEMO MODE:
+Set GHOST_DEMO_MODE=1 to force positive predictions for testing.
 """
 
 import asyncio
 import logging
+import os
 import sqlite3
 import time
 from datetime import datetime, timedelta
@@ -24,6 +28,9 @@ from pathlib import Path
 from typing import Optional
 
 LOGGER = logging.getLogger("daily_top_10")
+
+# Demo mode: Force positive predictions for testing
+DEMO_MODE = os.environ.get("GHOST_DEMO_MODE", "0") == "1"
 
 
 class DailyTop10Scanner:
@@ -35,12 +42,19 @@ class DailyTop10Scanner:
     - Top 10 ranked by profit potential
     - Real-time monitoring
     - Auto-replace low performers
+    
+    Demo Mode:
+    Set GHOST_DEMO_MODE=1 to force positive predictions.
     """
     
-    def __init__(self, db_path: str = "data/ghost_predictions.db"):
+    def __init__(self, db_path: str = "data/ghost_predictions.db", demo_mode: bool = DEMO_MODE):
         self.db_path = db_path
+        self.demo_mode = demo_mode
         self._ensure_table()
         self.last_alert_time = 0
+        
+        if self.demo_mode:
+            LOGGER.info("🎬 DEMO MODE: Forcing positive predictions")
     
     def _ensure_table(self):
         """Create top_10_opportunities table"""
@@ -145,7 +159,27 @@ class DailyTop10Scanner:
         Generate 48-hour prediction using real ML models.
         
         Integrates with Ghost's cascading predictor for stocks and crypto predictions.
+        
+        Demo Mode: If self.demo_mode=True, forces positive predictions for testing.
         """
+        # DEMO MODE: Force positive predictions
+        if self.demo_mode:
+            import random
+            gain_pct = random.uniform(10.0, 25.0)  # 10-25% gains
+            confidence = random.uniform(0.65, 0.85)  # 65-85% confidence
+            predicted_price = current_price * (1 + gain_pct / 100)
+            sell_time = datetime.utcnow() + timedelta(hours=48)
+            
+            LOGGER.debug(f"[DEMO] {symbol}: +{gain_pct:.1f}% ({confidence:.0%} confidence)")
+            
+            return {
+                "predicted_price": predicted_price,
+                "gain_pct": gain_pct,
+                "confidence": confidence,
+                "direction": "UP",
+                "sell_at": sell_time.isoformat()
+            }
+        
         try:
             if asset_type == "crypto":
                 # Use crypto-specific prediction
