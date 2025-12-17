@@ -1314,3 +1314,130 @@ body {
     color: var(--accent-green);
 }
 
+/* CASCADE CARD STYLES */
+#cascade-card {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 1px solid #2a2a4a;
+}
+
+.cascade-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.cascade-header h3 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.cascade-running {
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 4px 12px;
+    border-radius: 12px;
+}
+
+.cascade-stages {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.cascade-stage {
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-left: 3px solid transparent;
+    position: relative;
+}
+
+.cascade-stage.completed {
+    border-left-color: var(--accent-green);
+    background: rgba(0, 214, 50, 0.05);
+}
+
+.cascade-stage.pending {
+    border-left-color: var(--text-secondary);
+    background: rgba(160, 160, 160, 0.03);
+}
+
+.cascade-stage.evaluated {
+    border-left-color: var(--accent-blue);
+    background: rgba(59, 130, 246, 0.05);
+}
+
+.stage-marker {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    margin-top: 6px;
+    flex-shrink: 0;
+}
+
+.cascade-stage.completed .stage-marker {
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
+}
+
+.cascade-stage.evaluated .stage-marker {
+    background: var(--accent-blue);
+    box-shadow: 0 0 8px var(--accent-blue);
+}
+
+.stage-content {
+    flex: 1;
+}
+
+.stage-content h4 {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0 0 8px 0;
+    color: var(--text-primary);
+}
+
+.stage-prediction {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 8px 0;
+}
+
+.stage-prediction.bullish {
+    color: var(--accent-green);
+}
+
+.stage-prediction.bearish {
+    color: var(--accent-red);
+}
+
+.stage-countdown {
+    font-size: 16px;
+    color: var(--accent-yellow);
+    font-weight: 600;
+    margin: 8px 0;
+}
+
+.stage-details {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 4px 0;
+}
+
+.stage-status {
+    font-size: 12px;
+    color: var(--accent-green);
+    margin-top: 8px;
+    display: inline-block;
+    background: rgba(0, 214, 50, 0.1);
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+

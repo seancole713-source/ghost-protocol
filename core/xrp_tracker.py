@@ -3,6 +3,7 @@ XRP Tracker Module
 Specialized tracker for XRP with "bullish eye" indicator and signal generation.
 """
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -39,7 +40,17 @@ async def get_xrp_status() -> dict[str, Any]:
         from core.crypto.crypto_providers import get_crypto_price_quorum
         
         # Get XRP price with quorum (requires multiple provider agreement)
-        xrp_data = await get_crypto_price_quorum("XRP", use_cache=True)
+        # Add timeout to prevent 59s hangs (CoinGecko 15s + Binance 4s + Coinbase 10s)
+        try:
+            xrp_data = await asyncio.wait_for(
+                get_crypto_price_quorum("XRP", use_cache=True),
+                timeout=5.0
+            )
+        except asyncio.TimeoutError:
+            logger.warning("XRP quorum timeout after 5s - using cached price if available")
+            # Fallback to cached price
+            from core.crypto.crypto_providers import _get_crypto_cache
+            xrp_data = _get_crypto_cache("XRP")
         
         if xrp_data and xrp_data.get("price"):
             price = xrp_data["price"]

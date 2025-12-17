@@ -1557,9 +1557,218 @@ async function saveGoals() {
     }
 }
 
+// CASCADE SYSTEM FUNCTIONS
+async function updateCascadeView() {
+    try {
+        const response = await fetch('/api/v3/cascade/list?active_only=true');
+        const data = await response.json();
+        
+        if (data.ok && data.cascades && data.cascades.length > 0) {
+            const cascade = data.cascades[0]; // Most recent cascade
+            
+            const now = Date.now() / 1000;
+            const elapsed = now - cascade.created_at;
+            const hoursElapsed = Math.floor(elapsed / 3600);
+            const minsElapsed = Math.floor((elapsed % 3600) / 60);
+            
+            const timing = {
+                hoursElapsed,
+                minsElapsed,
+                h24_remaining_hours: Math.max(0, 24 - hoursElapsed),
+                h24_remaining_mins: minsElapsed > 0 ? 60 - minsElapsed : 0,
+                h42_remaining_hours: Math.max(0, 42 - hoursElapsed),
+                h6_remaining_mins: minsElapsed > 0 ? 60 - minsElapsed : 0,
+                h48_remaining_hours: Math.max(0, 48 - hoursElapsed),
+                h48_remaining_mins: minsElapsed > 0 ? 60 - minsElapsed : 0
+            };
+            
+            renderCascadeCard(cascade, timing);
+        } else {
+            const cascadeCard = document.getElementById('cascade-card');
+            if (cascadeCard) cascadeCard.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Failed to fetch cascade data:', error);
+    }
+}
+
+function renderCascadeCard(cascade, timing) {
+    const cascadeCard = document.getElementById('cascade-card');
+    if (!cascadeCard) return;
+    
+    const { hoursElapsed, minsElapsed, h24_remaining_hours, h24_remaining_mins,
+            h42_remaining_hours, h6_remaining_mins, h48_remaining_hours, h48_remaining_mins } = timing;
+    
+    const directionEmoji = cascade.h48_direction === 'UP' ? '📈' : '📉';
+    const directionClass = cascade.h48_direction === 'UP' ? 'bullish' : 'bearish';
+    
+    let html = `
+        <div class="cascade-header">
+            <h3>🔮 ${cascade.symbol} PREDICTION CASCADE</h3>
+            <span class="cascade-running">Running ${hoursElapsed}h ${minsElapsed}m</span>
+        </div>
+        
+        <div class="cascade-stages">
+            <!-- 48h Alert Stage -->
+            <div class="cascade-stage completed">
+                <div class="stage-marker"></div>
+                <div class="stage-content">
+                    <h4>🔔 48H ALERT</h4>
+                    <div class="stage-prediction ${directionClass}">
+                        ${directionEmoji} ${cascade.h48_direction} @ ${(cascade.h48_confidence * 100).toFixed(1)}%
+                    </div>
+                    <div class="stage-details">
+                        Entry: $${cascade.h48_price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </div>
+                    <div class="stage-status">✅ Sent</div>
+                </div>
+            </div>
+    `;
+    
+    // 24h Update Stage
+    if (cascade.h24_sent_at) {
+        const h24DirectionEmoji = cascade.h24_direction === 'UP' ? '📈' : '📉';
+        const h24DirectionClass = cascade.h24_direction === 'UP' ? 'bullish' : 'bearish';
+        const directionChanged = cascade.h24_direction_changed ? ' 🔄' : '';
+        const confidenceDelta = cascade.h24_confidence_delta ? 
+            ` (${cascade.h24_confidence_delta > 0 ? '+' : ''}${(cascade.h24_confidence_delta * 100).toFixed(1)}%)` : '';
+        
+        html += `
+            <div class="cascade-stage completed">
+                <div class="stage-marker"></div>
+                <div class="stage-content">
+                    <h4>📈 24H UPDATE${directionChanged}</h4>
+                    <div class="stage-prediction ${h24DirectionClass}">
+                        ${h24DirectionEmoji} ${cascade.h24_direction} @ ${(cascade.h24_confidence * 100).toFixed(1)}%${confidenceDelta}
+                    </div>
+                    <div class="stage-details">
+                        Price: $${cascade.h24_price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </div>
+                    <div class="stage-status">✅ Updated</div>
+                </div>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="cascade-stage pending">
+                <div class="stage-marker"></div>
+                <div class="stage-content">
+                    <h4>📈 24H UPDATE</h4>
+                    <div class="stage-countdown">
+                        ⏰ In ${h24_remaining_hours}h ${h24_remaining_mins}m
+                    </div>
+                    <div class="stage-details">
+                        Will re-evaluate with fresh data
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // 6h Final Stage
+    if (cascade.h6_sent_at) {
+        const h6DirectionEmoji = cascade.h6_direction === 'UP' ? '📈' : '📉';
+        const h6DirectionClass = cascade.h6_direction === 'UP' ? 'bullish' : 'bearish';
+        const directionChanged = cascade.h6_direction_changed ? ' 🔄' : '';
+        const confidenceDelta = cascade.h6_confidence_delta ? 
+            ` (${cascade.h6_confidence_delta > 0 ? '+' : ''}${(cascade.h6_confidence_delta * 100).toFixed(1)}%)` : '';
+        
+        html += `
+            <div class="cascade-stage completed">
+                <div class="stage-marker"></div>
+                <div class="stage-content">
+                    <h4>✅ 6H FINAL CALL${directionChanged}</h4>
+                    <div class="stage-prediction ${h6DirectionClass}">
+                        ${h6DirectionEmoji} ${cascade.h6_direction} @ ${(cascade.h6_confidence * 100).toFixed(1)}%${confidenceDelta}
+                    </div>
+                    <div class="stage-details">
+                        Price: $${cascade.h6_price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </div>
+                    <div class="stage-status">✅ Final Call Made</div>
+                </div>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="cascade-stage pending">
+                <div class="stage-marker"></div>
+                <div class="stage-content">
+                    <h4>✅ 6H FINAL CALL</h4>
+                    <div class="stage-countdown">
+                        ⏰ In ${h42_remaining_hours}h ${h6_remaining_mins}m
+                    </div>
+                    <div class="stage-details">
+                        High-confidence prediction
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Outcome Stage
+    if (cascade.evaluated_at) {
+        const h48Status = cascade.h48_correct ? '✅' : '❌';
+        const h24Status = cascade.h24_correct !== null ? (cascade.h24_correct ? '✅' : '❌') : '⏳';
+        const h6Status = cascade.h6_correct !== null ? (cascade.h6_correct ? '✅' : '❌') : '⏳';
+        const correctCount = [cascade.h48_correct, cascade.h24_correct, cascade.h6_correct].filter(x => x === true).length;
+        
+        html += `
+            <div class="cascade-stage evaluated">
+                <div class="stage-marker"></div>
+                <div class="stage-content">
+                    <h4>🎯 OUTCOME</h4>
+                    <div class="stage-prediction">
+                        Score: ${correctCount}/3 stages correct
+                    </div>
+                    <div class="stage-details">
+                        48h ${h48Status} | 24h ${h24Status} | 6h ${h6Status}
+                    </div>
+                    <div class="stage-status">✅ Evaluated</div>
+                </div>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="cascade-stage pending">
+                <div class="stage-marker"></div>
+                <div class="stage-content">
+                    <h4>🎯 OUTCOME</h4>
+                    <div class="stage-countdown">
+                        ⏰ In ${h48_remaining_hours}h ${h48_remaining_mins}m
+                    </div>
+                    <div class="stage-details">
+                        Validation & scoring
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    html += `</div>`; // Close cascade-stages
+    
+    cascadeCard.innerHTML = html;
+    cascadeCard.style.display = 'block';
+}
+
+// Add cascade update to intervals
+function initializeCascadeUpdates() {
+    updateCascadeView(); // Initial load
+    window.cascadeInterval = setInterval(() => updateCascadeView(), 60000); // Update every minute
+}
+
+// Call on app init
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeCascadeUpdates);
+} else {
+    initializeCascadeUpdates();
+}
+
 // Cleanup on unload
 window.addEventListener('beforeunload', () => {
     if (updateInterval) {
         clearInterval(updateInterval);
+    }
+    if (window.cascadeInterval) {
+        clearInterval(window.cascadeInterval);
     }
 });

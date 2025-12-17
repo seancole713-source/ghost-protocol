@@ -288,6 +288,7 @@ class BinanceProvider:
     Docs: https://binance-docs.github.io/apidocs/spot/en/
     
     Enhanced with:
+    - Circuit breaker pattern for reliability
     - Exponential backoff for rate limits and 451 errors
     - Automatic fallback to Binance US endpoint
     - Retry logic for transient failures
@@ -300,6 +301,11 @@ class BinanceProvider:
         self.symbol_suffix = "USDT"  # Trade against USDT
         self.max_retries = 2  # Reduced from 3 to fail faster
         self.base_delay = 0.3  # Reduced from 500ms to 300ms for faster fallback
+        
+        # Circuit breaker state
+        self.circuit_open = False
+        self.circuit_open_until = 0.0
+        self.consecutive_failures = 0
 
     def get_price(self, symbol: str) -> dict[str, Any] | None:
         """
@@ -307,6 +313,17 @@ class BinanceProvider:
 
         Returns similar format to CoinGecko for consistency
         """
+        # Check circuit breaker
+        if self.circuit_open:
+            if time.time() < self.circuit_open_until:
+                LOGGER.debug(f"Binance circuit breaker OPEN - skipping {symbol}")
+                return None
+            else:
+                # Try to close circuit (half-open state)
+                self.circuit_open = False
+                self.consecutive_failures = 0
+                LOGGER.info("Binance circuit breaker transitioning to HALF-OPEN")
+        
         binance_symbol = f"{symbol.upper()}{self.symbol_suffix}"
         
         # Prefer Binance.US first (Binance.com is frequently 451-blocked)
@@ -323,6 +340,11 @@ class BinanceProvider:
                     response.raise_for_status()
 
                     data = response.json()
+                    
+                    # Success - reset circuit breaker
+                    if self.consecutive_failures > 0:
+                        LOGGER.info(f"Binance recovered - resetting failure counter from {self.consecutive_failures}")
+                        self.consecutive_failures = 0
 
                     return {
                         "symbol": symbol.upper(),
@@ -344,7 +366,7 @@ class BinanceProvider:
                     
                     # Retry on temporary errors
                     if (is_cloudflare_block or is_rate_limit) and attempt < self.max_retries - 1:
-                        delay = self.base_delay * (2 ** attempt)  # 0.5s, 1s, 2s
+                        delay = self.base_delay * (2 ** attempt)  # 0.3s, 0.6s, 1.2s
                         LOGGER.debug(
                             f"Binance blocked/rate-limited for {symbol} "
                             f"(status {status_code}), retrying in {delay}s "
@@ -361,8 +383,15 @@ class BinanceProvider:
                         )
                         break  # Try alternative URL
         
-        # All attempts and URLs exhausted
-        LOGGER.warning(f"Binance fetch failed for {symbol}: All endpoints exhausted")
+        # All attempts and URLs exhausted - track for circuit breaker
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= 3:
+            self.circuit_open = True
+            self.circuit_open_until = time.time() + 300  # 5 minutes
+            LOGGER.error(f"Binance circuit breaker OPENED - {self.consecutive_failures} consecutive failures - disabled for 5min")
+        else:
+            LOGGER.warning(f"Binance failure #{self.consecutive_failures} for {symbol} - circuit opens at 3")
+        
         return None
 
 
@@ -370,9 +399,17 @@ class CoinbaseProvider:
     """
     Coinbase API - Tertiary provider (High reliability)
     Docs: https://developers.coinbase.com/api/v2
+    
+    Enhanced with circuit breaker pattern for consistency
     """
 
     BASE_URL = "https://api.coinbase.com/v2"
+
+    def __init__(self):
+        # Circuit breaker state
+        self.circuit_open = False
+        self.circuit_open_until = 0.0
+        self.consecutive_failures = 0
 
     def get_price(self, symbol: str) -> dict[str, Any] | None:
         """
@@ -380,6 +417,17 @@ class CoinbaseProvider:
 
         Note: Coinbase provides less 24h data than CoinGecko/Binance
         """
+        # Check circuit breaker
+        if self.circuit_open:
+            if time.time() < self.circuit_open_until:
+                LOGGER.debug(f"Coinbase circuit breaker OPEN - skipping {symbol}")
+                return None
+            else:
+                # Try to close circuit (half-open state)
+                self.circuit_open = False
+                self.consecutive_failures = 0
+                LOGGER.info("Coinbase circuit breaker transitioning to HALF-OPEN")
+        
         try:
             url = f"{self.BASE_URL}/prices/{symbol.upper()}-USD/spot"
 
@@ -388,6 +436,11 @@ class CoinbaseProvider:
 
             data = response.json()
             price_data = data.get("data", {})
+            
+            # Success - reset circuit breaker
+            if self.consecutive_failures > 0:
+                LOGGER.info(f"Coinbase recovered - resetting failure counter from {self.consecutive_failures}")
+                self.consecutive_failures = 0
 
             return {
                 "symbol": symbol.upper(),
@@ -397,7 +450,16 @@ class CoinbaseProvider:
             }
 
         except Exception as e:
-            LOGGER.warning(f"Coinbase fetch failed for {symbol}: {e}")
+            # Track failures for circuit breaker
+            self.consecutive_failures += 1
+            if self.consecutive_failures >= 3:
+                self.circuit_open = True
+                self.circuit_open_until = time.time() + 300  # 5 minutes
+                LOGGER.error(f"Coinbase circuit breaker OPENED - {self.consecutive_failures} consecutive failures - disabled for 5min")
+            else:
+                LOGGER.warning(f"Coinbase failure #{self.consecutive_failures} for {symbol} - circuit opens at 3: {e}")
+            
+            return None
             return None
 
 
@@ -438,19 +500,44 @@ class CryptoCompareProvider:
             return None
 
 
-# Cache for crypto prices (15-minute TTL to reduce API load)
-# PERFORMANCE FIX: Increased from 5min to 15min to prevent CoinGecko 429 spam
+# Cache for crypto prices (30-second TTL for high-frequency trading)
+# PERFORMANCE FIX: Reduced from 15min to 30s for better price freshness
+# while still preventing excessive API calls
 _CRYPTO_CACHE: dict[str, dict[str, Any]] = {}
-_CACHE_TTL = 900  # 15 minutes (was 300s - caused too many API calls)
+_CACHE_TTL = 30  # 30 seconds - balances freshness with API rate limits
+
+# Cache metrics for monitoring
+_CACHE_HITS = 0
+_CACHE_MISSES = 0
 
 
 def _get_crypto_cache(symbol: str) -> dict[str, Any] | None:
     """Get cached price if still valid"""
+    global _CACHE_HITS, _CACHE_MISSES
+    
     if symbol in _CRYPTO_CACHE:
         cached = _CRYPTO_CACHE[symbol]
         if time.time() - cached.get("cached_at", 0) < _CACHE_TTL:
+            _CACHE_HITS += 1
             return cached
+    
+    _CACHE_MISSES += 1
     return None
+
+
+def get_cache_stats() -> dict[str, Any]:
+    """Get cache performance statistics"""
+    total = _CACHE_HITS + _CACHE_MISSES
+    hit_rate = (_CACHE_HITS / total * 100) if total > 0 else 0
+    
+    return {
+        "hits": _CACHE_HITS,
+        "misses": _CACHE_MISSES,
+        "total_requests": total,
+        "hit_rate_pct": round(hit_rate, 2),
+        "cache_size": len(_CRYPTO_CACHE),
+        "ttl_seconds": _CACHE_TTL,
+    }
 
 
 def _set_crypto_cache(symbol: str, price_data: dict[str, Any]):
