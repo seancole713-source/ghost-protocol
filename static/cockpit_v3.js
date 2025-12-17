@@ -1772,3 +1772,297 @@ window.addEventListener('beforeunload', () => {
         clearInterval(window.cascadeInterval);
     }
 });
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PAPER TRADING TRACKER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+async function updatePaperTrades() {
+    try {
+        // Get stats
+        const statsRes = await fetch('/api/v3/paper/stats?days=30');
+        const statsData = await statsRes.json();
+        
+        if (statsData.ok && statsData.stats) {
+            const stats = statsData.stats;
+            
+            // Update stats display
+            document.getElementById('paper-win-rate').textContent = 
+                `${(stats.win_rate * 100).toFixed(1)}%`;
+            document.getElementById('paper-total').textContent = stats.resolved_trades || 0;
+            document.getElementById('paper-pending').textContent = stats.pending_trades || 0;
+            
+            const pnlEl = document.getElementById('paper-pnl');
+            const pnl = stats.total_pnl || 0;
+            pnlEl.textContent = `$${pnl.toFixed(2)}`;
+            pnlEl.className = 'stat-value ' + (pnl >= 0 ? 'positive' : 'negative');
+        }
+        
+        // Get recent trades
+        const tradesRes = await fetch('/api/v3/paper/trades?limit=20');
+        const tradesData = await tradesRes.json();
+        
+        if (tradesData.ok && tradesData.trades) {
+            renderPaperTrades(tradesData.trades);
+        }
+        
+    } catch (error) {
+        console.error('Failed to update paper trades:', error);
+    }
+}
+
+function renderPaperTrades(trades) {
+    const container = document.getElementById('paper-trades-list');
+    
+    if (!trades || trades.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">��</div>
+                <div class="empty-state-text">No Paper Trades Yet</div>
+                <div class="empty-state-subtext">Ghost will auto-log signals at 6h final calls</div>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = trades.map(trade => {
+        const direction = trade.signal_direction?.toLowerCase() || 'long';
+        const outcome = trade.outcome?.toLowerCase() || 'pending';
+        const pnl = trade.profit_loss || 0;
+        const pnlPct = trade.profit_loss_pct || 0;
+        
+        return `
+            <div class="trade-item">
+                <div class="trade-item-header">
+                    <div>
+                        <span class="trade-symbol">${trade.symbol}</span>
+                        <span class="trade-direction ${direction}">${direction}</span>
+                    </div>
+                    <span class="trade-outcome ${outcome}">${outcome}</span>
+                </div>
+                <div class="trade-item-details">
+                    <div class="trade-detail">
+                        <div class="trade-detail-label">Entry</div>
+                        <div class="trade-detail-value">$${trade.entry_price.toLocaleString()}</div>
+                    </div>
+                    <div class="trade-detail">
+                        <div class="trade-detail-label">Target</div>
+                        <div class="trade-detail-value">${trade.target_price ? '$' + trade.target_price.toLocaleString() : '--'}</div>
+                    </div>
+                    <div class="trade-detail">
+                        <div class="trade-detail-label">Confidence</div>
+                        <div class="trade-detail-value">${(trade.signal_confidence * 100).toFixed(0)}%</div>
+                    </div>
+                    <div class="trade-detail">
+                        <div class="trade-detail-label">P&L</div>
+                        <div class="trade-detail-value ${pnl >= 0 ? 'positive' : 'negative'}">
+                            ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${(pnlPct * 100).toFixed(2)}%)
+                        </div>
+                    </div>
+                </div>
+                ${trade.actual_direction ? `
+                    <div class="trade-notes">
+                        Actual: ${trade.actual_direction} | Signal: ${trade.signal_time ? new Date(trade.signal_time).toLocaleString() : 'N/A'}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TRADE JOURNAL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+async function updateJournal() {
+    try {
+        // Get stats
+        const statsRes = await fetch('/api/v3/journal/stats?days=30');
+        const statsData = await statsRes.json();
+        
+        if (statsData.ok && statsData.stats) {
+            const stats = statsData.stats;
+            
+            // Update stats display
+            document.getElementById('journal-win-rate').textContent = 
+                stats.win_rate ? `${(stats.win_rate * 100).toFixed(1)}%` : '--';
+            document.getElementById('journal-open').textContent = stats.open_trades || 0;
+            
+            const pnlEl = document.getElementById('journal-pnl');
+            const pnl = stats.total_pnl || 0;
+            pnlEl.textContent = `$${pnl.toFixed(2)}`;
+            pnlEl.className = 'stat-value ' + (pnl >= 0 ? 'positive' : 'negative');
+        }
+        
+        // Get recent trades
+        const tradesRes = await fetch('/api/v3/journal/trades?limit=20');
+        const tradesData = await tradesRes.json();
+        
+        if (tradesData.ok && tradesData.trades) {
+            renderJournalTrades(tradesData.trades);
+        }
+        
+    } catch (error) {
+        console.error('Failed to update journal:', error);
+    }
+}
+
+function renderJournalTrades(trades) {
+    const container = document.getElementById('journal-trades-list');
+    
+    if (!trades || trades.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">📝</div>
+                <div class="empty-state-text">No Trades Logged</div>
+                <div class="empty-state-subtext">Click "+ Log Trade" to record your first trade</div>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = trades.map(trade => {
+        const direction = trade.direction?.toLowerCase() || 'long';
+        const isOpen = !trade.exit_time;
+        const pnl = trade.profit_loss || 0;
+        const pnlPct = trade.profit_loss_pct || 0;
+        
+        return `
+            <div class="trade-item">
+                <div class="trade-item-header">
+                    <div>
+                        <span class="trade-symbol">${trade.symbol}</span>
+                        <span class="trade-direction ${direction}">${direction}</span>
+                    </div>
+                    ${isOpen ? 
+                        '<span class="trade-outcome pending">OPEN</span>' :
+                        `<span class="trade-outcome ${pnl >= 0 ? 'win' : 'loss'}">${pnl >= 0 ? 'WIN' : 'LOSS'}</span>`
+                    }
+                </div>
+                <div class="trade-item-details">
+                    <div class="trade-detail">
+                        <div class="trade-detail-label">Entry</div>
+                        <div class="trade-detail-value">$${trade.entry_price.toLocaleString()}</div>
+                    </div>
+                    ${!isOpen ? `
+                        <div class="trade-detail">
+                            <div class="trade-detail-label">Exit</div>
+                            <div class="trade-detail-value">$${trade.exit_price.toLocaleString()}</div>
+                        </div>
+                    ` : ''}
+                    <div class="trade-detail">
+                        <div class="trade-detail-label">Size</div>
+                        <div class="trade-detail-value">$${trade.position_size.toLocaleString()}</div>
+                    </div>
+                    ${!isOpen ? `
+                        <div class="trade-detail">
+                            <div class="trade-detail-label">P&L</div>
+                            <div class="trade-detail-value ${pnl >= 0 ? 'positive' : 'negative'}">
+                                ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${(pnlPct * 100).toFixed(2)}%)
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                ${trade.entry_notes ? `
+                    <div class="trade-notes">${trade.entry_notes}</div>
+                ` : ''}
+                ${isOpen && trade.stop_loss ? `
+                    <div class="trade-notes">
+                        Stop: $${trade.stop_loss.toLocaleString()} | Target: ${trade.take_profit ? '$' + trade.take_profit.toLocaleString() : 'N/A'}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+// Journal Form Handlers
+document.getElementById('btn-log-trade')?.addEventListener('click', () => {
+    document.getElementById('journal-entry-form').style.display = 'block';
+    document.getElementById('journal-stats').style.display = 'none';
+    document.getElementById('journal-trades-list').style.display = 'none';
+});
+
+document.getElementById('btn-cancel-entry')?.addEventListener('click', () => {
+    document.getElementById('journal-entry-form').style.display = 'none';
+    document.getElementById('journal-stats').style.display = 'grid';
+    document.getElementById('journal-trades-list').style.display = 'block';
+    clearJournalForm();
+});
+
+document.getElementById('btn-save-entry')?.addEventListener('click', async () => {
+    try {
+        const symbol = document.getElementById('entry-symbol').value.toUpperCase();
+        const direction = document.getElementById('entry-direction').value;
+        const entryPrice = parseFloat(document.getElementById('entry-price').value);
+        const positionSize = parseFloat(document.getElementById('entry-size').value);
+        const stopLoss = document.getElementById('entry-stop').value ? 
+            parseFloat(document.getElementById('entry-stop').value) : null;
+        const takeProfit = document.getElementById('entry-target').value ? 
+            parseFloat(document.getElementById('entry-target').value) : null;
+        const notes = document.getElementById('entry-notes').value;
+        
+        if (!symbol || !entryPrice || !positionSize) {
+            alert('Please fill in all required fields');
+            return;
+        }
+        
+        // Build query params
+        const params = new URLSearchParams({
+            symbol,
+            direction,
+            entry_price: entryPrice,
+            position_size: positionSize
+        });
+        
+        if (stopLoss) params.append('stop_loss', stopLoss);
+        if (takeProfit) params.append('take_profit', takeProfit);
+        if (notes) params.append('notes', notes);
+        
+        const response = await fetch(`/api/v3/journal/entry?${params}`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.ok) {
+            alert('Trade logged successfully!');
+            document.getElementById('btn-cancel-entry').click();
+            updateJournal(); // Refresh
+        } else {
+            alert('Failed to log trade: ' + (result.error || 'Unknown error'));
+        }
+        
+    } catch (error) {
+        console.error('Failed to save trade:', error);
+        alert('Error saving trade');
+    }
+});
+
+function clearJournalForm() {
+    document.getElementById('entry-symbol').value = '';
+    document.getElementById('entry-price').value = '';
+    document.getElementById('entry-size').value = '';
+    document.getElementById('entry-stop').value = '';
+    document.getElementById('entry-target').value = '';
+    document.getElementById('entry-notes').value = '';
+}
+
+// Initialize updates
+function initializeTradeTracking() {
+    updatePaperTrades();
+    updateJournal();
+    
+    // Update every 60 seconds
+    setInterval(() => {
+        updatePaperTrades();
+        updateJournal();
+    }, 60000);
+}
+
+// Start tracking when page loads
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeTradeTracking);
+} else {
+    initializeTradeTracking();
+}

@@ -56,6 +56,116 @@
             <!-- Populated by JavaScript -->
         </section>
         
+        <!-- 📊 PAPER TRADING TRACKER - Auto-tracked signals -->
+        <section class="panel panel-highlight" id="panel-paper-trades">
+            <div class="panel-header">
+                <h2>📊 Paper Trading Tracker</h2>
+                <span class="horizon-badge">AUTO-TRACKED</span>
+            </div>
+            <div class="panel-body">
+                <div class="paper-stats" id="paper-stats">
+                    <div class="stat-box">
+                        <div class="stat-label">Win Rate</div>
+                        <div class="stat-value" id="paper-win-rate">--</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Total Trades</div>
+                        <div class="stat-value" id="paper-total">--</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Pending</div>
+                        <div class="stat-value" id="paper-pending">--</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Total P&L</div>
+                        <div class="stat-value" id="paper-pnl">--</div>
+                    </div>
+                </div>
+                
+                <div class="paper-trades-list" id="paper-trades-list">
+                    <div class="loading">⏳ Loading paper trades...</div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 📝 TRADE JOURNAL - Manual trade logging -->
+        <section class="panel panel-highlight" id="panel-trade-journal">
+            <div class="panel-header">
+                <h2>📝 Trade Journal</h2>
+                <button class="btn btn-primary" id="btn-log-trade">+ Log Trade</button>
+            </div>
+            <div class="panel-body">
+                <!-- Log Entry Form (hidden by default) -->
+                <div class="journal-form" id="journal-entry-form" style="display:none;">
+                    <h3>Log Trade Entry</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Symbol</label>
+                            <input type="text" id="entry-symbol" placeholder="BTC" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Direction</label>
+                            <select id="entry-direction">
+                                <option value="LONG">LONG</option>
+                                <option value="SHORT">SHORT</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Entry Price ($)</label>
+                            <input type="number" id="entry-price" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Position Size ($)</label>
+                            <input type="number" id="entry-size" step="0.01" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Stop Loss ($)</label>
+                            <input type="number" id="entry-stop" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>Take Profit ($)</label>
+                            <input type="number" id="entry-target" step="0.01">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Notes</label>
+                            <textarea id="entry-notes" placeholder="Based on 6h cascade signal..."></textarea>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-success" id="btn-save-entry">Save Entry</button>
+                        <button class="btn btn-secondary" id="btn-cancel-entry">Cancel</button>
+                    </div>
+                </div>
+                
+                <!-- Journal Stats -->
+                <div class="journal-stats" id="journal-stats">
+                    <div class="stat-box">
+                        <div class="stat-label">Win Rate</div>
+                        <div class="stat-value" id="journal-win-rate">--</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Open Trades</div>
+                        <div class="stat-value" id="journal-open">--</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Total P&L</div>
+                        <div class="stat-value" id="journal-pnl">--</div>
+                    </div>
+                </div>
+                
+                <!-- Trades List -->
+                <div class="journal-trades-list" id="journal-trades-list">
+                    <div class="loading">⏳ Loading your trades...</div>
+                </div>
+            </div>
+        </section>
+        
         <!-- 🟩 PANEL 1 - Top Movers -->
         <section class="panel" id="panel-movers">
             <div class="panel-header">
