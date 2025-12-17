@@ -30257,7 +30257,7 @@ try:
             tracker = get_paper_tracker()
             
             # Get current prices for all tracked symbols
-            from core.price_cache import PRICE_CACHE
+            from core.crypto.crypto_providers import get_crypto_price_quorum
             price_data = {}
             
             # Get unique symbols from pending trades
@@ -30267,11 +30267,14 @@ try:
             """).fetchall()
             conn.close()
             
+            # Fetch current prices
             for (symbol,) in symbols:
                 try:
-                    price_data[symbol] = PRICE_CACHE.get_cached_price(symbol)
-                except:
-                    LOGGER.warning(f"Could not get price for {symbol}")
+                    result = await get_crypto_price_quorum(symbol, use_cache=True)
+                    if result and result.get("price"):
+                        price_data[symbol] = result["price"]
+                except Exception as e:
+                    LOGGER.warning(f"Could not get price for {symbol}: {e}")
             
             resolved = tracker.check_all_pending(price_data)
             

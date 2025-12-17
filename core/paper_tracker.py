@@ -13,10 +13,9 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+import logging
 
-from core.logger import get_logger
-
-LOGGER = get_logger("paper_tracker")
+LOGGER = logging.getLogger("paper_tracker")
 
 
 class PaperTracker:

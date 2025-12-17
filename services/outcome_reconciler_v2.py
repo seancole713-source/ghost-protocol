@@ -258,10 +258,11 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
         now = time.time()
         if abs(now - timestamp) < 3600:
             try:
-                from services.unified_provider import get_symbol_price
-                price = get_symbol_price(symbol)
-                if price is not None:
-                    return price
+                from core.crypto.crypto_providers import get_crypto_price_quorum
+                import asyncio
+                result = asyncio.run(get_crypto_price_quorum(symbol, use_cache=True))
+                if result and result.get("price"):
+                    return result["price"]
             except Exception as e:
                 LOGGER.debug(f"Could not get live price: {e}")
         

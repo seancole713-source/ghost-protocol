@@ -175,10 +175,9 @@ def _check_pending_cascades():
         # Check pending paper trades (resolve outcomes)
         try:
             from core.paper_tracker import get_paper_tracker
-            tracker = get_paper_tracker()
+            from core.crypto.crypto_providers import get_crypto_price_quorum
             
-            # Get current prices for checking
-            from core.price_cache import PRICE_CACHE
+            tracker = get_paper_tracker()
             price_data = {}
             
             # Get unique symbols from pending trades
@@ -188,9 +187,12 @@ def _check_pending_cascades():
             """).fetchall()
             paper_conn.close()
             
+            # Fetch current prices
             for (symbol,) in symbols:
                 try:
-                    price_data[symbol] = PRICE_CACHE.get_cached_price(symbol)
+                    result = asyncio.run(get_crypto_price_quorum(symbol, use_cache=True))
+                    if result and result.get("price"):
+                        price_data[symbol] = result["price"]
                 except:
                     pass
             

@@ -305,13 +305,13 @@ class WatchlistTelegramAlerter:
             TRUE if sent successfully
         """
         try:
-            # Import telegram hunter
-            from services.telegram_hunter import send_telegram_alert
+            # Import telegram alerts
+            from core.telegram_alerts import send_alert
 
-            result = send_telegram_alert(message, alert_type="watchlist")
-            return result.get("ok", False)
+            result = send_alert(message, alert_type="watchlist")
+            return result.get("ok", False) if isinstance(result, dict) else bool(result)
         except ImportError:
-            LOGGER.warning("⚠️  telegram_hunter not available, message not sent")
+            LOGGER.warning("⚠️  telegram_alerts not available, message not sent")
             return False
         except Exception as e:
             LOGGER.error(f"❌ Failed to send Telegram message: {e}")
