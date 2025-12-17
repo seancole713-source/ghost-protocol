@@ -174,6 +174,7 @@ class DailyTop10Scanner:
         """
         Save top 10 opportunities to database.
         
+        Also registers positions with Guardian Oracle for monitoring.
         Replaces current top 10.
         """
         import uuid
@@ -216,15 +217,57 @@ class DailyTop10Scanner:
                     entry_price, target_price, stop_loss, opp["sell_at"],
                     opp["direction"], now, now, rank
                 ))
+                
+                # Register with Guardian Oracle for 24/7 monitoring
+                self._register_with_guardian(opportunity_id, opp, conn)
             
             conn.commit()
             LOGGER.info(f"✅ Saved top 10 opportunities (ranks 1-10)")
+            LOGGER.info(f"🛡️ Guardian Oracle now monitoring all 10 positions")
         
         except Exception as e:
             LOGGER.error(f"Failed to save top 10: {e}")
             conn.rollback()
         finally:
             conn.close()
+    
+    def _register_with_guardian(self, opportunity_id: str, opp: dict, conn):
+        """Register position with Guardian Oracle for monitoring"""
+        try:
+            now = datetime.utcnow().isoformat()
+            
+            # Add reasoning if not present
+            reasoning = opp.get('reasoning', 'Technical alignment, strong momentum indicators')
+            
+            conn.execute("""
+                INSERT INTO guardian_positions (
+                    symbol, asset_type,
+                    original_prediction, original_confidence, 
+                    original_target, original_direction,
+                    entry_price, entry_time,
+                    current_price, current_confidence, current_target,
+                    current_pnl_pct, status, reason_entered, last_update_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+            """, (
+                opp['symbol'], opp['asset_type'],
+                f"{opp['direction']} +{opp['gain_pct']:.1f}%",
+                opp['confidence'],
+                opp['predicted_48h_price'],
+                opp['direction'],
+                opp['current_price'],
+                now,
+                opp['current_price'],
+                opp['confidence'],
+                opp['predicted_48h_price'],
+                0.0,  # Starting PnL
+                reasoning,
+                now
+            ))
+            
+            LOGGER.debug(f"✅ Registered {opp['symbol']} with Guardian Oracle")
+            
+        except Exception as e:
+            LOGGER.warning(f"Failed to register {opp.get('symbol')} with Guardian: {e}")
     
     def get_active_top_10(self) -> list[dict]:
         """Get current active top 10 opportunities"""

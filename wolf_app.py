@@ -4801,15 +4801,28 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.exception("cascade_scheduler_start_failed", extra={"component": "startup", "error": str(e)})
 
-    # Start Daily Top 10 Scanner (6 AM money-making opportunities)
+    # Start Guardian Oracle System (6 AM prophecy + 24/7 monitoring)
     try:
-        from core.top_10_scheduler import start_daily_scheduler
+        from core.guardian_heartbeat_scheduler import start_heartbeat_scheduler
+        from core.guardian_oracle import get_guardian_oracle
         
-        start_daily_scheduler()
+        # Start 6-hour heartbeat system (6 AM, 12 PM, 6 PM, 12 AM)
+        start_heartbeat_scheduler(timezone="America/Chicago")
         
-        LOGGER.info("✅ Daily Top 10 Scanner: STARTED (runs at 6 AM daily)")
+        LOGGER.info("💗 Guardian Heartbeat System: STARTED")
+        LOGGER.info("   6:00 AM - Morning Oracle Prophecy")
+        LOGGER.info("   12:00 PM - Midday Status Check")
+        LOGGER.info("   6:00 PM - Evening Update")
+        LOGGER.info("   12:00 AM - Night Watch")
+        
+        # Start 24/7 Guardian monitoring for immediate alerts
+        guardian = get_guardian_oracle()
+        asyncio.create_task(guardian.guardian_monitor_loop())
+        
+        LOGGER.info("🛡️ Guardian Oracle: ACTIVATED (24/7 protection)")
+        
     except Exception as e:
-        LOGGER.exception("top_10_scheduler_start_failed", extra={"component": "startup", "error": str(e)})
+        LOGGER.exception("guardian_oracle_start_failed", extra={"component": "startup", "error": str(e)})
 
     # Optional heartbeat (skip price fetch to avoid blocking startup)
     try:
@@ -30452,3 +30465,133 @@ try:
 except Exception as e:
     LOGGER.error(f"⚠️ Daily Top 10 Scanner not loaded: {e}", exc_info=True)
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# GUARDIAN ORACLE API (24/7 Monitoring + Heartbeats)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+try:
+    from core.guardian_oracle import get_guardian_oracle
+    from core.guardian_heartbeat_scheduler import force_heartbeat
+
+    @APP.get("/api/v3/guardian/status")
+    async def api_v3_guardian_status():
+        """
+        Get Guardian Oracle monitoring status.
+        
+        Returns:
+            - Active positions being monitored
+            - Alert history
+            - Overall P&L
+        """
+        try:
+            guardian = get_guardian_oracle()
+            status = await guardian._get_current_status()
+            
+            return {
+                "ok": True,
+                "guardian_active": guardian.monitoring,
+                "positions_active": status.get('active_count', 0),
+                "positions_on_track": status.get('on_track', 0),
+                "positions_weakened": status.get('weakened', 0),
+                "total_pnl_pct": status.get('total_pnl', 0.0),
+                "alert_count": len(guardian.alert_history)
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to get guardian status: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/v3/guardian/positions")
+    async def api_v3_guardian_positions():
+        """
+        Get all positions Guardian is monitoring.
+        
+        Shows current status, P&L, confidence changes.
+        """
+        try:
+            import sqlite3
+            conn = sqlite3.connect("data/ghost_predictions.db")
+            conn.row_factory = sqlite3.Row
+            
+            rows = conn.execute("""
+                SELECT * FROM guardian_positions
+                WHERE status = 'active'
+                ORDER BY entry_time DESC
+            """).fetchall()
+            
+            positions = [dict(row) for row in rows]
+            conn.close()
+            
+            return {
+                "ok": True,
+                "count": len(positions),
+                "positions": positions
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to get guardian positions: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/v3/guardian/alerts")
+    async def api_v3_guardian_alerts():
+        """
+        Get Guardian alert history.
+        
+        Shows all alerts sent (confidence changes, reversals, etc.)
+        """
+        try:
+            import sqlite3
+            conn = sqlite3.connect("data/ghost_predictions.db")
+            conn.row_factory = sqlite3.Row
+            
+            rows = conn.execute("""
+                SELECT * FROM guardian_alerts
+                ORDER BY sent_at DESC
+                LIMIT 50
+            """).fetchall()
+            
+            alerts = [dict(row) for row in rows]
+            conn.close()
+            
+            return {
+                "ok": True,
+                "count": len(alerts),
+                "alerts": alerts
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to get guardian alerts: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/guardian/heartbeat/{heartbeat_type}")
+    async def api_v3_force_heartbeat(heartbeat_type: str):
+        """
+        Manually trigger a heartbeat for testing.
+        
+        Args:
+            heartbeat_type: 'morning', 'midday', 'evening', or 'night'
+        """
+        try:
+            if heartbeat_type not in ['morning', 'midday', 'evening', 'night']:
+                return {
+                    "ok": False,
+                    "error": f"Invalid heartbeat type: {heartbeat_type}. Use: morning, midday, evening, night"
+                }
+            
+            force_heartbeat(heartbeat_type)
+            
+            return {
+                "ok": True,
+                "message": f"Triggered {heartbeat_type} heartbeat",
+                "heartbeat_type": heartbeat_type
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to force heartbeat: {e}")
+            return {"ok": False, "error": str(e)}
+
+    LOGGER.info("✅ Guardian Oracle endpoints registered (/api/v3/guardian/*)")
+
+except Exception as e:
+    LOGGER.error(f"⚠️ Guardian Oracle endpoints not loaded: {e}", exc_info=True)
