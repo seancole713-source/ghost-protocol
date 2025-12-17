@@ -272,30 +272,44 @@ async function loadAllPanels() {
     console.log('✅ Fast panels loaded, slow panels loading in background');
 }
 
-// Panel 0: Latest BTC Prediction (6-Hour Horizon) - NEW
+// Panel 0: Latest BTC Prediction with CASCADE VIEW
 async function loadLatestBTCPrediction() {
     try {
-        const response = await fetch('/api/v3/predictions/latest?symbol=BTC');
-        if (!response.ok) throw new Error('Failed to load BTC prediction');
+        // Fetch both cascade data and momentum data
+        const [cascadeResp, predResp, momentumResp] = await Promise.all([
+            fetch('/api/v3/cascade/list?symbol=BTC&active_only=true'),
+            fetch('/api/v3/predictions/latest?symbol=BTC'),
+            fetch('/api/v3/momentum/BTC')
+        ]);
         
-        const data = await response.json();
-        const predictions = data.predictions || [];
-        const pred = predictions[0];
+        const cascadeData = cascadeResp.ok ? await cascadeResp.json() : null;
+        const predData = predResp.ok ? await predResp.json() : null;
+        const momentumData = momentumResp.ok ? await momentumResp.json() : null;
         
-        if (!pred) {
-            renderBTCPrediction(null);
-            return;
+        const activeCascade = cascadeData?.cascades?.[0] || null;
+        const latestPred = predData?.predictions?.[0] || null;
+        const momentum = momentumData?.momentum || null;
+        
+        console.log('[BTC] Cascade:', activeCascade);
+        console.log('[BTC] Momentum:', momentum);
+        console.log('[BTC] Prediction:', latestPred);
+        
+        if (activeCascade) {
+            // Render CASCADE VIEW if active cascade exists
+            renderBTCCascade(activeCascade, momentum);
+        } else if (latestPred) {
+            // Fallback to single prediction with momentum
+            renderBTCPrediction(latestPred, momentum);
+        } else {
+            renderBTCPrediction(null, null);
         }
-        
-        console.log('[BTC PREDICTION] Loaded:', pred);
-        renderBTCPrediction(pred);
     } catch (error) {
-        console.error('[BTC PREDICTION] Error:', error);
-        renderBTCPrediction(null);
+        console.error('[BTC] Load error:', error);
+        renderBTCPrediction(null, null);
     }
 }
 
-function renderBTCPrediction(prediction) {
+function renderBTCPrediction(prediction, momentum) {
     const container = document.getElementById('btc-prediction');
     
     if (!prediction) {
@@ -325,6 +339,21 @@ function renderBTCPrediction(prediction) {
     // Confidence styling
     const confidenceClass = confidence >= 55 ? 'high' : confidence >= 45 ? 'medium' : 'low';
     
+    // Momentum rendering
+    let momentumHTML = '';
+    if (momentum && momentum.status) {
+        const momentumClass = momentum.status.toLowerCase().replace(' ', '-');
+        const momentumDelta = momentum.change_pct || 0;
+        const momentumSign = momentumDelta > 0 ? '+' : '';
+        momentumHTML = `
+            <div class="btc-momentum ${momentumClass}">
+                <span class="momentum-emoji">${momentum.emoji || '➡️'}</span>
+                <span class="momentum-label">${momentum.status || 'STABLE'}</span>
+                <span class="momentum-delta">${momentumSign}${momentumDelta.toFixed(1)}%</span>
+            </div>
+        `;
+    }
+    
     container.innerHTML = `
         <div class="btc-pred-main">
             <div class="btc-pred-direction ${directionClass}">
@@ -340,6 +369,7 @@ function renderBTCPrediction(prediction) {
                 <span class="move-label">Expected Move</span>
             </div>
         </div>
+        ${momentumHTML}
         <div class="btc-pred-meta">
             <div class="meta-item">
                 <span class="meta-icon">⏱️</span>
@@ -352,6 +382,143 @@ function renderBTCPrediction(prediction) {
             <div class="meta-item">
                 <span class="meta-icon">🎯</span>
                 <span class="meta-text">6-Hour Horizon (GHOST MAX v2.0)</span>
+            </div>
+        </div>
+    `;
+}
+
+// NEW: Render CASCADE VIEW (48h → 24h → 6h → Outcome)
+function renderBTCCascade(cascade, momentum) {
+    const container = document.getElementById('btc-prediction');
+    const now = Date.now() / 1000;
+    const createdAt = cascade.created_at;
+    const elapsed = now - createdAt;
+    
+    // Calculate time until next updates
+    const h24_time = createdAt + (24 * 3600);
+    const h42_time = createdAt + (42 * 3600);
+    const h48_time = createdAt + (48 * 3600);
+    
+    const secondsUntil24h = h24_time - now;
+    const secondsUntil42h = h42_time - now;
+    const secondsUntil48h = h48_time - now;
+    
+    // Format time remaining
+    function formatTimeRemaining(seconds) {
+        if (seconds < 0) return 'Complete';
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        return `${hours}h ${mins}m`;
+    }
+    
+    // Elapsed time
+    const elapsedHours = Math.floor(elapsed / 3600);
+    const elapsedMins = Math.floor((elapsed % 3600) / 60);
+    
+    // Stage data
+    const h48 = cascade.h48;
+    const h24 = cascade.h24;
+    const h6 = cascade.h6;
+    const outcome = cascade.outcome;
+    
+    // Momentum rendering
+    let momentumHTML = '';
+    if (momentum && momentum.status) {
+        const momentumClass = momentum.status.toLowerCase().replace(' ', '-');
+        const momentumDelta = momentum.change_pct || 0;
+        const momentumSign = momentumDelta > 0 ? '+' : '';
+        momentumHTML = `
+            <div class="cascade-momentum ${momentumClass}">
+                <span class="momentum-emoji">${momentum.emoji || '➡️'}</span>
+                <span class="momentum-label">${momentum.status || 'STABLE'}</span>
+                <span class="momentum-delta">${momentumSign}${momentumDelta.toFixed(1)}%</span>
+            </div>
+        `;
+    }
+    
+    // Build stage HTML
+    const stageHTML = `
+        <div class="cascade-stage ${h48 ? 'completed' : 'pending'}">
+            <div class="stage-header">
+                <span class="stage-icon">🔔</span>
+                <span class="stage-title">48H ALERT</span>
+                <span class="stage-status">${h48 ? '✅ Sent' : '⏳ Pending'}</span>
+            </div>
+            ${h48 ? `
+                <div class="stage-body">
+                    <div class="stage-prediction">
+                        <span class="pred-direction ${h48.direction.toLowerCase()}">${h48.direction === 'UP' ? '📈' : '📉'} ${h48.direction}</span>
+                        <span class="pred-confidence">${Math.round(h48.confidence * 100)}%</span>
+                    </div>
+                    <div class="stage-meta">Entry: $${h48.price.toLocaleString()}</div>
+                </div>
+            ` : '<div class="stage-pending-text">Not started</div>'}
+        </div>
+        
+        <div class="cascade-stage ${h24 ? 'completed' : secondsUntil24h > 0 ? 'pending' : 'due'}">
+            <div class="stage-header">
+                <span class="stage-icon">📈</span>
+                <span class="stage-title">24H UPDATE</span>
+                <span class="stage-status">${h24 ? '✅ Updated' : '⏰ ' + formatTimeRemaining(secondsUntil24h)}</span>
+            </div>
+            ${h24 ? `
+                <div class="stage-body">
+                    <div class="stage-prediction">
+                        <span class="pred-direction ${h24.direction.toLowerCase()}">${h24.direction === 'UP' ? '📈' : '📉'} ${h24.direction}</span>
+                        <span class="pred-confidence">${Math.round(h24.confidence * 100)}%</span>
+                    </div>
+                    ${h48 ? `<div class="stage-delta">Change: ${(h24.confidence - h48.confidence) > 0 ? '+' : ''}${((h24.confidence - h48.confidence) * 100).toFixed(1)}%</div>` : ''}
+                </div>
+            ` : '<div class="stage-pending-text">Will re-evaluate with fresh data</div>'}
+        </div>
+        
+        <div class="cascade-stage ${h6 ? 'completed' : secondsUntil42h > 0 ? 'pending' : 'due'}">
+            <div class="stage-header">
+                <span class="stage-icon">✅</span>
+                <span class="stage-title">6H FINAL</span>
+                <span class="stage-status">${h6 ? '✅ Final' : '⏰ ' + formatTimeRemaining(secondsUntil42h)}</span>
+            </div>
+            ${h6 ? `
+                <div class="stage-body">
+                    <div class="stage-prediction">
+                        <span class="pred-direction ${h6.direction.toLowerCase()}">${h6.direction === 'UP' ? '📈' : '📉'} ${h6.direction}</span>
+                        <span class="pred-confidence">${Math.round(h6.confidence * 100)}%</span>
+                    </div>
+                    ${h24 ? `<div class="stage-delta">Change: ${(h6.confidence - h24.confidence) > 0 ? '+' : ''}${((h6.confidence - h24.confidence) * 100).toFixed(1)}%</div>` : ''}
+                </div>
+            ` : '<div class="stage-pending-text">High-confidence final call</div>'}
+        </div>
+        
+        <div class="cascade-stage ${outcome ? 'completed' : secondsUntil48h > 0 ? 'pending' : 'due'}">
+            <div class="stage-header">
+                <span class="stage-icon">🎯</span>
+                <span class="stage-title">OUTCOME</span>
+                <span class="stage-status">${outcome ? '✅ Scored' : '⏰ ' + formatTimeRemaining(secondsUntil48h)}</span>
+            </div>
+            ${outcome ? `
+                <div class="stage-body">
+                    <div class="stage-outcome">
+                        <span class="outcome-result">${outcome.actual_direction || 'TBD'}</span>
+                        <span class="outcome-score">Score: ${outcome.stages_correct || 0}/3</span>
+                    </div>
+                </div>
+            ` : '<div class="stage-pending-text">Final validation & scoring</div>'}
+        </div>
+    `;
+    
+    container.innerHTML = `
+        <div class="cascade-container">
+            <div class="cascade-header">
+                <div class="cascade-title">
+                    <span class="cascade-icon">🔮</span>
+                    <span>BTC PREDICTION CASCADE</span>
+                </div>
+                <div class="cascade-subtitle">ADAPTIVE 48H → 24H → 6H</div>
+                <div class="cascade-time-running">Running ${elapsedHours}h ${elapsedMins}m</div>
+            </div>
+            ${momentumHTML}
+            <div class="cascade-timeline">
+                ${stageHTML}
             </div>
         </div>
     `;
@@ -1030,6 +1197,23 @@ function renderWatchlist(data) {
         const directionEmoji = direction === 'UP' ? '↑' : direction === 'DOWN' ? '↓' : '→';
         const changeClass = changePct >= 0 ? 'positive' : 'negative';
         
+        // Momentum indicator (if available)
+        let momentumHTML = '';
+        if (item.momentum || item.momentum_status) {
+            const momentum = item.momentum || {};
+            const status = momentum.status || item.momentum_status || 'STABLE';
+            const emoji = momentum.emoji || '➡️';
+            const delta = momentum.change_pct || 0;
+            const momentumClass = status.toLowerCase().replace(' ', '-');
+            
+            momentumHTML = `
+                <div class="watchlist-momentum ${momentumClass}" title="Momentum: ${status}">
+                    <span class="momentum-icon">${emoji}</span>
+                    ${delta !== 0 ? `<span class="momentum-change">${delta > 0 ? '+' : ''}${delta.toFixed(1)}%</span>` : ''}
+                </div>
+            `;
+        }
+        
         return `
             <div class="watchlist-row">
                 <div class="watchlist-left">
@@ -1045,6 +1229,7 @@ function renderWatchlist(data) {
                         ${changeDisplay}
                     </div>
                     <div class="watchlist-score">${directionEmoji} Ghost: ${scoreDisplay}</div>
+                    ${momentumHTML}
                 </div>
             </div>
         `;
