@@ -4801,6 +4801,16 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.exception("cascade_scheduler_start_failed", extra={"component": "startup", "error": str(e)})
 
+    # Start Daily Top 10 Scanner (6 AM money-making opportunities)
+    try:
+        from core.top_10_scheduler import start_daily_scheduler
+        
+        start_daily_scheduler()
+        
+        LOGGER.info("✅ Daily Top 10 Scanner: STARTED (runs at 6 AM daily)")
+    except Exception as e:
+        LOGGER.exception("top_10_scheduler_start_failed", extra={"component": "startup", "error": str(e)})
+
     # Optional heartbeat (skip price fetch to avoid blocking startup)
     try:
         if TELEGRAM_HEARTBEAT_ON_START:
@@ -30362,3 +30372,83 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))
     # Run with in-memory app object to avoid duplicate module import
     uvicorn.run(APP, host="0.0.0.0", port=port, reload=False)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# DAILY TOP 10 SCANNER (6 AM Money-Making Opportunities)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+try:
+    from core.daily_top_10_scanner import get_scanner
+
+    @APP.get("/api/v3/top10")
+    async def api_v3_get_top_10():
+        """
+        Get current active top 10 money-making opportunities.
+        
+        Returns Ghost's daily picks with predicted gains, sell times, and confidence.
+        """
+        try:
+            scanner = get_scanner()
+            top_10 = scanner.get_active_top_10()
+            
+            return {
+                "ok": True,
+                "count": len(top_10),
+                "opportunities": top_10,
+                "last_updated": top_10[0]["last_updated"] if top_10 else None
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to get top 10: {e}")
+            return {
+                "ok": False,
+                "error": str(e),
+                "opportunities": []
+            }
+
+    @APP.post("/api/v3/top10/scan")
+    async def api_v3_scan_top_10():
+        """
+        Manually trigger top 10 scan (normally runs at 6 AM daily).
+        
+        Returns:
+            {
+                "ok": true,
+                "opportunities": [...10 picks...],
+                "alert_sent": true
+            }
+        """
+        try:
+            scanner = get_scanner()
+            opportunities = await scanner.scan_for_top_10()
+            
+            if opportunities:
+                scanner.save_top_10(opportunities)
+                alert_sent = await scanner.send_daily_alert()
+                
+                return {
+                    "ok": True,
+                    "count": len(opportunities),
+                    "opportunities": opportunities,
+                    "alert_sent": alert_sent
+                }
+            else:
+                return {
+                    "ok": False,
+                    "error": "No opportunities found",
+                    "opportunities": []
+                }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to scan top 10: {e}", exc_info=True)
+            return {
+                "ok": False,
+                "error": str(e),
+                "opportunities": []
+            }
+
+    LOGGER.info("✅ Daily Top 10 Scanner endpoints registered")
+
+except Exception as e:
+    LOGGER.error(f"⚠️ Daily Top 10 Scanner not loaded: {e}", exc_info=True)
+
