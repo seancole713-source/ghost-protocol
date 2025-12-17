@@ -330,6 +330,14 @@ from routes.news_routes import news_router
 
 APP.include_router(news_router, prefix="/api/news", tags=["news"])
 
+# Mount Demo Endpoints (provides instant testing)
+try:
+    from api.demo_endpoints import router as demo_router
+    APP.include_router(demo_router)
+    print("[INIT] ✅ Demo endpoints mounted: /api/demo/morning_now")
+except Exception as e:
+    print(f"[INIT] ⚠️  Demo endpoints unavailable: {e}")
+
 # Mount Crypto OHLCV Router (provides /api/crypto/ohlcv/{symbol})
 # Note: This router is optional and provides additional crypto OHLCV endpoints
 try:
