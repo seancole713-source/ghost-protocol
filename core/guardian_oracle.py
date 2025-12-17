@@ -682,24 +682,12 @@ Human,
 Distance to target: ${abs(position['target_price'] - changes['current_price']):.2f}
 
 Ghost says:
-• {changes.get('probability_message', '99% likely to hit target in next 1-3 hours')}
-• Consider setting limit sell at ${position['target_price']*0.995:.2f}
-• Or trail stop at ${changes['current_price']*0.98:.2f} to lock profits
+- {changes.get('probability_message', '99% likely to hit target in next 1-3 hours')}
+- Consider setting limit sell at ${position['target_price']*0.995:.2f}
+- Or trail stop at ${changes['current_price']*0.98:.2f} to lock profits
 
 Your call, but the target is RIGHT THERE.
 You're about to make ${target_profit:+.0f}.
-
-🎯 Ghost
-        """
-
-Ghost says:
-• {changes.get('probability_message', '99% likely to hit target in next 1-3 hours')}
-• Consider setting limit sell at ${position['target_price']*0.995:.2f}
-• Or trail stop at ${changes['current_price']*0.98:.2f} to lock profits
-
-Your call, but the target is RIGHT THERE.
-
-🎯 Ghost
         """
     
     # ===== HELPER METHODS =====
