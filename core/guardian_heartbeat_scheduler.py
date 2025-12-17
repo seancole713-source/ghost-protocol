@@ -147,7 +147,8 @@ class GuardianHeartbeatScheduler:
                 return
             
             # Send via Telegram
-            await send_alert(message, disable_notification=False)
+            from core.telegram_hunter import send_telegram_message
+            send_telegram_message(message)
             
             # Log heartbeat
             self._log_heartbeat(heartbeat_type)
@@ -187,7 +188,7 @@ class GuardianHeartbeatScheduler:
                        "🐺 Ghost Oracle")
             
             # Save to database
-            await scanner.save_top_10(top_10)
+            scanner.save_top_10(top_10)  # sync method, no await
             
             # Format with Guardian Oracle personality and position sizing
             guardian = get_guardian_oracle()
