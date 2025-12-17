@@ -218,6 +218,8 @@ class GuardianOracle:
         
         for i, opp in enumerate(top_10, 1):
             # Calculate position-specific profits
+            entry_price = opp.get('current_price', opp.get('entry_price', 0))
+            target_price = opp.get('predicted_48h_price', opp.get('target_price', 0))
             target_value = position_size * (1 + opp['gain_pct'] / 100)
             profit_amount = target_value - position_size
             
@@ -243,7 +245,8 @@ class GuardianOracle:
             message_parts.append(
                 f"\n#{i} {emoji} {opp['symbol']} - {strength}\n"
                 f"💵 Invest: ${position_size:.0f}\n"
-                f"🎯 Target: ${target_value:.0f}\n"
+                f"📍 Entry: ${entry_price:.2f}\n"
+                f"🎯 Target: ${target_price:.2f}\n"
                 f"💰 Profit: +${profit_amount:.0f}\n"
                 f"📈 Gain: +{opp['gain_pct']:.1f}%\n"
                 f"⏰ Exit: {self._format_sell_time(opp.get('sell_at'))}\n"
