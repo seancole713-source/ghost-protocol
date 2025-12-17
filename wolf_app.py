@@ -8712,108 +8712,6 @@ async def api_v3_cascade_start(symbol: str, user_id: str | None = None):
         }
 
 
-@APP.get("/api/v3/cascade/{cascade_id}")
-async def api_v3_cascade_get(cascade_id: str):
-    """
-    Get details of a specific cascade.
-    
-    Args:
-        cascade_id: UUID of the cascade
-    
-    Returns:
-        {
-            "ok": true,
-            "cascade": {
-                "cascade_id": "uuid",
-                "symbol": "BTC",
-                "created_at": 1234567890,
-                "h48": {...},
-                "h24": {...},
-                "h6": {...},
-                "outcome": {...}
-            }
-        }
-    
-    Example:
-        curl http://localhost:8000/api/v3/cascade/{cascade_id}
-    """
-    try:
-        from core.cascading_predictor import get_cascade_predictor
-        import sqlite3
-        
-        predictor = get_cascade_predictor()
-        
-        conn = sqlite3.connect(str(predictor.db_path))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute("""
-            SELECT * FROM prediction_cascades WHERE cascade_id = ?
-        """, (cascade_id,))
-        cascade = cursor.fetchone()
-        conn.close()
-        
-        if not cascade:
-            return {
-                "ok": False,
-                "error": "Cascade not found",
-                "cascade_id": cascade_id
-            }
-        
-        # Format response
-        cascade_dict = dict(cascade)
-        
-        return {
-            "ok": True,
-            "cascade": {
-                "cascade_id": cascade_dict['cascade_id'],
-                "symbol": cascade_dict['symbol'],
-                "created_at": cascade_dict['created_at'],
-                "h48": {
-                    "direction": cascade_dict['h48_direction'],
-                    "confidence": cascade_dict['h48_confidence'],
-                    "price": cascade_dict['h48_price'],
-                    "sent_at": cascade_dict['h48_sent_at'],
-                    "correct": cascade_dict.get('h48_correct')
-                } if cascade_dict['h48_direction'] else None,
-                "h24": {
-                    "direction": cascade_dict['h24_direction'],
-                    "confidence": cascade_dict['h24_confidence'],
-                    "price": cascade_dict['h24_price'],
-                    "direction_changed": bool(cascade_dict['h24_direction_changed']),
-                    "confidence_delta": cascade_dict['h24_confidence_delta'],
-                    "sent_at": cascade_dict['h24_sent_at'],
-                    "correct": cascade_dict.get('h24_correct')
-                } if cascade_dict['h24_direction'] else None,
-                "h6": {
-                    "direction": cascade_dict['h6_direction'],
-                    "confidence": cascade_dict['h6_confidence'],
-                    "price": cascade_dict['h6_price'],
-                    "direction_changed": bool(cascade_dict['h6_direction_changed']),
-                    "confidence_delta": cascade_dict['h6_confidence_delta'],
-                    "sent_at": cascade_dict['h6_sent_at'],
-                    "correct": cascade_dict.get('h6_correct')
-                } if cascade_dict['h6_direction'] else None,
-                "outcome": {
-                    "actual_price": cascade_dict['actual_price'],
-                    "actual_direction": cascade_dict['actual_direction'],
-                    "evaluated_at": cascade_dict['evaluated_at'],
-                    "stages_correct": sum(filter(None, [
-                        cascade_dict.get('h48_correct'),
-                        cascade_dict.get('h24_correct'),
-                        cascade_dict.get('h6_correct')
-                    ]))
-                } if cascade_dict.get('evaluated_at') else None
-            }
-        }
-    
-    except Exception as e:
-        LOGGER.error(f"Failed to get cascade {cascade_id}: {e}", exc_info=True)
-        return {
-            "ok": False,
-            "error": str(e),
-            "cascade_id": cascade_id
-        }
-
-
 @APP.get("/api/v3/cascade/list")
 async def api_v3_cascade_list(symbol: str | None = None, active_only: bool = True):
     """
@@ -8918,6 +8816,108 @@ async def api_v3_cascade_stats(days: int = 30):
         return {
             "ok": False,
             "error": str(e)
+        }
+
+
+@APP.get("/api/v3/cascade/{cascade_id}")
+async def api_v3_cascade_get(cascade_id: str):
+    """
+    Get details of a specific cascade.
+    
+    Args:
+        cascade_id: UUID of the cascade
+    
+    Returns:
+        {
+            "ok": true,
+            "cascade": {
+                "cascade_id": "uuid",
+                "symbol": "BTC",
+                "created_at": 1234567890,
+                "h48": {...},
+                "h24": {...},
+                "h6": {...},
+                "outcome": {...}
+            }
+        }
+    
+    Example:
+        curl http://localhost:8000/api/v3/cascade/{cascade_id}
+    """
+    try:
+        from core.cascading_predictor import get_cascade_predictor
+        import sqlite3
+        
+        predictor = get_cascade_predictor()
+        
+        conn = sqlite3.connect(str(predictor.db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute("""
+            SELECT * FROM prediction_cascades WHERE cascade_id = ?
+        """, (cascade_id,))
+        cascade = cursor.fetchone()
+        conn.close()
+        
+        if not cascade:
+            return {
+                "ok": False,
+                "error": "Cascade not found",
+                "cascade_id": cascade_id
+            }
+        
+        # Format response
+        cascade_dict = dict(cascade)
+        
+        return {
+            "ok": True,
+            "cascade": {
+                "cascade_id": cascade_dict['cascade_id'],
+                "symbol": cascade_dict['symbol'],
+                "created_at": cascade_dict['created_at'],
+                "h48": {
+                    "direction": cascade_dict['h48_direction'],
+                    "confidence": cascade_dict['h48_confidence'],
+                    "price": cascade_dict['h48_price'],
+                    "sent_at": cascade_dict['h48_sent_at'],
+                    "correct": cascade_dict.get('h48_correct')
+                } if cascade_dict['h48_direction'] else None,
+                "h24": {
+                    "direction": cascade_dict['h24_direction'],
+                    "confidence": cascade_dict['h24_confidence'],
+                    "price": cascade_dict['h24_price'],
+                    "direction_changed": bool(cascade_dict['h24_direction_changed']),
+                    "confidence_delta": cascade_dict['h24_confidence_delta'],
+                    "sent_at": cascade_dict['h24_sent_at'],
+                    "correct": cascade_dict.get('h24_correct')
+                } if cascade_dict['h24_direction'] else None,
+                "h6": {
+                    "direction": cascade_dict['h6_direction'],
+                    "confidence": cascade_dict['h6_confidence'],
+                    "price": cascade_dict['h6_price'],
+                    "direction_changed": bool(cascade_dict['h6_direction_changed']),
+                    "confidence_delta": cascade_dict['h6_confidence_delta'],
+                    "sent_at": cascade_dict['h6_sent_at'],
+                    "correct": cascade_dict.get('h6_correct')
+                } if cascade_dict['h6_direction'] else None,
+                "outcome": {
+                    "actual_price": cascade_dict['actual_price'],
+                    "actual_direction": cascade_dict['actual_direction'],
+                    "evaluated_at": cascade_dict['evaluated_at'],
+                    "stages_correct": sum(filter(None, [
+                        cascade_dict.get('h48_correct'),
+                        cascade_dict.get('h24_correct'),
+                        cascade_dict.get('h6_correct')
+                    ]))
+                } if cascade_dict.get('evaluated_at') else None
+            }
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to get cascade {cascade_id}: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "cascade_id": cascade_id
         }
 
 
