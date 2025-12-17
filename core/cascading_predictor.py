@@ -135,7 +135,8 @@ class CascadingPredictor:
     async def initiate_cascade(
         self, 
         symbol: str, 
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        silent_mode: bool = False
     ) -> str:
         """
         Start a new prediction cascade for a symbol.
@@ -148,6 +149,7 @@ class CascadingPredictor:
         Args:
             symbol: Cryptocurrency symbol (e.g., 'BTC', 'ETH')
             user_id: Optional user ID for personalized cascades
+            silent_mode: If True, skip Telegram alerts (for batch scanning)
         
         Returns:
             cascade_id: Unique ID of created cascade
@@ -188,16 +190,19 @@ class CascadingPredictor:
             conn.commit()
             conn.close()
             
-            # Send initial Telegram alert
-            await self._send_cascade_alert(
-                cascade_id=cascade_id,
-                symbol=symbol_upper,
-                stage="48h",
-                direction=pred_48h.get("direction"),
-                confidence=pred_48h.get("confidence"),
-                price=pred_48h.get("current_price"),
-                metadata={}
-            )
+            # Send initial Telegram alert (unless in silent mode)
+            if not silent_mode:
+                await self._send_cascade_alert(
+                    cascade_id=cascade_id,
+                    symbol=symbol_upper,
+                    stage="48h",
+                    direction=pred_48h.get("direction"),
+                    confidence=pred_48h.get("confidence"),
+                    price=pred_48h.get("current_price"),
+                    metadata={}
+                )
+            else:
+                LOGGER.info(f"[CASCADE] Silent mode - skipping 48h alert for {symbol_upper}")
             
             # Schedule future updates (using simple time-based tracking)
             # In production, you'd use APScheduler or similar

@@ -186,8 +186,8 @@ class DailyTop10Scanner:
                 from core.cascading_predictor import get_cascade_predictor
                 predictor = get_cascade_predictor()
                 
-                # Initiate cascade which generates 48h prediction
-                cascade_id = await predictor.initiate_cascade(symbol)
+                # Initiate cascade which generates 48h prediction (silent mode - no individual alerts)
+                cascade_id = await predictor.initiate_cascade(symbol, silent_mode=True)
                 
                 # Get the 48h prediction from cascade
                 conn = sqlite3.connect(str(predictor.db_path))
