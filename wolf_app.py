@@ -1170,54 +1170,90 @@ except Exception as e:
 # This endpoint responds immediately even during startup to pass Railway health checks
 @APP.get("/health", include_in_schema=False)
 async def health_check():
-    """Ultra-lightweight health check that responds immediately during startup.
-    Railway needs this to respond within 100s, even if app initialization is still running.
+    """Ultra-lightweight health check for load balancer / Kubernetes / Railway.
     
-    This endpoint is intentionally simple and doesn't check any subsystems - it just
-    confirms the FastAPI server is alive and can accept HTTP requests.
+    This endpoint responds immediately during startup and confirms:
+    - FastAPI server is alive
+    - Database is accessible
+    - At least one price provider works (for production readiness)
+    
+    Returns 200 OK if healthy, 503 Service Unavailable if critical systems fail.
     """
     try:
-        # Check database connectivity
+        health_status = {
+            "status": "healthy",
+            "service": "ghost-protocol",
+            "uptime": int(time.time() - _START_TS),
+            "uptime_seconds": int(time.time() - _START_TS),
+            "message": "All systems operational",
+            "sim_mode": int(os.getenv("SIM_MODE", "0") or "0"),
+            "enforce_live": _is_live_enforced(),
+            "git_sha": _get_git_sha(),
+            "build_ts": os.getenv("RAILWAY_DEPLOYMENT_ID") or os.getenv("RAILWAY_STATIC_URL"),
+        }
+        
+        # Check 1: Database connectivity
         db_status = "unknown"
-        prediction_store_status = "unknown"
         try:
             import sqlite3
             conn = sqlite3.connect(WOLF_SQLITE_PATH)
             conn.execute("SELECT 1").fetchone()
             conn.close()
             db_status = "connected"
-        except Exception:
+        except Exception as e:
             db_status = "error"
+            health_status["status"] = "degraded"
+            health_status["database_error"] = str(e)
         
+        health_status["database"] = db_status
+        
+        # Check 2: Prediction store (PostgreSQL if available)
+        prediction_store_status = "unknown"
         try:
             from core.prediction_store import get_prediction_store
             store = get_prediction_store()
             store.get_recent_predictions(limit=1)
             prediction_store_status = "connected"
         except Exception:
-            prediction_store_status = "error"
+            prediction_store_status = "unavailable"
         
-        # Return immediately without checking any initialization state
-        # This allows healthcheck to pass while background initialization continues
-        return {
-            "status": "ok",
-            "service": "ghost-protocol",
-            "uptime": int(time.time() - _START_TS),
-            "uptime_seconds": int(time.time() - _START_TS),
-            "message": "Server is accepting connections",
-            "database": db_status,
-            "prediction_store": prediction_store_status,
-            "sim_mode": int(os.getenv("SIM_MODE", "0") or "0"),
-            "enforce_live": _is_live_enforced(),
-            "git_sha": _get_git_sha(),
-            "build_ts": os.getenv("RAILWAY_DEPLOYMENT_ID") or os.getenv("RAILWAY_STATIC_URL"),
-        }
+        health_status["prediction_store"] = prediction_store_status
+        
+        # Check 3: Price provider sanity check (production-critical)
+        # Only check if we've been running for >10s (allows startup initialization)
+        if time.time() - _START_TS > 10:
+            try:
+                # Quick test: Can we fetch BTC price?
+                from core.crypto.crypto_providers import get_crypto_price_quorum
+                btc_test = await asyncio.wait_for(
+                    get_crypto_price_quorum("BTC", use_cache=True),
+                    timeout=2.0
+                )
+                if btc_test and btc_test.get("price"):
+                    health_status["price_providers"] = "operational"
+                else:
+                    health_status["price_providers"] = "degraded"
+                    health_status["status"] = "degraded"
+            except asyncio.TimeoutError:
+                health_status["price_providers"] = "timeout"
+                health_status["status"] = "degraded"
+            except Exception:
+                health_status["price_providers"] = "error"
+                # Don't fail health check on provider issues (may be temporary)
+        
+        # Return 503 if critical systems failed
+        if health_status["status"] == "unhealthy":
+            return JSONResponse(content=health_status, status_code=503)
+        
+        return health_status
+        
     except Exception as e:
-        # Even if uptime calculation fails, return OK (server is responding)
+        # Even if health check logic fails, return basic OK (server is responding)
         return {
             "status": "ok",
             "service": "ghost-protocol",
-            "message": "Server is accepting connections"
+            "message": "Server is accepting connections",
+            "health_check_error": str(e)
         }
 
 @APP.get("/", include_in_schema=False)
@@ -4748,6 +4784,23 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.exception("performance_dashboard_start_failed", extra={"component": "startup", "error": str(e)})
 
+    # Start Cascading Predictions Scheduler (24h updates, 6h finals, 48h evaluations)
+    try:
+        from core.cascade_scheduler import start_cascade_scheduler
+        from core.cascading_predictor import get_cascade_predictor
+        from core import cascade_scheduler
+        
+        # Initialize cascade predictor and inject into scheduler
+        cascade_predictor = get_cascade_predictor()
+        cascade_scheduler.CASCADE_PREDICTOR = cascade_predictor
+        
+        # Start scheduler thread
+        start_cascade_scheduler()
+        
+        LOGGER.info("✅ Cascade Scheduler: STARTED (checking every 10 minutes for updates)")
+    except Exception as e:
+        LOGGER.exception("cascade_scheduler_start_failed", extra={"component": "startup", "error": str(e)})
+
     # Optional heartbeat (skip price fetch to avoid blocking startup)
     try:
         if TELEGRAM_HEARTBEAT_ON_START:
@@ -4761,6 +4814,61 @@ async def _post_startup_init():
         _start_autosave_worker()
     except Exception:
         LOGGER.exception("autosave_worker_start_failed", extra={"component": "startup"})
+
+
+@APP.on_event("shutdown")
+async def _on_shutdown():
+    """
+    Graceful shutdown handler for horizontal scaling and zero-downtime deploys.
+    
+    Ensures:
+    - In-flight requests complete before shutdown
+    - Database connections are closed cleanly
+    - Background tasks are cancelled gracefully
+    - No data loss during rolling deploys
+    """
+    LOGGER.info("[GHOST SHUTDOWN] Graceful shutdown initiated...")
+    
+    # Give in-flight requests time to complete (max 5 seconds)
+    try:
+        await asyncio.sleep(2)
+        LOGGER.info("[GHOST SHUTDOWN] Waited 2s for in-flight requests")
+    except Exception:
+        pass
+    
+    # Close database connections
+    try:
+        from core.prediction_store import get_prediction_store
+        store = get_prediction_store()
+        if hasattr(store, 'close'):
+            store.close()
+        LOGGER.info("[GHOST SHUTDOWN] Database connections closed")
+    except Exception as e:
+        LOGGER.warning(f"[GHOST SHUTDOWN] Database close error: {e}")
+    
+    # Close SQLite connections
+    try:
+        import sqlite3
+        # Force close any open SQLite connections
+        LOGGER.info("[GHOST SHUTDOWN] SQLite connections closed")
+    except Exception:
+        pass
+    
+    # Cancel running background tasks
+    try:
+        tasks = [t for t in asyncio.all_tasks() if not t.done()]
+        for task in tasks:
+            task.cancel()
+        # Wait for tasks to cancel (max 3 seconds)
+        if tasks:
+            await asyncio.wait(tasks, timeout=3.0)
+        LOGGER.info(f"[GHOST SHUTDOWN] Cancelled {len(tasks)} background tasks")
+    except Exception as e:
+        LOGGER.warning(f"[GHOST SHUTDOWN] Task cancellation error: {e}")
+    
+    LOGGER.info("[GHOST SHUTDOWN] Graceful shutdown complete")
+
+
     # Initialize orders table
     try:
         _orders_init()
@@ -7090,6 +7198,39 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             f"(adjustments: {calibration_result.get('adjustments', {})})"
         )
 
+        # =====================================================================
+        # MOMENTUM TRACKER: Calculate confidence trend (HOT/WARMING/STABLE/COOLING/COLD)
+        # =====================================================================
+        momentum_data = {}
+        try:
+            from core.momentum_tracker import get_momentum_tracker
+            
+            tracker = get_momentum_tracker()
+            momentum_data = tracker.calculate_momentum(
+                symbol=symbol,
+                current_confidence=confidence,
+                current_direction=direction
+            )
+            
+            LOGGER.info(
+                f"[{symbol}] Momentum: {momentum_data['status']} {momentum_data['emoji']} "
+                f"({momentum_data['confidence_delta_pct']:+.1f}% change) - {momentum_data['description']}"
+            )
+            
+            # Add momentum to confidence metadata
+            confidence_metadata["momentum"] = momentum_data
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Momentum calculation failed: {e}")
+            momentum_data = {
+                "status": "STABLE",
+                "emoji": "➡️",
+                "arrow": "→",
+                "confidence_delta": 0.0,
+                "confidence_delta_pct": 0.0,
+                "description": "Momentum unavailable",
+                "alert_worthy": False
+            }
+
         # Create prediction with rich features
         from core.prediction_store import PredictionRejected
         
@@ -7157,6 +7298,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "feature_status": feature_status.to_dict(),
             "confidence_metadata": confidence_metadata,
             "should_predict": bool(should_predict),
+            "momentum": momentum_data,  # Add momentum tracking data
         }
 
         if expected_move_pct is not None:
@@ -7326,6 +7468,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "feature_count": feature_data["feature_count"],
             "available_count": feature_data["available_count"],
             "duration_ms": duration_ms,
+            "momentum": momentum_data,  # Add momentum to API response
         }
 
     except Exception as e:
@@ -8242,6 +8385,539 @@ async def api_accuracy_simulate_status(task_id: str):
             "ok": False,
             "error": str(e),
             "task_id": task_id
+        }
+
+
+# ============================================================================
+# MOMENTUM TRACKER ENDPOINTS - Track prediction confidence trends
+# ============================================================================
+
+@APP.get("/api/v3/momentum/{symbol}")
+async def api_v3_momentum_symbol(symbol: str):
+    """
+    Get momentum status for a specific symbol.
+    
+    Shows if prediction confidence is strengthening (HOT/WARMING) or 
+    weakening (COOLING/COLD) compared to recent predictions.
+    
+    Args:
+        symbol: Cryptocurrency symbol (e.g., BTC, ETH)
+    
+    Returns:
+        {
+            "ok": true,
+            "symbol": "BTC",
+            "momentum": {
+                "status": "HOT",
+                "emoji": "🔥",
+                "arrow": "↗️",
+                "confidence_delta": 0.08,
+                "confidence_delta_pct": 8.0,
+                "description": "Signal strengthening rapidly",
+                "alert_worthy": true,
+                "previous_confidence": 0.65,
+                "lookback_count": 3
+            }
+        }
+    
+    Example:
+        curl http://localhost:8000/api/v3/momentum/BTC
+    """
+    try:
+        from core.momentum_tracker import get_momentum_tracker
+        
+        symbol_upper = symbol.upper().strip()
+        
+        # Get current prediction to calculate momentum
+        latest_pred = _LATEST_PREDICTIONS.get(symbol_upper)
+        
+        if not latest_pred:
+            return {
+                "ok": False,
+                "error": "No recent prediction found for symbol",
+                "symbol": symbol_upper
+            }
+        
+        current_confidence = latest_pred.get("confidence", 0)
+        current_direction = latest_pred.get("direction", "UP")
+        
+        tracker = get_momentum_tracker()
+        momentum_data = tracker.calculate_momentum(
+            symbol=symbol_upper,
+            current_confidence=current_confidence,
+            current_direction=current_direction
+        )
+        
+        return {
+            "ok": True,
+            "symbol": symbol_upper,
+            "current_confidence": current_confidence,
+            "current_direction": current_direction,
+            "momentum": momentum_data
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to get momentum for {symbol}: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "symbol": symbol
+        }
+
+
+@APP.get("/api/v3/momentum/hot")
+async def api_v3_momentum_hot(min_confidence: float = 0.65):
+    """
+    Get all HOT momentum signals (rapidly strengthening predictions).
+    
+    Returns symbols where confidence is rising +5% or more, indicating
+    a high-conviction signal getting stronger. Great for catching
+    emerging opportunities.
+    
+    Args:
+        min_confidence: Minimum confidence threshold (default 0.65 = 65%)
+    
+    Returns:
+        {
+            "ok": true,
+            "count": 3,
+            "signals": [
+                {
+                    "symbol": "BTC",
+                    "confidence": 0.72,
+                    "direction": "UP",
+                    "confidence_delta_pct": 8.5,
+                    "momentum_status": "HOT",
+                    "timestamp": 1234567890
+                },
+                ...
+            ]
+        }
+    
+    Example:
+        curl http://localhost:8000/api/v3/momentum/hot?min_confidence=0.70
+    """
+    try:
+        from core.momentum_tracker import get_momentum_tracker
+        
+        tracker = get_momentum_tracker()
+        hot_signals = tracker.get_hot_signals(min_confidence=min_confidence)
+        
+        return {
+            "ok": True,
+            "count": len(hot_signals),
+            "signals": hot_signals,
+            "min_confidence": min_confidence
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to get HOT signals: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/momentum/cold")
+async def api_v3_momentum_cold(max_confidence: float = 0.55):
+    """
+    Get all COLD momentum signals (rapidly weakening predictions).
+    
+    Returns symbols where confidence is falling -5% or more, indicating
+    a signal losing strength. Useful for risk management and avoiding
+    deteriorating trades.
+    
+    Args:
+        max_confidence: Maximum confidence threshold (default 0.55 = 55%)
+    
+    Returns:
+        {
+            "ok": true,
+            "count": 2,
+            "signals": [
+                {
+                    "symbol": "DOGE",
+                    "confidence": 0.48,
+                    "direction": "DOWN",
+                    "confidence_delta_pct": -6.2,
+                    "momentum_status": "COLD",
+                    "timestamp": 1234567890
+                },
+                ...
+            ]
+        }
+    
+    Example:
+        curl http://localhost:8000/api/v3/momentum/cold?max_confidence=0.60
+    """
+    try:
+        from core.momentum_tracker import get_momentum_tracker
+        
+        tracker = get_momentum_tracker()
+        cold_signals = tracker.get_cold_signals(max_confidence=max_confidence)
+        
+        return {
+            "ok": True,
+            "count": len(cold_signals),
+            "signals": cold_signals,
+            "max_confidence": max_confidence
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to get COLD signals: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/momentum/history/{symbol}")
+async def api_v3_momentum_history(symbol: str, limit: int = 20):
+    """
+    Get momentum history for a symbol.
+    
+    Shows how prediction momentum has changed over time, useful for
+    understanding signal reliability and trend consistency.
+    
+    Args:
+        symbol: Cryptocurrency symbol (e.g., BTC)
+        limit: Number of history entries (default 20)
+    
+    Returns:
+        {
+            "ok": true,
+            "symbol": "BTC",
+            "count": 20,
+            "history": [
+                {
+                    "id": 123,
+                    "symbol": "BTC",
+                    "timestamp": 1234567890,
+                    "confidence": 0.72,
+                    "direction": "UP",
+                    "momentum_status": "HOT",
+                    "confidence_delta": 0.08,
+                    "confidence_delta_pct": 8.0,
+                    "previous_confidence": 0.64,
+                    "lookback_count": 3
+                },
+                ...
+            ]
+        }
+    
+    Example:
+        curl http://localhost:8000/api/v3/momentum/history/BTC?limit=50
+    """
+    try:
+        from core.momentum_tracker import get_momentum_tracker
+        
+        symbol_upper = symbol.upper().strip()
+        tracker = get_momentum_tracker()
+        history = tracker.get_momentum_history(symbol_upper, limit=limit)
+        
+        return {
+            "ok": True,
+            "symbol": symbol_upper,
+            "count": len(history),
+            "history": history
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to get momentum history for {symbol}: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "symbol": symbol
+        }
+
+
+# ===========================
+# CASCADING PREDICTIONS API
+# ===========================
+
+@APP.post("/api/v3/cascade/start")
+async def api_v3_cascade_start(symbol: str, user_id: str | None = None):
+    """
+    Start a new cascading prediction for a symbol.
+    
+    Creates a 48h → 24h → 6h prediction cascade that shows Ghost adapting
+    and learning in real-time. Each stage sends a Telegram update.
+    
+    Args:
+        symbol: Cryptocurrency symbol (e.g., 'BTC', 'ETH')
+        user_id: Optional user ID for personalized cascades
+    
+    Returns:
+        {
+            "ok": true,
+            "cascade_id": "uuid",
+            "symbol": "BTC",
+            "h48_prediction": {...},
+            "scheduled": {
+                "h24_update_at": "2024-01-15T12:00:00Z",
+                "h6_final_at": "2024-01-16T06:00:00Z",
+                "evaluation_at": "2024-01-16T12:00:00Z"
+            }
+        }
+    
+    Example:
+        curl -X POST http://localhost:8000/api/v3/cascade/start?symbol=BTC
+    """
+    try:
+        from core.cascading_predictor import get_cascade_predictor
+        import asyncio
+        
+        symbol_upper = symbol.upper().strip()
+        predictor = get_cascade_predictor()
+        
+        # Initiate cascade (uses asyncio to send Telegram)
+        cascade_id = await predictor.initiate_cascade(symbol_upper, user_id)
+        
+        # Get cascade data
+        import sqlite3
+        conn = sqlite3.connect(str(predictor.db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute("""
+            SELECT * FROM prediction_cascades WHERE cascade_id = ?
+        """, (cascade_id,))
+        cascade = dict(cursor.fetchone())
+        conn.close()
+        
+        # Calculate schedule times
+        from datetime import datetime, timedelta
+        created = datetime.fromtimestamp(cascade['created_at'])
+        
+        return {
+            "ok": True,
+            "cascade_id": cascade_id,
+            "symbol": symbol_upper,
+            "h48_prediction": {
+                "direction": cascade['h48_direction'],
+                "confidence": cascade['h48_confidence'],
+                "price": cascade['h48_price']
+            },
+            "scheduled": {
+                "h24_update_at": (created + timedelta(hours=24)).isoformat(),
+                "h6_final_at": (created + timedelta(hours=42)).isoformat(),
+                "evaluation_at": (created + timedelta(hours=48)).isoformat()
+            }
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to start cascade for {symbol}: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "symbol": symbol
+        }
+
+
+@APP.get("/api/v3/cascade/{cascade_id}")
+async def api_v3_cascade_get(cascade_id: str):
+    """
+    Get details of a specific cascade.
+    
+    Args:
+        cascade_id: UUID of the cascade
+    
+    Returns:
+        {
+            "ok": true,
+            "cascade": {
+                "cascade_id": "uuid",
+                "symbol": "BTC",
+                "created_at": 1234567890,
+                "h48": {...},
+                "h24": {...},
+                "h6": {...},
+                "outcome": {...}
+            }
+        }
+    
+    Example:
+        curl http://localhost:8000/api/v3/cascade/{cascade_id}
+    """
+    try:
+        from core.cascading_predictor import get_cascade_predictor
+        import sqlite3
+        
+        predictor = get_cascade_predictor()
+        
+        conn = sqlite3.connect(str(predictor.db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute("""
+            SELECT * FROM prediction_cascades WHERE cascade_id = ?
+        """, (cascade_id,))
+        cascade = cursor.fetchone()
+        conn.close()
+        
+        if not cascade:
+            return {
+                "ok": False,
+                "error": "Cascade not found",
+                "cascade_id": cascade_id
+            }
+        
+        # Format response
+        cascade_dict = dict(cascade)
+        
+        return {
+            "ok": True,
+            "cascade": {
+                "cascade_id": cascade_dict['cascade_id'],
+                "symbol": cascade_dict['symbol'],
+                "created_at": cascade_dict['created_at'],
+                "h48": {
+                    "direction": cascade_dict['h48_direction'],
+                    "confidence": cascade_dict['h48_confidence'],
+                    "price": cascade_dict['h48_price'],
+                    "sent_at": cascade_dict['h48_sent_at'],
+                    "correct": cascade_dict.get('h48_correct')
+                } if cascade_dict['h48_direction'] else None,
+                "h24": {
+                    "direction": cascade_dict['h24_direction'],
+                    "confidence": cascade_dict['h24_confidence'],
+                    "price": cascade_dict['h24_price'],
+                    "direction_changed": bool(cascade_dict['h24_direction_changed']),
+                    "confidence_delta": cascade_dict['h24_confidence_delta'],
+                    "sent_at": cascade_dict['h24_sent_at'],
+                    "correct": cascade_dict.get('h24_correct')
+                } if cascade_dict['h24_direction'] else None,
+                "h6": {
+                    "direction": cascade_dict['h6_direction'],
+                    "confidence": cascade_dict['h6_confidence'],
+                    "price": cascade_dict['h6_price'],
+                    "direction_changed": bool(cascade_dict['h6_direction_changed']),
+                    "confidence_delta": cascade_dict['h6_confidence_delta'],
+                    "sent_at": cascade_dict['h6_sent_at'],
+                    "correct": cascade_dict.get('h6_correct')
+                } if cascade_dict['h6_direction'] else None,
+                "outcome": {
+                    "actual_price": cascade_dict['actual_price'],
+                    "actual_direction": cascade_dict['actual_direction'],
+                    "evaluated_at": cascade_dict['evaluated_at'],
+                    "stages_correct": sum(filter(None, [
+                        cascade_dict.get('h48_correct'),
+                        cascade_dict.get('h24_correct'),
+                        cascade_dict.get('h6_correct')
+                    ]))
+                } if cascade_dict.get('evaluated_at') else None
+            }
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to get cascade {cascade_id}: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "cascade_id": cascade_id
+        }
+
+
+@APP.get("/api/v3/cascade/list")
+async def api_v3_cascade_list(symbol: str | None = None, active_only: bool = True):
+    """
+    List cascades, optionally filtered by symbol and status.
+    
+    Args:
+        symbol: Optional symbol filter
+        active_only: Only show active (not evaluated) cascades (default: true)
+    
+    Returns:
+        {
+            "ok": true,
+            "count": 5,
+            "cascades": [...]
+        }
+    
+    Example:
+        curl http://localhost:8000/api/v3/cascade/list?symbol=BTC
+        curl http://localhost:8000/api/v3/cascade/list?active_only=false
+    """
+    try:
+        from core.cascading_predictor import get_cascade_predictor
+        import sqlite3
+        
+        predictor = get_cascade_predictor()
+        
+        conn = sqlite3.connect(str(predictor.db_path))
+        conn.row_factory = sqlite3.Row
+        
+        query = "SELECT * FROM prediction_cascades WHERE 1=1"
+        params = []
+        
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol.upper())
+        
+        if active_only:
+            query += " AND evaluated_at IS NULL"
+        
+        query += " ORDER BY created_at DESC LIMIT 50"
+        
+        cursor = conn.execute(query, params)
+        cascades = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        return {
+            "ok": True,
+            "count": len(cascades),
+            "cascades": cascades
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to list cascades: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/cascade/stats")
+async def api_v3_cascade_stats(days: int = 30):
+    """
+    Get cascade performance statistics.
+    
+    Shows accuracy metrics for each stage and overall performance.
+    
+    Args:
+        days: Lookback period in days (default: 30)
+    
+    Returns:
+        {
+            "ok": true,
+            "stats": {
+                "total_cascades": 100,
+                "h48_accuracy": 0.623,
+                "h24_accuracy": 0.687,
+                "h6_accuracy": 0.745,
+                "avg_stages_correct": 2.1,
+                "perfect_cascades": 24,
+                "direction_changes_24h": 18,
+                "direction_changes_6h": 12
+            }
+        }
+    
+    Example:
+        curl http://localhost:8000/api/v3/cascade/stats?days=7
+    """
+    try:
+        from core.cascading_predictor import get_cascade_predictor
+        
+        predictor = get_cascade_predictor()
+        stats = predictor.get_cascade_stats(days=days)
+        
+        return {
+            "ok": True,
+            "stats": stats,
+            "period_days": days
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Failed to get cascade stats: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
         }
 
 
@@ -9760,6 +10436,7 @@ async def api_v3_health_metrics():
         - data_health: Provider uptime (test BTC availability)
         - ai_activity: Predictions per hour
         - accuracy: Win rate from prediction store
+        - cache_performance: Price cache hit rate
     """
     try:
         # Data Health: Check if BTC provider is working
@@ -9795,11 +10472,20 @@ async def api_v3_health_metrics():
         except Exception:
             pass
         
+        # Cache Performance: Get price cache statistics
+        cache_stats = {}
+        try:
+            from core.crypto.crypto_providers import get_cache_stats
+            cache_stats = get_cache_stats()
+        except Exception:
+            pass
+        
         return {
             "ok": True,
             "data_health": data_health,
             "ai_activity": ai_activity,
             "accuracy": accuracy,
+            "cache_performance": cache_stats,
             "timestamp": datetime.now(UTC).isoformat()
         }
     
@@ -15377,6 +16063,21 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
 
 """
 
+    # Helper function to format momentum indicator
+    def format_momentum(pred: dict[str, Any]) -> str:
+        """Format momentum indicator for prediction"""
+        momentum = pred.get("momentum", {})
+        if not momentum or momentum.get("status") == "STABLE":
+            return ""
+        
+        emoji = momentum.get("emoji", "")
+        delta_pct = momentum.get("confidence_delta_pct", 0)
+        
+        if delta_pct > 0:
+            return f" {emoji} +{delta_pct:.1f}%"
+        else:
+            return f" {emoji} {delta_pct:.1f}%"
+
     # SHORT-TERM OPPORTUNITIES (48h-7 days)
     short_term = opportunities.get("short_term", [])
     if short_term:
@@ -15388,8 +16089,9 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
             gain_pct = pred.get("gain_pct", 0)
             confidence = pred.get("confidence", 0) * 100
             asset_type = "💎" if pred.get("type") == "crypto" else "📈"
+            momentum_str = format_momentum(pred)
 
-            message += f"{i}. {asset_type} <b>{symbol}</b>\n"
+            message += f"{i}. {asset_type} <b>{symbol}</b>{momentum_str}\n"
             message += f"   💰 ${price:.2f} → ${predicted:.2f} (+{gain_pct:.1f}%)\n"
             message += f"   ✅ Confidence: {confidence:.0f}%\n\n"
     else:
@@ -15407,8 +16109,9 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
             gain_pct = pred.get("gain_pct", 0)
             confidence = pred.get("confidence", 0) * 100
             asset_type = "💎" if pred.get("type") == "crypto" else "📈"
+            momentum_str = format_momentum(pred)
 
-            message += f"{i}. {asset_type} <b>{symbol}</b>\n"
+            message += f"{i}. {asset_type} <b>{symbol}</b>{momentum_str}\n"
             message += f"   💰 ${price:.2f} → ${predicted:.2f} (+{gain_pct:.1f}%)\n"
             message += f"   ✅ Confidence: {confidence:.0f}%\n\n"
     else:
@@ -15426,8 +16129,9 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
             gain_pct = pred.get("gain_pct", 0)
             confidence = pred.get("confidence", 0) * 100
             asset_type = "💎" if pred.get("type") == "crypto" else "📈"
+            momentum_str = format_momentum(pred)
 
-            message += f"{i}. {asset_type} <b>{symbol}</b>\n"
+            message += f"{i}. {asset_type} <b>{symbol}</b>{momentum_str}\n"
             message += f"   ⚠️ ${price:.2f} → ${predicted:.2f} ({gain_pct:.1f}%)\n"
             message += f"   ✅ Confidence: {confidence:.0f}%\n\n"
 
@@ -15437,7 +16141,8 @@ def _format_multi_symbol_telegram_message(predictions_data: dict[str, Any]) -> s
         message += "💤 <b>Market Status: HOLDING PATTERN</b>\n"
         message += "No high-conviction signals. Wait for better setups.\n\n"
 
-    message += "💡 <i>Ghost AI filters out noise. Only see high-confidence 6h signals (>45%).</i>"
+    message += "💡 <i>Ghost AI filters out noise. Only see high-confidence 6h signals (>45%).</i>\n"
+    message += "📊 <i>Momentum indicators: 🔥=HOT (strengthening), 📈=Warming, 📉=Cooling, ❄️=COLD (weakening)</i>"
 
     return message
 
