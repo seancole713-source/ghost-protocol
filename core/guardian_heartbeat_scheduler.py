@@ -117,8 +117,14 @@ class GuardianHeartbeatScheduler:
         
         return True
     
-    async def _send_heartbeat(self, heartbeat_type: str):
-        """Send the appropriate heartbeat message"""
+    async def _send_heartbeat(self, heartbeat_type: str, position_size: float = 100.0):
+        """
+        Send the appropriate heartbeat message
+        
+        Args:
+            heartbeat_type: Type of heartbeat to send
+            position_size: Investment per position (default $100)
+        """
         
         try:
             from core.guardian_oracle import get_guardian_oracle
@@ -126,14 +132,14 @@ class GuardianHeartbeatScheduler:
             
             guardian = get_guardian_oracle()
             
-            # Generate heartbeat message
+            # Generate heartbeat message with position sizing
             if heartbeat_type == 'morning':
                 # Morning prophecy (combines with daily top 10 scan)
-                message = await self._get_morning_prophecy()
+                message = await self._get_morning_prophecy(position_size)
             elif heartbeat_type == 'midday':
-                message = await guardian.midday_status()
+                message = await guardian.midday_status(position_size)
             elif heartbeat_type == 'evening':
-                message = await guardian.evening_update()
+                message = await guardian.evening_update(position_size)
             elif heartbeat_type == 'night':
                 message = await guardian.night_watch()
             else:
@@ -149,13 +155,17 @@ class GuardianHeartbeatScheduler:
         except Exception as e:
             logger.exception(f"Failed to send {heartbeat_type} heartbeat: {e}")
     
-    async def _get_morning_prophecy(self) -> str:
+    async def _get_morning_prophecy(self, position_size: float = 100.0) -> str:
         """
-        Generate morning prophecy.
+        Generate morning prophecy with position sizing.
         
         This combines:
         1. Daily Top 10 scan results
         2. Guardian Oracle mystical formatting
+        3. $100 position sizing and profit calculations
+        
+        Args:
+            position_size: Investment per position (default $100)
         """
         
         try:
@@ -179,9 +189,9 @@ class GuardianHeartbeatScheduler:
             # Save to database
             await scanner.save_top_10(top_10)
             
-            # Format with Guardian Oracle personality
+            # Format with Guardian Oracle personality and position sizing
             guardian = get_guardian_oracle()
-            message = await guardian.morning_prophecy(top_10)
+            message = await guardian.morning_prophecy(top_10, position_size)
             
             return message
             

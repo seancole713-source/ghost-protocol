@@ -145,6 +145,28 @@ class GuardianOracle:
             )
         """)
         
+        # Daily performance tracking
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_performance (
+                date TEXT PRIMARY KEY,
+                total_positions INTEGER DEFAULT 10,
+                position_size REAL DEFAULT 100.0,
+                total_invested REAL,
+                closed_positions INTEGER DEFAULT 0,
+                winners INTEGER DEFAULT 0,
+                losers INTEGER DEFAULT 0,
+                realized_profit REAL DEFAULT 0,
+                unrealized_profit REAL DEFAULT 0,
+                total_profit REAL DEFAULT 0,
+                win_rate REAL,
+                avg_win_amount REAL,
+                avg_loss_amount REAL,
+                best_trade TEXT,
+                worst_trade TEXT,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         conn.commit()
         conn.close()
         
@@ -152,68 +174,118 @@ class GuardianOracle:
     
     # ===== ORACLE MODE (Morning Prophecy) =====
     
-    async def morning_prophecy(self, top_10: List[Dict]) -> str:
+    async def morning_prophecy(self, top_10: List[Dict], position_size: float = 100.0) -> str:
         """
         The Oracle speaks - morning prophecy at 6 AM
         
         Tone: Mystical, confident, all-seeing
+        Now with $100 position sizing and profit calculations
+        
+        Args:
+            top_10: List of opportunities
+            position_size: Investment per position (default $100)
         """
         
+        # Calculate totals
+        total_investment = position_size * len(top_10)
+        total_expected_profit = sum(
+            position_size * (opp['gain_pct'] / 100) for opp in top_10
+        )
+        total_expected_return = total_investment + total_expected_profit
+        avg_confidence = sum(opp['confidence'] for opp in top_10) / len(top_10)
+        
+        # Calculate expected outcomes
+        best_case_profit = sum(position_size * (opp['gain_pct'] / 100) for opp in top_10)
+        likely_case_profit = best_case_profit * 0.70  # 70% win rate
+        worst_case_profit = best_case_profit * 0.50   # 50% win rate
+        
         message_parts = [
-            "🔮 GHOST ORACLE AWAKENS\n",
+            "🔮 GHOST ORACLE - DAILY PROFIT PLAN\n",
             "Good morning, Human.\n",
-            f"\nWhile you slept, I scanned {self._get_total_symbols_scanned()} assets.",
-            "I analyzed 50,000 data points.",
-            "I consulted my models (LSTM, XGBoost, Transformer).",
-            "I have seen what is coming.\n",
-            "\n📜 HERE ARE YOUR 10 GOLDEN OPPORTUNITIES:\n"
+            f"\nI scanned {self._get_total_symbols_scanned()} assets while you slept.",
+            "\nI analyzed 50,000 data points.",
+            "\nI consulted my models (LSTM, XGBoost, Transformer).",
+            "\nI found 10 money-making opportunities.\n",
+            "\n💰 YOUR INVESTMENT PLAN:",
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"\nCapital needed: ${total_investment:,.0f}",
+            f"\nPosition size: ${position_size:.0f} each",
+            f"\nExpected profit: ${total_expected_profit:.0f} (in 48h)",
+            f"\nSuccess rate: {avg_confidence*100:.0f}% average",
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━\n",
+            "\n📊 YOUR 10 MOVES:\n"
         ]
         
         for i, opp in enumerate(top_10, 1):
+            # Calculate position-specific profits
+            target_value = position_size * (1 + opp['gain_pct'] / 100)
+            profit_amount = target_value - position_size
+            
             # Emoji intensity based on gain
             if opp['gain_pct'] >= 15:
                 emoji = '🚀🚀🚀'
+                strength = 'STRONG BUY'
             elif opp['gain_pct'] >= 10:
                 emoji = '🚀🚀'
+                strength = 'BUY'
             else:
                 emoji = '🚀'
+                strength = 'MODERATE'
             
-            # Confidence descriptor
+            # Confidence indicator
             if opp['confidence'] >= 0.75:
-                conf_desc = '🔥 The stars align'
+                conf_emoji = '🔥'
             elif opp['confidence'] >= 0.65:
-                conf_desc = '📈 The signs are favorable'
+                conf_emoji = '📈'
             else:
-                conf_desc = '💫 Potential detected'
+                conf_emoji = '💫'
             
             message_parts.append(
-                f"\n{i}. {emoji} {opp['symbol']} - {conf_desc}\n"
-                f"   Current: ${opp['current_price']:.2f} → Target: ${opp['predicted_48h_price']:.2f}\n"
-                f"   Prophecy: {opp['direction']} +{opp['gain_pct']:.1f}%\n"
-                f"   My certainty: {opp['confidence']*100:.0f}%\n"
-                f"   The signs: {opp.get('reasoning', 'Technical alignment, momentum building')}\n"
+                f"\n#{i} {emoji} {opp['symbol']} - {strength}\n"
+                f"💵 Invest: ${position_size:.0f}\n"
+                f"🎯 Target: ${target_value:.0f}\n"
+                f"💰 Profit: +${profit_amount:.0f}\n"
+                f"📈 Gain: +{opp['gain_pct']:.1f}%\n"
+                f"⏰ Exit: {self._format_sell_time(opp.get('sell_at'))}\n"
+                f"🔒 My confidence: {opp['confidence']*100:.0f}% {conf_emoji}\n"
             )
         
         message_parts.extend([
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
-            "\nThese are not guesses. These are visions.",
-            "\nI stake my reputation on these calls.\n",
-            "\n🛡️ I will now enter GUARDIAN MODE.",
-            "\nI will watch these 10 every minute.",
-            "\nIf danger appears, you will know immediately.\n",
-            "\nSleep well. Ghost is watching.\n",
-            "\nNext check-in: 12:00 PM (6 hours)\n",
-            "\n🐺 Ghost Oracle"
+            "\n💎 EXPECTED OUTCOME (48h):\n",
+            f"\nBest case (all win): +${best_case_profit:.0f}",
+            f"\nLikely case (70% win): +${likely_case_profit:.0f}",
+            f"\nWorst case (50% win): +${worst_case_profit:.0f}\n",
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+            "\nI will watch all 10 every minute.",
+            "\nI will alert you to exits.",
+            "\nI will protect your capital.\n",
+            "\nJust follow my calls.",
+            f"\nMake ${total_expected_profit:.0f}.",
+            "\nGo back to sleep.\n",
+            "\nYour oracle and guardian,",
+            "\n🐺👼🔮"
         ])
         
         return ''.join(message_parts)
     
     # ===== HEARTBEAT SYSTEM (Every 6 Hours) =====
     
-    async def midday_status(self) -> str:
-        """12 PM Heartbeat - "I'm alive, here's the status" """
+    async def midday_status(self, position_size: float = 100.0) -> str:
+        """
+        12 PM Heartbeat - "I'm alive, here's the status"
+        
+        Args:
+            position_size: Investment per position (default $100)
+        """
         
         status = await self._get_current_status()
+        
+        # Calculate money amounts
+        total_invested = status['active_count'] * position_size
+        realized_profit = status.get('realized_pnl_dollars', 0)
+        unrealized_profit = status.get('unrealized_pnl_dollars', 0)
+        total_profit = realized_profit + unrealized_profit
         
         message_parts = [
             "📊 MIDDAY STATUS REPORT\n",
@@ -225,16 +297,25 @@ class GuardianOracle:
             f"\n🎯 {status['completed']} targets HIT",
             f"\n❌ {status['failed']} predictions FAILED\n",
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+            "\n💰 MONEY STATUS:\n",
+            f"Total invested: ${total_invested:.0f}",
+            f"\nRealized profit: ${realized_profit:+.0f} ({status['closed_count']} closed)",
+            f"\nUnrealized profit: ${unrealized_profit:+.0f} ({status['active_count']} active)",
+            f"\nTotal P&L: ${total_profit:+.0f}\n",
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
             "\n📋 DETAILED STATUS:\n"
         ]
         
-        # List each position
+        # List each position with dollar amounts
         for pos in status['positions']:
             status_emoji = self._get_status_emoji(pos['status'])
+            profit_dollars = position_size * (pos.get('current_pnl', 0) / 100)
+            target_dollars = position_size * (pos.get('target_pnl', 0) / 100)
+            
             message_parts.append(
                 f"\n{pos['rank']}. {status_emoji} {pos['symbol']}: "
-                f"{pos['current_pnl']:+.1f}% / {pos['target_pnl']:+.1f}% target "
-                f"({pos['progress']:.0f}% there)"
+                f"${profit_dollars:+.0f} / ${target_dollars:+.0f} target "
+                f"({pos.get('progress', 0):.0f}% there)"
             )
         
         # Overall assessment
@@ -242,7 +323,6 @@ class GuardianOracle:
             "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
             f"\n🎯 Overall: {status['assessment']}",
             f"\n⚡ Action needed: {status['action_required']}\n",
-            f"\n💰 P&L Today: {status['total_pnl']:+.1f}% average\n",
         ])
         
         # Market commentary (if available)
@@ -257,11 +337,31 @@ class GuardianOracle:
         ])
         
         return ''.join(message_parts)
+        
+        message_parts.extend([
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+            "\nNext check-in: 6:00 PM (6 hours)\n",
+            "\nStill watching,",
+            "\n🐺 Ghost"
+        ])
+        
+        return ''.join(message_parts)
     
-    async def evening_update(self) -> str:
-        """6 PM Heartbeat - Evening status"""
+    async def evening_update(self, position_size: float = 100.0) -> str:
+        """
+        6 PM Heartbeat - Evening status with daily profit summary
+        
+        Args:
+            position_size: Investment per position (default $100)
+        """
         
         status = await self._get_current_status()
+        
+        # Calculate money amounts
+        total_invested_today = 10 * position_size  # 10 morning positions
+        closed_profit = status['closed_count'] * position_size * (status.get('avg_gain', 0) / 100)
+        active_unrealized = status['active_count'] * position_size * (status.get('avg_unrealized', 0) / 100)
+        total_profit_today = closed_profit + active_unrealized
         
         message_parts = [
             "🌆 EVENING UPDATE\n",
@@ -273,15 +373,15 @@ class GuardianOracle:
             f"\n⚠️ {status['weakened']} weakened (watching)",
             f"\n❌ {status['failed']} reversed (exited)\n",
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
-            f"\n💰 P&L TODAY:\n",
-            f"   Closed: {status['closed_count']} positions",
-            f"\n   Winners: {status['winner_count']} ({self._format_win_rate(status)})",
-            f"\n   Average gain: {status['avg_gain']:+.1f}%",
-            f"\n   Net P&L: ${status['net_pnl']:.2f}\n",
-            f"\n📈 STILL ACTIVE: {status['active_count']} positions",
-            f"\n   Average unrealized: {status['avg_unrealized']:+.1f}%\n",
+            f"\n💰 TODAY'S MONEY:\n",
+            f"   Started with: ${total_invested_today:,.0f}",
+            f"\n   Closed: {status['closed_count']} positions → ${closed_profit:+.0f}",
+            f"\n   Winners: {status['winner_count']} / {status['closed_count']} = {self._format_win_rate(status)}",
+            f"\n   Still active: {status['active_count']} positions → ${active_unrealized:+.0f} unrealized",
+            f"\n   ━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"\n   💎 TOTAL PROFIT TODAY: ${total_profit_today:+.0f}\n",
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
-            f"\n{status['evening_assessment']}\n",
+            f"\n{status.get('evening_assessment', 'Systems normal. Everything under control.')}\n",
             "\nGo enjoy your evening.\n",
             "\nNext check-in: 12:00 AM (6 hours)\n",
             "\n🐺 Ghost"
@@ -553,8 +653,18 @@ Trust me.
 🚨 Ghost
         """
     
-    def _format_target_alert(self, position: Dict, changes: Dict) -> str:
-        """HIGH: Target about to hit"""
+    def _format_target_alert(self, position: Dict, changes: Dict, position_size: float = 100.0) -> str:
+        """
+        HIGH: Target about to hit
+        
+        Args:
+            position: Position details
+            changes: Current changes
+            position_size: Investment amount (default $100)
+        """
+        
+        profit_dollars = position_size * (changes.get('current_pnl', 0) / 100)
+        target_profit = position_size * ((position['target_price'] - position['entry_price']) / position['entry_price'])
         
         return f"""
 🎯 TARGET APPROACHING - {position['symbol']}
@@ -563,12 +673,24 @@ Human,
 
 {position['symbol']} is almost at target!
 
-Entry: ${position['entry_price']:.2f}
-Target: ${position['target_price']:.2f}
-Current: ${changes['current_price']:.2f}
+💵 Your investment: ${position_size:.0f}
+📈 Entry: ${position['entry_price']:.2f}
+🎯 Target: ${position['target_price']:.2f}
+💰 Current profit: ${profit_dollars:+.0f} ({changes.get('current_pnl', 0):+.1f}%)
+🏆 Target profit: ${target_profit:+.0f}
 
-Distance: ${abs(position['target_price'] - changes['current_price']):.2f} ({changes['target_proximity']*100:.1f}%)
-Profit: {changes['current_pnl']:+.1f}%
+Distance to target: ${abs(position['target_price'] - changes['current_price']):.2f}
+
+Ghost says:
+• {changes.get('probability_message', '99% likely to hit target in next 1-3 hours')}
+• Consider setting limit sell at ${position['target_price']*0.995:.2f}
+• Or trail stop at ${changes['current_price']*0.98:.2f} to lock profits
+
+Your call, but the target is RIGHT THERE.
+You're about to make ${target_profit:+.0f}.
+
+🎯 Ghost
+        """
 
 Ghost says:
 • {changes.get('probability_message', '99% likely to hit target in next 1-3 hours')}
@@ -591,6 +713,15 @@ Your call, but the target is RIGHT THERE.
             'failed': '❌',
             'consolidating': '📊'
         }.get(status, '📈')
+    
+    def _format_sell_time(self, sell_at_iso: str) -> str:
+        """Format ISO timestamp into readable sell time"""
+        try:
+            from dateutil import parser
+            dt = parser.isoparse(sell_at_iso)
+            return dt.strftime('%b %d, %I:%M %p')
+        except:
+            return "48h from now"
     
     def _hours_since_start(self) -> int:
         """Calculate hours since 6 AM"""
@@ -639,14 +770,99 @@ Your call, but the target is RIGHT THERE.
             return "N/A"
         return f"{winners}/{total} = {winners/total*100:.0f}%"
     
-    async def _get_current_status(self) -> Dict:
-        """Get current status of all positions"""
-        # This will query the database and active positions
-        # Placeholder for now
-        return {
-            'on_track': 0,
-            'weakened': 0,
-            'completed': 0,
+    async def _get_current_status(self, position_size: float = 100.0) -> Dict:
+        """
+        Get current status of all positions with money calculations
+        
+        Args:
+            position_size: Investment per position (default $100)
+        """
+        
+        try:
+            import sqlite3
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            
+            # Get active positions
+            active_rows = conn.execute("""
+                SELECT * FROM guardian_positions
+                WHERE status = 'active'
+                ORDER BY entry_time DESC
+            """).fetchall()
+            
+            # Get today's closed positions
+            today = datetime.now().date().isoformat()
+            closed_rows = conn.execute("""
+                SELECT * FROM guardian_positions
+                WHERE status IN ('completed', 'exited')
+                AND DATE(exit_time) = ?
+                ORDER BY exit_time DESC
+            """, (today,)).fetchall()
+            
+            conn.close()
+            
+            # Calculate status counts
+            on_track = sum(1 for r in active_rows if r['current_pnl_pct'] >= 0)
+            weakened = sum(1 for r in active_rows if -5 < r['current_pnl_pct'] < 0)
+            failed = sum(1 for r in active_rows if r['current_pnl_pct'] <= -5)
+            
+            # Calculate money amounts
+            active_count = len(active_rows)
+            closed_count = len(closed_rows)
+            
+            # Realized profit (closed positions)
+            winners = sum(1 for r in closed_rows if r['current_pnl_pct'] > 0)
+            realized_pnl_pct = sum(r['current_pnl_pct'] for r in closed_rows) / max(closed_count, 1)
+            realized_profit_dollars = closed_count * position_size * (realized_pnl_pct / 100)
+            
+            # Unrealized profit (active positions)
+            unrealized_pnl_pct = sum(r['current_pnl_pct'] for r in active_rows) / max(active_count, 1)
+            unrealized_profit_dollars = active_count * position_size * (unrealized_pnl_pct / 100)
+            
+            # Position details
+            positions = []
+            for i, row in enumerate(active_rows, 1):
+                positions.append({
+                    'rank': i,
+                    'symbol': row['symbol'],
+                    'status': 'on_track' if row['current_pnl_pct'] >= 0 else 'weakened',
+                    'current_pnl': row['current_pnl_pct'],
+                    'target_pnl': ((row['original_target'] - row['entry_price']) / row['entry_price']) * 100,
+                    'progress': min(100, (row['current_pnl_pct'] / (((row['original_target'] - row['entry_price']) / row['entry_price']) * 100)) * 100) if row['original_target'] > row['entry_price'] else 0
+                })
+            
+            return {
+                'on_track': on_track,
+                'weakened': weakened,
+                'completed': len([r for r in closed_rows if r['current_pnl_pct'] > 0]),
+                'failed': failed,
+                'positions': positions,
+                'assessment': 'Everything under control' if on_track >= 7 else 'Watch closely' if on_track >= 5 else 'Multiple concerns',
+                'action_required': 'NONE' if on_track >= 7 else 'MONITOR' if on_track >= 5 else 'REVIEW POSITIONS',
+                'total_pnl': (realized_pnl_pct + unrealized_pnl_pct) / 2,
+                'active_count': active_count,
+                'closed_count': closed_count,
+                'winner_count': winners,
+                'avg_gain': realized_pnl_pct,
+                'avg_unrealized': unrealized_pnl_pct,
+                'realized_pnl_dollars': realized_profit_dollars,
+                'unrealized_pnl_dollars': unrealized_profit_dollars,
+                'market_notes': None,
+                'evening_assessment': f'Solid day. {winners}/{closed_count} trades profitable.' if winners > closed_count/2 else 'Mixed results today.',
+                'active_healthy': on_track,
+                'near_target': sum(1 for r in active_rows if r['current_pnl_pct'] >= 0.8 * ((r['original_target'] - r['entry_price']) / r['entry_price']) * 100),
+                'consolidating': sum(1 for r in active_rows if -2 <= r['current_pnl_pct'] <= 2),
+                'overnight_expectation': 'Low volatility expected' if active_count < 5 else 'Active monitoring continues',
+                'new_opportunities_found': 0  # Placeholder
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get current status: {e}")
+            # Return placeholder for now
+            return {
+                'on_track': 0,
+                'weakened': 0,
+                'completed': 0,
             'failed': 0,
             'positions': [],
             'assessment': 'Everything under control',
