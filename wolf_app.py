@@ -30014,6 +30014,169 @@ except Exception as e:
     LOGGER.error(f"⚠️ Cockpit V2 API endpoints not loaded: {e}", exc_info=True)
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TRADE JOURNAL ENDPOINTS (Track Your Actual Trades vs Ghost Signals)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+try:
+    from core.trade_journal import get_trade_journal
+
+    @APP.post("/api/v3/journal/entry")
+    async def api_v3_journal_log_entry(
+        symbol: str,
+        direction: str,  # LONG or SHORT
+        entry_price: float,
+        position_size: float,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+        cascade_id: str | None = None,
+        prediction_id: int | None = None,
+        ghost_confidence: float | None = None,
+        ghost_direction: str | None = None,
+        notes: str | None = None,
+        tags: str | None = None  # Comma-separated
+    ):
+        """
+        Log a trade entry to your journal.
+        
+        Example:
+            POST /api/v3/journal/entry?symbol=BTC&direction=SHORT&entry_price=87250&position_size=2500&notes=6h%20final
+        """
+        try:
+            journal = get_trade_journal()
+            
+            tag_list = [t.strip() for t in tags.split(",")] if tags else None
+            
+            trade_id = journal.log_entry(
+                symbol=symbol,
+                direction=direction.upper(),
+                entry_price=entry_price,
+                position_size=position_size,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                cascade_id=cascade_id,
+                prediction_id=prediction_id,
+                ghost_confidence=ghost_confidence,
+                ghost_direction=ghost_direction,
+                notes=notes,
+                tags=tag_list
+            )
+            
+            return {
+                "ok": True,
+                "trade_id": trade_id,
+                "message": f"Trade logged: {symbol} {direction} @ ${entry_price:,.2f}"
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to log trade entry: {e}", exc_info=True)
+            return {
+                "ok": False,
+                "error": str(e)
+            }
+
+    @APP.post("/api/v3/journal/exit")
+    async def api_v3_journal_log_exit(
+        trade_id: str,
+        exit_price: float,
+        exit_reason: str = "MANUAL",  # TARGET_HIT, STOP_HIT, MANUAL, TIMEOUT
+        notes: str | None = None
+    ):
+        """
+        Log trade exit and calculate P&L.
+        
+        Example:
+            POST /api/v3/journal/exit?trade_id=abc123&exit_price=84800&exit_reason=TARGET_HIT
+        """
+        try:
+            journal = get_trade_journal()
+            journal.log_exit(
+                trade_id=trade_id,
+                exit_price=exit_price,
+                exit_reason=exit_reason.upper(),
+                notes=notes
+            )
+            
+            return {
+                "ok": True,
+                "trade_id": trade_id,
+                "message": "Trade closed and P&L calculated"
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to log trade exit: {e}", exc_info=True)
+            return {
+                "ok": False,
+                "error": str(e)
+            }
+
+    @APP.get("/api/v3/journal/trades")
+    async def api_v3_journal_get_trades(
+        symbol: str | None = None,
+        days: int | None = None,
+        limit: int = 50,
+        include_open: bool = True
+    ):
+        """
+        Get trade journal entries.
+        
+        Example:
+            GET /api/v3/journal/trades?symbol=BTC&days=30&limit=50
+        """
+        try:
+            journal = get_trade_journal()
+            trades = journal.get_trades(
+                symbol=symbol,
+                days=days,
+                limit=limit,
+                include_open=include_open
+            )
+            
+            return {
+                "ok": True,
+                "trades": trades,
+                "count": len(trades)
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to get trades: {e}")
+            return {
+                "ok": False,
+                "trades": [],
+                "error": str(e)
+            }
+
+    @APP.get("/api/v3/journal/stats")
+    async def api_v3_journal_get_stats(days: int = 30):
+        """
+        Get trading statistics.
+        
+        Example:
+            GET /api/v3/journal/stats?days=30
+        """
+        try:
+            journal = get_trade_journal()
+            stats = journal.get_stats(days=days)
+            
+            return {
+                "ok": True,
+                "stats": stats
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to get stats: {e}")
+            return {
+                "ok": False,
+                "stats": {},
+                "error": str(e)
+            }
+
+    LOGGER.info("✅ Trade Journal API endpoints registered (/api/v3/journal/*)")
+
+except Exception as e:
+    LOGGER.error(f"⚠️ Trade Journal endpoints not loaded: {e}", exc_info=True)
+
+
 # Alias for Railway/Uvicorn compatibility (expects lowercase 'app')
 app = APP
 
