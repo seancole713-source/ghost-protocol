@@ -131,7 +131,15 @@ class DailyTop10Scanner:
                 # Generate prediction (simplified - you'd use actual ML model)
                 prediction = await self._predict_48h(symbol, "crypto", current_price)
                 
-                if prediction and prediction.get("gain_pct", 0) > 5.0:  # Only 5%+ gains
+                # Accept opportunities with:
+                # - UP direction (no DOWN trades)
+                # - 3%+ gain potential (lowered from 5%)
+                # - 60%+ confidence
+                if (prediction 
+                    and prediction.get("direction") == "UP"
+                    and prediction.get("gain_pct", 0) >= 3.0
+                    and prediction.get("confidence", 0) >= 0.60):
+                    
                     opportunities.append({
                         "symbol": symbol,
                         "asset_type": "crypto",
@@ -140,7 +148,9 @@ class DailyTop10Scanner:
                         "gain_pct": prediction["gain_pct"],
                         "confidence": prediction["confidence"],
                         "direction": prediction["direction"],
-                        "sell_at": prediction["sell_at"]
+                        "sell_at": prediction["sell_at"],
+                        "entry_price": current_price,
+                        "target_price": prediction["predicted_price"]
                     })
             
             except Exception as e:
@@ -150,9 +160,15 @@ class DailyTop10Scanner:
         # Sort by gain potential
         opportunities.sort(key=lambda x: x["gain_pct"], reverse=True)
         
-        LOGGER.info(f"✅ Found {len(opportunities)} opportunities with 5%+ gain potential")
+        LOGGER.info(f"✅ Found {len(opportunities)} opportunities (returning top 10)")
         
-        return opportunities[:10]  # Top 10
+        # Always return top 10 (or all if less than 10 found)
+        top_10 = opportunities[:10]
+        
+        if len(top_10) < 10:
+            LOGGER.warning(f"⚠️ Only found {len(top_10)} opportunities (expected 10)")
+        
+        return top_10
     
     async def _predict_48h(self, symbol: str, asset_type: str, current_price: float) -> dict:
         """
