@@ -194,10 +194,19 @@ class GuardianOracle:
         total_expected_return = total_investment + total_expected_profit
         avg_confidence = sum(opp['confidence'] for opp in top_10) / len(top_10)
         
-        # Calculate expected outcomes
+        # Calculate expected outcomes (REALISTIC: assumes some losses)
         best_case_profit = sum(position_size * (opp['gain_pct'] / 100) for opp in top_10)
-        likely_case_profit = best_case_profit * 0.70  # 70% win rate
-        worst_case_profit = best_case_profit * 0.50   # 50% win rate
+        
+        # Likely case: 60% win rate (not 70% - be realistic)
+        # Average winners make full profit, losers lose 3%
+        likely_winners = int(len(top_10) * 0.60)
+        likely_losers = len(top_10) - likely_winners
+        likely_case_profit = (best_case_profit * 0.60) - (likely_losers * position_size * 0.03)
+        
+        # Worst case: 40% win rate
+        worst_winners = int(len(top_10) * 0.40)
+        worst_losers = len(top_10) - worst_winners
+        worst_case_profit = (best_case_profit * 0.40) - (worst_losers * position_size * 0.05)
         
         message_parts = [
             "🔮 GHOST ORACLE - DAILY PROFIT PLAN\n",
@@ -249,7 +258,7 @@ class GuardianOracle:
                 f"🎯 Target: ${target_price:.2f}\n"
                 f"💰 Profit: +${profit_amount:.0f}\n"
                 f"📈 Gain: +{opp['gain_pct']:.1f}%\n"
-                f"⏰ Exit: {self._format_sell_time(opp.get('sell_at'))}\n"
+                f"⏰ Timeframe: 48 hours\n"
                 f"🔒 My confidence: {opp['confidence']*100:.0f}% {conf_emoji}\n"
             )
         
@@ -257,17 +266,19 @@ class GuardianOracle:
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
             "\n💎 EXPECTED OUTCOME (48h):\n",
             f"\nBest case (all win): +${best_case_profit:.0f}",
-            f"\nLikely case (70% win): +${likely_case_profit:.0f}",
-            f"\nWorst case (50% win): +${worst_case_profit:.0f}\n",
+            f"\nLikely case (60% win): ${likely_case_profit:+.0f}",
+            f"\nWorst case (40% win): ${worst_case_profit:+.0f}\n",
+            "\n⚠️ REALITY CHECK:",
+            "\nThis is AI prediction, not guaranteed.",
+            "\nSome trades will lose money.",
+            "\nActual results may vary significantly.",
+            "\nPast performance ≠ future results.\n",
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
-            "\nI will watch all 10 every minute.",
-            "\nI will alert you to exits.",
-            "\nI will protect your capital.\n",
-            "\nJust follow my calls.",
-            f"\nMake ${total_expected_profit:.0f}.",
-            "\nGo back to sleep.\n",
-            "\nYour oracle and guardian,",
-            "\n🐺👼🔮"
+            "\nI will monitor these predictions.",
+            "\nI will report actual results.",
+            "\nI will admit when I'm wrong.\n",
+            "\nGhost AI Trading System",
+            "\n🐺 (Beta - Use at your own risk)"
         ])
         
         return ''.join(message_parts)
