@@ -1,0 +1,576 @@
+"""
+Paper Trading Tracker - Automatically track EVERY Ghost signal
+
+This is different from trade_journal.py:
+- trade_journal = YOU manually log trades YOU execute
+- paper_tracker = AUTO-logs EVERY Ghost signal, tracks what WOULD happen
+
+Purpose: Prove Ghost's accuracy with 30+ days of tracked signals.
+"""
+
+import sqlite3
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional
+
+from core.logger import get_logger
+
+LOGGER = get_logger("paper_tracker")
+
+
+class PaperTracker:
+    """
+    Automatically track all Ghost signals and their outcomes.
+    
+    Workflow:
+    1. When cascade hits 6h (final call), auto-log as paper trade
+    2. Wait 48h from original entry
+    3. Check actual price movement
+    4. Calculate hypothetical P&L
+    5. Track accuracy stats
+    """
+    
+    def __init__(self, db_path: str = "data/ghost_predictions.db"):
+        self.db_path = db_path
+        self._ensure_table()
+    
+    def _ensure_table(self):
+        """Create paper_trades table if not exists"""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS paper_trades (
+                    paper_trade_id TEXT PRIMARY KEY,
+                    cascade_id TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    
+                    -- Signal info (from 6h final call)
+                    signal_direction TEXT NOT NULL,  -- UP or DOWN
+                    signal_confidence REAL NOT NULL,
+                    signal_time TEXT NOT NULL,
+                    
+                    -- Entry (from cascade start)
+                    entry_price REAL NOT NULL,
+                    entry_time TEXT NOT NULL,
+                    
+                    -- Target (48h from entry)
+                    target_time TEXT NOT NULL,
+                    target_price REAL,  -- NULL until checked
+                    
+                    -- Hypothetical trade
+                    position_size REAL DEFAULT 1000.0,  -- $1k per trade
+                    stop_loss_pct REAL DEFAULT 0.05,    -- 5% stop
+                    take_profit_pct REAL DEFAULT 0.10,   -- 10% target
+                    
+                    -- Outcome
+                    actual_direction TEXT,  -- UP, DOWN, FLAT, NULL=pending
+                    outcome TEXT,  -- WIN, LOSS, STOPPED, BREAK_EVEN, PENDING
+                    profit_loss REAL,  -- NULL until resolved
+                    profit_loss_pct REAL,
+                    
+                    -- Tracking
+                    checked_at TEXT,  -- When we evaluated outcome
+                    notes TEXT,
+                    
+                    created_at TEXT NOT NULL
+                )
+            """)
+            
+            # Index for quick lookups
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol 
+                ON paper_trades(symbol)
+            """)
+            
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome 
+                ON paper_trades(outcome)
+            """)
+            
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_paper_trades_target_time 
+                ON paper_trades(target_time)
+            """)
+            
+            conn.commit()
+            LOGGER.info("✅ paper_trades table ready")
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to create paper_trades table: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def log_signal(
+        self,
+        cascade_id: str,
+        symbol: str,
+        signal_direction: str,
+        signal_confidence: float,
+        entry_price: float,
+        entry_time: str,
+        position_size: float = 1000.0,
+        stop_loss_pct: float = 0.05,
+        take_profit_pct: float = 0.10
+    ) -> str:
+        """
+        Log a Ghost signal as a paper trade.
+        
+        Called when cascade reaches 6h final call.
+        
+        Args:
+            cascade_id: Link to cascade
+            symbol: BTC, ETH, etc
+            signal_direction: UP or DOWN
+            signal_confidence: 0.0-1.0
+            entry_price: Price at cascade start (48h ago)
+            entry_time: ISO timestamp of cascade start
+            position_size: Hypothetical $ amount per trade
+            stop_loss_pct: Stop loss as decimal (0.05 = 5%)
+            take_profit_pct: Take profit as decimal (0.10 = 10%)
+        
+        Returns:
+            paper_trade_id
+        """
+        import uuid
+        
+        paper_trade_id = str(uuid.uuid4())
+        signal_time = datetime.utcnow().isoformat()
+        
+        # Calculate target time (48h from entry)
+        entry_dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+        target_dt = entry_dt + timedelta(hours=48)
+        target_time = target_dt.isoformat()
+        
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute("""
+                INSERT INTO paper_trades (
+                    paper_trade_id, cascade_id, symbol,
+                    signal_direction, signal_confidence, signal_time,
+                    entry_price, entry_time,
+                    target_time,
+                    position_size, stop_loss_pct, take_profit_pct,
+                    outcome,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                paper_trade_id, cascade_id, symbol,
+                signal_direction.upper(), signal_confidence, signal_time,
+                entry_price, entry_time,
+                target_time,
+                position_size, stop_loss_pct, take_profit_pct,
+                "PENDING",
+                signal_time
+            ))
+            conn.commit()
+            
+            LOGGER.info(
+                f"📝 Paper trade logged: {symbol} {signal_direction} "
+                f"@ ${entry_price:,.2f} (conf={signal_confidence:.1%})"
+            )
+            
+            return paper_trade_id
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to log paper trade: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def check_outcome(self, paper_trade_id: str, current_price: float) -> dict:
+        """
+        Check if paper trade has reached target time and calculate outcome.
+        
+        Args:
+            paper_trade_id: ID of paper trade to check
+            current_price: Current market price
+        
+        Returns:
+            {
+                "resolved": bool,
+                "outcome": "WIN|LOSS|STOPPED|BREAK_EVEN|PENDING",
+                "profit_loss": float,
+                "profit_loss_pct": float
+            }
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        
+        try:
+            row = conn.execute("""
+                SELECT * FROM paper_trades
+                WHERE paper_trade_id = ?
+            """, (paper_trade_id,)).fetchone()
+            
+            if not row:
+                return {"resolved": False, "error": "Trade not found"}
+            
+            trade = dict(row)
+            
+            # Already resolved?
+            if trade["outcome"] != "PENDING":
+                return {
+                    "resolved": True,
+                    "outcome": trade["outcome"],
+                    "profit_loss": trade["profit_loss"],
+                    "profit_loss_pct": trade["profit_loss_pct"]
+                }
+            
+            # Target time reached?
+            target_time = datetime.fromisoformat(trade["target_time"])
+            now = datetime.utcnow()
+            
+            if now < target_time:
+                return {
+                    "resolved": False,
+                    "outcome": "PENDING",
+                    "time_remaining": str(target_time - now)
+                }
+            
+            # Calculate outcome
+            entry_price = trade["entry_price"]
+            signal_direction = trade["signal_direction"]
+            stop_loss_pct = trade["stop_loss_pct"]
+            take_profit_pct = trade["take_profit_pct"]
+            position_size = trade["position_size"]
+            
+            price_change_pct = (current_price - entry_price) / entry_price
+            
+            # Determine actual direction
+            if abs(price_change_pct) < 0.01:  # Within 1%
+                actual_direction = "FLAT"
+            elif price_change_pct > 0:
+                actual_direction = "UP"
+            else:
+                actual_direction = "DOWN"
+            
+            # Calculate P&L based on signal direction
+            if signal_direction == "LONG":
+                # LONG position
+                if price_change_pct <= -stop_loss_pct:
+                    outcome = "STOPPED"
+                    pnl_pct = -stop_loss_pct
+                elif price_change_pct >= take_profit_pct:
+                    outcome = "WIN"
+                    pnl_pct = take_profit_pct
+                elif price_change_pct > 0:
+                    outcome = "WIN"
+                    pnl_pct = price_change_pct
+                elif price_change_pct < 0:
+                    outcome = "LOSS"
+                    pnl_pct = price_change_pct
+                else:
+                    outcome = "BREAK_EVEN"
+                    pnl_pct = 0.0
+            
+            else:  # SHORT
+                # SHORT position (inverted)
+                if price_change_pct >= stop_loss_pct:
+                    outcome = "STOPPED"
+                    pnl_pct = -stop_loss_pct
+                elif price_change_pct <= -take_profit_pct:
+                    outcome = "WIN"
+                    pnl_pct = take_profit_pct
+                elif price_change_pct < 0:
+                    outcome = "WIN"
+                    pnl_pct = -price_change_pct  # Negative change = profit on short
+                elif price_change_pct > 0:
+                    outcome = "LOSS"
+                    pnl_pct = -price_change_pct  # Positive change = loss on short
+                else:
+                    outcome = "BREAK_EVEN"
+                    pnl_pct = 0.0
+            
+            pnl = position_size * pnl_pct
+            
+            # Update trade
+            checked_at = now.isoformat()
+            
+            conn.execute("""
+                UPDATE paper_trades
+                SET target_price = ?,
+                    actual_direction = ?,
+                    outcome = ?,
+                    profit_loss = ?,
+                    profit_loss_pct = ?,
+                    checked_at = ?
+                WHERE paper_trade_id = ?
+            """, (
+                current_price,
+                actual_direction,
+                outcome,
+                pnl,
+                pnl_pct,
+                checked_at,
+                paper_trade_id
+            ))
+            conn.commit()
+            
+            LOGGER.info(
+                f"✅ Paper trade resolved: {trade['symbol']} {outcome} "
+                f"(${pnl:+,.2f}, {pnl_pct:+.2%})"
+            )
+            
+            return {
+                "resolved": True,
+                "outcome": outcome,
+                "profit_loss": pnl,
+                "profit_loss_pct": pnl_pct,
+                "actual_direction": actual_direction,
+                "target_price": current_price
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to check paper trade outcome: {e}")
+            return {"resolved": False, "error": str(e)}
+        finally:
+            conn.close()
+    
+    def check_all_pending(self, price_data: dict) -> list:
+        """
+        Check all pending paper trades and resolve if target time reached.
+        
+        Args:
+            price_data: {"BTC": 87500.0, "ETH": 3200.0, ...}
+        
+        Returns:
+            List of resolved trades
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        
+        try:
+            rows = conn.execute("""
+                SELECT paper_trade_id, symbol, target_time
+                FROM paper_trades
+                WHERE outcome = 'PENDING'
+                ORDER BY target_time ASC
+            """).fetchall()
+            
+            resolved = []
+            now = datetime.utcnow()
+            
+            for row in rows:
+                trade = dict(row)
+                target_time = datetime.fromisoformat(trade["target_time"])
+                
+                # Target time reached?
+                if now >= target_time:
+                    symbol = trade["symbol"]
+                    
+                    # Have current price?
+                    if symbol in price_data:
+                        current_price = price_data[symbol]
+                        result = self.check_outcome(trade["paper_trade_id"], current_price)
+                        
+                        if result.get("resolved"):
+                            resolved.append({
+                                "paper_trade_id": trade["paper_trade_id"],
+                                "symbol": symbol,
+                                **result
+                            })
+            
+            if resolved:
+                LOGGER.info(f"✅ Resolved {len(resolved)} paper trades")
+            
+            return resolved
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to check pending trades: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    def get_trades(
+        self,
+        symbol: Optional[str] = None,
+        days: Optional[int] = None,
+        outcome: Optional[str] = None,
+        limit: int = 50
+    ) -> list:
+        """Get paper trades with filters"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        
+        try:
+            query = "SELECT * FROM paper_trades WHERE 1=1"
+            params = []
+            
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol.upper())
+            
+            if days:
+                cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+                query += " AND created_at >= ?"
+                params.append(cutoff)
+            
+            if outcome:
+                query += " AND outcome = ?"
+                params.append(outcome.upper())
+            
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+            
+            rows = conn.execute(query, params).fetchall()
+            
+            return [dict(row) for row in rows]
+        
+        finally:
+            conn.close()
+    
+    def get_stats(self, days: int = 30) -> dict:
+        """
+        Calculate paper trading statistics.
+        
+        Returns:
+            {
+                "total_trades": int,
+                "resolved_trades": int,
+                "pending_trades": int,
+                "wins": int,
+                "losses": int,
+                "stopped": int,
+                "win_rate": float,
+                "total_pnl": float,
+                "avg_win": float,
+                "avg_loss": float,
+                "best_trade": {...},
+                "worst_trade": {...},
+                "accuracy_by_symbol": {...}
+            }
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        
+        try:
+            cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+            
+            # Overall stats
+            total = conn.execute("""
+                SELECT COUNT(*) as count FROM paper_trades
+                WHERE created_at >= ?
+            """, (cutoff,)).fetchone()["count"]
+            
+            resolved = conn.execute("""
+                SELECT COUNT(*) as count FROM paper_trades
+                WHERE created_at >= ? AND outcome != 'PENDING'
+            """, (cutoff,)).fetchone()["count"]
+            
+            pending = total - resolved
+            
+            # Outcome counts
+            wins = conn.execute("""
+                SELECT COUNT(*) as count FROM paper_trades
+                WHERE created_at >= ? AND outcome = 'WIN'
+            """, (cutoff,)).fetchone()["count"]
+            
+            losses = conn.execute("""
+                SELECT COUNT(*) as count FROM paper_trades
+                WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED')
+            """, (cutoff,)).fetchone()["count"]
+            
+            stopped = conn.execute("""
+                SELECT COUNT(*) as count FROM paper_trades
+                WHERE created_at >= ? AND outcome = 'STOPPED'
+            """, (cutoff,)).fetchone()["count"]
+            
+            win_rate = wins / resolved if resolved > 0 else 0.0
+            
+            # P&L stats
+            pnl_rows = conn.execute("""
+                SELECT profit_loss FROM paper_trades
+                WHERE created_at >= ? AND profit_loss IS NOT NULL
+            """, (cutoff,)).fetchall()
+            
+            total_pnl = sum(row["profit_loss"] for row in pnl_rows)
+            
+            win_trades = conn.execute("""
+                SELECT profit_loss FROM paper_trades
+                WHERE created_at >= ? AND outcome = 'WIN'
+            """, (cutoff,)).fetchall()
+            
+            loss_trades = conn.execute("""
+                SELECT profit_loss FROM paper_trades
+                WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED')
+            """, (cutoff,)).fetchall()
+            
+            avg_win = sum(t["profit_loss"] for t in win_trades) / len(win_trades) if win_trades else 0.0
+            avg_loss = sum(t["profit_loss"] for t in loss_trades) / len(loss_trades) if loss_trades else 0.0
+            
+            # Best/worst trades
+            best = conn.execute("""
+                SELECT * FROM paper_trades
+                WHERE created_at >= ? AND profit_loss IS NOT NULL
+                ORDER BY profit_loss DESC LIMIT 1
+            """, (cutoff,)).fetchone()
+            
+            worst = conn.execute("""
+                SELECT * FROM paper_trades
+                WHERE created_at >= ? AND profit_loss IS NOT NULL
+                ORDER BY profit_loss ASC LIMIT 1
+            """, (cutoff,)).fetchone()
+            
+            # Accuracy by symbol
+            symbols = conn.execute("""
+                SELECT DISTINCT symbol FROM paper_trades
+                WHERE created_at >= ?
+            """, (cutoff,)).fetchall()
+            
+            accuracy_by_symbol = {}
+            
+            for sym_row in symbols:
+                symbol = sym_row["symbol"]
+                
+                sym_resolved = conn.execute("""
+                    SELECT COUNT(*) as count FROM paper_trades
+                    WHERE created_at >= ? AND symbol = ? AND outcome != 'PENDING'
+                """, (cutoff, symbol)).fetchone()["count"]
+                
+                sym_wins = conn.execute("""
+                    SELECT COUNT(*) as count FROM paper_trades
+                    WHERE created_at >= ? AND symbol = ? AND outcome = 'WIN'
+                """, (cutoff, symbol)).fetchone()["count"]
+                
+                sym_win_rate = sym_wins / sym_resolved if sym_resolved > 0 else 0.0
+                
+                accuracy_by_symbol[symbol] = {
+                    "trades": sym_resolved,
+                    "wins": sym_wins,
+                    "win_rate": sym_win_rate
+                }
+            
+            return {
+                "total_trades": total,
+                "resolved_trades": resolved,
+                "pending_trades": pending,
+                "wins": wins,
+                "losses": losses,
+                "stopped": stopped,
+                "win_rate": win_rate,
+                "total_pnl": total_pnl,
+                "avg_win": avg_win,
+                "avg_loss": avg_loss,
+                "best_trade": dict(best) if best else None,
+                "worst_trade": dict(worst) if worst else None,
+                "accuracy_by_symbol": accuracy_by_symbol
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to calculate stats: {e}")
+            return {}
+        finally:
+            conn.close()
+
+
+# Singleton
+_PAPER_TRACKER: Optional[PaperTracker] = None
+
+def get_paper_tracker() -> PaperTracker:
+    """Get singleton paper tracker instance"""
+    global _PAPER_TRACKER
+    if _PAPER_TRACKER is None:
+        _PAPER_TRACKER = PaperTracker()
+    return _PAPER_TRACKER

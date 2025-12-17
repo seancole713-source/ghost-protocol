@@ -30177,6 +30177,181 @@ except Exception as e:
     LOGGER.error(f"⚠️ Trade Journal endpoints not loaded: {e}", exc_info=True)
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PAPER TRADING TRACKER (Auto-track ALL Ghost signals)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+try:
+    from core.paper_tracker import get_paper_tracker
+
+    @APP.post("/api/v3/paper/signal")
+    async def api_v3_paper_log_signal(
+        cascade_id: str,
+        symbol: str,
+        signal_direction: str,
+        signal_confidence: float,
+        entry_price: float,
+        entry_time: str,
+        position_size: float = 1000.0,
+        stop_loss_pct: float = 0.05,
+        take_profit_pct: float = 0.10
+    ):
+        """
+        Log a Ghost signal as a paper trade (AUTO-called by cascade system).
+        
+        Example:
+            POST /api/v3/paper/signal?cascade_id=abc&symbol=BTC&signal_direction=DOWN&signal_confidence=0.62&entry_price=87500&entry_time=2025-12-17T12:00:00
+        """
+        try:
+            tracker = get_paper_tracker()
+            paper_trade_id = tracker.log_signal(
+                cascade_id=cascade_id,
+                symbol=symbol,
+                signal_direction=signal_direction,
+                signal_confidence=signal_confidence,
+                entry_price=entry_price,
+                entry_time=entry_time,
+                position_size=position_size,
+                stop_loss_pct=stop_loss_pct,
+                take_profit_pct=take_profit_pct
+            )
+            
+            return {
+                "ok": True,
+                "paper_trade_id": paper_trade_id,
+                "message": f"Paper trade logged: {symbol} {signal_direction}"
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to log paper signal: {e}", exc_info=True)
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/paper/check")
+    async def api_v3_paper_check_outcome(
+        paper_trade_id: str,
+        current_price: float
+    ):
+        """
+        Check if paper trade target time reached and calculate outcome.
+        
+        Example:
+            POST /api/v3/paper/check?paper_trade_id=abc123&current_price=84500
+        """
+        try:
+            tracker = get_paper_tracker()
+            result = tracker.check_outcome(paper_trade_id, current_price)
+            return {"ok": True, **result}
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to check paper trade: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/paper/check_all")
+    async def api_v3_paper_check_all():
+        """
+        Check all pending paper trades (called by scheduler).
+        
+        Fetches current prices and resolves trades that reached target time.
+        """
+        try:
+            tracker = get_paper_tracker()
+            
+            # Get current prices for all tracked symbols
+            from core.price_cache import PRICE_CACHE
+            price_data = {}
+            
+            # Get unique symbols from pending trades
+            conn = sqlite3.connect("data/ghost_predictions.db")
+            symbols = conn.execute("""
+                SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
+            """).fetchall()
+            conn.close()
+            
+            for (symbol,) in symbols:
+                try:
+                    price_data[symbol] = PRICE_CACHE.get_cached_price(symbol)
+                except:
+                    LOGGER.warning(f"Could not get price for {symbol}")
+            
+            resolved = tracker.check_all_pending(price_data)
+            
+            return {
+                "ok": True,
+                "resolved_count": len(resolved),
+                "resolved": resolved
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to check all paper trades: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/v3/paper/trades")
+    async def api_v3_paper_get_trades(
+        symbol: str | None = None,
+        days: int | None = None,
+        outcome: str | None = None,
+        limit: int = 50
+    ):
+        """
+        Get paper trades with filters.
+        
+        Example:
+            GET /api/v3/paper/trades?symbol=BTC&days=30&outcome=WIN
+        """
+        try:
+            tracker = get_paper_tracker()
+            trades = tracker.get_trades(
+                symbol=symbol,
+                days=days,
+                outcome=outcome,
+                limit=limit
+            )
+            
+            return {
+                "ok": True,
+                "trades": trades,
+                "count": len(trades)
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to get paper trades: {e}")
+            return {
+                "ok": False,
+                "trades": [],
+                "error": str(e)
+            }
+
+    @APP.get("/api/v3/paper/stats")
+    async def api_v3_paper_get_stats(days: int = 30):
+        """
+        Get paper trading statistics.
+        
+        Example:
+            GET /api/v3/paper/stats?days=30
+        """
+        try:
+            tracker = get_paper_tracker()
+            stats = tracker.get_stats(days=days)
+            
+            return {
+                "ok": True,
+                "stats": stats
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to get paper stats: {e}")
+            return {
+                "ok": False,
+                "stats": {},
+                "error": str(e)
+            }
+
+    LOGGER.info("✅ Paper Trading API endpoints registered (/api/v3/paper/*)")
+
+except Exception as e:
+    LOGGER.error(f"⚠️ Paper Trading endpoints not loaded: {e}", exc_info=True)
+
+
 # Alias for Railway/Uvicorn compatibility (expects lowercase 'app')
 app = APP
 

@@ -387,7 +387,29 @@ class CascadingPredictor:
                 }
             )
             
+            # Auto-log to paper tracker (prove Ghost's accuracy)
+            try:
+                from core.paper_tracker import get_paper_tracker
+                tracker = get_paper_tracker()
+                
+                # Convert entry time
+                entry_time = datetime.fromtimestamp(cascade['created_at']).isoformat()
+                
+                tracker.log_signal(
+                    cascade_id=cascade_id,
+                    symbol=symbol,
+                    signal_direction=pred_6h.get("direction"),
+                    signal_confidence=pred_6h.get("confidence"),
+                    entry_price=cascade['h48_price'],
+                    entry_time=entry_time
+                )
+                LOGGER.info(f"[PAPER] Auto-logged {symbol} 6h signal to paper tracker")
+            
+            except Exception as e:
+                LOGGER.warning(f"[PAPER] Failed to log paper trade: {e}")
+            
             LOGGER.info(f"[CASCADE] 6h final sent for {symbol}")
+
             
         except Exception as e:
             LOGGER.error(f"[CASCADE] Failed 6h final for {cascade_id}: {e}", exc_info=True)

@@ -172,6 +172,36 @@ def _check_pending_cascades():
             except Exception as e:
                 LOGGER.error(f"[CASCADE] Failed evaluation for {cascade_id}: {e}", exc_info=True)
         
+        # Check pending paper trades (resolve outcomes)
+        try:
+            from core.paper_tracker import get_paper_tracker
+            tracker = get_paper_tracker()
+            
+            # Get current prices for checking
+            from core.price_cache import PRICE_CACHE
+            price_data = {}
+            
+            # Get unique symbols from pending trades
+            paper_conn = sqlite3.connect("data/ghost_predictions.db")
+            symbols = paper_conn.execute("""
+                SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
+            """).fetchall()
+            paper_conn.close()
+            
+            for (symbol,) in symbols:
+                try:
+                    price_data[symbol] = PRICE_CACHE.get_cached_price(symbol)
+                except:
+                    pass
+            
+            if price_data:
+                resolved = tracker.check_all_pending(price_data)
+                if resolved:
+                    LOGGER.info(f"[PAPER] Resolved {len(resolved)} paper trades")
+        
+        except Exception as e:
+            LOGGER.warning(f"[PAPER] Failed to check pending trades: {e}")
+        
         if cascades_24h or cascades_6h or cascades_eval:
             LOGGER.info(
                 f"[CASCADE] Processed updates: "
@@ -181,6 +211,7 @@ def _check_pending_cascades():
             )
         else:
             LOGGER.debug("No pending cascade updates")
+
         
     except Exception as e:
         LOGGER.error(f"Failed to check pending cascades: {e}", exc_info=True)
