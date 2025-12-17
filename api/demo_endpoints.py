@@ -32,6 +32,14 @@ async def trigger_morning_now():
     try:
         logger.info("🎬 Demo: Triggering morning prophecy NOW")
         
+        # Import here to avoid circular dependencies
+        from core.telegram_hunter import send_telegram_message
+        
+        # Send test message first
+        test_sent = send_telegram_message("🎬 Generating your $200/day investment plan...")
+        logger.info(f"Test message sent: {test_sent}")
+        
+        # Generate and send prophecy
         scheduler = GuardianHeartbeatScheduler()
         await scheduler._send_heartbeat('morning', position_size=100.0)
         
@@ -39,7 +47,8 @@ async def trigger_morning_now():
             "ok": True,
             "message": "Morning prophecy sent to Telegram!",
             "position_size": 100.0,
-            "demo_mode": True
+            "demo_mode": True,
+            "test_sent": test_sent
         }
         
     except Exception as e:
