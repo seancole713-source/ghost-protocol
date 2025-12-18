@@ -131,13 +131,11 @@ class DailyTop10Scanner:
                 # Generate prediction (simplified - you'd use actual ML model)
                 prediction = await self._predict_48h(symbol, "crypto", current_price)
                 
-                # Accept opportunities with:
-                # - UP direction (no DOWN trades)
-                # - 3%+ gain potential (lowered from 5%)
+                # Accept ALL quality predictions (UP or DOWN):
+                # - 3%+ predicted move (up OR down)
                 # - 60%+ confidence
                 if (prediction 
-                    and prediction.get("direction") == "UP"
-                    and prediction.get("gain_pct", 0) >= 3.0
+                    and abs(prediction.get("gain_pct", 0)) >= 3.0  # Changed: Accept negative gains too
                     and prediction.get("confidence", 0) >= 0.60):
                     
                     opportunities.append({
@@ -145,9 +143,9 @@ class DailyTop10Scanner:
                         "asset_type": "crypto",
                         "current_price": current_price,
                         "predicted_48h_price": prediction["predicted_price"],
-                        "gain_pct": prediction["gain_pct"],
+                        "gain_pct": prediction["gain_pct"],  # Can be negative now
                         "confidence": prediction["confidence"],
-                        "direction": prediction["direction"],
+                        "direction": prediction["direction"],  # UP or DOWN
                         "sell_at": prediction["sell_at"],
                         "entry_price": current_price,
                         "target_price": prediction["predicted_price"]
@@ -157,12 +155,12 @@ class DailyTop10Scanner:
                 LOGGER.debug(f"Failed to scan {symbol}: {e}")
                 continue
         
-        # Sort by gain potential
-        opportunities.sort(key=lambda x: x["gain_pct"], reverse=True)
+        # Sort by absolute gain potential (best opportunities regardless of direction)
+        opportunities.sort(key=lambda x: abs(x["gain_pct"]), reverse=True)
         
-        LOGGER.info(f"✅ Found {len(opportunities)} opportunities (returning top 10)")
+        LOGGER.info(f"✅ Found {len(opportunities)} opportunities (UP and DOWN, returning top 10)")
         
-        # Always return top 10 (or all if less than 10 found)
+        # Return top 10 by absolute move size
         top_10 = opportunities[:10]
         
         if len(top_10) < 10:
