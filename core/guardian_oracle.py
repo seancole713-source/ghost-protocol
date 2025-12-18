@@ -13,6 +13,7 @@ Notification modes:
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import sqlite3
@@ -55,8 +56,9 @@ class GuardianOracle:
     - Reality Checker: Admits mistakes (honest, humble)
     """
     
-    def __init__(self, db_path: str = "data/ghost_predictions.db"):
+    def __init__(self, db_path: str = "data/ghost_predictions.db", wolf_db_path: str = "data/wolf.db"):
         self.db_path = db_path
+        self.wolf_db_path = wolf_db_path  # For accessing prediction history
         self.active_positions: Dict[str, Dict] = {}
         self.last_readings: Dict[str, Dict] = {}
         self.alert_history: List[Dict] = []
@@ -172,6 +174,84 @@ class GuardianOracle:
         
         logger.info("✅ Guardian Oracle database initialized")
     
+    # ===== RESULT REPORTING =====
+    
+    def get_yesterdays_results(self) -> Optional[str]:
+        """
+        Query yesterday's predictions and calculate actual results.
+        Returns a formatted string with wins/losses/P&L or None if no data.
+        """
+        try:
+            conn = sqlite3.connect(self.wolf_db_path)
+            cursor = conn.cursor()
+            
+            # Get predictions from 24-48h ago (yesterday's morning prophecy)
+            now = int(time.time())
+            yesterday_start = now - (48 * 3600)  # 48h ago
+            yesterday_end = now - (24 * 3600)    # 24h ago
+            
+            cursor.execute("""
+                SELECT symbol, predicted_price, outcome_price, predicted_pct, 
+                       outcome_pct, correct, confidence
+                FROM ghost_predictions
+                WHERE predicted_at >= ? AND predicted_at <= ?
+                  AND outcome_price IS NOT NULL
+                ORDER BY predicted_at DESC
+            """, (yesterday_start, yesterday_end))
+            
+            results = cursor.fetchall()
+            conn.close()
+            
+            if not results:
+                return None
+            
+            # Calculate performance
+            total_predictions = len(results)
+            correct_predictions = sum(1 for r in results if r[5])  # r[5] = correct
+            win_rate = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
+            
+            # Calculate P&L (assume $100 per position)
+            position_size = 100.0
+            total_pnl = 0
+            wins = []
+            losses = []
+            
+            for symbol, pred_price, outcome_price, pred_pct, outcome_pct, correct, confidence in results:
+                if outcome_pct is not None:
+                    pnl = position_size * (outcome_pct / 100)
+                    total_pnl += pnl
+                    if pnl > 0:
+                        wins.append((symbol, pnl))
+                    else:
+                        losses.append((symbol, pnl))
+            
+            # Format report
+            report_parts = [
+                "📊 YESTERDAY'S ACTUAL RESULTS:\n",
+                "━━━━━━━━━━━━━━━━━━━━━━━━",
+                f"\n✅ Correct predictions: {correct_predictions}/{total_predictions} ({win_rate:.0f}%)",
+                f"\n💰 Total P&L: ${total_pnl:+.0f}",
+                f"\n📈 Wins: {len(wins)} positions",
+                f"\n📉 Losses: {len(losses)} positions"
+            ]
+            
+            # Show best/worst trades
+            if wins:
+                best_win = max(wins, key=lambda x: x[1])
+                report_parts.append(f"\n🏆 Best: {best_win[0]} (+${best_win[1]:.0f})")
+            
+            if losses:
+                worst_loss = min(losses, key=lambda x: x[1])
+                report_parts.append(f"\n💀 Worst: {worst_loss[0]} (${worst_loss[1]:.0f})")
+            
+            report_parts.append("\n━━━━━━━━━━━━━━━━━━━━━━━━\n")
+            
+            return ''.join(report_parts)
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get yesterday's results: {e}")
+            return None
+    
     # ===== ORACLE MODE (Morning Prophecy) =====
     
     async def morning_prophecy(self, top_10: List[Dict], position_size: float = 100.0) -> str:
@@ -180,11 +260,22 @@ class GuardianOracle:
         
         Tone: Mystical, confident, all-seeing
         Now with $100 position sizing and profit calculations
+        NOW WITH HONEST RESULTS: Reports yesterday's actual results first
         
         Args:
             top_10: List of opportunities
             position_size: Investment per position (default $100)
         """
+        
+        message_parts = [
+            "🔮 GHOST ORACLE - DAILY PROFIT PLAN\n",
+            "Good morning, Human.\n"
+        ]
+        
+        # FIRST: Report yesterday's results (if available)
+        yesterdays_results = self.get_yesterdays_results()
+        if yesterdays_results:
+            message_parts.append(f"\n{yesterdays_results}\n")
         
         # Calculate totals
         total_investment = position_size * len(top_10)
@@ -208,9 +299,7 @@ class GuardianOracle:
         worst_losers = len(top_10) - worst_winners
         worst_case_profit = (best_case_profit * 0.40) - (worst_losers * position_size * 0.05)
         
-        message_parts = [
-            "🔮 GHOST ORACLE - DAILY PROFIT PLAN\n",
-            "Good morning, Human.\n",
+        message_parts.extend([
             f"\nI scanned {self._get_total_symbols_scanned()} assets while you slept.",
             "\nI analyzed 50,000 data points.",
             "\nI consulted my models (LSTM, XGBoost, Transformer).",
@@ -223,25 +312,45 @@ class GuardianOracle:
             f"\nSuccess rate: {avg_confidence*100:.0f}% average",
             "\n━━━━━━━━━━━━━━━━━━━━━━━━\n",
             "\n📊 YOUR 10 MOVES:\n"
-        ]
+        ])
         
         for i, opp in enumerate(top_10, 1):
             # Calculate position-specific profits
             entry_price = opp.get('current_price', opp.get('entry_price', 0))
             target_price = opp.get('predicted_48h_price', opp.get('target_price', 0))
-            target_value = position_size * (1 + opp['gain_pct'] / 100)
+            gain_pct = opp['gain_pct']
+            direction = opp.get('direction', 'UP' if gain_pct > 0 else 'DOWN')
+            
+            target_value = position_size * (1 + gain_pct / 100)
             profit_amount = target_value - position_size
             
-            # Emoji intensity based on gain
-            if opp['gain_pct'] >= 15:
-                emoji = '🚀🚀🚀'
-                strength = 'STRONG BUY'
-            elif opp['gain_pct'] >= 10:
-                emoji = '🚀🚀'
-                strength = 'BUY'
+            # Direction-based display
+            if direction == 'UP':
+                # Bullish - emoji intensity based on gain
+                if gain_pct >= 15:
+                    emoji = '🚀🚀🚀'
+                    strength = 'STRONG BUY'
+                elif gain_pct >= 10:
+                    emoji = '🚀🚀'
+                    strength = 'BUY'
+                else:
+                    emoji = '🚀'
+                    strength = 'MODERATE BUY'
+                direction_emoji = '📈'
+                gain_sign = '+'
             else:
-                emoji = '🚀'
-                strength = 'MODERATE'
+                # Bearish - emoji intensity based on drop
+                if abs(gain_pct) >= 15:
+                    emoji = '📉📉📉'
+                    strength = 'STRONG SHORT'
+                elif abs(gain_pct) >= 10:
+                    emoji = '📉📉'
+                    strength = 'SHORT'
+                else:
+                    emoji = '📉'
+                    strength = 'MODERATE SHORT'
+                direction_emoji = '🔻'
+                gain_sign = ''  # Already negative
             
             # Confidence indicator
             if opp['confidence'] >= 0.75:
@@ -256,10 +365,10 @@ class GuardianOracle:
                 f"💵 Invest: ${position_size:.0f}\n"
                 f"📍 Entry: ${entry_price:.2f}\n"
                 f"🎯 Target: ${target_price:.2f}\n"
-                f"💰 Profit: +${profit_amount:.0f}\n"
-                f"📈 Gain: +{opp['gain_pct']:.1f}%\n"
+                f"💰 Expected: {gain_sign}${abs(profit_amount):.0f}\n"
+                f"{direction_emoji} Move: {gain_sign}{gain_pct:.1f}%\n"
                 f"⏰ Timeframe: 48 hours\n"
-                f"🔒 My confidence: {opp['confidence']*100:.0f}% {conf_emoji}\n"
+                f"🔒 Confidence: {opp['confidence']*100:.0f}% {conf_emoji}\n"
             )
         
         message_parts.extend([
