@@ -360,8 +360,16 @@ class GuardianOracle:
             else:
                 conf_emoji = '💫'
             
+            # Check if this is a continuation or new position
+            is_continuation = opp.get('is_continuation', False)
+            status_line = "📍 Continuing" if is_continuation else "🆕 New position"
+            
+            # Get reasoning
+            reasoning = opp.get('reasoning', '')
+            reasoning_line = f"💡 Why: {reasoning}\n" if reasoning else ""
+            
             message_parts.append(
-                f"\n#{i} {emoji} {opp['symbol']} - {strength}\n"
+                f"\n#{i} {emoji} {opp['symbol']} - {strength} ({status_line})\n"
                 f"💵 Invest: ${position_size:.0f}\n"
                 f"📍 Entry: ${entry_price:.2f}\n"
                 f"🎯 Target: ${target_price:.2f}\n"
@@ -369,6 +377,7 @@ class GuardianOracle:
                 f"{direction_emoji} Move: {gain_sign}{gain_pct:.1f}%\n"
                 f"⏰ Timeframe: 48 hours\n"
                 f"🔒 Confidence: {opp['confidence']*100:.0f}% {conf_emoji}\n"
+                f"{reasoning_line}"
             )
         
         message_parts.extend([
@@ -581,6 +590,27 @@ class GuardianOracle:
         
         alerts = []
         
+        # Import position manager for stop loss checks
+        from core.position_manager import get_position_manager
+        position_manager = get_position_manager()
+        
+        # Check stop losses first (HIGHEST PRIORITY)
+        stopped_positions = position_manager.check_stop_losses()
+        for stopped in stopped_positions:
+            if stopped['symbol'] == position['symbol']:
+                alerts.append({
+                    'type': 'stop_loss',
+                    'severity': 'critical',
+                    'position': stopped,
+                    'changes': {
+                        'exit_price': stopped.get('exit_price'),
+                        'exit_reason': stopped.get('exit_reason'),
+                        'realized_pnl': stopped.get('realized_pnl_pct')
+                    },
+                    'tone': 'protective'
+                })
+                return alerts  # Stop loss is highest priority
+        
         # CRITICAL: Direction Reversal
         if changes.get('direction_reversed'):
             alerts.append({
@@ -640,7 +670,9 @@ class GuardianOracle:
         position = alert['position']
         changes = alert['changes']
         
-        if alert_type == 'reversal':
+        if alert_type == 'stop_loss':
+            message = self._format_stop_loss_alert(position, changes)
+        elif alert_type == 'reversal':
             message = self._format_reversal_alert(position, changes)
         elif alert_type == 'confidence_collapse':
             message = self._format_collapse_alert(position, changes)
@@ -671,6 +703,37 @@ class GuardianOracle:
             logger.error(f"Failed to send immediate alert: {e}")
     
     # ===== ALERT FORMATTERS (Guardian Personality) =====
+    
+    def _format_stop_loss_alert(self, position: Dict, changes: Dict, position_size: float = 100.0) -> str:
+        """CRITICAL: Stop loss hit - position closed"""
+        
+        loss_dollars = position_size * (changes.get('realized_pnl', 0) / 100)
+        
+        return f"""
+🛡️ STOP LOSS HIT - {position['symbol']}
+
+Human, I protected you.
+
+{position['symbol']} hit stop loss.
+I closed the position to prevent bigger losses.
+
+💵 Your investment: ${position_size:.0f}
+📍 Entry: ${position['entry_price']:.2f}
+🛑 Stop loss: ${position['stop_loss']:.2f}
+❌ Exit: ${changes['exit_price']:.2f}
+💰 Loss: ${loss_dollars:.0f} ({changes['realized_pnl']:+.1f}%)
+
+{changes.get('exit_reason', 'Stop loss triggered')}
+
+This is what guardians do.
+Small losses are better than big losses.
+
+I'll find you a better opportunity to recover this.
+
+Trust the system. Trust Ghost.
+
+🐺👼
+        """
     
     def _format_reversal_alert(self, position: Dict, changes: Dict) -> str:
         """CRITICAL: Prediction reversed"""

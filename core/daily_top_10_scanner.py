@@ -53,6 +53,10 @@ class DailyTop10Scanner:
         self._ensure_table()
         self.last_alert_time = 0
         
+        # Import position manager for locked entry prices
+        from core.position_manager import get_position_manager
+        self.position_manager = get_position_manager()
+        
         if self.demo_mode:
             LOGGER.info("🎬 DEMO MODE: Forcing positive predictions")
     
@@ -110,11 +114,16 @@ class DailyTop10Scanner:
         Scan all symbols and find top 10 profit opportunities.
         
         Returns list of opportunities sorted by gain_pct descending.
+        Uses position manager to maintain entry price consistency.
         """
         from core.beast_scheduler import STOCK_SYMBOLS, CRYPTO_SYMBOLS
         from core.crypto.crypto_providers import get_crypto_price_quorum
         
         LOGGER.info("🔍 Scanning market for top 10 opportunities...")
+        
+        # Check active positions first
+        active_positions = self.position_manager.get_all_active()
+        LOGGER.info(f"📍 Found {len(active_positions)} active positions with locked entry prices")
         
         opportunities = []
         
@@ -134,9 +143,22 @@ class DailyTop10Scanner:
                 # Accept ALL quality predictions (UP or DOWN):
                 # - 3%+ predicted move (up OR down)
                 # - 60%+ confidence
+                # - Sufficient liquidity (>$1M daily volume)
                 if (prediction 
-                    and abs(prediction.get("gain_pct", 0)) >= 3.0  # Changed: Accept negative gains too
-                    and prediction.get("confidence", 0) >= 0.60):
+                    and abs(prediction.get("gain_pct", 0)) >= 3.0  # Accept negative gains too
+                    and prediction.get("confidence", 0) >= 0.60
+                    and prediction.get("has_liquidity", True)):  # Liquidity check
+                    
+                    # Check if position already exists (maintain entry price)
+                    existing_position = next((p for p in active_positions if p['symbol'] == symbol), None)
+                    
+                    if existing_position:
+                        # Keep original entry price
+                        entry_price = existing_position['entry_price']
+                        LOGGER.info(f"📍 {symbol}: Keeping original entry ${entry_price:.2f} (current: ${current_price:.2f})")
+                    else:
+                        # New position - use current price as entry
+                        entry_price = current_price
                     
                     opportunities.append({
                         "symbol": symbol,
@@ -147,8 +169,10 @@ class DailyTop10Scanner:
                         "confidence": prediction["confidence"],
                         "direction": prediction["direction"],  # UP or DOWN
                         "sell_at": prediction["sell_at"],
-                        "entry_price": current_price,
-                        "target_price": prediction["predicted_price"]
+                        "entry_price": entry_price,  # LOCKED entry price
+                        "target_price": prediction["predicted_price"],
+                        "reasoning": prediction.get("reasoning", "Technical alignment"),
+                        "is_continuation": existing_position is not None
                     })
             
             except Exception as e:
@@ -243,12 +267,27 @@ class DailyTop10Scanner:
             # Calculate sell time (48 hours from now)
             sell_time = datetime.utcnow() + timedelta(hours=48)
             
+            # Generate market context and reasoning
+            reasoning = await self._generate_reasoning(
+                symbol, 
+                asset_type, 
+                current_price, 
+                predicted_price, 
+                direction, 
+                confidence
+            )
+            
+            # Check liquidity
+            has_liquidity = await self._check_liquidity(symbol, asset_type)
+            
             return {
                 "predicted_price": predicted_price,
                 "gain_pct": gain_pct,
                 "confidence": confidence,
                 "direction": direction,
-                "sell_at": sell_time.isoformat()
+                "sell_at": sell_time.isoformat(),
+                "reasoning": reasoning,
+                "has_liquidity": has_liquidity
             }
             
         except Exception as e:
@@ -268,14 +307,107 @@ class DailyTop10Scanner:
                 "gain_pct": gain_pct,
                 "confidence": confidence,
                 "direction": "UP",
-                "sell_at": sell_time.isoformat()
+                "sell_at": sell_time.isoformat(),
+                "reasoning": "Fallback prediction - ML model unavailable",
+                "has_liquidity": True
             }
+    
+    async def _generate_reasoning(
+        self,
+        symbol: str,
+        asset_type: str,
+        current_price: float,
+        predicted_price: float,
+        direction: str,
+        confidence: float
+    ) -> str:
+        """
+        Generate market context and reasoning for prediction.
+        
+        Returns human-readable explanation of WHY this prediction was made.
+        """
+        try:
+            from core.data_pillars.technical_engine import get_technical_features
+            from core.data_pillars.volume_engine import get_volume_features
+            
+            # Get technical indicators
+            tech_features = await get_technical_features(symbol, asset_type)
+            vol_features = await get_volume_features(symbol, asset_type)
+            
+            reasons = []
+            
+            # RSI analysis
+            rsi = tech_features.get('rsi')
+            if rsi:
+                if rsi < 30:
+                    reasons.append(f"RSI oversold ({rsi:.0f})")
+                elif rsi > 70:
+                    reasons.append(f"RSI overbought ({rsi:.0f})")
+            
+            # MACD analysis
+            macd_signal = tech_features.get('macd_signal')
+            if macd_signal:
+                if macd_signal == 'bullish':
+                    reasons.append("MACD bullish crossover")
+                elif macd_signal == 'bearish':
+                    reasons.append("MACD bearish crossover")
+            
+            # Volume analysis
+            volume_trend = vol_features.get('volume_trend')
+            if volume_trend:
+                if volume_trend == 'increasing':
+                    reasons.append("Volume increasing")
+                elif volume_trend == 'decreasing':
+                    reasons.append("Volume declining")
+            
+            # Price trend analysis
+            price_change_7d = tech_features.get('price_change_7d')
+            if price_change_7d:
+                if price_change_7d < -15:
+                    reasons.append(f"Down {abs(price_change_7d):.0f}% this week (potential reversal)")
+                elif price_change_7d > 15:
+                    reasons.append(f"Up {price_change_7d:.0f}% this week (strong momentum)")
+            
+            # Model consensus
+            reasons.append(f"{confidence*100:.0f}% model confidence")
+            
+            if not reasons:
+                return "Technical alignment, momentum indicators"
+            
+            return " • ".join(reasons)
+        
+        except Exception as e:
+            LOGGER.debug(f"Failed to generate reasoning for {symbol}: {e}")
+            return "Technical alignment based on ML models"
+    
+    async def _check_liquidity(self, symbol: str, asset_type: str) -> bool:
+        """
+        Check if symbol has sufficient liquidity for $100 position.
+        
+        Returns True if daily volume > $1M (safe for $100 trades).
+        """
+        try:
+            if asset_type == "crypto":
+                from core.data_pillars.volume_engine import get_volume_features
+                vol_features = await get_volume_features(symbol, asset_type)
+                daily_volume = vol_features.get('volume_24h', 0)
+                
+                # Require $1M+ daily volume
+                return daily_volume > 1_000_000
+            
+            # For stocks, assume sufficient liquidity
+            return True
+        
+        except Exception as e:
+            LOGGER.debug(f"Liquidity check failed for {symbol}: {e}")
+            # Default to True to avoid filtering out opportunities
+            return True
     
     def save_top_10(self, opportunities: list[dict]) -> None:
         """
         Save top 10 opportunities to database.
         
-        Also registers positions with Guardian Oracle for monitoring.
+        Also opens/updates positions with Position Manager.
         Replaces current top 10.
         """
         import uuid
@@ -291,12 +423,13 @@ class DailyTop10Scanner:
                 WHERE is_active = 1
             """, (now,))
             
-            # Insert new top 10
+            # Insert new top 10 AND open/update positions
             for rank, opp in enumerate(opportunities, 1):
                 opportunity_id = str(uuid.uuid4())
                 
-                entry_price = opp["current_price"]
+                entry_price = opp["entry_price"]  # Already locked from scan
                 target_price = opp["predicted_48h_price"]
+                is_continuation = opp.get("is_continuation", False)
                 
                 # Calculate stop loss (5% below entry for longs, 5% above for shorts)
                 if opp["direction"] == "UP":
@@ -318,6 +451,29 @@ class DailyTop10Scanner:
                     entry_price, target_price, stop_loss, opp["sell_at"],
                     opp["direction"], now, now, rank
                 ))
+                
+                # Open or update position with Position Manager
+                if not is_continuation:
+                    # New position - lock entry price
+                    self.position_manager.open_position(
+                        symbol=opp["symbol"],
+                        asset_type=opp["asset_type"],
+                        entry_price=entry_price,
+                        target_price=target_price,
+                        direction=opp["direction"],
+                        predicted_gain_pct=opp["gain_pct"],
+                        confidence=opp["confidence"],
+                        reasoning=opp.get("reasoning", "Technical alignment")
+                    )
+                    LOGGER.info(f"🔒 Opened: {opp['symbol']} @ ${entry_price:.2f}")
+                else:
+                    # Existing position - update with current price
+                    self.position_manager.update_position(
+                        symbol=opp["symbol"],
+                        current_price=opp["current_price"],
+                        current_confidence=opp["confidence"]
+                    )
+                    LOGGER.info(f"📍 Updated: {opp['symbol']} (entry locked @ ${entry_price:.2f})")
                 
                 # Register with Guardian Oracle for 24/7 monitoring
                 self._register_with_guardian(opportunity_id, opp, conn)
