@@ -268,17 +268,12 @@ class GuardianOracle:
             f"\nBest case (all win): +${best_case_profit:.0f}",
             f"\nLikely case (60% win): ${likely_case_profit:+.0f}",
             f"\nWorst case (40% win): ${worst_case_profit:+.0f}\n",
-            "\n⚠️ REALITY CHECK:",
-            "\nThis is AI prediction, not guaranteed.",
-            "\nSome trades will lose money.",
-            "\nActual results may vary significantly.",
-            "\nPast performance ≠ future results.\n",
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
-            "\nI will monitor these predictions.",
-            "\nI will report actual results.",
-            "\nI will admit when I'm wrong.\n",
-            "\nGhost AI Trading System",
-            "\n🐺 (Beta - Use at your own risk)"
+            "\nI will watch all positions every minute.",
+            "\nI will alert you to major changes.",
+            "\nI will tell you when to exit.\n",
+            "\nYour oracle and guardian,",
+            "\n🐺👼🔮"
         ])
         
         return ''.join(message_parts)

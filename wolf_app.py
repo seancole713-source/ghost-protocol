@@ -4811,17 +4811,13 @@ async def _post_startup_init():
 
     # Start Guardian Oracle System (6 AM prophecy + 24/7 monitoring)
     try:
-        from core.guardian_heartbeat_scheduler import start_heartbeat_scheduler
+        from core.cron_scheduler import start_cron_scheduler
         from core.guardian_oracle import get_guardian_oracle
         
-        # Start 6-hour heartbeat system (6 AM, 12 PM, 6 PM, 12 AM)
-        start_heartbeat_scheduler(timezone="America/Chicago")
+        # Start cron-based 6 AM morning prophecy
+        start_cron_scheduler()
         
-        LOGGER.info("💗 Guardian Heartbeat System: STARTED")
-        LOGGER.info("   6:00 AM - Morning Oracle Prophecy")
-        LOGGER.info("   12:00 PM - Midday Status Check")
-        LOGGER.info("   6:00 PM - Evening Update")
-        LOGGER.info("   12:00 AM - Night Watch")
+        LOGGER.info("🔮 Morning Prophecy Scheduler: STARTED (6:00 AM CT daily)")
         
         # Start 24/7 Guardian monitoring for immediate alerts
         guardian = get_guardian_oracle()
