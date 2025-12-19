@@ -135,22 +135,26 @@ class LSTMModel:
 
 
 class XGBoostModel:
-    """XGBoost model - TRAINED ON REAL HISTORICAL DATA"""
+    """XGBoost model - TRAINED ON REAL HISTORICAL DATA (v2 with BTC correlation + Fear/Greed)"""
     
     def __init__(self):
         self.model = None
         self.feature_names = []
         self._loaded = False
+        self.model_version = "v2"
         self._load_trained_model()
         
     def _load_trained_model(self):
-        """Load the trained XGBoost model from disk"""
+        """Load the trained XGBoost model from disk (prefer v2)"""
         try:
             import pickle
             from pathlib import Path
             
-            # Load our trained model
-            model_path = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v1.pkl"
+            # Try v2 first (enhanced with BTC correlation, Fear/Greed)
+            model_path_v2 = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v2.pkl"
+            model_path_v1 = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v1.pkl"
+            
+            model_path = model_path_v2 if model_path_v2.exists() else model_path_v1
             
             if model_path.exists():
                 with open(model_path, "rb") as f:
@@ -159,10 +163,14 @@ class XGBoostModel:
                 self.model = model_data["model"]
                 self.feature_names = model_data["feature_names"]
                 self._loaded = True
+                self.model_version = "v2" if "v2" in str(model_path) else "v1"
                 
-                logger.info(f"✅ XGBoost model loaded: {model_data.get('test_accuracy', 0):.1%} accuracy, {len(self.feature_names)} features")
+                accuracy = model_data.get('test_accuracy', 0)
+                cv_score = model_data.get('cv_score', 0)
+                
+                logger.info(f"✅ XGBoost {self.model_version} loaded: {accuracy:.1%} accuracy, CV={cv_score:.1%}, {len(self.feature_names)} features")
             else:
-                logger.warning(f"⚠️ Trained model not found at {model_path}, using fallback")
+                logger.warning(f"⚠️ No trained model found, using fallback")
                 
         except Exception as e:
             logger.error(f"Failed to load trained XGBoost model: {e}")
@@ -172,6 +180,7 @@ class XGBoostModel:
         try:
             if self.model is not None and self._loaded:
                 # Map feature names from prediction pipeline to training features
+                # v2 features include BTC correlation, Fear/Greed, and enhanced indicators
                 feature_mapping = {
                     # RSI
                     "RSI_14": "RSI_14",
@@ -219,10 +228,48 @@ class XGBoostModel:
                     "VOLATILITY_20": "VOLATILITY_20",
                     # Range
                     "DAILY_RANGE_PCT": "DAILY_RANGE_PCT",
+                    
+                    # === V2 ENHANCED FEATURES ===
+                    # BTC Correlation (Critical for altcoin prediction)
+                    "BTC_RSI": "BTC_RSI",
+                    "BTC_MOMENTUM_24H": "BTC_MOMENTUM_24H",
+                    "BTC_MOMENTUM_7D": "BTC_MOMENTUM_7D",
+                    "BTC_MACD_BULLISH": "BTC_MACD_BULLISH",
+                    "BTC_ABOVE_SMA_20": "BTC_ABOVE_SMA_20",
+                    "BTC_CORRELATION": "BTC_CORRELATION",
+                    
+                    # Fear & Greed Index
+                    "FEAR_GREED": "fear_greed_numeric",
+                    "fear_greed_numeric": "fear_greed_numeric",
+                    "FEAR_GREED_MA": "FEAR_GREED_MA",
+                    "FEAR_GREED_EXTREME": "FEAR_GREED_EXTREME",
+                    
+                    # Funding Rates (leverage sentiment)
+                    "FUNDING_RATE": "funding_rate_proxy",
+                    "funding_rate_proxy": "funding_rate_proxy",
+                    
+                    # RSI Zones (v2 feature engineering)
+                    "RSI_OVERSOLD": "RSI_OVERSOLD",
+                    "RSI_OVERBOUGHT": "RSI_OVERBOUGHT",
+                    "MACD_BULLISH": "MACD_BULLISH",
+                    "ABOVE_SMA_20": "ABOVE_SMA_20",
+                    "ABOVE_SMA_50": "ABOVE_SMA_50",
+                    "EMA_BULLISH": "EMA_BULLISH",
+                    
+                    # Volume features
+                    "VOLUME_SPIKE": "VOLUME_SPIKE",
+                    "VOLUME_TREND": "VOLUME_TREND",
+                    
+                    # Market structure
+                    "HIGHER_HIGH": "HIGHER_HIGH",
+                    "LOWER_LOW": "LOWER_LOW",
+                    "NEAR_24H_HIGH": "NEAR_24H_HIGH",
+                    "NEAR_24H_LOW": "NEAR_24H_LOW",
                 }
                 
                 # Extract features in correct order
                 feature_values = []
+                missing_features = []
                 for name in self.feature_names:
                     # Try direct match first
                     value = features.get(name, None)
@@ -234,8 +281,15 @@ class XGBoostModel:
                                 value = features.get(src)
                                 break
                     
+                    # Track missing features for debugging
+                    if value is None:
+                        missing_features.append(name)
+                    
                     # Default to 0 if missing
                     feature_values.append(float(value) if value is not None else 0.0)
+                
+                if missing_features and len(missing_features) < 10:
+                    logger.debug(f"Missing features for XGBoost: {missing_features[:5]}...")
                 
                 X = np.array([feature_values])
                 
@@ -249,14 +303,14 @@ class XGBoostModel:
                 # Scale predicted change based on confidence
                 predicted_change = confidence * 6.0 * (1 if prediction == 1 else -1)
                 
-                logger.debug(f"🤖 XGBoost (trained): {direction} @ {confidence:.1%}")
+                logger.debug(f"🤖 XGBoost {self.model_version}: {direction} @ {confidence:.1%}")
                 
                 return ModelPrediction(
-                    model_name="XGBoost-Trained",
+                    model_name=f"XGBoost-{self.model_version}",
                     direction=direction,
                     confidence=confidence,
                     predicted_change_pct=predicted_change,
-                    weight=0.6  # Higher weight since it's actually trained
+                    weight=0.7 if self.model_version == "v2" else 0.6  # v2 gets higher weight
                 )
             else:
                 # Fallback to feature-based prediction if model not loaded
