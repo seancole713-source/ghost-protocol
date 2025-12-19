@@ -30,14 +30,15 @@ class GPT4Analyst:
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         self.enabled = bool(self.api_key)
-        self.model = "gpt-4-turbo-preview"
+        # Use gpt-4o-mini by default (cheaper), or GPT-4 for better reasoning
+        self.model = os.getenv('AI_MODEL', 'gpt-4o-mini')
         self.client = None
         
         if self.enabled:
             try:
                 from openai import OpenAI
                 self.client = OpenAI(api_key=self.api_key)
-                logger.info("GPT-4 Analyst initialized")
+                logger.info(f"GPT-4 Analyst initialized with model: {self.model}")
             except ImportError:
                 logger.warning("OpenAI package not installed. GPT-4 analysis disabled.")
                 self.enabled = False

@@ -74,6 +74,10 @@ class PatternEnhancedPredictor:
         # Initialize Pattern Intelligence (lazy load to handle import errors)
         self.pattern_intelligence = None
         self._init_pattern_intelligence()
+        
+        # Initialize GPT-4 Analyst (optional - uses OPENAI_API_KEY)
+        self.gpt4_analyst = None
+        self._init_gpt4_analyst()
     
     def _init_pattern_intelligence(self):
         """Initialize pattern intelligence system"""
@@ -85,6 +89,23 @@ class PatternEnhancedPredictor:
             logger.warning(f"Pattern Intelligence not available: {e}")
         except Exception as e:
             logger.error(f"Error initializing Pattern Intelligence: {e}")
+    
+    def _init_gpt4_analyst(self):
+        """Initialize GPT-4 Analyst for macro/news understanding"""
+        import os
+        try:
+            # Only enable if ENABLE_GPT4_ANALYST=1 (opt-in to avoid costs)
+            if os.environ.get('ENABLE_GPT4_ANALYST', '0') == '1':
+                from .pattern_intelligence.gpt4_analyst import GPT4Analyst
+                self.gpt4_analyst = GPT4Analyst()
+                if self.gpt4_analyst.enabled:
+                    logger.info("✅ GPT-4 Analyst enabled for macro analysis")
+                else:
+                    logger.info("GPT-4 Analyst initialized but disabled (no API key)")
+            else:
+                logger.debug("GPT-4 Analyst disabled (set ENABLE_GPT4_ANALYST=1 to enable)")
+        except Exception as e:
+            logger.warning(f"GPT-4 Analyst not available: {e}")
     
     def predict(self, symbol: str, features: Dict[str, Any]) -> PatternEnhancedPrediction:
         """
