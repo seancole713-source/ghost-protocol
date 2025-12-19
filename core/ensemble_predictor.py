@@ -46,176 +46,367 @@ class EnsemblePrediction:
 
 
 class LSTMModel:
-    """LSTM deep learning model for temporal patterns"""
+    """LSTM-style temporal pattern recognition using momentum signals"""
     
     def __init__(self):
-        self.model = None
-        self.lookback = 48  # 48 hours of price history
-        self.hidden_dim = 128
-        self.num_layers = 3
+        self.lookback = 24  # Hours of momentum to consider
         
     def predict(self, features: Dict[str, Any]) -> ModelPrediction:
-        """Generate LSTM prediction"""
+        """
+        Generate prediction based on temporal momentum patterns.
+        Uses multiple timeframe momentum analysis as LSTM proxy.
+        """
         try:
-            # Extract temporal features (price history)
-            price_history = features.get("price_history_48h", [])
-            if len(price_history) < self.lookback:
-                return ModelPrediction(
-                    model_name="LSTM",
-                    direction="FLAT",
-                    confidence=0.3,
-                    predicted_change_pct=0.0,
-                    weight=0.4
-                )
+            # Multi-timeframe momentum analysis (LSTM-style temporal patterns)
+            momentum_1h = features.get("PRICE_CHANGE_1H", features.get("price_change_1h", 0)) or 0
+            momentum_4h = features.get("PRICE_CHANGE_4H", features.get("price_change_4h", 0)) or 0
+            momentum_24h = features.get("PRICE_CHANGE_24H", features.get("price_change_24h", 0)) or 0
+            roc_10 = features.get("ROC_10", 0) or 0
+            mom_10 = features.get("MOM_10", 0) or 0
             
-            # LSTM prediction (planned enhancement - requires model training)
-            # Current implementation uses price momentum as proxy
-            recent_trend = sum(price_history[-10:]) / 10 - sum(price_history[:10]) / 10
-            price_now = price_history[-1]
-            momentum_pct = (recent_trend / price_now) * 100 if price_now > 0 else 0
+            # Calculate momentum consensus
+            momentum_signals = []
             
-            direction = "UP" if momentum_pct > 0.5 else "DOWN" if momentum_pct < -0.5 else "FLAT"
-            confidence = min(abs(momentum_pct) / 10, 0.95)
+            # Short-term momentum (1h, 4h)
+            if momentum_1h > 0.5:
+                momentum_signals.append(1)
+            elif momentum_1h < -0.5:
+                momentum_signals.append(-1)
+            else:
+                momentum_signals.append(0)
+            
+            if momentum_4h > 1.0:
+                momentum_signals.append(1)
+            elif momentum_4h < -1.0:
+                momentum_signals.append(-1)
+            else:
+                momentum_signals.append(0)
+            
+            # Medium-term momentum (24h)
+            if momentum_24h > 2.0:
+                momentum_signals.append(1)
+            elif momentum_24h < -2.0:
+                momentum_signals.append(-1)
+            else:
+                momentum_signals.append(0)
+            
+            # ROC momentum
+            if roc_10 > 3.0:
+                momentum_signals.append(1)
+            elif roc_10 < -3.0:
+                momentum_signals.append(-1)
+            else:
+                momentum_signals.append(0)
+            
+            # Calculate consensus
+            total_momentum = sum(momentum_signals)
+            agreement = sum(1 for s in momentum_signals if s == np.sign(total_momentum)) if total_momentum != 0 else 0
+            
+            if total_momentum > 1:
+                direction = "UP"
+                confidence = min(0.4 + (agreement / len(momentum_signals)) * 0.4, 0.85)
+            elif total_momentum < -1:
+                direction = "DOWN"
+                confidence = min(0.4 + (agreement / len(momentum_signals)) * 0.4, 0.85)
+            else:
+                direction = "FLAT"
+                confidence = 0.3
+            
+            # Predicted change based on momentum strength
+            predicted_change = total_momentum * 1.5
             
             return ModelPrediction(
-                model_name="LSTM",
+                model_name="LSTM-Momentum",
                 direction=direction,
                 confidence=confidence,
-                predicted_change_pct=momentum_pct * 2,  # Project forward
-                weight=0.4
+                predicted_change_pct=predicted_change,
+                weight=0.25  # Lower weight - momentum is supplementary
             )
             
         except Exception as e:
-            logger.error(f"LSTM prediction failed: {e}")
+            logger.error(f"LSTM momentum prediction failed: {e}")
             return ModelPrediction(
-                model_name="LSTM",
+                model_name="LSTM-Momentum",
                 direction="FLAT",
                 confidence=0.3,
                 predicted_change_pct=0.0,
-                weight=0.4
+                weight=0.25
             )
 
 
 class XGBoostModel:
-    """XGBoost model for feature relationships"""
+    """XGBoost model - TRAINED ON REAL HISTORICAL DATA"""
     
     def __init__(self):
         self.model = None
         self.feature_names = []
+        self._loaded = False
+        self._load_trained_model()
         
-    def predict(self, features: Dict[str, Any]) -> ModelPrediction:
-        """Generate XGBoost prediction"""
+    def _load_trained_model(self):
+        """Load the trained XGBoost model from disk"""
         try:
-            # Load existing XGBoost model if available
-            from core.ml_trainer import load_model
+            import pickle
+            from pathlib import Path
             
-            model_data = load_model()
-            if model_data:
+            # Load our trained model
+            model_path = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v1.pkl"
+            
+            if model_path.exists():
+                with open(model_path, "rb") as f:
+                    model_data = pickle.load(f)
+                
                 self.model = model_data["model"]
                 self.feature_names = model_data["feature_names"]
+                self._loaded = True
+                
+                logger.info(f"✅ XGBoost model loaded: {model_data.get('test_accuracy', 0):.1%} accuracy, {len(self.feature_names)} features")
+            else:
+                logger.warning(f"⚠️ Trained model not found at {model_path}, using fallback")
+                
+        except Exception as e:
+            logger.error(f"Failed to load trained XGBoost model: {e}")
+        
+    def predict(self, features: Dict[str, Any]) -> ModelPrediction:
+        """Generate XGBoost prediction using REAL trained model"""
+        try:
+            if self.model is not None and self._loaded:
+                # Map feature names from prediction pipeline to training features
+                feature_mapping = {
+                    # RSI
+                    "RSI_14": "RSI_14",
+                    # MACD
+                    "MACD_HISTOGRAM": "MACD_HISTOGRAM",
+                    "MACD_LINE": "MACD_LINE",
+                    "MACD_SIGNAL": "MACD_SIGNAL",
+                    # Bollinger Bands
+                    "BB_POSITION": "BB_POSITION",
+                    "BB_WIDTH": "BB_WIDTH",
+                    "BB_UPPER": "BB_UPPER",
+                    "BB_LOWER": "BB_LOWER",
+                    "BB_MIDDLE": "BB_MIDDLE",
+                    # Moving Averages
+                    "SMA_7": "SMA_7",
+                    "SMA_20": "SMA_20",
+                    "SMA_50": "SMA_50",
+                    "EMA_12": "EMA_12",
+                    "EMA_26": "EMA_26",
+                    # Stochastic
+                    "STOCH_K": "STOCH_K",
+                    "STOCH_D": "STOCH_D",
+                    # ATR
+                    "ATR_14": "ATR_14",
+                    # Volume
+                    "VOLUME_RATIO": "VOLUME_RATIO",
+                    "VOLUME_SMA_20": "VOLUME_SMA_20",
+                    "OBV": "OBV",
+                    "OBV_SMA": "OBV_SMA",
+                    # Momentum
+                    "ROC_10": "ROC_10",
+                    "MOM_10": "MOM_10",
+                    # Price changes
+                    "PRICE_CHANGE_1H": "PRICE_CHANGE_1H",
+                    "PRICE_CHANGE_4H": "PRICE_CHANGE_4H", 
+                    "PRICE_CHANGE_24H": "PRICE_CHANGE_24H",
+                    # Price vs SMAs
+                    "PRICE_VS_SMA_20": "PRICE_VS_SMA_20",
+                    "PRICE_VS_SMA_50": "PRICE_VS_SMA_50",
+                    # SMA crosses
+                    "SMA_CROSS_7_20": "SMA_CROSS_7_20",
+                    "SMA_CROSS_20_50": "SMA_CROSS_20_50",
+                    # Volatility
+                    "VOLATILITY_20D": "VOLATILITY_20",
+                    "VOLATILITY_20": "VOLATILITY_20",
+                    # Range
+                    "DAILY_RANGE_PCT": "DAILY_RANGE_PCT",
+                }
                 
                 # Extract features in correct order
-                X = np.array([[features.get(name, 0) for name in self.feature_names]])
+                feature_values = []
+                for name in self.feature_names:
+                    # Try direct match first
+                    value = features.get(name, None)
+                    
+                    # Try mapping
+                    if value is None:
+                        for src, dst in feature_mapping.items():
+                            if dst == name and src in features:
+                                value = features.get(src)
+                                break
+                    
+                    # Default to 0 if missing
+                    feature_values.append(float(value) if value is not None else 0.0)
                 
-                # Predict
+                X = np.array([feature_values])
+                
+                # Predict using trained model
                 prediction = self.model.predict(X)[0]
                 proba = self.model.predict_proba(X)[0]
                 
                 direction = "UP" if prediction == 1 else "DOWN"
                 confidence = float(proba[prediction])
                 
+                # Scale predicted change based on confidence
+                predicted_change = confidence * 6.0 * (1 if prediction == 1 else -1)
+                
+                logger.debug(f"🤖 XGBoost (trained): {direction} @ {confidence:.1%}")
+                
                 return ModelPrediction(
-                    model_name="XGBoost",
+                    model_name="XGBoost-Trained",
                     direction=direction,
                     confidence=confidence,
-                    predicted_change_pct=confidence * 5 * (1 if prediction == 1 else -1),
-                    weight=0.4
+                    predicted_change_pct=predicted_change,
+                    weight=0.6  # Higher weight since it's actually trained
                 )
             else:
-                # Fallback to feature-based prediction
-                rsi = features.get("rsi", 50)
-                macd = features.get("macd", 0)
-                volume_ratio = features.get("volume_ratio", 1.0)
-                
-                # Simple technical analysis
-                score = 0
-                if rsi < 30:  # Oversold
-                    score += 2
-                elif rsi > 70:  # Overbought
-                    score -= 2
-                
-                if macd > 0:
-                    score += 1
-                else:
-                    score -= 1
-                
-                if volume_ratio > 1.5:  # Volume surge
-                    score += 1
-                
-                direction = "UP" if score > 0 else "DOWN" if score < 0 else "FLAT"
-                confidence = min(abs(score) / 5, 0.85)
-                
-                return ModelPrediction(
-                    model_name="XGBoost",
-                    direction=direction,
-                    confidence=confidence,
-                    predicted_change_pct=score * 2,
-                    weight=0.4
-                )
+                # Fallback to feature-based prediction if model not loaded
+                return self._fallback_predict(features)
                 
         except Exception as e:
             logger.error(f"XGBoost prediction failed: {e}")
-            return ModelPrediction(
-                model_name="XGBoost",
-                direction="FLAT",
-                confidence=0.3,
-                predicted_change_pct=0.0,
-                weight=0.4
-            )
+            return self._fallback_predict(features)
+    
+    def _fallback_predict(self, features: Dict[str, Any]) -> ModelPrediction:
+        """Fallback when trained model unavailable"""
+        rsi = features.get("RSI_14", features.get("rsi", 50))
+        macd = features.get("MACD_HISTOGRAM", features.get("macd", 0))
+        volume_ratio = features.get("VOLUME_RATIO", features.get("volume_ratio", 1.0))
+        
+        score = 0
+        if rsi is not None:
+            if rsi < 30:
+                score += 2
+            elif rsi > 70:
+                score -= 2
+        
+        if macd is not None:
+            if macd > 0:
+                score += 1
+            else:
+                score -= 1
+        
+        if volume_ratio is not None and volume_ratio > 1.5:
+            score += 1
+        
+        direction = "UP" if score > 0 else "DOWN" if score < 0 else "FLAT"
+        confidence = min(abs(score) / 5 + 0.3, 0.65)  # Lower max confidence for fallback
+        
+        return ModelPrediction(
+            model_name="XGBoost-Fallback",
+            direction=direction,
+            confidence=confidence,
+            predicted_change_pct=score * 2,
+            weight=0.3  # Lower weight for fallback
+        )
 
 
 class TransformerModel:
-    """Transformer model with attention mechanisms"""
+    """Market context model - combines multiple indicator signals"""
     
     def __init__(self):
-        self.model = None
-        self.attention_heads = 8
+        self.indicators = ["RSI", "MACD", "BB", "STOCH", "VOLUME"]
         
     def predict(self, features: Dict[str, Any]) -> ModelPrediction:
-        """Generate Transformer prediction"""
+        """
+        Generate prediction by weighing multiple technical indicators.
+        Acts as a market context synthesizer.
+        """
         try:
-            # Transformers excel at capturing complex relationships
-            # For now, use confidence + volatility patterns
-            confidence_raw = features.get("confidence", 0.5)
-            volatility = features.get("volatility", 0.02)
-            sentiment = features.get("sentiment", 0.0)
+            signals = []
+            weights = []
             
-            # Attention-like weighting
-            attention_score = (
-                confidence_raw * 0.5 +
-                (1 - volatility / 0.1) * 0.3 +  # Low vol = higher attention
-                (sentiment + 1) / 2 * 0.2  # Sentiment -1 to 1 → 0 to 1
-            )
+            # RSI Signal (high weight - reliable)
+            rsi = features.get("RSI_14", features.get("rsi", None))
+            if rsi is not None:
+                if rsi < 30:
+                    signals.append(1)  # Oversold = UP
+                    weights.append(0.25)
+                elif rsi > 70:
+                    signals.append(-1)  # Overbought = DOWN
+                    weights.append(0.25)
+                else:
+                    signals.append(0)
+                    weights.append(0.1)
             
-            direction = "UP" if sentiment > 0 or confidence_raw > 0.6 else "DOWN"
-            confidence = min(attention_score, 0.9)
+            # MACD Signal
+            macd = features.get("MACD_HISTOGRAM", features.get("macd", None))
+            if macd is not None:
+                if macd > 0:
+                    signals.append(1)
+                    weights.append(0.2)
+                else:
+                    signals.append(-1)
+                    weights.append(0.2)
+            
+            # Bollinger Band Position
+            bb_pos = features.get("BB_POSITION", None)
+            if bb_pos is not None:
+                if bb_pos < 0.2:  # Near lower band
+                    signals.append(1)
+                    weights.append(0.15)
+                elif bb_pos > 0.8:  # Near upper band
+                    signals.append(-1)
+                    weights.append(0.15)
+                else:
+                    signals.append(0)
+                    weights.append(0.05)
+            
+            # Stochastic Signal
+            stoch_k = features.get("STOCH_K", None)
+            if stoch_k is not None:
+                if stoch_k < 20:
+                    signals.append(1)
+                    weights.append(0.15)
+                elif stoch_k > 80:
+                    signals.append(-1)
+                    weights.append(0.15)
+                else:
+                    signals.append(0)
+                    weights.append(0.05)
+            
+            # Volume confirmation
+            vol_ratio = features.get("VOLUME_RATIO", features.get("volume_ratio", None))
+            if vol_ratio is not None and vol_ratio > 1.5:
+                # High volume confirms existing signals
+                weights = [w * 1.2 for w in weights]
+            
+            # Calculate weighted consensus
+            if signals and weights:
+                total_weight = sum(weights)
+                weighted_signal = sum(s * w for s, w in zip(signals, weights)) / total_weight if total_weight > 0 else 0
+                
+                if weighted_signal > 0.2:
+                    direction = "UP"
+                    confidence = min(0.45 + abs(weighted_signal) * 0.4, 0.80)
+                elif weighted_signal < -0.2:
+                    direction = "DOWN"
+                    confidence = min(0.45 + abs(weighted_signal) * 0.4, 0.80)
+                else:
+                    direction = "FLAT"
+                    confidence = 0.35
+                
+                predicted_change = weighted_signal * 5
+            else:
+                direction = "FLAT"
+                confidence = 0.3
+                predicted_change = 0
             
             return ModelPrediction(
-                model_name="Transformer",
+                model_name="Context-Synthesizer",
                 direction=direction,
                 confidence=confidence,
-                predicted_change_pct=confidence * 4 * (1 if direction == "UP" else -1),
-                weight=0.2
+                predicted_change_pct=predicted_change,
+                weight=0.15  # Lower weight - supplementary to XGBoost
             )
             
         except Exception as e:
-            logger.error(f"Transformer prediction failed: {e}")
+            logger.error(f"Context synthesizer prediction failed: {e}")
             return ModelPrediction(
-                model_name="Transformer",
+                model_name="Context-Synthesizer",
                 direction="FLAT",
                 confidence=0.3,
                 predicted_change_pct=0.0,
-                weight=0.2
+                weight=0.15
             )
 
 

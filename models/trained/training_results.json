@@ -1,0 +1,82 @@
+{
+  "ok": true,
+  "models": {
+    "xgboost": {
+      "ok": true,
+      "model_path": "/workspaces/ghost-protocol/models/trained/ghost_xgboost_v1.pkl",
+      "train_accuracy": 0.962,
+      "test_accuracy": 0.672,
+      "cv_score": 0.6181,
+      "cv_std": 0.0349,
+      "top_features": [
+        [
+          "RSI_14",
+          0.04649922251701355
+        ],
+        [
+          "BB_POSITION",
+          0.037899505347013474
+        ],
+        [
+          "PRICE_VS_SMA_20",
+          0.035727810114622116
+        ],
+        [
+          "VOLATILITY_20",
+          0.034829430282115936
+        ],
+        [
+          "MOM_10",
+          0.034703578799963
+        ],
+        [
+          "BB_LOWER",
+          0.03465767949819565
+        ],
+        [
+          "STOCH_D",
+          0.03455090895295143
+        ],
+        [
+          "PRICE_CHANGE_24H",
+          0.034432630985975266
+        ],
+        [
+          "PRICE_CHANGE_4H",
+          0.03421942517161369
+        ],
+        [
+          "PRICE_VS_SMA_50",
+          0.034022197127342224
+        ]
+      ]
+    },
+    "lstm": {
+      "ok": false,
+      "error": "TensorFlow not installed"
+    }
+  },
+  "data": {
+    "symbols": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "XRP",
+      "DOGE",
+      "ADA",
+      "AVAX",
+      "LINK",
+      "DOT",
+      "LTC",
+      "UNI",
+      "ATOM"
+    ],
+    "samples": 3124,
+    "features": 32,
+    "class_balance": {
+      "UP": 1511,
+      "DOWN": 1613
+    }
+  },
+  "duration_seconds": 50.1
+}
