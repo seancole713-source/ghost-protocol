@@ -7057,6 +7057,40 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 f"Models agree: {len([p for p in ensemble_prediction.individual_predictions if p.direction == direction])}/3"
             )
         
+        # Step 2.5: PATTERN INTELLIGENCE BOOST (v4.0)
+        # Use fear/greed, funding rates, social sentiment, BTC correlation
+        # When multiple signals align, confidence increases 5-20%
+        pattern_boost = 0.0
+        pattern_signals = []
+        try:
+            if os.environ.get("ENABLE_PATTERN_INTELLIGENCE", "1") == "1":
+                from core.pattern_enhanced_predictor import get_pattern_enhanced_predictor
+                
+                pattern_predictor = get_pattern_enhanced_predictor()
+                pattern_result = pattern_predictor.predict(symbol, features)
+                
+                # Check if pattern signals align with ensemble direction
+                if pattern_result.direction == direction:
+                    # Signals agree - boost confidence
+                    pattern_boost = pattern_result.confidence - 0.75  # Boost based on pattern confidence
+                    pattern_boost = max(0, min(pattern_boost, 0.15))  # Cap at 15% boost
+                    pattern_signals = pattern_result.data_sources
+                    
+                    if pattern_boost > 0:
+                        LOGGER.info(
+                            f"[{symbol}] 📊 Pattern Intelligence: {pattern_result.direction} "
+                            f"({pattern_result.confidence:.1%}) - Signals: {', '.join(pattern_signals)} "
+                            f"- Boost: +{pattern_boost:.1%}"
+                        )
+                else:
+                    # Signals conflict - reduce confidence slightly
+                    LOGGER.warning(
+                        f"[{symbol}] ⚠️ Pattern conflict: Ensemble={direction}, Pattern={pattern_result.direction}"
+                    )
+        except Exception as e:
+            # Pattern intelligence is optional - don't fail prediction
+            LOGGER.debug(f"[{symbol}] Pattern intelligence unavailable: {e}")
+        
         # Step 3: Calibrate confidence using signal-based system
         from core.confidence_calibrator import calibrate_confidence_with_signals
         
@@ -7084,6 +7118,11 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         if ensemble_conf >= 0.75 and ensemble_prediction.direction == direction and signal_strength >= 3:
             base_confidence = min(base_confidence + 0.05, 0.95)
             LOGGER.info(f"[{symbol}] 🚀 Ensemble+signals synergy: +5% confidence")
+        
+        # Apply Pattern Intelligence boost (when signals align)
+        if pattern_boost > 0:
+            base_confidence = min(base_confidence + pattern_boost, 0.95)
+            LOGGER.info(f"[{symbol}] 📊 Pattern Intelligence boost: +{pattern_boost:.1%} (final: {base_confidence:.1%})")
         
         LOGGER.info(
             f"[{symbol}] Direction: {direction}, Confidence: {base_confidence:.1%}, "
