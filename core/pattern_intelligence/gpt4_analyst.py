@@ -171,6 +171,63 @@ Provide your analysis as JSON with these fields:
             'gpt4_enhanced': False
         }
     
+    def quick_analysis(self, signals: Dict) -> Optional[Dict]:
+        """
+        Fast synchronous analysis for integration with prediction flow.
+        
+        Returns analysis dict with:
+        - analysis: Brief insight (1-2 sentences)
+        - macro_override: True if news/macro should override technicals
+        - override_reason: Why macro overrides (if applicable)
+        - confidence_adjustment: Suggested confidence change (-0.2 to +0.2)
+        
+        Args:
+            signals: Dict with symbol, xgboost_direction, pattern_direction, etc.
+        
+        Returns:
+            Dict with analysis or None if disabled/failed
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            symbol = signals.get('symbol', 'UNKNOWN')
+            xgb_dir = signals.get('xgboost_direction', 'HOLD')
+            pattern_dir = signals.get('pattern_direction', 'HOLD')
+            fear_greed = signals.get('fear_greed', {}).get('value', 50)
+            fear_greed_zone = signals.get('fear_greed', {}).get('zone', 'neutral')
+            btc_regime = signals.get('btc_regime', 'unknown')
+            
+            # Build focused prompt
+            prompt = f"""Quick crypto analysis for {symbol}:
+
+Technical (XGBoost): {xgb_dir}
+Sentiment (Pattern): {pattern_dir}  
+Fear & Greed: {fear_greed} ({fear_greed_zone})
+BTC Regime: {btc_regime}
+
+In 1-2 sentences: 
+1. Do you see any macro/news reason to override the technical signal?
+2. Any red flags or confirmation?
+
+Respond in JSON:
+{{"analysis": "Your brief insight", "macro_override": true/false, "override_reason": "reason or null", "confidence_adjustment": 0.0}}"""
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=150,
+                response_format={"type": "json_object"}
+            )
+            
+            result = json.loads(response.choices[0].message.content)
+            return result
+            
+        except Exception as e:
+            logger.debug(f"Quick analysis failed: {e}")
+            return None
+    
     async def explain_for_telegram(self, prediction: Dict, signals: Dict) -> str:
         """
         Generate Telegram-friendly explanation.

@@ -1,13 +1,20 @@
 """
 Ghost Telegram Alert Pipeline
 Single source of truth for alert formatting with deduplication
+
+SMART CAP SYSTEM (v2.0):
+- Max 10 predictions per day (configurable via DAILY_ALERT_CAP)
+- Only the BEST predictions get sent (highest confidence)
+- Raises minimum confidence to 80% (configurable via MIN_ALERT_CONFIDENCE)
+- Tracks daily counts to prevent spam
 """
 
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, date
 from typing import Any, Literal, Optional, List, Dict
 from zoneinfo import ZoneInfo
+import threading
 
 # Redis client (will be set by wolf_app.py)
 REDIS_CLIENT = None
@@ -21,7 +28,108 @@ DEFAULT_TZ = "America/Chicago"
 # Alert style configuration
 ALERT_STYLE = os.getenv("ALERT_STYLE", "simple")  # Default to "simple" (Cash App style), was "verbose"
 ALERT_SIMPLE_FORMAT = os.getenv("ALERT_SIMPLE_FORMAT", "cashapp")  # "cashapp" (default), "compact", "balanced", "context"
-MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.70"))
+MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.80"))  # RAISED: 80% minimum (was 70%)
+
+# ============================================================================
+# SMART CAP SYSTEM - Prevents spam, only sends best predictions
+# ============================================================================
+DAILY_ALERT_CAP = int(os.getenv("DAILY_ALERT_CAP", "10"))  # Max 10 alerts per day
+SMART_CAP_ENABLED = os.getenv("SMART_CAP_ENABLED", "1") == "1"  # Enable by default
+
+# Thread-safe daily tracking
+_daily_lock = threading.Lock()
+_daily_alerts_sent: Dict[str, int] = {}  # {date_str: count}
+_daily_alerts_log: Dict[str, List[Dict]] = {}  # {date_str: [{symbol, confidence, timestamp}]}
+
+
+def _get_today_key() -> str:
+    """Get today's date key in Chicago timezone"""
+    try:
+        return datetime.now(ZoneInfo(DEFAULT_TZ)).strftime("%Y-%m-%d")
+    except:
+        return datetime.now().strftime("%Y-%m-%d")
+
+
+def get_daily_alert_count() -> int:
+    """Get how many alerts have been sent today"""
+    with _daily_lock:
+        today = _get_today_key()
+        return _daily_alerts_sent.get(today, 0)
+
+
+def get_daily_alert_log() -> List[Dict]:
+    """Get list of alerts sent today"""
+    with _daily_lock:
+        today = _get_today_key()
+        return _daily_alerts_log.get(today, []).copy()
+
+
+def _increment_daily_count(symbol: str, confidence: float) -> bool:
+    """
+    Increment daily alert count. Returns True if under cap, False if capped.
+    """
+    with _daily_lock:
+        today = _get_today_key()
+        
+        # Clean up old days (keep only today)
+        old_keys = [k for k in _daily_alerts_sent.keys() if k != today]
+        for k in old_keys:
+            _daily_alerts_sent.pop(k, None)
+            _daily_alerts_log.pop(k, None)
+        
+        current_count = _daily_alerts_sent.get(today, 0)
+        
+        if current_count >= DAILY_ALERT_CAP:
+            return False
+        
+        # Increment and log
+        _daily_alerts_sent[today] = current_count + 1
+        
+        if today not in _daily_alerts_log:
+            _daily_alerts_log[today] = []
+        _daily_alerts_log[today].append({
+            "symbol": symbol,
+            "confidence": confidence,
+            "timestamp": datetime.now().isoformat(),
+            "count": current_count + 1
+        })
+        
+        return True
+
+
+def check_smart_cap(symbol: str, confidence: float) -> tuple[bool, str]:
+    """
+    Check if this alert should be sent based on smart cap rules.
+    
+    Returns:
+        (allowed, reason) - True if allowed to send, with reason string
+    """
+    if not SMART_CAP_ENABLED:
+        return True, "smart_cap_disabled"
+    
+    today = _get_today_key()
+    current_count = get_daily_alert_count()
+    
+    # Check if at cap
+    if current_count >= DAILY_ALERT_CAP:
+        return False, f"daily_cap_reached ({current_count}/{DAILY_ALERT_CAP})"
+    
+    # Check minimum confidence (raised to 80%)
+    if confidence < MIN_ALERT_CONFIDENCE:
+        return False, f"below_min_confidence ({confidence:.0%} < {MIN_ALERT_CONFIDENCE:.0%})"
+    
+    # Additional quality gates for later slots
+    remaining = DAILY_ALERT_CAP - current_count
+    
+    # Last 3 slots require 85%+ confidence
+    if remaining <= 3 and confidence < 0.85:
+        return False, f"reserved_for_high_conviction (need 85%+, got {confidence:.0%})"
+    
+    # Last slot requires 90%+ confidence
+    if remaining == 1 and confidence < 0.90:
+        return False, f"last_slot_reserved (need 90%+, got {confidence:.0%})"
+    
+    return True, f"allowed ({current_count + 1}/{DAILY_ALERT_CAP})"
 
 
 def format_daily_digest_cashapp(
@@ -536,19 +644,34 @@ def send_alert(
     tz: str = DEFAULT_TZ,
 ) -> bool:
     """
-    Send alert via Telegram with deduplication
+    Send alert via Telegram with deduplication and SMART CAP
+    
+    SMART CAP RULES (v2.0):
+    - Max 10 alerts per day (DAILY_ALERT_CAP)
+    - Minimum 80% confidence (MIN_ALERT_CONFIDENCE)
+    - Last 3 slots require 85%+ confidence
+    - Last slot requires 90%+ confidence
     
     Respects ALERT_STYLE env var: \"simple\" or \"verbose\" (default)
 
     Returns:
         True if alert was sent successfully
-        False if skipped (duplicate) or failed
+        False if skipped (duplicate, capped, or failed)
     """
     # Filter out 0% confidence (diagnostic only, not real predictions)
     confidence = prediction.get("confidence", 0)
     if confidence < 0.10:
         if LOGGER:
             LOGGER.info(f"Skipping 0% confidence alert: {market}/{symbol}/{horizon_bucket}")
+        return False
+    
+    # ========================================================================
+    # SMART CAP CHECK - Prevents spam, only best predictions get through
+    # ========================================================================
+    cap_allowed, cap_reason = check_smart_cap(symbol, confidence)
+    if not cap_allowed:
+        if LOGGER:
+            LOGGER.info(f"🛑 SMART CAP blocked: {market}/{symbol} - {cap_reason}")
         return False
     
     # If touch-target gating is present, enforce the 70% gate on calibrated probabilities.
@@ -629,8 +752,17 @@ def send_alert(
 
     try:
         TELEGRAM_SEND_FUNC(TELEGRAM_CHAT_ID, message)
+        
+        # ========================================================================
+        # SMART CAP: Increment daily count AFTER successful send
+        # ========================================================================
+        if not _increment_daily_count(symbol, confidence):
+            if LOGGER:
+                LOGGER.warning(f"Daily cap reached after sending {symbol} - future alerts blocked")
+        
         if LOGGER:
-            LOGGER.info(f"Sent alert: {market}/{symbol}/{horizon_bucket} (style={ALERT_STYLE})")
+            daily_count = get_daily_alert_count()
+            LOGGER.info(f"✅ Sent alert: {market}/{symbol}/{horizon_bucket} (style={ALERT_STYLE}) [{daily_count}/{DAILY_ALERT_CAP} today]")
         return True
     except Exception as e:
         if LOGGER:

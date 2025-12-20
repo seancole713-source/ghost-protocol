@@ -155,8 +155,53 @@ class PatternEnhancedPredictor:
         # 5. Generate recommendation
         recommendation = self._generate_recommendation(combined, risk)
         
-        # 6. Build reasoning
+        # 6. Build reasoning (optionally enhanced with GPT-4)
         reasoning = self._build_reasoning(xgb_pred, pattern_pred, signal_alignment)
+        
+        # 7. GPT-4 Analysis (if enabled) - adds macro/news understanding
+        gpt4_insight = None
+        if self.gpt4_analyst and self.gpt4_analyst.enabled:
+            try:
+                # Prepare signals for GPT-4
+                signals_for_gpt = {
+                    'symbol': symbol,
+                    'xgboost_direction': xgb_pred['direction'],
+                    'xgboost_confidence': xgb_pred['confidence'],
+                    'pattern_direction': pattern_pred.get('direction', 'HOLD'),
+                    'pattern_confidence': pattern_pred.get('confidence', 0.5),
+                    'fear_greed': pattern_pred.get('fear_greed', {}),
+                    'funding': pattern_pred.get('funding', {}),
+                    'social': pattern_pred.get('social', {}),
+                    'btc_regime': pattern_pred.get('btc', {}).get('market_regime', 'unknown'),
+                    'signal_alignment': signal_alignment
+                }
+                
+                # Get GPT-4 analysis synchronously (it handles async internally)
+                gpt4_result = self.gpt4_analyst.quick_analysis(signals_for_gpt)
+                
+                if gpt4_result and gpt4_result.get('analysis'):
+                    gpt4_insight = gpt4_result['analysis']
+                    data_sources.append('GPT-4')
+                    
+                    # If GPT-4 detects macro override, log it
+                    if gpt4_result.get('macro_override'):
+                        logger.warning(
+                            f"[{symbol}] 🧠 GPT-4 MACRO OVERRIDE: {gpt4_result.get('override_reason', 'News event detected')}"
+                        )
+                        # Optionally adjust confidence based on GPT-4 insight
+                        if gpt4_result.get('confidence_adjustment'):
+                            combined['confidence'] = max(0.4, min(0.95, 
+                                combined['confidence'] + gpt4_result['confidence_adjustment']
+                            ))
+                    
+                    logger.info(f"[{symbol}] 🧠 GPT-4 Analysis: {gpt4_insight[:100]}...")
+                    
+            except Exception as e:
+                logger.debug(f"GPT-4 analysis skipped: {e}")
+        
+        # Append GPT-4 insight to reasoning if available
+        if gpt4_insight:
+            reasoning = f"{reasoning} | GPT-4: {gpt4_insight}"
         
         return PatternEnhancedPrediction(
             direction=combined['direction'],

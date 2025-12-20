@@ -10201,6 +10201,66 @@ async def api_v3_alerts_status():
         }
 
 
+@APP.get("/api/v3/alerts/smart_cap")
+async def api_v3_alerts_smart_cap():
+    """
+    Get Smart Cap status - daily alert limiting system.
+    
+    SMART CAP prevents spam by:
+    - Limiting to 10 alerts per day (configurable)
+    - Requiring 80%+ confidence minimum
+    - Last 3 slots need 85%+ confidence
+    - Last slot needs 90%+ confidence
+    
+    Returns current count, cap, and today's alerts log.
+    """
+    try:
+        from core.telegram_alerts import (
+            get_daily_alert_count, 
+            get_daily_alert_log, 
+            DAILY_ALERT_CAP,
+            MIN_ALERT_CONFIDENCE,
+            SMART_CAP_ENABLED
+        )
+        
+        count = get_daily_alert_count()
+        log = get_daily_alert_log()
+        remaining = DAILY_ALERT_CAP - count
+        
+        # Determine current minimum required confidence
+        if remaining <= 1:
+            current_min = 0.90
+        elif remaining <= 3:
+            current_min = 0.85
+        else:
+            current_min = MIN_ALERT_CONFIDENCE
+        
+        return {
+            "ok": True,
+            "smart_cap_enabled": SMART_CAP_ENABLED,
+            "daily_cap": DAILY_ALERT_CAP,
+            "alerts_sent_today": count,
+            "alerts_remaining": remaining,
+            "min_confidence_base": MIN_ALERT_CONFIDENCE,
+            "min_confidence_current": current_min,
+            "alerts_log": log,
+            "next_slot_requirement": (
+                f"90%+ (last slot)" if remaining == 1 else
+                f"85%+ (high conviction only)" if remaining <= 3 else
+                f"{MIN_ALERT_CONFIDENCE:.0%}+ (standard)"
+            ),
+            "status": "capped" if remaining <= 0 else "accepting",
+            "timestamp": time.time()
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Smart cap status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
 @APP.get("/api/v3/goals/snapshot")
 async def api_v3_goals_snapshot():
     """
