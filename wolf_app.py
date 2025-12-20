@@ -4008,6 +4008,41 @@ async def _on_startup():
     except Exception as e:
         LOGGER.error(f"cache_warmup_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
+    # ========================================================================
+    # ACCOUNTABILITY SYSTEMS - Killswitch status + Outcome Reconciler
+    # ========================================================================
+    try:
+        from core.prediction_killswitch import get_killswitch
+        killswitch = get_killswitch()
+        status = killswitch.get_status()
+        if status['predictions_enabled']:
+            LOGGER.info("[GHOST STARTUP] ✅ Killswitch: Predictions ENABLED")
+        else:
+            LOGGER.warning(f"[GHOST STARTUP] ⛔ Killswitch: Predictions BLOCKED - {status['reason']}")
+    except Exception as e:
+        LOGGER.error(f"killswitch_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
+    # Start outcome reconciler background task (runs hourly)
+    try:
+        async def _outcome_reconciler_loop():
+            """Background task to reconcile prediction outcomes every hour"""
+            await asyncio.sleep(300)  # Wait 5 minutes after startup
+            while True:
+                try:
+                    from services.outcome_reconciler import reconcile_outcomes
+                    LOGGER.info("[RECONCILER] Running outcome reconciliation...")
+                    reconcile_outcomes()
+                    LOGGER.info("[RECONCILER] ✅ Reconciliation complete")
+                except Exception as e:
+                    LOGGER.error(f"[RECONCILER] Error: {e}", exc_info=False)
+                await asyncio.sleep(3600)  # Run every hour
+        
+        loop = asyncio.get_running_loop()
+        loop.create_task(_outcome_reconciler_loop())
+        LOGGER.info("[GHOST STARTUP] ✅ Outcome reconciler scheduled (hourly)")
+    except Exception as e:
+        LOGGER.error(f"reconciler_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
+
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
     
@@ -10255,6 +10290,156 @@ async def api_v3_alerts_smart_cap():
     
     except Exception as e:
         LOGGER.error(f"Smart cap status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/accuracy/real")
+async def api_v3_accuracy_real():
+    """
+    Get REAL verified accuracy stats - not hardcoded lies.
+    
+    Returns:
+    - verified_predictions: Number of predictions with known outcomes
+    - wins: Successful predictions
+    - losses: Failed predictions  
+    - accuracy_pct: REAL accuracy percentage
+    - avg_return: Average actual return
+    
+    This is the source of truth for system accuracy.
+    """
+    try:
+        from core.prediction_store import get_prediction_store
+        
+        store = get_prediction_store()
+        
+        # Get stats for different periods
+        all_time = store.get_accuracy_stats('all_time') if hasattr(store, 'get_accuracy_stats') else {}
+        last_7d = store.get_accuracy_stats('last_7_days') if hasattr(store, 'get_accuracy_stats') else {}
+        last_30d = store.get_accuracy_stats('last_30_days') if hasattr(store, 'get_accuracy_stats') else {}
+        
+        # If the store doesn't have get_accuracy_stats, compute from predictions
+        if not all_time:
+            preds = store.list_predictions(limit=1000) if hasattr(store, 'list_predictions') else []
+            verified = [p for p in preds if p.get('hit_direction') is not None]
+            wins = sum(1 for p in verified if p.get('hit_direction') == True)
+            losses = sum(1 for p in verified if p.get('hit_direction') == False)
+            total = len(verified)
+            accuracy = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
+            
+            all_time = {
+                'period': 'all_time',
+                'total_predictions': len(preds),
+                'verified_predictions': total,
+                'wins': wins,
+                'losses': losses,
+                'accuracy_pct': round(accuracy, 1),
+                'avg_return': 0
+            }
+        
+        return {
+            "ok": True,
+            "all_time": all_time,
+            "last_7_days": last_7d,
+            "last_30_days": last_30d,
+            "note": "This is REAL verified accuracy, not hardcoded",
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Real accuracy fetch failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "all_time": {
+                "verified_predictions": 0,
+                "wins": 0,
+                "losses": 0,
+                "accuracy_pct": 0,
+                "note": "Error fetching stats"
+            }
+        }
+
+
+@APP.get("/api/v3/killswitch/status")
+async def api_v3_killswitch_status():
+    """
+    Get prediction killswitch status.
+    
+    Predictions are BLOCKED unless PREDICTIONS_ENABLED=true.
+    This is an emergency stop for all predictions.
+    """
+    try:
+        from core.prediction_killswitch import get_killswitch
+        
+        killswitch = get_killswitch()
+        return {
+            "ok": True,
+            **killswitch.get_status()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Killswitch status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e),
+            "predictions_enabled": False,
+            "killswitch_active": True,
+            "reason": f"Error: {str(e)}"
+        }
+
+
+@APP.get("/api/v3/quality_gate/status")
+async def api_v3_quality_gate_status():
+    """
+    Get quality gate status.
+    
+    Quality gate controls:
+    - Min accuracy threshold (85%)
+    - Max daily predictions (10)
+    - Symbol deduplication (24h)
+    - Progressive confidence requirements
+    """
+    try:
+        from core.quality_gate import get_quality_gate
+        
+        gate = get_quality_gate()
+        return {
+            "ok": True,
+            **gate.get_status()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Quality gate status failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.post("/api/v3/reconcile/trigger")
+async def api_v3_reconcile_trigger():
+    """
+    Manually trigger outcome reconciliation.
+    
+    This checks all pending predictions whose time horizon has passed
+    and records their actual outcomes (WIN/LOSS/NEUTRAL).
+    """
+    try:
+        from services.outcome_reconciler import reconcile_outcomes
+        
+        reconcile_outcomes()
+        
+        return {
+            "ok": True,
+            "message": "Reconciliation triggered",
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Reconcile trigger failed: {e}", exc_info=True)
         return {
             "ok": False,
             "error": str(e)

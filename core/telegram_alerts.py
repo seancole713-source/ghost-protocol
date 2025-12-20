@@ -644,7 +644,9 @@ def send_alert(
     tz: str = DEFAULT_TZ,
 ) -> bool:
     """
-    Send alert via Telegram with deduplication and SMART CAP
+    Send alert via Telegram with deduplication, KILLSWITCH, and SMART CAP
+    
+    KILLSWITCH: If PREDICTIONS_ENABLED=false, ALL alerts are blocked.
     
     SMART CAP RULES (v2.0):
     - Max 10 alerts per day (DAILY_ALERT_CAP)
@@ -656,8 +658,23 @@ def send_alert(
 
     Returns:
         True if alert was sent successfully
-        False if skipped (duplicate, capped, or failed)
+        False if skipped (duplicate, capped, killswitch, or failed)
     """
+    # ========================================================================
+    # KILLSWITCH CHECK - Emergency stop for all predictions
+    # ========================================================================
+    try:
+        from core.prediction_killswitch import get_killswitch
+        killswitch = get_killswitch()
+        if not killswitch.can_send_prediction():
+            if LOGGER:
+                LOGGER.warning(f"⛔ KILLSWITCH blocked: {market}/{symbol} - {killswitch.override_reason}")
+            return False
+    except Exception as e:
+        # If killswitch module fails, block predictions (fail closed)
+        if LOGGER:
+            LOGGER.error(f"⛔ KILLSWITCH error (blocking): {e}")
+        return False
     # Filter out 0% confidence (diagnostic only, not real predictions)
     confidence = prediction.get("confidence", 0)
     if confidence < 0.10:
