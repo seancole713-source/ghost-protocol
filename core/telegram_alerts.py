@@ -364,29 +364,20 @@ def format_touch_target_signal(
     prediction: dict[str, Any],
     price_meta: dict[str, Any],
 ) -> str:
-    """Format a prediction into the touch-target + gating spec (plain text).
-
-    Uses:
-      - target is "hit" if price touches within horizon window AND direction is correct
-      - Stage5 = calibrated touch >= 0.70 at ±1.0%
-      - Stage6 = calibrated touch >= 0.70 at ±0.5%
+    """
+    Format prediction as SIMPLE BUY/WAIT alert for buy-low-sell-high traders.
+    
+    🟢 BUY = Buy now at this price, sell at target
+    🔴 WAIT = Don't buy, price dropping, wait for next BUY signal
     """
     # Core fields
     horizon_h = int(prediction.get("horizon_h") or 48)
     confidence = float(prediction.get("confidence") or 0.0)
 
-    expected_move_pct = prediction.get("expected_move_pct")
-    try:
-        expected_move_pct_f = None if expected_move_pct is None else float(expected_move_pct)
-    except Exception:
-        expected_move_pct_f = None
-
     action = str(prediction.get("action") or "HOLD").upper()
     direction = str(prediction.get("direction") or "").upper()
     if not direction:
         direction = "UP" if action == "BUY" else "DOWN" if action == "SELL" else "FLAT"
-
-    dir_emoji = "🟢" if direction == "UP" else "🔴" if direction == "DOWN" else "⚪"
 
     # Prices
     entry_price = prediction.get("entry_price")
@@ -406,91 +397,78 @@ def format_touch_target_signal(
         else prediction.get("stop_loss_price")
     )
 
-    target_pct = _pct(target_price, entry_price)
-    stop_pct = _pct(stop_loss, entry_price)
-
-    # Calibration / gating
-    stage5_ok = bool(prediction.get("stage5_ok"))
-    stage6_ok = bool(prediction.get("stage6_ok"))
-    gate = str(prediction.get("gate") or "").upper()
-    if not gate:
-        gate = "EXECUTION" if stage6_ok else "ANALYSIS" if stage5_ok else "MONITOR"
-
-    p1 = prediction.get("touch_calibrated_1pct")
-    p05 = prediction.get("touch_calibrated_0_5pct")
+    # Format timeframe nicely
+    if horizon_h <= 6:
+        timeframe = f"{horizon_h} hours"
+    elif horizon_h <= 24:
+        timeframe = "24 hours"
+    elif horizon_h <= 48:
+        timeframe = "2 days"
+    else:
+        timeframe = f"{horizon_h // 24} days"
+    
+    # Get real accuracy stats
+    wins, losses, acc_pct = 0, 0, 0
     try:
-        p1s = "?" if p1 is None else f"{float(p1):.0%}"
-    except Exception:
-        p1s = "?"
-    try:
-        p05s = "?" if p05 is None else f"{float(p05):.0%}"
-    except Exception:
-        p05s = "?"
+        if SHOW_REAL_ACCURACY:
+            stats = get_real_accuracy_stats()
+            wins = stats.get("wins", 0)
+            losses = stats.get("losses", 0)
+            acc_pct = stats.get("accuracy_pct", 0)
+    except:
+        pass
 
-    s5 = "✅ Stage5 OK" if stage5_ok else "❌ Stage5 Not OK"
-    s6 = "✅ Stage6 OK" if stage6_ok else "❌ Stage6 Not OK"
+    # ============================================
+    # SIMPLE FORMAT FOR BUY LOW, SELL HIGH TRADERS
+    # ============================================
+    
+    if direction == "UP":
+        # BUY SIGNAL - Price going up, buy now sell higher
+        target_gain_pct = ((target_price - entry_price) / entry_price * 100) if entry_price and target_price else 0
+        stop_loss_pct = ((entry_price - stop_loss) / entry_price * 100) if entry_price and stop_loss else 0
+        
+        lines = [
+            f"🟢 **BUY {symbol} NOW**",
+            "",
+            f"💰 Buy at: {_fmt_price(entry_price)}",
+            f"🎯 Sell at: {_fmt_price(target_price)} (+{target_gain_pct:.1f}%)",
+            f"🛑 Stop loss: {_fmt_price(stop_loss)} (-{stop_loss_pct:.1f}%)",
+            f"⏱️ Timeframe: {timeframe}",
+            "",
+            f"📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)",
+            "",
+            "_⚠️ Not financial advice_"
+        ]
 
-    # Human-facing risk label based on calibrated win prob when present.
-    # Use execution tier if known; otherwise fall back to analysis tier; otherwise raw confidence.
-    risk_p = None
-    for cand in (p05, p1, confidence):
-        try:
-            if cand is None:
-                continue
-            risk_p = float(cand)
-            break
-        except Exception:
-            continue
-
-    risk_label = "UNKNOWN"
-    if risk_p is not None:
-        if risk_p >= 0.85:
-            risk_label = "LOW RISK (85%+)"
-        elif risk_p >= 0.70:
-            risk_label = "OK (>=70%)"
-        elif risk_p >= 0.45:
-            risk_label = "HIGH RISK (<70%)"
-        else:
-            risk_label = "VERY HIGH RISK (<45%)"
-
-    require_stage6 = os.getenv("AUTO_EXECUTION_REQUIRE_STAGE6", "1").strip() not in ("0", "false", "False")
-    auto_status = "ENABLED (Stage6)" if (not require_stage6 or stage6_ok) else "BLOCKED (Stage6 required)"
-
-    pid = prediction.get("prediction_id") or prediction.get("id") or ""
-    pid_line = f"ID: {pid}" if pid else None
-
-    lines = [
-        f"🚦 GHOST SIGNAL — {gate}",
-        f"{symbol} {dir_emoji} {direction} — Horizon: {horizon_h}h",
-        f"Entry: {_fmt_price(entry_price)}",
-    ]
-
-    tp_line = f"Target (touch): {_fmt_price(target_price)}"
-    if target_pct is not None:
-        tp_line += f" ({target_pct:+.2f}%)"
-    lines.append(tp_line)
-
-    sl_line = f"Stop: {_fmt_price(stop_loss)}"
-    if stop_pct is not None:
-        sl_line += f" ({stop_pct:+.2f}%)"
-    lines.append(sl_line)
-
-    if expected_move_pct_f is not None:
-        lines.append(f"Expected move (model): {expected_move_pct_f:+.2f}%")
-
-    lines += [
-        "",
-        f"Model confidence: {confidence:.0%}",
-        f"Risk: {risk_label}",
-        "Calibrated touch probability:",
-        f"• ±1.0% (Analysis): {p1s} ({s5})",
-        f"• ±0.5% (Execution): {p05s} ({s6})",
-        "",
-        f"Win rule: touches target anytime within {horizon_h}h AND correct direction.",
-        f"Auto-trade: {auto_status}",
-    ]
-    if pid_line:
-        lines.append(pid_line)
+    elif direction == "DOWN":
+        # WAIT SIGNAL - Price going down, don't buy yet
+        drop_pct = ((entry_price - target_price) / entry_price * 100) if entry_price and target_price else 0
+        
+        lines = [
+            f"🔴 **WAIT - Don't Buy {symbol}**",
+            "",
+            f"📉 Price expected to DROP",
+            f"💰 Current: {_fmt_price(entry_price)}",
+            f"📍 Wait for: ~{_fmt_price(target_price)} (-{drop_pct:.1f}%)",
+            f"⏱️ Timeframe: {timeframe}",
+            "",
+            "_Ghost will alert you when it's time to BUY_",
+            "",
+            f"📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)",
+            "",
+            "_⚠️ Not financial advice_"
+        ]
+    
+    else:
+        # FLAT/HOLD - No clear signal
+        lines = [
+            f"⚪ **{symbol} - No Clear Signal**",
+            "",
+            f"💰 Current: {_fmt_price(entry_price)}",
+            f"⏱️ Timeframe: {timeframe}",
+            "",
+            "_Wait for a clear BUY or WAIT signal_"
+        ]
 
     return "\n".join(lines)
 
