@@ -586,53 +586,91 @@ def format_prediction_alert_cashapp(
     confidence: float, 
     price: float, 
     change_pct: float,
-    horizon_h: int = 48
+    horizon_h: int = 48,
+    target_price: float = None,
+    stop_loss: float = None,
 ) -> str:
     """
-    Format prediction alert in Cash App style WITH REAL ACCURACY
+    Format prediction alert - SIMPLE & CLEAR
     
-    Example:
-        📈 WOLF +5.2%
-        Ghost predicts: BUY
-        Confidence: 78%
-        Next 48h
-        📊 Track Record: 5W/3L (62.5%) VERIFIED ✅
+    For regular traders who BUY LOW, SELL HIGH:
+    - BUY signal = Buy now, sell at target
+    - WAIT signal = Don't buy, price going down
     """
-    arrow = "📈" if change_pct >= 0 else "📉"
-    sign = "+" if change_pct >= 0 else ""
     conf_pct = int(confidence * 100)
     
-    # Line 1: Symbol + Change
-    line1 = f"{arrow} {symbol} {sign}{change_pct:.2f}%"
-    
-    # Line 2: Prediction
-    line2 = f"Ghost predicts: {direction}"
-    
-    # Line 3: Confidence
-    line3 = f"Confidence: {conf_pct}%"
-    
-    # Line 4: Horizon
-    line4 = f"Next {horizon_h}h"
-    
-    # Line 5: REAL accuracy (not hardcoded lies!)
-    if SHOW_REAL_ACCURACY:
-        try:
+    # Get real accuracy stats
+    wins, losses, acc_pct = 0, 0, 0
+    try:
+        if SHOW_REAL_ACCURACY:
             stats = get_real_accuracy_stats()
             wins = stats.get("wins", 0)
             losses = stats.get("losses", 0)
             acc_pct = stats.get("accuracy_pct", 0)
-            status = stats.get("status", "UNVERIFIED")
-            
-            if wins + losses > 0:
-                line5 = f"📊 Track Record: {wins}W/{losses}L ({acc_pct:.1f}%) {status}"
-            else:
-                line5 = "📊 Track Record: Building..."
-        except:
-            line5 = "📊 Track Record: Connecting..."
-        
-        return f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}"
+    except:
+        pass
     
-    return f"{line1}\n{line2}\n{line3}\n{line4}"
+    # Calculate target/stop if not provided
+    if target_price is None:
+        target_pct = min(abs(change_pct) if change_pct else 3.0, 10.0)  # Cap at 10%
+        if direction == "UP":
+            target_price = price * (1 + target_pct / 100)
+        else:
+            target_price = price * (1 - target_pct / 100)
+    
+    if stop_loss is None:
+        stop_pct = min(target_pct * 0.5, 5.0)  # Stop at half target, cap 5%
+        if direction == "UP":
+            stop_loss = price * (1 - stop_pct / 100)
+        else:
+            stop_loss = price * (1 + stop_pct / 100)
+    
+    # Format timeframe nicely
+    if horizon_h <= 6:
+        timeframe = f"{horizon_h} hours"
+    elif horizon_h <= 24:
+        timeframe = "24 hours"
+    elif horizon_h <= 48:
+        timeframe = "2 days"
+    else:
+        timeframe = f"{horizon_h // 24} days"
+    
+    # ============================================
+    # SIMPLE FORMAT FOR BUY LOW, SELL HIGH TRADERS
+    # ============================================
+    
+    if direction == "UP":
+        # BUY SIGNAL - Price going up, buy now sell higher
+        target_gain_pct = ((target_price - price) / price) * 100
+        stop_loss_pct = ((price - stop_loss) / price) * 100
+        
+        message = f"""🟢 **BUY {symbol} NOW**
+
+💰 Buy at: ${price:,.0f}
+🎯 Sell at: ${target_price:,.0f} (+{target_gain_pct:.1f}%)
+🛑 Stop loss: ${stop_loss:,.0f} (-{stop_loss_pct:.1f}%)
+⏱️ Timeframe: {timeframe}
+
+📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)
+
+_⚠️ Not financial advice_"""
+
+    else:
+        # WAIT SIGNAL - Price going down, don't buy yet
+        message = f"""🔴 **WAIT - Don't Buy {symbol}**
+
+📉 Price expected to DROP
+💰 Current: ${price:,.0f}
+📍 Wait for: ~${target_price:,.0f} (-{abs(change_pct):.1f}%)
+⏱️ Timeframe: {timeframe}
+
+_Ghost will alert you when it's time to BUY_
+
+📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)
+
+_⚠️ Not financial advice_"""
+
+    return message
 
 
 def render_alert(
