@@ -30,6 +30,94 @@ ALERT_STYLE = os.getenv("ALERT_STYLE", "simple")  # Default to "simple" (Cash Ap
 ALERT_SIMPLE_FORMAT = os.getenv("ALERT_SIMPLE_FORMAT", "cashapp")  # "cashapp" (default), "compact", "balanced", "context"
 MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.80"))  # RAISED: 80% minimum (was 70%)
 
+# Show real accuracy in alerts (not fake "85%")
+SHOW_REAL_ACCURACY = os.getenv("SHOW_REAL_ACCURACY", "1") == "1"  # Default: ON
+
+
+def get_real_accuracy_stats() -> dict:
+    """
+    Fetch REAL accuracy stats from production database.
+    No more hardcoded lies - this shows actual win/loss record.
+    
+    Returns:
+        {
+            "wins": int,
+            "losses": int,
+            "accuracy_pct": float,
+            "total_verified": int,
+            "trend_7d": float,  # 7-day accuracy
+            "status": str  # "UNVERIFIED", "BUILDING", "VERIFIED"
+        }
+    """
+    try:
+        # Try to get from outcome reconciler's Postgres data
+        import psycopg2
+        database_url = os.getenv("DATABASE_URL")
+        
+        if not database_url:
+            return {"status": "UNVERIFIED", "wins": 0, "losses": 0, "accuracy_pct": 0, "total_verified": 0}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # Get overall stats
+        cursor.execute("""
+            SELECT 
+                COUNT(*) FILTER (WHERE hit_direction = 1) as wins,
+                COUNT(*) FILTER (WHERE hit_direction = 0 AND actual_direction IS NOT NULL) as losses,
+                COUNT(*) as total
+            FROM ghost_prediction_outcomes
+            WHERE status = 'closed'
+        """)
+        row = cursor.fetchone()
+        wins = row[0] or 0
+        losses = row[1] or 0
+        total = row[2] or 0
+        
+        # Get 7-day accuracy
+        cursor.execute("""
+            SELECT 
+                COUNT(*) FILTER (WHERE hit_direction = 1) as wins_7d,
+                COUNT(*) as total_7d
+            FROM ghost_prediction_outcomes
+            WHERE status = 'closed' 
+            AND closed_at > NOW() - INTERVAL '7 days'
+        """)
+        row_7d = cursor.fetchone()
+        wins_7d = row_7d[0] or 0
+        total_7d = row_7d[1] or 0
+        
+        cursor.close()
+        conn.close()
+        
+        # Calculate accuracy
+        accuracy_pct = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
+        trend_7d = (wins_7d / total_7d * 100) if total_7d > 0 else 0
+        
+        # Determine status
+        if total < 10:
+            status = "BUILDING"
+        elif accuracy_pct >= 60:
+            status = "VERIFIED ✅"
+        elif accuracy_pct >= 40:
+            status = "MODERATE ⚡"
+        else:
+            status = "LEARNING 📚"
+        
+        return {
+            "wins": wins,
+            "losses": losses,
+            "accuracy_pct": accuracy_pct,
+            "total_verified": wins + losses,
+            "trend_7d": trend_7d,
+            "status": status
+        }
+        
+    except Exception as e:
+        if LOGGER:
+            LOGGER.warning(f"Could not fetch real accuracy: {e}")
+        return {"status": "UNVERIFIED", "wins": 0, "losses": 0, "accuracy_pct": 0, "total_verified": 0}
+
 # ============================================================================
 # SMART CAP SYSTEM - Prevents spam, only sends best predictions
 # ============================================================================
@@ -501,13 +589,14 @@ def format_prediction_alert_cashapp(
     horizon_h: int = 48
 ) -> str:
     """
-    Format prediction alert in Cash App style
+    Format prediction alert in Cash App style WITH REAL ACCURACY
     
     Example:
         📈 WOLF +5.2%
         Ghost predicts: BUY
         Confidence: 78%
         Next 48h
+        📊 Track Record: 5W/3L (62.5%) VERIFIED ✅
     """
     arrow = "📈" if change_pct >= 0 else "📉"
     sign = "+" if change_pct >= 0 else ""
@@ -524,6 +613,24 @@ def format_prediction_alert_cashapp(
     
     # Line 4: Horizon
     line4 = f"Next {horizon_h}h"
+    
+    # Line 5: REAL accuracy (not hardcoded lies!)
+    if SHOW_REAL_ACCURACY:
+        try:
+            stats = get_real_accuracy_stats()
+            wins = stats.get("wins", 0)
+            losses = stats.get("losses", 0)
+            acc_pct = stats.get("accuracy_pct", 0)
+            status = stats.get("status", "UNVERIFIED")
+            
+            if wins + losses > 0:
+                line5 = f"📊 Track Record: {wins}W/{losses}L ({acc_pct:.1f}%) {status}"
+            else:
+                line5 = "📊 Track Record: Building..."
+        except:
+            line5 = "📊 Track Record: Connecting..."
+        
+        return f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}"
     
     return f"{line1}\n{line2}\n{line3}\n{line4}"
 

@@ -21,6 +21,36 @@ import psycopg2
 
 LOGGER = logging.getLogger("ghost.outcome_reconciler_v2")
 
+# Lazy imports for learning systems (avoid circular imports)
+_feedback_loop = None
+_learning_loop = None
+
+
+def _get_feedback_loop():
+    """Lazy load feedback loop to avoid circular imports."""
+    global _feedback_loop
+    if _feedback_loop is None:
+        try:
+            from core.feedback_loop import FeedbackLoop
+            _feedback_loop = FeedbackLoop()
+            LOGGER.info("✅ FeedbackLoop initialized for outcome learning")
+        except Exception as e:
+            LOGGER.warning(f"⚠️ Could not initialize FeedbackLoop: {e}")
+    return _feedback_loop
+
+
+def _get_learning_loop():
+    """Lazy load learning loop to avoid circular imports."""
+    global _learning_loop
+    if _learning_loop is None:
+        try:
+            from core.learning_loop import get_learning_loop
+            _learning_loop = get_learning_loop()
+            LOGGER.info("✅ LearningLoop initialized for parameter tuning")
+        except Exception as e:
+            LOGGER.warning(f"⚠️ Could not initialize LearningLoop: {e}")
+    return _learning_loop
+
 # Direction threshold (±0.25% by default)
 DIRECTION_THRESHOLD_PCT = float(os.getenv("ACCURACY_DIRECTION_THRESHOLD_PCT", "0.25"))
 
@@ -107,6 +137,24 @@ def reconcile_outcomes_v2():
             f"{success_count} success, {no_data_count} no_data, "
             f"{error_count} errors, {skipped_count} skipped"
         )
+        
+        # ============================================
+        # LEARNING LOOP TRIGGER - THE MISSING LINK!
+        # ============================================
+        # After reconciling outcomes, trigger the learning system
+        # so Ghost actually LEARNS from its mistakes.
+        if success_count > 0:
+            try:
+                learning = _get_learning_loop()
+                if learning:
+                    LOGGER.info("🧠 Triggering learning cycle after reconciliation...")
+                    result = learning.run_learning_cycle(days=7, auto_apply=True)
+                    if result.get("tuning_needed"):
+                        LOGGER.info(f"🎓 Learning applied: {result.get('summary', 'adjustments made')}")
+                    else:
+                        LOGGER.info(f"📊 Learning check: {result.get('summary', 'no tuning needed')}")
+            except Exception as e:
+                LOGGER.error(f"⚠️ Learning loop error (non-fatal): {e}")
         
         return {
             "success": success_count,
@@ -199,6 +247,39 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
             hit_direction=hit_direction,
             predicted_confidence=pred_confidence,
         )
+        
+        # ============================================
+        # FEEDBACK LOOP - LEARN FROM THIS OUTCOME!
+        # ============================================
+        try:
+            feedback = _get_feedback_loop()
+            if feedback:
+                from core.feedback_loop import PredictionOutcome
+                
+                # Get signals/features from the original prediction if available
+                signals_used = pred.get("signals_used", [])
+                features = pred.get("features", {})
+                
+                # Calculate accuracy percentage (how close was the prediction)
+                # For direction predictions, accuracy is either 100% or 0%
+                accuracy_pct = 100.0 if hit_direction == 1 else 0.0
+                
+                outcome = PredictionOutcome(
+                    prediction_id=pred_id,
+                    symbol=symbol,
+                    direction=pred_direction,
+                    confidence=pred_confidence,
+                    predicted_price=price_t0,  # Entry price
+                    actual_price=price_t1,     # Resolution price
+                    was_correct=(hit_direction == 1),
+                    accuracy_pct=accuracy_pct,
+                    signals_used=signals_used if isinstance(signals_used, list) else [],
+                    features=features if isinstance(features, dict) else {},
+                    timestamp=run_at,
+                )
+                feedback.record_outcome(outcome)
+        except Exception as feedback_err:
+            LOGGER.warning(f"⚠️ Feedback loop error (non-fatal): {feedback_err}")
         
         accuracy_symbol = "✅" if hit_direction == 1 else "❌"
         LOGGER.info(
