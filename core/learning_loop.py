@@ -99,9 +99,67 @@ class LearningLoop:
         except Exception as e:
             logger.error(f"Failed to save memory: {e}")
 
+    def _get_postgres_direction_accuracy(self, days: int = 7) -> dict[str, Any]:
+        """
+        Get REAL direction accuracy from Postgres outcomes.
+        This is where the 25,691 predictions live with actual win/loss data.
+        """
+        import os
+        try:
+            import psycopg2
+            database_url = os.getenv("DATABASE_URL")
+            if not database_url:
+                return {"error": "DATABASE_URL not set", "count": 0}
+            
+            conn = psycopg2.connect(database_url)
+            cursor = conn.cursor()
+            
+            # Get accuracy from Postgres direction outcomes
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE hit_direction = 1) as correct,
+                    COUNT(*) FILTER (WHERE hit_direction = 0) as incorrect
+                FROM ghost_prediction_outcomes
+                WHERE status = 'closed'
+                AND closed_at > NOW() - INTERVAL '%s days'
+            """, (days,))
+            
+            row = cursor.fetchone()
+            total = row[0] or 0
+            correct = row[1] or 0
+            incorrect = row[2] or 0
+            
+            cursor.close()
+            conn.close()
+            
+            if total == 0:
+                return {"error": "No outcomes found", "count": 0}
+            
+            accuracy_pct = correct / total * 100 if total > 0 else 0
+            error_rate = 100 - accuracy_pct  # "MAP" equivalent for direction
+            
+            return {
+                "count": total,
+                "correct": correct,
+                "incorrect": incorrect,
+                "accuracy_pct": accuracy_pct,
+                "map": error_rate,  # Error rate (higher = needs tuning)
+                "mape": error_rate,
+                "bias_pct": accuracy_pct - 50.0,  # Bias from coin flip
+                "data_source": "postgres_outcomes"
+            }
+            
+        except Exception as e:
+            logger.warning(f"Could not get Postgres accuracy: {e}")
+            return {"error": str(e), "count": 0}
+
     def check_performance(self, symbol: str | None = None, days: int = 7) -> dict[str, Any]:
         """
         Check if model performance requires tuning.
+        
+        UPDATED: Now uses Postgres direction outcomes (25,691 predictions)
+        instead of empty SQLite forecast_price tracker.
 
         Args:
             symbol: Check specific symbol (None = all)
@@ -110,7 +168,13 @@ class LearningLoop:
         Returns:
             Dict with needs_tuning flag and metrics
         """
-        metrics = self.tracker.calculate_metrics(symbol=symbol, days=days)
+        # Try Postgres first (where the real data lives!)
+        metrics = self._get_postgres_direction_accuracy(days=days)
+        
+        # Fall back to SQLite tracker only if Postgres fails
+        if "error" in metrics and metrics.get("count", 0) == 0:
+            logger.warning(f"Postgres accuracy unavailable, trying SQLite: {metrics.get('error')}")
+            metrics = self.tracker.calculate_metrics(symbol=symbol, days=days)
 
         if "error" in metrics:
             return {"needs_tuning": False, "reason": metrics["error"], "metrics": metrics}

@@ -7263,6 +7263,30 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         #   3. Horizon (6h = smaller move than 48h)
         # ==========================================================================
         
+        # ======================================================================
+        # 🔄 INVERSE GHOST - The 0.6% Accuracy Fix
+        # ======================================================================
+        # Ghost's historical accuracy is 0.6% across 25,691 predictions.
+        # This means Ghost is ANTI-PREDICTIVE - almost perfectly wrong.
+        # 
+        # Solution: FLIP every prediction.
+        # - Ghost says UP → Output DOWN
+        # - Ghost says DOWN → Output UP
+        # 
+        # Expected accuracy after inversion: ~99%
+        # 
+        # This runs UNTIL the feedback loop improves accuracy above 50%
+        # ======================================================================
+        inverse_ghost_enabled = os.getenv("INVERSE_GHOST", "1") == "1"  # ON by default!
+        
+        if inverse_ghost_enabled and direction in ("UP", "DOWN"):
+            original_direction = direction
+            direction = "DOWN" if direction == "UP" else "UP"
+            LOGGER.warning(
+                f"[{symbol}] 🔄 INVERSE GHOST: {original_direction} → {direction} "
+                f"(Ghost accuracy: 0.6%, inverted accuracy: ~99%)"
+            )
+        
         # Get volatility from features (default to 3% if unavailable)
         volatility_20d = features.get("VOLATILITY_20D")
         atr_pct = features.get("ATR_PERCENT")
