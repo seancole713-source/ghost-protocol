@@ -7253,22 +7253,72 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 "error": reason,
             }
 
-        # Generate forecast points (simple linear projection for now)
+        # ==========================================================================
+        # EXPECTED MOVE CALCULATION (FIX: Use volatility-based, not hardcoded)
+        # 
+        # OLD BUG: Used 1.01^12 = +12.68% for ALL UP predictions
+        # NEW: Calculate per-symbol expected move based on:
+        #   1. Historical volatility (ATR if available)
+        #   2. Confidence level (higher confidence = larger expected move)
+        #   3. Horizon (6h = smaller move than 48h)
+        # ==========================================================================
+        
+        # Get volatility from features (default to 3% if unavailable)
+        volatility_20d = features.get("VOLATILITY_20D")
+        atr_pct = features.get("ATR_PERCENT")
+        
+        # Use best available volatility measure
+        if atr_pct and atr_pct > 0:
+            base_volatility = float(atr_pct)
+        elif volatility_20d and volatility_20d > 0:
+            base_volatility = float(volatility_20d) * 100  # Convert to %
+        else:
+            # Fallback: Crypto typically 5%, stocks 2-3%
+            base_volatility = 5.0 if is_crypto else 2.5
+        
+        # Scale by confidence (higher confidence = expect larger move)
+        # confidence 0.5 = base_volatility * 0.5
+        # confidence 0.9 = base_volatility * 1.3
+        confidence_scale = 0.3 + (base_confidence * 1.1)  # Range: 0.3 to 1.4
+        
+        # Scale by horizon (6h vs 48h)
+        # 6h should have smaller expected move than 48h
+        horizon_scale = (horizon_h / 48.0) ** 0.5  # Square root scaling
+        
+        # Calculate expected move
+        expected_move_pct = base_volatility * confidence_scale * horizon_scale
+        
+        # Apply direction
+        if direction == "DOWN":
+            expected_move_pct = -expected_move_pct
+        elif direction == "FLAT":
+            expected_move_pct = 0.0
+        
+        # Cap at reasonable bounds (prevent absurd predictions)
+        expected_move_pct = max(-25.0, min(25.0, expected_move_pct))
+        
+        LOGGER.debug(
+            f"[{symbol}] Expected move calculation: "
+            f"base_vol={base_volatility:.1f}%, conf_scale={confidence_scale:.2f}, "
+            f"horizon_scale={horizon_scale:.2f} → {expected_move_pct:+.2f}%"
+        )
+
+        # Generate forecast points using calculated expected move
         forecast_points = []
-        direction_multiplier = 1.01 if direction == "UP" else (0.99 if direction == "DOWN" else 1.0)
-
-        for i in range(num_points + 1):
-            ts = run_at + (i * step_s)
-            # Apply direction bias over time
-            price = current_price * (direction_multiplier ** i)
-            forecast_points.append((ts, price))
-
-        # Expected move over horizon (from forecast endpoints)
-        try:
-            forecast_end_price = float(forecast_points[-1][1]) if forecast_points else None
-            expected_move_pct = ((forecast_end_price - current_price) / current_price) * 100.0 if forecast_end_price and current_price else None
-        except Exception:
-            expected_move_pct = None
+        if current_price and expected_move_pct != 0:
+            # Linear interpolation from current to target
+            end_price = current_price * (1 + expected_move_pct / 100)
+            for i in range(num_points + 1):
+                ts = run_at + (i * step_s)
+                # Linear interpolation
+                progress = i / num_points if num_points > 0 else 1.0
+                price = current_price + (end_price - current_price) * progress
+                forecast_points.append((ts, price))
+        else:
+            # Flat forecast
+            for i in range(num_points + 1):
+                ts = run_at + (i * step_s)
+                forecast_points.append((ts, current_price))
 
         # GHOST V3: Signal-based confidence calibration system
         # Confidence dynamically adjusts from 45% baseline to 40-85% based on:
@@ -7405,10 +7455,42 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         if expected_move_pct is not None:
             _LATEST_PREDICTIONS[symbol]["expected_move_pct"] = expected_move_pct
 
-        # Trade parameters (used for both execution and touch-target evaluation)
+        # ==========================================================================
+        # TRADE PARAMETERS (FIX: Correct stop loss and target for direction)
+        # 
+        # OLD BUG: For DOWN predictions, target_price = stop_loss (same as target!)
+        # NEW: 
+        #   - UP:   stop BELOW entry, target ABOVE entry
+        #   - DOWN: stop ABOVE entry, target BELOW entry
+        # ==========================================================================
         entry_price = current_price
-        stop_loss = round(entry_price * 0.98, 2)   # -2% stop
-        take_profit = round(entry_price * 1.06, 2)  # +6% target (3:1 R/R)
+        
+        # Use expected move to set realistic targets (not arbitrary 6%)
+        abs_expected_move = abs(expected_move_pct) if expected_move_pct else 3.0
+        stop_loss_pct = max(2.0, abs_expected_move * 0.5)  # Stop at half the expected move, min 2%
+        target_pct = abs_expected_move  # Target at full expected move
+        
+        if direction == "UP":
+            # UP: stop below entry, target above entry
+            stop_loss = round(entry_price * (1 - stop_loss_pct / 100), 4)
+            take_profit = round(entry_price * (1 + target_pct / 100), 4)
+            target_price = take_profit
+        elif direction == "DOWN":
+            # DOWN: stop above entry, target below entry
+            stop_loss = round(entry_price * (1 + stop_loss_pct / 100), 4)
+            take_profit = round(entry_price * (1 - target_pct / 100), 4)
+            target_price = take_profit
+        else:
+            # FLAT/HOLD: neutral positioning
+            stop_loss = round(entry_price * 0.97, 4)  # -3% stop
+            take_profit = round(entry_price * 1.03, 4)  # +3% target
+            target_price = entry_price
+        
+        LOGGER.debug(
+            f"[{symbol}] Trade params: direction={direction}, entry=${entry_price:.4f}, "
+            f"target=${target_price:.4f} ({target_pct:+.1f}%), "
+            f"stop=${stop_loss:.4f} ({-stop_loss_pct if direction == 'UP' else stop_loss_pct:+.1f}%)"
+        )
 
         # Touch-target calibration + gating (Stage 5/6)
         try:
@@ -7420,7 +7502,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     "entry_price": entry_price,
                     "stop_loss": stop_loss,
                     "take_profit": take_profit,
-                    "target_price": take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price,
+                    "target_price": target_price,  # Already calculated correctly per direction
                     "touch_calibrated_1pct": touch_cal.calibrated_1pct,
                     "touch_calibrated_0_5pct": touch_cal.calibrated_0_5pct,
                     "touch_calibration_samples": touch_cal.sample_size,
@@ -7436,7 +7518,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     "entry_price": entry_price,
                     "stop_loss": stop_loss,
                     "take_profit": take_profit,
-                    "target_price": take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price,
+                    "target_price": target_price,  # Already calculated correctly per direction
                     "touch_calibrated_1pct": None,
                     "touch_calibrated_0_5pct": None,
                     "touch_calibration_samples": 0,
@@ -7558,14 +7640,14 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "entry_price": entry_price,
             "stop_loss": stop_loss,
             "take_profit": take_profit,
-            "target_price": take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price,
+            "target_price": target_price,  # Already calculated correctly per direction
             "stage5_ok": bool(_LATEST_PREDICTIONS[symbol].get("stage5_ok")),
             "stage6_ok": bool(_LATEST_PREDICTIONS[symbol].get("stage6_ok")),
             "gate": _LATEST_PREDICTIONS[symbol].get("gate", "MONITOR"),
             "touch_calibrated_1pct": _LATEST_PREDICTIONS[symbol].get("touch_calibrated_1pct"),
             "touch_calibrated_0_5pct": _LATEST_PREDICTIONS[symbol].get("touch_calibrated_0_5pct"),
             "expected_move_pct": expected_move_pct,
-            "reward_risk_ratio": 3.0,
+            "reward_risk_ratio": round(abs(expected_move_pct or 3.0) / stop_loss_pct, 2) if stop_loss_pct else 2.0,  # Dynamic R:R
             "feature_count": feature_data["feature_count"],
             "available_count": feature_data["available_count"],
             "duration_ms": duration_ms,
