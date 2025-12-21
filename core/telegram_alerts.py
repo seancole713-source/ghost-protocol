@@ -36,10 +36,14 @@ MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.80"))  # RAISE
 DAILY_ALERT_CAP = int(os.getenv("DAILY_ALERT_CAP", "10"))  # Max 10 alerts per day
 SMART_CAP_ENABLED = os.getenv("SMART_CAP_ENABLED", "1") == "1"  # Enable by default
 
-# Thread-safe daily tracking
+# Thread-safe daily tracking (memory fallback)
 _daily_lock = threading.Lock()
-_daily_alerts_sent: Dict[str, int] = {}  # {date_str: count}
+_daily_alerts_sent: Dict[str, int] = {}  # {date_str: count} - memory fallback
 _daily_alerts_log: Dict[str, List[Dict]] = {}  # {date_str: [{symbol, confidence, timestamp}]}
+
+# Redis keys for persistence (survives restarts!)
+REDIS_DAILY_COUNT_KEY = "ghost:alerts:daily_count"
+REDIS_DAILY_LOG_KEY = "ghost:alerts:daily_log"
 
 
 def _get_today_key() -> str:
@@ -51,26 +55,87 @@ def _get_today_key() -> str:
 
 
 def get_daily_alert_count() -> int:
-    """Get how many alerts have been sent today"""
+    """Get how many alerts have been sent today (Redis-backed, survives restarts)"""
+    today = _get_today_key()
+    
+    # Try Redis first (persistent across restarts)
+    if REDIS_CLIENT:
+        try:
+            redis_key = f"{REDIS_DAILY_COUNT_KEY}:{today}"
+            count = REDIS_CLIENT.get(redis_key)
+            if count is not None:
+                return int(count)
+        except Exception as e:
+            if LOGGER:
+                LOGGER.warning(f"Redis read failed, using memory: {e}")
+    
+    # Fallback to memory
     with _daily_lock:
-        today = _get_today_key()
         return _daily_alerts_sent.get(today, 0)
 
 
 def get_daily_alert_log() -> List[Dict]:
-    """Get list of alerts sent today"""
+    """Get list of alerts sent today (Redis-backed)"""
+    today = _get_today_key()
+    
+    # Try Redis first
+    if REDIS_CLIENT:
+        try:
+            import json
+            log_key = f"{REDIS_DAILY_LOG_KEY}:{today}"
+            log_entries = REDIS_CLIENT.lrange(log_key, 0, -1)
+            if log_entries:
+                return [json.loads(entry) for entry in log_entries]
+        except Exception as e:
+            if LOGGER:
+                LOGGER.warning(f"Redis log read failed: {e}")
+    
+    # Fallback to memory
     with _daily_lock:
-        today = _get_today_key()
         return _daily_alerts_log.get(today, []).copy()
 
 
 def _increment_daily_count(symbol: str, confidence: float) -> bool:
     """
-    Increment daily alert count. Returns True if under cap, False if capped.
+    Increment daily alert count (Redis-backed, survives restarts!).
+    Returns True if under cap, False if capped.
     """
+    today = _get_today_key()
+    
+    # Try Redis first (persistent across restarts)
+    if REDIS_CLIENT:
+        try:
+            redis_key = f"{REDIS_DAILY_COUNT_KEY}:{today}"
+            
+            # Atomic increment
+            current_count = REDIS_CLIENT.incr(redis_key)
+            
+            # Set expiry to 48 hours (auto-cleanup)
+            REDIS_CLIENT.expire(redis_key, 172800)
+            
+            # Log to Redis list
+            log_key = f"{REDIS_DAILY_LOG_KEY}:{today}"
+            import json
+            log_entry = json.dumps({
+                "symbol": symbol,
+                "confidence": confidence,
+                "timestamp": datetime.now().isoformat(),
+                "count": current_count
+            })
+            REDIS_CLIENT.rpush(log_key, log_entry)
+            REDIS_CLIENT.expire(log_key, 172800)
+            
+            if LOGGER:
+                LOGGER.info(f"📊 Daily alert count: {current_count}/{DAILY_ALERT_CAP} (Redis-backed)")
+            
+            return current_count <= DAILY_ALERT_CAP
+            
+        except Exception as e:
+            if LOGGER:
+                LOGGER.warning(f"Redis increment failed, using memory: {e}")
+    
+    # Fallback to memory
     with _daily_lock:
-        today = _get_today_key()
-        
         # Clean up old days (keep only today)
         old_keys = [k for k in _daily_alerts_sent.keys() if k != today]
         for k in old_keys:
