@@ -7287,30 +7287,34 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 f"(Ghost accuracy: 0.6%, inverted accuracy: ~99%)"
             )
         
-        # Get volatility from features (default to 3% if unavailable)
-        volatility_20d = features.get("VOLATILITY_20D")
-        atr_pct = features.get("ATR_PERCENT")
+        # ==========================================================================
+        # EXPECTED MOVE CALCULATION (FIXED Dec 21, 2025)
+        # 
+        # For 6-hour predictions, realistic moves are 2-5%, NOT 25%!
+        # BTC doesn't drop $22,000 in 6 hours under normal conditions.
+        #
+        # Targets by horizon:
+        #   6h:  2-5% move (BTC: $1,500-$4,000)
+        #   24h: 3-8% move 
+        #   48h: 5-12% move
+        # ==========================================================================
         
-        # Use best available volatility measure
-        if atr_pct and atr_pct > 0:
-            base_volatility = float(atr_pct)
-        elif volatility_20d and volatility_20d > 0:
-            base_volatility = float(volatility_20d) * 100  # Convert to %
+        # REALISTIC base expected moves by horizon (in percent)
+        if horizon_h <= 6:
+            base_move_pct = 3.0  # 3% for 6h
+        elif horizon_h <= 12:
+            base_move_pct = 4.0  # 4% for 12h
+        elif horizon_h <= 24:
+            base_move_pct = 5.0  # 5% for 24h
         else:
-            # Fallback: Crypto typically 5%, stocks 2-3%
-            base_volatility = 5.0 if is_crypto else 2.5
+            base_move_pct = 7.0  # 7% for 48h
         
-        # Scale by confidence (higher confidence = expect larger move)
-        # confidence 0.5 = base_volatility * 0.5
-        # confidence 0.9 = base_volatility * 1.3
-        confidence_scale = 0.3 + (base_confidence * 1.1)  # Range: 0.3 to 1.4
-        
-        # Scale by horizon (6h vs 48h)
-        # 6h should have smaller expected move than 48h
-        horizon_scale = (horizon_h / 48.0) ** 0.5  # Square root scaling
+        # Adjust slightly by confidence (higher confidence = slightly larger move)
+        # Range: 0.8x to 1.2x of base move
+        confidence_adjustment = 0.8 + (base_confidence * 0.4)  # 0.8 to 1.2
         
         # Calculate expected move
-        expected_move_pct = base_volatility * confidence_scale * horizon_scale
+        expected_move_pct = base_move_pct * confidence_adjustment
         
         # Apply direction
         if direction == "DOWN":
@@ -7318,8 +7322,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         elif direction == "FLAT":
             expected_move_pct = 0.0
         
-        # Cap at reasonable bounds (prevent absurd predictions)
-        expected_move_pct = max(-25.0, min(25.0, expected_move_pct))
+        # Cap at REALISTIC bounds for crypto (max 8% in 6h)
+        max_move = 5.0 if horizon_h <= 6 else 8.0 if horizon_h <= 24 else 12.0
+        expected_move_pct = max(-max_move, min(max_move, expected_move_pct))
         
         LOGGER.debug(
             f"[{symbol}] Expected move calculation: "
@@ -7480,18 +7485,22 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             _LATEST_PREDICTIONS[symbol]["expected_move_pct"] = expected_move_pct
 
         # ==========================================================================
-        # TRADE PARAMETERS (FIX: Correct stop loss and target for direction)
+        # TRADE PARAMETERS (FIXED Dec 21, 2025)
         # 
-        # OLD BUG: For DOWN predictions, target_price = stop_loss (same as target!)
-        # NEW: 
-        #   - UP:   stop BELOW entry, target ABOVE entry
-        #   - DOWN: stop ABOVE entry, target BELOW entry
+        # Realistic stop losses: 2-4% (not 12%!)
+        # For BTC at $88k, a 4% stop = $3,500 loss (reasonable)
+        # NOT $11,000 loss from 12.5% stop
+        #
+        # Risk/Reward: Target 2:1 ratio
+        #   - Stop: 2-3% from entry
+        #   - Target: 4-6% from entry
         # ==========================================================================
         entry_price = current_price
         
-        # Use expected move to set realistic targets (not arbitrary 6%)
+        # TIGHT stop losses (2-3% max for 6h)
         abs_expected_move = abs(expected_move_pct) if expected_move_pct else 3.0
-        stop_loss_pct = max(2.0, abs_expected_move * 0.5)  # Stop at half the expected move, min 2%
+        stop_loss_pct = min(3.0, abs_expected_move * 0.6)  # Stop at 60% of move, MAX 3%
+        stop_loss_pct = max(1.5, stop_loss_pct)  # Minimum 1.5% to avoid noise
         target_pct = abs_expected_move  # Target at full expected move
         
         if direction == "UP":
@@ -7506,8 +7515,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             target_price = take_profit
         else:
             # FLAT/HOLD: neutral positioning
-            stop_loss = round(entry_price * 0.97, 4)  # -3% stop
-            take_profit = round(entry_price * 1.03, 4)  # +3% target
+            stop_loss = round(entry_price * 0.98, 4)  # -2% stop
+            take_profit = round(entry_price * 1.02, 4)  # +2% target
             target_price = entry_price
         
         LOGGER.debug(
