@@ -7328,8 +7328,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         
         LOGGER.debug(
             f"[{symbol}] Expected move calculation: "
-            f"base_vol={base_volatility:.1f}%, conf_scale={confidence_scale:.2f}, "
-            f"horizon_scale={horizon_scale:.2f} → {expected_move_pct:+.2f}%"
+            f"base_move={base_move_pct:.1f}%, conf_adj={confidence_adjustment:.2f}, "
+            f"→ {expected_move_pct:+.2f}%"
         )
 
         # Generate forecast points using calculated expected move
