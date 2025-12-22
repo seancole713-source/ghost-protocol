@@ -7333,31 +7333,41 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 coin_daily_vol = 7.0  # Small alts: ~7% daily
         
         # ==========================================================================
-        # VALIDATED TARGET SIZING (Dec 21-22, 2025)
-        # Actual 6h moves observed: 0.5-1.5% (not 3.5%!)
-        # Direction was 100% correct, but targets were 2-3x too aggressive.
+        # ASSET-AWARE TARGET SIZING (Dec 22, 2025)
         # 
-        # NEW TARGETS (based on real market data):
-        #   - 6h:  1.5% target, 1.5% stop (validated)
-        #   - 24h: 3.5% target, 3.0% stop (scaled)
-        #   - 48h: 6.0% target, 4.5% stop (production goal)
+        # ISSUE FOUND: Stock targets were 6-7% (same as crypto) - too aggressive!
+        # - AAPL moving 6% in 48h is rare (happens 2-3x/year)
+        # - Large cap stocks move 0.5-1.5% daily, not 3-5% like crypto
+        #
+        # SOLUTION: Use AssetClassifier for proper target/stop sizing
+        # | Asset Type     | 48h Target | 48h Stop |
+        # |----------------|------------|----------|
+        # | Crypto         | 6.0%       | 4.5%     |
+        # | Stock (Large)  | 2.5%       | 2.0%     |
+        # | Stock (Volatile)| 5.0%      | 4.0%     |
+        # | Stock (Mid)    | 3.5%       | 2.5%     |
         # ==========================================================================
-        
-        # Fixed targets per horizon (ignore volatility scaling - causes over-prediction)
-        if horizon_h <= 6:
-            base_move_pct = 1.5  # VALIDATED: 6h moves are 0.5-1.5%
-        elif horizon_h <= 24:
-            base_move_pct = 3.5  # 24h: ~3.5% realistic
-        else:  # 48h+
-            base_move_pct = 6.0  # 48h: ~6% for larger moves
-        
-        # Small adjustment for coin volatility (±20% max)
-        if symbol.upper() in {"BTC", "ETH"}:
-            base_move_pct *= 0.9  # Large caps: slightly smaller moves
-        elif symbol.upper() in {"SOL", "DOGE", "XRP", "BNB", "ADA"}:
-            base_move_pct *= 1.0  # Mid caps: as expected
-        else:
-            base_move_pct *= 1.2  # Small alts: slightly larger moves
+        try:
+            from core.asset_classifier import get_target_stop, get_asset_type
+            
+            asset_targets = get_target_stop(symbol, horizon_h)
+            base_move_pct = asset_targets['target_pct']
+            asset_type = asset_targets['asset_type']
+            
+            LOGGER.info(
+                f"[{symbol}] Asset classification: {asset_type}, "
+                f"target={base_move_pct}%, horizon={horizon_h}h"
+            )
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] AssetClassifier failed: {e}, using crypto defaults")
+            # Fallback to crypto defaults if classifier fails
+            if horizon_h <= 6:
+                base_move_pct = 1.5
+            elif horizon_h <= 24:
+                base_move_pct = 3.5
+            else:
+                base_move_pct = 6.0
+            asset_type = "crypto"
         
         # Adjust slightly by confidence (higher confidence = slightly larger move)
         # Range: 0.9x to 1.1x of base move (tighter range)
@@ -7548,18 +7558,27 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         entry_price = current_price
         
         # ==========================================================================
-        # HORIZON-AWARE STOP LOSSES (validated Dec 22, 2025)
-        # Stops should match the horizon - tighter for shorter windows
+        # ASSET-AWARE STOP LOSSES (Dec 22, 2025)
+        # Stops should match asset type AND horizon
+        # - Crypto: 4.5% stop (volatile)
+        # - Large cap stocks: 2% stop (stable)
+        # - Volatile stocks: 4% stop (TSLA, NVDA)
         # ==========================================================================
         abs_expected_move = abs(expected_move_pct) if expected_move_pct else 3.0
         
-        # Fixed stops per horizon (not based on expected move - that caused 12% stops!)
-        if horizon_h <= 6:
-            stop_loss_pct = 1.5  # 6h: tight 1.5% stop
-        elif horizon_h <= 24:
-            stop_loss_pct = 3.0  # 24h: 3% stop
-        else:  # 48h+
-            stop_loss_pct = 4.5  # 48h: 4.5% stop
+        # Use AssetClassifier for proper stop sizing
+        try:
+            from core.asset_classifier import get_target_stop
+            asset_stops = get_target_stop(symbol, horizon_h)
+            stop_loss_pct = asset_stops['stop_pct']
+        except Exception:
+            # Fallback if classifier fails
+            if horizon_h <= 6:
+                stop_loss_pct = 1.5
+            elif horizon_h <= 24:
+                stop_loss_pct = 3.0
+            else:
+                stop_loss_pct = 4.5
         
         target_pct = abs_expected_move  # Target at full expected move
         
