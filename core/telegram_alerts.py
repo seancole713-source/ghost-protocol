@@ -64,13 +64,14 @@ def get_real_accuracy_stats() -> dict:
         cursor = conn.cursor()
         
         # First try ghost_prediction_outcomes (reconciled data)
+        # NOTE: Status is 'completed' not 'closed'! (Fixed Dec 22, 2025)
         cursor.execute("""
             SELECT 
                 COUNT(*) FILTER (WHERE hit_direction = 1) as wins,
                 COUNT(*) FILTER (WHERE hit_direction = 0 AND actual_direction IS NOT NULL) as losses,
                 COUNT(*) as total
             FROM ghost_prediction_outcomes
-            WHERE status = 'closed'
+            WHERE status = 'completed'
         """)
         row = cursor.fetchone()
         wins = row[0] or 0
@@ -108,7 +109,7 @@ def get_real_accuracy_stats() -> dict:
                 COUNT(*) FILTER (WHERE hit_direction = 1) as wins_7d,
                 COUNT(*) as total_7d
             FROM ghost_prediction_outcomes
-            WHERE status = 'closed' 
+            WHERE status = 'completed' 
             AND closed_at > NOW() - INTERVAL '7 days'
         """)
         row_7d = cursor.fetchone()
