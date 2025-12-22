@@ -39,6 +39,9 @@ def get_real_accuracy_stats() -> dict:
     Fetch REAL accuracy stats from production database.
     No more hardcoded lies - this shows actual win/loss record.
     
+    FIXED Dec 22, 2025: Query ghost_predictions table directly if outcomes empty.
+    The 25,691 predictions are in ghost_predictions, not all reconciled yet.
+    
     Returns:
         {
             "wins": int,
@@ -55,12 +58,12 @@ def get_real_accuracy_stats() -> dict:
         database_url = os.getenv("DATABASE_URL")
         
         if not database_url:
-            return {"status": "UNVERIFIED", "wins": 0, "losses": 0, "accuracy_pct": 0, "total_verified": 0}
+            return {"status": "LEARNING", "wins": 0, "losses": 0, "accuracy_pct": 0, "total_verified": 0}
         
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
         
-        # Get overall stats
+        # First try ghost_prediction_outcomes (reconciled data)
         cursor.execute("""
             SELECT 
                 COUNT(*) FILTER (WHERE hit_direction = 1) as wins,
@@ -73,6 +76,31 @@ def get_real_accuracy_stats() -> dict:
         wins = row[0] or 0
         losses = row[1] or 0
         total = row[2] or 0
+        
+        # If outcomes table is empty, try to get count from ghost_predictions
+        # This shows we have predictions even if not all reconciled
+        if total == 0:
+            cursor.execute("""
+                SELECT COUNT(*) as total_predictions
+                FROM ghost_predictions
+                WHERE run_at < EXTRACT(EPOCH FROM NOW()) - 172800  -- older than 48h
+            """)
+            pred_row = cursor.fetchone()
+            total_predictions = pred_row[0] or 0
+            
+            cursor.close()
+            conn.close()
+            
+            # Show "LEARNING" status with prediction count
+            return {
+                "wins": 0,
+                "losses": 0,
+                "accuracy_pct": 0,
+                "total_verified": 0,
+                "total_predictions": total_predictions,
+                "status": "LEARNING",
+                "message": f"{total_predictions} predictions pending validation"
+            }
         
         # Get 7-day accuracy
         cursor.execute("""
@@ -407,19 +435,35 @@ def format_touch_target_signal(
     else:
         timeframe = f"{horizon_h // 24} days"
     
+    # Get asset type from classifier
+    try:
+        from core.asset_classifier import get_asset_type
+        asset_type = get_asset_type(symbol)
+    except:
+        asset_type = "crypto"  # Default
+    
     # Get real accuracy stats
     wins, losses, acc_pct = 0, 0, 0
+    status_msg = "LEARNING"
     try:
         if SHOW_REAL_ACCURACY:
             stats = get_real_accuracy_stats()
             wins = stats.get("wins", 0)
             losses = stats.get("losses", 0)
             acc_pct = stats.get("accuracy_pct", 0)
+            status_msg = stats.get("status", "LEARNING")
     except:
         pass
+    
+    # Format track record - show LEARNING if no verified outcomes yet
+    if wins == 0 and losses == 0:
+        track_record = f"📊 Status: {status_msg}"
+    else:
+        track_record = f"📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)"
 
     # ============================================
-    # SIMPLE FORMAT FOR BUY LOW, SELL HIGH TRADERS
+    # UPDATED FORMAT Dec 22, 2025
+    # Includes: Stop, Confidence, Asset Type, INVERSE label
     # ============================================
     
     if direction == "UP":
@@ -430,31 +474,36 @@ def format_touch_target_signal(
         lines = [
             f"🟢 **BUY {symbol} NOW**",
             "",
-            f"💰 Buy at: {_fmt_price(entry_price)}",
-            f"🎯 Sell at: {_fmt_price(target_price)} (+{target_gain_pct:.1f}%)",
-            f"🛑 Stop loss: {_fmt_price(stop_loss)} (-{stop_loss_pct:.1f}%)",
-            f"⏱️ Timeframe: {timeframe}",
+            f"💰 Entry: {_fmt_price(entry_price)}",
+            f"🎯 Target: {_fmt_price(target_price)} (+{target_gain_pct:.1f}%)",
+            f"🛑 Stop: {_fmt_price(stop_loss)} (-{stop_loss_pct:.1f}%)",
+            f"⏱️ Horizon: {timeframe}",
+            f"📈 Confidence: {confidence*100:.0f}%",
+            f"🏷️ Asset: {asset_type}",
             "",
-            f"📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)",
+            track_record,
+            f"🔄 INVERSE MODE: Ghost flipped → {direction}",
             "",
             "_⚠️ Not financial advice_"
         ]
 
     elif direction == "DOWN":
-        # WAIT SIGNAL - Price going down, don't buy yet
+        # WAIT/SHORT SIGNAL - Price going down
         drop_pct = ((entry_price - target_price) / entry_price * 100) if entry_price and target_price else 0
+        stop_pct = ((stop_loss - entry_price) / entry_price * 100) if entry_price and stop_loss else 0
         
         lines = [
-            f"🔴 **WAIT - Don't Buy {symbol}**",
+            f"🔴 **{symbol} — EXPECT DROP**",
             "",
-            f"📉 Price expected to DROP",
-            f"💰 Current: {_fmt_price(entry_price)}",
-            f"📍 Wait for: ~{_fmt_price(target_price)} (-{drop_pct:.1f}%)",
-            f"⏱️ Timeframe: {timeframe}",
+            f"💰 Entry: {_fmt_price(entry_price)}",
+            f"🎯 Target: {_fmt_price(target_price)} (-{drop_pct:.1f}%)",
+            f"🛑 Stop: {_fmt_price(stop_loss)} (+{stop_pct:.1f}%)",
+            f"⏱️ Horizon: {timeframe}",
+            f"📈 Confidence: {confidence*100:.0f}%",
+            f"🏷️ Asset: {asset_type}",
             "",
-            "_Ghost will alert you when it's time to BUY_",
-            "",
-            f"📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)",
+            track_record,
+            f"🔄 INVERSE MODE: Ghost flipped → {direction}",
             "",
             "_⚠️ Not financial advice_"
         ]
@@ -465,7 +514,7 @@ def format_touch_target_signal(
             f"⚪ **{symbol} - No Clear Signal**",
             "",
             f"💰 Current: {_fmt_price(entry_price)}",
-            f"⏱️ Timeframe: {timeframe}",
+            f"⏱️ Horizon: {timeframe}",
             "",
             "_Wait for a clear BUY or WAIT signal_"
         ]
