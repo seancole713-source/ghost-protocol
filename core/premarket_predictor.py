@@ -133,7 +133,15 @@ async def get_top_premarket_movers(max_stocks: int = 15) -> List[str]:
 
 
 async def _fetch_polygon_movers(max_stocks: int) -> List[str]:
-    """Fetch gainers/losers from Polygon API."""
+    """
+    Fetch gainers/losers from Polygon API.
+    
+    Filters out:
+    - Penny stocks (price < $5)
+    - Warrants (.WS, W suffix)
+    - Low volume (< 100k daily volume)
+    - OTC/Pink sheets
+    """
     import aiohttp
     
     polygon_key = os.getenv("POLYGON_API_KEY")
@@ -142,6 +150,33 @@ async def _fetch_polygon_movers(max_stocks: int) -> List[str]:
     
     movers = []
     
+    def _is_tradable(ticker_data: dict) -> bool:
+        """Filter out junk stocks."""
+        symbol = ticker_data.get("ticker", "")
+        
+        # Skip warrants and units
+        if any(x in symbol for x in [".WS", "WS", ".U", "-UN", "-WT"]):
+            return False
+        
+        # Skip if symbol too long (usually warrants/units)
+        if len(symbol) > 5:
+            return False
+        
+        # Get day data
+        day = ticker_data.get("day", {})
+        price = day.get("c", 0) or ticker_data.get("prevDay", {}).get("c", 0)
+        volume = day.get("v", 0)
+        
+        # Skip penny stocks
+        if price < 5:
+            return False
+        
+        # Skip low volume (< 100k)
+        if volume < 100000:
+            return False
+        
+        return True
+    
     async with aiohttp.ClientSession() as session:
         # Get gainers
         try:
@@ -149,10 +184,13 @@ async def _fetch_polygon_movers(max_stocks: int) -> List[str]:
             async with session.get(url, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    for ticker in data.get("tickers", [])[:max_stocks//2]:
-                        symbol = ticker.get("ticker")
-                        if symbol:
-                            movers.append(symbol)
+                    for ticker in data.get("tickers", []):
+                        if _is_tradable(ticker):
+                            symbol = ticker.get("ticker")
+                            change = ticker.get("todaysChangePerc", 0)
+                            movers.append((symbol, abs(change)))
+                            if len(movers) >= max_stocks:
+                                break
         except Exception as e:
             LOGGER.debug(f"Polygon gainers error: {e}")
         
@@ -162,14 +200,19 @@ async def _fetch_polygon_movers(max_stocks: int) -> List[str]:
             async with session.get(url, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    for ticker in data.get("tickers", [])[:max_stocks//2]:
+                    for ticker in data.get("tickers", []):
                         symbol = ticker.get("ticker")
-                        if symbol and symbol not in movers:
-                            movers.append(symbol)
+                        if _is_tradable(ticker) and symbol not in [m[0] for m in movers]:
+                            change = ticker.get("todaysChangePerc", 0)
+                            movers.append((symbol, abs(change)))
+                            if len(movers) >= max_stocks * 2:
+                                break
         except Exception as e:
             LOGGER.debug(f"Polygon losers error: {e}")
     
-    return movers
+    # Sort by absolute change and return symbols
+    movers.sort(key=lambda x: x[1], reverse=True)
+    return [m[0] for m in movers[:max_stocks]]
 
 
 async def _scan_universe_premarket(max_stocks: int) -> List[str]:
