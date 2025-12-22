@@ -247,6 +247,16 @@ class MarketScanner:
                 # Total score
                 total_score = momentum_score + volume_score + regime_score + risk_reward_score
 
+                # Get asset-specific targets from classifier
+                try:
+                    from core.asset_classifier import AssetClassifier
+                    targets = AssetClassifier.get_target_stop(candidate["asset"], horizon_hours=48)
+                    target_pct = targets["target_pct"]
+                    stop_pct = targets["stop_pct"]
+                except:
+                    target_pct = 6.0  # Fallback
+                    stop_pct = 4.5
+                
                 # Create opportunity
                 opp = Opportunity(
                     asset=candidate["asset"],
@@ -255,8 +265,8 @@ class MarketScanner:
                     decision="BUY" if candidate.get("change_pct", 0) > 0 else "SELL",
                     reasoning=f"Strong momentum ({candidate.get('change_pct', 0):.1f}% move) with volume confirmation",
                     entry_price=candidate["price"],
-                    target_price=candidate["price"] * 1.15,  # 15% target
-                    stop_loss=candidate["price"] * 0.92,  # 8% stop
+                    target_price=candidate["price"] * (1 + target_pct / 100),
+                    stop_loss=candidate["price"] * (1 - stop_pct / 100),
                     expected_return_pct=15.0,
                     risk_level="medium",
                     risk_factors=["Market volatility", "Momentum reversal risk"],

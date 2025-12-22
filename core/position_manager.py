@@ -117,11 +117,18 @@ class PositionManager:
         position_id = str(uuid.uuid4())
         now = datetime.utcnow().isoformat()
         
-        # Calculate stop loss
+        # Use AssetClassifier for proper stop sizing
+        try:
+            from core.asset_classifier import AssetClassifier
+            targets = AssetClassifier.get_target_stop(symbol, horizon_hours=48)
+            stop_pct = targets["stop_pct"]
+        except:
+            stop_pct = 4.0  # Fallback
+        
         if direction == "UP":
-            stop_loss = entry_price * 0.95  # 5% below entry
+            stop_loss = entry_price * (1 - stop_pct / 100)
         else:
-            stop_loss = entry_price * 1.05  # 5% above entry
+            stop_loss = entry_price * (1 + stop_pct / 100)
         
         conn = sqlite3.connect(self.db_path)
         try:

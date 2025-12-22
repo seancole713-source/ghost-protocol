@@ -431,11 +431,18 @@ class DailyTop10Scanner:
                 target_price = opp["predicted_48h_price"]
                 is_continuation = opp.get("is_continuation", False)
                 
-                # Calculate stop loss (5% below entry for longs, 5% above for shorts)
+                # Use AssetClassifier for proper stop sizing
+                try:
+                    from core.asset_classifier import AssetClassifier
+                    targets = AssetClassifier.get_target_stop(opp["symbol"], horizon_hours=48)
+                    stop_pct = targets["stop_pct"]
+                except:
+                    stop_pct = 4.5  # Fallback
+                
                 if opp["direction"] == "UP":
-                    stop_loss = entry_price * 0.95
+                    stop_loss = entry_price * (1 - stop_pct / 100)
                 else:
-                    stop_loss = entry_price * 1.05
+                    stop_loss = entry_price * (1 + stop_pct / 100)
                 
                 conn.execute("""
                     INSERT INTO top_10_opportunities (

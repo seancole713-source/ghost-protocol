@@ -426,15 +426,23 @@ class SmartWatcher:
             + self._macro_adjustment(macro_context) * 0.1
         )
 
+        # Get asset-specific stop from classifier
+        try:
+            from core.asset_classifier import AssetClassifier
+            targets = AssetClassifier.get_target_stop(symbol, horizon_hours=48)
+            stop_pct = targets["stop_pct"]
+        except:
+            stop_pct = 4.0  # Fallback
+        
         # Determine signal type
         if signal_score > 5.0 and risk_level != "extreme":
             signal_type = SignalType.BUY
             target_price = current_price * (1 + signal_score / 100)
-            stop_loss = current_price * 0.95  # 5% stop loss
+            stop_loss = current_price * (1 - stop_pct / 100)
         elif signal_score < -5.0:
             signal_type = SignalType.SELL
             target_price = current_price * (1 + signal_score / 100)
-            stop_loss = current_price * 1.05  # 5% stop loss
+            stop_loss = current_price * (1 + stop_pct / 100)
         elif risk_level == "extreme":
             signal_type = SignalType.AVOID
             target_price = None

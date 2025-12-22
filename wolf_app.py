@@ -13666,7 +13666,7 @@ async def api_advisor_chat(
                     * (
                         1 + (prediction.get("confidence", 0.5) * 0.25)
                     ),  # Conservative 30-day target
-                    "stop_loss": current_price * 0.92,  # 8% stop loss
+                    "stop_loss": current_price * 0.955,  # ~4.5% stop (crypto default)
                 }
 
                 detailed_analysis.append(analysis)

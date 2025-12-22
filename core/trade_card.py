@@ -315,13 +315,20 @@ class TradeCardGenerator:
                 stop_loss = current_price + (atr * 2)
                 reason = f"2× ATR (${atr:.2f}) above entry"
         else:
-            # Fallback: 5% stop
+            # Fallback: Use AssetClassifier for asset-appropriate stop
+            try:
+                from core.asset_classifier import AssetClassifier
+                targets = AssetClassifier.get_target_stop(symbol, horizon_hours=48)
+                stop_pct = targets["stop_pct"]
+            except:
+                stop_pct = 4.0  # Fallback
+            
             if action == "BUY":
-                stop_loss = current_price * 0.95
-                reason = "5% stop-loss below entry"
+                stop_loss = current_price * (1 - stop_pct / 100)
+                reason = f"{stop_pct:.1f}% stop-loss below entry"
             else:
-                stop_loss = current_price * 1.05
-                reason = "5% stop-loss above entry"
+                stop_loss = current_price * (1 + stop_pct / 100)
+                reason = f"{stop_pct:.1f}% stop-loss above entry"
 
         return stop_loss, reason
 
