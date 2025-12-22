@@ -483,9 +483,7 @@ def format_touch_target_signal(
             f"🏷️ Asset: {asset_type}",
             "",
             track_record,
-            f"🔄 INVERSE MODE: Ghost flipped → {direction}",
-            "",
-            "_⚠️ Not financial advice_"
+            f"🔄 INVERSE MODE: Ghost flipped → {direction}"
         ]
 
     elif direction == "DOWN":
@@ -504,9 +502,7 @@ def format_touch_target_signal(
             f"🏷️ Asset: {asset_type}",
             "",
             track_record,
-            f"🔄 INVERSE MODE: Ghost flipped → {direction}",
-            "",
-            "_⚠️ Not financial advice_"
+            f"🔄 INVERSE MODE: Ghost flipped → {direction}"
         ]
     
     else:
@@ -679,9 +675,7 @@ def format_prediction_alert_cashapp(
 🛑 Stop loss: ${stop_loss:,.0f} (-{stop_loss_pct:.1f}%)
 ⏱️ Timeframe: {timeframe}
 
-📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)
-
-_⚠️ Not financial advice_"""
+📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)"""
 
     else:
         # WAIT SIGNAL - Price going down, don't buy yet
@@ -694,9 +688,7 @@ _⚠️ Not financial advice_"""
 
 _Ghost will alert you when it's time to BUY_
 
-📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)
-
-_⚠️ Not financial advice_"""
+📊 Track Record: {wins}W/{losses}L ({acc_pct:.0f}%)"""
 
     return message
 
