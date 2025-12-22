@@ -28,7 +28,7 @@ DEFAULT_TZ = "America/Chicago"
 # Alert style configuration
 ALERT_STYLE = os.getenv("ALERT_STYLE", "simple")  # Default to "simple" (Cash App style), was "verbose"
 ALERT_SIMPLE_FORMAT = os.getenv("ALERT_SIMPLE_FORMAT", "cashapp")  # "cashapp" (default), "compact", "balanced", "context"
-MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.80"))  # RAISED: 80% minimum (was 70%)
+MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.85"))  # RAISED: 85% minimum (was 80%)
 
 # Show real accuracy in alerts (not fake "85%")
 SHOW_REAL_ACCURACY = os.getenv("SHOW_REAL_ACCURACY", "1") == "1"  # Default: ON

@@ -23,7 +23,7 @@ MIN_VERIFIED_PREDICTIONS = int(os.getenv('MIN_VERIFIED_PREDICTIONS', '20'))
 MAX_DAILY_PREDICTIONS = int(os.getenv('MAX_DAILY_PREDICTIONS', '10'))
 MIN_PREDICTED_RETURN = float(os.getenv('MIN_PREDICTED_RETURN', '0.03'))  # 3%
 DEDUP_HOURS = int(os.getenv('DEDUP_HOURS', '24'))
-MIN_CONFIDENCE = float(os.getenv('MIN_ALERT_CONFIDENCE', '0.80'))
+MIN_CONFIDENCE = float(os.getenv('MIN_ALERT_CONFIDENCE', '0.85'))  # RAISED to 85%
 
 
 @dataclass
@@ -61,7 +61,7 @@ class QualityGate:
         self.max_daily = int(os.getenv('MAX_DAILY_PREDICTIONS', '10'))
         self.min_return = float(os.getenv('MIN_PREDICTED_RETURN', '0.03'))
         self.dedup_hours = int(os.getenv('DEDUP_HOURS', '24'))
-        self.min_confidence = float(os.getenv('MIN_ALERT_CONFIDENCE', '0.80'))
+        self.min_confidence = float(os.getenv('MIN_ALERT_CONFIDENCE', '0.85'))  # RAISED to 85%
     
     def check(
         self,
