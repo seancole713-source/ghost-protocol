@@ -83,7 +83,8 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
         # Calculate average error (absolute realized move vs predicted direction)
         total_error = 0.0
         for row in rows:
-            realized_pct = abs(row['realized_move_pct'])
+            # Convert Decimal to float to avoid type errors
+            realized_pct = float(abs(row['realized_move_pct'] or 0))
             total_error += realized_pct
         
         avg_error_pct = (total_error / total) if total > 0 else 0.0
@@ -95,13 +96,13 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
                 "prediction_id": row['prediction_id'],
                 "symbol": row['symbol'],
                 "closed_at": row['closed_at'].isoformat() if row['closed_at'] else None,
-                "price_at_prediction": row['price_at_prediction'],
-                "price_at_resolution": row['price_at_resolution'],
-                "realized_move_pct": row['realized_move_pct'],
+                "price_at_prediction": float(row['price_at_prediction'] or 0),
+                "price_at_resolution": float(row['price_at_resolution'] or 0),
+                "realized_move_pct": float(row['realized_move_pct'] or 0),
                 "predicted_direction": row['predicted_direction'],
                 "actual_direction": row['actual_direction'],
                 "correct": row['hit_direction'] == 1,
-                "confidence": row['predicted_confidence']
+                "confidence": float(row['predicted_confidence'] or 0)
             })
         
         LOGGER.info(
