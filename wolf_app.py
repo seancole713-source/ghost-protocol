@@ -4416,8 +4416,9 @@ async def _post_startup_init():
             """Check for pre-market prediction trigger (7AM CT weekdays)"""
             while True:
                 try:
-                    if should_run_premarket():
-                        LOGGER.info("🌅 Running pre-market predictions...")
+                    should_run, reason = should_run_premarket()
+                    if should_run:
+                        LOGGER.info(f"🌅 Running pre-market predictions... ({reason})")
                         # FIXED: Await async function directly (not via run_in_executor)
                         await run_premarket_predictions()
                         LOGGER.info("✅ Pre-market predictions complete")
