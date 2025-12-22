@@ -7288,30 +7288,55 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             )
         
         # ==========================================================================
-        # EXPECTED MOVE CALCULATION (FIXED Dec 21, 2025)
+        # EXPECTED MOVE CALCULATION (FIXED Dec 21-22, 2025)
         # 
         # For 6-hour predictions, realistic moves are 2-5%, NOT 25%!
-        # BTC doesn't drop $22,000 in 6 hours under normal conditions.
+        # Each coin should have DIFFERENT expected moves based on volatility.
         #
-        # Targets by horizon:
-        #   6h:  2-5% move (BTC: $1,500-$4,000)
-        #   24h: 3-8% move 
-        #   48h: 5-12% move
+        # Volatility tiers (6h expected moves):
+        #   - BTC/ETH: 2-4% (large caps, less volatile)
+        #   - SOL/DOGE/XRP: 3-5% (mid caps)
+        #   - Small alts: 4-7% (more volatile)
         # ==========================================================================
         
-        # REALISTIC base expected moves by horizon (in percent)
-        if horizon_h <= 6:
-            base_move_pct = 3.0  # 3% for 6h
-        elif horizon_h <= 12:
-            base_move_pct = 4.0  # 4% for 12h
-        elif horizon_h <= 24:
-            base_move_pct = 5.0  # 5% for 24h
+        # Get coin-specific volatility from features (or use sensible defaults)
+        atr_pct = features.get("ATR_PERCENT")
+        volatility_20d = features.get("VOLATILITY_20D")
+        
+        # Determine base volatility (daily) for this specific coin
+        if atr_pct and atr_pct > 0 and atr_pct < 50:  # Sanity check ATR
+            coin_daily_vol = float(atr_pct)
+        elif volatility_20d and volatility_20d > 0 and volatility_20d < 1:  # It's a decimal
+            coin_daily_vol = float(volatility_20d) * 100
+        elif volatility_20d and volatility_20d > 0 and volatility_20d < 50:  # Already %
+            coin_daily_vol = float(volatility_20d)
         else:
-            base_move_pct = 7.0  # 7% for 48h
+            # Fallback: Use sensible defaults per coin type
+            large_caps = {"BTC", "ETH"}
+            mid_caps = {"SOL", "BNB", "XRP", "ADA", "DOGE", "DOT", "AVAX", "LINK", "MATIC"}
+            
+            if symbol.upper() in large_caps:
+                coin_daily_vol = 3.0  # BTC/ETH: ~3% daily
+            elif symbol.upper() in mid_caps:
+                coin_daily_vol = 5.0  # Mid caps: ~5% daily
+            else:
+                coin_daily_vol = 7.0  # Small alts: ~7% daily
+        
+        # Scale daily volatility to horizon (6h = ~1/4 of daily move typically)
+        horizon_scale = (horizon_h / 24.0) ** 0.5  # Square root scaling
+        base_move_pct = coin_daily_vol * horizon_scale
+        
+        # Clamp base move to reasonable range for the horizon
+        if horizon_h <= 6:
+            base_move_pct = max(1.5, min(5.0, base_move_pct))  # 1.5-5% for 6h
+        elif horizon_h <= 24:
+            base_move_pct = max(2.0, min(8.0, base_move_pct))  # 2-8% for 24h
+        else:
+            base_move_pct = max(3.0, min(12.0, base_move_pct))  # 3-12% for 48h
         
         # Adjust slightly by confidence (higher confidence = slightly larger move)
-        # Range: 0.8x to 1.2x of base move
-        confidence_adjustment = 0.8 + (base_confidence * 0.4)  # 0.8 to 1.2
+        # Range: 0.9x to 1.1x of base move (tighter range)
+        confidence_adjustment = 0.9 + (base_confidence * 0.2)  # 0.9 to 1.1
         
         # Calculate expected move
         expected_move_pct = base_move_pct * confidence_adjustment
@@ -7322,7 +7347,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         elif direction == "FLAT":
             expected_move_pct = 0.0
         
-        # Cap at REALISTIC bounds for crypto (max 8% in 6h)
+        # Cap at REALISTIC bounds for crypto
         max_move = 5.0 if horizon_h <= 6 else 8.0 if horizon_h <= 24 else 12.0
         expected_move_pct = max(-max_move, min(max_move, expected_move_pct))
         
