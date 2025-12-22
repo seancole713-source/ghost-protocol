@@ -28,28 +28,65 @@ PREMARKET_MAX_STOCKS = int(os.getenv("PREMARKET_MAX_STOCKS", "15"))  # Max stock
 # Fallback stocks if dynamic scan fails (blue chips + volatile)
 FALLBACK_SYMBOLS = ["SPY", "QQQ", "NVDA", "TSLA", "AAPL", "MSFT", "AMD", "META", "GOOGL", "AMZN"]
 
-# Universe of stocks to scan for top movers
+# Universe of stocks to scan for top movers (200+ stocks)
 STOCK_UNIVERSE = [
     # Mega caps (always liquid)
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "BRK.B",
     # Tech growth
     "AMD", "CRM", "ADBE", "NFLX", "PYPL", "SQ", "SHOP", "SNOW", "PLTR",
+    "MU", "INTC", "QCOM", "AVGO", "TXN", "AMAT", "LRCX", "KLAC",
+    # Semiconductors
+    "COHR", "SNDK", "MRVL", "ON", "SWKS", "WOLF",
     # Financials
     "JPM", "BAC", "GS", "MS", "V", "MA", "COIN", "SOFI", "HOOD",
     # Energy
-    "XOM", "CVX", "OXY", "SLB",
+    "XOM", "CVX", "OXY", "SLB", "HAL", "DVN", "FANG",
     # Industrial/Consumer
     "BA", "CAT", "DIS", "NKE", "MCD", "SBUX", "WMT", "COST", "HD",
-    # Biotech/Health
-    "JNJ", "PFE", "MRNA", "LLY", "UNH",
-    # EVs/Clean energy
-    "RIVN", "LCID", "NIO", "FSLR", "ENPH",
-    # Meme/Volatile
-    "GME", "AMC", "BBBY", "MSTR",
+    "SWK",  # Stanley Black & Decker
+    # Biotech/Health/Pharma
+    "JNJ", "PFE", "MRNA", "LLY", "UNH", "ABBV", "BMY", "GILD",
+    "ARCT",  # Arcturus Therapeutics
+    "ABCL",  # AbCellera Biologics
+    # EVs/Clean energy/Solar
+    "RIVN", "LCID", "NIO", "FSLR", "ENPH", "SEDG", "RUN",
+    "BE",    # Bloom Energy
+    "CSIQ",  # Canadian Solar
+    # Space/Aerospace
+    "RKLB",  # Rocket Lab
+    "ASTS",  # AST SpaceMobile  
+    "ASTR",  # Astra Space
+    "SPCE",  # Virgin Galactic
+    # Mining/Materials
+    "AG",    # First Majestic Silver
+    "HL",    # Hecla Mining
+    "CDE",   # Coeur Mining
+    "GOLD", "NEM", "FCX", "AA",
+    # Meme/Volatile/High Beta
+    "GME", "AMC", "MSTR", "RIOT", "MARA",
+    "DJT",   # Trump Media
+    "SOUN",  # SoundHound
+    "BMBL",  # Bumble
+    # Software/SaaS
+    "CWAN",  # Clearwater Analytics
+    # Streaming/Entertainment
+    "IQ",    # iQIYI
+    # India Tech
+    "INFY",  # Infosys
+    "WIT",   # Wipro
+    "HDB",   # HDFC Bank
     # ETFs
-    "SPY", "QQQ", "IWM", "DIA", "ARKK",
-    # Your favorites
-    "WOLF",
+    "SPY", "QQQ", "IWM", "DIA", "ARKK", "XLF", "XLE", "XLK", "SOXL",
+    # Additional high-volume stocks
+    "F", "GM", "T", "VZ", "UBER", "LYFT", "ABNB", "DASH", "SNAP",
+    "ROKU", "ZM", "DOCU", "CRWD", "NET", "DDOG", "ZS", "OKTA",
+    "PATH", "AI", "UPST", "AFRM", "BILL", "HUBS", "TWLO", "TTD",
+    # Retail
+    "TGT", "BBY", "LULU", "GPS", "ANF", "AEO",
+    # Travel/Leisure
+    "UAL", "DAL", "AAL", "LUV", "CCL", "RCL", "NCLH", "MAR", "HLT",
+    # Healthcare
+    "CVS", "WBA", "CI", "HUM", "TDOC", "HIMS",
 ]
 
 # State tracking
