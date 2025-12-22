@@ -4,10 +4,10 @@ Priority 3: Generate predictions 24-48h BEFORE market opens
 
 Strategy:
 1. Run at 7:00 AM CT (before 9:30 AM market open)
-2. Analyze overnight news, futures, crypto markets
+2. DYNAMICALLY select top movers from pre-market data
 3. Generate predictions for top movers BEFORE trading starts
 4. Send Cash-App style alerts with "EARLY SIGNAL" tag
-5. Track which predictions were made 24-48h before events
+5. Rotate stocks daily - never the same boring list
 
 This gives Ghost users a 2.5 hour head start before market opens.
 """
@@ -16,18 +16,184 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, List
 
 LOGGER = logging.getLogger(__name__)
 
 # Configuration
 PREMARKET_RUN_HOUR_CT = int(os.getenv("PREMARKET_RUN_HOUR_CT", "7"))  # 7:00 AM CT
 PREMARKET_ENABLED = os.getenv("PREMARKET_ENABLED", "1") == "1"
-PREMARKET_SYMBOLS = os.getenv("PREMARKET_SYMBOLS", "WOLF,NVDA,TSLA,AAPL,SPY").split(",")
+PREMARKET_MAX_STOCKS = int(os.getenv("PREMARKET_MAX_STOCKS", "15"))  # Max stocks to analyze
+
+# Fallback stocks if dynamic scan fails (blue chips + volatile)
+FALLBACK_SYMBOLS = ["SPY", "QQQ", "NVDA", "TSLA", "AAPL", "MSFT", "AMD", "META", "GOOGL", "AMZN"]
+
+# Universe of stocks to scan for top movers
+STOCK_UNIVERSE = [
+    # Mega caps (always liquid)
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "BRK.B",
+    # Tech growth
+    "AMD", "CRM", "ADBE", "NFLX", "PYPL", "SQ", "SHOP", "SNOW", "PLTR",
+    # Financials
+    "JPM", "BAC", "GS", "MS", "V", "MA", "COIN", "SOFI", "HOOD",
+    # Energy
+    "XOM", "CVX", "OXY", "SLB",
+    # Industrial/Consumer
+    "BA", "CAT", "DIS", "NKE", "MCD", "SBUX", "WMT", "COST", "HD",
+    # Biotech/Health
+    "JNJ", "PFE", "MRNA", "LLY", "UNH",
+    # EVs/Clean energy
+    "RIVN", "LCID", "NIO", "FSLR", "ENPH",
+    # Meme/Volatile
+    "GME", "AMC", "BBBY", "MSTR",
+    # ETFs
+    "SPY", "QQQ", "IWM", "DIA", "ARKK",
+    # Your favorites
+    "WOLF",
+]
 
 # State tracking
 _LAST_PREMARKET_RUN = 0
 _PREMARKET_PREDICTIONS: list[dict[str, Any]] = []
+
+
+async def get_top_premarket_movers(max_stocks: int = 15) -> List[str]:
+    """
+    Dynamically fetch top pre-market movers.
+    
+    Sources (in order of preference):
+    1. Polygon pre-market gainers/losers
+    2. Yahoo Finance pre-market data
+    3. Fallback to volatility-based selection
+    
+    Returns list of symbols sorted by pre-market activity.
+    """
+    LOGGER.info(f"🔍 Scanning for top {max_stocks} pre-market movers...")
+    
+    movers = []
+    
+    # Try Polygon gainers/losers API
+    try:
+        movers = await _fetch_polygon_movers(max_stocks)
+        if movers:
+            LOGGER.info(f"✅ Polygon returned {len(movers)} movers: {movers[:5]}...")
+            return movers[:max_stocks]
+    except Exception as e:
+        LOGGER.warning(f"Polygon movers failed: {e}")
+    
+    # Try scanning our universe for pre-market price changes
+    try:
+        movers = await _scan_universe_premarket(max_stocks)
+        if movers:
+            LOGGER.info(f"✅ Universe scan returned {len(movers)} movers: {movers[:5]}...")
+            return movers[:max_stocks]
+    except Exception as e:
+        LOGGER.warning(f"Universe scan failed: {e}")
+    
+    # Fallback: rotate through universe based on day of week
+    LOGGER.warning("⚠️ Using fallback rotation")
+    return _get_rotation_fallback(max_stocks)
+
+
+async def _fetch_polygon_movers(max_stocks: int) -> List[str]:
+    """Fetch gainers/losers from Polygon API."""
+    import aiohttp
+    
+    polygon_key = os.getenv("POLYGON_API_KEY")
+    if not polygon_key:
+        return []
+    
+    movers = []
+    
+    async with aiohttp.ClientSession() as session:
+        # Get gainers
+        try:
+            url = f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/gainers?apiKey={polygon_key}"
+            async with session.get(url, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    for ticker in data.get("tickers", [])[:max_stocks//2]:
+                        symbol = ticker.get("ticker")
+                        if symbol:
+                            movers.append(symbol)
+        except Exception as e:
+            LOGGER.debug(f"Polygon gainers error: {e}")
+        
+        # Get losers (shorts are opportunities too)
+        try:
+            url = f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/losers?apiKey={polygon_key}"
+            async with session.get(url, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    for ticker in data.get("tickers", [])[:max_stocks//2]:
+                        symbol = ticker.get("ticker")
+                        if symbol and symbol not in movers:
+                            movers.append(symbol)
+        except Exception as e:
+            LOGGER.debug(f"Polygon losers error: {e}")
+    
+    return movers
+
+
+async def _scan_universe_premarket(max_stocks: int) -> List[str]:
+    """Scan our universe for biggest pre-market moves."""
+    import aiohttp
+    
+    polygon_key = os.getenv("POLYGON_API_KEY")
+    if not polygon_key:
+        return []
+    
+    moves = []  # [(symbol, abs_change_pct), ...]
+    
+    async with aiohttp.ClientSession() as session:
+        for symbol in STOCK_UNIVERSE[:50]:  # Limit to avoid rate limits
+            try:
+                url = f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/{symbol}?apiKey={polygon_key}"
+                async with session.get(url, timeout=5) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        ticker = data.get("ticker", {})
+                        today_change = ticker.get("todaysChangePerc", 0)
+                        if today_change:
+                            moves.append((symbol, abs(today_change)))
+            except:
+                pass
+            
+            # Small delay to avoid rate limits
+            await asyncio.sleep(0.1)
+    
+    # Sort by absolute change (biggest movers first)
+    moves.sort(key=lambda x: x[1], reverse=True)
+    return [m[0] for m in moves[:max_stocks]]
+
+
+def _get_rotation_fallback(max_stocks: int) -> List[str]:
+    """
+    Rotate through stock universe based on day.
+    Ensures different stocks each day even if APIs fail.
+    """
+    from datetime import datetime
+    
+    day_of_year = datetime.now().timetuple().tm_yday
+    
+    # Always include core ETFs and top movers
+    core = ["SPY", "QQQ", "NVDA", "TSLA"]
+    
+    # Rotate through the rest of the universe
+    remaining = [s for s in STOCK_UNIVERSE if s not in core]
+    
+    # Offset based on day of year
+    offset = (day_of_year * 7) % len(remaining)
+    rotated = remaining[offset:] + remaining[:offset]
+    
+    # Combine core + rotated selection
+    result = core + rotated[:max_stocks - len(core)]
+    
+    LOGGER.info(f"📅 Day {day_of_year} rotation: {result}")
+    return result[:max_stocks]
+
+
+import asyncio  # Move import to top level for _scan_universe_premarket
 
 
 def should_run_premarket() -> tuple[bool, str]:
@@ -67,15 +233,15 @@ def should_run_premarket() -> tuple[bool, str]:
 
 async def run_premarket_predictions() -> dict[str, Any]:
     """
-    Generate pre-market predictions for top symbols
+    Generate pre-market predictions for TOP MOVERS (dynamically selected)
     
     Returns:
         {
             'run_at': timestamp,
-            'symbols': ['WOLF', 'NVDA', ...],
+            'symbols': ['NVDA', 'TSLA', ...],  # Dynamic, not hardcoded!
             'predictions': [...],
             'alerts_sent': 3,
-            'early_signals': ['WOLF +5% UP', ...]
+            'early_signals': ['NVDA +5% UP', ...]
         }
     """
     global _LAST_PREMARKET_RUN, _PREMARKET_PREDICTIONS
@@ -87,11 +253,15 @@ async def run_premarket_predictions() -> dict[str, Any]:
     
     LOGGER.info(f"🌅 Pre-market predictor starting at {now_ct.strftime('%I:%M %p %Z')}")
     
+    # DYNAMIC: Get today's top movers instead of hardcoded list
+    symbols = await get_top_premarket_movers(PREMARKET_MAX_STOCKS)
+    LOGGER.info(f"📊 Today's top movers: {symbols}")
+    
     predictions = []
     alerts_sent = 0
     early_signals = []
     
-    for symbol in PREMARKET_SYMBOLS:
+    for symbol in symbols:
         symbol = symbol.strip().upper()
         if not symbol:
             continue
@@ -131,7 +301,8 @@ async def run_premarket_predictions() -> dict[str, Any]:
     result = {
         'run_at': run_at,
         'run_at_ct': now_ct.strftime('%I:%M %p %Z'),
-        'symbols': PREMARKET_SYMBOLS,
+        'symbols': symbols,  # Dynamic list
+        'symbols_source': 'dynamic_movers',
         'predictions': predictions,
         'alerts_sent': alerts_sent,
         'early_signals': early_signals
