@@ -55,6 +55,7 @@ class AssetClassifier:
         'LRC', 'ENJ', 'SAND', 'MANA', 'AXS', 'GALA', 'ILV',
         'FTM', 'ALGO', 'HBAR', 'VET', 'EOS', 'XLM', 'TRX',
         'KAVA', 'ZEN', 'ZEC', 'DASH', 'XMR', 'ETC',
+        'BNB', 'TON', 'LEO', 'OKB', 'CRO',  # Exchange tokens
         # Common trading pairs suffixes
         'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT',
     }
