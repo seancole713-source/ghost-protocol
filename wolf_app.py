@@ -4431,6 +4431,36 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.error(f"premarket_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
+    # Start Full Market Scanner (5AM CT weekdays) - Scans ALL stocks/crypto
+    try:
+        from core.full_market_scanner import should_run_full_scan, run_full_market_scan, check_hourly_movers
+        
+        async def _full_scanner_loop():
+            """Full market scan at 5AM CT + hourly mover detection"""
+            while True:
+                try:
+                    # Check for daily full scan (5AM CT)
+                    should_run, reason = should_run_full_scan()
+                    if should_run:
+                        LOGGER.info(f"🔮 Running FULL MARKET SCAN... ({reason})")
+                        await run_full_market_scan()
+                        LOGGER.info("✅ Full market scan complete")
+                    
+                    # Check for hourly movers every hour
+                    import time
+                    current_minute = int(time.time() / 60) % 60
+                    if current_minute == 0:  # Top of the hour
+                        await check_hourly_movers()
+                        
+                except Exception as e:
+                    LOGGER.error(f"Full market scanner error: {e}", exc_info=True)
+                await asyncio.sleep(60)  # Check every minute
+        
+        asyncio.create_task(_full_scanner_loop())
+        LOGGER.info("🔮 Full Market Scanner: STARTED (5AM CT daily + hourly movers)")
+    except Exception as e:
+        LOGGER.error(f"full_market_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
     # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
     try:
         from core.self_improvement_engine import run_improvement_cycle
