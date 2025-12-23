@@ -58,6 +58,7 @@ class AssetClassifier:
         'BNB', 'TON', 'LEO', 'OKB', 'CRO',  # Exchange tokens
         'ICP', 'THETA', 'EGLD', 'QNT', 'QTUM', 'XTZ', 'RUNE',  # Layer 1s
         'ONDO', 'RLC', 'BAT', 'ZRX', 'ANT', 'LOOM', 'OMG',  # Utility tokens
+        'TURBO', 'SAMO', 'ELON', 'LADYS', 'WOJAK', 'CHAD',  # Meme coins
         # Common trading pairs suffixes
         'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT',
     }

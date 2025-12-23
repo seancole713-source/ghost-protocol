@@ -20,6 +20,9 @@ import statistics
 
 logger = logging.getLogger(__name__)
 
+# Track if Binance Futures is geo-blocked (451 errors)
+_BINANCE_FUTURES_BLOCKED = False
+
 
 class FundingRateAnalyzer:
     """
@@ -117,6 +120,12 @@ class FundingRateAnalyzer:
     
     def get_current_funding(self, symbol: str = 'BTC') -> Dict:
         """Get current funding rate for a symbol"""
+        global _BINANCE_FUTURES_BLOCKED
+        
+        # Skip if we already know it's blocked
+        if _BINANCE_FUTURES_BLOCKED:
+            return self._get_neutral_response(symbol)
+        
         try:
             futures_symbol = self._get_symbol(symbol)
             
@@ -129,6 +138,13 @@ class FundingRateAnalyzer:
             
             url = f"{self.BINANCE_FUTURES_URL}/fundingRate?symbol={futures_symbol}&limit=1"
             response = requests.get(url, timeout=10)
+            
+            # Handle geo-blocking silently
+            if response.status_code == 451:
+                _BINANCE_FUTURES_BLOCKED = True
+                logger.debug(f"Binance Futures geo-blocked (451) - using neutral funding")
+                return self._get_neutral_response(symbol)
+            
             response.raise_for_status()
             data = response.json()[0]
             
@@ -156,16 +172,25 @@ class FundingRateAnalyzer:
             return result
             
         except Exception as e:
-            logger.error(f"Error fetching funding rate for {symbol}: {e}")
-            return {
-                'symbol': symbol,
-                'rate': 0,
-                'rate_percent': 0,
-                'zone': 'neutral',
-                'signal': 'NEUTRAL',
-                'accuracy': 0.50,
-                'error': str(e)
-            }
+            # Don't spam logs for geo-blocking
+            if '451' in str(e):
+                _BINANCE_FUTURES_BLOCKED = True
+                logger.debug(f"Binance Futures geo-blocked for {symbol}")
+            else:
+                logger.debug(f"Funding rate unavailable for {symbol}: {e}")
+            return self._get_neutral_response(symbol)
+    
+    def _get_neutral_response(self, symbol: str) -> Dict:
+        """Return neutral response when funding data unavailable"""
+        return {
+            'symbol': symbol,
+            'rate': 0,
+            'rate_percent': 0,
+            'zone': 'neutral',
+            'signal': 'NEUTRAL',
+            'accuracy': 0.50,
+            'unavailable': True
+        }
     
     def get_funding_history(self, symbol: str = 'BTC', limit: int = 50) -> List[Dict]:
         """Get historical funding rates"""

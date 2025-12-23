@@ -81,6 +81,16 @@ class CryptoAnalyzer:
         if cached and time.time() - cached.timestamp < 300:
             return cached
         
+        # Check if we've already detected geo-blocking
+        if getattr(self, '_binance_futures_blocked', False):
+            return FundingRateData(
+                symbol=symbol,
+                funding_rate=0.0,
+                annual_rate_pct=0.0,
+                sentiment="NEUTRAL",
+                timestamp=time.time()
+            )
+        
         try:
             # Binance perpetuals funding rate
             url = "https://fapi.binance.com/fapi/v1/fundingRate"
@@ -90,6 +100,19 @@ class CryptoAnalyzer:
             }
             
             response = requests.get(url, params=params, timeout=5)
+            
+            # Handle geo-blocking silently (451 = Unavailable For Legal Reasons)
+            if response.status_code == 451:
+                self._binance_futures_blocked = True
+                logger.debug(f"Binance Futures geo-blocked (451) - using neutral funding")
+                return FundingRateData(
+                    symbol=symbol,
+                    funding_rate=0.0,
+                    annual_rate_pct=0.0,
+                    sentiment="NEUTRAL",
+                    timestamp=time.time()
+                )
+            
             if response.status_code != 200:
                 raise Exception(f"Binance API error: {response.status_code}")
             
