@@ -197,7 +197,20 @@ class Top10Aggregator:
                 LOGGER.debug("[TOP 10] Aggregation window expired with no picks")
     
     def _send_combined_message(self):
-        """Send the combined TOP 10 message"""
+        """
+        DISABLED - Use ghost_notifications.py instead.
+        
+        This function had wrong color logic:
+            emoji = "🔴" if p.direction == "DOWN" else "🟢"
+        
+        Should be:
+            emoji = "🔴" if target_price < entry_price else "🟢"
+        """
+        LOGGER.warning("[TOP 10 AGGREGATOR] _send_combined_message DISABLED - use ghost_notifications.py")
+        return  # Never send from here
+    
+    def _send_combined_message_ORIGINAL_DISABLED(self):
+        """OLD CODE - Send the combined TOP 10 message"""
         if not self._send_telegram_func:
             LOGGER.warning("[TOP 10] No Telegram function configured")
             return

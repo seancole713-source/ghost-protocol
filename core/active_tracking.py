@@ -839,12 +839,36 @@ def get_active_tracker() -> ActiveTrackingSystem:
 # HIGH-LEVEL ORCHESTRATION FUNCTIONS
 # ============================================================================
 
+# DISABLED - Use ghost_notifications.py instead.
+# This function had WRONG color logic: used p.direction instead of comparing prices
 async def send_daily_top_10(
     get_high_conf_predictions: Callable,
     send_telegram: Callable,
     inverse_mode: bool = True
 ) -> bool:
     """
+    DISABLED - This function had wrong color logic.
+    
+    The bug was:
+        emoji = "🔴" if p.direction == "DOWN" else "🟢"
+    
+    Should be:
+        emoji = "🔴" if target_price < entry_price else "🟢"
+    
+    Use ghost_notifications.py instead which has correct logic.
+    """
+    LOGGER.warning("[ACTIVE TRACKING] send_daily_top_10 DISABLED - use ghost_notifications.py")
+    return False
+
+
+async def _send_daily_top_10_ORIGINAL_DISABLED(
+    get_high_conf_predictions: Callable,
+    send_telegram: Callable,
+    inverse_mode: bool = True
+) -> bool:
+    """
+    OLD CODE - DISABLED.
+    
     Send the daily TOP 10 picks (5 stocks + 5 crypto).
     
     Args:

@@ -897,10 +897,14 @@ def send_alert(
     # ========================================================================
     # TOP 10 AGGREGATOR - Combine predictions into ONE message
     # ========================================================================
-    top10_enabled = os.getenv("TOP10_AGGREGATOR_ENABLED", "1") == "1"
+    # ========================================================================
+    # OLD TOP 10 AGGREGATOR - DISABLED
+    # This was causing duplicate messages. Now using ghost_notifications.py
+    # ========================================================================
+    top10_enabled = False  # DISABLED - was os.getenv("TOP10_AGGREGATOR_ENABLED", "1") == "1"
     individual_alerts = os.getenv("INDIVIDUAL_ALERTS_ENABLED", "0") == "1"
     
-    if top10_enabled:
+    if top10_enabled:  # This block will never run now
         try:
             from core.top10_aggregator import intercept_prediction_for_top10
             

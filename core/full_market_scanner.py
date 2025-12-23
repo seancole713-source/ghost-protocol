@@ -492,8 +492,14 @@ class FullMarketScanner:
     
     async def send_top_picks_alert(self, stocks: List[Dict], crypto: List[Dict]):
         """
-        Send TOP 10 picks to Telegram in Oracle format.
+        OLD - DISABLED. Use ghost_notifications.py instead.
+        This had wrong color logic (direction string instead of price comparison).
         """
+        # DISABLED - ghost_notifications.py handles all alerts now
+        LOGGER.info("[FULL SCANNER] Telegram alert DISABLED - using ghost_notifications.py")
+        return
+        
+        # OLD CODE BELOW (kept for reference but never runs)
         try:
             from core.telegram_alerts import send_telegram_message
             
