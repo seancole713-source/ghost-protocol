@@ -56,6 +56,8 @@ class AssetClassifier:
         'FTM', 'ALGO', 'HBAR', 'VET', 'EOS', 'XLM', 'TRX',
         'KAVA', 'ZEN', 'ZEC', 'DASH', 'XMR', 'ETC',
         'BNB', 'TON', 'LEO', 'OKB', 'CRO',  # Exchange tokens
+        'ICP', 'THETA', 'EGLD', 'QNT', 'QTUM', 'XTZ', 'RUNE',  # Layer 1s
+        'ONDO', 'RLC', 'BAT', 'ZRX', 'ANT', 'LOOM', 'OMG',  # Utility tokens
         # Common trading pairs suffixes
         'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT',
     }
