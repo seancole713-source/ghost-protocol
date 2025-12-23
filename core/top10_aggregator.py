@@ -413,16 +413,16 @@ def intercept_prediction_for_top10(
         True if added to queue (or sent), False if rejected
     """
     try:
-        from core.asset_classifier import classify_asset
+        from core.asset_classifier import get_asset_type
         
         # Get aggregator
         aggregator = get_top10_aggregator()
         aggregator.set_telegram_func(send_telegram_func)
         
-        # Classify asset
+        # Classify asset - get_asset_type returns 'crypto', 'stock_large', 'stock_volatile', or 'stock_mid'
         try:
-            category = classify_asset(symbol).category
-            asset_type = "crypto" if category == "crypto" else "stock"
+            asset_class = get_asset_type(symbol)
+            asset_type = "crypto" if asset_class == "crypto" else "stock"
         except Exception:
             # Fallback classification
             asset_type = "crypto" if any(c in symbol.upper() for c in ["BTC", "ETH", "SOL", "ADA", "XRP", "DOGE", "USDT", "BNB"]) else "stock"

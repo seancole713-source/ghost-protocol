@@ -4483,7 +4483,7 @@ async def _post_startup_init():
             
             async def _get_high_conf_predictions():
                 """Get high-confidence predictions from _LATEST_PREDICTIONS"""
-                from core.asset_classifier import classify_asset
+                from core.asset_classifier import get_asset_type
                 
                 min_conf = float(os.getenv("GHOST_TOP_10_MIN_CONF", "0.85"))
                 results = []
@@ -4496,9 +4496,9 @@ async def _post_startup_init():
                     if confidence < min_conf:
                         continue
                     
-                    # Classify asset
-                    category = classify_asset(sym).category
-                    asset_type = "crypto" if category == "crypto" else "stock"
+                    # Classify asset - get_asset_type returns 'crypto', 'volatile', 'large_cap', 'mid_cap'
+                    asset_class = get_asset_type(sym)
+                    asset_type = "crypto" if asset_class == "crypto" else "stock"
                     
                     # Get prices
                     entry_price = pred.get("price") or pred.get("entry_price") or pred.get("current_price") or 0
@@ -4549,10 +4549,10 @@ async def _post_startup_init():
             async def _get_current_price(symbol: str) -> float:
                 """Get current price for a symbol"""
                 try:
-                    from core.asset_classifier import classify_asset
-                    category = classify_asset(symbol).category
+                    from core.asset_classifier import get_asset_type
+                    asset_class = get_asset_type(symbol)
                     
-                    if category == "crypto":
+                    if asset_class == "crypto":
                         result = turbo_crypto_price(symbol, max_budget_s=2.0)
                     else:
                         result = turbo_stock_price(symbol, max_budget_s=2.0)
@@ -4574,11 +4574,22 @@ async def _post_startup_init():
                 The MISSING LOOP: Ghost now tracks predictions continuously!
                 
                 Schedule:
-                - 5 AM: Send daily TOP 10 (ONE consolidated message)
+                - 8 AM CENTRAL TIME: Send daily TOP 10 (ONE consolidated message)
                 - Every 5 min: Check prices (only notify if significant)
                 - Every hour: Check for 48h expirations → send final results
                 """
-                LOGGER.info(f"[ACTIVE TRACKING] 🎯 Starting tracking loop (TOP 10 at {DAILY_TOP_10_HOUR}:00)")
+                # Get proper Central Time hour for TOP 10
+                # 8 AM Central = hour 8 in America/Chicago timezone
+                try:
+                    from zoneinfo import ZoneInfo
+                    central_tz = ZoneInfo("America/Chicago")
+                except ImportError:
+                    import pytz
+                    central_tz = pytz.timezone("America/Chicago")
+                
+                TOP_10_HOUR_CENTRAL = int(os.getenv("GHOST_TOP_10_HOUR_CT", "8"))  # 8 AM Central
+                
+                LOGGER.info(f"[ACTIVE TRACKING] 🎯 Starting tracking loop (TOP 10 at {TOP_10_HOUR_CENTRAL}:00 Central Time)")
                 
                 last_top_10_date = None
                 last_update_time = time.time()
@@ -4587,13 +4598,15 @@ async def _post_startup_init():
                 
                 while True:
                     try:
-                        now = datetime.utcnow()
-                        current_hour = now.hour
-                        current_date = now.strftime("%Y-%m-%d")
+                        # Use Central Time for scheduling
+                        now_utc = datetime.utcnow()
+                        now_central = datetime.now(central_tz)
+                        current_hour_ct = now_central.hour
+                        current_date = now_central.strftime("%Y-%m-%d")
                         current_time = time.time()
                         
-                        # Task 1: Daily TOP 10 at 5 AM
-                        if current_hour == DAILY_TOP_10_HOUR and last_top_10_date != current_date:
+                        # Task 1: Daily TOP 10 at 8 AM CENTRAL TIME
+                        if current_hour_ct == TOP_10_HOUR_CENTRAL and last_top_10_date != current_date:
                             LOGGER.info("[ACTIVE TRACKING] 🌅 Sending daily TOP 10...")
                             await send_daily_top_10(_get_high_conf_predictions, _send_telegram, inverse_mode)
                             last_top_10_date = current_date
@@ -4604,7 +4617,7 @@ async def _post_startup_init():
                             last_update_time = current_time
                         
                         # Task 3: Check for 48h expirations (every hour at minute 0-5)
-                        if now.minute < 5:
+                        if now_central.minute < 5:
                             await check_and_send_final_results(_send_telegram)
                         
                         await asyncio.sleep(60)  # Check every minute
@@ -4616,7 +4629,7 @@ async def _post_startup_init():
                         await asyncio.sleep(60)
             
             asyncio.create_task(_active_tracking_loop())
-            LOGGER.info(f"🎯 [POST-STARTUP] ✅ Active Tracking System STARTED (TOP 10 at {DAILY_TOP_10_HOUR}AM, 48h tracking)")
+            LOGGER.info(f"🎯 [POST-STARTUP] ✅ Active Tracking System STARTED (TOP 10 at 8AM Central, 48h tracking)")
         else:
             LOGGER.info("🎯 [POST-STARTUP] Active Tracking System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
     except Exception as e:
@@ -20581,10 +20594,10 @@ async def force_tracking_check():
         
         async def _get_price(symbol: str) -> float:
             try:
-                from core.asset_classifier import classify_asset
-                category = classify_asset(symbol).category
+                from core.asset_classifier import get_asset_type
+                asset_class = get_asset_type(symbol)
                 
-                if category == "crypto":
+                if asset_class == "crypto":
                     result = turbo_crypto_price(symbol, max_budget_s=2.0)
                 else:
                     result = turbo_stock_price(symbol, max_budget_s=2.0)
