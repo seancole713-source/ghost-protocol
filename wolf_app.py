@@ -4178,54 +4178,20 @@ async def _post_startup_init():
                     candidates.sort(key=lambda t: t[0], reverse=True)
 
                     sent = 0
-                    for _, symbol, pred in candidates:
-                        if sent >= max_per_cycle:
-                            break
-
-                        market = pred.get("market")
-                        if not market:
-                            try:
-                                market = "crypto" if _classify_symbol_category(symbol) == "crypto" else "stock"
-                            except Exception:
-                                market = "stock"
-
-                        horizon_h = pred.get("horizon_h") or 48
-                        hb = _horizon_bucket(int(horizon_h))
-
-                        price_now = pred.get("price")
-                        if price_now is None:
-                            price_now = pred.get("current_price")
-                        if price_now is None:
-                            price_now = pred.get("entry_price")
-
-                        price_meta = {
-                            "price": price_now,
-                            "prev_close": pred.get("price_at_prediction") or price_now,
-                            "provider": pred.get("provider") or "unknown",
-                        }
-
-                        # Send (send_alert enforces >=70% gate and dedup)
-                        ok = await asyncio.to_thread(
-                            _telegram_alerts.send_alert,
-                            symbol,
-                            str(market),
-                            hb,
-                            pred,
-                            price_meta,
-                        )
-                        if ok:
-                            sent += 1
-                            try:
-                                pid = int(pred.get("prediction_id") or pred.get("id") or 0)
-                                if pid:
-                                    _last_sent_pred_id[symbol] = pid
-                            except Exception:
-                                pass
-
-                    if sent > 0:
-                        LOGGER.info(f"[SIGNALS] ✅ Sent {sent} Telegram signals (cycle)")
-                    else:
-                        LOGGER.info("[SIGNALS] No qualifying >=70% signals this cycle (MONITOR only)")
+                    # ================================================================
+                    # OLD INDIVIDUAL ALERT SYSTEM - DISABLED
+                    # This was sending individual alerts for each prediction.
+                    # Now using ghost_notifications.py for ONE consolidated message.
+                    # ================================================================
+                    # for _, symbol, pred in candidates:
+                    #     if sent >= max_per_cycle:
+                    #         break
+                    # 
+                    #     ... OLD CODE DISABLED ...
+                    # 
+                    # Instead, log that we're using the new system:
+                    LOGGER.info(f"[SIGNALS] Individual alerts DISABLED - Using consolidated TOP 10 system instead")
+                    LOGGER.info(f"[SIGNALS] {len(candidates)} predictions available for next TOP 10")
 
                 except Exception as dispatch_err:
                     LOGGER.error(f"[SIGNALS] Dispatch loop error: {dispatch_err}", exc_info=False)
@@ -4234,7 +4200,7 @@ async def _post_startup_init():
 
         loop = asyncio.get_running_loop()
         loop.create_task(_signal_dispatch_loop())
-        LOGGER.info("[GHOST STARTUP] ✅ Telegram signal dispatcher scheduled")
+        LOGGER.info("[GHOST STARTUP] ✅ Telegram signal dispatcher scheduled (individual alerts DISABLED)")
     except Exception as e:
         LOGGER.error(f"signal_dispatcher_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
@@ -4462,89 +4428,30 @@ async def _post_startup_init():
         LOGGER.error(f"full_market_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
     # ═══════════════════════════════════════════════════════════════════════════════
-    # ACTIVE TRACKING SYSTEM - The Missing Loop!
-    # This is what was missing: TOP 10 → TRACK 48h → UPDATE → ALERT → RESULTS → REPEAT
+    # GHOST NOTIFICATION SYSTEM - ONE simple system for all alerts
+    # Replaces old individual alert spam with consolidated messages
     # ═══════════════════════════════════════════════════════════════════════════════
     try:
-        from core.active_tracking import (
-            get_active_tracker,
-            send_daily_top_10,
-            check_and_update_prices,
-            check_and_send_final_results,
-            DAILY_TOP_10_HOUR,
-        )
+        # ================================================================
+        # NEW GHOST NOTIFICATION SYSTEM
+        # ONE simple system that handles all alerts:
+        # - 8 AM Central: TOP 10 message
+        # - Every 4 hours: Updates (if >3% moves)
+        # - Instant: Target/stop hit alerts
+        # ================================================================
+        from core.ghost_notifications import get_notification_system, get_central_time
         
         active_tracking_enabled = os.getenv("ACTIVE_TRACKING_ENABLED", "1") == "1"
-        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
         
         if active_tracking_enabled:
-            # Get the tracker instance (initializes DB)
-            tracker = get_active_tracker()
+            # Set up Telegram function
+            def _send_telegram(message: str) -> bool:
+                if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+                    return False
+                return _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
             
-            async def _get_high_conf_predictions():
-                """Get high-confidence predictions from _LATEST_PREDICTIONS"""
-                from core.asset_classifier import get_asset_type
-                
-                min_conf = float(os.getenv("GHOST_TOP_10_MIN_CONF", "0.85"))
-                results = []
-                
-                for sym, pred in list(_LATEST_PREDICTIONS.items()):
-                    if not isinstance(pred, dict):
-                        continue
-                    
-                    confidence = pred.get("confidence", 0)
-                    if confidence < min_conf:
-                        continue
-                    
-                    # Classify asset - get_asset_type returns 'crypto', 'volatile', 'large_cap', 'mid_cap'
-                    asset_class = get_asset_type(sym)
-                    asset_type = "crypto" if asset_class == "crypto" else "stock"
-                    
-                    # Get prices
-                    entry_price = pred.get("price") or pred.get("entry_price") or pred.get("current_price") or 0
-                    if entry_price <= 0:
-                        continue
-                    
-                    # Get targets
-                    target_price = pred.get("target_price") or 0
-                    stop_price = pred.get("stop_loss") or pred.get("stop_price") or 0
-                    direction = pred.get("direction", "DOWN")
-                    
-                    # Calculate targets if not set
-                    if target_price <= 0:
-                        if asset_type == "crypto":
-                            target_pct = 0.06  # 6% for crypto
-                        else:
-                            target_pct = 0.03  # 3% for stocks
-                        
-                        if direction == "DOWN":
-                            target_price = entry_price * (1 - target_pct)
-                        else:
-                            target_price = entry_price * (1 + target_pct)
-                    
-                    if stop_price <= 0:
-                        if asset_type == "crypto":
-                            stop_pct = 0.045  # 4.5% for crypto
-                        else:
-                            stop_pct = 0.025  # 2.5% for stocks
-                        
-                        if direction == "DOWN":
-                            stop_price = entry_price * (1 + stop_pct)
-                        else:
-                            stop_price = entry_price * (1 - stop_pct)
-                    
-                    results.append({
-                        "symbol": sym,
-                        "asset_type": asset_type,
-                        "direction": direction,
-                        "entry_price": entry_price,
-                        "target_price": target_price,
-                        "stop_price": stop_price,
-                        "confidence": confidence,
-                        "reasons": str(pred.get("signals", [])),
-                    })
-                
-                return results
+            notification_system = get_notification_system()
+            notification_system.set_telegram_func(_send_telegram)
             
             async def _get_current_price(symbol: str) -> float:
                 """Get current price for a symbol"""
@@ -4559,27 +4466,19 @@ async def _post_startup_init():
                     
                     if result and result.get("ok") and result.get("price"):
                         return float(result["price"])
-                except Exception as e:
-                    LOGGER.warning(f"[ACTIVE TRACKING] Price fetch failed for {symbol}: {e}")
+                except Exception:
+                    pass
                 return 0.0
             
-            def _send_telegram(message: str) -> bool:
-                """Send Telegram message via existing bot"""
-                if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-                    return False
-                return _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
-            
-            async def _active_tracking_loop():
+            async def _ghost_notification_loop():
                 """
-                The MISSING LOOP: Ghost now tracks predictions continuously!
+                SIMPLE notification loop - ONE message at 8 AM Central.
                 
                 Schedule:
-                - 8 AM CENTRAL TIME: Send daily TOP 10 (ONE consolidated message)
-                - Every 5 min: Check prices (only notify if significant)
-                - Every hour: Check for 48h expirations → send final results
+                - 8:00 AM Central: Send ONE TOP 10 message (5 stocks + 5 crypto)
+                - Every 4 hours: Check for updates (12 PM, 4 PM, 8 PM)
+                - Every 15 min: Check for target/stop hits
                 """
-                # Get proper Central Time hour for TOP 10
-                # 8 AM Central = hour 8 in America/Chicago timezone
                 try:
                     from zoneinfo import ZoneInfo
                     central_tz = ZoneInfo("America/Chicago")
@@ -4587,53 +4486,67 @@ async def _post_startup_init():
                     import pytz
                     central_tz = pytz.timezone("America/Chicago")
                 
-                TOP_10_HOUR_CENTRAL = int(os.getenv("GHOST_TOP_10_HOUR_CT", "8"))  # 8 AM Central
+                TOP_10_HOUR = 8  # 8 AM Central
+                UPDATE_HOURS = [12, 16, 20]  # 12 PM, 4 PM, 8 PM Central
                 
-                LOGGER.info(f"[ACTIVE TRACKING] 🎯 Starting tracking loop (TOP 10 at {TOP_10_HOUR_CENTRAL}:00 Central Time)")
+                LOGGER.info(f"[NOTIFICATIONS] 🎯 Starting notification loop (TOP 10 at {TOP_10_HOUR}:00 Central)")
                 
-                last_top_10_date = None
-                last_update_time = time.time()
+                last_top10_date = None
+                last_check_time = 0
                 
                 await asyncio.sleep(30)  # Initial delay
                 
                 while True:
                     try:
-                        # Use Central Time for scheduling
-                        now_utc = datetime.utcnow()
                         now_central = datetime.now(central_tz)
-                        current_hour_ct = now_central.hour
+                        current_hour = now_central.hour
                         current_date = now_central.strftime("%Y-%m-%d")
                         current_time = time.time()
                         
-                        # Task 1: Daily TOP 10 at 8 AM CENTRAL TIME
-                        if current_hour_ct == TOP_10_HOUR_CENTRAL and last_top_10_date != current_date:
-                            LOGGER.info("[ACTIVE TRACKING] 🌅 Sending daily TOP 10...")
-                            await send_daily_top_10(_get_high_conf_predictions, _send_telegram, inverse_mode)
-                            last_top_10_date = current_date
+                        # Task 1: Daily TOP 10 at 8 AM Central
+                        if current_hour == TOP_10_HOUR and last_top10_date != current_date:
+                            LOGGER.info("[NOTIFICATIONS] 🌅 Sending morning TOP 10...")
+                            
+                            # Use _LATEST_PREDICTIONS
+                            success = notification_system.send_top10(_LATEST_PREDICTIONS)
+                            
+                            if success:
+                                last_top10_date = current_date
+                                LOGGER.info("[NOTIFICATIONS] ✅ TOP 10 sent!")
+                            else:
+                                LOGGER.warning("[NOTIFICATIONS] ⚠️ TOP 10 send failed or no predictions")
                         
-                        # Task 2: Price updates every 5 minutes
-                        if current_time - last_update_time >= 300:  # 5 minutes
-                            await check_and_update_prices(_get_current_price, _send_telegram)
-                            last_update_time = current_time
-                        
-                        # Task 3: Check for 48h expirations (every hour at minute 0-5)
-                        if now_central.minute < 5:
-                            await check_and_send_final_results(_send_telegram)
+                        # Task 2: Check for updates/alerts every 15 minutes
+                        if current_time - last_check_time >= 900:  # 15 minutes
+                            # Define price getter
+                            def get_price(symbol: str) -> float:
+                                try:
+                                    from core.asset_classifier import get_asset_type
+                                    if get_asset_type(symbol) == "crypto":
+                                        r = turbo_crypto_price(symbol, max_budget_s=2.0)
+                                    else:
+                                        r = turbo_stock_price(symbol, max_budget_s=2.0)
+                                    return float(r.get("price", 0)) if r and r.get("ok") else 0
+                                except:
+                                    return 0
+                            
+                            notification_system.check_for_updates(get_price)
+                            last_check_time = current_time
                         
                         await asyncio.sleep(60)  # Check every minute
                         
                     except asyncio.CancelledError:
                         break
                     except Exception as e:
-                        LOGGER.error(f"[ACTIVE TRACKING] Loop error: {e}", exc_info=False)
+                        LOGGER.error(f"[NOTIFICATIONS] Loop error: {e}", exc_info=False)
                         await asyncio.sleep(60)
             
-            asyncio.create_task(_active_tracking_loop())
-            LOGGER.info(f"🎯 [POST-STARTUP] ✅ Active Tracking System STARTED (TOP 10 at 8AM Central, 48h tracking)")
+            asyncio.create_task(_ghost_notification_loop())
+            LOGGER.info("🎯 [POST-STARTUP] ✅ Ghost Notification System STARTED (TOP 10 at 8AM Central)")
         else:
-            LOGGER.info("🎯 [POST-STARTUP] Active Tracking System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
+            LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
     except Exception as e:
-        LOGGER.error(f"active_tracking_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        LOGGER.error(f"ghost_notification_system_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
     # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
     try:
@@ -20524,156 +20437,52 @@ async def top10_force_send():
 @APP.post("/alerts/top10/now")
 async def top10_send_now():
     """
-    SIMPLE DIRECT TOP 10 - Bypasses aggregator complexity
+    Send TOP 10 message NOW using the new Ghost Notification System.
     
-    Gets top 10 predictions from _LATEST_PREDICTIONS and sends ONE message
-    in the EXACT format the user requested.
+    Uses the EXACT format requested with proper BUY/SELL/WATCH colors.
     """
     try:
-        from core.asset_classifier import get_asset_type
+        from core.ghost_notifications import get_notification_system
         
-        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
-        min_conf = float(os.getenv("GHOST_TOP_10_MIN_CONF", "0.85"))
+        # Get notification system
+        def _send_telegram(msg: str) -> bool:
+            return _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
         
-        # Collect all high-confidence predictions
-        crypto_picks = []
-        stock_picks = []
+        notif = get_notification_system()
+        notif.set_telegram_func(_send_telegram)
         
-        for symbol, pred in list(_LATEST_PREDICTIONS.items()):
-            if not isinstance(pred, dict):
-                continue
-            
-            confidence = pred.get("confidence", 0)
-            if confidence < min_conf:
-                continue
-            
-            # Get direction (apply inverse if enabled)
-            raw_direction = pred.get("direction", "DOWN")
-            if inverse_mode:
-                direction = "DOWN" if raw_direction == "UP" else "UP"
-            else:
-                direction = raw_direction
-            
-            # Get prices
-            entry_price = pred.get("price") or pred.get("entry_price") or pred.get("current_price") or 0
-            if entry_price <= 0:
-                continue
-            
-            # Classify
-            asset_class = get_asset_type(symbol)
-            
-            pick = {
-                "symbol": symbol,
-                "direction": direction,
-                "confidence": confidence,
-                "entry_price": entry_price,
-                "target_price": pred.get("target_price", 0),
-                "stop_price": pred.get("stop_loss") or pred.get("stop_price", 0),
-            }
-            
-            # Calculate targets if missing
-            if pick["target_price"] <= 0:
-                if asset_class == "crypto":
-                    pct = 0.06  # 6%
-                else:
-                    pct = 0.03  # 3%
-                if direction == "DOWN":
-                    pick["target_price"] = entry_price * (1 - pct)
-                else:
-                    pick["target_price"] = entry_price * (1 + pct)
-            
-            if pick["stop_price"] <= 0:
-                if asset_class == "crypto":
-                    pct = 0.03  # 3%
-                else:
-                    pct = 0.015  # 1.5%
-                if direction == "DOWN":
-                    pick["stop_price"] = entry_price * (1 + pct)
-                else:
-                    pick["stop_price"] = entry_price * (1 - pct)
-            
-            if asset_class == "crypto":
-                crypto_picks.append(pick)
-            else:
-                stock_picks.append(pick)
+        # Force send (bypasses daily check)
+        notif._last_top10_date = ""  # Reset so it will send
         
-        # Sort by confidence, take top 5 each
-        crypto_picks.sort(key=lambda x: x["confidence"], reverse=True)
-        stock_picks.sort(key=lambda x: x["confidence"], reverse=True)
-        
-        top_crypto = crypto_picks[:5]
-        top_stocks = stock_picks[:5]
-        
-        if not top_crypto and not top_stocks:
-            return {"ok": False, "error": "No high-confidence predictions available", "min_conf": min_conf}
-        
-        # Build message in EXACT format requested
-        from datetime import datetime
-        try:
-            from zoneinfo import ZoneInfo
-            ct = datetime.now(ZoneInfo("America/Chicago"))
-        except:
-            import pytz
-            ct = datetime.now(pytz.timezone("America/Chicago"))
-        
-        date_str = ct.strftime("%B %d, %Y")
-        
-        msg_lines = [
-            f"🎯 GHOST TOP 10 — {date_str}",
-            "",
-            "📊 CRYPTO (5)",
-            "━━━━━━━━━━━━━━━━━━━━"
-        ]
-        
-        for i, p in enumerate(top_crypto, 1):
-            arrow = "🔴" if p["direction"] == "DOWN" else "🟢"
-            msg_lines.append(f"{i}. {arrow} {p['symbol']} → {p['direction']}")
-            msg_lines.append(f"   Entry: ${p['entry_price']:,.2f}")
-            msg_lines.append(f"   Target: ${p['target_price']:,.2f}")
-            msg_lines.append(f"   Stop: ${p['stop_price']:,.2f}")
-            msg_lines.append(f"   Confidence: {p['confidence']:.0%}")
-            msg_lines.append("")
-        
-        if not top_crypto:
-            msg_lines.append("   (No crypto picks today)")
-            msg_lines.append("")
-        
-        msg_lines.append("📈 STOCKS (5)")
-        msg_lines.append("━━━━━━━━━━━━━━━━━━━━")
-        
-        for i, p in enumerate(top_stocks, 1):
-            arrow = "🔴" if p["direction"] == "DOWN" else "🟢"
-            msg_lines.append(f"{i}. {arrow} {p['symbol']} → {p['direction']}")
-            msg_lines.append(f"   Entry: ${p['entry_price']:,.2f}")
-            msg_lines.append(f"   Target: ${p['target_price']:,.2f}")
-            msg_lines.append(f"   Stop: ${p['stop_price']:,.2f}")
-            msg_lines.append(f"   Confidence: {p['confidence']:.0%}")
-            msg_lines.append("")
-        
-        if not top_stocks:
-            msg_lines.append("   (No stock picks today)")
-            msg_lines.append("")
-        
-        msg_lines.append("━━━━━━━━━━━━━━━━━━━━")
-        msg_lines.append("⏰ Updates every 4h | 48h tracking")
-        msg_lines.append(f"🔄 Inverse Mode: {'ON' if inverse_mode else 'OFF'}")
-        
-        message = "\n".join(msg_lines)
-        
-        # Send it
-        sent = _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
+        success = notif.send_top10(_LATEST_PREDICTIONS)
         
         return {
-            "ok": sent,
-            "crypto_count": len(top_crypto),
-            "stock_count": len(top_stocks),
-            "total": len(top_crypto) + len(top_stocks),
-            "inverse_mode": inverse_mode,
-            "message_preview": message[:500] + "..." if len(message) > 500 else message
+            "ok": success,
+            "message": "TOP 10 sent!" if success else "Failed to send or no predictions",
+            "predictions_available": len(_LATEST_PREDICTIONS),
         }
         
     except Exception as e:
         LOGGER.error(f"TOP 10 NOW error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/alerts/notifications/status")
+async def notifications_status():
+    """Get status of the new Ghost Notification System"""
+    try:
+        from core.ghost_notifications import get_notification_system, get_central_time
+        
+        notif = get_notification_system()
+        status = notif.get_status()
+        
+        return {
+            "ok": True,
+            "system": "ghost_notifications",
+            **status,
+            "predictions_in_memory": len(_LATEST_PREDICTIONS),
+        }
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
