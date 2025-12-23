@@ -20486,6 +20486,42 @@ async def notifications_status():
         return {"ok": False, "error": str(e)}
 
 
+@APP.get("/alerts/notifications/debug")
+async def notifications_debug():
+    """DEBUG: See exactly what the notification system sees"""
+    try:
+        from core.ghost_notifications import get_notification_system
+        from core.asset_classifier import get_asset_type
+        
+        notif = get_notification_system()
+        stocks, crypto = notif.get_top10_predictions(_LATEST_PREDICTIONS)
+        
+        # Also check raw classification
+        raw_crypto = []
+        for symbol, pred in list(_LATEST_PREDICTIONS.items())[:50]:
+            if isinstance(pred, dict):
+                asset = get_asset_type(symbol)
+                if asset == 'crypto':
+                    raw_crypto.append({
+                        'symbol': symbol,
+                        'asset_type': asset,
+                        'confidence': pred.get('confidence', 0),
+                        'price': pred.get('price') or pred.get('current_price') or pred.get('entry_price'),
+                    })
+        
+        return {
+            "ok": True,
+            "stocks_found": len(stocks),
+            "crypto_found": len(crypto),
+            "stocks": [{"symbol": s["symbol"], "conf": s["confidence"]} for s in stocks],
+            "crypto": [{"symbol": c["symbol"], "conf": c["confidence"]} for c in crypto],
+            "raw_crypto_in_predictions": raw_crypto[:10],
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.post("/alerts/top10/reset")
 async def top10_reset():
     """Reset the TOP 10 aggregator (clear queue, allow new TOP 10 today)"""
