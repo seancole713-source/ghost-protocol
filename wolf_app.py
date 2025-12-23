@@ -20690,6 +20690,48 @@ async def top10_reset():
         return {"ok": False, "error": str(e)}
 
 
+@APP.get("/alerts/top10/debug")
+async def top10_debug():
+    """Debug endpoint - see what predictions are available for TOP 10"""
+    try:
+        from core.asset_classifier import get_asset_type
+        
+        min_conf = float(os.getenv("GHOST_TOP_10_MIN_CONF", "0.85"))
+        
+        all_preds = []
+        for symbol, pred in list(_LATEST_PREDICTIONS.items()):
+            if not isinstance(pred, dict):
+                continue
+            
+            confidence = pred.get("confidence", 0)
+            asset_class = get_asset_type(symbol)
+            
+            all_preds.append({
+                "symbol": symbol,
+                "confidence": confidence,
+                "direction": pred.get("direction"),
+                "asset_type": asset_class,
+                "passes_min_conf": confidence >= min_conf,
+                "price": pred.get("price") or pred.get("entry_price") or pred.get("current_price"),
+            })
+        
+        # Sort by confidence
+        all_preds.sort(key=lambda x: x["confidence"], reverse=True)
+        
+        high_conf = [p for p in all_preds if p["passes_min_conf"]]
+        
+        return {
+            "ok": True,
+            "total_predictions": len(all_preds),
+            "high_confidence_count": len(high_conf),
+            "min_confidence_threshold": min_conf,
+            "top_20": all_preds[:20],
+            "high_conf_picks": high_conf[:10],
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/tracking/active")
 async def get_active_tracking():
     """Get all active picks being tracked (48h window)"""
