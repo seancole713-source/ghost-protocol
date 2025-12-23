@@ -194,11 +194,24 @@ class FundingRateAnalyzer:
     
     def get_funding_history(self, symbol: str = 'BTC', limit: int = 50) -> List[Dict]:
         """Get historical funding rates"""
+        global _BINANCE_FUTURES_BLOCKED
+        
+        # Skip if we already know Binance Futures is blocked
+        if _BINANCE_FUTURES_BLOCKED:
+            return []
+        
         try:
             futures_symbol = self._get_symbol(symbol)
             
             url = f"{self.BINANCE_FUTURES_URL}/fundingRate?symbol={futures_symbol}&limit={limit}"
             response = requests.get(url, timeout=10)
+            
+            # Handle geo-blocking silently
+            if response.status_code == 451:
+                _BINANCE_FUTURES_BLOCKED = True
+                logger.debug(f"Binance Futures geo-blocked (451)")
+                return []
+            
             response.raise_for_status()
             
             history = []
@@ -280,11 +293,40 @@ class FundingRateAnalyzer:
         Ratio > 1.5 = too many longs (bearish)
         Ratio < 0.67 = too many shorts (bullish)
         """
+        global _BINANCE_FUTURES_BLOCKED
+        
+        # Skip if we already know Binance Futures is blocked
+        if _BINANCE_FUTURES_BLOCKED:
+            return {
+                'symbol': symbol, 
+                'ratio': 1.0, 
+                'long_percent': 50.0,
+                'short_percent': 50.0,
+                'signal': 'NEUTRAL', 
+                'description': 'Geo-blocked',
+                'accuracy': 0.50
+            }
+        
         try:
             futures_symbol = self._get_symbol(symbol)
             
             url = f"{self.BINANCE_FUTURES_URL}/globalLongShortAccountRatio?symbol={futures_symbol}&period=1h&limit=1"
             response = requests.get(url, timeout=10)
+            
+            # Handle geo-blocking silently
+            if response.status_code == 451:
+                _BINANCE_FUTURES_BLOCKED = True
+                logger.debug(f"Binance Futures geo-blocked (451)")
+                return {
+                    'symbol': symbol, 
+                    'ratio': 1.0, 
+                    'long_percent': 50.0,
+                    'short_percent': 50.0,
+                    'signal': 'NEUTRAL', 
+                    'description': 'Geo-blocked',
+                    'accuracy': 0.50
+                }
+            
             response.raise_for_status()
             data = response.json()[0]
             
