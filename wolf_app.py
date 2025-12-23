@@ -20463,6 +20463,145 @@ async def alerts_test(credentials: HTTPAuthorizationCredentials | None = AUTH_DE
         return {"ok": False, "sent": False, "error": str(e)}
 
 
+# ============================================================================
+# TOP 10 AGGREGATOR ENDPOINTS - Combine predictions into ONE message
+# ============================================================================
+
+@APP.get("/alerts/top10/status")
+async def top10_status():
+    """Get TOP 10 aggregator status - how many picks are queued"""
+    try:
+        from core.top10_aggregator import get_top10_aggregator
+        aggregator = get_top10_aggregator()
+        status = aggregator.get_status()
+        return {
+            "ok": True,
+            "top10_aggregator_enabled": os.getenv("TOP10_AGGREGATOR_ENABLED", "1") == "1",
+            "individual_alerts_enabled": os.getenv("INDIVIDUAL_ALERTS_ENABLED", "0") == "1",
+            **status
+        }
+    except Exception as e:
+        LOGGER.error(f"TOP 10 status error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/alerts/top10/send")
+async def top10_force_send():
+    """Force send the TOP 10 message with whatever picks are queued"""
+    try:
+        from core.top10_aggregator import get_top10_aggregator
+        aggregator = get_top10_aggregator()
+        
+        # Set telegram function
+        def _send_telegram(msg: str) -> bool:
+            return _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
+        
+        aggregator.set_telegram_func(_send_telegram)
+        
+        success = aggregator.force_send()
+        return {
+            "ok": success,
+            "message": "TOP 10 sent" if success else "No picks queued"
+        }
+    except Exception as e:
+        LOGGER.error(f"TOP 10 force send error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/alerts/top10/reset")
+async def top10_reset():
+    """Reset the TOP 10 aggregator (clear queue, allow new TOP 10 today)"""
+    try:
+        from core.top10_aggregator import get_top10_aggregator
+        aggregator = get_top10_aggregator()
+        aggregator.reset()
+        return {"ok": True, "message": "TOP 10 aggregator reset"}
+    except Exception as e:
+        LOGGER.error(f"TOP 10 reset error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/tracking/active")
+async def get_active_tracking():
+    """Get all active picks being tracked (48h window)"""
+    try:
+        from core.active_tracking import get_active_tracker
+        tracker = get_active_tracker()
+        active = tracker.get_active_picks()
+        
+        picks = []
+        for p in active:
+            picks.append({
+                "symbol": p.symbol,
+                "asset_type": p.asset_type,
+                "direction": p.direction,
+                "entry_price": p.entry_price,
+                "target_price": p.target_price,
+                "stop_price": p.stop_price,
+                "current_price": p.current_price,
+                "confidence": p.confidence,
+                "pct_change": p.pct_change,
+                "pct_to_target": p.pct_to_target,
+                "pct_to_stop": p.pct_to_stop,
+                "hours_remaining": p.hours_remaining,
+                "is_on_track": p.is_on_track,
+                "status": p.status.value,
+                "outcome": p.outcome.value,
+                "created_at": p.created_at.isoformat(),
+                "expires_at": p.expires_at.isoformat(),
+            })
+        
+        wins, losses, neutral = tracker.get_running_stats()
+        
+        return {
+            "ok": True,
+            "active_picks": len(picks),
+            "picks": picks,
+            "running_stats": {
+                "wins": wins,
+                "losses": losses,
+                "neutral": neutral,
+                "total": wins + losses + neutral,
+                "win_rate": (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
+            }
+        }
+    except Exception as e:
+        LOGGER.error(f"Active tracking error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/tracking/check")
+async def force_tracking_check():
+    """Force check all active picks for price updates"""
+    try:
+        from core.active_tracking import get_active_tracker, check_and_update_prices
+        
+        def _send_telegram(msg: str) -> bool:
+            return _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
+        
+        async def _get_price(symbol: str) -> float:
+            try:
+                from core.asset_classifier import classify_asset
+                category = classify_asset(symbol).category
+                
+                if category == "crypto":
+                    result = turbo_crypto_price(symbol, max_budget_s=2.0)
+                else:
+                    result = turbo_stock_price(symbol, max_budget_s=2.0)
+                
+                if result and result.get("ok") and result.get("price"):
+                    return float(result["price"])
+            except Exception:
+                pass
+            return 0.0
+        
+        results = await check_and_update_prices(_get_price, _send_telegram)
+        return {"ok": True, **results}
+    except Exception as e:
+        LOGGER.error(f"Tracking check error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 class TelegramUpdate(BaseModel):
     update_id: int | None = None
     message: dict | None = None

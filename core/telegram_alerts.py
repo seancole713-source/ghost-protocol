@@ -884,12 +884,47 @@ def send_alert(
     - Last 3 slots require 85%+ confidence
     - Last slot requires 90%+ confidence
     
+    TOP 10 AGGREGATOR (NEW):
+    - Predictions are queued and sent as ONE combined message
+    - Individual alerts are DISABLED by default (set INDIVIDUAL_ALERTS_ENABLED=1 to enable)
+    
     Respects ALERT_STYLE env var: \"simple\" or \"verbose\" (default)
 
     Returns:
         True if alert was sent successfully
         False if skipped (duplicate, capped, killswitch, or failed)
     """
+    # ========================================================================
+    # TOP 10 AGGREGATOR - Combine predictions into ONE message
+    # ========================================================================
+    top10_enabled = os.getenv("TOP10_AGGREGATOR_ENABLED", "1") == "1"
+    individual_alerts = os.getenv("INDIVIDUAL_ALERTS_ENABLED", "0") == "1"
+    
+    if top10_enabled:
+        try:
+            from core.top10_aggregator import intercept_prediction_for_top10
+            
+            # Create send function wrapper
+            def _send_via_telegram(msg: str) -> bool:
+                if TELEGRAM_SEND_FUNC and TELEGRAM_CHAT_ID:
+                    return TELEGRAM_SEND_FUNC(TELEGRAM_CHAT_ID, msg)
+                return False
+            
+            # Try to add to TOP 10 queue
+            queued = intercept_prediction_for_top10(symbol, prediction, price_meta, _send_via_telegram)
+            
+            if queued:
+                if LOGGER:
+                    LOGGER.info(f"📋 [TOP 10] Queued {symbol} for combined message")
+                
+                # If individual alerts disabled, stop here (prediction is queued)
+                if not individual_alerts:
+                    return True  # Successfully queued (will be sent in combined message)
+            
+        except Exception as e:
+            if LOGGER:
+                LOGGER.warning(f"[TOP 10] Aggregator error (falling back to individual alert): {e}")
+    
     # ========================================================================
     # KILLSWITCH CHECK - Emergency stop for all predictions
     # ========================================================================
