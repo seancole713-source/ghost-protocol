@@ -4461,6 +4461,167 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.error(f"full_market_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # ACTIVE TRACKING SYSTEM - The Missing Loop!
+    # This is what was missing: TOP 10 → TRACK 48h → UPDATE → ALERT → RESULTS → REPEAT
+    # ═══════════════════════════════════════════════════════════════════════════════
+    try:
+        from core.active_tracking import (
+            get_active_tracker,
+            send_daily_top_10,
+            check_and_update_prices,
+            check_and_send_final_results,
+            DAILY_TOP_10_HOUR,
+        )
+        
+        active_tracking_enabled = os.getenv("ACTIVE_TRACKING_ENABLED", "1") == "1"
+        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+        
+        if active_tracking_enabled:
+            # Get the tracker instance (initializes DB)
+            tracker = get_active_tracker()
+            
+            async def _get_high_conf_predictions():
+                """Get high-confidence predictions from _LATEST_PREDICTIONS"""
+                from core.asset_classifier import classify_asset
+                
+                min_conf = float(os.getenv("GHOST_TOP_10_MIN_CONF", "0.85"))
+                results = []
+                
+                for sym, pred in list(_LATEST_PREDICTIONS.items()):
+                    if not isinstance(pred, dict):
+                        continue
+                    
+                    confidence = pred.get("confidence", 0)
+                    if confidence < min_conf:
+                        continue
+                    
+                    # Classify asset
+                    category = classify_asset(sym).category
+                    asset_type = "crypto" if category == "crypto" else "stock"
+                    
+                    # Get prices
+                    entry_price = pred.get("price") or pred.get("entry_price") or pred.get("current_price") or 0
+                    if entry_price <= 0:
+                        continue
+                    
+                    # Get targets
+                    target_price = pred.get("target_price") or 0
+                    stop_price = pred.get("stop_loss") or pred.get("stop_price") or 0
+                    direction = pred.get("direction", "DOWN")
+                    
+                    # Calculate targets if not set
+                    if target_price <= 0:
+                        if asset_type == "crypto":
+                            target_pct = 0.06  # 6% for crypto
+                        else:
+                            target_pct = 0.03  # 3% for stocks
+                        
+                        if direction == "DOWN":
+                            target_price = entry_price * (1 - target_pct)
+                        else:
+                            target_price = entry_price * (1 + target_pct)
+                    
+                    if stop_price <= 0:
+                        if asset_type == "crypto":
+                            stop_pct = 0.045  # 4.5% for crypto
+                        else:
+                            stop_pct = 0.025  # 2.5% for stocks
+                        
+                        if direction == "DOWN":
+                            stop_price = entry_price * (1 + stop_pct)
+                        else:
+                            stop_price = entry_price * (1 - stop_pct)
+                    
+                    results.append({
+                        "symbol": sym,
+                        "asset_type": asset_type,
+                        "direction": direction,
+                        "entry_price": entry_price,
+                        "target_price": target_price,
+                        "stop_price": stop_price,
+                        "confidence": confidence,
+                        "reasons": str(pred.get("signals", [])),
+                    })
+                
+                return results
+            
+            async def _get_current_price(symbol: str) -> float:
+                """Get current price for a symbol"""
+                try:
+                    from core.asset_classifier import classify_asset
+                    category = classify_asset(symbol).category
+                    
+                    if category == "crypto":
+                        result = turbo_crypto_price(symbol, max_budget_s=2.0)
+                    else:
+                        result = turbo_stock_price(symbol, max_budget_s=2.0)
+                    
+                    if result and result.get("ok") and result.get("price"):
+                        return float(result["price"])
+                except Exception as e:
+                    LOGGER.warning(f"[ACTIVE TRACKING] Price fetch failed for {symbol}: {e}")
+                return 0.0
+            
+            def _send_telegram(message: str) -> bool:
+                """Send Telegram message via existing bot"""
+                if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+                    return False
+                return _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
+            
+            async def _active_tracking_loop():
+                """
+                The MISSING LOOP: Ghost now tracks predictions continuously!
+                
+                Schedule:
+                - 5 AM: Send daily TOP 10 (ONE consolidated message)
+                - Every 5 min: Check prices (only notify if significant)
+                - Every hour: Check for 48h expirations → send final results
+                """
+                LOGGER.info(f"[ACTIVE TRACKING] 🎯 Starting tracking loop (TOP 10 at {DAILY_TOP_10_HOUR}:00)")
+                
+                last_top_10_date = None
+                last_update_time = time.time()
+                
+                await asyncio.sleep(30)  # Initial delay
+                
+                while True:
+                    try:
+                        now = datetime.utcnow()
+                        current_hour = now.hour
+                        current_date = now.strftime("%Y-%m-%d")
+                        current_time = time.time()
+                        
+                        # Task 1: Daily TOP 10 at 5 AM
+                        if current_hour == DAILY_TOP_10_HOUR and last_top_10_date != current_date:
+                            LOGGER.info("[ACTIVE TRACKING] 🌅 Sending daily TOP 10...")
+                            await send_daily_top_10(_get_high_conf_predictions, _send_telegram, inverse_mode)
+                            last_top_10_date = current_date
+                        
+                        # Task 2: Price updates every 5 minutes
+                        if current_time - last_update_time >= 300:  # 5 minutes
+                            await check_and_update_prices(_get_current_price, _send_telegram)
+                            last_update_time = current_time
+                        
+                        # Task 3: Check for 48h expirations (every hour at minute 0-5)
+                        if now.minute < 5:
+                            await check_and_send_final_results(_send_telegram)
+                        
+                        await asyncio.sleep(60)  # Check every minute
+                        
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        LOGGER.error(f"[ACTIVE TRACKING] Loop error: {e}", exc_info=False)
+                        await asyncio.sleep(60)
+            
+            asyncio.create_task(_active_tracking_loop())
+            LOGGER.info(f"🎯 [POST-STARTUP] ✅ Active Tracking System STARTED (TOP 10 at {DAILY_TOP_10_HOUR}AM, 48h tracking)")
+        else:
+            LOGGER.info("🎯 [POST-STARTUP] Active Tracking System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
+    except Exception as e:
+        LOGGER.error(f"active_tracking_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
     # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
     try:
         from core.self_improvement_engine import run_improvement_cycle
