@@ -20521,6 +20521,162 @@ async def top10_force_send():
         return {"ok": False, "error": str(e)}
 
 
+@APP.post("/alerts/top10/now")
+async def top10_send_now():
+    """
+    SIMPLE DIRECT TOP 10 - Bypasses aggregator complexity
+    
+    Gets top 10 predictions from _LATEST_PREDICTIONS and sends ONE message
+    in the EXACT format the user requested.
+    """
+    try:
+        from core.asset_classifier import get_asset_type
+        
+        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+        min_conf = float(os.getenv("GHOST_TOP_10_MIN_CONF", "0.85"))
+        
+        # Collect all high-confidence predictions
+        crypto_picks = []
+        stock_picks = []
+        
+        for symbol, pred in list(_LATEST_PREDICTIONS.items()):
+            if not isinstance(pred, dict):
+                continue
+            
+            confidence = pred.get("confidence", 0)
+            if confidence < min_conf:
+                continue
+            
+            # Get direction (apply inverse if enabled)
+            raw_direction = pred.get("direction", "DOWN")
+            if inverse_mode:
+                direction = "DOWN" if raw_direction == "UP" else "UP"
+            else:
+                direction = raw_direction
+            
+            # Get prices
+            entry_price = pred.get("price") or pred.get("entry_price") or pred.get("current_price") or 0
+            if entry_price <= 0:
+                continue
+            
+            # Classify
+            asset_class = get_asset_type(symbol)
+            
+            pick = {
+                "symbol": symbol,
+                "direction": direction,
+                "confidence": confidence,
+                "entry_price": entry_price,
+                "target_price": pred.get("target_price", 0),
+                "stop_price": pred.get("stop_loss") or pred.get("stop_price", 0),
+            }
+            
+            # Calculate targets if missing
+            if pick["target_price"] <= 0:
+                if asset_class == "crypto":
+                    pct = 0.06  # 6%
+                else:
+                    pct = 0.03  # 3%
+                if direction == "DOWN":
+                    pick["target_price"] = entry_price * (1 - pct)
+                else:
+                    pick["target_price"] = entry_price * (1 + pct)
+            
+            if pick["stop_price"] <= 0:
+                if asset_class == "crypto":
+                    pct = 0.03  # 3%
+                else:
+                    pct = 0.015  # 1.5%
+                if direction == "DOWN":
+                    pick["stop_price"] = entry_price * (1 + pct)
+                else:
+                    pick["stop_price"] = entry_price * (1 - pct)
+            
+            if asset_class == "crypto":
+                crypto_picks.append(pick)
+            else:
+                stock_picks.append(pick)
+        
+        # Sort by confidence, take top 5 each
+        crypto_picks.sort(key=lambda x: x["confidence"], reverse=True)
+        stock_picks.sort(key=lambda x: x["confidence"], reverse=True)
+        
+        top_crypto = crypto_picks[:5]
+        top_stocks = stock_picks[:5]
+        
+        if not top_crypto and not top_stocks:
+            return {"ok": False, "error": "No high-confidence predictions available", "min_conf": min_conf}
+        
+        # Build message in EXACT format requested
+        from datetime import datetime
+        try:
+            from zoneinfo import ZoneInfo
+            ct = datetime.now(ZoneInfo("America/Chicago"))
+        except:
+            import pytz
+            ct = datetime.now(pytz.timezone("America/Chicago"))
+        
+        date_str = ct.strftime("%B %d, %Y")
+        
+        msg_lines = [
+            f"🎯 GHOST TOP 10 — {date_str}",
+            "",
+            "📊 CRYPTO (5)",
+            "━━━━━━━━━━━━━━━━━━━━"
+        ]
+        
+        for i, p in enumerate(top_crypto, 1):
+            arrow = "🔴" if p["direction"] == "DOWN" else "🟢"
+            msg_lines.append(f"{i}. {arrow} {p['symbol']} → {p['direction']}")
+            msg_lines.append(f"   Entry: ${p['entry_price']:,.2f}")
+            msg_lines.append(f"   Target: ${p['target_price']:,.2f}")
+            msg_lines.append(f"   Stop: ${p['stop_price']:,.2f}")
+            msg_lines.append(f"   Confidence: {p['confidence']:.0%}")
+            msg_lines.append("")
+        
+        if not top_crypto:
+            msg_lines.append("   (No crypto picks today)")
+            msg_lines.append("")
+        
+        msg_lines.append("📈 STOCKS (5)")
+        msg_lines.append("━━━━━━━━━━━━━━━━━━━━")
+        
+        for i, p in enumerate(top_stocks, 1):
+            arrow = "🔴" if p["direction"] == "DOWN" else "🟢"
+            msg_lines.append(f"{i}. {arrow} {p['symbol']} → {p['direction']}")
+            msg_lines.append(f"   Entry: ${p['entry_price']:,.2f}")
+            msg_lines.append(f"   Target: ${p['target_price']:,.2f}")
+            msg_lines.append(f"   Stop: ${p['stop_price']:,.2f}")
+            msg_lines.append(f"   Confidence: {p['confidence']:.0%}")
+            msg_lines.append("")
+        
+        if not top_stocks:
+            msg_lines.append("   (No stock picks today)")
+            msg_lines.append("")
+        
+        msg_lines.append("━━━━━━━━━━━━━━━━━━━━")
+        msg_lines.append("⏰ Updates every 4h | 48h tracking")
+        msg_lines.append(f"🔄 Inverse Mode: {'ON' if inverse_mode else 'OFF'}")
+        
+        message = "\n".join(msg_lines)
+        
+        # Send it
+        sent = _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
+        
+        return {
+            "ok": sent,
+            "crypto_count": len(top_crypto),
+            "stock_count": len(top_stocks),
+            "total": len(top_crypto) + len(top_stocks),
+            "inverse_mode": inverse_mode,
+            "message_preview": message[:500] + "..." if len(message) > 500 else message
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"TOP 10 NOW error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
 @APP.post("/alerts/top10/reset")
 async def top10_reset():
     """Reset the TOP 10 aggregator (clear queue, allow new TOP 10 today)"""
