@@ -24926,6 +24926,112 @@ async def test_top10_endpoint():
     return result
 
 
+@APP.get("/debug/force-top10")
+@APP.post("/debug/force-top10")
+async def force_top10_endpoint():
+    """
+    FORCE REAL TOP 10 NOTIFICATION
+    
+    Manually trigger the REAL TOP 10 using actual _LATEST_PREDICTIONS data.
+    This is what the 8 AM scheduler calls - use this to test the real flow.
+    
+    Usage: GET or POST /debug/force-top10
+    """
+    from datetime import datetime
+    import os
+    
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "action": "force_top10",
+        "predictions_available": False,
+        "prediction_count": 0,
+        "top10_sent": False,
+        "errors": [],
+    }
+    
+    try:
+        # Check if we have predictions
+        if not _LATEST_PREDICTIONS:
+            result["errors"].append("_LATEST_PREDICTIONS is empty - no predictions generated yet")
+            result["overall_status"] = "❌ No predictions available"
+            return result
+        
+        result["predictions_available"] = True
+        result["prediction_count"] = len(_LATEST_PREDICTIONS)
+        result["sample_symbols"] = list(_LATEST_PREDICTIONS.keys())[:10]
+        
+        # Get the notification system
+        from core.ghost_notifications import get_notification_system
+        notification_system = get_notification_system()
+        
+        # Ensure Telegram function is set
+        if not notification_system._telegram_func:
+            def _send_telegram(message: str) -> bool:
+                try:
+                    return _tg_send_chat_message(os.environ.get("TELEGRAM_CHAT_ID", ""), message)
+                except Exception as e:
+                    LOGGER.error(f"Telegram send failed: {e}")
+                    return False
+            notification_system.set_telegram_func(_send_telegram)
+        
+        # Call the real send_top10 function
+        success = notification_system.send_top10(_LATEST_PREDICTIONS)
+        
+        result["top10_sent"] = success
+        
+        if success:
+            result["overall_status"] = "✅ REAL TOP 10 sent from _LATEST_PREDICTIONS!"
+            LOGGER.info("[FORCE-TOP10] ✅ Successfully sent TOP 10 notification")
+        else:
+            result["errors"].append("send_top10() returned False - check logs for details")
+            result["overall_status"] = "⚠️ send_top10 failed - check server logs"
+            
+    except Exception as e:
+        result["errors"].append(f"Exception: {str(e)}")
+        result["overall_status"] = f"❌ Error: {str(e)}"
+        LOGGER.error(f"[FORCE-TOP10] Error: {e}", exc_info=True)
+    
+    return result
+
+
+@APP.get("/debug/notification-status")
+async def notification_status_endpoint():
+    """
+    CHECK NOTIFICATION SYSTEM STATUS
+    
+    Shows:
+    - Current Central time
+    - Whether 8 AM has passed today
+    - _LATEST_PREDICTIONS count
+    - Last TOP 10 send time (if tracked)
+    """
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        central_tz = ZoneInfo("America/Chicago")
+    except ImportError:
+        import pytz
+        central_tz = pytz.timezone("America/Chicago")
+    
+    now_utc = datetime.utcnow()
+    now_central = datetime.now(central_tz)
+    
+    return {
+        "utc_time": now_utc.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "central_time": now_central.strftime("%Y-%m-%d %H:%M:%S Central"),
+        "central_hour": now_central.hour,
+        "is_top10_hour": now_central.hour == 8,
+        "predictions_count": len(_LATEST_PREDICTIONS) if _LATEST_PREDICTIONS else 0,
+        "sample_predictions": list(_LATEST_PREDICTIONS.keys())[:10] if _LATEST_PREDICTIONS else [],
+        "telegram_configured": bool(os.environ.get("TELEGRAM_BOT_TOKEN")) and bool(os.environ.get("TELEGRAM_CHAT_ID")),
+        "scheduler_info": {
+            "top10_scheduled_hour": 8,
+            "update_hours": [12, 16, 20],
+            "timezone": "America/Chicago (Central)"
+        }
+    }
+
+
 # ── UI compatibility endpoints (prebuilt ui_dist buttons) ─────────────────────
 class ControlBody(BaseModel):
     action: str | None = None
