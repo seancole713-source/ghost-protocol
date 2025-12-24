@@ -26,6 +26,48 @@ _feedback_loop = None
 _learning_loop = None
 
 
+def get_symbol_price(symbol: str) -> Optional[float]:
+    """
+    Fetch current price for a symbol (crypto or stock).
+    
+    Uses Coinbase for crypto, TurboProvider for stocks.
+    """
+    symbol = symbol.upper()
+    
+    # Known crypto symbols
+    CRYPTO_SYMBOLS = {
+        'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK',
+        'DOGE', 'SHIB', 'LTC', 'TRX', 'TON', 'XLM', 'ATOM', 'UNI', 'AAVE', 'MKR',
+        'PEPE', 'BONK', 'WIF', 'FLOKI', 'FET', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA',
+        'OP', 'ARB', 'APE', 'SAND', 'MANA', 'AXS', 'GRT', 'CRV', 'COMP', 'SNX',
+    }
+    
+    try:
+        # Try Coinbase for crypto
+        if symbol in CRYPTO_SYMBOLS or symbol.endswith('-USD') or symbol.endswith('USDT'):
+            from core.coinbase_provider import get_crypto_price
+            price = get_crypto_price(symbol)
+            if price and price > 0:
+                return price
+        
+        # Fall back to TurboProvider (works for both crypto and stocks)
+        from core.providers.turbo_provider import get_turbo_provider
+        provider = get_turbo_provider()
+        
+        if symbol in CRYPTO_SYMBOLS:
+            result = provider.turbo_crypto_price(symbol, max_budget_s=2.0)
+        else:
+            result = provider.turbo_stock_price(symbol, max_budget_s=2.0)
+        
+        if result.get("ok") and result.get("price"):
+            return float(result["price"])
+        
+        return None
+    except Exception as e:
+        LOGGER.warning(f"Failed to get price for {symbol}: {e}")
+        return None
+
+
 def _get_feedback_loop():
     """Lazy load feedback loop to avoid circular imports."""
     global _feedback_loop
