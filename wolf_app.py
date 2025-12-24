@@ -24696,6 +24696,236 @@ async def debug_price_providers_diagnostic():
     return results
 
 
+@APP.get("/debug/test-top10")
+@APP.post("/debug/test-top10")
+async def test_top10_endpoint():
+    """
+    TEST TOP 10 NOTIFICATION ENDPOINT
+    
+    Manually trigger a test TOP 10 notification to verify:
+    1. Coinbase price fetching works
+    2. Message formatting is correct
+    3. Telegram bot/chat ID works
+    4. End-to-end delivery succeeds
+    
+    Usage: GET or POST /debug/test-top10
+    """
+    import aiohttp
+    import os
+    from datetime import datetime
+    
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "step": "init",
+        "prices_fetched": {},
+        "message_built": False,
+        "telegram_sent": False,
+        "telegram_response": None,
+        "errors": [],
+    }
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 1: FETCH REAL PRICES FROM COINBASE
+    # ═══════════════════════════════════════════════════════════════════════════
+    result["step"] = "fetch_prices"
+    
+    test_symbols = {
+        "stocks": ["AAPL", "MSFT", "NVDA", "TSLA", "GOOGL"],
+        "crypto": ["BTC", "ETH", "SOL", "XRP", "DOGE"],
+    }
+    
+    prices = {}
+    
+    # Fetch crypto prices from Coinbase (most reliable)
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+        for symbol in test_symbols["crypto"]:
+            try:
+                url = f"https://api.coinbase.com/v2/exchange-rates?currency={symbol}"
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        usd_rate = float(data["data"]["rates"]["USD"])
+                        prices[symbol] = {
+                            "price": usd_rate,
+                            "source": "coinbase",
+                            "status": "OK"
+                        }
+                        result["prices_fetched"][symbol] = f"${usd_rate:,.2f} via Coinbase"
+                    else:
+                        prices[symbol] = {"price": 0, "source": "failed", "status": f"HTTP {resp.status}"}
+                        result["errors"].append(f"Coinbase {symbol}: HTTP {resp.status}")
+            except Exception as e:
+                prices[symbol] = {"price": 0, "source": "error", "status": str(e)}
+                result["errors"].append(f"Coinbase {symbol}: {str(e)}")
+    
+    # For stocks, use Polygon (most reliable stock provider)
+    polygon_key = os.environ.get("POLYGON_API_KEY")
+    if polygon_key:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            for symbol in test_symbols["stocks"]:
+                try:
+                    url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev?apiKey={polygon_key}"
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if data.get("results"):
+                                close_price = data["results"][0].get("c", 0)
+                                prices[symbol] = {
+                                    "price": close_price,
+                                    "source": "polygon",
+                                    "status": "OK"
+                                }
+                                result["prices_fetched"][symbol] = f"${close_price:,.2f} via Polygon"
+                        else:
+                            result["errors"].append(f"Polygon {symbol}: HTTP {resp.status}")
+                except Exception as e:
+                    result["errors"].append(f"Polygon {symbol}: {str(e)}")
+    else:
+        result["errors"].append("POLYGON_API_KEY not set - using mock stock prices")
+        for symbol in test_symbols["stocks"]:
+            mock_prices = {"AAPL": 175.50, "MSFT": 378.25, "NVDA": 495.00, "TSLA": 248.75, "GOOGL": 141.80}
+            prices[symbol] = {"price": mock_prices.get(symbol, 100.00), "source": "mock", "status": "MOCK"}
+            result["prices_fetched"][symbol] = f"${mock_prices.get(symbol, 100.00):,.2f} (MOCK)"
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 2: BUILD THE MESSAGE (Same format as real TOP 10)
+    # ═══════════════════════════════════════════════════════════════════════════
+    result["step"] = "build_message"
+    
+    now = datetime.now()
+    date_str = now.strftime("%b %d, %Y")
+    
+    # Build message - with INVERSE_GHOST=1, all predictions are SELL (DOWN)
+    inverse_mode = os.environ.get("INVERSE_GHOST", "0") == "1"
+    
+    message_lines = [
+        f"🔮 *Ghost Protocol TOP 10*",
+        f"📅 {date_str} (TEST)",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "📈 *TOP 5 STOCKS*",
+        "",
+    ]
+    
+    # Stock picks - with INVERSE_GHOST, all show as SELL (🔴)
+    for symbol in test_symbols["stocks"]:
+        price_data = prices.get(symbol, {})
+        price = price_data.get("price", 0)
+        source = price_data.get("source", "unknown")
+        
+        # Simulate 48h targets (±5% from entry)
+        target_pct = -5 if inverse_mode else 5  # INVERSE = DOWN = SELL
+        target_price = price * (1 + target_pct / 100)
+        
+        # Direction logic: 🔴 SELL for DOWN, 🟢 BUY for UP
+        direction_emoji = "🔴" if inverse_mode else "🟢"
+        direction_text = "SELL" if inverse_mode else "BUY"
+        
+        message_lines.append(
+            f"{direction_emoji} *{symbol}* - {direction_text}\n"
+            f"   Entry: ${price:,.2f} ({source})\n"
+            f"   Target: ${target_price:,.2f} ({target_pct:+.0f}%)"
+        )
+        message_lines.append("")
+    
+    message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━")
+    message_lines.append("")
+    message_lines.append("🪙 *TOP 5 CRYPTO*")
+    message_lines.append("")
+    
+    # Crypto picks
+    for symbol in test_symbols["crypto"]:
+        price_data = prices.get(symbol, {})
+        price = price_data.get("price", 0)
+        source = price_data.get("source", "unknown")
+        
+        target_pct = -5 if inverse_mode else 5
+        target_price = price * (1 + target_pct / 100)
+        
+        direction_emoji = "🔴" if inverse_mode else "🟢"
+        direction_text = "SELL" if inverse_mode else "BUY"
+        
+        message_lines.append(
+            f"{direction_emoji} *{symbol}* - {direction_text}\n"
+            f"   Entry: ${price:,.2f} ({source})\n"
+            f"   Target: ${target_price:,.2f} ({target_pct:+.0f}%)"
+        )
+        message_lines.append("")
+    
+    message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━")
+    message_lines.append("")
+    message_lines.append(f"⚙️ Mode: {'INVERSE' if inverse_mode else 'NORMAL'}")
+    message_lines.append("🧪 _This is a TEST message_")
+    
+    full_message = "\n".join(message_lines)
+    result["message_built"] = True
+    result["message_preview"] = full_message[:500] + "..." if len(full_message) > 500 else full_message
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 3: SEND TO TELEGRAM
+    # ═══════════════════════════════════════════════════════════════════════════
+    result["step"] = "send_telegram"
+    
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    
+    if not bot_token:
+        result["errors"].append("TELEGRAM_BOT_TOKEN not set")
+    if not chat_id:
+        result["errors"].append("TELEGRAM_CHAT_ID not set")
+    
+    if bot_token and chat_id:
+        try:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": full_message,
+                "parse_mode": "Markdown",
+                "disable_web_page_preview": True,
+            }
+            
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                async with session.post(url, json=payload) as resp:
+                    resp_data = await resp.json()
+                    
+                    if resp.status == 200 and resp_data.get("ok"):
+                        result["telegram_sent"] = True
+                        result["telegram_response"] = {
+                            "status": "SUCCESS",
+                            "message_id": resp_data.get("result", {}).get("message_id"),
+                            "chat_id": chat_id,
+                        }
+                        LOGGER.info(f"✅ Test TOP 10 sent to Telegram: message_id={resp_data.get('result', {}).get('message_id')}")
+                    else:
+                        result["telegram_sent"] = False
+                        result["telegram_response"] = {
+                            "status": "FAILED",
+                            "http_status": resp.status,
+                            "error": resp_data.get("description", "Unknown error"),
+                        }
+                        result["errors"].append(f"Telegram API error: {resp_data.get('description')}")
+        
+        except Exception as e:
+            result["telegram_sent"] = False
+            result["telegram_response"] = {"status": "EXCEPTION", "error": str(e)}
+            result["errors"].append(f"Telegram exception: {str(e)}")
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # FINAL: GENERATE SUMMARY
+    # ═══════════════════════════════════════════════════════════════════════════
+    result["step"] = "complete"
+    
+    if result["telegram_sent"]:
+        result["overall_status"] = "✅ SUCCESS - Test TOP 10 sent to Telegram"
+    elif result["message_built"]:
+        result["overall_status"] = "⚠️ PARTIAL - Message built but Telegram send failed"
+    else:
+        result["overall_status"] = "❌ FAILED - Could not build message"
+    
+    return result
+
+
 # ── UI compatibility endpoints (prebuilt ui_dist buttons) ─────────────────────
 class ControlBody(BaseModel):
     action: str | None = None
