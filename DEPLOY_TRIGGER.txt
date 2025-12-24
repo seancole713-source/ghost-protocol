@@ -20,3 +20,4 @@ Post-deployment steps required:
 4. Test: python3 test_production_watchlist.py
 
 Cache bust: 20251202-040300
+# Deployment trigger Wed Dec 24 23:55:25 UTC 2025
