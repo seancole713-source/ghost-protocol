@@ -426,14 +426,9 @@ class GhostNotificationSystem:
             if current_price <= 0:
                 continue
             
-            # Get raw direction
-            raw_direction = pred.get("direction", "DOWN")
-            
-            # Apply inverse if enabled
-            if inverse_mode:
-                direction = "DOWN" if raw_direction == "UP" else "UP"
-            else:
-                direction = raw_direction
+            # Direction is ALREADY inverted in _LATEST_PREDICTIONS when INVERSE_GHOST=1
+            # DO NOT invert again here - that was causing double-inversion bug
+            direction = pred.get("direction", "DOWN")
             
             # Calculate 48hr prediction price
             # If direction is UP, price goes higher; if DOWN, price goes lower
