@@ -4489,9 +4489,12 @@ async def _post_startup_init():
                 SIMPLE notification loop - ONE message at 8 AM Central.
                 
                 Schedule:
-                - 8:00 AM Central: Send ONE TOP 10 message (5 stocks + 5 crypto)
+                - 8:00-8:59 AM Central: Send ONE TOP 10 message (5 stocks + 5 crypto)
                 - Every 4 hours: Check for updates (12 PM, 4 PM, 8 PM)
                 - Every 15 min: Check for target/stop hits
+                
+                IMPORTANT: The scheduler runs in a background task.
+                If Railway restarts the container, this task restarts too.
                 """
                 try:
                     from zoneinfo import ZoneInfo
@@ -4500,35 +4503,46 @@ async def _post_startup_init():
                     import pytz
                     central_tz = pytz.timezone("America/Chicago")
                 
-                TOP_10_HOUR = 8  # 8 AM Central
+                TOP_10_HOUR = 8  # 8 AM Central (entire hour window: 8:00-8:59)
                 UPDATE_HOURS = [12, 16, 20]  # 12 PM, 4 PM, 8 PM Central
                 
+                now_central = datetime.now(central_tz)
                 LOGGER.info(f"[NOTIFICATIONS] 🎯 Starting notification loop (TOP 10 at {TOP_10_HOUR}:00 Central)")
+                LOGGER.info(f"[NOTIFICATIONS] Current time: {now_central.strftime('%Y-%m-%d %H:%M:%S')} Central")
                 
                 last_top10_date = None
                 last_check_time = 0
+                loop_count = 0
                 
                 await asyncio.sleep(30)  # Initial delay
                 
                 while True:
                     try:
+                        loop_count += 1
                         now_central = datetime.now(central_tz)
                         current_hour = now_central.hour
                         current_date = now_central.strftime("%Y-%m-%d")
                         current_time = time.time()
                         
-                        # Task 1: Daily TOP 10 at 8 AM Central
+                        # Log every 10 minutes to confirm loop is alive
+                        if loop_count % 10 == 0:
+                            LOGGER.debug(f"[NOTIFICATIONS] ⏰ Loop tick #{loop_count}: {now_central.strftime('%H:%M')} Central, last_top10_date={last_top10_date}")
+                        
+                        # Task 1: Daily TOP 10 at 8 AM Central (entire hour window)
+                        # This triggers anytime during 8:00-8:59 if not already sent today
                         if current_hour == TOP_10_HOUR and last_top10_date != current_date:
-                            LOGGER.info("[NOTIFICATIONS] 🌅 Sending morning TOP 10...")
+                            LOGGER.info(f"[NOTIFICATIONS] 🌅 8 AM WINDOW - Sending morning TOP 10 ({now_central.strftime('%H:%M:%S')} Central)...")
+                            LOGGER.info(f"[NOTIFICATIONS] Predictions available: {len(_LATEST_PREDICTIONS)} symbols")
                             
                             # Use _LATEST_PREDICTIONS
                             success = notification_system.send_top10(_LATEST_PREDICTIONS)
                             
                             if success:
                                 last_top10_date = current_date
-                                LOGGER.info("[NOTIFICATIONS] ✅ TOP 10 sent!")
+                                LOGGER.info(f"[NOTIFICATIONS] ✅ TOP 10 sent successfully at {now_central.strftime('%H:%M:%S')} Central!")
                             else:
-                                LOGGER.warning("[NOTIFICATIONS] ⚠️ TOP 10 send failed or no predictions")
+                                LOGGER.warning(f"[NOTIFICATIONS] ⚠️ TOP 10 send failed or no predictions (count={len(_LATEST_PREDICTIONS)})")
+                                # Don't set last_top10_date so it can retry next minute
                         
                         # Task 2: Check for updates/alerts every 15 minutes
                         if current_time - last_check_time >= 900:  # 15 minutes
@@ -4550,9 +4564,10 @@ async def _post_startup_init():
                         await asyncio.sleep(60)  # Check every minute
                         
                     except asyncio.CancelledError:
+                        LOGGER.info("[NOTIFICATIONS] Loop cancelled - shutting down")
                         break
                     except Exception as e:
-                        LOGGER.error(f"[NOTIFICATIONS] Loop error: {e}", exc_info=False)
+                        LOGGER.error(f"[NOTIFICATIONS] Loop error: {e}", exc_info=True)
                         await asyncio.sleep(60)
             
             asyncio.create_task(_ghost_notification_loop())
@@ -4560,7 +4575,7 @@ async def _post_startup_init():
         else:
             LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
     except Exception as e:
-        LOGGER.error(f"ghost_notification_system_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        LOGGER.error(f"ghost_notification_system_start_failed: {e}", extra={"component": "startup"}, exc_info=True)
     
     # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
     try:
