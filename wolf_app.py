@@ -1231,22 +1231,36 @@ async def health_check():
         # Only check if we've been running for >10s (allows startup initialization)
         if time.time() - _START_TS > 10:
             try:
-                # Quick test: Can we fetch BTC price?
-                from core.crypto.crypto_providers import get_crypto_price_quorum
-                btc_test = await asyncio.wait_for(
-                    get_crypto_price_quorum("BTC", use_cache=True),
-                    timeout=2.0
+                # Quick test: Can we fetch BTC price from Coinbase (most reliable)?
+                from core.coinbase_provider import get_coinbase_provider
+                
+                provider = get_coinbase_provider()
+                btc_price = await asyncio.wait_for(
+                    asyncio.to_thread(provider.get_price, "BTC"),
+                    timeout=3.0
                 )
-                if btc_test and btc_test.get("price"):
+                
+                if btc_price and btc_price > 0:
                     health_status["price_providers"] = "operational"
+                    health_status["btc_price"] = round(btc_price, 2)
                 else:
-                    health_status["price_providers"] = "degraded"
-                    health_status["status"] = "degraded"
+                    # Fallback: Try the quorum system
+                    from core.crypto.crypto_providers import get_crypto_price_quorum
+                    btc_test = await asyncio.wait_for(
+                        get_crypto_price_quorum("BTC", use_cache=True),
+                        timeout=2.0
+                    )
+                    if btc_test and btc_test.get("price"):
+                        health_status["price_providers"] = "operational"
+                        health_status["btc_price"] = round(btc_test["price"], 2)
+                    else:
+                        health_status["price_providers"] = "degraded"
+                        health_status["status"] = "degraded"
             except asyncio.TimeoutError:
                 health_status["price_providers"] = "timeout"
                 health_status["status"] = "degraded"
-            except Exception:
-                health_status["price_providers"] = "error"
+            except Exception as e:
+                health_status["price_providers"] = f"error: {str(e)[:50]}"
                 # Don't fail health check on provider issues (may be temporary)
         
         # Return 503 if critical systems failed
