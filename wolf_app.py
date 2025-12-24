@@ -24392,6 +24392,296 @@ async def debug_reset_breakers(credentials: HTTPAuthorizationCredentials | None 
     }
 
 
+@APP.get("/debug/price-providers-diagnostic")
+async def debug_price_providers_diagnostic():
+    """
+    COMPREHENSIVE PRICE PROVIDER DIAGNOSTIC
+    
+    Tests all price providers, checks API keys, cache state, and network connectivity.
+    Use this to diagnose why price_providers show "timeout" in health check.
+    """
+    import aiohttp
+    import subprocess
+    from datetime import datetime
+    
+    results = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "api_keys": {},
+        "provider_tests": {},
+        "network_tests": {},
+        "cache_state": {},
+        "circuit_breakers": {},
+        "diagnosis": [],
+    }
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 1: CHECK API KEYS
+    # ═══════════════════════════════════════════════════════════════════════════
+    api_keys_to_check = [
+        'BINANCE_API_KEY',
+        'COINGECKO_API_KEY', 
+        'COINMARKETCAP_API_KEY',
+        'ALPHA_VANTAGE_API_KEY',
+        'ALPHAVANTAGE_API_KEY',
+        'FINNHUB_API_KEY',
+        'POLYGON_API_KEY',
+        'POLYGON_IO_API_KEY',
+        'YAHOO_FINANCE_API_KEY',
+        'SANTIMENT_API_KEY',
+        'CRYPTOCOMPARE_API_KEY',
+    ]
+    
+    for key in api_keys_to_check:
+        value = os.environ.get(key, None)
+        if value:
+            # Mask the key (show first 4 and last 4 chars)
+            if len(value) > 8:
+                masked = value[:4] + '****' + value[-4:]
+            else:
+                masked = '****'
+            results["api_keys"][key] = {"status": "SET", "masked": masked}
+        else:
+            results["api_keys"][key] = {"status": "NOT_SET"}
+            results["diagnosis"].append(f"⚠️ {key} is not set")
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 2: TEST EACH PRICE PROVIDER
+    # ═══════════════════════════════════════════════════════════════════════════
+    async def test_provider_url(name: str, url: str, headers: dict = None, timeout_s: float = 10.0):
+        """Test a single price provider endpoint"""
+        start = time.time()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=timeout_s)) as resp:
+                    elapsed = time.time() - start
+                    body = await resp.text()
+                    if resp.status == 200:
+                        try:
+                            data = await resp.json()
+                            # Extract price if possible
+                            price = None
+                            if "price" in str(data).lower():
+                                if isinstance(data, dict):
+                                    price = data.get("price") or data.get("lastPrice")
+                            return {
+                                "status": "OK",
+                                "http_code": resp.status,
+                                "elapsed_s": round(elapsed, 3),
+                                "sample_data": str(data)[:200],
+                                "price_found": price,
+                            }
+                        except:
+                            return {
+                                "status": "OK_NOT_JSON",
+                                "http_code": resp.status,
+                                "elapsed_s": round(elapsed, 3),
+                                "body_preview": body[:200],
+                            }
+                    elif resp.status == 429:
+                        return {
+                            "status": "RATE_LIMITED",
+                            "http_code": 429,
+                            "elapsed_s": round(elapsed, 3),
+                            "body": body[:200],
+                        }
+                    elif resp.status == 451:
+                        return {
+                            "status": "GEO_BLOCKED",
+                            "http_code": 451,
+                            "elapsed_s": round(elapsed, 3),
+                            "note": "Blocked in this region (common for Binance)",
+                        }
+                    elif resp.status == 403:
+                        return {
+                            "status": "FORBIDDEN",
+                            "http_code": 403,
+                            "elapsed_s": round(elapsed, 3),
+                            "body": body[:200],
+                        }
+                    else:
+                        return {
+                            "status": "HTTP_ERROR",
+                            "http_code": resp.status,
+                            "elapsed_s": round(elapsed, 3),
+                            "body": body[:200],
+                        }
+        except asyncio.TimeoutError:
+            return {
+                "status": "TIMEOUT",
+                "elapsed_s": timeout_s,
+                "error": f"Request timed out after {timeout_s}s",
+            }
+        except aiohttp.ClientConnectorError as e:
+            return {
+                "status": "CONNECTION_ERROR",
+                "elapsed_s": round(time.time() - start, 3),
+                "error": str(e)[:100],
+            }
+        except Exception as e:
+            return {
+                "status": "ERROR",
+                "elapsed_s": round(time.time() - start, 3),
+                "error": str(e)[:100],
+            }
+    
+    # Test crypto providers
+    crypto_tests = [
+        ("binance_btc", "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", None),
+        ("binance_eth", "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT", None),
+        ("binance_us_btc", "https://api.binance.us/api/v3/ticker/price?symbol=BTCUSD", None),
+        ("coingecko_btc", "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", None),
+        ("coingecko_eth", "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd", None),
+        ("coinbase_btc", "https://api.coinbase.com/v2/prices/BTC-USD/spot", None),
+        ("coinbase_eth", "https://api.coinbase.com/v2/prices/ETH-USD/spot", None),
+        ("cryptocompare_btc", "https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=USD", None),
+    ]
+    
+    # Test stock providers
+    stock_tests = [
+        ("yahoo_aapl", "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1d", None),
+        ("yahoo_msft", "https://query1.finance.yahoo.com/v8/finance/chart/MSFT?interval=1d&range=1d", None),
+        ("yahoo_googl", "https://query1.finance.yahoo.com/v8/finance/chart/GOOGL?interval=1d&range=1d", None),
+    ]
+    
+    # Add Polygon test if API key is set
+    polygon_key = os.environ.get("POLYGON_API_KEY") or os.environ.get("POLYGON_IO_API_KEY")
+    if polygon_key:
+        stock_tests.append(
+            ("polygon_aapl", f"https://api.polygon.io/v2/aggs/ticker/AAPL/prev?apiKey={polygon_key[:8]}...", None)
+        )
+    
+    # Add Alpha Vantage test if API key is set
+    av_key = os.environ.get("ALPHA_VANTAGE_API_KEY") or os.environ.get("ALPHAVANTAGE_API_KEY")
+    if av_key:
+        stock_tests.append(
+            ("alphavantage_aapl", f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey={av_key[:4]}...", None)
+        )
+    
+    # Run all provider tests
+    results["provider_tests"]["crypto"] = {}
+    for name, url, headers in crypto_tests:
+        results["provider_tests"]["crypto"][name] = await test_provider_url(name, url, headers)
+        await asyncio.sleep(0.3)  # Rate limit protection
+    
+    results["provider_tests"]["stocks"] = {}
+    for name, url, headers in stock_tests:
+        results["provider_tests"]["stocks"][name] = await test_provider_url(name, url, headers)
+        await asyncio.sleep(0.3)
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 3: CHECK NETWORK CONNECTIVITY
+    # ═══════════════════════════════════════════════════════════════════════════
+    async def check_dns(hostname: str):
+        """Check if we can resolve a hostname"""
+        import socket
+        try:
+            ip = socket.gethostbyname(hostname)
+            return {"status": "OK", "resolved_ip": ip}
+        except socket.gaierror as e:
+            return {"status": "DNS_FAILED", "error": str(e)}
+    
+    dns_tests = [
+        "api.binance.com",
+        "api.coingecko.com", 
+        "api.coinbase.com",
+        "query1.finance.yahoo.com",
+        "api.polygon.io",
+    ]
+    
+    results["network_tests"]["dns"] = {}
+    for host in dns_tests:
+        results["network_tests"]["dns"][host] = await check_dns(host)
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 4: CHECK CACHE STATE (TurboProvider)
+    # ═══════════════════════════════════════════════════════════════════════════
+    try:
+        from core.providers.turbo_provider import get_turbo_provider
+        turbo = get_turbo_provider()
+        
+        if hasattr(turbo, '_price_cache'):
+            cache = turbo._price_cache
+            results["cache_state"]["turbo_provider"] = {
+                "cache_size": len(cache),
+                "entries": [],
+            }
+            
+            # Show cached entries with ages
+            now = datetime.now()
+            for symbol, cached in list(cache.items())[:20]:  # First 20
+                if hasattr(cached, 'price') and hasattr(cached, 'timestamp'):
+                    age_seconds = (now - cached.timestamp).total_seconds()
+                    results["cache_state"]["turbo_provider"]["entries"].append({
+                        "symbol": symbol,
+                        "price": cached.price,
+                        "provider": cached.provider,
+                        "age_seconds": round(age_seconds, 1),
+                        "age_human": f"{age_seconds/60:.1f} min" if age_seconds < 3600 else f"{age_seconds/3600:.1f} hr",
+                        "is_stale": age_seconds > 300,  # >5 min is stale
+                    })
+        else:
+            results["cache_state"]["turbo_provider"] = {"note": "No _price_cache attribute found"}
+    except Exception as e:
+        results["cache_state"]["turbo_provider"] = {"error": str(e)}
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 5: CHECK CIRCUIT BREAKERS
+    # ═══════════════════════════════════════════════════════════════════════════
+    try:
+        results["circuit_breakers"] = dict(_PROVIDER_BREAKERS)
+    except:
+        results["circuit_breakers"] = {"error": "Could not access _PROVIDER_BREAKERS"}
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 6: GENERATE DIAGNOSIS
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    # Count working providers
+    crypto_working = sum(1 for v in results["provider_tests"]["crypto"].values() if v.get("status") == "OK")
+    stock_working = sum(1 for v in results["provider_tests"]["stocks"].values() if v.get("status") == "OK")
+    
+    results["summary"] = {
+        "crypto_providers_working": f"{crypto_working}/{len(results['provider_tests']['crypto'])}",
+        "stock_providers_working": f"{stock_working}/{len(results['provider_tests']['stocks'])}",
+        "api_keys_set": sum(1 for v in results["api_keys"].values() if v.get("status") == "SET"),
+        "api_keys_missing": sum(1 for v in results["api_keys"].values() if v.get("status") == "NOT_SET"),
+    }
+    
+    # Add diagnosis messages
+    if crypto_working == 0:
+        results["diagnosis"].append("🚨 ALL CRYPTO PROVIDERS FAILING - Check network/region blocking")
+    elif crypto_working < 3:
+        results["diagnosis"].append("⚠️ Some crypto providers failing - May affect price reliability")
+    
+    if stock_working == 0:
+        results["diagnosis"].append("🚨 ALL STOCK PROVIDERS FAILING - Check Yahoo/Polygon connectivity")
+    
+    # Check for rate limits
+    for name, test in results["provider_tests"]["crypto"].items():
+        if test.get("status") == "RATE_LIMITED":
+            results["diagnosis"].append(f"⚠️ {name} is rate limited (429) - Need API key or backoff")
+    
+    # Check for geo-blocking
+    for name, test in results["provider_tests"]["crypto"].items():
+        if test.get("status") == "GEO_BLOCKED":
+            results["diagnosis"].append(f"⚠️ {name} is geo-blocked (451) - Common in US for Binance.com")
+    
+    # Check cache staleness
+    stale_count = 0
+    if "entries" in results["cache_state"].get("turbo_provider", {}):
+        for entry in results["cache_state"]["turbo_provider"]["entries"]:
+            if entry.get("is_stale"):
+                stale_count += 1
+    
+    if stale_count > 5:
+        results["diagnosis"].append(f"🚨 {stale_count} cached prices are STALE (>5 min old) - Providers may be failing")
+    
+    if not results["diagnosis"]:
+        results["diagnosis"].append("✅ All systems appear operational")
+    
+    return results
+
+
 # ── UI compatibility endpoints (prebuilt ui_dist buttons) ─────────────────────
 class ControlBody(BaseModel):
     action: str | None = None
