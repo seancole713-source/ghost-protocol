@@ -134,7 +134,18 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     
     if stocks:
         for i, s in enumerate(stocks[:5], 1):
-            action, emoji, _ = determine_action(s['current'], s['prediction_48h'], s['confidence'])
+            # Use the direction already calculated (which has inverse applied)
+            direction = s.get('direction', 'DOWN')
+            
+            # In INVERSE mode with INVERSE_GHOST=1, raw predictions are flipped
+            # So if direction is "DOWN", it means Ghost raw said UP (we inverted to DOWN = SELL)
+            # If direction is "UP", it means Ghost raw said DOWN (we inverted to UP = BUY)
+            if direction == "UP":
+                action = "BUY"
+                emoji = "🟢"
+            else:
+                action = "SELL"
+                emoji = "🔴"
             
             lines.append(f"{i}. {emoji} {s['symbol']} — {action}")
             lines.append(f"   Current: {format_price(s['current'])}")
@@ -153,7 +164,15 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     
     if crypto:
         for i, c in enumerate(crypto[:5], 1):
-            action, emoji, _ = determine_action(c['current'], c['prediction_48h'], c['confidence'])
+            # Use the direction already calculated (which has inverse applied)
+            direction = c.get('direction', 'DOWN')
+            
+            if direction == "UP":
+                action = "BUY"
+                emoji = "🟢"
+            else:
+                action = "SELL"
+                emoji = "🔴"
             
             lines.append(f"{i}. {emoji} {c['symbol']} — {action}")
             lines.append(f"   Current: {format_price(c['current'])}")
