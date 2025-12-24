@@ -24965,7 +24965,7 @@ async def force_top10_endpoint():
         notification_system = get_notification_system()
         
         # Ensure Telegram function is set
-        if not notification_system._telegram_func:
+        if not notification_system.send_telegram:
             def _send_telegram(message: str) -> bool:
                 try:
                     return _tg_send_chat_message(os.environ.get("TELEGRAM_CHAT_ID", ""), message)
