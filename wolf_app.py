@@ -24543,18 +24543,18 @@ async def debug_price_providers_diagnostic():
         ("yahoo_googl", "https://query1.finance.yahoo.com/v8/finance/chart/GOOGL?interval=1d&range=1d", None),
     ]
     
-    # Add Polygon test if API key is set
+    # Add Polygon test if API key is set (use FULL key, not truncated)
     polygon_key = os.environ.get("POLYGON_API_KEY") or os.environ.get("POLYGON_IO_API_KEY")
     if polygon_key:
         stock_tests.append(
-            ("polygon_aapl", f"https://api.polygon.io/v2/aggs/ticker/AAPL/prev?apiKey={polygon_key[:8]}...", None)
+            ("polygon_aapl", f"https://api.polygon.io/v2/aggs/ticker/AAPL/prev?apiKey={polygon_key}", None)
         )
     
-    # Add Alpha Vantage test if API key is set
+    # Add Alpha Vantage test if API key is set (use FULL key)
     av_key = os.environ.get("ALPHA_VANTAGE_API_KEY") or os.environ.get("ALPHAVANTAGE_API_KEY")
     if av_key:
         stock_tests.append(
-            ("alphavantage_aapl", f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey={av_key[:4]}...", None)
+            ("alphavantage_aapl", f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey={av_key}", None)
         )
     
     # Run all provider tests

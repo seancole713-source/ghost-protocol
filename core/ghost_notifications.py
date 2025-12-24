@@ -350,6 +350,10 @@ class GhostNotificationSystem:
         stocks = []
         crypto = []
         
+        # Track price refresh attempts for logging
+        prices_refreshed = 0
+        prices_stale_skipped = 0
+        
         for symbol, pred in latest_predictions.items():
             if not isinstance(pred, dict):
                 continue
@@ -358,10 +362,48 @@ class GhostNotificationSystem:
             if confidence < 0.70:  # At least 70% to consider
                 continue
             
-            # Get current price
+            # Get current price from prediction
             current_price = (pred.get("price") or 
                            pred.get("current_price") or 
                            pred.get("entry_price") or 0)
+            
+            # Check price freshness - reject prices older than 5 minutes
+            price_timestamp = pred.get("run_at") or pred.get("timestamp") or 0
+            if price_timestamp > 0:
+                price_age_seconds = time.time() - price_timestamp
+                max_price_age = 300  # 5 minutes
+                
+                if price_age_seconds > max_price_age:
+                    # Price is stale - try to refresh
+                    asset_class = get_asset_type(symbol)
+                    try:
+                        if asset_class == "crypto":
+                            from core.crypto.crypto_providers import get_crypto_price_quorum
+                            import asyncio
+                            fresh_price_data = asyncio.get_event_loop().run_until_complete(
+                                get_crypto_price_quorum(symbol, use_cache=False)
+                            )
+                            if fresh_price_data and fresh_price_data.get("price", 0) > 0:
+                                current_price = fresh_price_data["price"]
+                                prices_refreshed += 1
+                                LOGGER.info(f"[NOTIFICATIONS] Refreshed stale {symbol} price: ${current_price:.2f}")
+                        else:
+                            # For stocks, use turbo provider
+                            from core.providers.turbo_provider import get_turbo_provider
+                            turbo = get_turbo_provider()
+                            fresh_price_data = turbo.turbo_stock_price(symbol, max_budget_s=2.0)
+                            if fresh_price_data.get("ok") and fresh_price_data.get("price", 0) > 0:
+                                current_price = fresh_price_data["price"]
+                                prices_refreshed += 1
+                                LOGGER.info(f"[NOTIFICATIONS] Refreshed stale {symbol} price: ${current_price:.2f}")
+                    except Exception as e:
+                        LOGGER.warning(f"[NOTIFICATIONS] Failed to refresh {symbol} price: {e}")
+                        # If refresh fails and price is VERY stale (>30 min), skip this pick
+                        if price_age_seconds > 1800:  # 30 minutes
+                            prices_stale_skipped += 1
+                            LOGGER.warning(f"[NOTIFICATIONS] Skipping {symbol} - price too stale ({price_age_seconds/60:.1f} min)")
+                            continue
+            
             if current_price <= 0:
                 continue
             
