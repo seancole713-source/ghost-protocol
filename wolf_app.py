@@ -4531,13 +4531,19 @@ async def _post_startup_init():
                 last_check_time = 0
                 loop_count = 0
                 
-                # Mark loop as running IMMEDIATELY
+                # Mark loop as running IMMEDIATELY - use print for Railway visibility
                 _NOTIFICATION_LOOP_STATUS["running"] = True
                 _NOTIFICATION_LOOP_STATUS["started_at"] = datetime.now(central_tz).isoformat()
-                LOGGER.info("[NOTIFICATION LOOP] Status set to RUNNING")
-                print("[NOTIFICATION LOOP] Status set to RUNNING")
+                print("=" * 60)
+                print("[NOTIFICATION LOOP] 🚀 LOOP STARTED SUCCESSFULLY")
+                print(f"[NOTIFICATION LOOP] Current time: {datetime.now(central_tz).strftime('%Y-%m-%d %H:%M:%S')} Central")
+                print(f"[NOTIFICATION LOOP] Schedule: TOP 10 at 8 AM, Watchdog every 15 min")
+                print("=" * 60)
+                LOGGER.info("[NOTIFICATION LOOP] 🚀 Status set to RUNNING")
                 
-                await asyncio.sleep(30)  # Initial delay
+                # Shorter initial delay for faster confirmation
+                await asyncio.sleep(10)
+                print("[NOTIFICATION LOOP] ✅ Initial delay complete - entering main loop")
                 
                 while True:
                     try:
@@ -4553,9 +4559,9 @@ async def _post_startup_init():
                         _NOTIFICATION_LOOP_STATUS["last_top10_date"] = last_top10_date
                         _NOTIFICATION_LOOP_STATUS["predictions_count"] = len(_LATEST_PREDICTIONS)
                         
-                        # Log every 10 minutes to confirm loop is alive
-                        if loop_count % 10 == 0:
-                            LOGGER.debug(f"[NOTIFICATIONS] ⏰ Loop tick #{loop_count}: {now_central.strftime('%H:%M')} Central, last_top10_date={last_top10_date}")
+                        # Log first 5 iterations, then every 10 minutes to confirm loop is alive
+                        if loop_count <= 5 or loop_count % 10 == 0:
+                            LOGGER.info(f"[NOTIFICATIONS] ⏰ Loop tick #{loop_count}: {now_central.strftime('%H:%M')} Central, predictions={len(_LATEST_PREDICTIONS)}")
                         
                         # Task 1: Daily TOP 10 at 8 AM Central (entire hour window)
                         # This triggers anytime during 8:00-8:59 if not already sent today
@@ -4606,13 +4612,19 @@ async def _post_startup_init():
                         await asyncio.sleep(60)
             
             # ================================================================
-            # ASYNC NOTIFICATION LOOP DISABLED - Using external cron instead
-            # The /alerts/top10/now endpoint is called by cron-job.org at 8 AM Central
-            # This is more reliable than the async loop which had startup issues
+            # RE-ENABLED: Internal Notification Loop + External Cron backup
+            # Loop handles: 8 AM TOP 10, hourly checks, target/stop alerts
+            # Cron handles: backup 8 AM trigger if loop fails to start
             # ================================================================
-            # task = asyncio.create_task(_ghost_notification_loop())  # DISABLED
-            LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System ready (external cron mode)")
-            LOGGER.info("🎯 [POST-STARTUP] TOP 10 will be triggered by cron-job.org at 8 AM Central")
+            try:
+                task = asyncio.create_task(_ghost_notification_loop())
+                LOGGER.info("🎯 [POST-STARTUP] ✅ Ghost Notification Loop STARTED (internal async)")
+                LOGGER.info("🎯 [POST-STARTUP] Schedule: 8 AM TOP 10 + every 15 min watchdog checks")
+                print("[NOTIFICATION LOOP] ✅ TASK CREATED SUCCESSFULLY")
+            except Exception as loop_err:
+                LOGGER.error(f"🎯 [POST-STARTUP] ❌ Failed to start notification loop: {loop_err}")
+                print(f"[NOTIFICATION LOOP] ❌ FAILED TO CREATE TASK: {loop_err}")
+                LOGGER.info("🎯 [POST-STARTUP] Falling back to external cron only mode")
         else:
             LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
     except Exception as e:
