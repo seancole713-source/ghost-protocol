@@ -4612,19 +4612,18 @@ async def _post_startup_init():
                         await asyncio.sleep(60)
             
             # ================================================================
-            # RE-ENABLED: Internal Notification Loop + External Cron backup
-            # Loop handles: 8 AM TOP 10, hourly checks, target/stop alerts
-            # Cron handles: backup 8 AM trigger if loop fails to start
+            # EXTERNAL CRON ONLY MODE (per user request)
+            # Internal async loop DISABLED - using cron-job.org for reliability
+            # 
+            # Schedule in cron-job.org:
+            # - 8:00 AM CT: /alerts/top10/now (daily TOP 10)
+            # - Every 30 min during market hours: /alerts/watchdog/check (stocks)
+            # - Every 4 hours: /alerts/watchdog/check (crypto 24/7)
             # ================================================================
-            try:
-                task = asyncio.create_task(_ghost_notification_loop())
-                LOGGER.info("🎯 [POST-STARTUP] ✅ Ghost Notification Loop STARTED (internal async)")
-                LOGGER.info("🎯 [POST-STARTUP] Schedule: 8 AM TOP 10 + every 15 min watchdog checks")
-                print("[NOTIFICATION LOOP] ✅ TASK CREATED SUCCESSFULLY")
-            except Exception as loop_err:
-                LOGGER.error(f"🎯 [POST-STARTUP] ❌ Failed to start notification loop: {loop_err}")
-                print(f"[NOTIFICATION LOOP] ❌ FAILED TO CREATE TASK: {loop_err}")
-                LOGGER.info("🎯 [POST-STARTUP] Falling back to external cron only mode")
+            # task = asyncio.create_task(_ghost_notification_loop())  # DISABLED
+            LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System ready (EXTERNAL CRON MODE)")
+            LOGGER.info("🎯 [POST-STARTUP] Endpoints: /alerts/top10/now, /alerts/watchdog/check")
+            print("[NOTIFICATION SYSTEM] External cron mode - internal loop DISABLED")
         else:
             LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
     except Exception as e:

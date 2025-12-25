@@ -263,6 +263,55 @@ def format_update_message(picks: List[Dict]) -> str:
     return "\n".join(lines)
 
 
+def format_off_path_alert(off_path_picks: List[Dict], asset_type: str = "ALL") -> str:
+    """
+    Format alert when picks go OFF their prediction path.
+    
+    OFF PATH means:
+    - BUY prediction but price going DOWN
+    - SELL prediction but price going UP
+    """
+    ct = get_central_time()
+    time_str = ct.strftime("%I:%M %p CT").lstrip("0")
+    
+    title = "🚨 GHOST PATH ALERT"
+    if asset_type == "crypto":
+        title = "🚨 CRYPTO PATH ALERT"
+    elif asset_type == "stock":
+        title = "🚨 STOCK PATH ALERT"
+    
+    lines = [
+        f"{title} — {time_str}",
+        "",
+        "⚠️ These picks are moving AGAINST the prediction:",
+        "",
+    ]
+    
+    for p in off_path_picks:
+        pct = (p['current'] - p['entry']) / p['entry'] * 100
+        pct_str = f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
+        
+        direction = p.get('direction', 'BUY')
+        emoji = "🟢" if direction == "BUY" else "🔴"
+        
+        lines.append(f"{emoji} {p['symbol']} — {direction}")
+        lines.append(f"   Entry: {format_price(p['entry'])} → Now: {format_price(p['current'])} ({pct_str})")
+        lines.append(f"   Target: {format_price(p['target'])} | Stop: {format_price(p['stop'])}")
+        
+        # Explain what's wrong
+        if direction == "BUY" and pct < 0:
+            lines.append(f"   ⚠️ Expected UP but down {abs(pct):.1f}%")
+        elif direction == "SELL" and pct > 0:
+            lines.append(f"   ⚠️ Expected DOWN but up {pct:.1f}%")
+        
+        lines.append("")
+    
+    lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("Ghost is still watching. Will alert on target/stop hit.")
+    
+    return "\n".join(lines)
+
+
 def format_alert_message(alerts: List[Dict]) -> str:
     """Format an alert message when target or stop is hit"""
     ct = get_central_time()
@@ -563,6 +612,8 @@ class GhostNotificationSystem:
         
         updates = []
         alerts = []
+        off_path_stocks = []
+        off_path_crypto = []
         
         for row in rows:
             symbol, asset_type, direction, entry, target, stop, pred_48h, conf, entry_time, expires = row
@@ -574,20 +625,24 @@ class GhostNotificationSystem:
             
             pct_change = (current - entry) / entry
             
-            # Determine emoji based on direction
+            # Determine if on track based on direction
             if direction == "BUY":
                 emoji = "🟢"
-                on_track = current >= entry  # Price going up is good for BUY
+                on_track = current >= entry * 0.98  # Allow 2% buffer
                 near_target = current >= target * 0.98
                 near_stop = current <= stop * 1.02
+                # OFF PATH = BUY but price dropped >2%
+                is_off_path = pct_change < -0.02
             else:  # SELL
                 emoji = "🔴"
-                on_track = current <= entry  # Price going down is good for SELL
+                on_track = current <= entry * 1.02  # Allow 2% buffer
                 near_target = current <= target * 1.02
                 near_stop = current >= stop * 0.98
+                # OFF PATH = SELL but price rose >2%
+                is_off_path = pct_change > 0.02
             
-            # Check for target/stop hit
-            if near_target and abs(pct_change) >= 0.02:  # At least 2% move
+            # Check for target/stop hit (HIGHEST PRIORITY)
+            if near_target and abs(pct_change) >= 0.02:
                 alerts.append({
                     "symbol": symbol,
                     "type": "target_hit",
@@ -605,6 +660,23 @@ class GhostNotificationSystem:
                     "target": target,
                     "stop": stop,
                 })
+            # Check for OFF PATH (moving against prediction)
+            elif is_off_path:
+                off_path_pick = {
+                    "symbol": symbol,
+                    "asset_type": asset_type,
+                    "direction": direction,
+                    "entry": entry,
+                    "current": current,
+                    "target": target,
+                    "stop": stop,
+                    "pct_change": pct_change,
+                }
+                if asset_type == "crypto":
+                    off_path_crypto.append(off_path_pick)
+                else:
+                    off_path_stocks.append(off_path_pick)
+            # Check for significant moves (for scheduled updates)
             elif abs(pct_change) >= SIGNIFICANT_MOVE_PCT:
                 updates.append({
                     "symbol": symbol,
@@ -617,11 +689,11 @@ class GhostNotificationSystem:
                     "near_stop": near_stop,
                 })
         
-        # Send alerts immediately
+        # Send target/stop alerts immediately (HIGHEST PRIORITY)
         if alerts:
             msg = format_alert_message(alerts)
             self.send_telegram(msg)
-            LOGGER.info(f"[NOTIFICATIONS] Sent {len(alerts)} alerts")
+            LOGGER.info(f"[NOTIFICATIONS] Sent {len(alerts)} target/stop alerts")
             
             # Update status in DB
             conn = sqlite3.connect(self._db_path)
@@ -632,16 +704,27 @@ class GhostNotificationSystem:
             conn.commit()
             conn.close()
         
-        # Send updates only at scheduled times (12 PM, 4 PM, 8 PM)
+        # Send OFF PATH alerts immediately (separate for stocks vs crypto)
+        if off_path_stocks:
+            msg = format_off_path_alert(off_path_stocks, asset_type="stock")
+            self.send_telegram(msg)
+            LOGGER.info(f"[NOTIFICATIONS] Sent OFF PATH alert for {len(off_path_stocks)} stocks")
+        
+        if off_path_crypto:
+            msg = format_off_path_alert(off_path_crypto, asset_type="crypto")
+            self.send_telegram(msg)
+            LOGGER.info(f"[NOTIFICATIONS] Sent OFF PATH alert for {len(off_path_crypto)} crypto")
+        
+        # Send scheduled updates (12 PM, 4 PM, 8 PM) - only if no alerts sent
         ct = get_central_time()
         if ct.hour in UPDATE_HOURS and ct.hour != self._last_update_hour:
-            if updates:
+            if updates and not alerts and not off_path_stocks and not off_path_crypto:
                 msg = format_update_message(updates)
                 self.send_telegram(msg)
                 self._last_update_hour = ct.hour
-                LOGGER.info(f"[NOTIFICATIONS] Sent update for {len(updates)} picks")
+                LOGGER.info(f"[NOTIFICATIONS] Sent scheduled update for {len(updates)} picks")
         
-        return bool(alerts or updates)
+        return bool(alerts or updates or off_path_stocks or off_path_crypto)
     
     def get_status(self) -> Dict:
         """Get current status of the notification system"""
