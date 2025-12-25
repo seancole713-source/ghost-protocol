@@ -20703,6 +20703,110 @@ async def top10_send_now(request: Request):
         return {"ok": False, "error": str(e)}
 
 
+@APP.post("/alerts/watchdog/check")
+async def watchdog_check_updates(request: Request):
+    """
+    🐺 WATCHDOG: Check tracked picks for significant moves (>3%) or target/stop hits.
+    
+    SECURED: Requires X-Cron-Secret header matching CRON_SECRET env var.
+    Schedule this via cron-job.org at 12 PM, 4 PM, 8 PM Central.
+    
+    What it does:
+    - Checks all picks from morning's TOP 10
+    - Sends ALERT if target or stop is hit
+    - Sends UPDATE if any pick moved >3%
+    """
+    # Check cron secret for authentication
+    cron_secret = os.getenv("CRON_SECRET", "")
+    provided_secret = request.headers.get("X-Cron-Secret", "")
+    
+    if not cron_secret:
+        LOGGER.warning("[WATCHDOG] CRON_SECRET not configured - endpoint disabled")
+        return {"ok": False, "error": "CRON_SECRET not configured"}
+    
+    if provided_secret != cron_secret:
+        LOGGER.warning(f"[WATCHDOG] Invalid cron secret attempt from {request.client.host if request.client else 'unknown'}")
+        return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
+    
+    try:
+        from core.ghost_notifications import get_notification_system
+        from core.asset_classifier import get_asset_type
+        
+        LOGGER.info("[WATCHDOG] 🐺 Authenticated cron request - checking for updates...")
+        
+        # Setup telegram function
+        def _send_telegram(msg: str) -> bool:
+            return _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
+        
+        notif = get_notification_system()
+        notif.set_telegram_func(_send_telegram)
+        
+        # Create price lookup function using _LATEST_PREDICTIONS + live refresh
+        async def get_current_price(symbol: str) -> float:
+            """Get current price, refreshing if stale"""
+            # First check in-memory predictions
+            if symbol in _LATEST_PREDICTIONS:
+                pred = _LATEST_PREDICTIONS[symbol]
+                price = pred.get("price") or pred.get("current_price") or pred.get("entry_price") or 0
+                if price > 0:
+                    return price
+            
+            # Try live fetch
+            try:
+                asset_class = get_asset_type(symbol)
+                if asset_class == "crypto":
+                    from core.crypto.crypto_providers import get_crypto_price_quorum
+                    fresh = await get_crypto_price_quorum(symbol, use_cache=False)
+                    if fresh and fresh.get("price", 0) > 0:
+                        return fresh["price"]
+                else:
+                    from core.providers.turbo_provider import get_turbo_provider
+                    turbo = get_turbo_provider()
+                    fresh = turbo.turbo_stock_price(symbol, max_budget_s=2.0)
+                    if fresh.get("ok") and fresh.get("price", 0) > 0:
+                        return fresh["price"]
+            except Exception as e:
+                LOGGER.warning(f"[WATCHDOG] Failed to get price for {symbol}: {e}")
+            
+            return 0.0
+        
+        # Sync wrapper for the price function
+        import asyncio
+        def get_price_sync(symbol: str) -> float:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We're in an async context, create a new task
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, get_current_price(symbol))
+                        return future.result(timeout=5)
+                else:
+                    return loop.run_until_complete(get_current_price(symbol))
+            except Exception as e:
+                LOGGER.warning(f"[WATCHDOG] Price lookup error for {symbol}: {e}")
+                return 0.0
+        
+        # Run the check
+        had_updates = notif.check_for_updates(get_price_sync)
+        
+        # Get status for response
+        status = notif.get_status()
+        
+        return {
+            "ok": True,
+            "message": "Watchdog check complete",
+            "sent_notifications": had_updates,
+            "active_picks": status.get("active_picks", 0),
+            "target_hits": status.get("target_hits", 0),
+            "stop_hits": status.get("stop_hits", 0),
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"[WATCHDOG] Error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/alerts/notifications/status")
 async def notifications_status():
     """Get status of the new Ghost Notification System"""
