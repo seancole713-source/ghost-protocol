@@ -1493,6 +1493,21 @@ _LAST_TELEGRAM_ERROR: str | None = None
 # Use _classify_symbol_category() to determine if stocks/crypto/vip
 _LATEST_PREDICTIONS: dict[str, dict[str, Any]] = {}
 
+# ============================================================
+# NOTIFICATION LOOP STATUS TRACKING (for /debug/notification-loop-status)
+# ============================================================
+_NOTIFICATION_LOOP_STATUS = {
+    "running": False,
+    "started_at": None,
+    "loop_count": 0,
+    "last_top10_date": None,
+    "last_top10_send_time": None,
+    "last_top10_success": None,
+    "last_check_time": None,
+    "current_central_time": None,
+    "predictions_count": 0,
+}
+
 # Ghost Hunter V2: UNLIMITED symbol tracking across all markets
 # Auto-expands to track ANY liquid symbol with available price feeds
 # NO ARTIFICIAL LIMITS - scales to thousands of symbols
@@ -4514,6 +4529,10 @@ async def _post_startup_init():
                 last_check_time = 0
                 loop_count = 0
                 
+                # Mark loop as running
+                _NOTIFICATION_LOOP_STATUS["running"] = True
+                _NOTIFICATION_LOOP_STATUS["started_at"] = datetime.now(central_tz).isoformat()
+                
                 await asyncio.sleep(30)  # Initial delay
                 
                 while True:
@@ -4523,6 +4542,12 @@ async def _post_startup_init():
                         current_hour = now_central.hour
                         current_date = now_central.strftime("%Y-%m-%d")
                         current_time = time.time()
+                        
+                        # Update status tracking
+                        _NOTIFICATION_LOOP_STATUS["loop_count"] = loop_count
+                        _NOTIFICATION_LOOP_STATUS["current_central_time"] = now_central.strftime("%Y-%m-%d %H:%M:%S")
+                        _NOTIFICATION_LOOP_STATUS["last_top10_date"] = last_top10_date
+                        _NOTIFICATION_LOOP_STATUS["predictions_count"] = len(_LATEST_PREDICTIONS)
                         
                         # Log every 10 minutes to confirm loop is alive
                         if loop_count % 10 == 0:
@@ -4539,8 +4564,12 @@ async def _post_startup_init():
                             
                             if success:
                                 last_top10_date = current_date
+                                _NOTIFICATION_LOOP_STATUS["last_top10_date"] = current_date
+                                _NOTIFICATION_LOOP_STATUS["last_top10_send_time"] = now_central.isoformat()
+                                _NOTIFICATION_LOOP_STATUS["last_top10_success"] = True
                                 LOGGER.info(f"[NOTIFICATIONS] ✅ TOP 10 sent successfully at {now_central.strftime('%H:%M:%S')} Central!")
                             else:
+                                _NOTIFICATION_LOOP_STATUS["last_top10_success"] = False
                                 LOGGER.warning(f"[NOTIFICATIONS] ⚠️ TOP 10 send failed or no predictions (count={len(_LATEST_PREDICTIONS)})")
                                 # Don't set last_top10_date so it can retry next minute
                         
@@ -4560,10 +4589,12 @@ async def _post_startup_init():
                             
                             notification_system.check_for_updates(get_price)
                             last_check_time = current_time
+                            _NOTIFICATION_LOOP_STATUS["last_check_time"] = datetime.now(central_tz).isoformat()
                         
                         await asyncio.sleep(60)  # Check every minute
                         
                     except asyncio.CancelledError:
+                        _NOTIFICATION_LOOP_STATUS["running"] = False
                         LOGGER.info("[NOTIFICATIONS] Loop cancelled - shutting down")
                         break
                     except Exception as e:
@@ -20438,6 +20469,38 @@ async def top10_status():
     except Exception as e:
         LOGGER.error(f"TOP 10 status error: {e}")
         return {"ok": False, "error": str(e)}
+
+
+@APP.get("/debug/notification-loop-status")
+async def notification_loop_status():
+    """
+    Check if the 8 AM notification loop is running and its current state.
+    
+    Returns:
+    - running: Is the loop actively running?
+    - started_at: When did the loop start?
+    - loop_count: How many iterations has it run?
+    - last_top10_date: Date of last TOP 10 send (prevents duplicates)
+    - last_top10_send_time: Timestamp of last successful send
+    - last_top10_success: Did the last send succeed?
+    - predictions_count: How many predictions are in memory?
+    - current_central_time: Current time in Central timezone
+    """
+    from zoneinfo import ZoneInfo
+    central_tz = ZoneInfo("America/Chicago")
+    now_central = datetime.now(central_tz)
+    
+    return {
+        "ok": True,
+        "notification_loop": _NOTIFICATION_LOOP_STATUS,
+        "current_central_time": now_central.strftime("%Y-%m-%d %H:%M:%S"),
+        "next_top10_hour": "08:00 Central",
+        "will_send_today": (
+            _NOTIFICATION_LOOP_STATUS.get("last_top10_date") != now_central.strftime("%Y-%m-%d")
+        ),
+        "predictions_available": len(_LATEST_PREDICTIONS),
+        "env_active_tracking_enabled": os.getenv("ACTIVE_TRACKING_ENABLED", "1"),
+    }
 
 
 @APP.get("/debug/top10-preview")
