@@ -47,18 +47,39 @@ class AssetClassifier:
     
     # Crypto assets (highest volatility)
     CRYPTO = {
+        # Major cryptos
         'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'DOT', 'MATIC',
         'AVAX', 'LINK', 'UNI', 'AAVE', 'LTC', 'BCH', 'ATOM', 'FIL',
         'NEAR', 'APT', 'ARB', 'OP', 'IMX', 'INJ', 'SUI', 'SEI',
+        # Meme coins
         'PEPE', 'SHIB', 'BONK', 'WIF', 'FLOKI', 'MEME',
+        'TURBO', 'SAMO', 'ELON', 'LADYS', 'WOJAK', 'CHAD',
+        # DeFi tokens
         'MKR', 'SNX', 'CRV', 'COMP', 'YFI', 'SUSHI', '1INCH',
+        'LDO', 'AAVE', 'UNI', 'CAKE', 'JOE', 'GMX', 'DYDX',
+        # Gaming/Metaverse
         'LRC', 'ENJ', 'SAND', 'MANA', 'AXS', 'GALA', 'ILV',
+        'IMX', 'MAGIC', 'PRIME', 'BEAM', 'PIXEL', 'PORTAL',
+        # Layer 1s
         'FTM', 'ALGO', 'HBAR', 'VET', 'EOS', 'XLM', 'TRX',
         'KAVA', 'ZEN', 'ZEC', 'DASH', 'XMR', 'ETC',
-        'BNB', 'TON', 'LEO', 'OKB', 'CRO',  # Exchange tokens
-        'ICP', 'THETA', 'EGLD', 'QNT', 'QTUM', 'XTZ', 'RUNE',  # Layer 1s
-        'ONDO', 'RLC', 'BAT', 'ZRX', 'ANT', 'LOOM', 'OMG',  # Utility tokens
-        'TURBO', 'SAMO', 'ELON', 'LADYS', 'WOJAK', 'CHAD',  # Meme coins
+        'ICP', 'THETA', 'EGLD', 'QNT', 'QTUM', 'XTZ', 'RUNE',
+        'ROSE', 'CELO', 'ONE', 'FLOW', 'MINA', 'CFX', 'KAS',
+        # Exchange tokens
+        'BNB', 'TON', 'LEO', 'OKB', 'CRO', 'FTT', 'HT', 'GT',
+        # Utility/Infrastructure
+        'ONDO', 'RLC', 'BAT', 'ZRX', 'ANT', 'LOOM', 'OMG',
+        'GRT', 'STORJ', 'FET', 'OCEAN', 'AGIX', 'RNDR', 'AR',
+        # Fan/Sports tokens
+        'CHZ', 'SANTOS', 'PSG', 'BAR', 'JUV', 'CITY', 'ASR',
+        # More altcoins
+        'APE', 'BLUR', 'ID', 'MASK', 'ENS', 'LPT', 'SSV',
+        'STX', 'ORDI', 'SATS', 'RATS', 'TRAC', 'TIA', 'PYTH',
+        'JTO', 'JUP', 'W', 'STRK', 'ETHFI', 'ENA', 'PENDLE',
+        'RSR', 'ANKR', 'API3', 'BAND', 'DIA', 'TRB', 'UMA',
+        'SKL', 'CTSI', 'NMR', 'RAD', 'MLN', 'REN', 'KNC',
+        'ZIL', 'ICX', 'ONT', 'NEO', 'WAVES', 'LSK', 'ARK',
+        'METIS', 'BOBA', 'CELR', 'ACH', 'ALICE', 'TLM', 'SLP',
         # Common trading pairs suffixes
         'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT',
     }
