@@ -4605,17 +4605,18 @@ async def _post_startup_init():
                         LOGGER.error(f"[NOTIFICATIONS] Loop error: {e}", exc_info=True)
                         await asyncio.sleep(60)
             
-            # Create task and verify it started
-            task = asyncio.create_task(_ghost_notification_loop())
-            LOGGER.info(f"🎯 [POST-STARTUP] ✅ Ghost Notification System STARTED (TOP 10 at 8AM Central, task={task})")
-            print(f"[NOTIFICATION LOOP] Task created: {task}")
+            # ================================================================
+            # ASYNC NOTIFICATION LOOP DISABLED - Using external cron instead
+            # The /alerts/top10/now endpoint is called by cron-job.org at 8 AM Central
+            # This is more reliable than the async loop which had startup issues
+            # ================================================================
+            # task = asyncio.create_task(_ghost_notification_loop())  # DISABLED
+            LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System ready (external cron mode)")
+            LOGGER.info("🎯 [POST-STARTUP] TOP 10 will be triggered by cron-job.org at 8 AM Central")
         else:
             LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
-            _NOTIFICATION_LOOP_STATUS["running"] = False  # Explicitly mark as disabled
     except Exception as e:
-        LOGGER.error(f"ghost_notification_system_start_failed: {e}", extra={"component": "startup"}, exc_info=True)
-        _NOTIFICATION_LOOP_STATUS["running"] = False
-        _NOTIFICATION_LOOP_STATUS["last_top10_success"] = f"STARTUP ERROR: {e}"
+        LOGGER.error(f"ghost_notification_system_init_failed: {e}", extra={"component": "startup"}, exc_info=True)
     
     # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
     try:
@@ -20655,14 +20656,29 @@ async def top10_force_send():
 
 
 @APP.post("/alerts/top10/now")
-async def top10_send_now():
+async def top10_send_now(request: Request):
     """
     Send TOP 10 message NOW using the new Ghost Notification System.
     
-    Uses the EXACT format requested with proper BUY/SELL/WATCH colors.
+    SECURED: Requires X-Cron-Secret header matching CRON_SECRET env var.
+    This endpoint is called by external cron (cron-job.org) at 8 AM Central.
     """
+    # Check cron secret for authentication
+    cron_secret = os.getenv("CRON_SECRET", "")
+    provided_secret = request.headers.get("X-Cron-Secret", "")
+    
+    if not cron_secret:
+        LOGGER.warning("[TOP10] CRON_SECRET not configured - endpoint disabled")
+        return {"ok": False, "error": "CRON_SECRET not configured"}
+    
+    if provided_secret != cron_secret:
+        LOGGER.warning(f"[TOP10] Invalid cron secret attempt from {request.client.host if request.client else 'unknown'}")
+        return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
+    
     try:
         from core.ghost_notifications import get_notification_system
+        
+        LOGGER.info("[TOP10] Authenticated cron request - sending TOP 10...")
         
         # Get notification system
         def _send_telegram(msg: str) -> bool:
