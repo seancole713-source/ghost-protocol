@@ -20512,6 +20512,85 @@ async def notification_loop_status():
     }
 
 
+@APP.post("/debug/notification-loop-start")
+async def notification_loop_force_start():
+    """
+    Force start the notification loop if it's not running.
+    Useful for debugging startup issues.
+    """
+    from zoneinfo import ZoneInfo
+    from core.ghost_notifications import get_notification_system
+    
+    central_tz = ZoneInfo("America/Chicago")
+    
+    if _NOTIFICATION_LOOP_STATUS.get("running"):
+        return {"ok": True, "message": "Loop already running", "status": _NOTIFICATION_LOOP_STATUS}
+    
+    try:
+        # Set up telegram function
+        def _send_telegram(message: str) -> bool:
+            if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+                return False
+            return _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
+        
+        notification_system = get_notification_system()
+        notification_system.set_telegram_func(_send_telegram)
+        
+        async def _ghost_notification_loop_v2():
+            """Simplified notification loop for debugging"""
+            nonlocal notification_system
+            
+            TOP_10_HOUR = 8
+            _NOTIFICATION_LOOP_STATUS["running"] = True
+            _NOTIFICATION_LOOP_STATUS["started_at"] = datetime.now(central_tz).isoformat()
+            LOGGER.info("[NOTIFICATION LOOP V2] Starting...")
+            
+            last_top10_date = None
+            loop_count = 0
+            
+            while True:
+                try:
+                    loop_count += 1
+                    now_central = datetime.now(central_tz)
+                    current_hour = now_central.hour
+                    current_date = now_central.strftime("%Y-%m-%d")
+                    
+                    _NOTIFICATION_LOOP_STATUS["loop_count"] = loop_count
+                    _NOTIFICATION_LOOP_STATUS["current_central_time"] = now_central.strftime("%Y-%m-%d %H:%M:%S")
+                    _NOTIFICATION_LOOP_STATUS["predictions_count"] = len(_LATEST_PREDICTIONS)
+                    _NOTIFICATION_LOOP_STATUS["last_top10_date"] = last_top10_date
+                    
+                    # Send TOP 10 at 8 AM
+                    if current_hour == TOP_10_HOUR and last_top10_date != current_date:
+                        LOGGER.info(f"[NOTIFICATION LOOP V2] Sending TOP 10 at {now_central}")
+                        success = notification_system.send_top10(_LATEST_PREDICTIONS)
+                        if success:
+                            last_top10_date = current_date
+                            _NOTIFICATION_LOOP_STATUS["last_top10_date"] = current_date
+                            _NOTIFICATION_LOOP_STATUS["last_top10_send_time"] = now_central.isoformat()
+                            _NOTIFICATION_LOOP_STATUS["last_top10_success"] = True
+                        else:
+                            _NOTIFICATION_LOOP_STATUS["last_top10_success"] = False
+                    
+                    await asyncio.sleep(60)
+                except asyncio.CancelledError:
+                    _NOTIFICATION_LOOP_STATUS["running"] = False
+                    break
+                except Exception as e:
+                    LOGGER.error(f"[NOTIFICATION LOOP V2] Error: {e}")
+                    await asyncio.sleep(60)
+        
+        asyncio.create_task(_ghost_notification_loop_v2())
+        
+        return {
+            "ok": True,
+            "message": "Notification loop started via debug endpoint",
+            "status": _NOTIFICATION_LOOP_STATUS
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/debug/top10-preview")
 async def top10_preview():
     """
