@@ -20440,6 +20440,46 @@ async def top10_status():
         return {"ok": False, "error": str(e)}
 
 
+@APP.get("/debug/top10-preview")
+async def top10_preview():
+    """
+    Preview the TOP 10 message that would be sent.
+    
+    Shows the EXACT message content and individual pick directions.
+    This helps debug whether directions are correct.
+    """
+    try:
+        from core.ghost_notifications import get_notification_system, format_top10_message
+        
+        notif = get_notification_system()
+        stocks, crypto = notif.get_top10_predictions(_LATEST_PREDICTIONS)
+        
+        # Build direction debug info
+        stocks_debug = [
+            {"symbol": s["symbol"], "direction": s.get("direction", "MISSING"), "conf": s["confidence"]}
+            for s in stocks
+        ]
+        crypto_debug = [
+            {"symbol": c["symbol"], "direction": c.get("direction", "MISSING"), "conf": c["confidence"]}
+            for c in crypto
+        ]
+        
+        # Generate the actual message
+        message = format_top10_message(stocks, crypto)
+        
+        return {
+            "ok": True,
+            "stocks_count": len(stocks),
+            "crypto_count": len(crypto),
+            "stocks_with_directions": stocks_debug,
+            "crypto_with_directions": crypto_debug,
+            "message_preview": message,
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.post("/alerts/top10/send")
 async def top10_force_send():
     """Force send the TOP 10 message with whatever picks are queued"""
