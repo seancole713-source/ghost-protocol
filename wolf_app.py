@@ -4601,12 +4601,17 @@ async def _post_startup_init():
                         LOGGER.error(f"[NOTIFICATIONS] Loop error: {e}", exc_info=True)
                         await asyncio.sleep(60)
             
-            asyncio.create_task(_ghost_notification_loop())
-            LOGGER.info("🎯 [POST-STARTUP] ✅ Ghost Notification System STARTED (TOP 10 at 8AM Central)")
+            # Create task and verify it started
+            task = asyncio.create_task(_ghost_notification_loop())
+            LOGGER.info(f"🎯 [POST-STARTUP] ✅ Ghost Notification System STARTED (TOP 10 at 8AM Central, task={task})")
+            print(f"[NOTIFICATION LOOP] Task created: {task}")
         else:
             LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
+            _NOTIFICATION_LOOP_STATUS["running"] = False  # Explicitly mark as disabled
     except Exception as e:
         LOGGER.error(f"ghost_notification_system_start_failed: {e}", extra={"component": "startup"}, exc_info=True)
+        _NOTIFICATION_LOOP_STATUS["running"] = False
+        _NOTIFICATION_LOOP_STATUS["last_top10_success"] = f"STARTUP ERROR: {e}"
     
     # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
     try:
