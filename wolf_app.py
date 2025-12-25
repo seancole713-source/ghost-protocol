@@ -4471,6 +4471,8 @@ async def _post_startup_init():
         from core.ghost_notifications import get_notification_system, get_central_time
         
         active_tracking_enabled = os.getenv("ACTIVE_TRACKING_ENABLED", "1") == "1"
+        LOGGER.info(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}")
+        print(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}")
         
         if active_tracking_enabled:
             # Set up Telegram function
@@ -4529,9 +4531,11 @@ async def _post_startup_init():
                 last_check_time = 0
                 loop_count = 0
                 
-                # Mark loop as running
+                # Mark loop as running IMMEDIATELY
                 _NOTIFICATION_LOOP_STATUS["running"] = True
                 _NOTIFICATION_LOOP_STATUS["started_at"] = datetime.now(central_tz).isoformat()
+                LOGGER.info("[NOTIFICATION LOOP] Status set to RUNNING")
+                print("[NOTIFICATION LOOP] Status set to RUNNING")
                 
                 await asyncio.sleep(30)  # Initial delay
                 
