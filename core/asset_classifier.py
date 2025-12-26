@@ -27,6 +27,16 @@ class AssetClassifier:
     Classifies assets and returns appropriate target/stop percentages.
     """
     
+    # STABLECOINS - EXCLUDE from all predictions (pegged to $1, no movement)
+    # These should NEVER appear in TOP 10 picks
+    STABLECOINS = {
+        'USDC', 'USDT', 'DAI', 'BUSD', 'TUSD', 'USDP', 'GUSD', 'FRAX',
+        'LUSD', 'SUSD', 'USDD', 'USTC', 'MIM', 'CUSD', 'EURC', 'PAXG',
+        'FDUSD', 'PYUSD', 'GHO', 'CRVUSD', 'DOLA', 'EURT', 'EURS',
+        # Wrapped/Synthetic versions
+        'WETH', 'WBTC', 'STETH', 'CBETH', 'RETH', 'WSTETH',
+    }
+    
     # Large cap stocks (low volatility) - typically move 0.5-1.5% daily
     LARGE_CAP_STOCKS = {
         'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'META', 'BRK.A', 'BRK.B',
@@ -54,9 +64,15 @@ class AssetClassifier:
         # Meme coins
         'PEPE', 'SHIB', 'BONK', 'WIF', 'FLOKI', 'MEME',
         'TURBO', 'SAMO', 'ELON', 'LADYS', 'WOJAK', 'CHAD',
-        # DeFi tokens
+        # DeFi tokens - IMPORTANT: These are CRYPTO, not stocks!
         'MKR', 'SNX', 'CRV', 'COMP', 'YFI', 'SUSHI', '1INCH',
         'LDO', 'AAVE', 'UNI', 'CAKE', 'JOE', 'GMX', 'DYDX',
+        'BAL',   # Balancer - DeFi AMM
+        'CVX',   # Convex Finance
+        'FXS',   # Frax Share
+        'RPL',   # Rocket Pool
+        'LQTY',  # Liquity
+        'VELO',  # Velodrome
         # Gaming/Metaverse
         'LRC', 'ENJ', 'SAND', 'MANA', 'AXS', 'GALA', 'ILV',
         'IMX', 'MAGIC', 'PRIME', 'BEAM', 'PIXEL', 'PORTAL',
@@ -110,12 +126,25 @@ class AssetClassifier:
     }
     
     @classmethod
+    def is_stablecoin(cls, symbol: str) -> bool:
+        """
+        Check if symbol is a stablecoin (should be EXCLUDED from predictions).
+        Stablecoins are pegged to $1 and don't move meaningfully.
+        """
+        clean = symbol.upper().replace('USDT', '').replace('USD', '').replace('/USD', '')
+        return clean in cls.STABLECOINS or symbol.upper() in cls.STABLECOINS
+    
+    @classmethod
     def get_asset_type(cls, symbol: str) -> str:
         """
-        Returns asset type: 'crypto', 'stock_large', 'stock_volatile', 'stock_mid'
+        Returns asset type: 'crypto', 'stock_large', 'stock_volatile', 'stock_mid', 'stablecoin'
         """
         # Clean symbol (remove USDT, USD, etc.)
         clean = symbol.upper().replace('USDT', '').replace('USD', '').replace('/USD', '')
+        
+        # Check stablecoins FIRST (should be excluded from predictions)
+        if clean in cls.STABLECOINS or symbol.upper() in cls.STABLECOINS:
+            return 'stablecoin'  # Special type - should be filtered out
         
         if clean in cls.CRYPTO or symbol.upper() in cls.CRYPTO:
             return 'crypto'
@@ -207,3 +236,8 @@ def is_crypto(symbol: str) -> bool:
 def is_stock(symbol: str) -> bool:
     """Convenience function to check if stock"""
     return AssetClassifier.is_stock(symbol)
+
+
+def is_stablecoin(symbol: str) -> bool:
+    """Convenience function to check if stablecoin (should be EXCLUDED from predictions)"""
+    return AssetClassifier.is_stablecoin(symbol)

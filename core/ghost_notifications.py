@@ -411,7 +411,7 @@ class GhostNotificationSystem:
         Returns:
             (stocks_list, crypto_list) - each sorted by confidence
         """
-        from core.asset_classifier import get_asset_type
+        from core.asset_classifier import get_asset_type, AssetClassifier
         
         inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
         
@@ -421,9 +421,16 @@ class GhostNotificationSystem:
         # Track price refresh attempts for logging
         prices_refreshed = 0
         prices_stale_skipped = 0
+        stablecoins_skipped = 0
         
         for symbol, pred in latest_predictions.items():
             if not isinstance(pred, dict):
+                continue
+            
+            # CRITICAL: Skip stablecoins (USDC, DAI, USDT, etc.) - they don't move!
+            if AssetClassifier.is_stablecoin(symbol):
+                stablecoins_skipped += 1
+                LOGGER.debug(f"[NOTIFICATIONS] Skipping stablecoin: {symbol}")
                 continue
             
             confidence = pred.get("confidence", 0)
@@ -503,12 +510,20 @@ class GhostNotificationSystem:
                 "direction": direction,
             }
             
-            # Classify asset
+            # Classify asset - skip stablecoins (they return 'stablecoin' type now)
             asset_class = get_asset_type(symbol)
-            if asset_class == "crypto":
+            if asset_class == "stablecoin":
+                stablecoins_skipped += 1
+                LOGGER.debug(f"[NOTIFICATIONS] Skipping stablecoin (by type): {symbol}")
+                continue
+            elif asset_class == "crypto":
                 crypto.append(pick)
             else:
                 stocks.append(pick)
+        
+        # Log skip stats
+        if stablecoins_skipped > 0:
+            LOGGER.info(f"[NOTIFICATIONS] Skipped {stablecoins_skipped} stablecoins from predictions")
         
         # Sort by confidence, take top 5
         stocks.sort(key=lambda x: x["confidence"], reverse=True)

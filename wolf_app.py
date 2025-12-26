@@ -20673,6 +20673,8 @@ async def top10_send_now(request: Request):
     
     SECURED: Requires X-Cron-Secret header matching CRON_SECRET env var.
     This endpoint is called by external cron (cron-job.org) at 8 AM Central.
+    
+    IMPORTANT: Only ONE message per day. If already sent today, returns success=False.
     """
     # Check cron secret for authentication
     cron_secret = os.getenv("CRON_SECRET", "")
@@ -20687,9 +20689,35 @@ async def top10_send_now(request: Request):
         return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
     
     try:
-        from core.ghost_notifications import get_notification_system
+        from core.ghost_notifications import get_notification_system, get_central_time
+        import sqlite3
         
-        LOGGER.info("[TOP10] Authenticated cron request - sending TOP 10...")
+        LOGGER.info("[TOP10] Authenticated cron request - checking daily limit...")
+        
+        # Check if already sent today using database
+        today = get_central_time().strftime("%Y-%m-%d")
+        db_path = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
+        
+        try:
+            conn = sqlite3.connect(db_path)
+            already_sent = conn.execute(
+                "SELECT COUNT(*) FROM notification_log WHERE notification_type = 'top10' AND DATE(sent_at) = ?",
+                (today,)
+            ).fetchone()[0]
+            conn.close()
+            
+            if already_sent > 0:
+                LOGGER.info(f"[TOP10] ⛔ Already sent today ({today}) - skipping duplicate")
+                return {
+                    "ok": False,
+                    "message": f"TOP 10 already sent today ({today}). Only ONE per day.",
+                    "already_sent_today": True,
+                    "predictions_available": len(_LATEST_PREDICTIONS),
+                }
+        except Exception as db_err:
+            LOGGER.warning(f"[TOP10] DB check failed: {db_err} - proceeding without dedup check")
+        
+        LOGGER.info("[TOP10] ✅ Not sent today - sending TOP 10...")
         
         # Get notification system
         def _send_telegram(msg: str) -> bool:
@@ -20698,10 +20726,25 @@ async def top10_send_now(request: Request):
         notif = get_notification_system()
         notif.set_telegram_func(_send_telegram)
         
-        # Force send (bypasses daily check)
-        notif._last_top10_date = ""  # Reset so it will send
+        # DON'T force reset - let the system's daily check work
+        # Only reset if we verified it hasn't been sent today via DB
+        notif._last_top10_date = ""  # Reset since we verified via DB
         
         success = notif.send_top10(_LATEST_PREDICTIONS)
+        
+        # Log to database
+        if success:
+            try:
+                conn = sqlite3.connect(db_path)
+                conn.execute(
+                    "INSERT INTO notification_log (notification_type, message_preview) VALUES (?, ?)",
+                    ("top10", f"Sent {len(_LATEST_PREDICTIONS)} predictions")
+                )
+                conn.commit()
+                conn.close()
+                LOGGER.info(f"[TOP10] ✅ Logged to DB - won't send again today")
+            except Exception as log_err:
+                LOGGER.warning(f"[TOP10] Failed to log to DB: {log_err}")
         
         return {
             "ok": success,
@@ -20711,6 +20754,43 @@ async def top10_send_now(request: Request):
         
     except Exception as e:
         LOGGER.error(f"TOP 10 NOW error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/alerts/top10/force")
+async def top10_force_send(request: Request):
+    """
+    🔧 FORCE send TOP 10 message - BYPASSES daily limit.
+    
+    Use this for testing only. Requires X-Cron-Secret AND X-Force-Send: true headers.
+    """
+    cron_secret = os.getenv("CRON_SECRET", "")
+    provided_secret = request.headers.get("X-Cron-Secret", "")
+    force_header = request.headers.get("X-Force-Send", "")
+    
+    if provided_secret != cron_secret or force_header.lower() != "true":
+        return {"ok": False, "error": "Requires X-Cron-Secret AND X-Force-Send: true"}
+    
+    try:
+        from core.ghost_notifications import get_notification_system
+        
+        LOGGER.warning("[TOP10] ⚠️ FORCE SEND - bypassing daily limit!")
+        
+        def _send_telegram(msg: str) -> bool:
+            return _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
+        
+        notif = get_notification_system()
+        notif.set_telegram_func(_send_telegram)
+        notif._last_top10_date = ""  # Force reset
+        
+        success = notif.send_top10(_LATEST_PREDICTIONS)
+        
+        return {
+            "ok": success,
+            "message": "FORCE sent TOP 10!" if success else "Failed",
+            "warning": "Daily limit bypassed - use sparingly",
+        }
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
