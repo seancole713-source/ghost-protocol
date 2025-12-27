@@ -148,6 +148,17 @@ class MomentumTracker:
             conn = sqlite3.connect(str(self.db_path))
             conn.row_factory = sqlite3.Row
             
+            # First check if table exists
+            table_check = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='ghost_predictions'"
+            ).fetchone()
+            
+            if not table_check:
+                # Table doesn't exist - return empty (not an error, just cold start)
+                conn.close()
+                LOGGER.debug(f"ghost_predictions table not found - momentum tracking disabled")
+                return []
+            
             cursor = conn.execute("""
                 SELECT 
                     symbol,
@@ -165,6 +176,10 @@ class MomentumTracker:
             
             return predictions
         except Exception as e:
+            # Suppress "no such table" errors - not critical
+            if "no such table" in str(e):
+                LOGGER.debug(f"ghost_predictions table not found - momentum tracking disabled")
+                return []
             LOGGER.error(f"Failed to retrieve recent predictions for {symbol}: {e}")
             return []
     

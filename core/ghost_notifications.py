@@ -81,6 +81,22 @@ LEARNING_BOOST_AMOUNT = 0.15  # 15% confidence boost
 # Re-enable after fixing outcome data
 LEARNING_ENABLED = False  # SET TO True AFTER DATA IS FIXED
 
+# ============================================================================
+# HARDCODED EXCLUSIONS - Symbols with historically bad accuracy
+# These are ALWAYS excluded regardless of learning data
+# ============================================================================
+HARDCODED_EXCLUSIONS = {
+    # Crypto with historically poor prediction accuracy
+    'DOT': 'historically low accuracy (<40%)',
+    'DOGE': 'historically low accuracy (<40%)',
+    'MATIC': 'historically low accuracy (<40%)',
+    'OMG': 'historically low accuracy (<40%)',
+    'AVAX': 'historically low accuracy (<40%)',
+    'ANT': 'historically low accuracy (<40%)',
+    'OCEAN': 'historically low accuracy (<40%)',
+    # Add more as identified
+}
+
 # Cache for symbol accuracy (refreshed every 5 minutes)
 _SYMBOL_ACCURACY_CACHE = {}
 _SYMBOL_ACCURACY_CACHE_TIME = 0
@@ -156,6 +172,10 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     """
     Check if symbol should be excluded based on historical accuracy.
     
+    PRIORITY ORDER:
+    1. HARDCODED_EXCLUSIONS - Always excluded (known bad symbols)
+    2. Learning data - Excluded if <40% accuracy after 10+ predictions
+    
     Args:
         symbol: The symbol to check
         accuracy_data: Dict from get_symbol_accuracy_from_postgres()
@@ -163,6 +183,11 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     Returns:
         (should_exclude: bool, reason: str)
     """
+    # PRIORITY 1: Check hardcoded exclusions FIRST (always applies)
+    if symbol in HARDCODED_EXCLUSIONS:
+        return True, f"HARDCODED: {HARDCODED_EXCLUSIONS[symbol]}"
+    
+    # PRIORITY 2: Check learning data (only if enabled)
     if symbol not in accuracy_data:
         return False, "no_data"
     
