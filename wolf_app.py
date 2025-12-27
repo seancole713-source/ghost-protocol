@@ -20633,13 +20633,13 @@ async def debug_learning_status():
             if database_url:
                 conn = psycopg2.connect(database_url)
                 cursor = conn.cursor()
+                # Don't filter by status - just count all outcomes
                 cursor.execute("""
                     SELECT 
                         COUNT(*) as total,
                         SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
                         SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses
                     FROM ghost_prediction_outcomes
-                    WHERE status = 'verified'
                 """)
                 row = cursor.fetchone()
                 if row:

@@ -183,7 +183,6 @@ class FeedbackLoop:
                     price_at_resolution, EXTRACT(EPOCH FROM closed_at)
                 FROM ghost_prediction_outcomes
                 WHERE closed_at > NOW() - INTERVAL '7 days'
-                AND status = 'verified'
                 ORDER BY closed_at DESC
                 LIMIT 1000
             """)
