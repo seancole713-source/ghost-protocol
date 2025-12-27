@@ -68,8 +68,11 @@ class FeedbackLoop:
         self.signal_performance = defaultdict(lambda: {"correct": 0, "total": 0})
         self.recent_outcomes = deque(maxlen=1000)  # Last 1000 predictions
         
-        # Load existing weights
+        # Load existing weights from SQLite cache
         self._load_weights()
+        
+        # Bootstrap from PostgreSQL if SQLite is empty (Railway restarts wipe SQLite)
+        self._bootstrap_from_postgres()
     
     def _init_db(self):
         """Initialize feedback database"""
@@ -139,6 +142,101 @@ class FeedbackLoop:
         
         if self.feature_weights:
             logger.info(f"📊 Loaded {len(self.feature_weights)} feature weights from database")
+    
+    def _bootstrap_from_postgres(self):
+        """
+        Bootstrap learning from PostgreSQL ghost_prediction_outcomes table.
+        
+        Railway uses ephemeral storage - SQLite is wiped on every deploy.
+        PostgreSQL persists, so we can rebuild learning state from it.
+        """
+        import os
+        try:
+            import psycopg2
+        except ImportError:
+            logger.debug("psycopg2 not available - skipping Postgres bootstrap")
+            return
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            logger.debug("DATABASE_URL not set - skipping Postgres bootstrap")
+            return
+        
+        # Check if we already have outcomes in SQLite
+        with sqlite3.connect(self.db_path) as conn:
+            local_count = conn.execute("SELECT COUNT(*) FROM prediction_outcomes").fetchone()[0]
+        
+        if local_count > 50:
+            logger.debug(f"SQLite has {local_count} outcomes - skipping Postgres bootstrap")
+            return
+        
+        # Load outcomes from PostgreSQL
+        try:
+            conn = psycopg2.connect(database_url)
+            cursor = conn.cursor()
+            
+            # Get recent outcomes (last 7 days) to rebuild learning state
+            cursor.execute("""
+                SELECT 
+                    prediction_id, symbol, predicted_direction, actual_direction,
+                    hit_direction, predicted_confidence, price_at_prediction, 
+                    price_at_resolution, EXTRACT(EPOCH FROM closed_at)
+                FROM ghost_prediction_outcomes
+                WHERE closed_at > NOW() - INTERVAL '7 days'
+                AND status = 'verified'
+                ORDER BY closed_at DESC
+                LIMIT 1000
+            """)
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            if not rows:
+                logger.info("📊 No recent outcomes in PostgreSQL to bootstrap from")
+                return
+            
+            logger.info(f"🔄 Bootstrapping feedback loop from {len(rows)} PostgreSQL outcomes...")
+            
+            # Process each outcome
+            outcomes_loaded = 0
+            correct_count = 0
+            
+            for row in rows:
+                pred_id, symbol, pred_dir, actual_dir, hit, conf, p0, p1, ts = row
+                
+                outcome = PredictionOutcome(
+                    prediction_id=pred_id,
+                    symbol=symbol,
+                    direction=pred_dir or "UP",
+                    confidence=conf or 0.5,
+                    predicted_price=p0 or 0,
+                    actual_price=p1 or 0,
+                    was_correct=bool(hit),
+                    accuracy_pct=100.0 if hit else 0.0,
+                    signals_used=[],  # Not stored in Postgres
+                    features={},  # Not stored in Postgres
+                    timestamp=ts or time.time(),
+                )
+                
+                # Add to recent cache (for weight calculations)
+                self.recent_outcomes.append(outcome)
+                
+                if hit:
+                    correct_count += 1
+                outcomes_loaded += 1
+            
+            # Now trigger feature weight update based on loaded outcomes
+            if outcomes_loaded >= 50:
+                self._update_feature_weights()
+            
+            accuracy_pct = (correct_count / outcomes_loaded * 100) if outcomes_loaded > 0 else 0
+            logger.info(
+                f"✅ Bootstrapped {outcomes_loaded} outcomes from PostgreSQL "
+                f"({accuracy_pct:.1f}% accuracy, {len(self.feature_weights)} weights computed)"
+            )
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to bootstrap from PostgreSQL: {e}")
     
     def record_outcome(self, outcome: PredictionOutcome) -> None:
         """Record a prediction outcome and trigger learning"""

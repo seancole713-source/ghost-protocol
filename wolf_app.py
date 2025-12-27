@@ -20612,16 +20612,68 @@ async def debug_learning_status():
     - Feedback loop status (feature weights, signal performance)
     - Learning loop status (parameter adjustments)
     - Recent outcomes processed
+    - PostgreSQL vs SQLite outcome counts
     """
     try:
         from core.feedback_loop import get_feedback_loop
         from core.learning_loop import get_learning_loop
+        import psycopg2
+        import sqlite3
         
         feedback = get_feedback_loop()
         learning = get_learning_loop()
         
         # Get feedback loop report
         feedback_report = feedback.get_performance_report(days=7)
+        
+        # Get PostgreSQL outcome counts
+        postgres_stats = {"total": 0, "wins": 0, "losses": 0, "accuracy_pct": 0}
+        try:
+            database_url = os.getenv("DATABASE_URL")
+            if database_url:
+                conn = psycopg2.connect(database_url)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
+                        SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses
+                    FROM ghost_prediction_outcomes
+                    WHERE status = 'verified'
+                """)
+                row = cursor.fetchone()
+                if row:
+                    postgres_stats["total"] = row[0] or 0
+                    postgres_stats["wins"] = row[1] or 0
+                    postgres_stats["losses"] = row[2] or 0
+                    if postgres_stats["total"] > 0:
+                        postgres_stats["accuracy_pct"] = (postgres_stats["wins"] / postgres_stats["total"]) * 100
+                conn.close()
+        except Exception as pg_err:
+            postgres_stats["error"] = str(pg_err)
+        
+        # Get SQLite feedback_loop.db counts
+        sqlite_stats = {"total": 0, "wins": 0, "losses": 0}
+        try:
+            from pathlib import Path
+            sqlite_path = Path(__file__).parent / "data" / "feedback_loop.db"
+            if sqlite_path.exists():
+                conn = sqlite3.connect(str(sqlite_path))
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(was_correct) as wins
+                    FROM prediction_outcomes
+                """)
+                row = cursor.fetchone()
+                if row:
+                    sqlite_stats["total"] = row[0] or 0
+                    sqlite_stats["wins"] = row[1] or 0
+                    sqlite_stats["losses"] = sqlite_stats["total"] - sqlite_stats["wins"]
+                conn.close()
+        except Exception as sq_err:
+            sqlite_stats["error"] = str(sq_err)
         
         # Get learning status
         learning_status = {
@@ -20652,6 +20704,11 @@ async def debug_learning_status():
         return {
             "ok": True,
             "learning_active": feedback_report.get("learning_status") == "active",
+            "data_sources": {
+                "postgres_outcomes": postgres_stats,
+                "sqlite_feedback_loop": sqlite_stats,
+                "memory_cache": len(feedback.recent_outcomes),
+            },
             "total_outcomes_processed": feedback_report.get("total_predictions", 0),
             "accuracy_rate": f"{feedback_report.get('accuracy_rate', 0):.1%}",
             "avg_accuracy_pct": f"{feedback_report.get('avg_accuracy_pct', 0):.1f}%",
