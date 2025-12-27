@@ -20603,6 +20603,68 @@ async def notification_loop_force_start():
         return {"ok": False, "error": str(e)}
 
 
+@APP.get("/debug/learning-status")
+async def debug_learning_status():
+    """
+    Check the status of Ghost's learning system.
+    
+    Shows:
+    - Feedback loop status (feature weights, signal performance)
+    - Learning loop status (parameter adjustments)
+    - Recent outcomes processed
+    """
+    try:
+        from core.feedback_loop import get_feedback_loop
+        from core.learning_loop import get_learning_loop
+        
+        feedback = get_feedback_loop()
+        learning = get_learning_loop()
+        
+        # Get feedback loop report
+        feedback_report = feedback.get_performance_report(days=7)
+        
+        # Get learning status
+        learning_status = {
+            "enabled": True,
+            "feature_weights_count": len(feedback.feature_weights),
+            "signals_tracked": len(feedback.signal_performance),
+            "recent_outcomes_cached": len(feedback.recent_outcomes),
+        }
+        
+        # Top performing features
+        top_features = []
+        for name, weight in sorted(feedback.feature_weights.items(), key=lambda x: x[1], reverse=True)[:10]:
+            top_features.append({"feature": name, "weight": weight})
+        
+        # Signal performance
+        signal_stats = []
+        for signal, stats in feedback.signal_performance.items():
+            if stats["total"] >= 5:
+                acc = stats["correct"] / stats["total"] if stats["total"] > 0 else 0
+                signal_stats.append({
+                    "signal": signal,
+                    "accuracy": f"{acc:.1%}",
+                    "total": stats["total"],
+                    "correct": stats["correct"]
+                })
+        signal_stats.sort(key=lambda x: x["total"], reverse=True)
+        
+        return {
+            "ok": True,
+            "learning_active": feedback_report.get("learning_status") == "active",
+            "total_outcomes_processed": feedback_report.get("total_predictions", 0),
+            "accuracy_rate": f"{feedback_report.get('accuracy_rate', 0):.1%}",
+            "avg_accuracy_pct": f"{feedback_report.get('avg_accuracy_pct', 0):.1f}%",
+            "feature_weights": top_features[:5],
+            "signal_performance": signal_stats[:5],
+            "learning_status": learning_status,
+            "feedback_report": feedback_report,
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/top10-preview")
 async def top10_preview():
     """
