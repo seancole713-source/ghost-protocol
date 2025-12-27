@@ -20701,6 +20701,17 @@ async def debug_outcome_data_audit():
         """)
         audit["hit_direction_distribution"] = [{"hit_direction": r[0], "count": r[1]} for r in cur.fetchall()]
         
+        # 5b. Check STATUS distribution - this is the KEY insight!
+        cur.execute("""
+            SELECT 
+                status,
+                COUNT(*) as count
+            FROM ghost_prediction_outcomes
+            GROUP BY status
+            ORDER BY count DESC
+        """)
+        audit["status_distribution"] = [{"status": r[0], "count": r[1]} for r in cur.fetchall()]
+        
         # 6. Compare with ghost_symbol_accuracy table
         cur.execute("""
             SELECT 
