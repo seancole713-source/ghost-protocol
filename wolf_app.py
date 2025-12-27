@@ -4087,16 +4087,31 @@ async def _on_startup():
             LOGGER.info(f"[STARTUP STOCKS] Triggering predictions for {len(TOP_STOCKS)} stocks...")
             
             triggered = 0
-            for symbol in TOP_STOCKS:
-                try:
-                    # Use internal prediction function directly
-                    result = await api_predict_run(symbol=symbol, horizon="SHORT")
-                    if result.get("ok") or result.get("direction"):
-                        triggered += 1
-                        LOGGER.info(f"[STARTUP STOCKS] ✅ {symbol}: {result.get('direction')} conf={result.get('confidence', 0):.2f}")
-                    await asyncio.sleep(0.5)  # Rate limit
-                except Exception as e:
-                    LOGGER.warning(f"[STARTUP STOCKS] ⚠️ {symbol} failed: {e}")
+            import httpx
+            
+            # Get base URL from environment or default to localhost
+            port = _os_module.getenv("PORT", "8080")
+            base_url = f"http://localhost:{port}"
+            auth_token = _os_module.getenv("API_AUTH_TOKEN", "ghost-prod-2024")
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                for symbol in TOP_STOCKS:
+                    try:
+                        resp = await client.post(
+                            f"{base_url}/api/predict/run",
+                            params={"symbol": symbol, "horizon": "SHORT"},
+                            headers={"Authorization": f"Bearer {auth_token}"}
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            if data.get("ok") or data.get("direction"):
+                                triggered += 1
+                                LOGGER.info(f"[STARTUP STOCKS] ✅ {symbol}: {data.get('direction')} conf={data.get('confidence', 0):.2f}")
+                        else:
+                            LOGGER.warning(f"[STARTUP STOCKS] ⚠️ {symbol}: HTTP {resp.status_code}")
+                        await asyncio.sleep(0.5)  # Rate limit
+                    except Exception as e:
+                        LOGGER.warning(f"[STARTUP STOCKS] ⚠️ {symbol} failed: {e}")
             
             LOGGER.info(f"[STARTUP STOCKS] ✅ Triggered {triggered}/{len(TOP_STOCKS)} stock predictions")
         
