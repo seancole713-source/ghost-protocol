@@ -20603,6 +20603,160 @@ async def notification_loop_force_start():
         return {"ok": False, "error": str(e)}
 
 
+@APP.get("/debug/outcome-data-audit")
+async def debug_outcome_data_audit():
+    """
+    AUDIT: Understand where all the outcome data is and why only some has symbols.
+    
+    Checks:
+    1. ghost_prediction_outcomes - total rows, with/without symbols
+    2. Which columns are NULL most often
+    3. Date range of data
+    4. Why symbol_accuracy only has 477 predictions
+    """
+    import psycopg2
+    from datetime import datetime
+    
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        return {"ok": False, "error": "DATABASE_URL not configured"}
+    
+    try:
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        
+        audit = {}
+        
+        # 1. Total outcomes and symbol coverage
+        cur.execute("""
+            SELECT 
+                COUNT(*) as total,
+                COUNT(symbol) as with_symbol,
+                COUNT(CASE WHEN symbol IS NULL OR symbol = '' THEN 1 END) as missing_symbol,
+                COUNT(DISTINCT symbol) as unique_symbols
+            FROM ghost_prediction_outcomes
+        """)
+        row = cur.fetchone()
+        audit["total_outcomes"] = row[0]
+        audit["with_symbol"] = row[1]
+        audit["missing_symbol"] = row[2]
+        audit["unique_symbols"] = row[3]
+        
+        # 2. NULL column analysis
+        cur.execute("""
+            SELECT 
+                COUNT(CASE WHEN predicted_direction IS NULL THEN 1 END) as null_predicted_dir,
+                COUNT(CASE WHEN actual_direction IS NULL THEN 1 END) as null_actual_dir,
+                COUNT(CASE WHEN hit_direction IS NULL THEN 1 END) as null_hit_dir,
+                COUNT(CASE WHEN price_at_prediction IS NULL OR price_at_prediction = 0 THEN 1 END) as null_entry_price,
+                COUNT(CASE WHEN price_at_resolution IS NULL OR price_at_resolution = 0 THEN 1 END) as null_exit_price,
+                COUNT(CASE WHEN closed_at IS NULL THEN 1 END) as null_closed_at
+            FROM ghost_prediction_outcomes
+        """)
+        row = cur.fetchone()
+        audit["null_columns"] = {
+            "predicted_direction": row[0],
+            "actual_direction": row[1],
+            "hit_direction": row[2],
+            "entry_price_missing": row[3],
+            "exit_price_missing": row[4],
+            "closed_at": row[5]
+        }
+        
+        # 3. Date range
+        cur.execute("""
+            SELECT 
+                MIN(closed_at) as earliest,
+                MAX(closed_at) as latest,
+                COUNT(DISTINCT DATE(closed_at)) as days_with_data
+            FROM ghost_prediction_outcomes
+            WHERE closed_at IS NOT NULL
+        """)
+        row = cur.fetchone()
+        audit["date_range"] = {
+            "earliest": row[0].isoformat() if row[0] else None,
+            "latest": row[1].isoformat() if row[1] else None,
+            "days_with_data": row[2]
+        }
+        
+        # 4. Symbol distribution - top 10 symbols by count
+        cur.execute("""
+            SELECT symbol, COUNT(*) as count
+            FROM ghost_prediction_outcomes
+            WHERE symbol IS NOT NULL AND symbol != ''
+            GROUP BY symbol
+            ORDER BY count DESC
+            LIMIT 10
+        """)
+        audit["top_symbols"] = [{"symbol": r[0], "count": r[1]} for r in cur.fetchall()]
+        
+        # 5. Check hit_direction distribution (this is what accuracy is based on)
+        cur.execute("""
+            SELECT 
+                hit_direction,
+                COUNT(*) as count
+            FROM ghost_prediction_outcomes
+            GROUP BY hit_direction
+            ORDER BY hit_direction
+        """)
+        audit["hit_direction_distribution"] = [{"hit_direction": r[0], "count": r[1]} for r in cur.fetchall()]
+        
+        # 6. Compare with ghost_symbol_accuracy table
+        cur.execute("""
+            SELECT 
+                COUNT(*) as symbols_tracked,
+                SUM(total_predictions) as total_in_accuracy_table,
+                SUM(correct_predictions) as correct_in_accuracy_table
+            FROM ghost_symbol_accuracy
+        """)
+        row = cur.fetchone()
+        audit["symbol_accuracy_table"] = {
+            "symbols_tracked": row[0],
+            "total_predictions": row[1],
+            "correct_predictions": row[2]
+        }
+        
+        # 7. Check if there's a predictions table that should link to outcomes
+        cur.execute("""
+            SELECT COUNT(*) FROM information_schema.tables 
+            WHERE table_name = 'predictions'
+        """)
+        predictions_table_exists = cur.fetchone()[0] > 0
+        audit["predictions_table_exists"] = predictions_table_exists
+        
+        if predictions_table_exists:
+            cur.execute("SELECT COUNT(*) FROM predictions")
+            audit["predictions_count"] = cur.fetchone()[0]
+            
+            # Check outcomes table too
+            cur.execute("""
+                SELECT COUNT(*) FROM information_schema.tables 
+                WHERE table_name = 'outcomes'
+            """)
+            outcomes_table_exists = cur.fetchone()[0] > 0
+            if outcomes_table_exists:
+                cur.execute("SELECT COUNT(*) FROM outcomes")
+                audit["outcomes_table_count"] = cur.fetchone()[0]
+        
+        cur.close()
+        conn.close()
+        
+        # Calculate the gap
+        audit["data_gap_analysis"] = {
+            "total_in_ghost_prediction_outcomes": audit["total_outcomes"],
+            "with_valid_symbol": audit["with_symbol"],
+            "percentage_with_symbol": f"{(audit['with_symbol'] / audit['total_outcomes'] * 100):.1f}%" if audit['total_outcomes'] > 0 else "0%",
+            "in_symbol_accuracy_table": audit["symbol_accuracy_table"]["total_predictions"],
+            "gap": audit["with_symbol"] - (audit["symbol_accuracy_table"]["total_predictions"] or 0)
+        }
+        
+        return {"ok": True, "audit": audit}
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/learning-status")
 async def debug_learning_status():
     """
