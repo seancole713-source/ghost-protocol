@@ -4072,6 +4072,40 @@ async def _on_startup():
     except Exception as e:
         LOGGER.error(f"reconciler_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
+    # ========================================================================
+    # CRITICAL: Auto-trigger stock predictions on startup
+    # Railway ephemeral storage loses predictions on redeploy
+    # Beast scheduler only runs on weekdays, so weekends need manual trigger
+    # This ensures TOP 10 always has 5 stocks ready
+    # ========================================================================
+    try:
+        async def _startup_stock_predictions():
+            """Trigger stock predictions 30s after startup to ensure TOP 10 has stocks"""
+            await asyncio.sleep(30)  # Wait for app to fully initialize
+            
+            TOP_STOCKS = ["AAPL", "MSFT", "NVDA", "TSLA", "GOOGL", "META", "AMD", "AMZN", "JPM", "GS"]
+            LOGGER.info(f"[STARTUP STOCKS] Triggering predictions for {len(TOP_STOCKS)} stocks...")
+            
+            triggered = 0
+            for symbol in TOP_STOCKS:
+                try:
+                    # Use internal prediction function directly
+                    result = await api_predict_run(symbol=symbol, horizon="SHORT")
+                    if result.get("ok") or result.get("direction"):
+                        triggered += 1
+                        LOGGER.info(f"[STARTUP STOCKS] ✅ {symbol}: {result.get('direction')} conf={result.get('confidence', 0):.2f}")
+                    await asyncio.sleep(0.5)  # Rate limit
+                except Exception as e:
+                    LOGGER.warning(f"[STARTUP STOCKS] ⚠️ {symbol} failed: {e}")
+            
+            LOGGER.info(f"[STARTUP STOCKS] ✅ Triggered {triggered}/{len(TOP_STOCKS)} stock predictions")
+        
+        loop = asyncio.get_running_loop()
+        loop.create_task(_startup_stock_predictions())
+        LOGGER.info("[GHOST STARTUP] 📈 Stock predictions scheduled (30s after boot)")
+    except Exception as e:
+        LOGGER.error(f"startup_stocks_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
+
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
     
