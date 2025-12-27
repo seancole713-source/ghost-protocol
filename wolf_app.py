@@ -4073,20 +4073,21 @@ async def _on_startup():
         LOGGER.error(f"reconciler_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
     # ========================================================================
-    # CRITICAL: Auto-trigger stock predictions on startup
+    # CRITICAL: Auto-trigger stock AND crypto predictions on startup
     # Railway ephemeral storage loses predictions on redeploy
     # Beast scheduler only runs on weekdays, so weekends need manual trigger
-    # This ensures TOP 10 always has 5 stocks ready
+    # This ensures TOP 10 always has 5 stocks + 5 crypto ready
     # ========================================================================
     try:
-        async def _startup_stock_predictions():
-            """Trigger stock predictions 30s after startup to ensure TOP 10 has stocks"""
+        async def _startup_predictions():
+            """Trigger stock + crypto predictions 30s after startup to ensure TOP 10 is ready"""
             await asyncio.sleep(30)  # Wait for app to fully initialize
             
             TOP_STOCKS = ["AAPL", "MSFT", "NVDA", "TSLA", "GOOGL", "META", "AMD", "AMZN", "JPM", "GS"]
-            LOGGER.info(f"[STARTUP STOCKS] Triggering predictions for {len(TOP_STOCKS)} stocks...")
+            TOP_CRYPTO = ["BTC", "ETH", "SOL", "ADA", "XRP", "BNB", "LINK", "AVAX", "ATOM", "LTC"]
             
-            triggered = 0
+            LOGGER.info(f"[STARTUP PREDS] Triggering predictions for {len(TOP_STOCKS)} stocks + {len(TOP_CRYPTO)} crypto...")
+            
             import httpx
             
             # Get base URL from environment or default to localhost
@@ -4094,7 +4095,11 @@ async def _on_startup():
             base_url = f"http://localhost:{port}"
             auth_token = _os_module.getenv("API_AUTH_TOKEN", "ghost-prod-2024")
             
+            stocks_triggered = 0
+            crypto_triggered = 0
+            
             async with httpx.AsyncClient(timeout=30.0) as client:
+                # Trigger stocks
                 for symbol in TOP_STOCKS:
                     try:
                         resp = await client.post(
@@ -4105,21 +4110,36 @@ async def _on_startup():
                         if resp.status_code == 200:
                             data = resp.json()
                             if data.get("ok") or data.get("direction"):
-                                triggered += 1
-                                LOGGER.info(f"[STARTUP STOCKS] ✅ {symbol}: {data.get('direction')} conf={data.get('confidence', 0):.2f}")
-                        else:
-                            LOGGER.warning(f"[STARTUP STOCKS] ⚠️ {symbol}: HTTP {resp.status_code}")
-                        await asyncio.sleep(0.5)  # Rate limit
+                                stocks_triggered += 1
+                                LOGGER.info(f"[STARTUP PREDS] ✅ {symbol}: {data.get('direction')} conf={data.get('confidence', 0):.2f}")
+                        await asyncio.sleep(0.3)  # Rate limit
                     except Exception as e:
-                        LOGGER.warning(f"[STARTUP STOCKS] ⚠️ {symbol} failed: {e}")
+                        LOGGER.warning(f"[STARTUP PREDS] ⚠️ {symbol} failed: {e}")
+                
+                # Trigger crypto
+                for symbol in TOP_CRYPTO:
+                    try:
+                        resp = await client.post(
+                            f"{base_url}/api/predict/run",
+                            params={"symbol": symbol, "horizon": "SHORT"},
+                            headers={"Authorization": f"Bearer {auth_token}"}
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            if data.get("ok") or data.get("direction"):
+                                crypto_triggered += 1
+                                LOGGER.info(f"[STARTUP PREDS] ✅ {symbol}: {data.get('direction')} conf={data.get('confidence', 0):.2f}")
+                        await asyncio.sleep(0.3)  # Rate limit
+                    except Exception as e:
+                        LOGGER.warning(f"[STARTUP PREDS] ⚠️ {symbol} failed: {e}")
             
-            LOGGER.info(f"[STARTUP STOCKS] ✅ Triggered {triggered}/{len(TOP_STOCKS)} stock predictions")
+            LOGGER.info(f"[STARTUP PREDS] ✅ Done: {stocks_triggered}/{len(TOP_STOCKS)} stocks, {crypto_triggered}/{len(TOP_CRYPTO)} crypto")
         
         loop = asyncio.get_running_loop()
-        loop.create_task(_startup_stock_predictions())
-        LOGGER.info("[GHOST STARTUP] 📈 Stock predictions scheduled (30s after boot)")
+        loop.create_task(_startup_predictions())
+        LOGGER.info("[GHOST STARTUP] 📈 Startup predictions scheduled (30s after boot)")
     except Exception as e:
-        LOGGER.error(f"startup_stocks_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        LOGGER.error(f"startup_predictions_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
     # Final startup confirmation
     LOGGER.info("[GHOST STARTUP] ✅ Initialization complete - server ready")
