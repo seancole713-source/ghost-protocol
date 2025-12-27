@@ -20788,16 +20788,15 @@ async def reconcile_predictions_now(request: Request):
         """)
         conn.commit()
         
-        # Compute per-symbol accuracy from outcomes table
-        # Using the correct schema: predictions.symbol, outcomes.hit_direction
+        # Compute per-symbol accuracy from ghost_prediction_outcomes table
         cur.execute("""
             SELECT 
-                p.symbol,
+                symbol,
                 COUNT(*) as total,
-                SUM(CASE WHEN o.hit_direction = 1 THEN 1 ELSE 0 END) as correct
-            FROM predictions p
-            JOIN outcomes o ON p.id = o.prediction_id
-            GROUP BY p.symbol
+                SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+            FROM ghost_prediction_outcomes
+            WHERE symbol IS NOT NULL
+            GROUP BY symbol
             HAVING COUNT(*) >= 1
         """)
         
@@ -20912,13 +20911,13 @@ async def learning_dashboard():
         """)
         conn.commit()
         
-        # Get overall stats from outcomes table (the actual reconciled data)
+        # Get overall stats from ghost_prediction_outcomes table (the actual reconciled data)
         cur.execute("""
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct,
                 AVG(CASE WHEN hit_direction = 1 THEN 1.0 ELSE 0.0 END) * 100 as accuracy_pct
-            FROM outcomes
+            FROM ghost_prediction_outcomes
         """)
         row = cur.fetchone()
         overall_stats = {
@@ -20987,16 +20986,26 @@ async def learning_dashboard():
                 "last_updated": row[4].isoformat() if row[4] else None
             })
         
-        # Get recent outcomes (last 20) from outcomes table
+        # Get recent outcomes (last 20) from ghost_prediction_outcomes table
         cur.execute("""
-            SELECT o.symbol, o.predicted_direction, o.actual_direction, o.hit_direction, 
-                   o.original_price, o.final_price, o.actual_price_change_pct, o.evaluated_at
-            FROM outcomes o
-            ORDER BY o.evaluated_at DESC
+            SELECT symbol, predicted_direction, actual_direction, hit_direction, 
+                   price_at_prediction, price_at_resolution, realized_move_pct, closed_at
+            FROM ghost_prediction_outcomes
+            ORDER BY closed_at DESC NULLS LAST
             LIMIT 20
         """)
         recent_outcomes = []
         for row in cur.fetchall():
+            # closed_at is a timestamp (could be datetime or float)
+            evaluated_at = None
+            if row[7]:
+                if isinstance(row[7], datetime):
+                    evaluated_at = row[7].isoformat()
+                elif isinstance(row[7], (int, float)):
+                    evaluated_at = datetime.fromtimestamp(row[7]).isoformat()
+                else:
+                    evaluated_at = str(row[7])
+            
             recent_outcomes.append({
                 "symbol": row[0],
                 "predicted": row[1],
@@ -21005,7 +21014,7 @@ async def learning_dashboard():
                 "entry_price": float(row[4]) if row[4] else 0,
                 "exit_price": float(row[5]) if row[5] else 0,
                 "change_pct": float(row[6]) if row[6] else 0,
-                "evaluated_at": datetime.fromtimestamp(row[7]).isoformat() if row[7] else None
+                "evaluated_at": evaluated_at
             })
         
         cur.close()
@@ -21062,16 +21071,15 @@ async def learning_symbol_accuracy(symbol: str):
         
         row = cur.fetchone()
         if not row:
-            # Try to compute from outcomes table directly
+            # Try to compute from ghost_prediction_outcomes table directly
             cur.execute("""
                 SELECT 
-                    p.symbol,
+                    symbol,
                     COUNT(*) as total,
-                    SUM(CASE WHEN o.hit_direction = 1 THEN 1 ELSE 0 END) as correct
-                FROM predictions p
-                JOIN outcomes o ON p.id = o.prediction_id
-                WHERE p.symbol = %s
-                GROUP BY p.symbol
+                    SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+                FROM ghost_prediction_outcomes
+                WHERE symbol = %s
+                GROUP BY symbol
             """, (symbol.upper(),))
             outcome_row = cur.fetchone()
             if not outcome_row:
@@ -21083,7 +21091,7 @@ async def learning_symbol_accuracy(symbol: str):
                 "correct_predictions": outcome_row[2],
                 "accuracy_pct": (outcome_row[2] / outcome_row[1] * 100) if outcome_row[1] > 0 else 0,
                 "last_updated": None,
-                "source": "computed_from_outcomes"
+                "source": "computed_from_ghost_prediction_outcomes"
             }
         else:
             symbol_data = {
@@ -21109,19 +21117,28 @@ async def learning_symbol_accuracy(symbol: str):
             symbol_data["status"] = "normal"
             symbol_data["learning_action"] = "none"
         
-        # Get recent outcomes for this symbol from outcomes table
+        # Get recent outcomes for this symbol from ghost_prediction_outcomes table
         cur.execute("""
-            SELECT o.predicted_direction, o.actual_direction, o.hit_direction, 
-                   o.original_price, o.final_price, o.actual_price_change_pct, o.evaluated_at
-            FROM outcomes o
-            JOIN predictions p ON p.id = o.prediction_id
-            WHERE p.symbol = %s
-            ORDER BY o.evaluated_at DESC
+            SELECT predicted_direction, actual_direction, hit_direction, 
+                   price_at_prediction, price_at_resolution, realized_move_pct, closed_at
+            FROM ghost_prediction_outcomes
+            WHERE symbol = %s
+            ORDER BY closed_at DESC NULLS LAST
             LIMIT 10
         """, (symbol.upper(),))
         
         recent = []
         for r in cur.fetchall():
+            # closed_at is a timestamp (could be datetime or float)
+            evaluated_at = None
+            if r[6]:
+                if isinstance(r[6], datetime):
+                    evaluated_at = r[6].isoformat()
+                elif isinstance(r[6], (int, float)):
+                    evaluated_at = datetime.fromtimestamp(r[6]).isoformat()
+                else:
+                    evaluated_at = str(r[6])
+            
             recent.append({
                 "predicted": r[0],
                 "actual": r[1],
@@ -21129,7 +21146,7 @@ async def learning_symbol_accuracy(symbol: str):
                 "entry": float(r[3]) if r[3] else 0,
                 "exit": float(r[4]) if r[4] else 0,
                 "change_pct": float(r[5]) if r[5] else 0,
-                "evaluated_at": datetime.fromtimestamp(r[6]).isoformat() if r[6] else None
+                "evaluated_at": evaluated_at
             })
         
         symbol_data["recent_outcomes"] = recent
