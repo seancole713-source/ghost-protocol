@@ -227,15 +227,56 @@ class FeedbackLoop:
             # Now trigger feature weight update based on loaded outcomes
             if outcomes_loaded >= 50:
                 self._update_feature_weights()
+                # Also compute symbol-based performance (since we don't have feature data)
+                self._compute_symbol_performance()
             
             accuracy_pct = (correct_count / outcomes_loaded * 100) if outcomes_loaded > 0 else 0
             logger.info(
                 f"✅ Bootstrapped {outcomes_loaded} outcomes from PostgreSQL "
-                f"({accuracy_pct:.1f}% accuracy, {len(self.feature_weights)} weights computed)"
+                f"({accuracy_pct:.1f}% accuracy, {len(self.feature_weights)} feature weights, "
+                f"{len(self.signal_performance)} symbols tracked)"
             )
             
         except Exception as e:
             logger.warning(f"⚠️ Failed to bootstrap from PostgreSQL: {e}")
+    
+    def _compute_symbol_performance(self):
+        """
+        Compute per-symbol accuracy from recent outcomes.
+        
+        This provides learning even when feature data isn't available.
+        Uses signal_performance dict with symbol names as "signals".
+        """
+        symbol_stats = defaultdict(lambda: {"correct": 0, "total": 0})
+        
+        for outcome in self.recent_outcomes:
+            symbol = outcome.symbol
+            symbol_stats[symbol]["total"] += 1
+            if outcome.was_correct:
+                symbol_stats[symbol]["correct"] += 1
+        
+        # Update signal_performance with symbol stats
+        for symbol, stats in symbol_stats.items():
+            self.signal_performance[f"SYMBOL_{symbol}"] = {
+                "correct": stats["correct"],
+                "total": stats["total"]
+            }
+        
+        # Also compute direction accuracy
+        direction_stats = defaultdict(lambda: {"correct": 0, "total": 0})
+        for outcome in self.recent_outcomes:
+            direction = outcome.direction
+            direction_stats[direction]["total"] += 1
+            if outcome.was_correct:
+                direction_stats[direction]["correct"] += 1
+        
+        for direction, stats in direction_stats.items():
+            self.signal_performance[f"DIR_{direction}"] = {
+                "correct": stats["correct"],
+                "total": stats["total"]
+            }
+        
+        logger.info(f"📊 Computed performance for {len(symbol_stats)} symbols, {len(direction_stats)} directions")
     
     def record_outcome(self, outcome: PredictionOutcome) -> None:
         """Record a prediction outcome and trigger learning"""
