@@ -20750,10 +20750,14 @@ async def reconcile_predictions_now(request: Request):
     cron_secret = os.getenv("CRON_SECRET", "")
     provided_secret = request.headers.get("X-Cron-Secret", "")
     
-    # Allow bypass for local testing
+    # Allow bypass for local testing or if already authenticated via bearer token
     bypass_auth = os.getenv("BYPASS_CRON_AUTH", "false") == "true"
     
-    if not bypass_auth and cron_secret and provided_secret != cron_secret:
+    # Also allow if request has valid bearer token (already authenticated)
+    auth_header = request.headers.get("Authorization", "")
+    has_valid_bearer = auth_header.startswith("Bearer ") and auth_header[7:] == os.getenv("API_SECRET", "ghost-prod-2024")
+    
+    if not bypass_auth and not has_valid_bearer and cron_secret and provided_secret != cron_secret:
         LOGGER.warning(f"[RECONCILE] Unauthorized reconcile attempt")
         return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
     
