@@ -20739,38 +20739,23 @@ async def debug_outcome_data_audit():
             cur.execute("SELECT COUNT(*) FROM predictions")
             audit["predictions_count"] = cur.fetchone()[0]
             
-            # Check if predictions table has price data we can use
+            # Check predictions table schema
             cur.execute("""
-                SELECT 
-                    COUNT(*) as total,
-                    COUNT(CASE WHEN price_at_prediction > 0 THEN 1 END) as with_price,
-                    COUNT(symbol) as with_symbol
-                FROM predictions
-                WHERE run_at < EXTRACT(EPOCH FROM NOW()) - 172800
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'predictions'
+                ORDER BY ordinal_position
             """)
-            row = cur.fetchone()
-            audit["predictions_ready_for_eval"] = {
-                "total": row[0],
-                "with_price": row[1],
-                "with_symbol": row[2],
-                "percentage_with_price": f"{(row[1] / row[0] * 100):.1f}%" if row[0] > 0 else "0%"
-            }
+            audit["predictions_schema"] = [{"col": r[0], "type": r[1]} for r in cur.fetchall()]
             
             # Sample prediction to see what data we have
             cur.execute("""
-                SELECT id, symbol, direction, confidence, run_at, horizon_h, price_at_prediction
-                FROM predictions
-                WHERE run_at < EXTRACT(EPOCH FROM NOW()) - 172800
+                SELECT * FROM predictions
                 ORDER BY run_at DESC
-                LIMIT 5
+                LIMIT 3
             """)
-            audit["sample_predictions"] = [
-                {
-                    "id": r[0], "symbol": r[1], "direction": r[2],
-                    "confidence": r[3], "run_at": r[4], "horizon_h": r[5],
-                    "price_at_prediction": r[6]
-                } for r in cur.fetchall()
-            ]
+            cols = [desc[0] for desc in cur.description]
+            audit["sample_predictions"] = [dict(zip(cols, r)) for r in cur.fetchall()]
             
             # Check outcomes table too
             cur.execute("""
