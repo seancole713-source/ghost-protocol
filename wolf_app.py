@@ -41,7 +41,7 @@ except Exception:
     ZoneInfo = None  # type: ignore
 from collections.abc import Callable
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
