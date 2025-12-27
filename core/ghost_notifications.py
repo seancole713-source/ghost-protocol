@@ -75,6 +75,12 @@ LEARNING_EXCLUDE_ACCURACY = 40.0  # Exclude symbols with <40% accuracy
 LEARNING_BOOST_ACCURACY = 70.0  # Boost symbols with >70% accuracy
 LEARNING_BOOST_AMOUNT = 0.15  # 15% confidence boost
 
+# ⚠️ LEARNING DISABLED - Data corruption detected Dec 27, 2025
+# BTC outcomes show $38.93 exit price (wrong asset)
+# ETH, XRP accuracy numbers are unreliable
+# Re-enable after fixing outcome data
+LEARNING_ENABLED = False  # SET TO True AFTER DATA IS FIXED
+
 # Cache for symbol accuracy (refreshed every 5 minutes)
 _SYMBOL_ACCURACY_CACHE = {}
 _SYMBOL_ACCURACY_CACHE_TIME = 0
@@ -85,10 +91,17 @@ def get_symbol_accuracy_from_postgres() -> Dict[str, Dict]:
     """
     Get symbol accuracy data from PostgreSQL ghost_symbol_accuracy table.
     
+    ⚠️ DISABLED: Returns empty dict when LEARNING_ENABLED=False
+    
     Returns:
         Dict of symbol -> {total: int, correct: int, accuracy_pct: float}
     """
     global _SYMBOL_ACCURACY_CACHE, _SYMBOL_ACCURACY_CACHE_TIME
+    
+    # LEARNING DISABLED - return empty to skip all learning adjustments
+    if not LEARNING_ENABLED:
+        LOGGER.info("[LEARNING] ⚠️ DISABLED - Using raw INVERSE predictions only")
+        return {}
     
     # Check cache first
     if time.time() - _SYMBOL_ACCURACY_CACHE_TIME < SYMBOL_ACCURACY_CACHE_TTL:
