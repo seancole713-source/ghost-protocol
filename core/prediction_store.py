@@ -1318,7 +1318,8 @@ class PostgresBackend:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.direction
+                SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.direction,
+                       p.confidence, p.features_json
                 FROM predictions p
                 LEFT JOIN outcomes o ON p.id = o.prediction_id
                 WHERE o.prediction_id IS NULL
@@ -1331,16 +1332,33 @@ class PostgresBackend:
             
             rows = cursor.fetchall()
             
-            return [
-                {
+            results = []
+            for row in rows:
+                pred = {
                     "id": row["id"],
                     "symbol": row["symbol"],
                     "run_at": row["run_at"],
                     "horizon_h": row["horizon_h"],
                     "direction": row["direction"],
+                    "confidence": row["confidence"] or 0.5,
                 }
-                for row in rows
-            ]
+                
+                # Extract price_at_prediction from features_json
+                features_json = row.get("features_json")
+                if features_json:
+                    try:
+                        import json
+                        features = json.loads(features_json)
+                        # Try both field names
+                        price = features.get("current_price") or features.get("PRICE")
+                        if price:
+                            pred["price_at_prediction"] = float(price)
+                    except:
+                        pass
+                
+                results.append(pred)
+            
+            return results
         except Exception as e:
             LOGGER.error(f"[POSTGRES] Failed to get pending outcomes: {e}")
             return []

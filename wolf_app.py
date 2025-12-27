@@ -20786,6 +20786,166 @@ async def debug_outcome_data_audit():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.post("/alerts/backfill-outcomes")
+async def backfill_no_data_outcomes(
+    batch_size: int = 100,
+    authorization: Optional[str] = Header(None),
+    x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret"),
+):
+    """
+    BACKFILL: Re-evaluate 'no_data' outcomes using price from features_json.
+    
+    The reconciler was failing 97.8% of the time because it couldn't fetch
+    historical prices. But the predictions table HAS the entry price stored
+    in features_json.current_price!
+    
+    This endpoint:
+    1. Finds outcomes with status='no_data' 
+    2. Looks up the original prediction to get features_json.current_price
+    3. Fetches the current price for resolution
+    4. Calculates actual_direction and hit_direction
+    5. Updates the outcome to status='completed'
+    """
+    import psycopg2
+    import json
+    
+    # Auth check
+    valid_auth = False
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "")
+        if token == os.getenv("GHOST_SECRET_TOKEN", "ghost-prod-2024"):
+            valid_auth = True
+    if x_cron_secret and x_cron_secret == os.getenv("CRON_SECRET", "ghost-cron-2024"):
+        valid_auth = True
+    if not valid_auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        return {"ok": False, "error": "DATABASE_URL not configured"}
+    
+    try:
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get 'no_data' outcomes that have corresponding predictions
+        cur.execute("""
+            SELECT 
+                o.prediction_id,
+                o.symbol,
+                o.predicted_direction,
+                o.closed_at,
+                p.run_at,
+                p.features_json,
+                p.confidence
+            FROM ghost_prediction_outcomes o
+            JOIN predictions p ON o.prediction_id = p.id
+            WHERE o.status = 'no_data'
+            LIMIT %s
+        """, (batch_size,))
+        
+        no_data_outcomes = cur.fetchall()
+        
+        if not no_data_outcomes:
+            return {
+                "ok": True,
+                "message": "No 'no_data' outcomes to backfill",
+                "processed": 0
+            }
+        
+        processed = 0
+        skipped = 0
+        errors = []
+        
+        # Direction threshold
+        DIRECTION_THRESHOLD_PCT = float(os.getenv("ACCURACY_DIRECTION_THRESHOLD_PCT", "0.25"))
+        
+        for outcome in no_data_outcomes:
+            try:
+                # Extract price_at_prediction from features_json
+                features_json = outcome.get("features_json")
+                if not features_json:
+                    skipped += 1
+                    continue
+                
+                features = json.loads(features_json) if isinstance(features_json, str) else features_json
+                price_t0 = features.get("current_price") or features.get("PRICE")
+                
+                if not price_t0:
+                    skipped += 1
+                    continue
+                
+                price_t0 = float(price_t0)
+                symbol = outcome["symbol"]
+                pred_id = outcome["prediction_id"]
+                pred_direction = outcome["predicted_direction"]
+                pred_confidence = outcome.get("confidence", 0.5)
+                
+                # Get current price for resolution
+                from services.outcome_reconciler_v2 import get_symbol_price
+                price_t1 = get_symbol_price(symbol)
+                
+                if price_t1 is None:
+                    skipped += 1
+                    continue
+                
+                # Compute realized movement
+                realized_move_pct = ((price_t1 - price_t0) / price_t0) * 100
+                
+                # Determine actual direction
+                if realized_move_pct > DIRECTION_THRESHOLD_PCT:
+                    actual_direction = "UP"
+                elif realized_move_pct < -DIRECTION_THRESHOLD_PCT:
+                    actual_direction = "DOWN"
+                else:
+                    actual_direction = "FLAT"
+                
+                # Determine if prediction was correct
+                hit_direction = 1 if actual_direction == pred_direction else 0
+                
+                # Update the outcome
+                cur.execute("""
+                    UPDATE ghost_prediction_outcomes
+                    SET 
+                        price_at_prediction = %s,
+                        price_at_resolution = %s,
+                        realized_move_pct = %s,
+                        actual_direction = %s,
+                        hit_direction = %s,
+                        status = 'completed',
+                        notes = 'Backfilled from features_json'
+                    WHERE prediction_id = %s
+                """, (
+                    price_t0,
+                    price_t1,
+                    realized_move_pct,
+                    actual_direction,
+                    hit_direction,
+                    pred_id
+                ))
+                
+                processed += 1
+                
+            except Exception as e:
+                errors.append(f"pred {outcome['prediction_id']}: {str(e)[:50]}")
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return {
+            "ok": True,
+            "message": f"Backfilled {processed} outcomes",
+            "processed": processed,
+            "skipped": skipped,
+            "errors": errors[:10] if errors else []
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/learning-status")
 async def debug_learning_status():
     """

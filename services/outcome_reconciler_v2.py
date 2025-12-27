@@ -226,26 +226,32 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
     pred_direction = pred.get("direction", "UP")
     pred_confidence = pred.get("confidence", 0.5)
     
-    # Calculate resolution time (run_at + 48h)
+    # Calculate resolution time (run_at + horizon_h)
     t_resolve = run_at + (horizon_h * 3600)
     
     LOGGER.info(f"🔍 Reconciling prediction {pred_id} ({symbol}) - "
                 f"Created: {datetime.fromtimestamp(run_at)}, "
                 f"Resolve: {datetime.fromtimestamp(t_resolve)}")
     
-    # Get price at prediction time (t0)
-    try:
-        price_t0 = _get_price_at_time(symbol, run_at)
-        if price_t0 is None:
-            LOGGER.warning(f"⚠️  No price at t0 for {symbol} (pred {pred_id}), marking no_data")
+    # Get price at prediction time (t0) - PREFER from prediction record!
+    price_t0 = pred.get("price_at_prediction")
+    
+    if price_t0 is None:
+        # Fallback to historical fetch only if not in prediction
+        try:
+            price_t0 = _get_price_at_time(symbol, run_at)
+            if price_t0 is None:
+                LOGGER.warning(f"⚠️  No price at t0 for {symbol} (pred {pred_id}), marking no_data")
+                _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
+                                       "Could not fetch price at prediction time")
+                return "no_data"
+        except Exception as e:
+            LOGGER.error(f"❌ Failed to fetch t0 price for {symbol}: {e}")
             _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
-                                   "Could not fetch price at prediction time")
+                                   f"Error fetching t0 price: {str(e)[:100]}")
             return "no_data"
-    except Exception as e:
-        LOGGER.error(f"❌ Failed to fetch t0 price for {symbol}: {e}")
-        _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
-                               f"Error fetching t0 price: {str(e)[:100]}")
-        return "no_data"
+    else:
+        LOGGER.debug(f"✅ Using recorded price_at_prediction for {symbol}: ${price_t0:.2f}")
     
     # Get price at resolution time (t1 = t0 + 48h)
     try:
