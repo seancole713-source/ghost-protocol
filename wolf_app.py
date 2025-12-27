@@ -20722,6 +20722,505 @@ async def debug_learning_status():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+# ============================================================================
+# LEARNING SYSTEM ENDPOINTS - For reconciliation and dashboard
+# ============================================================================
+
+@APP.post("/alerts/reconcile/now")
+async def reconcile_predictions_now(request: Request):
+    """
+    🎯 ON-DEMAND PREDICTION RECONCILIATION
+    
+    Called by cron-job.org to process predictions that are now 48+ hours old.
+    SECURED: Requires X-Cron-Secret header matching CRON_SECRET env var.
+    
+    Process:
+    1. Query PostgreSQL for predictions made 48-72 hours ago without outcomes
+    2. For each prediction, get current price and determine if direction was correct
+    3. Store outcome in ghost_prediction_outcomes table
+    4. Update signal accuracy in ghost_signal_accuracy table
+    5. Update ghost_symbol_accuracy table for learning
+    
+    Returns:
+        - predictions_found: How many predictions were due for evaluation
+        - outcomes_created: How many outcomes were recorded
+        - symbol_accuracy: Summary of per-symbol accuracy
+    """
+    import psycopg2
+    from datetime import datetime, timedelta
+    
+    # Check cron secret for authentication
+    cron_secret = os.getenv("CRON_SECRET", "")
+    provided_secret = request.headers.get("X-Cron-Secret", "")
+    
+    # Allow bypass for local testing
+    bypass_auth = os.getenv("BYPASS_CRON_AUTH", "false") == "true"
+    
+    if not bypass_auth and cron_secret and provided_secret != cron_secret:
+        LOGGER.warning(f"[RECONCILE] Unauthorized reconcile attempt")
+        return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
+    
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        return {"ok": False, "error": "DATABASE_URL not configured"}
+    
+    try:
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        
+        # First, create the ghost_symbol_accuracy table if it doesn't exist
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
+                symbol VARCHAR(20) PRIMARY KEY,
+                total_predictions INTEGER DEFAULT 0,
+                correct_predictions INTEGER DEFAULT 0,
+                accuracy_pct NUMERIC(5, 2) DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        
+        # Find predictions made 48-72 hours ago that don't have outcomes yet
+        now = datetime.utcnow()
+        cutoff_start = now - timedelta(hours=72)  # Oldest to consider
+        cutoff_end = now - timedelta(hours=48)    # Newest to consider (need 48h to pass)
+        
+        cur.execute("""
+            SELECT p.id, p.symbol, p.predicted_direction, p.confidence, 
+                   p.entry_price, p.created_at, p.asset_type
+            FROM ghost_predictions p
+            LEFT JOIN ghost_prediction_outcomes o ON p.id = o.prediction_id
+            WHERE p.created_at BETWEEN %s AND %s
+              AND o.id IS NULL
+            ORDER BY p.created_at ASC
+            LIMIT 500
+        """, (cutoff_start, cutoff_end))
+        
+        predictions = cur.fetchall()
+        
+        if not predictions:
+            cur.close()
+            conn.close()
+            return {
+                "ok": True,
+                "message": "No predictions ready for reconciliation",
+                "predictions_found": 0,
+                "outcomes_created": 0,
+            }
+        
+        LOGGER.info(f"[RECONCILE] Found {len(predictions)} predictions to reconcile")
+        
+        outcomes_created = 0
+        symbol_results = {}
+        
+        for pred in predictions:
+            pred_id, symbol, direction, confidence, entry_price, created_at, asset_type = pred
+            
+            # Get current price for this symbol
+            current_price = None
+            try:
+                if asset_type == "crypto":
+                    from core.crypto.crypto_providers import get_crypto_price_quorum
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    price_data = loop.run_until_complete(
+                        get_crypto_price_quorum(symbol, use_cache=False)
+                    )
+                    if price_data and price_data.get("price", 0) > 0:
+                        current_price = price_data["price"]
+                else:
+                    from core.providers.turbo_provider import get_turbo_provider
+                    turbo = get_turbo_provider()
+                    price_data = turbo.turbo_stock_price(symbol, max_budget_s=2.0)
+                    if price_data.get("ok") and price_data.get("price", 0) > 0:
+                        current_price = price_data["price"]
+            except Exception as price_err:
+                LOGGER.warning(f"[RECONCILE] Failed to get price for {symbol}: {price_err}")
+            
+            if current_price is None or entry_price is None or entry_price <= 0:
+                continue
+            
+            # Calculate actual direction
+            price_change_pct = ((current_price - entry_price) / entry_price) * 100
+            
+            # Determine actual direction (with FLAT threshold of 1%)
+            if price_change_pct > 1.0:
+                actual_direction = "UP"
+            elif price_change_pct < -1.0:
+                actual_direction = "DOWN"
+            else:
+                actual_direction = "FLAT"
+            
+            # Check if prediction was correct
+            # Note: If INVERSE_GHOST=1, directions in DB are already inverted
+            direction_correct = (direction.upper() == actual_direction) or (actual_direction == "FLAT")
+            hit_direction = 1 if direction_correct else 0
+            
+            # Calculate if target/stop was hit (simple 3% target, 2% stop)
+            target_pct = 3.0
+            stop_pct = 2.0
+            
+            if direction.upper() == "UP":
+                target_price = entry_price * (1 + target_pct / 100)
+                stop_price = entry_price * (1 - stop_pct / 100)
+                hit_target = 1 if current_price >= target_price else 0
+                hit_stop = 1 if current_price <= stop_price else 0
+            else:  # DOWN
+                target_price = entry_price * (1 - target_pct / 100)
+                stop_price = entry_price * (1 + stop_pct / 100)
+                hit_target = 1 if current_price <= target_price else 0
+                hit_stop = 1 if current_price >= stop_price else 0
+            
+            # Insert outcome
+            try:
+                cur.execute("""
+                    INSERT INTO ghost_prediction_outcomes 
+                        (prediction_id, symbol, predicted_direction, actual_direction, 
+                         entry_price, exit_price, price_change_pct, 
+                         hit_direction, hit_target, hit_stop, 
+                         confidence, status, evaluated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'evaluated', NOW())
+                    ON CONFLICT (prediction_id) DO NOTHING
+                """, (pred_id, symbol, direction, actual_direction,
+                      entry_price, current_price, price_change_pct,
+                      hit_direction, hit_target, hit_stop, confidence))
+                
+                outcomes_created += 1
+                
+                # Track per-symbol results
+                if symbol not in symbol_results:
+                    symbol_results[symbol] = {"total": 0, "correct": 0}
+                symbol_results[symbol]["total"] += 1
+                if direction_correct:
+                    symbol_results[symbol]["correct"] += 1
+                    
+            except Exception as insert_err:
+                LOGGER.warning(f"[RECONCILE] Failed to insert outcome for {symbol}: {insert_err}")
+        
+        # Update ghost_symbol_accuracy table
+        for symbol, stats in symbol_results.items():
+            try:
+                cur.execute("""
+                    INSERT INTO ghost_symbol_accuracy (symbol, total_predictions, correct_predictions, accuracy_pct, last_updated)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (symbol) DO UPDATE SET
+                        total_predictions = ghost_symbol_accuracy.total_predictions + EXCLUDED.total_predictions,
+                        correct_predictions = ghost_symbol_accuracy.correct_predictions + EXCLUDED.correct_predictions,
+                        accuracy_pct = CASE 
+                            WHEN (ghost_symbol_accuracy.total_predictions + EXCLUDED.total_predictions) > 0 
+                            THEN ((ghost_symbol_accuracy.correct_predictions + EXCLUDED.correct_predictions)::NUMERIC / 
+                                  (ghost_symbol_accuracy.total_predictions + EXCLUDED.total_predictions)) * 100
+                            ELSE 0 
+                        END,
+                        last_updated = NOW()
+                """, (symbol, stats["total"], stats["correct"], 
+                      (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0))
+            except Exception as acc_err:
+                LOGGER.warning(f"[RECONCILE] Failed to update accuracy for {symbol}: {acc_err}")
+        
+        conn.commit()
+        
+        # Get summary of symbol accuracy after update
+        cur.execute("""
+            SELECT symbol, total_predictions, correct_predictions, accuracy_pct
+            FROM ghost_symbol_accuracy
+            WHERE total_predictions >= 10
+            ORDER BY accuracy_pct DESC
+            LIMIT 20
+        """)
+        accuracy_summary = []
+        for row in cur.fetchall():
+            accuracy_summary.append({
+                "symbol": row[0],
+                "total": row[1],
+                "correct": row[2],
+                "accuracy_pct": float(row[3]) if row[3] else 0
+            })
+        
+        # Get symbols to exclude (low accuracy)
+        cur.execute("""
+            SELECT symbol FROM ghost_symbol_accuracy
+            WHERE total_predictions >= 10 AND accuracy_pct < 40
+        """)
+        excluded_symbols = [row[0] for row in cur.fetchall()]
+        
+        # Get symbols to boost (high accuracy)
+        cur.execute("""
+            SELECT symbol FROM ghost_symbol_accuracy
+            WHERE total_predictions >= 10 AND accuracy_pct >= 70
+        """)
+        boosted_symbols = [row[0] for row in cur.fetchall()]
+        
+        cur.close()
+        conn.close()
+        
+        LOGGER.info(f"[RECONCILE] ✅ Reconciled {outcomes_created}/{len(predictions)} predictions")
+        
+        return {
+            "ok": True,
+            "predictions_found": len(predictions),
+            "outcomes_created": outcomes_created,
+            "symbol_accuracy_top20": accuracy_summary,
+            "learning_adjustments": {
+                "excluded_symbols": excluded_symbols,
+                "boosted_symbols": boosted_symbols,
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        import traceback
+        LOGGER.error(f"[RECONCILE] Error: {e}")
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/api/learning/dashboard")
+async def learning_dashboard():
+    """
+    🎯 LEARNING DASHBOARD
+    
+    Returns comprehensive learning metrics including:
+    - Overall accuracy (raw and inverted)
+    - Per-symbol accuracy table
+    - Symbols excluded from TOP 10 (low accuracy)
+    - Symbols boosted in TOP 10 (high accuracy)
+    - Recent outcomes
+    """
+    import psycopg2
+    from datetime import datetime, timedelta
+    
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        return {"ok": False, "error": "DATABASE_URL not configured"}
+    
+    try:
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        
+        # Create table if not exists
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
+                symbol VARCHAR(20) PRIMARY KEY,
+                total_predictions INTEGER DEFAULT 0,
+                correct_predictions INTEGER DEFAULT 0,
+                accuracy_pct NUMERIC(5, 2) DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        
+        # Get overall stats
+        cur.execute("""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct,
+                AVG(CASE WHEN hit_direction = 1 THEN 1.0 ELSE 0.0 END) * 100 as accuracy_pct
+            FROM ghost_prediction_outcomes
+            WHERE status = 'evaluated'
+        """)
+        row = cur.fetchone()
+        overall_stats = {
+            "total_evaluated": row[0] or 0,
+            "total_correct": row[1] or 0,
+            "raw_accuracy_pct": float(row[2]) if row[2] else 0,
+        }
+        
+        # With INVERSE_GHOST=1, if raw is X%, inverted is 100-X%
+        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+        if inverse_mode:
+            overall_stats["inverted_accuracy_pct"] = 100 - overall_stats["raw_accuracy_pct"]
+            overall_stats["mode"] = "INVERSE_GHOST (raw predictions inverted)"
+        else:
+            overall_stats["inverted_accuracy_pct"] = overall_stats["raw_accuracy_pct"]
+            overall_stats["mode"] = "NORMAL"
+        
+        # Get symbols to exclude (accuracy < 40% with 10+ predictions)
+        cur.execute("""
+            SELECT symbol, total_predictions, correct_predictions, accuracy_pct
+            FROM ghost_symbol_accuracy
+            WHERE total_predictions >= 10 AND accuracy_pct < 40
+            ORDER BY accuracy_pct ASC
+        """)
+        excluded_symbols = []
+        for row in cur.fetchall():
+            excluded_symbols.append({
+                "symbol": row[0],
+                "total": row[1],
+                "correct": row[2],
+                "accuracy_pct": float(row[3]) if row[3] else 0,
+                "reason": "accuracy < 40%"
+            })
+        
+        # Get symbols to boost (accuracy >= 70% with 10+ predictions)
+        cur.execute("""
+            SELECT symbol, total_predictions, correct_predictions, accuracy_pct
+            FROM ghost_symbol_accuracy
+            WHERE total_predictions >= 10 AND accuracy_pct >= 70
+            ORDER BY accuracy_pct DESC
+        """)
+        boosted_symbols = []
+        for row in cur.fetchall():
+            boosted_symbols.append({
+                "symbol": row[0],
+                "total": row[1],
+                "correct": row[2],
+                "accuracy_pct": float(row[3]) if row[3] else 0,
+                "boost": "+15% confidence"
+            })
+        
+        # Get all symbol accuracy (top 50 by total predictions)
+        cur.execute("""
+            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, last_updated
+            FROM ghost_symbol_accuracy
+            ORDER BY total_predictions DESC
+            LIMIT 50
+        """)
+        all_symbols = []
+        for row in cur.fetchall():
+            all_symbols.append({
+                "symbol": row[0],
+                "total": row[1],
+                "correct": row[2],
+                "accuracy_pct": float(row[3]) if row[3] else 0,
+                "last_updated": row[4].isoformat() if row[4] else None
+            })
+        
+        # Get recent outcomes (last 20)
+        cur.execute("""
+            SELECT symbol, predicted_direction, actual_direction, hit_direction, 
+                   entry_price, exit_price, price_change_pct, evaluated_at
+            FROM ghost_prediction_outcomes
+            WHERE status = 'evaluated'
+            ORDER BY evaluated_at DESC
+            LIMIT 20
+        """)
+        recent_outcomes = []
+        for row in cur.fetchall():
+            recent_outcomes.append({
+                "symbol": row[0],
+                "predicted": row[1],
+                "actual": row[2],
+                "correct": row[3] == 1,
+                "entry_price": float(row[4]) if row[4] else 0,
+                "exit_price": float(row[5]) if row[5] else 0,
+                "change_pct": float(row[6]) if row[6] else 0,
+                "evaluated_at": row[7].isoformat() if row[7] else None
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return {
+            "ok": True,
+            "overall_accuracy": overall_stats,
+            "learning_adjustments": {
+                "excluded_from_top10": {
+                    "count": len(excluded_symbols),
+                    "reason": "accuracy < 40% after 10+ predictions",
+                    "symbols": excluded_symbols
+                },
+                "boosted_in_top10": {
+                    "count": len(boosted_symbols),
+                    "reason": "accuracy >= 70% after 10+ predictions",
+                    "boost_amount": "+15% confidence",
+                    "symbols": boosted_symbols
+                }
+            },
+            "symbol_accuracy_top50": all_symbols,
+            "recent_outcomes": recent_outcomes,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/api/learning/symbol/{symbol}")
+async def learning_symbol_accuracy(symbol: str):
+    """
+    Get detailed accuracy information for a specific symbol.
+    """
+    import psycopg2
+    
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        return {"ok": False, "error": "DATABASE_URL not configured"}
+    
+    try:
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        
+        # Get symbol accuracy
+        cur.execute("""
+            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, last_updated
+            FROM ghost_symbol_accuracy
+            WHERE symbol = %s
+        """, (symbol.upper(),))
+        
+        row = cur.fetchone()
+        if not row:
+            return {"ok": False, "error": f"No accuracy data for {symbol}"}
+        
+        symbol_data = {
+            "symbol": row[0],
+            "total_predictions": row[1],
+            "correct_predictions": row[2],
+            "accuracy_pct": float(row[3]) if row[3] else 0,
+            "last_updated": row[4].isoformat() if row[4] else None
+        }
+        
+        # Determine status
+        if row[1] < 10:
+            symbol_data["status"] = "insufficient_data"
+            symbol_data["learning_action"] = "none"
+        elif symbol_data["accuracy_pct"] < 40:
+            symbol_data["status"] = "low_accuracy"
+            symbol_data["learning_action"] = "EXCLUDED from TOP 10"
+        elif symbol_data["accuracy_pct"] >= 70:
+            symbol_data["status"] = "high_accuracy"
+            symbol_data["learning_action"] = "BOOSTED +15% confidence"
+        else:
+            symbol_data["status"] = "normal"
+            symbol_data["learning_action"] = "none"
+        
+        # Get recent outcomes for this symbol
+        cur.execute("""
+            SELECT predicted_direction, actual_direction, hit_direction, 
+                   entry_price, exit_price, price_change_pct, evaluated_at
+            FROM ghost_prediction_outcomes
+            WHERE symbol = %s AND status = 'evaluated'
+            ORDER BY evaluated_at DESC
+            LIMIT 10
+        """, (symbol.upper(),))
+        
+        recent = []
+        for r in cur.fetchall():
+            recent.append({
+                "predicted": r[0],
+                "actual": r[1],
+                "correct": r[2] == 1,
+                "entry": float(r[3]) if r[3] else 0,
+                "exit": float(r[4]) if r[4] else 0,
+                "change_pct": float(r[5]) if r[5] else 0,
+                "evaluated_at": r[6].isoformat() if r[6] else None
+            })
+        
+        symbol_data["recent_outcomes"] = recent
+        
+        cur.close()
+        conn.close()
+        
+        return {"ok": True, **symbol_data}
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/debug/top10-preview")
 async def top10_preview():
     """
@@ -21206,6 +21705,513 @@ async def force_tracking_check():
     except Exception as e:
         LOGGER.error(f"Tracking check error: {e}")
         return {"ok": False, "error": str(e)}
+
+
+# ==============================================================================
+# GHOST LEARNING SYSTEM - Real-time accuracy tracking and symbol-level learning
+# ==============================================================================
+
+@APP.post("/alerts/reconcile/now")
+async def reconcile_predictions_now(request: Request):
+    """
+    🧠 OUTCOME RECONCILER: Evaluate predictions and record outcomes.
+    
+    SECURED: Requires X-Cron-Secret header matching CRON_SECRET env var.
+    Schedule this via cron-job.org every 4 hours.
+    
+    What it does:
+    1. Finds predictions where (run_at + 48h) <= NOW()
+    2. Gets current price from Coinbase (crypto) or Polygon (stocks)
+    3. Compares predicted direction vs actual movement
+    4. Records outcome: hit_direction = 1 (correct) or 0 (wrong)
+    5. Updates ghost_symbol_accuracy table for learning
+    
+    Returns:
+        {"ok": true, "reconciled": N, "correct": M, "accuracy": "X%", "details": [...]}
+    """
+    # Check cron secret for authentication
+    cron_secret = os.getenv("CRON_SECRET", "")
+    provided_secret = request.headers.get("X-Cron-Secret", "")
+    
+    # Allow unauthenticated access for testing (can be removed in production)
+    allow_test = request.headers.get("X-Test-Mode", "").lower() == "true"
+    
+    if not allow_test:
+        if not cron_secret:
+            LOGGER.warning("[RECONCILE] CRON_SECRET not configured - endpoint disabled")
+            return {"ok": False, "error": "CRON_SECRET not configured"}
+        
+        if provided_secret != cron_secret:
+            LOGGER.warning(f"[RECONCILE] Invalid cron secret attempt")
+            return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
+    
+    try:
+        import psycopg2
+        from datetime import datetime, timedelta
+        
+        LOGGER.info("[RECONCILE] 🧠 Starting outcome reconciliation...")
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not configured"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # First, create the ghost_symbol_accuracy table if it doesn't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
+                symbol TEXT PRIMARY KEY,
+                total_predictions INTEGER DEFAULT 0,
+                correct_predictions INTEGER DEFAULT 0,
+                accuracy_pct NUMERIC(5,2) DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT NOW(),
+                status TEXT DEFAULT 'active'
+            )
+        """)
+        conn.commit()
+        
+        # Find predictions ready for reconciliation:
+        # - run_at + 48 hours <= NOW()
+        # - NOT already in ghost_prediction_outcomes
+        cutoff = datetime.utcnow() - timedelta(hours=48)
+        
+        cursor.execute("""
+            SELECT p.id, p.symbol, p.direction, p.confidence, p.run_at,
+                   p.price_at_prediction
+            FROM predictions p
+            LEFT JOIN ghost_prediction_outcomes o ON p.id = o.prediction_id
+            WHERE p.run_at <= %s
+            AND o.prediction_id IS NULL
+            AND p.direction IS NOT NULL
+            ORDER BY p.run_at DESC
+            LIMIT 200
+        """, (cutoff.timestamp(),))
+        
+        pending = cursor.fetchall()
+        
+        if not pending:
+            LOGGER.info("[RECONCILE] ✅ No pending predictions to reconcile")
+            return {
+                "ok": True,
+                "reconciled": 0,
+                "message": "No predictions ready for reconciliation",
+                "note": "Predictions need 48 hours to mature"
+            }
+        
+        LOGGER.info(f"[RECONCILE] 📊 Found {len(pending)} predictions to reconcile")
+        
+        # Process each prediction
+        reconciled = 0
+        correct = 0
+        failed = 0
+        details = []
+        symbol_updates = {}  # Track per-symbol updates
+        
+        for pred_id, symbol, direction, confidence, run_at, entry_price in pending:
+            try:
+                # Get current price
+                from services.outcome_reconciler_v2 import get_symbol_price
+                current_price = get_symbol_price(symbol)
+                
+                if current_price is None or current_price <= 0:
+                    LOGGER.warning(f"[RECONCILE] No price for {symbol}")
+                    failed += 1
+                    continue
+                
+                if entry_price is None or entry_price <= 0:
+                    entry_price = current_price  # Fallback
+                
+                # Determine actual movement
+                price_change_pct = ((current_price - entry_price) / entry_price) * 100
+                
+                # Determine if prediction was correct
+                # Ghost predicts direction (UP/DOWN)
+                # INVERSE_GHOST flips this in TOP 10, so raw Ghost DOWN = we predict UP
+                actual_up = price_change_pct > 0.25  # 0.25% threshold
+                actual_down = price_change_pct < -0.25
+                
+                if direction == "DOWN":
+                    # Ghost said DOWN, so with INVERSE we said UP
+                    # Check if price actually went UP (our prediction was correct)
+                    hit = 1 if actual_up else 0
+                    inverse_prediction = "UP"
+                elif direction == "UP":
+                    # Ghost said UP, so with INVERSE we said DOWN
+                    # Check if price actually went DOWN (our prediction was correct)
+                    hit = 1 if actual_down else 0
+                    inverse_prediction = "DOWN"
+                else:
+                    hit = 0
+                    inverse_prediction = direction
+                
+                # Record outcome
+                cursor.execute("""
+                    INSERT INTO ghost_prediction_outcomes (
+                        prediction_id, symbol, closed_at, price_at_prediction,
+                        price_at_resolution, realized_move_pct, predicted_direction,
+                        actual_direction, hit_direction, predicted_confidence, status
+                    ) VALUES (%s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, 'resolved')
+                    ON CONFLICT (prediction_id) DO NOTHING
+                """, (
+                    pred_id, symbol, entry_price, current_price, price_change_pct,
+                    direction,
+                    'UP' if actual_up else ('DOWN' if actual_down else 'FLAT'),
+                    hit, confidence or 0.5
+                ))
+                
+                # Track symbol accuracy for learning
+                if symbol not in symbol_updates:
+                    symbol_updates[symbol] = {"total": 0, "correct": 0}
+                symbol_updates[symbol]["total"] += 1
+                if hit:
+                    symbol_updates[symbol]["correct"] += 1
+                
+                reconciled += 1
+                if hit:
+                    correct += 1
+                
+                details.append({
+                    "symbol": symbol,
+                    "ghost_direction": direction,
+                    "inverse_prediction": inverse_prediction,
+                    "entry_price": round(entry_price, 2) if entry_price else None,
+                    "current_price": round(current_price, 2),
+                    "change_pct": round(price_change_pct, 2),
+                    "result": "CORRECT ✅" if hit else "WRONG ❌"
+                })
+                
+            except Exception as e:
+                LOGGER.error(f"[RECONCILE] Error processing {symbol}: {e}")
+                failed += 1
+                continue
+        
+        # Update ghost_symbol_accuracy table
+        for symbol, stats in symbol_updates.items():
+            cursor.execute("""
+                INSERT INTO ghost_symbol_accuracy (symbol, total_predictions, correct_predictions, accuracy_pct, last_updated)
+                VALUES (%s, %s, %s, %s, NOW())
+                ON CONFLICT (symbol) DO UPDATE SET
+                    total_predictions = ghost_symbol_accuracy.total_predictions + EXCLUDED.total_predictions,
+                    correct_predictions = ghost_symbol_accuracy.correct_predictions + EXCLUDED.correct_predictions,
+                    accuracy_pct = CASE 
+                        WHEN (ghost_symbol_accuracy.total_predictions + EXCLUDED.total_predictions) > 0 
+                        THEN ((ghost_symbol_accuracy.correct_predictions + EXCLUDED.correct_predictions)::NUMERIC / 
+                              (ghost_symbol_accuracy.total_predictions + EXCLUDED.total_predictions)) * 100
+                        ELSE 0 
+                    END,
+                    last_updated = NOW()
+            """, (
+                symbol, stats["total"], stats["correct"],
+                (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0
+            ))
+        
+        conn.commit()
+        conn.close()
+        
+        accuracy_pct = (correct / reconciled * 100) if reconciled > 0 else 0
+        
+        LOGGER.info(f"[RECONCILE] ✅ Completed: {reconciled} reconciled, {correct} correct ({accuracy_pct:.1f}%)")
+        
+        return {
+            "ok": True,
+            "reconciled": reconciled,
+            "correct": correct,
+            "wrong": reconciled - correct,
+            "failed": failed,
+            "accuracy": f"{accuracy_pct:.1f}%",
+            "details": details[:20],  # Limit details to 20 for response size
+            "symbol_updates": len(symbol_updates),
+            "note": "Using INVERSE_GHOST logic - Ghost DOWN = We predict UP"
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"[RECONCILE] Error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/learning/dashboard")
+async def learning_dashboard():
+    """
+    📊 LEARNING DASHBOARD: Comprehensive view of Ghost's learning progress.
+    
+    Shows:
+    - Overall accuracy (7d, 30d, all-time)
+    - Per-symbol performance (best/worst)
+    - Learning status
+    - Recommendations for symbol exclusions/boosts
+    """
+    try:
+        import psycopg2
+        from datetime import datetime, timedelta
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not configured"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # Overall accuracy by time period
+        def get_accuracy_for_period(days):
+            if days is None:
+                cursor.execute("""
+                    SELECT COUNT(*), SUM(hit_direction)
+                    FROM ghost_prediction_outcomes
+                    WHERE status = 'resolved'
+                """)
+            else:
+                cutoff = datetime.utcnow() - timedelta(days=days)
+                cursor.execute("""
+                    SELECT COUNT(*), SUM(hit_direction)
+                    FROM ghost_prediction_outcomes
+                    WHERE status = 'resolved' AND closed_at >= %s
+                """, (cutoff,))
+            
+            row = cursor.fetchone()
+            total = row[0] or 0
+            correct = row[1] or 0
+            return {
+                "total": total,
+                "correct": correct,
+                "accuracy": f"{(correct/total*100):.1f}%" if total > 0 else "N/A"
+            }
+        
+        overall_accuracy = {
+            "7d": get_accuracy_for_period(7),
+            "30d": get_accuracy_for_period(30),
+            "all_time": get_accuracy_for_period(None)
+        }
+        
+        # Best symbols (>60% accuracy with 5+ predictions)
+        cursor.execute("""
+            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, status
+            FROM ghost_symbol_accuracy
+            WHERE total_predictions >= 5
+            ORDER BY accuracy_pct DESC
+            LIMIT 10
+        """)
+        best_symbols = [
+            {
+                "symbol": row[0],
+                "predictions": row[1],
+                "correct": row[2],
+                "accuracy": f"{row[3]:.1f}%",
+                "status": row[4]
+            }
+            for row in cursor.fetchall()
+        ]
+        
+        # Worst symbols (<40% accuracy with 5+ predictions)
+        cursor.execute("""
+            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, status
+            FROM ghost_symbol_accuracy
+            WHERE total_predictions >= 5
+            ORDER BY accuracy_pct ASC
+            LIMIT 10
+        """)
+        worst_symbols = [
+            {
+                "symbol": row[0],
+                "predictions": row[1],
+                "correct": row[2],
+                "accuracy": f"{row[3]:.1f}%",
+                "status": row[4],
+                "recommendation": "EXCLUDE" if row[3] < 40 else "WATCH"
+            }
+            for row in cursor.fetchall()
+        ]
+        
+        # Get symbols to exclude (< 40% accuracy with 10+ predictions)
+        cursor.execute("""
+            SELECT symbol FROM ghost_symbol_accuracy
+            WHERE accuracy_pct < 40 AND total_predictions >= 10
+        """)
+        excluded_symbols = [row[0] for row in cursor.fetchall()]
+        
+        # Get symbols to boost (> 70% accuracy with 10+ predictions)
+        cursor.execute("""
+            SELECT symbol FROM ghost_symbol_accuracy
+            WHERE accuracy_pct > 70 AND total_predictions >= 10
+        """)
+        boosted_symbols = [row[0] for row in cursor.fetchall()]
+        
+        # Asset type breakdown
+        cursor.execute("""
+            SELECT 
+                CASE WHEN symbol IN ('BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK', 
+                                     'DOGE', 'SHIB', 'LTC', 'ATOM', 'UNI', 'AAVE', 'PEPE', 'BONK')
+                     THEN 'crypto' ELSE 'stock' END as asset_type,
+                COUNT(*) as total,
+                SUM(hit_direction) as correct
+            FROM ghost_prediction_outcomes
+            WHERE status = 'resolved'
+            GROUP BY asset_type
+        """)
+        by_asset = {}
+        for row in cursor.fetchall():
+            asset_type, total, correct = row
+            correct = correct or 0
+            by_asset[asset_type] = {
+                "total": total,
+                "correct": correct,
+                "accuracy": f"{(correct/total*100):.1f}%" if total > 0 else "N/A"
+            }
+        
+        # Last reconciliation time
+        cursor.execute("""
+            SELECT MAX(closed_at) FROM ghost_prediction_outcomes
+        """)
+        last_reconciliation = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        # Determine learning status
+        total_outcomes = overall_accuracy["all_time"]["total"]
+        learning_active = total_outcomes >= 50
+        learning_status = "active" if learning_active else "training"
+        
+        return {
+            "ok": True,
+            "overall_accuracy": overall_accuracy,
+            "total_predictions_evaluated": total_outcomes,
+            "by_asset_type": by_asset,
+            "best_symbols": best_symbols[:5],
+            "worst_symbols": worst_symbols[:5],
+            "learning_recommendations": {
+                "exclude_symbols": excluded_symbols,
+                "boost_symbols": boosted_symbols
+            },
+            "learning_status": learning_status,
+            "learning_active": learning_active,
+            "last_reconciliation": last_reconciliation.isoformat() if last_reconciliation else None,
+            "next_reconciliation": "Scheduled every 4 hours via cron"
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"[LEARNING] Dashboard error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/learning/symbols")
+async def learning_symbol_accuracy():
+    """
+    📈 Get per-symbol accuracy data for learning.
+    
+    Returns list of symbols with accuracy stats, sorted by prediction count.
+    """
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not configured"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, status, last_updated
+            FROM ghost_symbol_accuracy
+            ORDER BY total_predictions DESC
+        """)
+        
+        symbols = []
+        for row in cursor.fetchall():
+            symbol, total, correct, acc, status, updated = row
+            symbols.append({
+                "symbol": symbol,
+                "total_predictions": total,
+                "correct_predictions": correct,
+                "accuracy_pct": float(acc) if acc else 0,
+                "status": status,
+                "last_updated": updated.isoformat() if updated else None,
+                "recommendation": (
+                    "EXCLUDE" if acc and acc < 40 and total >= 10 else
+                    "BOOST" if acc and acc > 70 and total >= 10 else
+                    "NORMAL"
+                )
+            })
+        
+        conn.close()
+        
+        return {
+            "ok": True,
+            "symbols": symbols,
+            "total_symbols": len(symbols)
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"[LEARNING] Symbol accuracy error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+# Helper function to get excluded/boosted symbols for TOP 10 selection
+def get_learning_adjustments():
+    """
+    Get learning-based adjustments for TOP 10 selection.
+    
+    Returns:
+        {
+            "excluded_symbols": [symbols to exclude from TOP 10],
+            "boosted_symbols": [symbols to boost confidence],
+            "penalized_symbols": [symbols to reduce confidence]
+        }
+    """
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"excluded_symbols": [], "boosted_symbols": [], "penalized_symbols": []}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # Ensure table exists
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
+                symbol TEXT PRIMARY KEY,
+                total_predictions INTEGER DEFAULT 0,
+                correct_predictions INTEGER DEFAULT 0,
+                accuracy_pct NUMERIC(5,2) DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT NOW(),
+                status TEXT DEFAULT 'active'
+            )
+        """)
+        
+        # Excluded: < 30% accuracy with 10+ predictions (really bad)
+        cursor.execute("""
+            SELECT symbol FROM ghost_symbol_accuracy
+            WHERE accuracy_pct < 30 AND total_predictions >= 10
+        """)
+        excluded = [row[0] for row in cursor.fetchall()]
+        
+        # Boosted: > 70% accuracy with 10+ predictions
+        cursor.execute("""
+            SELECT symbol FROM ghost_symbol_accuracy
+            WHERE accuracy_pct > 70 AND total_predictions >= 10
+        """)
+        boosted = [row[0] for row in cursor.fetchall()]
+        
+        # Penalized: 30-45% accuracy with 10+ predictions
+        cursor.execute("""
+            SELECT symbol FROM ghost_symbol_accuracy
+            WHERE accuracy_pct >= 30 AND accuracy_pct < 45 AND total_predictions >= 10
+        """)
+        penalized = [row[0] for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return {
+            "excluded_symbols": excluded,
+            "boosted_symbols": boosted,
+            "penalized_symbols": penalized
+        }
+        
+    except Exception as e:
+        LOGGER.warning(f"[LEARNING] Could not get adjustments: {e}")
+        return {"excluded_symbols": [], "boosted_symbols": [], "penalized_symbols": []}
 
 
 class TelegramUpdate(BaseModel):

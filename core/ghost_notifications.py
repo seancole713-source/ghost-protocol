@@ -14,6 +14,10 @@ Colors:
 - 🟢 BUY = 48hr prediction > current price (going UP) AND confidence >= 85%
 - 🔴 SELL = 48hr prediction < current price (going DOWN) AND confidence >= 85%  
 - 🟡 WATCH = confidence < 85% OR prediction within 2% of current
+
+Learning Integration:
+- Symbols with <40% accuracy (after 10+ predictions) are EXCLUDED
+- Symbols with >70% accuracy get 15% confidence BOOST
 """
 
 import os
@@ -25,6 +29,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# PostgreSQL for learning data
+try:
+    import psycopg2
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
 
 try:
     from zoneinfo import ZoneInfo
@@ -53,6 +64,134 @@ SIGNIFICANT_MOVE_PCT = 0.03  # 3% move to trigger update
 
 # Database for tracking
 TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
+
+# ============================================================================
+# LEARNING INTEGRATION
+# ============================================================================
+
+# Learning thresholds
+LEARNING_MIN_PREDICTIONS = 10  # Need at least 10 predictions to evaluate
+LEARNING_EXCLUDE_ACCURACY = 40.0  # Exclude symbols with <40% accuracy
+LEARNING_BOOST_ACCURACY = 70.0  # Boost symbols with >70% accuracy
+LEARNING_BOOST_AMOUNT = 0.15  # 15% confidence boost
+
+# Cache for symbol accuracy (refreshed every 5 minutes)
+_SYMBOL_ACCURACY_CACHE = {}
+_SYMBOL_ACCURACY_CACHE_TIME = 0
+SYMBOL_ACCURACY_CACHE_TTL = 300  # 5 minutes
+
+
+def get_symbol_accuracy_from_postgres() -> Dict[str, Dict]:
+    """
+    Get symbol accuracy data from PostgreSQL ghost_symbol_accuracy table.
+    
+    Returns:
+        Dict of symbol -> {total: int, correct: int, accuracy_pct: float}
+    """
+    global _SYMBOL_ACCURACY_CACHE, _SYMBOL_ACCURACY_CACHE_TIME
+    
+    # Check cache first
+    if time.time() - _SYMBOL_ACCURACY_CACHE_TIME < SYMBOL_ACCURACY_CACHE_TTL:
+        return _SYMBOL_ACCURACY_CACHE
+    
+    if not PSYCOPG2_AVAILABLE:
+        LOGGER.warning("[LEARNING] psycopg2 not available, skipping accuracy lookup")
+        return {}
+    
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        LOGGER.warning("[LEARNING] DATABASE_URL not set, skipping accuracy lookup")
+        return {}
+    
+    try:
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT symbol, total_predictions, correct_predictions, accuracy_pct
+            FROM ghost_symbol_accuracy
+            WHERE total_predictions >= %s
+            ORDER BY total_predictions DESC
+        """, (LEARNING_MIN_PREDICTIONS,))
+        
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        result = {}
+        for row in rows:
+            symbol, total, correct, accuracy = row
+            result[symbol] = {
+                "total": total,
+                "correct": correct,
+                "accuracy_pct": float(accuracy) if accuracy else 0.0
+            }
+        
+        # Update cache
+        _SYMBOL_ACCURACY_CACHE = result
+        _SYMBOL_ACCURACY_CACHE_TIME = time.time()
+        
+        LOGGER.info(f"[LEARNING] Loaded accuracy data for {len(result)} symbols from PostgreSQL")
+        return result
+        
+    except Exception as e:
+        LOGGER.error(f"[LEARNING] Failed to get symbol accuracy from PostgreSQL: {e}")
+        return _SYMBOL_ACCURACY_CACHE  # Return stale cache on error
+
+
+def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
+    """
+    Check if symbol should be excluded based on historical accuracy.
+    
+    Args:
+        symbol: The symbol to check
+        accuracy_data: Dict from get_symbol_accuracy_from_postgres()
+        
+    Returns:
+        (should_exclude: bool, reason: str)
+    """
+    if symbol not in accuracy_data:
+        return False, "no_data"
+    
+    data = accuracy_data[symbol]
+    accuracy = data.get("accuracy_pct", 0)
+    total = data.get("total", 0)
+    
+    if total < LEARNING_MIN_PREDICTIONS:
+        return False, f"insufficient_data ({total} predictions)"
+    
+    if accuracy < LEARNING_EXCLUDE_ACCURACY:
+        return True, f"low_accuracy ({accuracy:.1f}% < {LEARNING_EXCLUDE_ACCURACY}%)"
+    
+    return False, "ok"
+
+
+def get_confidence_boost(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
+    """
+    Get confidence boost for high-accuracy symbols.
+    
+    Args:
+        symbol: The symbol to check
+        accuracy_data: Dict from get_symbol_accuracy_from_postgres()
+        
+    Returns:
+        (boost_multiplier: float, reason: str)
+    """
+    if symbol not in accuracy_data:
+        return 1.0, "no_data"
+    
+    data = accuracy_data[symbol]
+    accuracy = data.get("accuracy_pct", 0)
+    total = data.get("total", 0)
+    
+    if total < LEARNING_MIN_PREDICTIONS:
+        return 1.0, f"insufficient_data ({total} predictions)"
+    
+    if accuracy >= LEARNING_BOOST_ACCURACY:
+        boost = 1.0 + LEARNING_BOOST_AMOUNT
+        return boost, f"high_accuracy ({accuracy:.1f}% >= {LEARNING_BOOST_ACCURACY}%)"
+    
+    return 1.0, f"accuracy_ok ({accuracy:.1f}%)"
 
 
 @dataclass
@@ -405,6 +544,10 @@ class GhostNotificationSystem:
         """
         Get top 5 crypto and top 5 stocks from latest predictions.
         
+        LEARNING INTEGRATION:
+        - Excludes symbols with <40% accuracy (after 10+ predictions)
+        - Boosts confidence by 15% for symbols with >70% accuracy
+        
         Args:
             latest_predictions: Dict of symbol -> prediction data
             
@@ -423,6 +566,13 @@ class GhostNotificationSystem:
         prices_stale_skipped = 0
         stablecoins_skipped = 0
         
+        # LEARNING: Get symbol accuracy data from PostgreSQL
+        accuracy_data = get_symbol_accuracy_from_postgres()
+        learning_excluded = 0
+        learning_boosted = 0
+        excluded_symbols = []
+        boosted_symbols = []
+        
         for symbol, pred in latest_predictions.items():
             if not isinstance(pred, dict):
                 continue
@@ -433,9 +583,26 @@ class GhostNotificationSystem:
                 LOGGER.debug(f"[NOTIFICATIONS] Skipping stablecoin: {symbol}")
                 continue
             
+            # LEARNING: Check if symbol should be excluded due to low accuracy
+            should_exclude, exclude_reason = should_exclude_symbol(symbol, accuracy_data)
+            if should_exclude:
+                learning_excluded += 1
+                excluded_symbols.append(f"{symbol} ({exclude_reason})")
+                LOGGER.info(f"[LEARNING] EXCLUDED {symbol}: {exclude_reason}")
+                continue
+            
             confidence = pred.get("confidence", 0)
             if confidence < 0.70:  # At least 70% to consider
                 continue
+            
+            # LEARNING: Apply confidence boost for high-accuracy symbols
+            boost_multiplier, boost_reason = get_confidence_boost(symbol, accuracy_data)
+            original_confidence = confidence
+            if boost_multiplier > 1.0:
+                confidence = min(1.0, confidence * boost_multiplier)  # Cap at 100%
+                learning_boosted += 1
+                boosted_symbols.append(f"{symbol} ({original_confidence:.0%}→{confidence:.0%})")
+                LOGGER.info(f"[LEARNING] BOOSTED {symbol}: {original_confidence:.0%} → {confidence:.0%} ({boost_reason})")
             
             # Get current price from prediction (may be missing or stale)
             current_price = (pred.get("price") or 
@@ -515,6 +682,7 @@ class GhostNotificationSystem:
                 "sell": sell_at,
                 "confidence": confidence,
                 "direction": direction,
+                "learning_boosted": boost_multiplier > 1.0,  # Flag for boosted picks
             }
             
             # Add to appropriate list based on asset_class (already computed above)
@@ -522,6 +690,12 @@ class GhostNotificationSystem:
                 crypto.append(pick)
             else:
                 stocks.append(pick)
+        
+        # Log learning stats
+        if learning_excluded > 0:
+            LOGGER.info(f"[LEARNING] 🚫 EXCLUDED {learning_excluded} low-accuracy symbols: {', '.join(excluded_symbols[:5])}")
+        if learning_boosted > 0:
+            LOGGER.info(f"[LEARNING] 🚀 BOOSTED {learning_boosted} high-accuracy symbols: {', '.join(boosted_symbols[:5])}")
         
         # Log skip stats
         if stablecoins_skipped > 0:
