@@ -20792,17 +20792,36 @@ async def reconcile_predictions_now(request: Request):
         """)
         conn.commit()
         
+        # Check if we're in INVERSE_GHOST mode
+        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+        
         # Compute per-symbol accuracy from ghost_prediction_outcomes table
-        cur.execute("""
-            SELECT 
-                symbol,
-                COUNT(*) as total,
-                SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
-            FROM ghost_prediction_outcomes
-            WHERE symbol IS NOT NULL
-            GROUP BY symbol
-            HAVING COUNT(*) >= 1
-        """)
+        # In INVERSE_GHOST mode, hit_direction=0 (raw wrong) is actually CORRECT
+        # because we invert the raw predictions
+        if inverse_mode:
+            # Inverted accuracy: count when hit_direction=0 as correct
+            cur.execute("""
+                SELECT 
+                    symbol,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as correct
+                FROM ghost_prediction_outcomes
+                WHERE symbol IS NOT NULL
+                GROUP BY symbol
+                HAVING COUNT(*) >= 1
+            """)
+        else:
+            # Normal mode: hit_direction=1 means correct
+            cur.execute("""
+                SELECT 
+                    symbol,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+                FROM ghost_prediction_outcomes
+                WHERE symbol IS NOT NULL
+                GROUP BY symbol
+                HAVING COUNT(*) >= 1
+            """)
         
         symbol_stats = cur.fetchall()
         symbols_updated = 0
