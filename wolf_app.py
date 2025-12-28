@@ -21111,7 +21111,6 @@ async def debug_db_audit():
     - Outcome statistics
     
     Tables:
-    - ghost_predictions: run_at (BIGINT unix timestamp)
     - ghost_prediction_outcomes: price_at_prediction, price_at_resolution, hit_direction, status
     """
     try:
@@ -21130,43 +21129,55 @@ async def debug_db_audit():
             'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001
         }
         
-        # 1. Get predictions overview from ghost_predictions (uses run_at BIGINT)
+        # 1. Get outcomes overview
         cursor.execute("""
             SELECT COUNT(*) as total,
                    COUNT(DISTINCT symbol) as symbols,
-                   MIN(run_at) as earliest,
-                   MAX(run_at) as latest
-            FROM ghost_predictions
+                   MIN(closed_at) as earliest,
+                   MAX(closed_at) as latest,
+                   SUM(CASE WHEN symbol IS NULL OR symbol = '' THEN 1 ELSE 0 END) as missing_symbol,
+                   SUM(CASE WHEN price_at_prediction IS NULL THEN 1 ELSE 0 END) as missing_entry
+            FROM ghost_prediction_outcomes
         """)
-        pred_overview = cursor.fetchone()
+        overview = cursor.fetchone()
         
         # 2. Find corrupt outcomes by symbol (check price_at_prediction in ghost_prediction_outcomes)
-        corrupt_data = {}
+        corrupt_entry = {}
         for symbol, min_price in MIN_VALID.items():
             cursor.execute("""
                 SELECT COUNT(*) as cnt,
                        MIN(price_at_prediction) as min_p,
                        MAX(price_at_prediction) as max_p
                 FROM ghost_prediction_outcomes
-                WHERE symbol = %s AND price_at_prediction < %s
+                WHERE symbol = %s AND price_at_prediction IS NOT NULL AND price_at_prediction < %s
             """, (symbol, min_price))
             row = cursor.fetchone()
             if row[0] > 0:
-                corrupt_data[symbol] = {
+                corrupt_entry[symbol] = {
                     "corrupt_count": row[0],
                     "min_price": float(row[1]) if row[1] else 0,
                     "max_price": float(row[2]) if row[2] else 0,
                     "threshold": min_price
                 }
         
-        # 3. Find zero/negative prices in outcomes
-        cursor.execute("""
-            SELECT symbol, COUNT(*) as cnt
-            FROM ghost_prediction_outcomes
-            WHERE price_at_prediction <= 0
-            GROUP BY symbol
-        """)
-        zero_prices = {row[0]: row[1] for row in cursor.fetchall()}
+        # 3. Find corrupt exit prices
+        corrupt_exit = {}
+        for symbol, min_price in MIN_VALID.items():
+            cursor.execute("""
+                SELECT COUNT(*) as cnt,
+                       MIN(price_at_resolution) as min_p,
+                       MAX(price_at_resolution) as max_p
+                FROM ghost_prediction_outcomes
+                WHERE symbol = %s AND price_at_resolution IS NOT NULL AND price_at_resolution < %s
+            """, (symbol, min_price))
+            row = cursor.fetchone()
+            if row[0] > 0:
+                corrupt_exit[symbol] = {
+                    "corrupt_count": row[0],
+                    "min_price": float(row[1]) if row[1] else 0,
+                    "max_price": float(row[2]) if row[2] else 0,
+                    "threshold": min_price
+                }
         
         # 4. Get outcomes stats
         cursor.execute("""
@@ -21174,61 +21185,69 @@ async def debug_db_audit():
                 COUNT(*) as total,
                 SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN status = 'no_data' THEN 1 ELSE 0 END) as no_data
+                SUM(CASE WHEN status = 'no_data' THEN 1 ELSE 0 END) as no_data,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
             FROM ghost_prediction_outcomes
         """)
         outcomes = cursor.fetchone()
         
-        # 5. Sample of corrupt BTC prices from outcomes
+        # 5. Sample of corrupt BTC entry prices
         cursor.execute("""
-            SELECT id, symbol, price_at_prediction, price_at_resolution, status
+            SELECT id, symbol, price_at_prediction, price_at_resolution, status, predicted_direction
             FROM ghost_prediction_outcomes
-            WHERE symbol = 'BTC' AND price_at_prediction < 10000
+            WHERE symbol = 'BTC' AND price_at_prediction IS NOT NULL AND price_at_prediction < 10000
             ORDER BY id DESC
             LIMIT 10
         """)
-        btc_samples = [
-            {"id": r[0], "symbol": r[1], "entry_price": float(r[2]) if r[2] else 0, "exit_price": float(r[3]) if r[3] else 0, "status": r[4]}
+        btc_entry_samples = [
+            {"id": r[0], "symbol": r[1], "entry": float(r[2]) if r[2] else 0, 
+             "exit": float(r[3]) if r[3] else 0, "status": r[4], "direction": r[5]}
             for r in cursor.fetchall()
         ]
         
-        # 6. Check for corrupt exit prices too
+        # 6. Sample of corrupt BTC exit prices
         cursor.execute("""
-            SELECT symbol, COUNT(*) as cnt, MIN(price_at_resolution), MAX(price_at_resolution)
+            SELECT id, symbol, price_at_prediction, price_at_resolution, status, predicted_direction
             FROM ghost_prediction_outcomes
             WHERE symbol = 'BTC' AND price_at_resolution IS NOT NULL AND price_at_resolution < 10000
-            GROUP BY symbol
+            ORDER BY id DESC
+            LIMIT 10
         """)
-        corrupt_exits = {}
-        for row in cursor.fetchall():
-            corrupt_exits[row[0]] = {"count": row[1], "min": float(row[2]), "max": float(row[3])}
+        btc_exit_samples = [
+            {"id": r[0], "symbol": r[1], "entry": float(r[2]) if r[2] else 0, 
+             "exit": float(r[3]) if r[3] else 0, "status": r[4], "direction": r[5]}
+            for r in cursor.fetchall()
+        ]
         
         conn.close()
         
-        total_corrupt = sum(d["corrupt_count"] for d in corrupt_data.values())
-        total_corrupt += sum(zero_prices.values())
+        total_corrupt = sum(d["corrupt_count"] for d in corrupt_entry.values())
+        total_corrupt += sum(d["corrupt_count"] for d in corrupt_exit.values())
         
         return {
             "ok": True,
-            "predictions": {
-                "total": pred_overview[0],
-                "symbols": pred_overview[1],
-                "earliest_unix": pred_overview[2],
-                "latest_unix": pred_overview[3]
+            "overview": {
+                "total": overview[0],
+                "symbols": overview[1],
+                "earliest": str(overview[2]) if overview[2] else None,
+                "latest": str(overview[3]) if overview[3] else None,
+                "missing_symbol": overview[4],
+                "missing_entry_price": overview[5]
             },
-            "corrupt_entry_prices": corrupt_data,
-            "corrupt_exit_prices": corrupt_exits,
-            "zero_prices": zero_prices,
+            "corrupt_entry_prices": corrupt_entry,
+            "corrupt_exit_prices": corrupt_exit,
             "total_corrupt": total_corrupt,
-            "outcomes": {
+            "outcomes_stats": {
                 "total": outcomes[0] or 0,
                 "wins": outcomes[1] or 0,
                 "losses": outcomes[2] or 0,
                 "no_data": outcomes[3] or 0,
+                "completed": outcomes[4] or 0,
                 "accuracy_pct": round((outcomes[1] or 0) / max(1, (outcomes[1] or 0) + (outcomes[2] or 0)) * 100, 2)
             },
-            "btc_corrupt_samples": btc_samples,
-            "recommendation": "Run /debug/db-clean to remove corrupt data" if total_corrupt > 0 else "Database is clean!"
+            "btc_corrupt_entry_samples": btc_entry_samples,
+            "btc_corrupt_exit_samples": btc_exit_samples,
+            "recommendation": "Run /debug/db-clean to remove corrupt data" if total_corrupt > 0 else "Database looks clean!"
         }
         
     except Exception as e:
