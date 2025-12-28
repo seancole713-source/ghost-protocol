@@ -86,10 +86,18 @@ LEARNING_BOOST_ENABLED = False  # Boosting disabled until data validated
 # ============================================================================
 # HARDCODED EXCLUSIONS - Symbols with historically bad accuracy (<40%)
 # These are ALWAYS excluded regardless of learning data
-# Updated Dec 28, 2025 based on actual accuracy data
+# Updated Dec 28, 2025 based on actual accuracy data + Telegram analysis
 # ============================================================================
 HARDCODED_EXCLUSIONS = {
-    # Crypto with <40% accuracy (from /api/learning/dashboard)
+    # === FROM TELEGRAM ANALYSIS (Dec 28) - Confirmed stop-outs and wrong directions ===
+    'SAND': 'STOPPED OUT +3.3% on Dec 27 (Telegram confirmed)',  # Added Dec 28
+    'FLOW': 'STOPPED OUT +12.5% on Dec 27 (Telegram confirmed)',  # Added Dec 28
+    'HBAR': 'Wrong direction - went UP when predicted DOWN (Telegram confirmed)',  # Added Dec 28
+    'ILV': 'Gaming token - pump/dump prone, volatile',  # Added Dec 28
+    'BAND': 'Oracle token - low liquidity',  # Added Dec 28
+    'DIA': 'Oracle token - low liquidity',  # Added Dec 28
+    
+    # === FROM ACCURACY DATA - Crypto with <40% accuracy ===
     'DOT': '30% accuracy (3/10)',
     'DOGE': '30% accuracy (3/10)',
     'MATIC': '50% but volatile',
@@ -97,29 +105,29 @@ HARDCODED_EXCLUSIONS = {
     'AVAX': '30% accuracy (3/10)',
     'ANT': '40% accuracy (borderline)',
     'OCEAN': '30% accuracy (3/10)',
-    'ADA': '20% accuracy (2/10)',  # Added Dec 28
-    'STORJ': '0% accuracy (0/9)',  # Added Dec 28
-    'RLC': '10% accuracy (1/10)',  # Added Dec 28
-    '1INCH': '11% accuracy (1/9)',  # Added Dec 28
-    'YFI': '11% accuracy (1/9)',  # Added Dec 28
-    'FLOKI': '11% accuracy (1/9)',  # Added Dec 28
-    'LDO': '11% accuracy (1/9)',  # Added Dec 28
-    'BAL': '11% accuracy (1/9)',  # Added Dec 28
-    'RNDR': '11% accuracy (1/9)',  # Added Dec 28
-    'XLM': '22% accuracy (2/9)',  # Added Dec 28
-    'ETC': '22% accuracy (2/9)',  # Added Dec 28
-    'APE': '22% accuracy (2/9)',  # Added Dec 28
-    'ZEN': '20% accuracy (2/10)',  # Added Dec 28
-    'EGLD': '20% accuracy (2/10)',  # Added Dec 28
-    'ONDO': '20% accuracy (2/10)',  # Added Dec 28
-    'BAT': '20% accuracy (2/10)',  # Added Dec 28
-    'THETA': '20% accuracy (2/10)',  # Added Dec 28
-    'ZRX': '30% accuracy (3/10)',  # Added Dec 28
-    'BNB': '30% accuracy (3/10)',  # Added Dec 28
-    'XTZ': '30% accuracy (3/10)',  # Added Dec 28
-    'LOOM': '30% accuracy (3/10)',  # Added Dec 28
-    'USDC': '33% accuracy - stablecoin',  # Added Dec 28
-    'QNT': '20% accuracy (2/10)',  # Added Dec 28
+    'ADA': '20% accuracy (2/10)',
+    'STORJ': '0% accuracy (0/9)',
+    'RLC': '10% accuracy (1/10)',
+    '1INCH': '11% accuracy (1/9)',
+    'YFI': '11% accuracy (1/9)',
+    'FLOKI': '11% accuracy (1/9)',
+    'LDO': '11% accuracy (1/9)',
+    'BAL': '11% accuracy (1/9)',
+    'RNDR': '11% accuracy (1/9)',
+    'XLM': '22% accuracy (2/9)',
+    'ETC': '22% accuracy (2/9)',
+    'APE': '22% accuracy (2/9)',
+    'ZEN': '20% accuracy (2/10)',
+    'EGLD': '20% accuracy (2/10)',
+    'ONDO': '20% accuracy (2/10)',
+    'BAT': '20% accuracy (2/10)',
+    'THETA': '20% accuracy (2/10)',
+    'ZRX': '30% accuracy (3/10)',
+    'BNB': '30% accuracy (3/10)',
+    'XTZ': '30% accuracy (3/10)',
+    'LOOM': '30% accuracy (3/10)',
+    'USDC': '33% accuracy - stablecoin',
+    'QNT': '20% accuracy (2/10)',
 }
 
 # Cache for symbol accuracy (refreshed every 5 minutes)

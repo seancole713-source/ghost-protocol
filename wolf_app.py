@@ -21099,6 +21099,226 @@ async def debug_inverse_status():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/db-audit")
+async def debug_db_audit():
+    """
+    Audit PostgreSQL for corrupt data.
+    
+    Checks for:
+    - BTC prices below $10,000 (corrupt)
+    - ETH prices below $500 (corrupt)
+    - Zero/negative prices
+    - Outcome statistics
+    """
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # Price validation thresholds
+        MIN_VALID = {
+            'BTC': 10000, 'ETH': 500, 'SOL': 5, 'BNB': 100,
+            'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001
+        }
+        
+        # 1. Get predictions overview
+        cursor.execute("""
+            SELECT COUNT(*) as total,
+                   COUNT(DISTINCT symbol) as symbols,
+                   MIN(created_at) as earliest,
+                   MAX(created_at) as latest
+            FROM predictions
+        """)
+        pred_overview = cursor.fetchone()
+        
+        # 2. Find corrupt predictions by symbol
+        corrupt_data = {}
+        for symbol, min_price in MIN_VALID.items():
+            cursor.execute("""
+                SELECT COUNT(*) as cnt,
+                       MIN(price_at_prediction) as min_p,
+                       MAX(price_at_prediction) as max_p
+                FROM predictions
+                WHERE symbol = %s AND price_at_prediction < %s
+            """, (symbol, min_price))
+            row = cursor.fetchone()
+            if row[0] > 0:
+                corrupt_data[symbol] = {
+                    "corrupt_count": row[0],
+                    "min_price": float(row[1]) if row[1] else 0,
+                    "max_price": float(row[2]) if row[2] else 0,
+                    "threshold": min_price
+                }
+        
+        # 3. Find zero/negative prices
+        cursor.execute("""
+            SELECT symbol, COUNT(*) as cnt
+            FROM predictions
+            WHERE price_at_prediction <= 0
+            GROUP BY symbol
+        """)
+        zero_prices = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        # 4. Get outcomes stats
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN status = 'no_data' THEN 1 ELSE 0 END) as no_data
+            FROM ghost_prediction_outcomes
+        """)
+        outcomes = cursor.fetchone()
+        
+        # 5. Sample of corrupt BTC prices
+        cursor.execute("""
+            SELECT id, symbol, price_at_prediction, created_at
+            FROM predictions
+            WHERE symbol = 'BTC' AND price_at_prediction < 10000
+            ORDER BY created_at DESC
+            LIMIT 10
+        """)
+        btc_samples = [
+            {"id": r[0], "symbol": r[1], "price": float(r[2]), "created": str(r[3])}
+            for r in cursor.fetchall()
+        ]
+        
+        conn.close()
+        
+        total_corrupt = sum(d["corrupt_count"] for d in corrupt_data.values())
+        total_corrupt += sum(zero_prices.values())
+        
+        return {
+            "ok": True,
+            "predictions": {
+                "total": pred_overview[0],
+                "symbols": pred_overview[1],
+                "earliest": str(pred_overview[2]),
+                "latest": str(pred_overview[3])
+            },
+            "corrupt_data": corrupt_data,
+            "zero_prices": zero_prices,
+            "total_corrupt": total_corrupt,
+            "outcomes": {
+                "total": outcomes[0] or 0,
+                "wins": outcomes[1] or 0,
+                "losses": outcomes[2] or 0,
+                "no_data": outcomes[3] or 0,
+                "accuracy_pct": round((outcomes[1] or 0) / (outcomes[0] or 1) * 100, 2)
+            },
+            "btc_corrupt_samples": btc_samples,
+            "recommendation": "Run /debug/db-clean to remove corrupt data" if total_corrupt > 0 else "Database is clean!"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/debug/db-clean")
+async def debug_db_clean(confirm: str = None):
+    """
+    Clean corrupt data from PostgreSQL.
+    
+    DANGER: This deletes data!
+    
+    Usage:
+    - /debug/db-clean              # Preview what would be deleted
+    - /debug/db-clean?confirm=yes  # Actually delete
+    """
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # Price validation thresholds
+        MIN_VALID = {
+            'BTC': 10000, 'ETH': 500, 'SOL': 5, 'BNB': 100,
+            'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001
+        }
+        
+        # Find corrupt prediction IDs
+        corrupt_ids = []
+        summary = {}
+        
+        for symbol, min_price in MIN_VALID.items():
+            cursor.execute("""
+                SELECT id FROM predictions
+                WHERE symbol = %s AND price_at_prediction < %s
+            """, (symbol, min_price))
+            ids = [r[0] for r in cursor.fetchall()]
+            if ids:
+                corrupt_ids.extend(ids)
+                summary[symbol] = len(ids)
+        
+        # Zero/negative prices
+        cursor.execute("""
+            SELECT id FROM predictions WHERE price_at_prediction <= 0
+        """)
+        zero_ids = [r[0] for r in cursor.fetchall()]
+        if zero_ids:
+            corrupt_ids.extend(zero_ids)
+            summary["zero_negative"] = len(zero_ids)
+        
+        corrupt_ids = list(set(corrupt_ids))
+        
+        if not corrupt_ids:
+            conn.close()
+            return {"ok": True, "message": "No corrupt data found!", "deleted": 0}
+        
+        if confirm != "yes":
+            conn.close()
+            return {
+                "ok": True,
+                "mode": "preview",
+                "would_delete": len(corrupt_ids),
+                "breakdown": summary,
+                "warning": "Add ?confirm=yes to actually delete",
+                "example": "/debug/db-clean?confirm=yes"
+            }
+        
+        # Actually delete
+        # First delete related outcomes
+        cursor.execute("""
+            DELETE FROM ghost_prediction_outcomes
+            WHERE prediction_id = ANY(%s)
+        """, (corrupt_ids,))
+        outcomes_deleted = cursor.rowcount
+        
+        # Then delete predictions
+        cursor.execute("""
+            DELETE FROM predictions
+            WHERE id = ANY(%s)
+        """, (corrupt_ids,))
+        predictions_deleted = cursor.rowcount
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "ok": True,
+            "mode": "cleaned",
+            "predictions_deleted": predictions_deleted,
+            "outcomes_deleted": outcomes_deleted,
+            "breakdown": summary,
+            "message": "Corrupt data removed! Accuracy will recalculate."
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/learning-status")
 async def debug_learning_status():
     """
