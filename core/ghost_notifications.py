@@ -75,26 +75,50 @@ LEARNING_EXCLUDE_ACCURACY = 40.0  # Exclude symbols with <40% accuracy
 LEARNING_BOOST_ACCURACY = 70.0  # Boost symbols with >70% accuracy
 LEARNING_BOOST_AMOUNT = 0.15  # 15% confidence boost
 
-# ⚠️ LEARNING DISABLED - Data corruption detected Dec 27, 2025
-# BTC outcomes show $38.93 exit price (wrong asset)
-# ETH, XRP accuracy numbers are unreliable
-# Re-enable after fixing outcome data
-LEARNING_ENABLED = False  # SET TO True AFTER DATA IS FIXED
+# ============================================================================
+# LEARNING MODE - Re-enabled Dec 28, 2025
+# Only EXCLUSIONS are active (no boosting until data is fully validated)
+# ============================================================================
+LEARNING_ENABLED = True  # Exclusions only
+LEARNING_BOOST_ENABLED = False  # Boosting disabled until data validated
 
 # ============================================================================
-# HARDCODED EXCLUSIONS - Symbols with historically bad accuracy
+# HARDCODED EXCLUSIONS - Symbols with historically bad accuracy (<40%)
 # These are ALWAYS excluded regardless of learning data
+# Updated Dec 28, 2025 based on actual accuracy data
 # ============================================================================
 HARDCODED_EXCLUSIONS = {
-    # Crypto with historically poor prediction accuracy
-    'DOT': 'historically low accuracy (<40%)',
-    'DOGE': 'historically low accuracy (<40%)',
-    'MATIC': 'historically low accuracy (<40%)',
-    'OMG': 'historically low accuracy (<40%)',
-    'AVAX': 'historically low accuracy (<40%)',
-    'ANT': 'historically low accuracy (<40%)',
-    'OCEAN': 'historically low accuracy (<40%)',
-    # Add more as identified
+    # Crypto with <40% accuracy (from /api/learning/dashboard)
+    'DOT': '30% accuracy (3/10)',
+    'DOGE': '30% accuracy (3/10)',
+    'MATIC': '50% but volatile',
+    'OMG': '10% accuracy (1/10)',
+    'AVAX': '30% accuracy (3/10)',
+    'ANT': '40% accuracy (borderline)',
+    'OCEAN': '30% accuracy (3/10)',
+    'ADA': '20% accuracy (2/10)',  # Added Dec 28
+    'STORJ': '0% accuracy (0/9)',  # Added Dec 28
+    'RLC': '10% accuracy (1/10)',  # Added Dec 28
+    '1INCH': '11% accuracy (1/9)',  # Added Dec 28
+    'YFI': '11% accuracy (1/9)',  # Added Dec 28
+    'FLOKI': '11% accuracy (1/9)',  # Added Dec 28
+    'LDO': '11% accuracy (1/9)',  # Added Dec 28
+    'BAL': '11% accuracy (1/9)',  # Added Dec 28
+    'RNDR': '11% accuracy (1/9)',  # Added Dec 28
+    'XLM': '22% accuracy (2/9)',  # Added Dec 28
+    'ETC': '22% accuracy (2/9)',  # Added Dec 28
+    'APE': '22% accuracy (2/9)',  # Added Dec 28
+    'ZEN': '20% accuracy (2/10)',  # Added Dec 28
+    'EGLD': '20% accuracy (2/10)',  # Added Dec 28
+    'ONDO': '20% accuracy (2/10)',  # Added Dec 28
+    'BAT': '20% accuracy (2/10)',  # Added Dec 28
+    'THETA': '20% accuracy (2/10)',  # Added Dec 28
+    'ZRX': '30% accuracy (3/10)',  # Added Dec 28
+    'BNB': '30% accuracy (3/10)',  # Added Dec 28
+    'XTZ': '30% accuracy (3/10)',  # Added Dec 28
+    'LOOM': '30% accuracy (3/10)',  # Added Dec 28
+    'USDC': '33% accuracy - stablecoin',  # Added Dec 28
+    'QNT': '20% accuracy (2/10)',  # Added Dec 28
 }
 
 # Cache for symbol accuracy (refreshed every 5 minutes)
@@ -174,7 +198,7 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     
     PRIORITY ORDER:
     1. HARDCODED_EXCLUSIONS - Always excluded (known bad symbols)
-    2. Learning data - Excluded if <40% accuracy after 10+ predictions
+    2. Learning data - Excluded if <40% accuracy after 10+ predictions (if LEARNING_EXCLUDE_ENABLED)
     
     Args:
         symbol: The symbol to check
@@ -187,7 +211,10 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     if symbol in HARDCODED_EXCLUSIONS:
         return True, f"HARDCODED: {HARDCODED_EXCLUSIONS[symbol]}"
     
-    # PRIORITY 2: Check learning data (only if enabled)
+    # PRIORITY 2: Check learning data (only if LEARNING_EXCLUDE_ENABLED)
+    if not LEARNING_EXCLUDE_ENABLED:
+        return False, "learning_exclusions_disabled"
+    
     if symbol not in accuracy_data:
         return False, "no_data"
     
@@ -215,6 +242,10 @@ def get_confidence_boost(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     Returns:
         (boost_multiplier: float, reason: str)
     """
+    # Check if boosts are enabled
+    if not LEARNING_BOOST_ENABLED:
+        return 1.0, "boosts_disabled"
+    
     if symbol not in accuracy_data:
         return 1.0, "no_data"
     
