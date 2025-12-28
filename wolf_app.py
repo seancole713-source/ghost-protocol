@@ -21256,18 +21256,30 @@ async def debug_db_audit():
 
 
 @APP.get("/debug/db-clean")
-async def debug_db_clean(confirm: str = None):
+async def debug_db_clean(
+    mode: str = "preview",
+    confirm: str = "no"
+):
     """
-    Clean corrupt data from PostgreSQL.
+    Clean corrupt data from ghost_prediction_outcomes table.
     
-    DANGER: This deletes data!
+    Modes:
+        preview - Show what would be deleted (default, safe)
+        corrupt - Delete outcomes with corrupt prices (BTC < $10k, etc.)
+        no_data - Delete outcomes with status='no_data'
+        all     - Delete both corrupt AND no_data records
+    
+    Requires confirm=yes for any destructive operation.
     
     Usage:
-    - /debug/db-clean              # Preview what would be deleted
-    - /debug/db-clean?confirm=yes  # Actually delete
+        /debug/db-clean?mode=preview              - Preview (safe)
+        /debug/db-clean?mode=corrupt&confirm=yes  - Delete corrupt prices
+        /debug/db-clean?mode=no_data&confirm=yes  - Delete no_data records
+        /debug/db-clean?mode=all&confirm=yes      - Delete everything bad
     """
     try:
         import psycopg2
+        from datetime import datetime
         
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
@@ -21277,76 +21289,225 @@ async def debug_db_clean(confirm: str = None):
         cursor = conn.cursor()
         
         # Price validation thresholds
-        MIN_VALID = {
+        MIN_PRICES = {
             'BTC': 10000, 'ETH': 500, 'SOL': 5, 'BNB': 100,
-            'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001
+            'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001, 'AVAX': 5,
+            'DOT': 1, 'LINK': 2, 'MATIC': 0.10, 'LTC': 20,
         }
         
-        # Find corrupt prediction IDs
-        corrupt_ids = []
-        summary = {}
+        results = {
+            "ok": True,
+            "mode": mode,
+            "confirm": confirm,
+            "timestamp": datetime.utcnow().isoformat(),
+            "actions": [],
+            "deleted": {},
+        }
         
-        for symbol, min_price in MIN_VALID.items():
+        # Build corrupt price conditions
+        corrupt_conditions = []
+        for symbol, min_price in MIN_PRICES.items():
+            corrupt_conditions.append(
+                f"(symbol = '{symbol}' AND (price_at_prediction < {min_price} OR price_at_resolution < {min_price}))"
+            )
+        corrupt_where = " OR ".join(corrupt_conditions)
+        
+        # ================================================================
+        # PREVIEW MODE - Show what would be deleted
+        # ================================================================
+        if mode == "preview":
+            # Count corrupt
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM ghost_prediction_outcomes
+                WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
+            """)
+            corrupt_count = cursor.fetchone()[0]
+            
+            # Count no_data
             cursor.execute("""
-                SELECT id FROM predictions
-                WHERE symbol = %s AND price_at_prediction < %s
-            """, (symbol, min_price))
-            ids = [r[0] for r in cursor.fetchall()]
-            if ids:
-                corrupt_ids.extend(ids)
-                summary[symbol] = len(ids)
-        
-        # Zero/negative prices
-        cursor.execute("""
-            SELECT id FROM predictions WHERE price_at_prediction <= 0
-        """)
-        zero_ids = [r[0] for r in cursor.fetchall()]
-        if zero_ids:
-            corrupt_ids.extend(zero_ids)
-            summary["zero_negative"] = len(zero_ids)
-        
-        corrupt_ids = list(set(corrupt_ids))
-        
-        if not corrupt_ids:
+                SELECT COUNT(*) FROM ghost_prediction_outcomes
+                WHERE status = 'no_data' OR hit_direction IS NULL
+            """)
+            no_data_count = cursor.fetchone()[0]
+            
+            # Count total
+            cursor.execute("SELECT COUNT(*) FROM ghost_prediction_outcomes")
+            total_count = cursor.fetchone()[0]
+            
+            # Sample corrupt records
+            cursor.execute(f"""
+                SELECT id, symbol, price_at_prediction, price_at_resolution, status
+                FROM ghost_prediction_outcomes
+                WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
+                LIMIT 10
+            """)
+            corrupt_samples = [
+                {"id": r[0], "symbol": r[1], "entry": float(r[2]) if r[2] else 0, "exit": float(r[3]) if r[3] else 0, "status": r[4]}
+                for r in cursor.fetchall()
+            ]
+            
             conn.close()
-            return {"ok": True, "message": "No corrupt data found!", "deleted": 0}
-        
-        if confirm != "yes":
-            conn.close()
+            
             return {
                 "ok": True,
                 "mode": "preview",
-                "would_delete": len(corrupt_ids),
-                "breakdown": summary,
-                "warning": "Add ?confirm=yes to actually delete",
-                "example": "/debug/db-clean?confirm=yes"
+                "preview": {
+                    "total_outcomes": total_count,
+                    "corrupt_prices": corrupt_count,
+                    "no_data_status": no_data_count,
+                    "would_remain_after_all": total_count - corrupt_count - no_data_count + (corrupt_count if no_data_count > corrupt_count else 0),
+                    "corrupt_samples": corrupt_samples,
+                },
+                "actions": ["Preview complete - no changes made"],
+                "instructions": {
+                    "to_delete_corrupt": "/debug/db-clean?mode=corrupt&confirm=yes",
+                    "to_delete_no_data": "/debug/db-clean?mode=no_data&confirm=yes",
+                    "to_delete_all": "/debug/db-clean?mode=all&confirm=yes",
+                }
             }
         
-        # Actually delete
-        # First delete related outcomes
-        cursor.execute("""
-            DELETE FROM ghost_prediction_outcomes
-            WHERE prediction_id = ANY(%s)
-        """, (corrupt_ids,))
-        outcomes_deleted = cursor.rowcount
+        # ================================================================
+        # DESTRUCTIVE MODES - Require confirmation
+        # ================================================================
+        if confirm != "yes":
+            conn.close()
+            return {
+                "ok": False,
+                "error": "Destructive operation requires confirm=yes parameter",
+                "instruction": f"Use: /debug/db-clean?mode={mode}&confirm=yes"
+            }
         
-        # Then delete predictions
-        cursor.execute("""
-            DELETE FROM predictions
-            WHERE id = ANY(%s)
-        """, (corrupt_ids,))
-        predictions_deleted = cursor.rowcount
+        # ================================================================
+        # DELETE CORRUPT PRICES
+        # ================================================================
+        if mode in ["corrupt", "all"]:
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM ghost_prediction_outcomes
+                WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
+            """)
+            corrupt_count = cursor.fetchone()[0]
+            
+            if corrupt_count > 0:
+                cursor.execute(f"""
+                    DELETE FROM ghost_prediction_outcomes
+                    WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
+                """)
+                deleted = cursor.rowcount
+                results["deleted"]["corrupt_prices"] = deleted
+                results["actions"].append(f"Deleted {deleted} outcomes with corrupt prices")
+                LOGGER.warning(f"[DB-CLEAN] Deleted {deleted} corrupt price outcomes")
+            else:
+                results["actions"].append("No corrupt price records found")
         
+        # ================================================================
+        # DELETE NO_DATA STATUS
+        # ================================================================
+        if mode in ["no_data", "all"]:
+            cursor.execute("""
+                SELECT COUNT(*) FROM ghost_prediction_outcomes
+                WHERE status = 'no_data' OR hit_direction IS NULL
+            """)
+            no_data_count = cursor.fetchone()[0]
+            
+            if no_data_count > 0:
+                cursor.execute("""
+                    DELETE FROM ghost_prediction_outcomes
+                    WHERE status = 'no_data' OR hit_direction IS NULL
+                """)
+                deleted = cursor.rowcount
+                results["deleted"]["no_data"] = deleted
+                results["actions"].append(f"Deleted {deleted} outcomes with no_data status")
+                LOGGER.warning(f"[DB-CLEAN] Deleted {deleted} no_data outcomes")
+            else:
+                results["actions"].append("No no_data records found")
+        
+        # ================================================================
+        # COMMIT AND GET FINAL STATE
+        # ================================================================
+        conn.commit()
+        
+        # Get remaining count
+        cursor.execute("SELECT COUNT(*) FROM ghost_prediction_outcomes")
+        remaining = cursor.fetchone()[0]
+        
+        # Get accuracy of remaining
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses
+            FROM ghost_prediction_outcomes
+            WHERE hit_direction IS NOT NULL
+        """)
+        acc = cursor.fetchone()
+        
+        results["after_cleanup"] = {
+            "total_remaining": remaining,
+            "with_outcome": acc[0] or 0,
+            "wins": acc[1] or 0,
+            "losses": acc[2] or 0,
+            "accuracy_pct": round((acc[1] or 0) / max(1, acc[0] or 1) * 100, 2),
+        }
+        
+        conn.close()
+        return results
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/debug/db-reset-accuracy")
+async def debug_db_reset_accuracy(confirm: str = "no"):
+    """
+    Reset the ghost_symbol_accuracy table.
+    The reconciler will rebuild it from clean outcome data.
+    
+    Requires confirm=yes parameter.
+    """
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        if confirm != "yes":
+            return {
+                "ok": False,
+                "warning": "This will TRUNCATE ghost_symbol_accuracy table",
+                "instruction": "Use /debug/db-reset-accuracy?confirm=yes to proceed"
+            }
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # Check if table exists
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'ghost_symbol_accuracy'
+            )
+        """)
+        exists = cursor.fetchone()[0]
+        
+        if not exists:
+            conn.close()
+            return {"ok": True, "message": "Table ghost_symbol_accuracy does not exist - nothing to reset"}
+        
+        # Get count before
+        cursor.execute("SELECT COUNT(*) FROM ghost_symbol_accuracy")
+        before = cursor.fetchone()[0]
+        
+        # Truncate
+        cursor.execute("TRUNCATE ghost_symbol_accuracy")
         conn.commit()
         conn.close()
         
         return {
             "ok": True,
-            "mode": "cleaned",
-            "predictions_deleted": predictions_deleted,
-            "outcomes_deleted": outcomes_deleted,
-            "breakdown": summary,
-            "message": "Corrupt data removed! Accuracy will recalculate."
+            "deleted_rows": before,
+            "message": "Symbol accuracy table reset. Reconciler will rebuild from outcomes."
         }
         
     except Exception as e:
