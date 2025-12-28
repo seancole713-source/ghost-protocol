@@ -7542,28 +7542,66 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # ==========================================================================
         
         # ======================================================================
-        # 🔄 INVERSE GHOST - The 0.6% Accuracy Fix
+        # 🔄 INVERSE GHOST - Per-Symbol Toggle (Updated Dec 28, 2025)
         # ======================================================================
-        # Ghost's historical accuracy is 0.6% across 25,691 predictions.
-        # This means Ghost is ANTI-PREDICTIVE - almost perfectly wrong.
-        # 
-        # Solution: FLIP every prediction.
-        # - Ghost says UP → Output DOWN
-        # - Ghost says DOWN → Output UP
-        # 
-        # Expected accuracy after inversion: ~99%
-        # 
-        # This runs UNTIL the feedback loop improves accuracy above 50%
+        # Analysis shows INVERSE helps SOME symbols but HURTS others:
+        #
+        # INVERSE HELPS (raw accuracy <30%, invert to 70%+):
+        #   - ETH: 10% raw → 90% inverted ✅
+        #   - BTC: 20% raw → 80% inverted ✅
+        #   - XRP: 20% raw → 80% inverted ✅
+        #   - QTUM: 20% raw → 80% inverted ✅
+        #
+        # INVERSE HURTS (raw accuracy >60%, invert makes it worse):
+        #   - OMG: 90% raw → 10% inverted ❌
+        #   - RLC: 90% raw → 10% inverted ❌
+        #   - THETA: 80% raw → 20% inverted ❌
+        #   - DOGE: 70% raw → 30% inverted ❌
+        #   - EGLD: 80% raw → 20% inverted ❌
+        #   - BAT: 80% raw → 20% inverted ❌
+        #   - ONDO: 80% raw → 20% inverted ❌
+        #   - ZEN: 80% raw → 20% inverted ❌
+        #
+        # Solution: Don't invert symbols with HIGH raw accuracy
         # ======================================================================
-        inverse_ghost_enabled = os.getenv("INVERSE_GHOST", "1") == "1"  # ON by default!
+        
+        # Symbols where raw Ghost is GOOD - DON'T invert these
+        INVERSE_SKIP_SYMBOLS = {
+            # <40% inverted accuracy = >60% raw accuracy = model is RIGHT
+            "OMG",    # 10% inverted → 90% raw (VERY GOOD raw)
+            "RLC",    # 10% inverted → 90% raw (VERY GOOD raw)
+            "THETA",  # 20% inverted → 80% raw (GOOD raw)
+            "EGLD",   # 20% inverted → 80% raw (GOOD raw)
+            "BAT",    # 20% inverted → 80% raw (GOOD raw)
+            "ONDO",   # 20% inverted → 80% raw (GOOD raw)
+            "ZEN",    # 20% inverted → 80% raw (GOOD raw)
+            "DOGE",   # 30% inverted → 70% raw (GOOD raw)
+            "DOT",    # 30% inverted → 70% raw (GOOD raw)
+            "ZRX",    # 30% inverted → 70% raw (GOOD raw)
+            "BNB",    # 30% inverted → 70% raw (GOOD raw)
+            "AVAX",   # 30% inverted → 70% raw (GOOD raw)
+            "OCEAN",  # 30% inverted → 70% raw (GOOD raw)
+            "ANT",    # 40% inverted → 60% raw (borderline, skip)
+        }
+        
+        inverse_ghost_enabled = os.getenv("INVERSE_GHOST", "1") == "1"  # ON by default
+        symbol_upper = symbol.upper()
         
         if inverse_ghost_enabled and direction in ("UP", "DOWN"):
-            original_direction = direction
-            direction = "DOWN" if direction == "UP" else "UP"
-            LOGGER.warning(
-                f"[{symbol}] 🔄 INVERSE GHOST: {original_direction} → {direction} "
-                f"(Ghost accuracy: 0.6%, inverted accuracy: ~99%)"
-            )
+            if symbol_upper in INVERSE_SKIP_SYMBOLS:
+                # This symbol has HIGH raw accuracy - keep raw prediction
+                LOGGER.info(
+                    f"[{symbol}] ⏭️ INVERSE SKIP: Keeping raw {direction} "
+                    f"(symbol in INVERSE_SKIP_SYMBOLS - high raw accuracy)"
+                )
+            else:
+                # Normal symbols - invert the prediction
+                original_direction = direction
+                direction = "DOWN" if direction == "UP" else "UP"
+                LOGGER.warning(
+                    f"[{symbol}] 🔄 INVERSE GHOST: {original_direction} → {direction} "
+                    f"(per-symbol toggle active)"
+                )
         
         # ==========================================================================
         # EXPECTED MOVE CALCULATION (FIXED Dec 21-22, 2025)
@@ -22224,23 +22262,42 @@ async def reconcile_predictions_now(request: Request):
                 
                 # Determine if prediction was correct
                 # Ghost predicts direction (UP/DOWN)
-                # INVERSE_GHOST flips this in TOP 10, so raw Ghost DOWN = we predict UP
+                # INVERSE_GHOST flips this in TOP 10 (except INVERSE_SKIP_SYMBOLS)
                 actual_up = price_change_pct > 0.25  # 0.25% threshold
                 actual_down = price_change_pct < -0.25
                 
-                if direction == "DOWN":
-                    # Ghost said DOWN, so with INVERSE we said UP
-                    # Check if price actually went UP (our prediction was correct)
-                    hit = 1 if actual_up else 0
-                    inverse_prediction = "UP"
-                elif direction == "UP":
-                    # Ghost said UP, so with INVERSE we said DOWN
-                    # Check if price actually went DOWN (our prediction was correct)
-                    hit = 1 if actual_down else 0
-                    inverse_prediction = "DOWN"
+                # Check if this symbol is excluded from INVERSE
+                # Must match INVERSE_SKIP_SYMBOLS from TOP 10 generation
+                inverse_skip_symbols = {
+                    "OMG", "RLC", "THETA", "EGLD", "BAT", "ONDO", "ZEN",
+                    "DOGE", "DOT", "ZRX", "BNB", "AVAX", "OCEAN", "ANT"
+                }
+                symbol_no_inverse = symbol.upper() in inverse_skip_symbols
+                
+                if symbol_no_inverse:
+                    # NO INVERSE - Ghost prediction is used RAW
+                    if direction == "UP":
+                        hit = 1 if actual_up else 0
+                        inverse_prediction = "UP (RAW)"
+                    elif direction == "DOWN":
+                        hit = 1 if actual_down else 0
+                        inverse_prediction = "DOWN (RAW)"
+                    else:
+                        hit = 0
+                        inverse_prediction = direction
                 else:
-                    hit = 0
-                    inverse_prediction = direction
+                    # INVERSE APPLIED - Ghost prediction is flipped
+                    if direction == "DOWN":
+                        # Ghost said DOWN, so with INVERSE we said UP
+                        hit = 1 if actual_up else 0
+                        inverse_prediction = "UP"
+                    elif direction == "UP":
+                        # Ghost said UP, so with INVERSE we said DOWN
+                        hit = 1 if actual_down else 0
+                        inverse_prediction = "DOWN"
+                    else:
+                        hit = 0
+                        inverse_prediction = direction
                 
                 # Record outcome
                 cursor.execute("""
