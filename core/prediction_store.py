@@ -27,6 +27,85 @@ from typing import Any, Optional
 
 LOGGER = logging.getLogger("core.prediction_store")
 
+# =============================================================================
+# PRICE VALIDATION - Prevent corrupt data from poisoning learning system
+# =============================================================================
+# Minimum sane prices - reject anything below these values as corrupt
+MIN_VALID_PRICES = {
+    'BTC': 10000,     # BTC won't be $38 ever again
+    'ETH': 500,       # ETH won't be $5 again
+    'SOL': 5,         # SOL minimum
+    'BNB': 50,        # BNB minimum
+    'XRP': 0.10,      # XRP minimum
+    'ADA': 0.02,      # ADA minimum
+    'AVAX': 3,        # AVAX minimum
+    'DOGE': 0.005,    # DOGE minimum
+    'DOT': 1,         # DOT minimum
+    'LINK': 2,        # LINK minimum
+    'MATIC': 0.10,    # MATIC minimum
+    'SHIB': 0.000001, # SHIB minimum
+    'LTC': 20,        # LTC minimum
+    'ATOM': 2,        # ATOM minimum
+    'UNI': 1,         # UNI minimum
+}
+
+# Maximum sane prices - reject anything above as corrupt (e.g., BTC at $10M)
+MAX_VALID_PRICES = {
+    'BTC': 500000,    # BTC won't be $500K soon
+    'ETH': 50000,     # ETH won't be $50K soon
+    'SOL': 2000,      # SOL won't be $2K soon
+    'BNB': 5000,      # BNB won't be $5K soon
+    'XRP': 50,        # XRP won't be $50 soon
+    'ADA': 20,        # ADA won't be $20 soon
+    'DOGE': 5,        # DOGE won't be $5 soon
+}
+
+# Default bounds for unknown symbols
+DEFAULT_MIN_PRICE = 0.0000001  # 7 decimal places minimum
+DEFAULT_MAX_PRICE = 1000000    # $1M maximum for unknown symbols
+
+
+def validate_price(symbol: str, price: float, context: str = "") -> tuple[bool, str]:
+    """
+    Validate that a price is within sane bounds for the given symbol.
+    
+    Args:
+        symbol: The trading symbol (BTC, ETH, AAPL, etc.)
+        price: The price to validate
+        context: Optional context for logging (e.g., "prediction", "reconciliation")
+    
+    Returns:
+        (is_valid, reason): Tuple of boolean and reason string
+    """
+    if price is None:
+        return False, f"Price is None"
+    
+    if not isinstance(price, (int, float)):
+        return False, f"Price is not numeric: {type(price)}"
+    
+    if price <= 0:
+        return False, f"Price is zero or negative: {price}"
+    
+    symbol_upper = symbol.upper()
+    
+    # Check minimum bound
+    min_price = MIN_VALID_PRICES.get(symbol_upper, DEFAULT_MIN_PRICE)
+    if price < min_price:
+        return False, f"Price ${price:.8f} below minimum ${min_price} for {symbol_upper}"
+    
+    # Check maximum bound
+    max_price = MAX_VALID_PRICES.get(symbol_upper, DEFAULT_MAX_PRICE)
+    if price > max_price:
+        return False, f"Price ${price:.2f} above maximum ${max_price} for {symbol_upper}"
+    
+    return True, "OK"
+
+
+class PriceValidationError(Exception):
+    """Raised when a price fails validation."""
+    pass
+
+
 # Configuration
 PREDICTION_STORE_ENGINE = os.getenv("PREDICTION_STORE_ENGINE", "sqlite").lower()
 PREDICTION_DUAL_WRITE = os.getenv("PREDICTION_DUAL_WRITE", "0") == "1"

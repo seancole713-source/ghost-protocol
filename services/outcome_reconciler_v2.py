@@ -5,8 +5,9 @@ Enhanced Ghost Prediction Outcome Reconciler
 Background task that:
 1. Finds predictions where 48h window has closed
 2. Fetches actual prices at t+48h using live providers
-3. Computes accuracy metrics
-4. Stores outcomes in Postgres
+3. Validates prices to prevent corrupt data
+4. Computes accuracy metrics
+5. Stores outcomes in Postgres
 
 This is the CORE of Ghost's 70% accuracy measurement.
 """
@@ -16,7 +17,7 @@ import os
 import time
 from typing import Optional, Dict, Any
 from datetime import datetime
-from core.prediction_store import get_prediction_store
+from core.prediction_store import get_prediction_store, validate_price
 import psycopg2
 
 LOGGER = logging.getLogger("ghost.outcome_reconciler_v2")
@@ -253,6 +254,16 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
     else:
         LOGGER.debug(f"✅ Using recorded price_at_prediction for {symbol}: ${price_t0:.2f}")
     
+    # =========================================================================
+    # PRICE VALIDATION - Reject corrupt prices BEFORE they poison accuracy data
+    # =========================================================================
+    is_valid_t0, reason_t0 = validate_price(symbol, price_t0, "t0_price")
+    if not is_valid_t0:
+        LOGGER.warning(f"🚫 CORRUPT PRICE REJECTED at t0 for {symbol}: {reason_t0}")
+        _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
+                               f"Corrupt price at t0: {reason_t0}")
+        return "no_data"
+    
     # Get price at resolution time (t1 = t0 + 48h)
     try:
         price_t1 = _get_price_at_time(symbol, t_resolve)
@@ -265,6 +276,14 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
         LOGGER.error(f"❌ Failed to fetch t1 price for {symbol}: {e}")
         _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
                                f"Error fetching t1 price: {str(e)[:100]}")
+        return "no_data"
+    
+    # Validate t1 price as well
+    is_valid_t1, reason_t1 = validate_price(symbol, price_t1, "t1_price")
+    if not is_valid_t1:
+        LOGGER.warning(f"🚫 CORRUPT PRICE REJECTED at t1 for {symbol}: {reason_t1}")
+        _store_outcome_no_data(pred_id, symbol, run_at, t_resolve, pred_direction, pred_confidence,
+                               f"Corrupt price at t1: {reason_t1}")
         return "no_data"
     
     # Compute realized movement

@@ -1131,11 +1131,15 @@ async def active_tracking_scheduler(
             
             # ========================================
             # TASK 1: Daily TOP 10 at 5 AM
+            # NOTE: TOP 10 is now handled by ghost_notifications.py
+            #       This scheduler only handles price tracking updates
             # ========================================
-            if current_hour == DAILY_TOP_10_HOUR and last_top_10_date != current_date:
-                LOGGER.info("[ACTIVE TRACKING] 🌅 Time for daily TOP 10!")
-                await send_daily_top_10(get_predictions, send_telegram, inverse_mode)
-                last_top_10_date = current_date
+            # DISABLED - send_daily_top_10 had wrong color logic
+            # Now using ghost_notifications.py instead
+            # if current_hour == DAILY_TOP_10_HOUR and last_top_10_date != current_date:
+            #     LOGGER.info("[ACTIVE TRACKING] 🌅 Time for daily TOP 10!")
+            #     await send_daily_top_10(get_predictions, send_telegram, inverse_mode)
+            #     last_top_10_date = current_date
             
             # ========================================
             # TASK 2: Price updates every check_interval_minutes

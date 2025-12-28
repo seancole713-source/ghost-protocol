@@ -22254,6 +22254,21 @@ async def reconcile_predictions_now(request: Request):
                     failed += 1
                     continue
                 
+                # PRICE VALIDATION - Reject corrupt prices
+                from core.prediction_store import validate_price
+                is_valid_entry, reason_entry = validate_price(symbol, entry_price, "entry")
+                is_valid_current, reason_current = validate_price(symbol, current_price, "current")
+                
+                if not is_valid_entry:
+                    LOGGER.warning(f"[RECONCILE] 🚫 CORRUPT entry price rejected for {symbol}: {reason_entry}")
+                    failed += 1
+                    continue
+                
+                if not is_valid_current:
+                    LOGGER.warning(f"[RECONCILE] 🚫 CORRUPT current price rejected for {symbol}: {reason_current}")
+                    failed += 1
+                    continue
+                
                 if entry_price is None or entry_price <= 0:
                     entry_price = current_price  # Fallback
                 
