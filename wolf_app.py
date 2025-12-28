@@ -21455,8 +21455,30 @@ async def learning_dashboard():
         cur.close()
         conn.close()
         
+        # Import learning config from ghost_notifications
+        try:
+            from core.ghost_notifications import (
+                LEARNING_ENABLED, LEARNING_BOOST_ENABLED, LEARNING_EXCLUDE_ENABLED,
+                LEARNING_MIN_PREDICTIONS, LEARNING_EXCLUDE_ACCURACY, LEARNING_BOOST_ACCURACY,
+                LEARNING_BOOST_AMOUNT, HARDCODED_EXCLUSIONS
+            )
+            learning_config = {
+                "learning_enabled": LEARNING_ENABLED,
+                "boost_enabled": LEARNING_BOOST_ENABLED,
+                "exclude_enabled": LEARNING_EXCLUDE_ENABLED,
+                "min_predictions": LEARNING_MIN_PREDICTIONS,
+                "exclude_threshold": LEARNING_EXCLUDE_ACCURACY,
+                "boost_threshold": LEARNING_BOOST_ACCURACY,
+                "boost_amount": LEARNING_BOOST_AMOUNT,
+                "hardcoded_exclusions": list(HARDCODED_EXCLUSIONS.keys()),
+                "hardcoded_exclusions_details": HARDCODED_EXCLUSIONS
+            }
+        except ImportError:
+            learning_config = {"error": "Could not import learning config"}
+        
         return {
             "ok": True,
+            "config": learning_config,
             "overall_accuracy": overall_stats,
             "learning_adjustments": {
                 "excluded_from_top10": {
