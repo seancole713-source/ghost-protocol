@@ -21053,6 +21053,52 @@ async def backfill_no_data_outcomes(
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/inverse-status")
+async def debug_inverse_status():
+    """
+    Check INVERSE GHOST mode status and per-symbol configuration.
+    
+    Shows:
+    - Global INVERSE mode enabled/disabled
+    - Per-symbol INVERSE_SKIP_SYMBOLS list
+    - Which symbols will be inverted vs kept raw
+    """
+    try:
+        inverse_enabled = os.getenv("INVERSE_GHOST", "1") == "1"
+        
+        # These match INVERSE_SKIP_SYMBOLS in generate_top_10_predictions()
+        inverse_skip_symbols = {
+            "OMG", "RLC", "THETA", "EGLD", "BAT", "ONDO", "ZEN",
+            "DOGE", "DOT", "ZRX", "BNB", "AVAX", "OCEAN", "ANT"
+        }
+        
+        # Test symbols
+        test_symbols = ["BTC", "ETH", "BNB", "DOGE", "SAND", "SOL", "OMG", "THETA"]
+        symbol_modes = {}
+        for sym in test_symbols:
+            if sym in inverse_skip_symbols:
+                symbol_modes[sym] = "RAW (skip INVERSE - high raw accuracy)"
+            elif inverse_enabled:
+                symbol_modes[sym] = "INVERTED (INVERSE mode active)"
+            else:
+                symbol_modes[sym] = "RAW (INVERSE disabled globally)"
+        
+        return {
+            "ok": True,
+            "inverse_ghost_enabled": inverse_enabled,
+            "inverse_skip_symbols": sorted(inverse_skip_symbols),
+            "inverse_skip_count": len(inverse_skip_symbols),
+            "symbol_modes": symbol_modes,
+            "explanation": {
+                "INVERSE mode": "Flips predictions (UP→DOWN, DOWN→UP) for symbols with <50% raw accuracy",
+                "INVERSE_SKIP": "Symbols with >60% raw accuracy that should NOT be inverted",
+            }
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/learning-status")
 async def debug_learning_status():
     """
