@@ -16,6 +16,69 @@ from urllib3.util.retry import Retry
 
 LOGGER = logging.getLogger(__name__)
 
+# =============================================================================
+# PRICE VALIDATION - Prevent corrupt prices (e.g., BTC @ $38)
+# Added Dec 28, 2025 after discovering corrupt data in PostgreSQL
+# =============================================================================
+
+MIN_SANE_PRICES = {
+    'BTC': 10000,    # BTC should never be below $10k (last seen 2020)
+    'ETH': 500,      # ETH should never be below $500
+    'SOL': 10,       # SOL should never be below $10
+    'BNB': 100,      # BNB should never be below $100
+    'XRP': 0.10,     # XRP should never be below $0.10
+    'ADA': 0.05,     # ADA should never be below $0.05
+    'DOGE': 0.005,   # DOGE should never be below $0.005
+    'AVAX': 5,       # AVAX should never be below $5
+    'DOT': 2,        # DOT should never be below $2
+    'LINK': 3,       # LINK should never be below $3
+    'MATIC': 0.20,   # MATIC should never be below $0.20
+    'UNI': 2,        # UNI should never be below $2
+    'AAVE': 30,      # AAVE should never be below $30
+    'ATOM': 3,       # ATOM should never be below $3
+    'LTC': 30,       # LTC should never be below $30
+}
+
+MAX_SANE_PRICES = {
+    'BTC': 500000,   # BTC ceiling (will need to update in bull market!)
+    'ETH': 50000,    # ETH ceiling
+    'SOL': 5000,     # SOL ceiling
+    'BNB': 2000,     # BNB ceiling
+    'DOGE': 10,      # DOGE ceiling (even in meme season)
+    'SHIB': 0.01,    # SHIB ceiling
+    'XRP': 50,       # XRP ceiling
+}
+
+
+def validate_crypto_price(symbol: str, price: float) -> bool:
+    """
+    Reject obviously wrong prices before storing.
+    
+    Prevents corrupt data like BTC @ $38 (actual $87k) from poisoning
+    accuracy calculations.
+    
+    Returns:
+        True if price is valid, False if it should be rejected
+    """
+    if price <= 0:
+        LOGGER.warning(f"Price validation failed: {symbol} @ ${price:.2f} (non-positive)")
+        return False
+    
+    symbol_upper = symbol.upper()
+    
+    min_price = MIN_SANE_PRICES.get(symbol_upper, 0.0000001)
+    max_price = MAX_SANE_PRICES.get(symbol_upper, 10000000)  # $10M default ceiling
+    
+    if price < min_price:
+        LOGGER.warning(f"Price validation failed: {symbol} @ ${price:.2f} < min ${min_price}")
+        return False
+    
+    if price > max_price:
+        LOGGER.warning(f"Price validation failed: {symbol} @ ${price:.2f} > max ${max_price}")
+        return False
+    
+    return True
+
 # Shared HTTP session with connection pooling and retry logic
 _session = requests.Session()
 _retry_strategy = Retry(total=2, backoff_factor=0.3, status_forcelist=[429, 500, 502, 503, 504])
@@ -624,7 +687,14 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
         try:
             price_data = await asyncio.to_thread(provider.get_price, symbol)
             if price_data and price_data.get("price", 0) > 0:
-                results.append((name, float(price_data["price"]), price_data))
+                price = float(price_data["price"])
+                
+                # VALIDATION: Reject obviously wrong prices
+                if not validate_crypto_price(symbol, price):
+                    LOGGER.warning(f"Provider {name} returned invalid price for {symbol}: ${price:.2f} - SKIPPING")
+                    continue
+                
+                results.append((name, price, price_data))
                 if not require_quorum:
                     LOGGER.info(f"Short-circuit: using {name} for {symbol} (fast-path)")
                     break
