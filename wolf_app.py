@@ -21109,6 +21109,10 @@ async def debug_db_audit():
     - ETH prices below $500 (corrupt)
     - Zero/negative prices
     - Outcome statistics
+    
+    Tables:
+    - ghost_predictions: run_at (BIGINT unix timestamp)
+    - ghost_prediction_outcomes: price_at_prediction, price_at_resolution, hit_direction, status
     """
     try:
         import psycopg2
@@ -21126,24 +21130,24 @@ async def debug_db_audit():
             'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001
         }
         
-        # 1. Get predictions overview
+        # 1. Get predictions overview from ghost_predictions (uses run_at BIGINT)
         cursor.execute("""
             SELECT COUNT(*) as total,
                    COUNT(DISTINCT symbol) as symbols,
-                   MIN(created_at) as earliest,
-                   MAX(created_at) as latest
-            FROM predictions
+                   MIN(run_at) as earliest,
+                   MAX(run_at) as latest
+            FROM ghost_predictions
         """)
         pred_overview = cursor.fetchone()
         
-        # 2. Find corrupt predictions by symbol
+        # 2. Find corrupt outcomes by symbol (check price_at_prediction in ghost_prediction_outcomes)
         corrupt_data = {}
         for symbol, min_price in MIN_VALID.items():
             cursor.execute("""
                 SELECT COUNT(*) as cnt,
                        MIN(price_at_prediction) as min_p,
                        MAX(price_at_prediction) as max_p
-                FROM predictions
+                FROM ghost_prediction_outcomes
                 WHERE symbol = %s AND price_at_prediction < %s
             """, (symbol, min_price))
             row = cursor.fetchone()
@@ -21155,10 +21159,10 @@ async def debug_db_audit():
                     "threshold": min_price
                 }
         
-        # 3. Find zero/negative prices
+        # 3. Find zero/negative prices in outcomes
         cursor.execute("""
             SELECT symbol, COUNT(*) as cnt
-            FROM predictions
+            FROM ghost_prediction_outcomes
             WHERE price_at_prediction <= 0
             GROUP BY symbol
         """)
@@ -21175,18 +21179,29 @@ async def debug_db_audit():
         """)
         outcomes = cursor.fetchone()
         
-        # 5. Sample of corrupt BTC prices
+        # 5. Sample of corrupt BTC prices from outcomes
         cursor.execute("""
-            SELECT id, symbol, price_at_prediction, created_at
-            FROM predictions
+            SELECT id, symbol, price_at_prediction, price_at_resolution, status
+            FROM ghost_prediction_outcomes
             WHERE symbol = 'BTC' AND price_at_prediction < 10000
-            ORDER BY created_at DESC
+            ORDER BY id DESC
             LIMIT 10
         """)
         btc_samples = [
-            {"id": r[0], "symbol": r[1], "price": float(r[2]), "created": str(r[3])}
+            {"id": r[0], "symbol": r[1], "entry_price": float(r[2]) if r[2] else 0, "exit_price": float(r[3]) if r[3] else 0, "status": r[4]}
             for r in cursor.fetchall()
         ]
+        
+        # 6. Check for corrupt exit prices too
+        cursor.execute("""
+            SELECT symbol, COUNT(*) as cnt, MIN(price_at_resolution), MAX(price_at_resolution)
+            FROM ghost_prediction_outcomes
+            WHERE symbol = 'BTC' AND price_at_resolution IS NOT NULL AND price_at_resolution < 10000
+            GROUP BY symbol
+        """)
+        corrupt_exits = {}
+        for row in cursor.fetchall():
+            corrupt_exits[row[0]] = {"count": row[1], "min": float(row[2]), "max": float(row[3])}
         
         conn.close()
         
@@ -21198,10 +21213,11 @@ async def debug_db_audit():
             "predictions": {
                 "total": pred_overview[0],
                 "symbols": pred_overview[1],
-                "earliest": str(pred_overview[2]),
-                "latest": str(pred_overview[3])
+                "earliest_unix": pred_overview[2],
+                "latest_unix": pred_overview[3]
             },
-            "corrupt_data": corrupt_data,
+            "corrupt_entry_prices": corrupt_data,
+            "corrupt_exit_prices": corrupt_exits,
             "zero_prices": zero_prices,
             "total_corrupt": total_corrupt,
             "outcomes": {
@@ -21209,7 +21225,7 @@ async def debug_db_audit():
                 "wins": outcomes[1] or 0,
                 "losses": outcomes[2] or 0,
                 "no_data": outcomes[3] or 0,
-                "accuracy_pct": round((outcomes[1] or 0) / (outcomes[0] or 1) * 100, 2)
+                "accuracy_pct": round((outcomes[1] or 0) / max(1, (outcomes[1] or 0) + (outcomes[2] or 0)) * 100, 2)
             },
             "btc_corrupt_samples": btc_samples,
             "recommendation": "Run /debug/db-clean to remove corrupt data" if total_corrupt > 0 else "Database is clean!"
