@@ -79,7 +79,8 @@ LEARNING_BOOST_AMOUNT = 0.15  # 15% confidence boost
 # LEARNING MODE - Re-enabled Dec 28, 2025
 # Only EXCLUSIONS are active (no boosting until data is fully validated)
 # ============================================================================
-LEARNING_ENABLED = True  # Exclusions only
+LEARNING_ENABLED = True  # Master switch
+LEARNING_EXCLUDE_ENABLED = True  # Exclusions active (low accuracy symbols removed)
 LEARNING_BOOST_ENABLED = False  # Boosting disabled until data validated
 
 # ============================================================================
