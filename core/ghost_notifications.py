@@ -86,16 +86,34 @@ LEARNING_BOOST_ENABLED = False  # Boosting disabled until data validated
 # ============================================================================
 # HARDCODED EXCLUSIONS - Symbols with historically bad accuracy (<40%)
 # These are ALWAYS excluded regardless of learning data
-# Updated Dec 28, 2025 based on actual accuracy data + Telegram analysis
+# Updated Dec 29, 2025 based on actual accuracy data + Telegram analysis
 # ============================================================================
 HARDCODED_EXCLUSIONS = {
-    # === FROM TELEGRAM ANALYSIS (Dec 28) - Confirmed stop-outs and wrong directions ===
+    # === FROM TELEGRAM ANALYSIS (Dec 29) - Confirmed stop-outs and wrong directions ===
+    'ALGO': 'STOPPED OUT +3.0% on Dec 29 - wrong direction',  # Added Dec 29
+    'TIA': 'Small-cap, high risk - same pattern as ALGO',  # Added Dec 29
     'SAND': 'STOPPED OUT +3.3% on Dec 27 (Telegram confirmed)',  # Added Dec 28
     'FLOW': 'STOPPED OUT +12.5% on Dec 27 (Telegram confirmed)',  # Added Dec 28
     'HBAR': 'Wrong direction - went UP when predicted DOWN (Telegram confirmed)',  # Added Dec 28
     'ILV': 'Gaming token - pump/dump prone, volatile',  # Added Dec 28
     'BAND': 'Oracle token - low liquidity',  # Added Dec 28
     'DIA': 'Oracle token - low liquidity',  # Added Dec 28
+    
+    # === MEME COINS - Too volatile, unpredictable ===
+    'SHIB': 'Meme coin - unpredictable',
+    'PEPE': 'Meme coin - unpredictable',
+    'BONK': 'Meme coin - unpredictable',
+    'WIF': 'Meme coin - unpredictable',
+    'MEME': 'Meme coin - unpredictable',
+    'FLOKI': '11% accuracy (1/9) - meme coin',
+    
+    # === GAMING/METAVERSE - Pump/dump prone ===
+    'APE': '22% accuracy (2/9) - NFT/gaming',
+    'GMT': 'Gaming token - volatile',
+    'GALA': 'Gaming token - volatile',
+    'ENJ': 'Gaming token - volatile',
+    'MANA': 'Metaverse - volatile',
+    'AXS': 'Gaming token - volatile',
     
     # === FROM ACCURACY DATA - Crypto with <40% accuracy ===
     'DOT': '30% accuracy (3/10)',
@@ -110,13 +128,11 @@ HARDCODED_EXCLUSIONS = {
     'RLC': '10% accuracy (1/10)',
     '1INCH': '11% accuracy (1/9)',
     'YFI': '11% accuracy (1/9)',
-    'FLOKI': '11% accuracy (1/9)',
     'LDO': '11% accuracy (1/9)',
     'BAL': '11% accuracy (1/9)',
     'RNDR': '11% accuracy (1/9)',
     'XLM': '22% accuracy (2/9)',
     'ETC': '22% accuracy (2/9)',
-    'APE': '22% accuracy (2/9)',
     'ZEN': '20% accuracy (2/10)',
     'EGLD': '20% accuracy (2/10)',
     'ONDO': '20% accuracy (2/10)',
