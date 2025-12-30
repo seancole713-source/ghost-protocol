@@ -7301,6 +7301,55 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # Log feature status for diagnostics
         LOGGER.info(f"[{symbol}] Feature status", extra={"feature_status": feature_status.to_dict()})
 
+        # =====================================================================
+        # STAGE 1 CONTEXT INJECTION (Dec 30, 2025)
+        # Wire world_context and market_mood into prediction features
+        # =====================================================================
+        stage1_boost = 0.0
+        stage1_signal = "NEUTRAL"
+        try:
+            if STAGE1_ENABLED:
+                from core.stage1_integration import get_enhanced_context
+                
+                stage1_ctx = get_enhanced_context(hours=24, min_relevance=0.3)
+                market_mood = stage1_ctx.get("market_mood", {})
+                world_context = stage1_ctx.get("world_context", {})
+                
+                # Extract market regime for direction bias
+                regime = market_mood.get("market_regime", "neutral").upper()
+                sentiment = market_mood.get("sentiment", "neutral")
+                vix = market_mood.get("vix_level", 20)
+                
+                # Add to features for model consumption
+                features["MARKET_REGIME_STAGE1"] = regime
+                features["MARKET_SENTIMENT_STAGE1"] = sentiment
+                features["VIX_LEVEL"] = vix
+                
+                # Calculate Stage 1 signal
+                if regime == "BULL" and sentiment in ["bullish", "very_bullish"]:
+                    stage1_signal = "UP"
+                    stage1_boost = 0.05  # +5% confidence for bull market alignment
+                elif regime == "BEAR" and sentiment in ["bearish", "very_bearish"]:
+                    stage1_signal = "DOWN"
+                    stage1_boost = 0.05  # +5% confidence for bear market alignment
+                elif vix > 30:
+                    # High VIX = high volatility = reduce confidence
+                    stage1_boost = -0.05
+                    stage1_signal = "VOLATILE"
+                
+                # Add trending events as context
+                trending = world_context.get("trending_events", [])
+                if trending:
+                    features["TRENDING_EVENTS"] = trending[:3]
+                
+                if stage1_boost != 0:
+                    LOGGER.info(
+                        f"[{symbol}] 🌍 Stage 1 Context: regime={regime}, sentiment={sentiment}, "
+                        f"VIX={vix:.1f}, signal={stage1_signal}, boost={stage1_boost:+.0%}"
+                    )
+        except Exception as e:
+            LOGGER.debug(f"[{symbol}] Stage 1 context unavailable: {e}")
+
         # PREDICTION_HORIZON_HOURS: Configurable via env (validated Dec 21-22, 2025)
         # - 6h: For testing/validation (1.5% targets based on actual market moves)
         # - 24h: Medium-term (3.5% targets)
@@ -7436,6 +7485,22 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         if pattern_boost > 0:
             base_confidence = min(base_confidence + pattern_boost, 0.95)
             LOGGER.info(f"[{symbol}] 📊 Pattern Intelligence boost: +{pattern_boost:.1%} (final: {base_confidence:.1%})")
+        
+        # Apply Stage 1 Context boost/penalty (market regime alignment)
+        if stage1_boost != 0:
+            if stage1_signal in ["UP", "DOWN"] and stage1_signal == direction:
+                # Stage 1 agrees with direction - apply boost
+                base_confidence = min(base_confidence + stage1_boost, 0.95)
+                LOGGER.info(f"[{symbol}] 🌍 Stage 1 boost: {stage1_boost:+.0%} (regime aligns with {direction})")
+            elif stage1_signal == "VOLATILE":
+                # High VIX - reduce confidence
+                base_confidence = max(base_confidence + stage1_boost, 0.35)
+                LOGGER.info(f"[{symbol}] 🌍 Stage 1 penalty: {stage1_boost:+.0%} (high VIX volatility)")
+            elif stage1_signal in ["UP", "DOWN"] and stage1_signal != direction:
+                # Stage 1 conflicts - small penalty
+                penalty = stage1_boost / 2  # Half the boost as penalty
+                base_confidence = max(base_confidence - abs(penalty), 0.35)
+                LOGGER.info(f"[{symbol}] 🌍 Stage 1 conflict: -{abs(penalty):.0%} (regime={stage1_signal}, direction={direction})")
         
         LOGGER.info(
             f"[{symbol}] Direction: {direction}, Confidence: {base_confidence:.1%}, "
