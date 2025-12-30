@@ -152,6 +152,53 @@ _SYMBOL_ACCURACY_CACHE_TIME = 0
 SYMBOL_ACCURACY_CACHE_TTL = 300  # 5 minutes
 
 
+# =============================================================================
+# ENVIRONMENT VARIABLE EXCLUSIONS - Read from Railway
+# =============================================================================
+def _load_env_exclusions() -> set:
+    """Load exclusions from GHOST_EXCLUDE_SYMBOLS environment variable."""
+    env_val = os.getenv("GHOST_EXCLUDE_SYMBOLS", "")
+    if not env_val:
+        LOGGER.info("[EXCLUSIONS] GHOST_EXCLUDE_SYMBOLS not set or empty")
+        return set()
+    
+    symbols = set()
+    for s in env_val.split(","):
+        s = s.strip().upper()
+        if s:
+            symbols.add(s)
+    
+    if symbols:
+        LOGGER.info(f"[EXCLUSIONS] ✅ Loaded {len(symbols)} symbols from GHOST_EXCLUDE_SYMBOLS env var")
+        LOGGER.debug(f"[EXCLUSIONS] Symbols: {', '.join(sorted(symbols))}")
+    
+    return symbols
+
+
+# Load env exclusions at module load time
+_ENV_EXCLUSIONS = _load_env_exclusions()
+
+
+def reload_env_exclusions() -> set:
+    """Reload exclusions from env var (call after Railway restart)."""
+    global _ENV_EXCLUSIONS
+    _ENV_EXCLUSIONS = _load_env_exclusions()
+    return _ENV_EXCLUSIONS
+
+
+def get_exclusion_stats() -> dict:
+    """Get statistics about current exclusions (for debugging)."""
+    all_excluded = set(HARDCODED_EXCLUSIONS.keys()) | _ENV_EXCLUSIONS
+    return {
+        "hardcoded_count": len(HARDCODED_EXCLUSIONS),
+        "hardcoded_symbols": sorted(HARDCODED_EXCLUSIONS.keys()),
+        "env_exclusions_count": len(_ENV_EXCLUSIONS),
+        "env_exclusions": sorted(_ENV_EXCLUSIONS),
+        "total_unique_excluded": len(all_excluded),
+        "all_excluded": sorted(all_excluded),
+    }
+
+
 def get_symbol_accuracy_from_postgres() -> Dict[str, Dict]:
     """
     Get symbol accuracy data from PostgreSQL ghost_symbol_accuracy table.
@@ -222,7 +269,8 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     Check if symbol should be excluded based on historical accuracy.
     
     PRIORITY ORDER:
-    1. HARDCODED_EXCLUSIONS - Always excluded (known bad symbols)
+    0. GHOST_EXCLUDE_SYMBOLS env var - HIGHEST PRIORITY (Railway config)
+    1. HARDCODED_EXCLUSIONS - Always excluded (known bad symbols in code)
     2. Learning data - Excluded if <40% accuracy after 10+ predictions (if LEARNING_EXCLUDE_ENABLED)
     
     Args:
@@ -232,7 +280,15 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     Returns:
         (should_exclude: bool, reason: str)
     """
-    # PRIORITY 1: Check hardcoded exclusions FIRST (always applies)
+    symbol_upper = symbol.upper()
+    
+    # PRIORITY 0: Check environment variable exclusions FIRST (Railway config)
+    if symbol_upper in _ENV_EXCLUSIONS:
+        return True, f"ENV_EXCLUDED: In GHOST_EXCLUDE_SYMBOLS"
+    
+    # PRIORITY 1: Check hardcoded exclusions (code-level)
+    if symbol_upper in HARDCODED_EXCLUSIONS:
+        return True, f"HARDCODED: {HARDCODED_EXCLUSIONS[symbol_upper]}"
     if symbol in HARDCODED_EXCLUSIONS:
         return True, f"HARDCODED: {HARDCODED_EXCLUSIONS[symbol]}"
     
@@ -240,10 +296,11 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     if not LEARNING_EXCLUDE_ENABLED:
         return False, "learning_exclusions_disabled"
     
-    if symbol not in accuracy_data:
+    # Check both cases for accuracy data
+    data = accuracy_data.get(symbol_upper) or accuracy_data.get(symbol)
+    if not data:
         return False, "no_data"
     
-    data = accuracy_data[symbol]
     accuracy = data.get("accuracy_pct", 0)
     total = data.get("total", 0)
     

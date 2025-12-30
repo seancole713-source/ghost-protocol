@@ -21515,6 +21515,47 @@ async def debug_db_reset_accuracy(confirm: str = "no"):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/exclusions")
+async def debug_exclusions(secret: str = ""):
+    """
+    Debug endpoint to verify exclusion system is working.
+    Shows both HARDCODED_EXCLUSIONS and GHOST_EXCLUDE_SYMBOLS env var.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        from core.ghost_notifications import (
+            HARDCODED_EXCLUSIONS, 
+            _ENV_EXCLUSIONS, 
+            reload_env_exclusions,
+            get_exclusion_stats,
+        )
+        
+        # Reload to get fresh env var
+        current_env = reload_env_exclusions()
+        stats = get_exclusion_stats()
+        all_excluded = set(HARDCODED_EXCLUSIONS.keys()) | current_env
+        
+        # Test specific symbols
+        test_symbols = ["ALGO", "TIA", "MANA", "ENJ", "CELO", "SAND", "FLOW"]
+        test_results = {s: s in all_excluded for s in test_symbols}
+        
+        return {
+            "ok": True,
+            "hardcoded_count": len(HARDCODED_EXCLUSIONS),
+            "env_exclusions_count": len(current_env),
+            "env_exclusions": sorted(current_env),
+            "total_unique_excluded": len(all_excluded),
+            "raw_env_value": os.getenv("GHOST_EXCLUDE_SYMBOLS", "")[:500],
+            "test_exclusions": test_results,
+            "all_excluded_symbols": sorted(all_excluded)
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/watchlist-raw")
 async def debug_watchlist_raw(secret: str = ""):
     """
