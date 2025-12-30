@@ -21515,6 +21515,142 @@ async def debug_db_reset_accuracy(confirm: str = "no"):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.post("/debug/watchlist-add")
+async def debug_watchlist_add(symbol: str = "", asset_type: str = "stock", secret: str = ""):
+    """
+    Debug endpoint to add symbols directly to watchlist.
+    Bypasses API layer for testing.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    if not symbol:
+        return {"error": "symbol required"}
+    
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        symbol = symbol.upper().strip()
+        asset_type = asset_type.lower().strip()
+        
+        # Check if exists
+        cursor.execute("""
+            SELECT id, active FROM ghost_watchlist_items 
+            WHERE symbol = %s AND asset_type = %s
+        """, (symbol, asset_type))
+        existing = cursor.fetchone()
+        
+        if existing:
+            item_id, was_active = existing
+            cursor.execute("""
+                UPDATE ghost_watchlist_items
+                SET active = TRUE, updated_at = NOW()
+                WHERE id = %s
+            """, (item_id,))
+            conn.commit()
+            action = "re-activated" if not was_active else "updated"
+        else:
+            cursor.execute("""
+                INSERT INTO ghost_watchlist_items (symbol, asset_type, owns_position, notes)
+                VALUES (%s, %s, FALSE, '')
+                RETURNING id
+            """, (symbol, asset_type))
+            item_id = cursor.fetchone()[0]
+            conn.commit()
+            action = "added"
+        
+        conn.close()
+        return {"ok": True, "action": action, "symbol": symbol, "asset_type": asset_type, "id": item_id}
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.post("/debug/watchlist-bulk-add")
+async def debug_watchlist_bulk_add(request: Request, secret: str = ""):
+    """
+    Bulk add symbols to watchlist.
+    Body: {"symbols": ["AAPL", "AMD", ...], "asset_type": "stock"}
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        import psycopg2
+        
+        body = await request.json()
+        symbols = body.get("symbols", [])
+        asset_type = body.get("asset_type", "stock").lower().strip()
+        
+        if not symbols:
+            return {"error": "symbols list required"}
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        added = []
+        updated = []
+        errors = []
+        
+        for symbol in symbols:
+            try:
+                symbol = symbol.upper().strip()
+                
+                cursor.execute("""
+                    SELECT id, active FROM ghost_watchlist_items 
+                    WHERE symbol = %s AND asset_type = %s
+                """, (symbol, asset_type))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    item_id, was_active = existing
+                    cursor.execute("""
+                        UPDATE ghost_watchlist_items
+                        SET active = TRUE, updated_at = NOW()
+                        WHERE id = %s
+                    """, (item_id,))
+                    if was_active:
+                        updated.append(symbol)
+                    else:
+                        added.append(symbol)
+                else:
+                    cursor.execute("""
+                        INSERT INTO ghost_watchlist_items (symbol, asset_type, owns_position, notes)
+                        VALUES (%s, %s, FALSE, '')
+                    """, (symbol, asset_type))
+                    added.append(symbol)
+            except Exception as e:
+                errors.append(f"{symbol}: {e}")
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "ok": True,
+            "added": added,
+            "updated": updated,
+            "errors": errors,
+            "total_added": len(added),
+            "total_updated": len(updated)
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/watchlist-schema")
 async def debug_watchlist_schema(secret: str = ""):
     """
