@@ -21527,54 +21527,63 @@ async def debug_model_status(secret: str = ""):
         from pathlib import Path
         import pickle
         
-        model_path_v2 = Path("/app/models/trained/ghost_xgboost_v2.pkl")
-        model_path_v1 = Path("/app/models/trained/ghost_xgboost_v1.pkl")
+        # Check multiple possible paths
+        paths_to_check = [
+            Path("/app/models/trained/ghost_xgboost_v2.pkl"),
+            Path("/app/models/trained/ghost_xgboost_v1.pkl"),
+            Path(__file__).parent / "models" / "trained" / "ghost_xgboost_v2.pkl",
+            Path(__file__).parent / "models" / "trained" / "ghost_xgboost_v1.pkl",
+        ]
         
-        # Also check relative paths
-        alt_path_v2 = Path(__file__).parent / "models" / "trained" / "ghost_xgboost_v2.pkl"
-        alt_path_v1 = Path(__file__).parent / "models" / "trained" / "ghost_xgboost_v1.pkl"
+        paths_checked = {str(p): p.exists() for p in paths_to_check}
         
-        paths_checked = {
-            "/app/models/trained/ghost_xgboost_v2.pkl": model_path_v2.exists(),
-            "/app/models/trained/ghost_xgboost_v1.pkl": model_path_v1.exists(),
-            str(alt_path_v2): alt_path_v2.exists(),
-            str(alt_path_v1): alt_path_v1.exists(),
-        }
+        # Find the first existing path
+        model_path = None
+        for p in paths_to_check:
+            if p.exists():
+                model_path = p
+                break
         
-        # Try to load from ensemble_predictor
-        model_info = {"loaded": False}
+        # Try to actually load the model
+        model_load_result = {"success": False}
+        if model_path:
+            try:
+                with open(model_path, "rb") as f:
+                    model_data = pickle.load(f)
+                
+                model_load_result = {
+                    "success": True,
+                    "path": str(model_path),
+                    "has_model": "model" in model_data,
+                    "feature_count": len(model_data.get("feature_names", [])),
+                    "test_accuracy": model_data.get("test_accuracy"),
+                    "cv_score": model_data.get("cv_score"),
+                    "version": "v2" if "v2" in str(model_path) else "v1",
+                }
+            except Exception as e:
+                model_load_result = {"success": False, "error": str(e)}
+        
+        # Also try creating XGBoostModel instance
+        instance_result = {"success": False}
         try:
             from core.ensemble_predictor import XGBoostModel
             xgb = XGBoostModel()
-            model_info = {
+            instance_result = {
+                "success": True,
                 "loaded": xgb._loaded,
-                "version": getattr(xgb, 'model_version', 'unknown'),
+                "version": xgb.model_version,
                 "features_count": len(xgb.feature_names) if xgb.feature_names else 0,
+                "has_model": xgb.model is not None,
             }
         except Exception as e:
-            model_info["error"] = str(e)
-        
-        # Load training results if available
-        training_results = None
-        results_path = Path("/app/models/trained/training_results_v2.json")
-        alt_results = Path(__file__).parent / "models" / "trained" / "training_results_v2.json"
-        
-        for rp in [results_path, alt_results]:
-            if rp.exists():
-                import json
-                with open(rp) as f:
-                    training_results = json.load(f)
-                break
+            instance_result = {"success": False, "error": str(e)}
         
         return {
             "ok": True,
             "paths_checked": paths_checked,
-            "model_info": model_info,
-            "training_results": {
-                "test_accuracy": training_results.get("models", {}).get("xgboost", {}).get("test_accuracy") if training_results else None,
-                "cv_score": training_results.get("models", {}).get("xgboost", {}).get("cv_score") if training_results else None,
-                "backtest_win_rate": training_results.get("backtest", {}).get("win_rate") if training_results else None,
-            } if training_results else None
+            "model_load_result": model_load_result,
+            "xgboost_instance": instance_result,
+            "verdict": "✅ MODEL LOADED" if instance_result.get("loaded") or model_load_result.get("success") else "⚠️ MODEL NOT LOADED"
         }
         
     except Exception as e:
