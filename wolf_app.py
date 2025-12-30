@@ -21515,6 +21515,73 @@ async def debug_db_reset_accuracy(confirm: str = "no"):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/model-status")
+async def debug_model_status(secret: str = ""):
+    """
+    Check if XGBoost model is loaded and its stats.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        from pathlib import Path
+        import pickle
+        
+        model_path_v2 = Path("/app/models/trained/ghost_xgboost_v2.pkl")
+        model_path_v1 = Path("/app/models/trained/ghost_xgboost_v1.pkl")
+        
+        # Also check relative paths
+        alt_path_v2 = Path(__file__).parent / "models" / "trained" / "ghost_xgboost_v2.pkl"
+        alt_path_v1 = Path(__file__).parent / "models" / "trained" / "ghost_xgboost_v1.pkl"
+        
+        paths_checked = {
+            "/app/models/trained/ghost_xgboost_v2.pkl": model_path_v2.exists(),
+            "/app/models/trained/ghost_xgboost_v1.pkl": model_path_v1.exists(),
+            str(alt_path_v2): alt_path_v2.exists(),
+            str(alt_path_v1): alt_path_v1.exists(),
+        }
+        
+        # Try to load from ensemble_predictor
+        model_info = {"loaded": False}
+        try:
+            from core.ensemble_predictor import XGBoostModel
+            xgb = XGBoostModel()
+            model_info = {
+                "loaded": xgb._loaded,
+                "version": getattr(xgb, 'model_version', 'unknown'),
+                "features_count": len(xgb.feature_names) if xgb.feature_names else 0,
+            }
+        except Exception as e:
+            model_info["error"] = str(e)
+        
+        # Load training results if available
+        training_results = None
+        results_path = Path("/app/models/trained/training_results_v2.json")
+        alt_results = Path(__file__).parent / "models" / "trained" / "training_results_v2.json"
+        
+        for rp in [results_path, alt_results]:
+            if rp.exists():
+                import json
+                with open(rp) as f:
+                    training_results = json.load(f)
+                break
+        
+        return {
+            "ok": True,
+            "paths_checked": paths_checked,
+            "model_info": model_info,
+            "training_results": {
+                "test_accuracy": training_results.get("models", {}).get("xgboost", {}).get("test_accuracy") if training_results else None,
+                "cv_score": training_results.get("models", {}).get("xgboost", {}).get("cv_score") if training_results else None,
+                "backtest_win_rate": training_results.get("backtest", {}).get("win_rate") if training_results else None,
+            } if training_results else None
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/exclusions")
 async def debug_exclusions(secret: str = ""):
     """
