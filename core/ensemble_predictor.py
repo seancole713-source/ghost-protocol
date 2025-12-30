@@ -10,10 +10,12 @@ Target: 65-70% accuracy (up from 50% single model)
 import logging
 import pickle
 import time
+import requests
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -22,6 +24,90 @@ logger = logging.getLogger(__name__)
 # Model storage
 MODELS_DIR = Path(__file__).parent.parent / "models" / "ensemble"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ============================================================================
+# FEAR & GREED INDEX INTEGRATION
+# ============================================================================
+_FEAR_GREED_CACHE = {"value": 50, "classification": "Neutral", "updated": None}
+
+
+def get_fear_greed_index() -> int:
+    """
+    Get current Fear & Greed Index (0-100).
+    0 = Extreme Fear, 100 = Extreme Greed
+    
+    Uses: https://api.alternative.me/fng/
+    FREE, no API key needed, 1hr cache
+    """
+    global _FEAR_GREED_CACHE
+    
+    # Return cached if less than 1 hour old
+    if _FEAR_GREED_CACHE["updated"]:
+        age = datetime.now() - _FEAR_GREED_CACHE["updated"]
+        if age < timedelta(hours=1):
+            return _FEAR_GREED_CACHE["value"]
+    
+    try:
+        response = requests.get(
+            "https://api.alternative.me/fng/?limit=1",
+            timeout=5
+        )
+        data = response.json()
+        value = int(data["data"][0]["value"])
+        classification = data["data"][0]["value_classification"]
+        
+        _FEAR_GREED_CACHE["value"] = value
+        _FEAR_GREED_CACHE["classification"] = classification
+        _FEAR_GREED_CACHE["updated"] = datetime.now()
+        
+        logger.info(f"[FEAR&GREED] Updated: {value} ({classification})")
+        return value
+        
+    except Exception as e:
+        logger.warning(f"[FEAR&GREED] Fetch failed: {e}, using cached: {_FEAR_GREED_CACHE['value']}")
+        return _FEAR_GREED_CACHE["value"]
+
+
+def get_fear_greed_signal() -> Tuple[str, float]:
+    """
+    Convert Fear & Greed to trading signal.
+    
+    Returns:
+        (signal: str, confidence_modifier: float)
+        
+    Strategy (contrarian):
+    - Extreme Fear (<20): BUY signal (+15% confidence when aligned)
+    - Fear (20-40): Slight bullish (+5%)
+    - Neutral (40-60): No signal
+    - Greed (60-80): Slight bearish (+5% for DOWN)
+    - Extreme Greed (>80): SELL signal (+15% for DOWN)
+    """
+    fng = get_fear_greed_index()
+    
+    if fng < 20:
+        return "UP", 0.15  # Extreme fear = buy opportunity
+    elif fng < 40:
+        return "UP", 0.05  # Fear = slight bullish
+    elif fng > 80:
+        return "DOWN", 0.15  # Extreme greed = sell signal
+    elif fng > 60:
+        return "DOWN", 0.05  # Greed = slight bearish
+    else:
+        return "NEUTRAL", 0.0  # No signal
+
+
+def get_fear_greed_info() -> Dict[str, Any]:
+    """Get full Fear & Greed info for debugging."""
+    fng = get_fear_greed_index()
+    signal, modifier = get_fear_greed_signal()
+    return {
+        "value": fng,
+        "classification": _FEAR_GREED_CACHE.get("classification", "Unknown"),
+        "signal": signal,
+        "confidence_modifier": modifier,
+        "cached_at": str(_FEAR_GREED_CACHE.get("updated", "Never")),
+    }
 
 
 @dataclass
@@ -509,6 +595,49 @@ class EnsemblePredictor:
             ensemble_result = self._inverse_variance_ensemble(predictions, weights)
         else:  # weighted_vote
             ensemble_result = self._weighted_vote_ensemble(predictions, weights)
+        
+        # =====================================================================
+        # FEAR & GREED INTEGRATION
+        # Boost confidence when Fear & Greed aligns with prediction direction
+        # =====================================================================
+        try:
+            fng_signal, fng_modifier = get_fear_greed_signal()
+            original_confidence = ensemble_result.confidence
+            
+            if fng_signal != "NEUTRAL":
+                if fng_signal == ensemble_result.direction:
+                    # Fear & Greed AGREES with prediction - boost confidence
+                    boosted = min(0.95, ensemble_result.confidence * (1 + fng_modifier))
+                    logger.info(
+                        f"[FEAR&GREED] {fng_signal} aligns with {ensemble_result.direction}, "
+                        f"confidence {original_confidence:.1%} -> {boosted:.1%}"
+                    )
+                    ensemble_result = EnsemblePrediction(
+                        direction=ensemble_result.direction,
+                        confidence=boosted,
+                        predicted_change_pct=ensemble_result.predicted_change_pct,
+                        individual_predictions=ensemble_result.individual_predictions,
+                        model_weights=ensemble_result.model_weights,
+                        ensemble_method=ensemble_result.ensemble_method
+                    )
+                elif (fng_signal == "UP" and ensemble_result.direction == "DOWN") or \
+                     (fng_signal == "DOWN" and ensemble_result.direction == "UP"):
+                    # Fear & Greed DISAGREES - reduce confidence slightly
+                    reduced = max(0.35, ensemble_result.confidence * (1 - fng_modifier / 2))
+                    logger.info(
+                        f"[FEAR&GREED] {fng_signal} conflicts with {ensemble_result.direction}, "
+                        f"confidence {original_confidence:.1%} -> {reduced:.1%}"
+                    )
+                    ensemble_result = EnsemblePrediction(
+                        direction=ensemble_result.direction,
+                        confidence=reduced,
+                        predicted_change_pct=ensemble_result.predicted_change_pct,
+                        individual_predictions=ensemble_result.individual_predictions,
+                        model_weights=ensemble_result.model_weights,
+                        ensemble_method=ensemble_result.ensemble_method
+                    )
+        except Exception as e:
+            logger.warning(f"[FEAR&GREED] Integration error: {e}")
         
         duration_ms = (time.time() - start) * 1000
         logger.info(

@@ -21591,6 +21591,52 @@ async def debug_model_status(secret: str = ""):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/fear-greed")
+async def debug_fear_greed(secret: str = ""):
+    """
+    Debug endpoint to check Fear & Greed Index integration.
+    Shows current value, trading signal, and confidence modifier.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        from core.ensemble_predictor import get_fear_greed_info, get_fear_greed_index
+        
+        # Force a fresh fetch by getting the value
+        current_value = get_fear_greed_index()
+        info = get_fear_greed_info()
+        
+        # Add interpretation
+        interpretation = ""
+        if current_value < 20:
+            interpretation = "🔥 EXTREME FEAR - Strong BUY signal (contrarian)"
+        elif current_value < 40:
+            interpretation = "😰 FEAR - Slight bullish bias"
+        elif current_value > 80:
+            interpretation = "🚀 EXTREME GREED - Strong SELL signal (contrarian)"
+        elif current_value > 60:
+            interpretation = "🤑 GREED - Slight bearish bias"
+        else:
+            interpretation = "😐 NEUTRAL - No signal"
+        
+        return {
+            "ok": True,
+            "fear_greed_index": current_value,
+            "classification": info.get("classification", "Unknown"),
+            "trading_signal": info.get("signal"),
+            "confidence_modifier": info.get("confidence_modifier"),
+            "interpretation": interpretation,
+            "cached_at": info.get("cached_at"),
+            "data_source": "https://api.alternative.me/fng/",
+            "strategy": "CONTRARIAN: Fear=Buy, Greed=Sell"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/exclusions")
 async def debug_exclusions(secret: str = ""):
     """
