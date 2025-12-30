@@ -21637,6 +21637,52 @@ async def debug_fear_greed(secret: str = ""):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/btc-trend")
+async def debug_btc_trend(secret: str = "", symbol: str = "BTC"):
+    """
+    Debug endpoint to check BTC trend and correlation boost.
+    Shows current BTC price, trend, and correlation boost for a symbol.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        from core.ensemble_predictor import (
+            get_btc_trend_info, 
+            get_btc_correlation_boost,
+            BTC_CORRELATED_SYMBOLS
+        )
+        
+        info = get_btc_trend_info()
+        
+        # Calculate boost for the given symbol
+        up_boost = get_btc_correlation_boost(symbol, "UP")
+        down_boost = get_btc_correlation_boost(symbol, "DOWN")
+        
+        # Check if symbol is crypto
+        symbol_upper = symbol.upper().replace("-", "").replace("/", "").replace("USD", "")
+        is_crypto = any(s in symbol_upper or symbol_upper in s for s in BTC_CORRELATED_SYMBOLS)
+        
+        return {
+            "ok": True,
+            "btc_price": f"${info.get('price', 0):,.0f}",
+            "btc_trend": info.get("trend"),
+            "btc_1h_change": f"{info.get('change_1h', 0):+.2f}%",
+            "btc_24h_change": f"{info.get('change_24h', 0):+.2f}%",
+            "symbol_tested": symbol,
+            "is_crypto": is_crypto,
+            "boost_if_UP": f"{(up_boost - 1) * 100:+.1f}%" if up_boost != 1.0 else "No boost",
+            "boost_if_DOWN": f"{(down_boost - 1) * 100:+.1f}%" if down_boost != 1.0 else "No boost",
+            "cached_at": info.get("cached_at"),
+            "data_source": "https://api.coingecko.com/",
+            "correlated_symbols_count": info.get("correlated_symbols", 0)
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/exclusions")
 async def debug_exclusions(secret: str = ""):
     """

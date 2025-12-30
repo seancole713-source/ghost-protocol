@@ -110,6 +110,132 @@ def get_fear_greed_info() -> Dict[str, Any]:
     }
 
 
+# ============================================================================
+# BTC CORRELATION INTEGRATION
+# ============================================================================
+_BTC_TREND_CACHE = {"trend": "NEUTRAL", "change_1h": 0.0, "change_24h": 0.0, "price": 0.0, "updated": None}
+
+# Crypto symbols that correlate with BTC
+BTC_CORRELATED_SYMBOLS = {
+    "BTC", "BTCUSD", "BTC-USD", "BTC/USD",
+    "ETH", "ETHUSD", "ETH-USD", "ETH/USD",
+    "SOL", "SOLUSD", "SOL-USD", "SOL/USD",
+    "ADA", "XRP", "DOGE", "AVAX", "DOT", "MATIC", "LINK", "UNI",
+    "AAVE", "ATOM", "LTC", "BCH", "XLM", "ALGO", "VET", "FIL",
+    "NEAR", "APT", "ARB", "OP", "INJ", "SUI", "SEI", "TIA",
+}
+
+
+def get_btc_trend() -> Tuple[str, float]:
+    """
+    Get current BTC trend direction and strength.
+    
+    Returns:
+        (trend: str, change_pct: float)
+        trend: "UP", "DOWN", or "NEUTRAL"
+        change_pct: 1-hour price change percentage
+    """
+    global _BTC_TREND_CACHE
+    
+    # Return cached if less than 5 minutes old
+    if _BTC_TREND_CACHE["updated"]:
+        age = datetime.now() - _BTC_TREND_CACHE["updated"]
+        if age < timedelta(minutes=5):
+            return _BTC_TREND_CACHE["trend"], _BTC_TREND_CACHE["change_1h"]
+    
+    try:
+        # Use CoinGecko free API (no key needed)
+        response = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={
+                "ids": "bitcoin",
+                "vs_currencies": "usd",
+                "include_24hr_change": "true",
+                "include_1hr_change": "true"
+            },
+            timeout=5
+        )
+        data = response.json()
+        
+        price = data["bitcoin"]["usd"]
+        change_1h = data["bitcoin"].get("usd_1h_change", 0) or 0
+        change_24h = data["bitcoin"].get("usd_24h_change", 0) or 0
+        
+        # Determine trend
+        if change_1h > 1.0:
+            trend = "UP"
+        elif change_1h < -1.0:
+            trend = "DOWN"
+        else:
+            trend = "NEUTRAL"
+        
+        _BTC_TREND_CACHE["trend"] = trend
+        _BTC_TREND_CACHE["change_1h"] = change_1h
+        _BTC_TREND_CACHE["change_24h"] = change_24h
+        _BTC_TREND_CACHE["price"] = price
+        _BTC_TREND_CACHE["updated"] = datetime.now()
+        
+        logger.info(f"[BTC_TREND] ${price:,.0f}, 1h: {change_1h:+.2f}%, trend: {trend}")
+        return trend, change_1h
+        
+    except Exception as e:
+        logger.warning(f"[BTC_TREND] Fetch failed: {e}, using cached")
+        return _BTC_TREND_CACHE["trend"], _BTC_TREND_CACHE["change_1h"]
+
+
+def get_btc_correlation_boost(symbol: str, prediction_direction: str) -> float:
+    """
+    Calculate confidence boost based on BTC correlation.
+    
+    For crypto assets, if prediction aligns with BTC trend, boost confidence.
+    
+    Args:
+        symbol: The symbol being predicted
+        prediction_direction: "UP" or "DOWN"
+    
+    Returns:
+        Confidence multiplier (1.0 = no change, 1.1 = +10% boost)
+    """
+    # Normalize symbol
+    symbol_upper = symbol.upper().replace("-", "").replace("/", "").replace("USD", "")
+    
+    # Check if this is a BTC-correlated asset
+    is_crypto = any(s in symbol_upper or symbol_upper in s for s in BTC_CORRELATED_SYMBOLS)
+    
+    if not is_crypto:
+        return 1.0  # No boost for non-crypto
+    
+    btc_trend, btc_change = get_btc_trend()
+    
+    if btc_trend == "NEUTRAL":
+        return 1.0  # No signal from BTC
+    
+    # Calculate boost based on alignment
+    if btc_trend == prediction_direction:
+        # Prediction aligns with BTC - boost based on BTC move strength
+        boost = min(0.15, abs(btc_change) * 0.03)  # Max +15%, 3% per 1% BTC move
+        logger.info(f"[BTC_CORR] {symbol} {prediction_direction} aligns with BTC {btc_trend}, boost: +{boost:.1%}")
+        return 1.0 + boost
+    else:
+        # Prediction conflicts with BTC - reduce confidence
+        penalty = min(0.10, abs(btc_change) * 0.02)  # Max -10%
+        logger.info(f"[BTC_CORR] {symbol} {prediction_direction} conflicts with BTC {btc_trend}, penalty: -{penalty:.1%}")
+        return 1.0 - penalty
+
+
+def get_btc_trend_info() -> Dict[str, Any]:
+    """Get full BTC trend info for debugging."""
+    trend, change_1h = get_btc_trend()
+    return {
+        "trend": trend,
+        "price": _BTC_TREND_CACHE.get("price", 0),
+        "change_1h": _BTC_TREND_CACHE.get("change_1h", 0),
+        "change_24h": _BTC_TREND_CACHE.get("change_24h", 0),
+        "cached_at": str(_BTC_TREND_CACHE.get("updated", "Never")),
+        "correlated_symbols": len(BTC_CORRELATED_SYMBOLS),
+    }
+
+
 @dataclass
 class ModelPrediction:
     """Individual model prediction"""
@@ -565,13 +691,14 @@ class EnsemblePredictor:
             "Transformer": deque(maxlen=100)
         }
         
-    def predict(self, features: dict[str, Any], method: str = "confidence_weighted") -> EnsemblePrediction:
+    def predict(self, features: dict[str, Any], method: str = "confidence_weighted", symbol: str = "") -> EnsemblePrediction:
         """
         Generate ensemble prediction
         
         Args:
             features: Feature dict with price_history, technical indicators, etc.
             method: Ensemble method (weighted_vote, confidence_weighted, inverse_variance)
+            symbol: Optional symbol for BTC correlation boost (crypto only)
         
         Returns:
             EnsemblePrediction with aggregated results
@@ -638,6 +765,31 @@ class EnsemblePredictor:
                     )
         except Exception as e:
             logger.warning(f"[FEAR&GREED] Integration error: {e}")
+        
+        # =====================================================================
+        # BTC CORRELATION INTEGRATION
+        # Boost/reduce confidence for crypto based on BTC trend alignment
+        # =====================================================================
+        if symbol:
+            try:
+                btc_multiplier = get_btc_correlation_boost(symbol, ensemble_result.direction)
+                if btc_multiplier != 1.0:
+                    original_conf = ensemble_result.confidence
+                    new_conf = min(0.95, max(0.35, ensemble_result.confidence * btc_multiplier))
+                    logger.info(
+                        f"[BTC_CORR] {symbol}: confidence {original_conf:.1%} -> {new_conf:.1%} "
+                        f"(multiplier: {btc_multiplier:.2f})"
+                    )
+                    ensemble_result = EnsemblePrediction(
+                        direction=ensemble_result.direction,
+                        confidence=new_conf,
+                        predicted_change_pct=ensemble_result.predicted_change_pct,
+                        individual_predictions=ensemble_result.individual_predictions,
+                        model_weights=ensemble_result.model_weights,
+                        ensemble_method=ensemble_result.ensemble_method
+                    )
+            except Exception as e:
+                logger.warning(f"[BTC_CORR] Integration error: {e}")
         
         duration_ms = (time.time() - start) * 1000
         logger.info(
