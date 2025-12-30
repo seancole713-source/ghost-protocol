@@ -21810,6 +21810,12 @@ async def debug_accuracy_stack(secret: str = ""):
                     "crypto_threshold": f"{MIN_VOLATILITY_CRYPTO}%",
                     "stocks_threshold": f"{MIN_VOLATILITY_STOCKS}%",
                     "effect": "Reduces false signals"
+                },
+                "5_stage1_context": {
+                    "status": "✅ WIRED" if STAGE1_ENABLED else "⚠️ DISABLED",
+                    "market_regime": "See /api/v3/stage1/mood",
+                    "boost": "+5% when regime aligns, -5% high VIX",
+                    "features_added": ["MARKET_REGIME_STAGE1", "MARKET_SENTIMENT_STAGE1", "VIX_LEVEL"]
                 }
             },
             "expected_combined_accuracy": "65-75%",
