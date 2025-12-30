@@ -236,6 +236,88 @@ def get_btc_trend_info() -> Dict[str, Any]:
     }
 
 
+# ============================================================================
+# VOLATILITY FILTER
+# ============================================================================
+# Minimum volatility thresholds - predictions on low-volatility assets are unreliable
+MIN_VOLATILITY_CRYPTO = 0.5   # 0.5% minimum expected move for crypto
+MIN_VOLATILITY_STOCKS = 0.3   # 0.3% minimum expected move for stocks
+LOW_CONFIDENCE_THRESHOLD = 0.40  # Below this confidence = uncertain prediction
+
+
+def calculate_volatility_score(price_history: List[float]) -> float:
+    """
+    Calculate recent volatility from price history.
+    
+    Returns: Average True Range as percentage of price
+    """
+    if not price_history or len(price_history) < 5:
+        return 1.0  # Assume normal volatility if no data
+    
+    # Calculate percentage changes
+    changes = []
+    for i in range(1, len(price_history)):
+        if price_history[i-1] > 0:
+            pct_change = abs(price_history[i] - price_history[i-1]) / price_history[i-1] * 100
+            changes.append(pct_change)
+    
+    if not changes:
+        return 1.0
+    
+    # Return average volatility
+    return sum(changes) / len(changes)
+
+
+def should_skip_low_volatility(
+    symbol: str, 
+    confidence: float, 
+    price_history: Optional[List[float]] = None
+) -> Tuple[bool, str]:
+    """
+    Check if prediction should be skipped due to low volatility or confidence.
+    
+    Returns:
+        (should_skip: bool, reason: str)
+    """
+    # Check confidence threshold
+    if confidence < LOW_CONFIDENCE_THRESHOLD:
+        return True, f"Low confidence ({confidence:.1%} < {LOW_CONFIDENCE_THRESHOLD:.0%})"
+    
+    # Check volatility if price history available
+    if price_history and len(price_history) >= 5:
+        volatility = calculate_volatility_score(price_history)
+        
+        # Determine threshold based on asset type
+        symbol_upper = symbol.upper()
+        is_crypto = any(s in symbol_upper for s in BTC_CORRELATED_SYMBOLS) or \
+                   symbol_upper in ["BTCUSD", "ETHUSD", "SOLUSD"]
+        
+        threshold = MIN_VOLATILITY_CRYPTO if is_crypto else MIN_VOLATILITY_STOCKS
+        
+        if volatility < threshold:
+            return True, f"Low volatility ({volatility:.2f}% < {threshold}%)"
+    
+    return False, "OK"
+
+
+def get_volatility_info(symbol: str, price_history: Optional[List[float]] = None) -> Dict[str, Any]:
+    """Get volatility analysis for debugging."""
+    volatility = calculate_volatility_score(price_history) if price_history else None
+    
+    symbol_upper = symbol.upper()
+    is_crypto = any(s in symbol_upper for s in BTC_CORRELATED_SYMBOLS)
+    threshold = MIN_VOLATILITY_CRYPTO if is_crypto else MIN_VOLATILITY_STOCKS
+    
+    return {
+        "symbol": symbol,
+        "is_crypto": is_crypto,
+        "volatility_pct": round(volatility, 3) if volatility else None,
+        "min_threshold": threshold,
+        "passes_filter": volatility >= threshold if volatility else True,
+        "confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
+    }
+
+
 @dataclass
 class ModelPrediction:
     """Individual model prediction"""
