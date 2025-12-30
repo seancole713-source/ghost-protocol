@@ -21515,6 +21515,100 @@ async def debug_db_reset_accuracy(confirm: str = "no"):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/watchlist-schema")
+async def debug_watchlist_schema(secret: str = ""):
+    """
+    Check if ghost_watchlist_items table exists and show schema.
+    Also create it if it doesn't exist.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # Check if table exists
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'ghost_watchlist_items'
+            )
+        """)
+        exists = cursor.fetchone()[0]
+        
+        if not exists:
+            # Create the table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_watchlist_items (
+                    id BIGSERIAL PRIMARY KEY,
+                    symbol TEXT NOT NULL,
+                    asset_type TEXT NOT NULL CHECK (asset_type IN ('crypto', 'stock')),
+                    owns_position BOOLEAN DEFAULT FALSE,
+                    notes TEXT DEFAULT '',
+                    added_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW(),
+                    active BOOLEAN DEFAULT TRUE,
+                    price_at_add REAL,
+                    alert_threshold_pct REAL DEFAULT 5.0,
+                    priority INTEGER DEFAULT 1,
+                    CHECK (LENGTH(symbol) > 0 AND LENGTH(symbol) <= 20)
+                )
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_unique_active 
+                ON ghost_watchlist_items(symbol, asset_type) WHERE active = TRUE
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_watchlist_symbol 
+                ON ghost_watchlist_items(symbol) WHERE active = TRUE
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_watchlist_asset_type 
+                ON ghost_watchlist_items(asset_type) WHERE active = TRUE
+            """)
+            conn.commit()
+            
+            conn.close()
+            return {
+                "ok": True,
+                "created": True,
+                "message": "ghost_watchlist_items table created successfully!"
+            }
+        
+        # Get current count
+        cursor.execute("SELECT COUNT(*) FROM ghost_watchlist_items WHERE active = TRUE")
+        active_count = cursor.fetchone()[0]
+        
+        # Get breakdown
+        cursor.execute("""
+            SELECT asset_type, COUNT(*) as cnt 
+            FROM ghost_watchlist_items 
+            WHERE active = TRUE 
+            GROUP BY asset_type
+        """)
+        breakdown = dict(cursor.fetchall())
+        
+        conn.close()
+        
+        return {
+            "ok": True,
+            "table_exists": True,
+            "active_items": active_count,
+            "breakdown": breakdown
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/learning-status")
 async def debug_learning_status():
     """
