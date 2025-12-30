@@ -66,6 +66,52 @@ SIGNIFICANT_MOVE_PCT = 0.03  # 3% move to trigger update
 TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
 
 # ============================================================================
+# CONFIDENCE CALIBRATION FOR DISPLAY
+# ============================================================================
+# Model outputs 85-95% but actual accuracy is 55-70%
+# This calibration makes displayed confidence match reality
+
+def calibrate_display_confidence(raw_confidence: float) -> float:
+    """
+    Calibrate model confidence for honest display.
+    
+    Model tends to output 85-95% but actual accuracy is 55-70%.
+    This function transforms raw confidence to realistic values.
+    
+    Args:
+        raw_confidence: Model's raw confidence (0.0-1.0)
+    
+    Returns:
+        Calibrated confidence for display (0.0-1.0)
+    """
+    # Calibration mapping based on actual observed accuracy:
+    # Raw 95% -> Display 68% (actual accuracy ~68%)
+    # Raw 90% -> Display 65%
+    # Raw 85% -> Display 62%
+    # Raw 80% -> Display 58%
+    # Raw 75% -> Display 55%
+    # Raw 70% -> Display 52%
+    
+    if raw_confidence >= 0.95:
+        return 0.68
+    elif raw_confidence >= 0.90:
+        return 0.65
+    elif raw_confidence >= 0.85:
+        return 0.62
+    elif raw_confidence >= 0.80:
+        return 0.58
+    elif raw_confidence >= 0.75:
+        return 0.55
+    elif raw_confidence >= 0.70:
+        return 0.52
+    elif raw_confidence >= 0.60:
+        return 0.50
+    else:
+        # Low confidence stays low
+        return raw_confidence * 0.8
+
+
+# ============================================================================
 # LEARNING INTEGRATION
 # ============================================================================
 
@@ -89,6 +135,16 @@ LEARNING_BOOST_ENABLED = False  # Boosting disabled until data validated
 # Updated Dec 29, 2025 based on actual accuracy data + Telegram analysis
 # ============================================================================
 HARDCODED_EXCLUSIONS = {
+    # === DATA PROVIDER FAILURES (Dec 30) - All 3 providers fail for these ===
+    'TON': 'All providers fail - 0/0/0 pillars',  # Added Dec 30
+    'XMR': 'All providers fail - privacy coin not supported',  # Added Dec 30
+    'INJ': 'All providers fail - 0/0/0 pillars',  # Added Dec 30
+    'OSMO': 'All providers fail - Cosmos DEX token',  # Added Dec 30
+    'STRK': 'All providers fail - StarkNet token',  # Added Dec 30
+    'FUN': 'All providers fail - possibly delisted',  # Added Dec 30
+    'TNT': 'Binance 451 blocked in US, others 404',  # Added Dec 30
+    'MYST': 'Binance 451 blocked in US, others 404',  # Added Dec 30
+    
     # === FROM TELEGRAM ANALYSIS (Dec 29) - Confirmed stop-outs and wrong directions ===
     'ALGO': 'STOPPED OUT +3.0% on Dec 29 - wrong direction',  # Added Dec 29
     'TIA': 'Small-cap, high risk - same pattern as ALGO',  # Added Dec 29
@@ -442,7 +498,9 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             lines.append(f"   Buy In: {format_price(s['buy_in'])}")
             lines.append(f"   Sell: {format_price(s['sell'])}")
             lines.append(f"   48hr Prediction: {format_price(s['prediction_48h'])}")
-            lines.append(f"   Confidence: {s['confidence']:.0%}")
+            # Use calibrated confidence for honest display
+            display_conf = calibrate_display_confidence(s['confidence'])
+            lines.append(f"   Confidence: {display_conf:.0%}")
             lines.append("")
     else:
         lines.append("   (No stock picks today)")
@@ -469,7 +527,9 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             lines.append(f"   Buy In: {format_price(c['buy_in'])}")
             lines.append(f"   Sell: {format_price(c['sell'])}")
             lines.append(f"   48hr Prediction: {format_price(c['prediction_48h'])}")
-            lines.append(f"   Confidence: {c['confidence']:.0%}")
+            # Use calibrated confidence for honest display
+            display_conf = calibrate_display_confidence(c['confidence'])
+            lines.append(f"   Confidence: {display_conf:.0%}")
             lines.append("")
     else:
         lines.append("   (No crypto picks today)")
