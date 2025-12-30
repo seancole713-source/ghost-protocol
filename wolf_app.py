@@ -21515,6 +21515,54 @@ async def debug_db_reset_accuracy(confirm: str = "no"):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/watchlist-raw")
+async def debug_watchlist_raw(secret: str = ""):
+    """
+    Get raw watchlist from database.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT symbol, asset_type, active
+            FROM ghost_watchlist_items
+            WHERE active = TRUE
+            ORDER BY asset_type, symbol
+        """)
+        
+        items = []
+        for row in cursor.fetchall():
+            items.append({"symbol": row[0], "type": row[1], "active": row[2]})
+        
+        stocks = [i["symbol"] for i in items if i["type"] == "stock"]
+        cryptos = [i["symbol"] for i in items if i["type"] == "crypto"]
+        
+        conn.close()
+        
+        return {
+            "ok": True,
+            "total": len(items),
+            "stocks": stocks,
+            "cryptos": cryptos,
+            "stock_count": len(stocks),
+            "crypto_count": len(cryptos)
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.post("/debug/watchlist-add")
 async def debug_watchlist_add(symbol: str = "", asset_type: str = "stock", secret: str = ""):
     """
