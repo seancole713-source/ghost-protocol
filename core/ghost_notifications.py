@@ -704,6 +704,9 @@ class GhostNotificationSystem:
     - Morning TOP 10 at 8 AM Central
     - Updates every 4 hours (if significant moves)
     - Instant alerts when targets/stops hit
+    
+    PERSISTENCE: Uses PostgreSQL (DATABASE_URL) for tracking to survive Railway deploys.
+    Falls back to SQLite if PostgreSQL unavailable.
     """
     
     def __init__(self, send_telegram_func: Callable[[str], bool] = None):
@@ -712,10 +715,78 @@ class GhostNotificationSystem:
         self._last_top10_date: str = ""
         self._last_update_hour: int = -1
         self._db_path = TRACKING_DB
-        self._init_db()
+        self._use_postgres = self._init_postgres()
+        if not self._use_postgres:
+            self._init_sqlite()
     
-    def _init_db(self):
-        """Initialize tracking database"""
+    def _get_postgres_conn(self):
+        """Get PostgreSQL connection from DATABASE_URL"""
+        import psycopg2
+        database_url = os.getenv("DATABASE_URL", "")
+        if not database_url:
+            return None
+        return psycopg2.connect(database_url)
+    
+    def _init_postgres(self) -> bool:
+        """Initialize PostgreSQL tracking tables. Returns True if successful."""
+        database_url = os.getenv("DATABASE_URL", "")
+        if not database_url:
+            LOGGER.info("[TRACKING] No DATABASE_URL - using SQLite fallback")
+            return False
+        
+        try:
+            import psycopg2
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            
+            # Create tracking table in PostgreSQL
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_tracked_picks (
+                    id SERIAL PRIMARY KEY,
+                    symbol TEXT NOT NULL,
+                    asset_type TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    entry_price REAL NOT NULL,
+                    target_price REAL NOT NULL,
+                    stop_price REAL NOT NULL,
+                    prediction_48h REAL NOT NULL,
+                    confidence REAL NOT NULL,
+                    entry_time TIMESTAMP WITH TIME ZONE NOT NULL,
+                    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+            
+            # Create notification log table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_notification_log (
+                    id SERIAL PRIMARY KEY,
+                    notification_type TEXT NOT NULL,
+                    sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    message_preview TEXT
+                )
+            """)
+            
+            # Create index for faster active picks lookup
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_tracked_picks_status 
+                ON ghost_tracked_picks(status)
+            """)
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            LOGGER.info("[TRACKING] ✅ PostgreSQL initialized - picks will persist across deploys!")
+            return True
+            
+        except Exception as e:
+            LOGGER.warning(f"[TRACKING] PostgreSQL init failed: {e} - using SQLite fallback")
+            return False
+    
+    def _init_sqlite(self):
+        """Initialize SQLite tracking database (fallback)"""
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         
         conn = sqlite3.connect(self._db_path)
@@ -746,6 +817,7 @@ class GhostNotificationSystem:
         """)
         conn.commit()
         conn.close()
+        LOGGER.info("[TRACKING] Using SQLite (ephemeral on Railway)")
     
     def set_telegram_func(self, func: Callable[[str], bool]):
         """Set the function to send Telegram messages"""
@@ -1008,13 +1080,51 @@ class GhostNotificationSystem:
         return success
     
     def _register_picks_for_tracking(self, picks: List[Dict]):
-        """Register picks for 48-hour tracking"""
-        conn = sqlite3.connect(self._db_path)
+        """Register picks for 48-hour tracking (PostgreSQL or SQLite)"""
         now = get_central_time()
         expires = now + timedelta(hours=48)
         
+        if self._use_postgres:
+            try:
+                conn = self._get_postgres_conn()
+                cur = conn.cursor()
+                
+                for p in picks:
+                    action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
+                    asset_type = p.get('asset_type', 'crypto' if p['symbol'] in ['BTC', 'ETH', 'SOL'] else 'stock')
+                    
+                    cur.execute("""
+                        INSERT INTO ghost_tracked_picks 
+                        (symbol, asset_type, direction, entry_price, target_price, stop_price, 
+                         prediction_48h, confidence, entry_time, expires_at, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
+                    """, (
+                        p['symbol'],
+                        asset_type,
+                        action,
+                        p['current'],
+                        p['prediction_48h'],
+                        p['current'] * 0.95 if action == 'BUY' else p['current'] * 1.05,
+                        p['prediction_48h'],
+                        p['confidence'],
+                        now,
+                        expires,
+                    ))
+                
+                conn.commit()
+                cur.close()
+                conn.close()
+                LOGGER.info(f"[TRACKING] ✅ Registered {len(picks)} picks in PostgreSQL (persistent)")
+                return
+                
+            except Exception as e:
+                LOGGER.error(f"[TRACKING] PostgreSQL insert failed: {e} - falling back to SQLite")
+        
+        # SQLite fallback
+        conn = sqlite3.connect(self._db_path)
         for p in picks:
             action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
+            asset_type = p.get('asset_type', 'crypto' if p['symbol'] in ['BTC', 'ETH', 'SOL'] else 'stock')
             
             conn.execute("""
                 INSERT INTO tracked_picks 
@@ -1023,11 +1133,11 @@ class GhostNotificationSystem:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
             """, (
                 p['symbol'],
-                'crypto' if p.get('asset_type') == 'crypto' else 'stock',
+                asset_type,
                 action,
                 p['current'],
-                p['prediction_48h'],  # Target is the 48hr prediction
-                p['current'] * 0.95 if action == 'BUY' else p['current'] * 1.05,  # 5% stop
+                p['prediction_48h'],
+                p['current'] * 0.95 if action == 'BUY' else p['current'] * 1.05,
                 p['prediction_48h'],
                 p['confidence'],
                 now.isoformat(),
@@ -1036,7 +1146,7 @@ class GhostNotificationSystem:
         
         conn.commit()
         conn.close()
-        LOGGER.info(f"[NOTIFICATIONS] Registered {len(picks)} picks for 48h tracking")
+        LOGGER.info(f"[TRACKING] Registered {len(picks)} picks in SQLite (ephemeral)")
     
     def check_for_updates(self, get_price_func: Callable[[str], float]) -> bool:
         """
@@ -1048,15 +1158,33 @@ class GhostNotificationSystem:
         if not self.send_telegram:
             return False
         
-        # Load active picks from DB
-        conn = sqlite3.connect(self._db_path)
-        rows = conn.execute("""
-            SELECT symbol, asset_type, direction, entry_price, target_price, stop_price,
-                   prediction_48h, confidence, entry_time, expires_at
-            FROM tracked_picks 
-            WHERE status = 'active'
-        """).fetchall()
-        conn.close()
+        # Load active picks from PostgreSQL (persistent across deploys)
+        rows = []
+        if self._use_postgres:
+            try:
+                conn = self._get_postgres_conn()
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT symbol, asset_type, direction, entry_price, target_price, stop_price,
+                           prediction_48h, confidence, entry_time, expires_at
+                    FROM ghost_tracked_picks 
+                    WHERE status = 'active'
+                """)
+                rows = cur.fetchall()
+                cur.close()
+                conn.close()
+            except Exception as e:
+                LOGGER.error(f"PostgreSQL fetch failed: {e}")
+        else:
+            # Fallback to SQLite (ephemeral on Railway)
+            conn = sqlite3.connect(self._db_path)
+            rows = conn.execute("""
+                SELECT symbol, asset_type, direction, entry_price, target_price, stop_price,
+                       prediction_48h, confidence, entry_time, expires_at
+                FROM tracked_picks 
+                WHERE status = 'active'
+            """).fetchall()
+            conn.close()
         
         if not rows:
             return False
@@ -1179,11 +1307,34 @@ class GhostNotificationSystem:
     
     def get_status(self) -> Dict:
         """Get current status of the notification system"""
-        conn = sqlite3.connect(self._db_path)
-        active = conn.execute("SELECT COUNT(*) FROM tracked_picks WHERE status = 'active'").fetchone()[0]
-        target_hits = conn.execute("SELECT COUNT(*) FROM tracked_picks WHERE status = 'target_hit'").fetchone()[0]
-        stop_hits = conn.execute("SELECT COUNT(*) FROM tracked_picks WHERE status = 'stop_hit'").fetchone()[0]
-        conn.close()
+        active = 0
+        target_hits = 0
+        stop_hits = 0
+        db_type = "sqlite"
+        
+        # Try PostgreSQL first (persistent)
+        if self._use_postgres:
+            try:
+                conn = self._get_postgres_conn()
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'active'")
+                active = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'target_hit'")
+                target_hits = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'stop_hit'")
+                stop_hits = cur.fetchone()[0]
+                cur.close()
+                conn.close()
+                db_type = "postgresql"
+            except Exception as e:
+                LOGGER.error(f"PostgreSQL status check failed: {e}")
+        else:
+            # Fallback to SQLite (ephemeral)
+            conn = sqlite3.connect(self._db_path)
+            active = conn.execute("SELECT COUNT(*) FROM tracked_picks WHERE status = 'active'").fetchone()[0]
+            target_hits = conn.execute("SELECT COUNT(*) FROM tracked_picks WHERE status = 'target_hit'").fetchone()[0]
+            stop_hits = conn.execute("SELECT COUNT(*) FROM tracked_picks WHERE status = 'stop_hit'").fetchone()[0]
+            conn.close()
         
         return {
             "active_picks": active,
@@ -1193,6 +1344,8 @@ class GhostNotificationSystem:
             "central_time": get_central_time().isoformat(),
             "next_top10_hour": TOP_10_HOUR,
             "update_hours": UPDATE_HOURS,
+            "database": db_type,
+            "persistent": db_type == "postgresql",
         }
 
 

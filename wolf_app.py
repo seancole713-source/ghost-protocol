@@ -22936,47 +22936,93 @@ async def debug_tracking_status(secret: str = ""):
         return {"error": "Invalid secret"}
     
     try:
-        import sqlite3
         from core.ghost_notifications import TRACKING_DB, get_notification_system
         
-        # Get status from notification system
+        # Get status from notification system (includes db_type)
         notif = get_notification_system()
         status = notif.get_status()
         
-        # Direct DB query
-        conn = sqlite3.connect(TRACKING_DB)
-        active_picks = conn.execute("""
-            SELECT symbol, asset_type, direction, entry_price, target_price, stop_price, 
-                   confidence, entry_time, expires_at, status
-            FROM tracked_picks 
-            WHERE status = 'active'
-            ORDER BY entry_time DESC
-        """).fetchall()
-        
-        all_picks = conn.execute("SELECT COUNT(*) FROM tracked_picks").fetchone()[0]
-        conn.close()
-        
         picks_list = []
-        for p in active_picks:
-            picks_list.append({
-                "symbol": p[0],
-                "asset_type": p[1],
-                "direction": p[2],
-                "entry_price": p[3],
-                "target_price": p[4],
-                "stop_price": p[5],
-                "confidence": p[6],
-                "entry_time": p[7],
-                "expires_at": p[8],
-                "status": p[9],
-            })
+        all_picks = 0
+        db_source = "unknown"
+        
+        # Try PostgreSQL first
+        database_url = os.getenv("DATABASE_URL", "")
+        if database_url:
+            try:
+                import psycopg2
+                conn = psycopg2.connect(database_url)
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    SELECT symbol, asset_type, direction, entry_price, target_price, stop_price, 
+                           confidence, entry_time, expires_at, status
+                    FROM ghost_tracked_picks 
+                    WHERE status = 'active'
+                    ORDER BY entry_time DESC
+                """)
+                active_picks = cur.fetchall()
+                
+                cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks")
+                all_picks = cur.fetchone()[0]
+                
+                cur.close()
+                conn.close()
+                db_source = "postgresql (persistent)"
+                
+                for p in active_picks:
+                    picks_list.append({
+                        "symbol": p[0],
+                        "asset_type": p[1],
+                        "direction": p[2],
+                        "entry_price": float(p[3]) if p[3] else 0,
+                        "target_price": float(p[4]) if p[4] else 0,
+                        "stop_price": float(p[5]) if p[5] else 0,
+                        "confidence": float(p[6]) if p[6] else 0,
+                        "entry_time": str(p[7]) if p[7] else "",
+                        "expires_at": str(p[8]) if p[8] else "",
+                        "status": p[9],
+                    })
+            except Exception as pg_err:
+                db_source = f"postgresql FAILED: {pg_err}"
+        
+        # Fallback to SQLite
+        if not picks_list and not database_url:
+            import sqlite3
+            conn = sqlite3.connect(TRACKING_DB)
+            active_picks = conn.execute("""
+                SELECT symbol, asset_type, direction, entry_price, target_price, stop_price, 
+                       confidence, entry_time, expires_at, status
+                FROM tracked_picks 
+                WHERE status = 'active'
+                ORDER BY entry_time DESC
+            """).fetchall()
+            
+            all_picks = conn.execute("SELECT COUNT(*) FROM tracked_picks").fetchone()[0]
+            conn.close()
+            db_source = "sqlite (ephemeral)"
+            
+            for p in active_picks:
+                picks_list.append({
+                    "symbol": p[0],
+                    "asset_type": p[1],
+                    "direction": p[2],
+                    "entry_price": p[3],
+                    "target_price": p[4],
+                    "stop_price": p[5],
+                    "confidence": p[6],
+                    "entry_time": p[7],
+                    "expires_at": p[8],
+                    "status": p[9],
+                })
         
         return {
             "ok": True,
-            "tracking_db": TRACKING_DB,
+            "database": db_source,
+            "persistent": "postgresql" in db_source.lower() and "FAILED" not in db_source,
             "status": status,
             "total_picks_in_db": all_picks,
-            "active_picks_count": len(active_picks),
+            "active_picks_count": len(picks_list),
             "active_picks": picks_list,
         }
     except Exception as e:
