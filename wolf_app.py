@@ -11928,8 +11928,8 @@ async def api_v3_hunter_feed(limit: int = 10):
                 confidence = pred.get("confidence", 0) or 0
                 confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
                 
-                # Calculate expected move
-                expected_move = pred.get("expected_move")
+                # Calculate expected move - FIX: use expected_move_pct (stored key) not expected_move
+                expected_move = pred.get("expected_move_pct") or pred.get("expected_move")
                 if expected_move is None:
                     if direction == "UP":
                         change_pct = ((confidence_pct - 40) / 10) + 1.0
@@ -11938,7 +11938,8 @@ async def api_v3_hunter_feed(limit: int = 10):
                     else:
                         change_pct = 0.5 if confidence_pct > 50 else -0.5
                 else:
-                    change_pct = expected_move * 100
+                    # expected_move_pct is already in percentage (e.g., 4.5 = 4.5%)
+                    change_pct = expected_move if abs(expected_move) < 20 else expected_move / 100
                 
                 change_pct = round(change_pct, 2)
 
