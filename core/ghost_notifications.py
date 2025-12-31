@@ -963,6 +963,7 @@ class GhostNotificationSystem:
             "sell": sell_at,
             "confidence": confidence,
             "direction": direction,
+            "asset_type": asset_class,  # CRITICAL for tracking!
             "learning_boosted": candidate.get("learning_boosted", False),
         }
     

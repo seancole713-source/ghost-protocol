@@ -22926,6 +22926,64 @@ async def top10_preview():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/tracking-status")
+async def debug_tracking_status(secret: str = ""):
+    """
+    Debug endpoint to check pick tracking status.
+    Shows all active tracked picks and their current status.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        import sqlite3
+        from core.ghost_notifications import TRACKING_DB, get_notification_system
+        
+        # Get status from notification system
+        notif = get_notification_system()
+        status = notif.get_status()
+        
+        # Direct DB query
+        conn = sqlite3.connect(TRACKING_DB)
+        active_picks = conn.execute("""
+            SELECT symbol, asset_type, direction, entry_price, target_price, stop_price, 
+                   confidence, entry_time, expires_at, status
+            FROM tracked_picks 
+            WHERE status = 'active'
+            ORDER BY entry_time DESC
+        """).fetchall()
+        
+        all_picks = conn.execute("SELECT COUNT(*) FROM tracked_picks").fetchone()[0]
+        conn.close()
+        
+        picks_list = []
+        for p in active_picks:
+            picks_list.append({
+                "symbol": p[0],
+                "asset_type": p[1],
+                "direction": p[2],
+                "entry_price": p[3],
+                "target_price": p[4],
+                "stop_price": p[5],
+                "confidence": p[6],
+                "entry_time": p[7],
+                "expires_at": p[8],
+                "status": p[9],
+            })
+        
+        return {
+            "ok": True,
+            "tracking_db": TRACKING_DB,
+            "status": status,
+            "total_picks_in_db": all_picks,
+            "active_picks_count": len(active_picks),
+            "active_picks": picks_list,
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.post("/alerts/top10/send")
 async def top10_force_send():
     """Force send the TOP 10 message with whatever picks are queued"""
