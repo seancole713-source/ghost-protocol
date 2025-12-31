@@ -759,6 +759,11 @@ class GhostNotificationSystem:
         - Excludes symbols with <40% accuracy (after 10+ predictions)
         - Boosts confidence by 15% for symbols with >70% accuracy
         
+        PERFORMANCE FIX (Dec 31, 2025):
+        - Phase 1: Filter and sort using CACHED prices only (fast)
+        - Phase 2: Only refresh prices for TOP 15 candidates (limited API calls)
+        - This prevents 100+ API calls causing 30s timeout
+        
         Args:
             latest_predictions: Dict of symbol -> prediction data
             
@@ -769,12 +774,11 @@ class GhostNotificationSystem:
         
         inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
         
-        stocks = []
-        crypto = []
+        # Phase 1: Build candidate lists using CACHED prices (no API calls)
+        stock_candidates = []
+        crypto_candidates = []
         
-        # Track price refresh attempts for logging
-        prices_refreshed = 0
-        prices_stale_skipped = 0
+        # Track stats for logging
         stablecoins_skipped = 0
         
         # LEARNING: Get symbol accuracy data from PostgreSQL
@@ -784,6 +788,8 @@ class GhostNotificationSystem:
         excluded_symbols = []
         boosted_symbols = []
         
+        LOGGER.info(f"[TOP10] Phase 1: Filtering {len(latest_predictions)} predictions using cached prices...")
+        
         for symbol, pred in latest_predictions.items():
             if not isinstance(pred, dict):
                 continue
@@ -791,7 +797,6 @@ class GhostNotificationSystem:
             # CRITICAL: Skip stablecoins (USDC, DAI, USDT, etc.) - they don't move!
             if AssetClassifier.is_stablecoin(symbol):
                 stablecoins_skipped += 1
-                LOGGER.debug(f"[NOTIFICATIONS] Skipping stablecoin: {symbol}")
                 continue
             
             # LEARNING: Check if symbol should be excluded due to low accuracy
@@ -799,7 +804,6 @@ class GhostNotificationSystem:
             if should_exclude:
                 learning_excluded += 1
                 excluded_symbols.append(f"{symbol} ({exclude_reason})")
-                LOGGER.info(f"[LEARNING] EXCLUDED {symbol}: {exclude_reason}")
                 continue
             
             confidence = pred.get("confidence", 0)
@@ -813,110 +817,154 @@ class GhostNotificationSystem:
                 confidence = min(1.0, confidence * boost_multiplier)  # Cap at 100%
                 learning_boosted += 1
                 boosted_symbols.append(f"{symbol} ({original_confidence:.0%}→{confidence:.0%})")
-                LOGGER.info(f"[LEARNING] BOOSTED {symbol}: {original_confidence:.0%} → {confidence:.0%} ({boost_reason})")
             
-            # Get current price from prediction (may be missing or stale)
-            current_price = (pred.get("price") or 
+            # Get cached price from prediction (DO NOT refresh yet)
+            cached_price = (pred.get("price") or 
                            pred.get("current_price") or 
                            pred.get("entry_price") or 0)
             
-            # Classify asset type early (needed for price refresh)
+            # Classify asset type
             asset_class = get_asset_type(symbol)
             
-            # Skip stablecoins by type too (belt and suspenders)
+            # Skip stablecoins by type too
             if asset_class == "stablecoin":
                 stablecoins_skipped += 1
                 continue
             
-            # ALWAYS try to get fresh price if we don't have one, or if price is stale
-            price_timestamp = pred.get("run_at") or pred.get("timestamp") or 0
-            price_age_seconds = time.time() - price_timestamp if price_timestamp > 0 else 999999
-            need_fresh_price = current_price <= 0 or price_age_seconds > 300  # 5 min
-            
-            if need_fresh_price:
-                try:
-                    if asset_class == "crypto":
-                        from core.crypto.crypto_providers import get_crypto_price_quorum
-                        import asyncio
-                        try:
-                            loop = asyncio.get_event_loop()
-                        except RuntimeError:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                        fresh_price_data = loop.run_until_complete(
-                            get_crypto_price_quorum(symbol, use_cache=False)
-                        )
-                        if fresh_price_data and fresh_price_data.get("price", 0) > 0:
-                            current_price = fresh_price_data["price"]
-                            prices_refreshed += 1
-                            LOGGER.debug(f"[NOTIFICATIONS] Refreshed {symbol} price: ${current_price:.4f}")
-                    else:
-                        # For stocks, use turbo provider
-                        from core.providers.turbo_provider import get_turbo_provider
-                        turbo = get_turbo_provider()
-                        fresh_price_data = turbo.turbo_stock_price(symbol, max_budget_s=2.0)
-                        if fresh_price_data.get("ok") and fresh_price_data.get("price", 0) > 0:
-                            current_price = fresh_price_data["price"]
-                            prices_refreshed += 1
-                            LOGGER.debug(f"[NOTIFICATIONS] Refreshed {symbol} price: ${current_price:.2f}")
-                except Exception as e:
-                    LOGGER.warning(f"[NOTIFICATIONS] Failed to refresh {symbol} price: {e}")
-            
-            # Skip if we still don't have a valid price
-            if current_price <= 0:
-                LOGGER.debug(f"[NOTIFICATIONS] Skipping {symbol} - no valid price available")
-                continue
-            
             # Direction is ALREADY inverted in _LATEST_PREDICTIONS when INVERSE_GHOST=1
-            # DO NOT invert again here - that was causing double-inversion bug
             direction = pred.get("direction", "DOWN")
             
-            # Calculate 48hr prediction price
-            # If direction is UP, price goes higher; if DOWN, price goes lower
-            if direction == "UP":
-                # Estimate 48hr target (typically 3-6% move)
-                move_pct = 0.05 if get_asset_type(symbol) == "crypto" else 0.03
-                prediction_48h = current_price * (1 + move_pct)
-            else:
-                move_pct = 0.05 if get_asset_type(symbol) == "crypto" else 0.03
-                prediction_48h = current_price * (1 - move_pct)
-            
-            # Calculate buy-in and sell prices (entry zone)
-            buy_in = current_price * 0.99  # 1% below current
-            sell_at = current_price * 1.02  # 2% above current (for profit taking)
-            
-            pick = {
+            candidate = {
                 "symbol": symbol,
-                "current": current_price,
-                "prediction_48h": prediction_48h,
-                "buy_in": buy_in,
-                "sell": sell_at,
+                "cached_price": cached_price,
                 "confidence": confidence,
                 "direction": direction,
-                "learning_boosted": boost_multiplier > 1.0,  # Flag for boosted picks
+                "asset_class": asset_class,
+                "learning_boosted": boost_multiplier > 1.0,
+                "pred": pred,  # Keep original for later
             }
             
-            # Add to appropriate list based on asset_class (already computed above)
             if asset_class == "crypto":
-                crypto.append(pick)
+                crypto_candidates.append(candidate)
             else:
-                stocks.append(pick)
+                stock_candidates.append(candidate)
         
         # Log learning stats
         if learning_excluded > 0:
-            LOGGER.info(f"[LEARNING] 🚫 EXCLUDED {learning_excluded} low-accuracy symbols: {', '.join(excluded_symbols[:5])}")
+            LOGGER.info(f"[LEARNING] 🚫 EXCLUDED {learning_excluded} low-accuracy symbols")
         if learning_boosted > 0:
-            LOGGER.info(f"[LEARNING] 🚀 BOOSTED {learning_boosted} high-accuracy symbols: {', '.join(boosted_symbols[:5])}")
+            LOGGER.info(f"[LEARNING] 🚀 BOOSTED {learning_boosted} high-accuracy symbols")
         
-        # Log skip stats
-        if stablecoins_skipped > 0:
-            LOGGER.info(f"[NOTIFICATIONS] Skipped {stablecoins_skipped} stablecoins from predictions")
+        # Sort candidates by confidence
+        stock_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+        crypto_candidates.sort(key=lambda x: x["confidence"], reverse=True)
         
-        # Sort by confidence, take top 5
-        stocks.sort(key=lambda x: x["confidence"], reverse=True)
-        crypto.sort(key=lambda x: x["confidence"], reverse=True)
+        # Phase 2: Only refresh prices for TOP 15 of each (5 final + buffer)
+        TOP_N_TO_REFRESH = 15
+        
+        LOGGER.info(f"[TOP10] Phase 2: Refreshing prices for top {TOP_N_TO_REFRESH} candidates only...")
+        
+        stocks = []
+        crypto = []
+        prices_refreshed = 0
+        
+        # Process top stock candidates
+        for candidate in stock_candidates[:TOP_N_TO_REFRESH]:
+            symbol = candidate["symbol"]
+            current_price = candidate["cached_price"]
+            
+            # Try to refresh price if stale or missing
+            if current_price <= 0:
+                try:
+                    from core.providers.turbo_provider import get_turbo_provider
+                    turbo = get_turbo_provider()
+                    fresh_price_data = turbo.turbo_stock_price(symbol, max_budget_s=1.5)
+                    if fresh_price_data.get("ok") and fresh_price_data.get("price", 0) > 0:
+                        current_price = fresh_price_data["price"]
+                        prices_refreshed += 1
+                except Exception as e:
+                    LOGGER.debug(f"[TOP10] Stock price refresh failed for {symbol}: {e}")
+            
+            if current_price <= 0:
+                continue
+            
+            # Build final pick
+            pick = self._build_pick(candidate, current_price)
+            stocks.append(pick)
+            
+            if len(stocks) >= 5:
+                break
+        
+        # Process top crypto candidates
+        for candidate in crypto_candidates[:TOP_N_TO_REFRESH]:
+            symbol = candidate["symbol"]
+            current_price = candidate["cached_price"]
+            
+            # Try to refresh price if stale or missing (use cache=True for speed)
+            if current_price <= 0:
+                try:
+                    from core.crypto.crypto_providers import get_crypto_price_quorum
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    # USE CACHE for speed - only need approximate price for TOP 10
+                    fresh_price_data = loop.run_until_complete(
+                        get_crypto_price_quorum(symbol, use_cache=True)
+                    )
+                    if fresh_price_data and fresh_price_data.get("price", 0) > 0:
+                        current_price = fresh_price_data["price"]
+                        prices_refreshed += 1
+                except Exception as e:
+                    LOGGER.debug(f"[TOP10] Crypto price refresh failed for {symbol}: {e}")
+            
+            if current_price <= 0:
+                continue
+            
+            # Build final pick
+            pick = self._build_pick(candidate, current_price)
+            crypto.append(pick)
+            
+            if len(crypto) >= 5:
+                break
+        
+        LOGGER.info(f"[TOP10] ✅ Complete: {len(stocks)} stocks, {len(crypto)} crypto, {prices_refreshed} prices refreshed")
         
         return stocks[:5], crypto[:5]
+    
+    def _build_pick(self, candidate: Dict, current_price: float) -> Dict:
+        """Build a pick dict from candidate and current price."""
+        from core.asset_classifier import get_asset_type
+        
+        symbol = candidate["symbol"]
+        direction = candidate["direction"]
+        confidence = candidate["confidence"]
+        asset_class = candidate["asset_class"]
+        
+        # Calculate 48hr prediction price
+        if direction == "UP":
+            move_pct = 0.05 if asset_class == "crypto" else 0.03
+            prediction_48h = current_price * (1 + move_pct)
+        else:
+            move_pct = 0.05 if asset_class == "crypto" else 0.03
+            prediction_48h = current_price * (1 - move_pct)
+        
+        # Calculate buy-in and sell prices
+        buy_in = current_price * 0.99  # 1% below current
+        sell_at = current_price * 1.02  # 2% above current
+        
+        return {
+            "symbol": symbol,
+            "current": current_price,
+            "prediction_48h": prediction_48h,
+            "buy_in": buy_in,
+            "sell": sell_at,
+            "confidence": confidence,
+            "direction": direction,
+            "learning_boosted": candidate.get("learning_boosted", False),
+        }
     
     def send_top10(self, latest_predictions: Dict[str, Dict]) -> bool:
         """
