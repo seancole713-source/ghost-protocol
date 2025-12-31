@@ -4636,6 +4636,24 @@ async def _post_startup_init():
                         # This triggers anytime during 8:00-8:59 if not already sent today
                         if current_hour == TOP_10_HOUR and last_top10_date != current_date:
                             LOGGER.info(f"[NOTIFICATIONS] 🌅 8 AM WINDOW - Sending morning TOP 10 ({now_central.strftime('%H:%M:%S')} Central)...")
+                            
+                            # CRITICAL FIX (Dec 30, 2025): Generate fresh stock predictions for TOP 10
+                            # Stocks are normally only generated during market hours (9:30 AM - 4 PM)
+                            # But TOP 10 is sent at 8 AM, BEFORE market opens!
+                            # Generate stock predictions now so they appear in TOP 10
+                            try:
+                                stock_count = 0
+                                for stock_symbol in HUNTER_STOCK_SYMBOLS[:50]:  # Top 50 stocks
+                                    try:
+                                        result = run_single_prediction(stock_symbol)
+                                        if result.get("ok"):
+                                            stock_count += 1
+                                    except Exception as e:
+                                        LOGGER.debug(f"[TOP10-PREP] Stock prediction failed for {stock_symbol}: {e}")
+                                LOGGER.info(f"[TOP10-PREP] Generated {stock_count} fresh stock predictions for TOP 10")
+                            except Exception as e:
+                                LOGGER.warning(f"[TOP10-PREP] Stock generation error: {e}")
+                            
                             LOGGER.info(f"[NOTIFICATIONS] Predictions available: {len(_LATEST_PREDICTIONS)} symbols")
                             
                             # Use _LATEST_PREDICTIONS
@@ -21741,6 +21759,82 @@ async def debug_btc_trend(secret: str = "", symbol: str = "BTC"):
             "cached_at": info.get("cached_at"),
             "data_source": "https://api.coingecko.com/",
             "correlated_symbols_count": info.get("correlated_symbols", 0)
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/debug/stock-status")
+async def debug_stock_status(secret: str = ""):
+    """
+    Debug endpoint to diagnose stock prediction issues.
+    Shows market hours status, timezone info, and stock counts.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        
+        # Get current times in different timezones
+        utc_now = datetime.now(ZoneInfo("UTC"))
+        et_now = datetime.now(ZoneInfo("America/New_York"))
+        ct_now = datetime.now(ZoneInfo("America/Chicago"))
+        
+        # Check market hours (9:30 AM - 4:00 PM ET)
+        et_hour = et_now.hour
+        et_minute = et_now.minute
+        is_after_open = et_hour > 9 or (et_hour == 9 and et_minute >= 30)
+        is_before_close = et_hour < 16
+        is_weekday = et_now.weekday() < 5
+        is_market_hours = is_weekday and is_after_open and is_before_close
+        
+        # Get stock counts
+        from core.auto_prediction_loop import HUNTER_STOCK_SYMBOLS, FORCE_STOCK_PREDICTIONS
+        stock_count = len(HUNTER_STOCK_SYMBOLS)
+        
+        # Get latest stock predictions
+        stock_predictions = [
+            sym for sym, pred in _LATEST_PREDICTIONS.items()
+            if sym in HUNTER_STOCK_SYMBOLS
+        ]
+        
+        # Diagnosis
+        if not is_weekday:
+            diagnosis = "❌ Weekend - markets closed"
+        elif not is_market_hours and not FORCE_STOCK_PREDICTIONS:
+            diagnosis = "❌ Outside market hours (9:30 AM - 4 PM ET) and FORCE_STOCK_PREDICTIONS=0"
+        elif not is_market_hours and FORCE_STOCK_PREDICTIONS:
+            diagnosis = "✅ Outside market hours but FORCE_STOCK_PREDICTIONS=1 - stocks will process"
+        elif is_market_hours:
+            diagnosis = "✅ Market hours - stocks should process normally"
+        else:
+            diagnosis = "❓ Unknown state"
+        
+        return {
+            "ok": True,
+            "times": {
+                "utc": utc_now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "et": et_now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "ct": ct_now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            },
+            "market_status": {
+                "is_market_hours": is_market_hours,
+                "is_weekday": is_weekday,
+                "et_time": et_now.strftime("%H:%M"),
+                "market_open": "09:30 ET",
+                "market_close": "16:00 ET",
+            },
+            "config": {
+                "FORCE_STOCK_PREDICTIONS": FORCE_STOCK_PREDICTIONS,
+                "stock_symbols_count": stock_count,
+                "stock_predictions_in_memory": len(stock_predictions),
+            },
+            "diagnosis": diagnosis,
+            "fix": "Set FORCE_STOCK_PREDICTIONS=1 in Railway env vars" if "❌" in diagnosis else "No fix needed"
         }
         
     except Exception as e:

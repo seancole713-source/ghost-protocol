@@ -43,6 +43,9 @@ BATCH_DELAY_S = int(os.getenv("AUTO_PREDICT_BATCH_DELAY_S", "10"))  # Default: 1
 # Timezone
 CHICAGO_TZ = ZoneInfo("America/Chicago")
 
+# Force stock predictions even outside market hours (for TOP 10 at 8 AM)
+FORCE_STOCK_PREDICTIONS = os.getenv("FORCE_STOCK_PREDICTIONS", "1") == "1"
+
 
 def _is_market_hours():
     """Check if currently in market hours (9:30 AM - 4:00 PM CT)"""
@@ -82,11 +85,14 @@ async def _run_all_predictions_async():
     # Check market hours for stocks
     is_market_open = _is_market_hours()
     
-    # Run stock predictions (ONLY during market hours)
+    # Run stock predictions (during market hours OR when forced for TOP 10)
     stock_count = len(HUNTER_STOCK_SYMBOLS)
-    if is_market_open:
+    should_process_stocks = is_market_open or FORCE_STOCK_PREDICTIONS
+    
+    if should_process_stocks:
         if LOGGER:
-            LOGGER.info(f"[AUTO-PREDICT] Market OPEN - processing {stock_count} stocks asynchronously")
+            status = "OPEN" if is_market_open else "CLOSED (FORCE_STOCK_PREDICTIONS=1)"
+            LOGGER.info(f"[AUTO-PREDICT] Market {status} - processing {stock_count} stocks asynchronously")
         
         # Process stocks with async concurrency (2 at a time for stability)
         for i in range(0, stock_count, 2):  # REDUCED: 2 concurrent (was 3)
@@ -129,7 +135,7 @@ async def _run_all_predictions_async():
             await asyncio.sleep(PREDICTION_DELAY_S)
     else:
         if LOGGER:
-            LOGGER.info(f"[AUTO-PREDICT] Market CLOSED - skipping {stock_count} stock predictions")
+            LOGGER.info(f"[AUTO-PREDICT] Market CLOSED and FORCE_STOCK_PREDICTIONS=0 - skipping {stock_count} stock predictions")
     
     # Run crypto predictions (24/7 - crypto markets never close)
     # Process ALL crypto symbols (no artificial limits - scales to 1000+ coins)
