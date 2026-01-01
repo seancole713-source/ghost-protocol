@@ -23560,6 +23560,135 @@ async def close_tracked_pick(request: Request, symbol: str, status: str = "stop_
     }
 
 
+@APP.get("/tracking/accuracy")
+async def get_tracking_accuracy(days: int = 7):
+    """
+    📊 TRACKING ACCURACY: Calculate win/loss rate from resolved picks.
+    
+    Shows accuracy of TOP 10 predictions based on target_hit vs stop_hit.
+    
+    Args:
+        days: Number of days to look back (default 7)
+    
+    Returns:
+        Accuracy stats with breakdown by crypto/stock and direction.
+    """
+    CRYPTO_SYMBOLS = {
+        "BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "LINK", "AVAX", "DOT", "MATIC",
+        "ZEC", "BCH", "METIS", "FTM", "ANKR", "LTC", "UNI", "AAVE", "CRV", "MKR",
+        "COMP", "SNX", "YFI", "SUSHI", "ALGO", "ATOM", "NEAR", "APT", "ARB", "OP"
+    }
+    
+    try:
+        import psycopg2
+        database_url = os.getenv("DATABASE_URL", "")
+        
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not configured"}
+        
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        
+        # Get resolved picks
+        cur.execute("""
+            SELECT symbol, direction, entry_price, target_price, stop_price, status, entry_time
+            FROM ghost_tracked_picks
+            WHERE status IN ('target_hit', 'stop_hit')
+            AND entry_time > NOW() - INTERVAL '%s days'
+            ORDER BY entry_time DESC
+        """, (days,))
+        
+        columns = ['symbol', 'direction', 'entry_price', 'target_price', 'stop_price', 'status', 'entry_time']
+        resolved = [dict(zip(columns, row)) for row in cur.fetchall()]
+        
+        # Get active picks count
+        cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'active'")
+        active_count = cur.fetchone()[0]
+        
+        cur.close()
+        conn.close()
+        
+        if not resolved:
+            return {
+                "ok": True,
+                "message": "No resolved picks yet",
+                "active_picks": active_count,
+                "resolved_picks": 0,
+                "note": "Picks resolve when target (✅ WIN) or stop (❌ LOSS) is hit"
+            }
+        
+        # Calculate stats
+        wins = sum(1 for p in resolved if p['status'] == 'target_hit')
+        losses = sum(1 for p in resolved if p['status'] == 'stop_hit')
+        total = wins + losses
+        accuracy = round((wins / total) * 100, 1) if total > 0 else 0
+        
+        # Breakdown by type
+        by_type = {"crypto": {"wins": 0, "losses": 0}, "stock": {"wins": 0, "losses": 0}}
+        by_direction = {"BUY": {"wins": 0, "losses": 0}, "SELL": {"wins": 0, "losses": 0}}
+        
+        results = []
+        for p in resolved:
+            is_win = p['status'] == 'target_hit'
+            is_crypto = p['symbol'].upper() in CRYPTO_SYMBOLS
+            type_key = "crypto" if is_crypto else "stock"
+            
+            if is_win:
+                by_type[type_key]["wins"] += 1
+                by_direction[p['direction']]["wins"] += 1
+            else:
+                by_type[type_key]["losses"] += 1
+                by_direction[p['direction']]["losses"] += 1
+            
+            # Calculate PnL
+            entry = float(p['entry_price']) if p['entry_price'] else 0
+            target = float(p['target_price']) if p['target_price'] else 0
+            stop = float(p['stop_price']) if p['stop_price'] else 0
+            
+            if p['direction'] == 'BUY':
+                pnl = ((target - entry) / entry * 100) if is_win and entry > 0 else ((stop - entry) / entry * 100) if entry > 0 else 0
+            else:
+                pnl = ((entry - target) / entry * 100) if is_win and entry > 0 else ((entry - stop) / entry * 100) if entry > 0 else 0
+            
+            results.append({
+                "symbol": p['symbol'],
+                "direction": p['direction'],
+                "result": "✅ WIN" if is_win else "❌ LOSS",
+                "pnl_pct": round(pnl, 2),
+                "entry": entry,
+                "exit": target if is_win else stop,
+            })
+        
+        def calc_acc(w, l):
+            t = w + l
+            return round(w / t * 100, 1) if t > 0 else 0
+        
+        return {
+            "ok": True,
+            "period_days": days,
+            "summary": {
+                "total_resolved": total,
+                "wins": wins,
+                "losses": losses,
+                "accuracy_pct": accuracy,
+                "active_picks": active_count,
+            },
+            "by_type": {
+                "crypto": {**by_type["crypto"], "accuracy": calc_acc(by_type["crypto"]["wins"], by_type["crypto"]["losses"])},
+                "stock": {**by_type["stock"], "accuracy": calc_acc(by_type["stock"]["wins"], by_type["stock"]["losses"])},
+            },
+            "by_direction": {
+                "BUY": {**by_direction["BUY"], "accuracy": calc_acc(by_direction["BUY"]["wins"], by_direction["BUY"]["losses"])},
+                "SELL": {**by_direction["SELL"], "accuracy": calc_acc(by_direction["SELL"]["wins"], by_direction["SELL"]["losses"])},
+            },
+            "results": results,
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Tracking accuracy failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
 # ==============================================================================
 # GHOST LEARNING SYSTEM - Real-time accuracy tracking and symbol-level learning
 # ==============================================================================
