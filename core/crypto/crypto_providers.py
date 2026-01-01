@@ -37,6 +37,12 @@ MIN_SANE_PRICES = {
     'AAVE': 30,      # AAVE should never be below $30
     'ATOM': 3,       # ATOM should never be below $3
     'LTC': 30,       # LTC should never be below $30
+    # Added to prevent price corruption bugs
+    'FTM': 0.01,     # FTM (Fantom) ~$0.06 as of Jan 2026
+    'NEAR': 1,       # NEAR should never be below $1
+    'ALGO': 0.05,    # ALGO should never be below $0.05
+    'BCH': 50,       # BCH should never be below $50
+    'ANKR': 0.001,   # ANKR is a low-price coin ~$0.006
 }
 
 MAX_SANE_PRICES = {
@@ -196,6 +202,37 @@ class CoinGeckoProvider:
         "XLM": "stellar",
         "ETC": "ethereum-classic",
         "XMR": "monero",
+        # FTM and other L1/L2 chains (CRITICAL - was missing, caused $0.48 bug!)
+        "FTM": "fantom",  # Fantom Opera chain
+        "NEAR": "near",
+        "ALGO": "algorand",
+        "ATOM": "cosmos",
+        "ICP": "internet-computer",
+        "HBAR": "hedera-hashgraph",
+        "VET": "vechain",
+        "EGLD": "elrond-erd-2",  # MultiversX
+        "THETA": "theta-token",
+        "NEO": "neo",
+        "KAVA": "kava",
+        "ZIL": "zilliqa",
+        "ROSE": "oasis-network",
+        # Other tracked coins
+        "LTC": "litecoin",
+        "BCH": "bitcoin-cash",
+        "ANKR": "ankr",
+        "METIS": "metis-token",
+        "CRO": "crypto-com-chain",
+        "LDO": "lido-dao",
+        "APE": "apecoin",
+        "IMX": "immutable-x",
+        "FLOW": "flow",
+        "MINA": "mina-protocol",
+        "KCS": "kucoin-shares",
+        "ENJ": "enjincoin",
+        "CHZ": "chiliz",
+        "QTUM": "qtum",
+        "ZEC": "zcash",
+        "DASH": "dash",
     }
 
     def __init__(self):

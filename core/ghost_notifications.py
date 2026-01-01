@@ -1280,14 +1280,35 @@ class GhostNotificationSystem:
             self.send_telegram(msg)
             LOGGER.info(f"[NOTIFICATIONS] Sent {len(alerts)} target/stop alerts")
             
-            # Update status in DB
-            conn = sqlite3.connect(self._db_path)
+            # Update status in DB - MUST update PostgreSQL (primary) to prevent repeat alerts!
             for a in alerts:
                 status = "target_hit" if a['type'] == 'target_hit' else 'stop_hit'
-                conn.execute("UPDATE tracked_picks SET status = ? WHERE symbol = ?", 
-                           (status, a['symbol']))
-            conn.commit()
-            conn.close()
+                
+                # Update PostgreSQL (persistent, primary)
+                if self._use_postgres:
+                    try:
+                        conn = self._get_postgres_conn()
+                        cur = conn.cursor()
+                        cur.execute(
+                            "UPDATE ghost_tracked_picks SET status = %s WHERE symbol = %s AND status = 'active'",
+                            (status, a['symbol'])
+                        )
+                        conn.commit()
+                        cur.close()
+                        conn.close()
+                        LOGGER.info(f"[TRACKING] ✅ Updated {a['symbol']} to {status} in PostgreSQL")
+                    except Exception as e:
+                        LOGGER.error(f"[TRACKING] ❌ Failed to update PostgreSQL for {a['symbol']}: {e}")
+                
+                # Also update SQLite (fallback)
+                try:
+                    sqlite_conn = sqlite3.connect(self._db_path)
+                    sqlite_conn.execute("UPDATE tracked_picks SET status = ? WHERE symbol = ?", 
+                               (status, a['symbol']))
+                    sqlite_conn.commit()
+                    sqlite_conn.close()
+                except Exception as e:
+                    LOGGER.debug(f"SQLite update failed for {a['symbol']}: {e}")
         
         # Send OFF PATH alerts immediately (separate for stocks vs crypto)
         if off_path_stocks:
