@@ -34099,21 +34099,6 @@ async def api_analyst_commentary():
 # SANTIMENT INTEGRATION ENDPOINTS
 # ============================================================================
 
-@APP.get("/api/v3/santiment/{symbol}")
-async def api_santiment_data(symbol: str):
-    """Get Santiment social/on-chain data for a symbol"""
-    try:
-        from core.santiment_signals import get_sentiment_signal, is_enabled
-        
-        result = get_sentiment_signal(symbol.upper())
-        if result:
-            return {"ok": True, "enabled": is_enabled(), **result}
-        else:
-            return {"ok": False, "error": "No Santiment data available"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
 @APP.get("/api/v3/santiment/status")
 async def api_santiment_status():
     """Get Santiment integration status"""
@@ -34126,6 +34111,21 @@ async def api_santiment_status():
             "api_key_set": bool(provider.api_key),
             "cache_size": len(provider.cache)
         }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/santiment/{symbol}")
+async def api_santiment_data(symbol: str):
+    """Get Santiment social/on-chain data for a symbol"""
+    try:
+        from core.santiment_signals import get_sentiment_signal, is_enabled
+        
+        result = get_sentiment_signal(symbol.upper())
+        if result:
+            return {"ok": True, "enabled": is_enabled(), **result}
+        else:
+            return {"ok": False, "error": "No Santiment data available"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
