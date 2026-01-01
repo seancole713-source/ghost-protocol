@@ -219,9 +219,9 @@ class Top10Aggregator:
             LOGGER.info("[TOP 10] No picks to send")
             return
         
-        # Build the message
+        # Build the message - FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
         today_str = datetime.utcnow().strftime("%B %d, %Y")
-        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+        inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
         direction_label = "INVERSE GHOST" if inverse_mode else "GHOST"
         
         lines = [

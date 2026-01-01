@@ -844,7 +844,8 @@ class GhostNotificationSystem:
         """
         from core.asset_classifier import get_asset_type, AssetClassifier
         
-        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+        # FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
+        inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
         
         # Phase 1: Build candidate lists using CACHED prices (no API calls)
         stock_candidates = []
@@ -1061,7 +1062,8 @@ class GhostNotificationSystem:
             LOGGER.warning("[NOTIFICATIONS] No predictions available for TOP 10")
             return False
         
-        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+        # FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
+        inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
         message = format_top10_message(stocks, crypto, inverse_mode)
         
         LOGGER.info(f"[NOTIFICATIONS] Sending TOP 10 ({len(stocks)} stocks, {len(crypto)} crypto)")

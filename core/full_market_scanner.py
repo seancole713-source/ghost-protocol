@@ -433,8 +433,8 @@ class FullMarketScanner:
             if confidence < MIN_CONFIDENCE:
                 return None
             
-            # Determine direction (INVERSE_GHOST applies)
-            inverse_enabled = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+            # Determine direction (INVERSE_GHOST applies) - FIXED: default to OFF (0)
+            inverse_enabled = os.getenv("INVERSE_GHOST", "0") == "1"
             
             # Base direction from momentum (simplified)
             base_direction = "UP"  # Default, would come from ML model

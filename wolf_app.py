@@ -7667,7 +7667,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "ANT",    # 40% inverted → 60% raw (borderline, skip)
         }
         
-        inverse_ghost_enabled = os.getenv("INVERSE_GHOST", "1") == "1"  # ON by default
+        # INVERSE_GHOST: When 1, flip predictions. When 0, use raw predictions.
+        # DEFAULT is now OFF (0) since accuracy improvements were made
+        inverse_ghost_enabled = os.getenv("INVERSE_GHOST", "0") == "1"  # OFF by default
         symbol_upper = symbol.upper()
         
         if inverse_ghost_enabled and direction in ("UP", "DOWN"):
@@ -21148,7 +21150,8 @@ async def debug_inverse_status():
     - Which symbols will be inverted vs kept raw
     """
     try:
-        inverse_enabled = os.getenv("INVERSE_GHOST", "1") == "1"
+        # DEFAULT is now OFF (0) since accuracy improvements were made
+        inverse_enabled = os.getenv("INVERSE_GHOST", "0") == "1"
         
         # These match INVERSE_SKIP_SYMBOLS in generate_top_10_predictions()
         inverse_skip_symbols = {
@@ -22473,8 +22476,8 @@ async def reconcile_predictions_now(request: Request):
         """)
         conn.commit()
         
-        # Check if we're in INVERSE_GHOST mode
-        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+        # Check if we're in INVERSE_GHOST mode - FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
+        inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
         
         # Compute per-symbol accuracy from ghost_prediction_outcomes table
         # In INVERSE_GHOST mode, hit_direction=0 (raw wrong) is actually CORRECT
@@ -22630,8 +22633,8 @@ async def learning_dashboard():
             "raw_accuracy_pct": float(row[2]) if row[2] else 0,
         }
         
-        # With INVERSE_GHOST=1, if raw is X%, inverted is 100-X%
-        inverse_mode = os.getenv("INVERSE_GHOST_MODE", "1") == "1"
+        # With INVERSE_GHOST=1, if raw is X%, inverted is 100-X% - FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
+        inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
         if inverse_mode:
             overall_stats["inverted_accuracy_pct"] = 100 - overall_stats["raw_accuracy_pct"]
             overall_stats["mode"] = "INVERSE_GHOST (raw predictions inverted)"
