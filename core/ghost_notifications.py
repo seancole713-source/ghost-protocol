@@ -456,15 +456,19 @@ def determine_action(current_price: float, prediction_48h: float, confidence: fl
         return ("SELL", "🔴", "sell")
 
 
-def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: bool = True) -> str:
+def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: bool = None) -> str:
     """
     Format the TOP 10 message in the EXACT format requested.
     
     Args:
         stocks: List of top 5 stock predictions
         crypto: List of top 5 crypto predictions  
-        inverse_mode: If True, show "INVERSE GHOST" in title
+        inverse_mode: If True, show "INVERSE GHOST" in title. If None, reads from INVERSE_GHOST env var.
     """
+    # If not specified, read from env var (default OFF)
+    if inverse_mode is None:
+        inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
+    
     ct = get_central_time()
     date_str = ct.strftime("%b %d, %Y")
     

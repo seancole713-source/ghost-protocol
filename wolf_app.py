@@ -22914,7 +22914,7 @@ async def top10_preview():
             for c in crypto
         ]
         
-        # Generate the actual message
+        # Generate the actual message (inverse_mode reads from INVERSE_GHOST env var)
         message = format_top10_message(stocks, crypto)
         
         return {
