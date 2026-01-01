@@ -8359,10 +8359,10 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
                 "total_predictions": stats.get("total_predictions", 0),
                 "resolved_predictions": stats.get("total_predictions", 0),
                 "correct_predictions": stats.get("correct_predictions", 0),
-                "avg_confidence": 0.0,  # Not tracked in SQLite system
+                "avg_confidence": stats.get("avg_confidence", 0.0),
                 "symbol": symbol,
                 "period_days": days,
-                "note": "Symbol filtering not yet implemented for SQLite accuracy data"
+                "note": "Symbol filtering not yet implemented for accuracy data"
             }
         
         return {
@@ -8371,11 +8371,11 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
             "total_predictions": stats.get("total_predictions", 0),
             "resolved_predictions": stats.get("total_predictions", 0),
             "correct_predictions": stats.get("correct_predictions", 0),
-            "avg_confidence": 0.0,  # Not tracked in SQLite system
-            "avg_error_pct": stats.get("avg_error_pct", 0.0),
+            "avg_confidence": stats.get("avg_confidence", 0.0),
+            "avg_move_pct": stats.get("avg_move_pct", 0.0),
             "symbol": "ALL",
             "period_days": days,
-            "data_source": "sqlite_evaluator"
+            "data_source": "postgres_outcomes"
         }
     
     except Exception as e:
@@ -34015,6 +34015,84 @@ async def api_xrp_tracker():
             "error": str(e),
             "timestamp": time.time()
         }
+
+
+@APP.get("/api/v3/analyst/status")
+async def api_analyst_status():
+    """Get GPT-4 Analyst status."""
+    try:
+        from llm.gpt4_analyst import get_status, is_enabled
+        return {
+            "ok": True,
+            **get_status(),
+            "is_enabled": is_enabled(),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/analyst/analyze/{symbol}")
+async def api_analyst_analyze(symbol: str):
+    """Get GPT-4 analysis for a symbol's prediction."""
+    try:
+        from llm.gpt4_analyst import analyze_prediction, is_enabled
+        
+        if not is_enabled():
+            return {
+                "ok": False,
+                "error": "GPT-4 Analyst not enabled. Set ENABLE_GPT4_ANALYST=1 and OPENAI_API_KEY",
+            }
+        
+        # Get latest prediction for this symbol
+        pred = _LATEST_PREDICTIONS.get(symbol.upper(), {})
+        if not pred:
+            return {
+                "ok": False,
+                "error": f"No prediction found for {symbol}",
+            }
+        
+        direction = pred.get("direction", "FLAT")
+        confidence = pred.get("confidence", 0.5)
+        current_price = pred.get("price_at_prediction", 0)
+        target_price = pred.get("target_price", current_price)
+        features = pred.get("feature_status", {})
+        
+        result = await analyze_prediction(
+            symbol=symbol.upper(),
+            direction=direction,
+            confidence=confidence,
+            current_price=current_price,
+            target_price=target_price,
+            features=features,
+        )
+        
+        return result
+        
+    except Exception as e:
+        LOGGER.error(f"Analyst analysis failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/analyst/commentary")
+async def api_analyst_commentary():
+    """Get general market commentary from GPT-4."""
+    try:
+        from llm.gpt4_analyst import get_market_commentary, is_enabled
+        
+        if not is_enabled():
+            return {
+                "ok": False,
+                "error": "GPT-4 Analyst not enabled",
+            }
+        
+        # Get top symbols from latest predictions
+        symbols = list(_LATEST_PREDICTIONS.keys())[:5]
+        
+        return await get_market_commentary(symbols)
+        
+    except Exception as e:
+        LOGGER.error(f"Market commentary failed: {e}")
+        return {"ok": False, "error": str(e)}
 
 
 @APP.get("/api/vip/coins")

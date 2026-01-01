@@ -80,14 +80,26 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
         correct = sum(1 for row in rows if row['hit_direction'] == 1)
         accuracy_pct = (correct / total) * 100 if total > 0 else 0.0
         
-        # Calculate average error (absolute realized move vs predicted direction)
-        total_error = 0.0
+        # Calculate average confidence from stored predictions
+        total_confidence = 0.0
+        confidence_count = 0
         for row in rows:
-            # Convert Decimal to float to avoid type errors
-            realized_pct = float(abs(row['realized_move_pct'] or 0))
-            total_error += realized_pct
+            conf = float(row['predicted_confidence'] or 0)
+            if conf > 0:
+                total_confidence += conf
+                confidence_count += 1
+        avg_confidence = (total_confidence / confidence_count) if confidence_count > 0 else 0.0
         
-        avg_error_pct = (total_error / total) if total > 0 else 0.0
+        # Calculate average prediction error (how far off were we from actual move)
+        # Error = |predicted_move - actual_move| / actual_move
+        # But we don't have predicted_move stored, so use realized_move as proxy
+        # A better metric: average absolute realized move (market volatility during predictions)
+        total_abs_move = 0.0
+        for row in rows:
+            realized_pct = float(abs(row['realized_move_pct'] or 0))
+            total_abs_move += realized_pct
+        
+        avg_move_pct = (total_abs_move / total) if total > 0 else 0.0
         
         # Build predictions list
         predictions = []
@@ -116,7 +128,8 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
             "resolved_predictions": total,
             "correct_predictions": correct,
             "accuracy_pct": accuracy_pct,
-            "avg_error_pct": avg_error_pct,
+            "avg_confidence": avg_confidence,
+            "avg_move_pct": avg_move_pct,
             "predictions": predictions,
             "data_source": "postgres_outcomes"
         }
@@ -137,7 +150,8 @@ def _empty_response(period: str, message: str = "") -> Dict[str, Any]:
         "resolved_predictions": 0,
         "correct_predictions": 0,
         "accuracy_pct": 0.0,
-        "avg_error_pct": 0.0,
+        "avg_confidence": 0.0,
+        "avg_move_pct": 0.0,
         "predictions": [],
         "data_source": "postgres_outcomes",
         "message": message
@@ -156,5 +170,6 @@ def get_accuracy_stats_postgres(period: str = "24h") -> Dict[str, Any]:
         "accuracy_pct": stats["accuracy_pct"],
         "total_predictions": stats["total_predictions"],
         "correct_predictions": stats["correct_predictions"],
-        "avg_error_pct": stats["avg_error_pct"]
+        "avg_confidence": stats.get("avg_confidence", 0.0),
+        "avg_move_pct": stats.get("avg_move_pct", 0.0)
     }

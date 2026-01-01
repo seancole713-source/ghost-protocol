@@ -45,6 +45,14 @@ def initialize_stage1(
     try:
         from core.context_engine import WorldContextEngine
 
+        # Default RSS feeds if none configured
+        DEFAULT_FEEDS = [
+            "https://feeds.reuters.com/reuters/businessNews",
+            "https://feeds.reuters.com/reuters/technologyNews",
+            "https://www.marketwatch.com/rss/topstories",
+            "https://feeds.finance.yahoo.com/rss/2.0/headline",
+        ]
+
         # Get feeds from environment if not provided
         if feeds_str is None:
             reuters_feeds = os.getenv("REUTERS_FEEDS", "")
@@ -65,9 +73,10 @@ def initialize_stage1(
         feeds = [f.strip() for f in feeds_str.split(",") if f.strip()]
         watchlist = [s.strip() for s in watchlist_str.split(",") if s.strip()]
 
+        # Use default feeds if none configured
         if not feeds:
-            LOGGER.warning("No RSS feeds configured for Stage 1")
-            return None
+            LOGGER.info("No RSS feeds configured - using defaults")
+            feeds = DEFAULT_FEEDS
 
         # Initialize context engine
         _context_engine = WorldContextEngine(feeds, watchlist=watchlist)

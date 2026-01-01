@@ -37,20 +37,11 @@ async def get_xrp_status() -> dict[str, Any]:
     }
     
     try:
-        from core.crypto.crypto_providers import get_crypto_price_quorum
+        # SIMPLER APPROACH: Use the sync price fetcher that works
+        from core.crypto.crypto_providers import get_crypto_price
         
-        # Get XRP price with quorum (requires multiple provider agreement)
-        # Add timeout to prevent 59s hangs (CoinGecko 15s + Binance 4s + Coinbase 10s)
-        try:
-            xrp_data = await asyncio.wait_for(
-                get_crypto_price_quorum("XRP", use_cache=True),
-                timeout=5.0
-            )
-        except asyncio.TimeoutError:
-            logger.warning("XRP quorum timeout after 5s - using cached price if available")
-            # Fallback to cached price
-            from core.crypto.crypto_providers import _get_crypto_cache
-            xrp_data = _get_crypto_cache("XRP")
+        # Get XRP price directly (this works - /api/crypto/price/XRP returns data)
+        xrp_data = get_crypto_price("XRP", use_cache=True)
         
         if xrp_data and xrp_data.get("price"):
             price = xrp_data["price"]
