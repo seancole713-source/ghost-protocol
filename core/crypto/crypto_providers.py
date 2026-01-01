@@ -30,9 +30,9 @@ MIN_SANE_PRICES = {
     'ADA': 0.05,     # ADA should never be below $0.05
     'DOGE': 0.005,   # DOGE should never be below $0.005
     'AVAX': 5,       # AVAX should never be below $5
-    'DOT': 2,        # DOT should never be below $2
+    'DOT': 1.5,      # DOT should never be below $1.5 (was $2, but dropped to $2.00 Jan 2026)
     'LINK': 3,       # LINK should never be below $3
-    'MATIC': 0.20,   # MATIC should never be below $0.20
+    'MATIC': 0.05,   # MATIC should never be below $0.05 (was $0.20, but dropped to $0.11 Jan 2026)
     'UNI': 2,        # UNI should never be below $2
     'AAVE': 30,      # AAVE should never be below $30
     'ATOM': 3,       # ATOM should never be below $3
@@ -304,7 +304,7 @@ class CoinGeckoProvider:
                 "include_last_updated_at": "true",
             }
 
-            response = _session.get(url, params=params, timeout=10)
+            response = _session.get(url, params=params, timeout=5)
             response.raise_for_status()
             
             # Reset 429 counter on success
@@ -373,7 +373,7 @@ class CoinGeckoProvider:
             url = f"{self.BASE_URL}/coins/{coin_id}/market_chart"
             params = {"vs_currency": "usd", "days": days, "interval": "hourly"}
 
-            response = _session.get(url, params=params, timeout=10)
+            response = _session.get(url, params=params, timeout=5)
             response.raise_for_status()
 
             data = response.json()
@@ -440,7 +440,7 @@ class BinanceProvider:
                     url = f"{base_url}/ticker/24hr"
                     params = {"symbol": binance_symbol}
 
-                    response = _session.get(url, params=params, timeout=10)
+                    response = _session.get(url, params=params, timeout=5)
                     response.raise_for_status()
 
                     data = response.json()
@@ -535,7 +535,7 @@ class CoinbaseProvider:
         try:
             url = f"{self.BASE_URL}/prices/{symbol.upper()}-USD/spot"
 
-            response = _session.get(url, timeout=10)
+            response = _session.get(url, timeout=5)
             response.raise_for_status()
 
             data = response.json()
@@ -586,7 +586,7 @@ class CryptoCompareProvider:
             if self.api_key:
                 headers["authorization"] = f"Apikey {self.api_key}"
 
-            response = _session.get(url, params=params, headers=headers, timeout=10)
+            response = _session.get(url, params=params, headers=headers, timeout=5)
             response.raise_for_status()
 
             data = response.json() if response.content else {}

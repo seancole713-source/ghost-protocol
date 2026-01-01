@@ -243,7 +243,14 @@ def _run_stock_predictions(horizon: str):
 
 def _run_crypto_predictions(horizon: str):
     """Run predictions for all crypto symbols"""
+    import os
+    exclude_symbols = set(s.strip().upper() for s in os.getenv("GHOST_EXCLUDE_SYMBOLS", "").split(",") if s.strip())
+    
     for symbol in CRYPTO_SYMBOLS:
+        if symbol.upper() in exclude_symbols:
+            if LOGGER:
+                LOGGER.debug(f"⏭️  Skipping {symbol} (in GHOST_EXCLUDE_SYMBOLS)")
+            continue
         _send_prediction_alert(symbol, "crypto", horizon)
         time.sleep(0.5)  # Rate limit
 
