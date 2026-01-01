@@ -36,14 +36,19 @@ async def get_xrp_status() -> dict[str, Any]:
     }
     
     try:
-        # Use Coinbase provider - simple and reliable
-        from core.coinbase_provider import get_crypto_price
+        # Use the crypto price quorum which is proven to work
+        from core.crypto.crypto_providers import get_crypto_price_quorum
         
-        # Get XRP price from Coinbase
-        price = get_crypto_price("XRP")
+        # Get XRP price from quorum (returns dict with price, change_24h_pct, etc.)
+        xrp_data = await get_crypto_price_quorum("XRP", use_cache=True)
         
-        if price and price > 0:
+        if xrp_data and xrp_data.get("price"):
+            price = xrp_data["price"]
             result["price"] = round(price, 4)
+            
+            # Get 24h change if available
+            if xrp_data.get("change_24h_pct") is not None:
+                result["change_24h_pct"] = round(xrp_data["change_24h_pct"], 2)
             
             # Calculate bullish eye and signal
             factors = []
