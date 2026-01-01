@@ -23490,6 +23490,76 @@ async def force_tracking_check():
         return {"ok": False, "error": str(e)}
 
 
+@APP.post("/tracking/close")
+async def close_tracked_pick(request: Request, symbol: str, status: str = "stop_hit"):
+    """
+    Admin endpoint to manually close a tracked pick.
+    
+    Use this to stop repeated alerts when a pick needs to be marked as closed.
+    
+    Args:
+        symbol: The symbol to close (e.g., "FTM", "ANKR")
+        status: The status to set ("stop_hit", "target_hit", "expired", "manual_close")
+    
+    Requires X-Cron-Secret header.
+    """
+    cron_secret = os.getenv("CRON_SECRET", "")
+    provided_secret = request.headers.get("X-Cron-Secret", "")
+    
+    if not cron_secret or provided_secret != cron_secret:
+        return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
+    
+    valid_statuses = ["stop_hit", "target_hit", "expired", "manual_close"]
+    if status not in valid_statuses:
+        return {"ok": False, "error": f"Invalid status. Must be one of: {valid_statuses}"}
+    
+    symbol = symbol.upper().strip()
+    updated_pg = False
+    updated_sqlite = False
+    
+    # Update PostgreSQL
+    database_url = os.getenv("DATABASE_URL", "")
+    if database_url:
+        try:
+            import psycopg2
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE ghost_tracked_picks SET status = %s WHERE symbol = %s AND status = 'active'",
+                (status, symbol)
+            )
+            rows_affected = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+            updated_pg = rows_affected > 0
+            LOGGER.info(f"[TRACKING] Updated {symbol} to {status} in PostgreSQL ({rows_affected} rows)")
+        except Exception as e:
+            LOGGER.error(f"[TRACKING] PostgreSQL update failed for {symbol}: {e}")
+    
+    # Also update SQLite
+    try:
+        import sqlite3
+        sqlite_path = os.getenv("GHOST_PREDICT_DB", "/app/data/ghost_predictions.db")
+        conn = sqlite3.connect(sqlite_path)
+        cur = conn.cursor()
+        cur.execute("UPDATE tracked_picks SET status = ? WHERE symbol = ?", (status, symbol))
+        sqlite_rows = cur.rowcount
+        conn.commit()
+        conn.close()
+        updated_sqlite = sqlite_rows > 0
+    except Exception as e:
+        LOGGER.debug(f"SQLite update failed for {symbol}: {e}")
+    
+    return {
+        "ok": True,
+        "symbol": symbol,
+        "new_status": status,
+        "updated_postgresql": updated_pg,
+        "updated_sqlite": updated_sqlite,
+    }
+
+
 # ==============================================================================
 # GHOST LEARNING SYSTEM - Real-time accuracy tracking and symbol-level learning
 # ==============================================================================
