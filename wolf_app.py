@@ -34095,6 +34095,225 @@ async def api_analyst_commentary():
         return {"ok": False, "error": str(e)}
 
 
+# ============================================================================
+# SANTIMENT INTEGRATION ENDPOINTS
+# ============================================================================
+
+@APP.get("/api/v3/santiment/{symbol}")
+async def api_santiment_data(symbol: str):
+    """Get Santiment social/on-chain data for a symbol"""
+    try:
+        from core.santiment_signals import get_sentiment_signal, is_enabled
+        
+        result = get_sentiment_signal(symbol.upper())
+        if result:
+            return {"ok": True, "enabled": is_enabled(), **result}
+        else:
+            return {"ok": False, "error": "No Santiment data available"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/santiment/status")
+async def api_santiment_status():
+    """Get Santiment integration status"""
+    try:
+        from core.santiment_signals import is_enabled, get_santiment
+        provider = get_santiment()
+        return {
+            "ok": True,
+            "enabled": is_enabled(),
+            "api_key_set": bool(provider.api_key),
+            "cache_size": len(provider.cache)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# VWAP SIGNALS ENDPOINTS
+# ============================================================================
+
+@APP.get("/api/v3/vwap/{symbol}")
+async def api_vwap_analysis(symbol: str):
+    """Get VWAP analysis for a symbol"""
+    try:
+        from core.vwap_signals import get_vwap_signal
+        
+        result = get_vwap_signal(symbol.upper())
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# MODEL AGREEMENT ENDPOINTS
+# ============================================================================
+
+@APP.post("/api/v3/agreement/check")
+async def api_check_model_agreement(request: Request):
+    """Check agreement across multiple model signals"""
+    try:
+        from core.model_agreement import check_model_agreement
+        
+        data = await request.json()
+        signals = data.get("signals", {})
+        
+        if not signals:
+            return {"ok": False, "error": "No signals provided"}
+        
+        result = check_model_agreement(signals)
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# DYNAMIC EXITS ENDPOINTS
+# ============================================================================
+
+@APP.get("/api/v3/exits/calculate")
+async def api_calculate_exit_levels(
+    entry_price: float,
+    direction: str,
+    confidence: float = 0.7
+):
+    """Calculate dynamic exit levels for a trade"""
+    try:
+        from core.dynamic_exits import calculate_exits
+        
+        levels = calculate_exits(entry_price, direction.upper(), confidence)
+        return {"ok": True, **levels}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/v3/exits/check")
+async def api_check_exit_condition(request: Request):
+    """Check if exit condition is met for an open position"""
+    try:
+        from core.dynamic_exits import check_exit
+        
+        data = await request.json()
+        
+        result = check_exit(
+            entry_price=data["entry_price"],
+            current_price=data["current_price"],
+            high_since_entry=data.get("high_since_entry", data["current_price"]),
+            low_since_entry=data.get("low_since_entry", data["current_price"]),
+            direction=data["direction"],
+            hours_held=data.get("hours_held", 0),
+            exit_levels=data["exit_levels"]
+        )
+        
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# POSITION SIZING / RISK MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@APP.get("/api/v3/risk/position-size")
+async def api_calculate_position_size(
+    portfolio_value: float,
+    win_rate: float = 0.6,
+    avg_win_pct: float = 5.0,
+    avg_loss_pct: float = 3.0,
+    confidence: float = 0.7
+):
+    """Calculate optimal position size using Kelly Criterion"""
+    try:
+        from core.position_sizing import calculate_position_size
+        
+        result = calculate_position_size(
+            portfolio_value, win_rate, avg_win_pct, avg_loss_pct, confidence
+        )
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/risk/report")
+async def api_get_risk_report(
+    portfolio_value: float = 10000,
+    positions: str = ""  # JSON string of positions
+):
+    """Get comprehensive risk report"""
+    try:
+        from core.position_sizing import get_risk_report
+        import json
+        
+        positions_dict = json.loads(positions) if positions else {}
+        
+        report = get_risk_report(portfolio_value, positions_dict)
+        return {"ok": True, **report}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/v3/risk/check-limits")
+async def api_check_risk_limits(request: Request):
+    """Check if a proposed position violates risk limits"""
+    try:
+        from core.position_sizing import check_risk_limits
+        
+        data = await request.json()
+        
+        result = check_risk_limits(
+            portfolio_value=data["portfolio_value"],
+            proposed_position=data["proposed_position"],
+            symbol=data["symbol"],
+            current_exposure=data.get("current_exposure", {})
+        )
+        
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# MULTI-TIMEFRAME ENDPOINTS
+# ============================================================================
+
+@APP.get("/api/v3/mtf/{symbol}")
+async def api_multi_timeframe(symbol: str):
+    """Get multi-timeframe analysis for a symbol"""
+    try:
+        from core.multi_timeframe import _generate_timeframe_forecast
+        
+        results = {}
+        for tf, hours in [("1h", 1), ("4h", 4), ("1d", 24)]:
+            forecast = _generate_timeframe_forecast(symbol.upper(), tf, hours)
+            results[tf] = forecast
+        
+        # Determine consensus
+        directions = [r.get("direction") for r in results.values() if r.get("ok")]
+        up_count = sum(1 for d in directions if d == "UP")
+        down_count = sum(1 for d in directions if d == "DOWN")
+        
+        if up_count > down_count:
+            consensus = "UP"
+            agreement = up_count / len(directions) if directions else 0
+        elif down_count > up_count:
+            consensus = "DOWN"
+            agreement = down_count / len(directions) if directions else 0
+        else:
+            consensus = "MIXED"
+            agreement = 0.5
+        
+        return {
+            "ok": True,
+            "symbol": symbol.upper(),
+            "consensus_direction": consensus,
+            "agreement_pct": round(agreement * 100, 0),
+            "timeframes": results
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/api/vip/coins")
 async def api_vip_coins():
     """Get VIP coins status with enhanced presale data (WEPE, LILPEPE, DORKL, SLOTH, APC)."""
