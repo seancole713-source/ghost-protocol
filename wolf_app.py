@@ -7649,23 +7649,29 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # ======================================================================
         
         # Symbols where raw Ghost is GOOD - DON'T invert these
-        INVERSE_SKIP_SYMBOLS = {
-            # <40% inverted accuracy = >60% raw accuracy = model is RIGHT
-            "OMG",    # 10% inverted → 90% raw (VERY GOOD raw)
-            "RLC",    # 10% inverted → 90% raw (VERY GOOD raw)
-            "THETA",  # 20% inverted → 80% raw (GOOD raw)
-            "EGLD",   # 20% inverted → 80% raw (GOOD raw)
-            "BAT",    # 20% inverted → 80% raw (GOOD raw)
-            "ONDO",   # 20% inverted → 80% raw (GOOD raw)
-            "ZEN",    # 20% inverted → 80% raw (GOOD raw)
-            "DOGE",   # 30% inverted → 70% raw (GOOD raw)
-            "DOT",    # 30% inverted → 70% raw (GOOD raw)
-            "ZRX",    # 30% inverted → 70% raw (GOOD raw)
-            "BNB",    # 30% inverted → 70% raw (GOOD raw)
-            "AVAX",   # 30% inverted → 70% raw (GOOD raw)
-            "OCEAN",  # 30% inverted → 70% raw (GOOD raw)
-            "ANT",    # 40% inverted → 60% raw (borderline, skip)
-        }
+        # Read from env var INVERSE_SKIP_SYMBOLS (comma-separated) or use defaults
+        env_skip_symbols = os.getenv("INVERSE_SKIP_SYMBOLS", "").strip()
+        if env_skip_symbols:
+            # User provided custom list via env var
+            INVERSE_SKIP_SYMBOLS = {s.strip().upper() for s in env_skip_symbols.split(",") if s.strip()}
+        else:
+            # Default list: <40% inverted accuracy = >60% raw accuracy = model is RIGHT
+            INVERSE_SKIP_SYMBOLS = {
+                "OMG",    # 10% inverted → 90% raw (VERY GOOD raw)
+                "RLC",    # 10% inverted → 90% raw (VERY GOOD raw)
+                "THETA",  # 20% inverted → 80% raw (GOOD raw)
+                "EGLD",   # 20% inverted → 80% raw (GOOD raw)
+                "BAT",    # 20% inverted → 80% raw (GOOD raw)
+                "ONDO",   # 20% inverted → 80% raw (GOOD raw)
+                "ZEN",    # 20% inverted → 80% raw (GOOD raw)
+                "DOGE",   # 30% inverted → 70% raw (GOOD raw)
+                "DOT",    # 30% inverted → 70% raw (GOOD raw)
+                "ZRX",    # 30% inverted → 70% raw (GOOD raw)
+                "BNB",    # 30% inverted → 70% raw (GOOD raw)
+                "AVAX",   # 30% inverted → 70% raw (GOOD raw)
+                "OCEAN",  # 30% inverted → 70% raw (GOOD raw)
+                "ANT",    # 40% inverted → 60% raw (borderline, skip)
+            }
         
         # INVERSE_GHOST: When 1, flip predictions. When 0, use raw predictions.
         # DEFAULT is now OFF (0) since accuracy improvements were made
@@ -21153,11 +21159,15 @@ async def debug_inverse_status():
         # DEFAULT is now OFF (0) since accuracy improvements were made
         inverse_enabled = os.getenv("INVERSE_GHOST", "0") == "1"
         
-        # These match INVERSE_SKIP_SYMBOLS in generate_top_10_predictions()
-        inverse_skip_symbols = {
-            "OMG", "RLC", "THETA", "EGLD", "BAT", "ONDO", "ZEN",
-            "DOGE", "DOT", "ZRX", "BNB", "AVAX", "OCEAN", "ANT"
-        }
+        # Read INVERSE_SKIP_SYMBOLS from env var or use defaults
+        env_skip = os.getenv("INVERSE_SKIP_SYMBOLS", "").strip()
+        if env_skip:
+            inverse_skip_symbols = {s.strip().upper() for s in env_skip.split(",") if s.strip()}
+        else:
+            inverse_skip_symbols = {
+                "OMG", "RLC", "THETA", "EGLD", "BAT", "ONDO", "ZEN",
+                "DOGE", "DOT", "ZRX", "BNB", "AVAX", "OCEAN", "ANT"
+            }
         
         # Test symbols
         test_symbols = ["BTC", "ETH", "BNB", "DOGE", "SAND", "SOL", "OMG", "THETA"]

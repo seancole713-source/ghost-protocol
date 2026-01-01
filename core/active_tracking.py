@@ -563,12 +563,15 @@ def format_daily_top_10(
     stocks: List[ActivePick],
     crypto: List[ActivePick],
     date_str: str,
-    inverse_mode: bool = True
+    inverse_mode: bool = None
 ) -> str:
     """
     Format the daily TOP 10 as ONE consolidated message.
     This is the ONLY message sent at 5 AM.
     """
+    # Read from env var if not specified (default OFF)
+    if inverse_mode is None:
+        inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
     direction_label = "INVERSE GHOST" if inverse_mode else "GHOST"
     
     lines = [
@@ -844,7 +847,7 @@ def get_active_tracker() -> ActiveTrackingSystem:
 async def send_daily_top_10(
     get_high_conf_predictions: Callable,
     send_telegram: Callable,
-    inverse_mode: bool = True
+    inverse_mode: bool = None
 ) -> bool:
     """
     DISABLED - This function had wrong color logic.
@@ -864,7 +867,7 @@ async def send_daily_top_10(
 async def _send_daily_top_10_ORIGINAL_DISABLED(
     get_high_conf_predictions: Callable,
     send_telegram: Callable,
-    inverse_mode: bool = True
+    inverse_mode: bool = None
 ) -> bool:
     """
     OLD CODE - DISABLED.
@@ -1100,7 +1103,7 @@ async def active_tracking_scheduler(
     get_predictions: Callable,
     get_price: Callable,
     send_telegram: Callable,
-    inverse_mode: bool = True,
+    inverse_mode: bool = None,
     check_interval_minutes: int = 5
 ):
     """
