@@ -8783,7 +8783,7 @@ async def api_v3_opus_predict(symbol: str):
     """
     try:
         # Get technical prediction
-        prediction_result = await get_single_prediction(symbol.upper())
+        prediction_result = await run_single_prediction_async(symbol.upper())
         if not prediction_result.get("ok"):
             return {"ok": False, "error": "Technical prediction failed", "symbol": symbol}
         
