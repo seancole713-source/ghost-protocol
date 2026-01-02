@@ -8856,7 +8856,7 @@ async def api_v3_opus_predict(symbol: str):
         return {"ok": False, "error": str(e), "symbol": symbol}
 
 
-async def _gather_opus_context(symbol: str) -> Dict:
+async def _gather_opus_context(symbol: str) -> dict:
     """Gather all available context for Claude to analyze"""
     context = {
         "current_price": None,
