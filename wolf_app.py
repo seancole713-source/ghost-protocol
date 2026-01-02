@@ -8424,6 +8424,242 @@ async def api_v3_research_historical(symbol: str):
         return {"ok": False, "error": str(e), "symbol": symbol}
 
 
+# =============================================================================
+# GHOST BRAIN INTELLIGENCE ENDPOINTS
+# =============================================================================
+
+@APP.get("/api/v3/brain/{symbol}")
+async def api_v3_brain_analysis(symbol: str):
+    """
+    Full Ghost Brain analysis - combines ALL intelligence sources.
+    
+    Returns:
+    - Micro signals (insider, whale, options, social, volume)
+    - Human behavior (narratives, influencers)
+    - Historical patterns (seasonal, events)
+    - Overall recommendation
+    
+    This is the "weatherman" endpoint - tells you WHY, not just WHAT.
+    """
+    try:
+        from core.intelligence.ghost_brain import analyze_with_intelligence
+        result = await analyze_with_intelligence(symbol.upper())
+        return {"ok": True, **result}
+    except ImportError as e:
+        LOGGER.error(f"Intelligence module import failed: {e}")
+        return {"ok": False, "error": "Intelligence module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Brain analysis failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/micro/{symbol}")
+async def api_v3_micro_signals(symbol: str):
+    """
+    Micro signal scan - early warning system.
+    
+    Returns:
+    - Alert level (SHADOW, WHISPER, RIPPLE, WAVE)
+    - Insider activity (stock only)
+    - Whale movements (crypto only)
+    - Options flow (stock only)
+    - Social velocity
+    - Volume anomalies
+    """
+    try:
+        from core.intelligence.micro_signals.micro_aggregator import scan_micro_signals
+        result = await scan_micro_signals(symbol.upper())
+        return {"ok": True, **result}
+    except ImportError as e:
+        LOGGER.error(f"Micro signals module import failed: {e}")
+        return {"ok": False, "error": "Micro signals module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Micro scan failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/narrative")
+async def api_v3_narrative(symbol: str = None):
+    """
+    Detect current market narratives.
+    
+    Returns:
+    - Active narratives (AI_REVOLUTION, FED_PIVOT, BITCOIN_HALVING, etc.)
+    - Dominant narrative
+    - Market mood (BULLISH/BEARISH/MIXED)
+    """
+    try:
+        from core.intelligence.human_behavior.narrative_detector import detect_narratives
+        result = await detect_narratives(symbol.upper() if symbol else None)
+        return {"ok": True, **result}
+    except ImportError as e:
+        LOGGER.error(f"Narrative module import failed: {e}")
+        return {"ok": False, "error": "Narrative module not available"}
+    except Exception as e:
+        LOGGER.error(f"Narrative detection failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/influencers/{symbol}")
+async def api_v3_influencers(symbol: str):
+    """
+    Check for recent influencer activity.
+    
+    Tracks: Elon Musk, Michael Saylor, Trump, Buffett, Cramer, etc.
+    
+    Returns:
+    - Recent mentions by key influencers
+    - Sentiment analysis
+    - Impact assessment
+    """
+    try:
+        from core.intelligence.human_behavior.influencer_tracker import check_influencers
+        result = await check_influencers(symbol.upper())
+        return {"ok": True, **result}
+    except ImportError as e:
+        LOGGER.error(f"Influencer module import failed: {e}")
+        return {"ok": False, "error": "Influencer module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Influencer check failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/historical/{event_type}")
+async def api_v3_historical_event(event_type: str, symbol: str = None):
+    """
+    Get historical outcomes for an event type.
+    
+    Event types:
+    - BTC_HALVING - Bitcoin halving history
+    - FED_RATE_CUT - Fed rate cut outcomes
+    - EARNINGS_BEAT - Earnings beat patterns
+    - EARNINGS_MISS - Earnings miss patterns
+    - SANTA_RALLY - Holiday rally data
+    - COVID_CRASH - Black swan reference
+    - JANUARY_EFFECT - January anomaly
+    """
+    try:
+        from core.intelligence.historical.event_outcomes import get_historical_outcomes
+        result = await get_historical_outcomes(event_type.upper(), symbol)
+        return {"ok": True, **result}
+    except ImportError as e:
+        LOGGER.error(f"Historical module import failed: {e}")
+        return {"ok": False, "error": "Historical module not available"}
+    except Exception as e:
+        LOGGER.error(f"Historical lookup failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/seasonal/{symbol}")
+async def api_v3_seasonal_pattern(symbol: str, month: int = None):
+    """
+    Get seasonal pattern for current period.
+    
+    Returns:
+    - Monthly tendency (BULLISH/BEARISH/NEUTRAL)
+    - Special periods (Santa Rally, January Effect, etc.)
+    - Historical performance for this time of year
+    """
+    try:
+        from core.intelligence.historical.event_outcomes import get_event_database
+        result = await get_event_database().get_seasonal_pattern(symbol.upper(), month)
+        return {"ok": True, **result}
+    except ImportError as e:
+        LOGGER.error(f"Seasonal module import failed: {e}")
+        return {"ok": False, "error": "Seasonal module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Seasonal pattern failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/weather-report/{symbol}")
+async def api_v3_weather_report(symbol: str):
+    """
+    🌤️ THE WEATHERMAN ENDPOINT
+    
+    Like a weather forecast, but for markets.
+    Combines ALL data sources into one comprehensive report.
+    
+    Returns:
+    - Current conditions (price, volume, technicals)
+    - Incoming fronts (earnings, news, events)
+    - Historical patterns (seasonal, same period last year)
+    - Sector health (is it the stock or the whole sector?)
+    - Forecast with probability
+    - Confidence adjustments with REASONS
+    - Final recommendation
+    
+    This is Ghost thinking like a weatherman! 🐺🌤️
+    """
+    try:
+        # Get brain analysis (combines everything)
+        from core.intelligence.ghost_brain import analyze_with_intelligence
+        brain = await analyze_with_intelligence(symbol.upper())
+        
+        # Get research data
+        from core.research import deep_research
+        research = await deep_research(symbol.upper())
+        
+        # Combine into weather report format
+        report = {
+            "ok": True,
+            "symbol": symbol.upper(),
+            "timestamp": brain.get("timestamp"),
+            
+            # Current conditions
+            "current_conditions": {
+                "alert_level": brain.get("alert_level", "SHADOW"),
+                "overall_signal": brain.get("overall_signal", "NEUTRAL"),
+                "micro_signals": brain.get("micro_signals", {}).get("signals", {}),
+            },
+            
+            # Incoming fronts (events that could move the market)
+            "incoming_fronts": {
+                "earnings": research.get("earnings", {}),
+                "news_sentiment": research.get("news", {}).get("sentiment", "unknown"),
+                "news_count": research.get("news", {}).get("article_count", 0),
+                "key_headlines": research.get("news", {}).get("key_headlines", [])[:3],
+            },
+            
+            # Historical patterns
+            "historical_pattern": {
+                "seasonal": brain.get("seasonal", {}),
+                "same_period_last_year": research.get("historical", {}).get("same_period_last_year", {}),
+                "52_week_position": research.get("historical", {}).get("52_week_range", {}).get("range_position"),
+            },
+            
+            # Market narrative
+            "market_narrative": {
+                "dominant": brain.get("narratives", {}).get("dominant_narrative", {}),
+                "mood": brain.get("narratives", {}).get("market_mood", {}),
+            },
+            
+            # Influencer activity
+            "influencer_activity": brain.get("influencers", {}),
+            
+            # The forecast
+            "forecast": {
+                "direction": brain.get("overall_signal", "NEUTRAL"),
+                "confidence_adjustment": brain.get("confidence_adjustment", 0),
+            },
+            
+            # Why - the adjustments with reasons
+            "confidence_adjustments": brain.get("warnings", []) + brain.get("positives", []),
+            
+            # Final recommendation
+            "final_recommendation": brain.get("recommendation", ""),
+            
+            # Summary
+            "summary": brain.get("summary", {}),
+        }
+        
+        return report
+        
+    except Exception as e:
+        LOGGER.error(f"Weather report failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
 @APP.get("/api/v3/accuracy/summary")
 async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
     """
