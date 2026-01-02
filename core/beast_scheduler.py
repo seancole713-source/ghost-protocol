@@ -24,6 +24,15 @@ STOCK_SYMBOLS = [
     # Tech Giants & FAANG
     "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "META", "TSLA", "AMZN",
     
+    # CHINA ADRs (Move together - theme trades)
+    "BABA", "JD", "PDD", "XPEV", "LI",  # IQ, YMM, TAL, TME, NIO already added below
+    
+    # BTC MINERS (Follow Bitcoin - correlated trades)
+    "MARA", "CLSK", "BITF", "HIVE",  # RIOT, HUT already added below
+    
+    # AI THEME STOCKS
+    "AI", "BBAI", "UPST",  # SOUN, PLTR already added below
+    
     # CANNABIS MEGA MOVERS (Today's +40-70% gainers!)
     "TLRY", "CGC", "ACB", "SNDL", "TCNNF", "YCBD", "WEED",
     
