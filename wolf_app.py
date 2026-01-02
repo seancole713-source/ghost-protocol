@@ -8315,6 +8315,114 @@ async def api_features_diagnostic(symbol: str):
         raise HTTPException(500, f"Diagnostic failed: {str(e)}")
 
 
+# =============================================================================
+# RESEARCH MODULE ENDPOINTS
+# =============================================================================
+
+@APP.get("/api/v3/research/{symbol}")
+async def api_v3_research_symbol(symbol: str):
+    """
+    Get comprehensive research report for a symbol.
+    
+    Includes:
+    - Earnings calendar (upcoming earnings dates)
+    - News sentiment analysis
+    - Seasonal patterns (historical performance this time of year)
+    - 52-week range position
+    - YTD performance
+    - Same period last year comparison
+    
+    Returns confidence adjustments based on research findings.
+    """
+    try:
+        from core.research import deep_research
+        result = await deep_research(symbol.upper())
+        return {"ok": True, **result}
+    except ImportError as e:
+        LOGGER.error(f"Research module import failed: {e}")
+        return {"ok": False, "error": "Research module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Research failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/research/batch")
+async def api_v3_research_batch(symbols: str):
+    """
+    Get research reports for multiple symbols (comma-separated).
+    
+    Example: /api/v3/research/batch?symbols=AAPL,TSLA,GOOGL
+    
+    Returns array of research reports.
+    """
+    try:
+        from core.research import batch_research
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        
+        if not symbol_list:
+            return {"ok": False, "error": "No symbols provided"}
+        
+        if len(symbol_list) > 10:
+            return {"ok": False, "error": "Maximum 10 symbols per batch"}
+        
+        results = await batch_research(symbol_list)
+        return {"ok": True, "count": len(results), "results": results}
+    except ImportError as e:
+        LOGGER.error(f"Research module import failed: {e}")
+        return {"ok": False, "error": "Research module not available"}
+    except Exception as e:
+        LOGGER.error(f"Batch research failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/research/earnings/{symbol}")
+async def api_v3_research_earnings(symbol: str):
+    """Get earnings calendar data for a symbol"""
+    try:
+        from core.research import check_earnings_risk
+        result = await check_earnings_risk(symbol.upper())
+        return {"ok": True, "symbol": symbol.upper(), **result}
+    except Exception as e:
+        LOGGER.error(f"Earnings check failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/research/news/{symbol}")
+async def api_v3_research_news(symbol: str):
+    """Get news sentiment analysis for a symbol"""
+    try:
+        from core.research import analyze_news
+        result = await analyze_news(symbol.upper())
+        return {"ok": True, **result}
+    except Exception as e:
+        LOGGER.error(f"News analysis failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/research/seasonal/{symbol}")
+async def api_v3_research_seasonal(symbol: str):
+    """Get seasonal pattern analysis for a symbol"""
+    try:
+        from core.research import analyze_seasonal
+        result = await analyze_seasonal(symbol.upper())
+        return {"ok": True, **result}
+    except Exception as e:
+        LOGGER.error(f"Seasonal analysis failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/research/historical/{symbol}")
+async def api_v3_research_historical(symbol: str):
+    """Get historical performance analysis for a symbol"""
+    try:
+        from core.research import analyze_historical
+        result = await analyze_historical(symbol.upper())
+        return {"ok": True, **result}
+    except Exception as e:
+        LOGGER.error(f"Historical analysis failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
 @APP.get("/api/v3/accuracy/summary")
 async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
     """
