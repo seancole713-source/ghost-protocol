@@ -8319,33 +8319,7 @@ async def api_features_diagnostic(symbol: str):
 # RESEARCH MODULE ENDPOINTS
 # =============================================================================
 
-@APP.get("/api/v3/research/{symbol}")
-async def api_v3_research_symbol(symbol: str):
-    """
-    Get comprehensive research report for a symbol.
-    
-    Includes:
-    - Earnings calendar (upcoming earnings dates)
-    - News sentiment analysis
-    - Seasonal patterns (historical performance this time of year)
-    - 52-week range position
-    - YTD performance
-    - Same period last year comparison
-    
-    Returns confidence adjustments based on research findings.
-    """
-    try:
-        from core.research import deep_research
-        result = await deep_research(symbol.upper())
-        return {"ok": True, **result}
-    except ImportError as e:
-        LOGGER.error(f"Research module import failed: {e}")
-        return {"ok": False, "error": "Research module not available", "symbol": symbol}
-    except Exception as e:
-        LOGGER.error(f"Research failed for {symbol}: {e}")
-        return {"ok": False, "error": str(e), "symbol": symbol}
-
-
+# NOTE: Batch route MUST come before {symbol} route to prevent "batch" being captured as symbol
 @APP.get("/api/v3/research/batch")
 async def api_v3_research_batch(symbols: str):
     """
@@ -8373,6 +8347,33 @@ async def api_v3_research_batch(symbols: str):
     except Exception as e:
         LOGGER.error(f"Batch research failed: {e}")
         return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/research/{symbol}")
+async def api_v3_research_symbol(symbol: str):
+    """
+    Get comprehensive research report for a symbol.
+    
+    Includes:
+    - Earnings calendar (upcoming earnings dates)
+    - News sentiment analysis
+    - Seasonal patterns (historical performance this time of year)
+    - 52-week range position
+    - YTD performance
+    - Same period last year comparison
+    
+    Returns confidence adjustments based on research findings.
+    """
+    try:
+        from core.research import deep_research
+        result = await deep_research(symbol.upper())
+        return {"ok": True, **result}
+    except ImportError as e:
+        LOGGER.error(f"Research module import failed: {e}")
+        return {"ok": False, "error": "Research module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Research failed for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
 
 
 @APP.get("/api/v3/research/earnings/{symbol}")
