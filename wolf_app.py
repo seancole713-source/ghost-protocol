@@ -8660,6 +8660,298 @@ async def api_v3_weather_report(symbol: str):
         return {"ok": False, "error": str(e), "symbol": symbol}
 
 
+# =============================================================================
+# OPUS BRAIN ENDPOINTS - CLAUDE AI POWERED INTELLIGENCE
+# =============================================================================
+
+@APP.get("/api/v3/opus/analyze/{symbol}")
+async def api_v3_opus_analyze(symbol: str):
+    """
+    🧠 Claude AI analysis of a symbol.
+    
+    Combines all available data and asks Claude to THINK about:
+    - What's the story driving this asset?
+    - What are the risks?
+    - What does history say?
+    - What will humans do?
+    - What's the smart play?
+    
+    Returns Claude's reasoning and recommendation.
+    """
+    try:
+        from core.intelligence.opus_brain import opus_analyze
+        
+        # Gather context for Claude
+        context = await _gather_opus_context(symbol.upper())
+        
+        # Get Claude's analysis
+        result = await opus_analyze(symbol.upper(), context)
+        return result
+    except ImportError as e:
+        LOGGER.error(f"Opus brain import failed: {e}")
+        return {"ok": False, "error": "Opus brain module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Opus analyze error for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/opus/research/{symbol}")
+async def api_v3_opus_research(symbol: str, question: str = None):
+    """
+    🔬 Ask Claude to do deep research on a symbol.
+    
+    Optional question parameter for specific queries like:
+    - "What's the bull case right now?"
+    - "Why did it crash last week?"
+    - "What are the risks before earnings?"
+    - "What's the best entry point?"
+    
+    Without a question, provides comprehensive analysis.
+    """
+    try:
+        from core.intelligence.opus_brain import opus_research
+        return await opus_research(symbol.upper(), question)
+    except ImportError as e:
+        LOGGER.error(f"Opus brain import failed: {e}")
+        return {"ok": False, "error": "Opus brain module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Opus research error for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/opus/explain/{symbol}")
+async def api_v3_opus_explain(symbol: str, move: str):
+    """
+    📰 Ask Claude to explain a price move.
+    
+    Example: /api/v3/opus/explain/BTC?move=dropped 5% in 1 hour
+    
+    Claude will explain:
+    - What likely caused this move
+    - Whether it's significant or just noise
+    - What traders should do now
+    """
+    try:
+        from core.intelligence.opus_brain import opus_explain
+        return await opus_explain(symbol.upper(), move)
+    except ImportError as e:
+        LOGGER.error(f"Opus brain import failed: {e}")
+        return {"ok": False, "error": "Opus brain module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Opus explain error for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/opus/compare")
+async def api_v3_opus_compare(symbols: str, question: str = None):
+    """
+    ⚖️ Ask Claude to compare multiple assets.
+    
+    Example: /api/v3/opus/compare?symbols=BTC,ETH,SOL
+    
+    Optional question for specific comparison:
+    - "Which one has better risk/reward?"
+    - "Which should I buy for the next month?"
+    """
+    try:
+        from core.intelligence.opus_brain import opus_compare
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if len(symbol_list) < 2:
+            return {"ok": False, "error": "Need at least 2 symbols to compare"}
+        if len(symbol_list) > 5:
+            return {"ok": False, "error": "Maximum 5 symbols for comparison"}
+        return await opus_compare(symbol_list, question)
+    except ImportError as e:
+        LOGGER.error(f"Opus brain import failed: {e}")
+        return {"ok": False, "error": "Opus brain module not available"}
+    except Exception as e:
+        LOGGER.error(f"Opus compare error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/opus/predict/{symbol}")
+async def api_v3_opus_predict(symbol: str):
+    """
+    🎯 Enhanced prediction with Claude AI reasoning.
+    
+    1. Runs technical analysis (existing Ghost logic)
+    2. Gathers all intelligence (micro signals, news, etc.)
+    3. Asks Claude to THINK about it
+    4. Returns enhanced prediction with Claude's reasoning
+    
+    This is Ghost's brain thinking like a professional trader!
+    """
+    try:
+        # Get technical prediction
+        prediction_result = await get_single_prediction(symbol.upper())
+        if not prediction_result.get("ok"):
+            return {"ok": False, "error": "Technical prediction failed", "symbol": symbol}
+        
+        technical = prediction_result.get("prediction", {})
+        
+        # Gather context for Claude
+        context = await _gather_opus_context(symbol.upper())
+        context["technical_signal"] = technical.get("direction", "UNKNOWN")
+        context["technical_confidence"] = round(technical.get("confidence", 0) * 100, 1)
+        
+        # Get Claude's analysis
+        from core.intelligence.opus_brain import opus_analyze
+        opus_analysis = await opus_analyze(symbol.upper(), context)
+        
+        # Calculate adjusted confidence
+        original_confidence = technical.get("confidence", 0.5)
+        opus_adjustment = opus_analysis.get("confidence_adjustment", 0) / 100
+        adjusted_confidence = max(0.1, min(0.95, original_confidence + opus_adjustment))
+        
+        # Check for signal conflict
+        signal_conflict = False
+        opus_signal = opus_analysis.get("signal", "NEUTRAL")
+        tech_direction = technical.get("direction", "FLAT")
+        
+        if (opus_signal == "BEARISH" and tech_direction == "UP") or \
+           (opus_signal == "BULLISH" and tech_direction == "DOWN"):
+            signal_conflict = True
+            adjusted_confidence *= 0.8  # Reduce confidence when signals conflict
+        
+        return {
+            "ok": True,
+            "symbol": symbol.upper(),
+            
+            # Technical analysis
+            "direction": tech_direction,
+            "original_confidence": round(original_confidence, 3),
+            
+            # Claude's analysis
+            "opus_signal": opus_signal,
+            "opus_adjustment": opus_analysis.get("confidence_adjustment", 0),
+            "adjusted_confidence": round(adjusted_confidence, 3),
+            
+            # Reasoning
+            "opus_reasoning": opus_analysis.get("reasoning", ""),
+            "opus_key_factors": opus_analysis.get("key_factors", []),
+            "opus_risks": opus_analysis.get("risks", []),
+            "opus_recommendation": opus_analysis.get("recommendation", ""),
+            
+            # Conflict detection
+            "signal_conflict": signal_conflict,
+            "conflict_note": "Claude and technicals disagree - reduced confidence" if signal_conflict else None,
+            
+            # Technical signals
+            "technical_signals": technical.get("signals", [])[:5],
+            
+            # Price info
+            "current_price": context.get("current_price"),
+            "price_change_24h": context.get("price_change_24h"),
+            
+            # Timestamp
+            "timestamp": datetime.now().isoformat(),
+            "model": opus_analysis.get("model", "unknown")
+        }
+        
+    except ImportError as e:
+        LOGGER.error(f"Opus brain import failed: {e}")
+        return {"ok": False, "error": "Opus brain module not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Opus predict error for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+async def _gather_opus_context(symbol: str) -> Dict:
+    """Gather all available context for Claude to analyze"""
+    context = {
+        "current_price": None,
+        "price_change_24h": None,
+        "news_headlines": [],
+        "insider_activity": "None detected",
+        "whale_activity": "None detected", 
+        "social_sentiment": "Unknown",
+        "upcoming_events": [],
+        "historical_pattern": "Unknown",
+        "volume_analysis": "Unknown"
+    }
+    
+    # Determine if crypto
+    crypto_symbols = {"BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "BNB", "DOT", 
+                     "LINK", "AVAX", "MATIC", "BCH", "LTC", "ZEC", "METIS", 
+                     "LRC", "CHZ", "NEAR", "APT", "ARB"}
+    is_crypto = symbol.upper() in crypto_symbols
+    
+    # Get current price
+    try:
+        if is_crypto:
+            price_data = await get_crypto_price_turbo(symbol.upper())
+        else:
+            price_data = await get_stock_price(symbol.upper())
+        
+        context["current_price"] = price_data.get("price") or price_data.get("current_price")
+        context["price_change_24h"] = price_data.get("change_pct") or price_data.get("changePercent")
+    except Exception as e:
+        LOGGER.debug(f"Price fetch failed for {symbol}: {e}")
+    
+    # Get news headlines
+    try:
+        polygon_key = os.getenv("POLYGON_API_KEY", "")
+        if polygon_key:
+            async with aiohttp.ClientSession() as session:
+                url = f"https://api.polygon.io/v2/reference/news?ticker={symbol}&limit=10&apiKey={polygon_key}"
+                async with session.get(url, timeout=5) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        context["news_headlines"] = [
+                            r.get("title", "") for r in data.get("results", [])
+                        ]
+    except Exception as e:
+        LOGGER.debug(f"News fetch failed for {symbol}: {e}")
+    
+    # Get micro signals if available
+    try:
+        from core.intelligence.micro_signals.micro_aggregator import scan_micro_signals
+        micro = await scan_micro_signals(symbol.upper(), is_crypto)
+        
+        signals = micro.get("signals", {})
+        
+        if signals.get("insider", {}).get("has_data"):
+            insider = signals["insider"]
+            context["insider_activity"] = f"{insider.get('signal', 'Unknown')} signal"
+        
+        if signals.get("whale", {}).get("has_data"):
+            whale = signals["whale"]
+            net_flow = whale.get("flows", {}).get("net_flow_usd", 0)
+            direction = "inflow" if net_flow < 0 else "outflow"
+            context["whale_activity"] = f"{whale.get('signal', 'Unknown')} - ${abs(net_flow):,.0f} net {direction}"
+        
+        if signals.get("social", {}).get("has_data"):
+            social = signals["social"]
+            sentiment = social.get("metrics", {}).get("santiment", {}).get("sentiment_label")
+            if sentiment:
+                context["social_sentiment"] = sentiment
+        
+        if signals.get("volume", {}).get("has_data"):
+            vol = signals["volume"]
+            ratio = vol.get("metrics", {}).get("volume_ratio", 1)
+            trend = vol.get("metrics", {}).get("volume_trend", "FLAT")
+            context["volume_analysis"] = f"{ratio:.1f}x average, trend: {trend}"
+            
+    except Exception as e:
+        LOGGER.debug(f"Micro signals fetch failed for {symbol}: {e}")
+    
+    # Get seasonal pattern
+    try:
+        from core.intelligence.historical.event_outcomes import get_event_database
+        seasonal = await get_event_database().get_seasonal_pattern(symbol.upper())
+        pattern = seasonal.get("pattern", {})
+        special = seasonal.get("special_period", {})
+        
+        if special:
+            context["historical_pattern"] = f"Special: {special.get('name', 'Unknown')} ({special.get('tendency', 'Unknown')})"
+        elif pattern:
+            context["historical_pattern"] = f"{pattern.get('name', 'Unknown')}: {pattern.get('tendency', 'Unknown')} - {pattern.get('note', '')}"
+    except Exception as e:
+        LOGGER.debug(f"Seasonal fetch failed for {symbol}: {e}")
+    
+    return context
+
+
 @APP.get("/api/v3/accuracy/summary")
 async def api_accuracy_summary(symbol: str | None = None, days: int = 30):
     """
