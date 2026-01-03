@@ -7494,21 +7494,27 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
 
         base_confidence = max(signal_confidence, ensemble_conf)
 
+        # CONFIDENCE CAP: 80% maximum - markets are inherently uncertain
+        # Even with perfect model agreement and all signals aligned, we can't claim >80%
+        MAX_CONFIDENCE = 0.80
+
         # Optional synergy bonus (only when BOTH strong ensemble + multiple signals)
-        if ensemble_conf >= 0.75 and ensemble_prediction.direction == direction and signal_strength >= 3:
-            base_confidence = min(base_confidence + 0.05, 0.95)
-            LOGGER.info(f"[{symbol}] 🚀 Ensemble+signals synergy: +5% confidence")
+        if ensemble_conf >= 0.70 and ensemble_prediction.direction == direction and signal_strength >= 3:
+            base_confidence = min(base_confidence + 0.03, MAX_CONFIDENCE)  # Reduced bonus
+            LOGGER.info(f"[{symbol}] 🚀 Ensemble+signals synergy: +3% confidence")
         
-        # Apply Pattern Intelligence boost (when signals align)
+        # Apply Pattern Intelligence boost (when signals align) - REDUCED
         if pattern_boost > 0:
-            base_confidence = min(base_confidence + pattern_boost, 0.95)
+            pattern_boost = min(pattern_boost, 0.05)  # Cap pattern boost at 5%
+            base_confidence = min(base_confidence + pattern_boost, MAX_CONFIDENCE)
             LOGGER.info(f"[{symbol}] 📊 Pattern Intelligence boost: +{pattern_boost:.1%} (final: {base_confidence:.1%})")
         
-        # Apply Stage 1 Context boost/penalty (market regime alignment)
+        # Apply Stage 1 Context boost/penalty (market regime alignment) - REDUCED
         if stage1_boost != 0:
+            stage1_boost = max(-0.05, min(0.03, stage1_boost))  # Cap stage1 effects
             if stage1_signal in ["UP", "DOWN"] and stage1_signal == direction:
                 # Stage 1 agrees with direction - apply boost
-                base_confidence = min(base_confidence + stage1_boost, 0.95)
+                base_confidence = min(base_confidence + stage1_boost, MAX_CONFIDENCE)
                 LOGGER.info(f"[{symbol}] 🌍 Stage 1 boost: {stage1_boost:+.0%} (regime aligns with {direction})")
             elif stage1_signal == "VOLATILE":
                 # High VIX - reduce confidence
@@ -7516,8 +7522,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 LOGGER.info(f"[{symbol}] 🌍 Stage 1 penalty: {stage1_boost:+.0%} (high VIX volatility)")
             elif stage1_signal in ["UP", "DOWN"] and stage1_signal != direction:
                 # Stage 1 conflicts - small penalty
-                penalty = stage1_boost / 2  # Half the boost as penalty
-                base_confidence = max(base_confidence - abs(penalty), 0.35)
+                penalty = abs(stage1_boost) / 2  # Half the boost as penalty
+                base_confidence = max(base_confidence - penalty, 0.35)
                 LOGGER.info(f"[{symbol}] 🌍 Stage 1 conflict: -{abs(penalty):.0%} (regime={stage1_signal}, direction={direction})")
         
         LOGGER.info(
