@@ -8140,6 +8140,30 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         except Exception as e:
             LOGGER.error(f"[{symbol}] Failed to write to ghost_predictions table: {e}")
         
+        # ========================================================================
+        # AUTO-LOG PAPER TRADE: Track all predictions for paper trading P&L
+        # Only log directional predictions (UP/DOWN) with minimum confidence
+        # ========================================================================
+        if direction in ["UP", "DOWN"] and confidence >= 0.55:
+            try:
+                from core.paper_tracker import get_paper_tracker
+                paper_tracker = get_paper_tracker()
+                
+                paper_trade_id = paper_tracker.log_signal(
+                    cascade_id=f"pred_{prediction_id}",  # Link to prediction
+                    symbol=symbol,
+                    signal_direction=direction,
+                    signal_confidence=confidence,
+                    entry_price=current_price,
+                    entry_time=datetime.utcfromtimestamp(run_at).isoformat(),
+                    position_size=1000.0,  # $1000 per trade for paper tracking
+                    stop_loss_pct=stop_loss_pct,
+                    take_profit_pct=abs(expected_move_pct or 3.0) / 100.0
+                )
+                LOGGER.info(f"[{symbol}] 📝 Paper trade auto-logged: {paper_trade_id} ({direction} @ ${current_price:,.2f})")
+            except Exception as e:
+                LOGGER.warning(f"[{symbol}] Paper trade logging failed (non-fatal): {e}")
+        
         # Calculate total duration
         duration_ms = int((time.monotonic() - start) * 1000)
 
