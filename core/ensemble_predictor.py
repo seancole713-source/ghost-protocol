@@ -561,6 +561,51 @@ class XGBoostModel:
                     "NEAR_24H_LOW": "NEAR_24H_LOW",
                 }
                 
+                # NEUTRAL DEFAULTS: Use neutral values instead of 0 to avoid DOWN bias
+                # When features are missing, we assume neutral market conditions
+                neutral_defaults = {
+                    # Binary features default to 0.5 (uncertain) or actual neutral value
+                    "RSI_OVERSOLD": 0,           # Not oversold
+                    "RSI_OVERBOUGHT": 0,         # Not overbought
+                    "MACD_BULLISH": 0.5,         # Uncertain
+                    "ABOVE_SMA_20": 0.5,         # Uncertain 
+                    "ABOVE_SMA_50": 0.5,         # Uncertain
+                    "EMA_BULLISH": 0.5,          # Uncertain
+                    "SMA_CROSS_20_50": 0,        # No cross
+                    "NEAR_7D_HIGH": 0,           # Not near high
+                    "NEAR_7D_LOW": 0,            # Not near low
+                    "NEAR_30D_HIGH": 0,          # Not near high
+                    "NEAR_30D_LOW": 0,           # Not near low
+                    "VOLUME_SPIKE": 0,           # No spike
+                    "HIGH_FUNDING": 0,           # Normal funding
+                    "NEGATIVE_FUNDING": 0,       # Normal funding
+                    "EXTREME_FEAR": 0,           # Not extreme fear
+                    "EXTREME_GREED": 0,          # Not extreme greed
+                    "BTC_MACD_BULLISH": 0.5,     # Uncertain
+                    "BTC_LEADS": 0,              # No lead signal
+                    
+                    # Continuous features default to neutral values
+                    "RSI_14": 50,                # Neutral RSI
+                    "BB_POSITION": 0.5,          # Middle of bands
+                    "STOCH_K": 50,               # Neutral stochastic
+                    "STOCH_D": 50,               # Neutral stochastic
+                    "VOLUME_RATIO": 1.0,         # Average volume
+                    "fear_greed_value": 50,      # Neutral fear/greed
+                    "fear_greed_numeric": 50,    # Neutral fear/greed
+                    "funding_rate_proxy": 0,     # Neutral funding
+                    "BTC_RSI": 50,               # Neutral BTC RSI
+                    "BTC_MOMENTUM_1D": 0,        # Flat BTC
+                    "BTC_MOMENTUM_7D": 0,        # Flat BTC
+                    "BTC_CORRELATION": 0.5,      # Moderate correlation
+                    "MOMENTUM_1D": 0,            # Flat
+                    "MOMENTUM_7D": 0,            # Flat
+                    "MOMENTUM_30D": 0,           # Flat
+                    "ROC_10": 0,                 # No rate of change
+                    "VOLATILITY_7D": 0.02,       # Normal volatility
+                    "VOLATILITY_30D": 0.02,      # Normal volatility
+                    "DAILY_RANGE_PCT": 2.0,      # Normal daily range
+                }
+                
                 # Extract features in correct order
                 feature_values = []
                 missing_features = []
@@ -579,8 +624,11 @@ class XGBoostModel:
                     if value is None:
                         missing_features.append(name)
                     
-                    # Default to 0 if missing
-                    feature_values.append(float(value) if value is not None else 0.0)
+                    # Use neutral default if missing (avoid DOWN bias from 0s)
+                    if value is None:
+                        value = neutral_defaults.get(name, 0.0)
+                    
+                    feature_values.append(float(value))
                 
                 if missing_features and len(missing_features) < 10:
                     logger.debug(f"Missing features for XGBoost: {missing_features[:5]}...")
@@ -615,35 +663,45 @@ class XGBoostModel:
             return self._fallback_predict(features)
     
     def _fallback_predict(self, features: Dict[str, Any]) -> ModelPrediction:
-        """Fallback when trained model unavailable"""
-        rsi = features.get("RSI_14", features.get("rsi", 50))
-        macd = features.get("MACD_HISTOGRAM", features.get("macd", 0))
+        """Fallback when trained model unavailable - NEUTRAL by default"""
+        rsi = features.get("RSI_14", features.get("rsi", 50))  # Default 50 = neutral
+        macd = features.get("MACD_HISTOGRAM", features.get("macd", None))  # None = no signal
         volume_ratio = features.get("VOLUME_RATIO", features.get("volume_ratio", 1.0))
         
         score = 0
+        
+        # RSI signals - only fire on extremes
         if rsi is not None:
             if rsi < 30:
-                score += 2
+                score += 2  # Oversold = bullish
             elif rsi > 70:
-                score -= 2
+                score -= 2  # Overbought = bearish
+            # 30-70 = neutral, no score change
         
-        if macd is not None:
+        # MACD signals - only when we have data
+        if macd is not None and macd != 0:  # Don't assume bearish if missing
             if macd > 0:
                 score += 1
-            else:
+            elif macd < 0:
                 score -= 1
         
+        # Volume signals
         if volume_ratio is not None and volume_ratio > 1.5:
-            score += 1
+            score += 1  # High volume = conviction (in current direction)
         
-        direction = "UP" if score > 0 else "DOWN" if score < 0 else "FLAT"
-        confidence = min(abs(score) / 5 + 0.3, 0.65)  # Lower max confidence for fallback
+        # Need clear signal to predict
+        if abs(score) < 2:
+            direction = "FLAT"  # Not enough signal = FLAT, not DOWN
+            confidence = 0.45
+        else:
+            direction = "UP" if score > 0 else "DOWN"
+            confidence = min(abs(score) / 5 + 0.3, 0.65)
         
         return ModelPrediction(
             model_name="XGBoost-Fallback",
             direction=direction,
             confidence=confidence,
-            predicted_change_pct=score * 2,
+            predicted_change_pct=score * 2 if direction != "FLAT" else 0,
             weight=0.3  # Lower weight for fallback
         )
 
