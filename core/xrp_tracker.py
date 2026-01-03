@@ -1,6 +1,7 @@
 """
 XRP Tracker Module
 Specialized tracker for XRP with "bullish eye" indicator and signal generation.
+Optimized for speed with simple price fetching.
 """
 
 import logging
@@ -9,10 +10,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Cache for XRP data to avoid repeated API calls
+_XRP_CACHE: dict = {}
+_XRP_CACHE_TTL = 30  # 30 second cache
+
 
 async def get_xrp_status() -> dict[str, Any]:
     """
     Get XRP tracking data with bullish eye indicator.
+    Optimized for speed - uses single provider with caching.
     
     Returns:
         {
@@ -25,6 +31,13 @@ async def get_xrp_status() -> dict[str, Any]:
             "timestamp": float
         }
     """
+    global _XRP_CACHE
+    
+    # Check cache first
+    if _XRP_CACHE and time.time() - _XRP_CACHE.get("cached_at", 0) < _XRP_CACHE_TTL:
+        logger.debug("XRP tracker: using cached data")
+        return _XRP_CACHE.get("data", {})
+    
     result = {
         "price": None,
         "change_24h_pct": None,
@@ -36,11 +49,11 @@ async def get_xrp_status() -> dict[str, Any]:
     }
     
     try:
-        # Use the crypto price quorum which is proven to work
-        from core.crypto.crypto_providers import get_crypto_price_quorum
+        # Use turbo price for speed (single provider, no quorum)
+        from core.crypto.crypto_providers import get_crypto_price_turbo
         
-        # Get XRP price from quorum (returns dict with price, change_24h_pct, etc.)
-        xrp_data = await get_crypto_price_quorum("XRP", use_cache=True)
+        # Get XRP price from fastest provider
+        xrp_data = await get_crypto_price_turbo("XRP")
         
         if xrp_data and xrp_data.get("price"):
             price = xrp_data["price"]
@@ -70,8 +83,9 @@ async def get_xrp_status() -> dict[str, Any]:
                 factors.append("Below $0.50 support")
                 confidence -= 0.1
             
-            # Factor 2: Live data available
-            factors.append("Live price from Coinbase")
+            # Factor 2: Provider info
+            provider = xrp_data.get("provider", "unknown")
+            factors.append(f"Live price via {provider}")
             confidence += 0.05
             
             # Check if we have a recent prediction for XRP
@@ -123,5 +137,11 @@ async def get_xrp_status() -> dict[str, Any]:
     except Exception as e:
         logger.error(f"XRP tracker error: {e}")
         result["factors"] = [f"Error: {str(e)}"]
+    
+    # Cache the result
+    _XRP_CACHE = {
+        "data": result,
+        "cached_at": time.time()
+    }
     
     return result

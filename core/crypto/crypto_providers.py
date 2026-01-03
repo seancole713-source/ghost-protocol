@@ -850,9 +850,64 @@ def get_all_supported_symbols() -> list[str]:
 # ---- Turbo-friendly crypto price wrappers (sync, single-asset) ----
 import logging
 import time
+import asyncio
 import requests
 
 logger = logging.getLogger("core.crypto.crypto_providers")
+
+# Fast cache for turbo prices (30 second TTL)
+_TURBO_CACHE: dict[str, dict] = {}
+_TURBO_CACHE_TTL = 30
+
+
+async def get_crypto_price_turbo(symbol: str) -> dict[str, Any] | None:
+    """
+    Fast single-provider price fetch with 30s cache.
+    Optimized for speed - uses first available provider.
+    
+    Args:
+        symbol: Crypto symbol (BTC, ETH, XRP, etc.)
+    
+    Returns:
+        {"symbol": "XRP", "price": 2.15, "provider": "coinbase", "change_24h_pct": -1.2}
+    """
+    symbol = symbol.upper()
+    
+    # Check turbo cache
+    if symbol in _TURBO_CACHE:
+        cached = _TURBO_CACHE[symbol]
+        if time.time() - cached.get("cached_at", 0) < _TURBO_CACHE_TTL:
+            logger.debug(f"Turbo cache hit for {symbol}")
+            return cached.get("data")
+    
+    # Try providers in order until one works
+    providers = [
+        ("coinbase", get_price_coinbase),
+        ("binance", get_price_binance),
+        ("coingecko", get_price_coingecko),
+    ]
+    
+    for name, func in providers:
+        try:
+            result = await asyncio.to_thread(func, symbol)
+            if result and result.get("price", 0) > 0:
+                data = {
+                    "symbol": symbol,
+                    "price": result["price"],
+                    "provider": name,
+                    "change_24h_pct": result.get("change_24h_pct", 0),
+                    "timestamp": int(time.time())
+                }
+                # Cache it
+                _TURBO_CACHE[symbol] = {"data": data, "cached_at": time.time()}
+                logger.info(f"Turbo price for {symbol}: ${result['price']:.4f} via {name}")
+                return data
+        except Exception as e:
+            logger.debug(f"Turbo provider {name} failed for {symbol}: {e}")
+            continue
+    
+    logger.warning(f"All turbo providers failed for {symbol}")
+    return None
 
 
 def _now_ms() -> int:
