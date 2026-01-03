@@ -18,22 +18,8 @@ import logging
 
 LOGGER = logging.getLogger("paper_tracker")
 
-# Check if PostgreSQL is available
+# PostgreSQL support for production
 DATABASE_URL = os.getenv("DATABASE_URL")
-USE_POSTGRES = bool(DATABASE_URL)
-
-if USE_POSTGRES:
-    try:
-        import psycopg2
-        import psycopg2.extras
-    except ImportError:
-        USE_POSTGRES = False
-        LOGGER.warning("psycopg2 not available, falling back to SQLite")
-
-
-def _get_postgres_connection():
-    """Get PostgreSQL connection from DATABASE_URL"""
-    return psycopg2.connect(DATABASE_URL)
 
 
 class PaperTracker:
@@ -52,158 +38,84 @@ class PaperTracker:
     
     def __init__(self, db_path: str = "data/ghost_predictions.db"):
         self.db_path = db_path
-        self.use_postgres = USE_POSTGRES
+        self.use_postgres = bool(DATABASE_URL)
         self._ensure_table()
     
-    def _get_connection(self):
-        """Get database connection (PostgreSQL or SQLite)"""
-        if self.use_postgres:
-            return _get_postgres_connection()
-        else:
-            return sqlite3.connect(self.db_path)
-    
-    def _execute_query(self, query: str, params: tuple = (), fetch_one: bool = False, fetch_all: bool = False):
-        """Execute a query with proper DB handling for both PostgreSQL and SQLite"""
-        conn = self._get_connection()
-        try:
-            if self.use_postgres:
-                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                # Convert ? to %s for PostgreSQL
-                pg_query = query.replace("?", "%s")
-                cur.execute(pg_query, params)
-                if fetch_one:
-                    result = cur.fetchone()
-                    return dict(result) if result else None
-                elif fetch_all:
-                    return [dict(row) for row in cur.fetchall()]
-                else:
-                    conn.commit()
-                    return None
-            else:
-                conn.row_factory = sqlite3.Row
-                cur = conn.execute(query, params)
-                if fetch_one:
-                    result = cur.fetchone()
-                    return dict(result) if result else None
-                elif fetch_all:
-                    return [dict(row) for row in cur.fetchall()]
-                else:
-                    conn.commit()
-                    return None
-        finally:
-            conn.close()
+    def _get_postgres_connection(self):
+        """Get PostgreSQL connection"""
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
     
     def _ensure_table(self):
         """Create paper_trades table if not exists"""
-        conn = self._get_connection()
         try:
             if self.use_postgres:
-                # PostgreSQL syntax
-                conn.cursor().execute("""
+                conn = self._get_postgres_connection()
+                cur = conn.cursor()
+                cur.execute("""
                     CREATE TABLE IF NOT EXISTS paper_trades (
                         paper_trade_id TEXT PRIMARY KEY,
                         cascade_id TEXT NOT NULL,
                         symbol TEXT NOT NULL,
-                        
                         signal_direction TEXT NOT NULL,
                         signal_confidence REAL NOT NULL,
                         signal_time TEXT NOT NULL,
-                        
                         entry_price REAL NOT NULL,
                         entry_time TEXT NOT NULL,
-                        
                         target_time TEXT NOT NULL,
                         target_price REAL,
-                        
                         position_size REAL DEFAULT 1000.0,
                         stop_loss_pct REAL DEFAULT 0.05,
                         take_profit_pct REAL DEFAULT 0.10,
-                        
                         actual_direction TEXT,
                         outcome TEXT,
                         profit_loss REAL,
                         profit_loss_pct REAL,
-                        
                         checked_at TEXT,
                         notes TEXT,
-                        
                         created_at TEXT NOT NULL
                     )
                 """)
-                conn.cursor().execute("""
-                    CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol 
-                    ON paper_trades(symbol)
-                """)
-                conn.cursor().execute("""
-                    CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome 
-                    ON paper_trades(outcome)
-                """)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome ON paper_trades(outcome)")
                 conn.commit()
+                conn.close()
                 LOGGER.info("✅ paper_trades table ready (PostgreSQL)")
             else:
-                # SQLite syntax
+                conn = sqlite3.connect(self.db_path)
                 conn.execute("""
-                CREATE TABLE IF NOT EXISTS paper_trades (
-                    paper_trade_id TEXT PRIMARY KEY,
-                    cascade_id TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    
-                    -- Signal info (from 6h final call)
-                    signal_direction TEXT NOT NULL,  -- UP or DOWN
-                    signal_confidence REAL NOT NULL,
-                    signal_time TEXT NOT NULL,
-                    
-                    -- Entry (from cascade start)
-                    entry_price REAL NOT NULL,
-                    entry_time TEXT NOT NULL,
-                    
-                    -- Target (48h from entry)
-                    target_time TEXT NOT NULL,
-                    target_price REAL,  -- NULL until checked
-                    
-                    -- Hypothetical trade
-                    position_size REAL DEFAULT 1000.0,  -- $1k per trade
-                    stop_loss_pct REAL DEFAULT 0.05,    -- 5% stop
-                    take_profit_pct REAL DEFAULT 0.10,   -- 10% target
-                    
-                    -- Outcome
-                    actual_direction TEXT,  -- UP, DOWN, FLAT, NULL=pending
-                    outcome TEXT,  -- WIN, LOSS, STOPPED, BREAK_EVEN, PENDING
-                    profit_loss REAL,  -- NULL until resolved
-                    profit_loss_pct REAL,
-                    
-                    -- Tracking
-                    checked_at TEXT,  -- When we evaluated outcome
-                    notes TEXT,
-                    
-                    created_at TEXT NOT NULL
-                )
-            """)
-            
-            # Index for quick lookups
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol 
-                ON paper_trades(symbol)
-            """)
-            
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome 
-                ON paper_trades(outcome)
-            """)
-            
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_paper_trades_target_time 
-                ON paper_trades(target_time)
-            """)
-            
-            conn.commit()
-            LOGGER.info("✅ paper_trades table ready")
-        
+                    CREATE TABLE IF NOT EXISTS paper_trades (
+                        paper_trade_id TEXT PRIMARY KEY,
+                        cascade_id TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        signal_direction TEXT NOT NULL,
+                        signal_confidence REAL NOT NULL,
+                        signal_time TEXT NOT NULL,
+                        entry_price REAL NOT NULL,
+                        entry_time TEXT NOT NULL,
+                        target_time TEXT NOT NULL,
+                        target_price REAL,
+                        position_size REAL DEFAULT 1000.0,
+                        stop_loss_pct REAL DEFAULT 0.05,
+                        take_profit_pct REAL DEFAULT 0.10,
+                        actual_direction TEXT,
+                        outcome TEXT,
+                        profit_loss REAL,
+                        profit_loss_pct REAL,
+                        checked_at TEXT,
+                        notes TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome ON paper_trades(outcome)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_target_time ON paper_trades(target_time)")
+                conn.commit()
+                conn.close()
+                LOGGER.info("✅ paper_trades table ready (SQLite)")
         except Exception as e:
             LOGGER.error(f"Failed to create paper_trades table: {e}")
-            raise
-        finally:
-            conn.close()
+            # Don't raise - table might already exist
     
     def log_signal(
         self,
@@ -221,20 +133,7 @@ class PaperTracker:
         Log a Ghost signal as a paper trade.
         
         Called when cascade reaches 6h final call.
-        
-        Args:
-            cascade_id: Link to cascade
-            symbol: BTC, ETH, etc
-            signal_direction: UP or DOWN
-            signal_confidence: 0.0-1.0
-            entry_price: Price at cascade start (48h ago)
-            entry_time: ISO timestamp of cascade start
-            position_size: Hypothetical $ amount per trade
-            stop_loss_pct: Stop loss as decimal (0.05 = 5%)
-            take_profit_pct: Take profit as decimal (0.10 = 10%)
-        
-        Returns:
-            paper_trade_id
+        Supports both PostgreSQL (production) and SQLite (local).
         """
         import uuid
         
@@ -242,54 +141,52 @@ class PaperTracker:
         signal_time = datetime.utcnow().isoformat()
         
         # Calculate target time (48h from entry)
-        entry_dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+        try:
+            entry_dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+        except ValueError:
+            # Handle timezone-naive format
+            entry_dt = datetime.fromisoformat(entry_time.replace('Z', ''))
         target_dt = entry_dt + timedelta(hours=48)
         target_time = target_dt.isoformat()
         
-        conn = self._get_connection()
+        params = (
+            paper_trade_id, cascade_id, symbol,
+            signal_direction.upper(), signal_confidence, signal_time,
+            entry_price, entry_time,
+            target_time,
+            position_size, stop_loss_pct, take_profit_pct,
+            "PENDING",
+            signal_time
+        )
+        
         try:
             if self.use_postgres:
+                conn = self._get_postgres_connection()
                 cur = conn.cursor()
                 cur.execute("""
                     INSERT INTO paper_trades (
                         paper_trade_id, cascade_id, symbol,
                         signal_direction, signal_confidence, signal_time,
-                        entry_price, entry_time,
-                        target_time,
+                        entry_price, entry_time, target_time,
                         position_size, stop_loss_pct, take_profit_pct,
-                        outcome,
-                        created_at
+                        outcome, created_at
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    paper_trade_id, cascade_id, symbol,
-                    signal_direction.upper(), signal_confidence, signal_time,
-                    entry_price, entry_time,
-                    target_time,
-                    position_size, stop_loss_pct, take_profit_pct,
-                    "PENDING",
-                    signal_time
-                ))
+                """, params)
+                conn.commit()
+                conn.close()
             else:
+                conn = sqlite3.connect(self.db_path)
                 conn.execute("""
                     INSERT INTO paper_trades (
                         paper_trade_id, cascade_id, symbol,
                         signal_direction, signal_confidence, signal_time,
-                        entry_price, entry_time,
-                        target_time,
+                        entry_price, entry_time, target_time,
                         position_size, stop_loss_pct, take_profit_pct,
-                        outcome,
-                        created_at
+                        outcome, created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    paper_trade_id, cascade_id, symbol,
-                    signal_direction.upper(), signal_confidence, signal_time,
-                    entry_price, entry_time,
-                    target_time,
-                    position_size, stop_loss_pct, take_profit_pct,
-                    "PENDING",
-                    signal_time
-                ))
-            conn.commit()
+                """, params)
+                conn.commit()
+                conn.close()
             
             LOGGER.info(
                 f"📝 Paper trade logged: {symbol} {signal_direction} "
@@ -301,8 +198,6 @@ class PaperTracker:
         except Exception as e:
             LOGGER.error(f"Failed to log paper trade: {e}")
             raise
-        finally:
-            conn.close()
     
     def check_outcome(self, paper_trade_id: str, current_price: float) -> dict:
         """
@@ -320,19 +215,22 @@ class PaperTracker:
                 "profit_loss_pct": float
             }
         """
-        trade = self._execute_query(
-            "SELECT * FROM paper_trades WHERE paper_trade_id = ?",
-            (paper_trade_id,),
-            fetch_one=True
-        )
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
         
-        if not trade:
-            return {"resolved": False, "error": "Trade not found"}
-        
-        # Already resolved?
-        if trade["outcome"] != "PENDING":
-            return {
-                "resolved": True,
+        try:
+            row = conn.execute("""
+                SELECT * FROM paper_trades
+                WHERE paper_trade_id = ?
+            """, (paper_trade_id,)).fetchone()
+            
+            if not row:
+                return {"resolved": False, "error": "Trade not found"}
+            
+            trade = dict(row)
+            
+            # Already resolved?
+            if trade["outcome"] != "PENDING":
                 return {
                     "resolved": True,
                     "outcome": trade["outcome"],
