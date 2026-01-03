@@ -361,25 +361,25 @@ class LSTMModel:
             # Calculate momentum consensus
             momentum_signals = []
             
-            # Short-term momentum (1h, 4h)
-            if momentum_1h > 0.5:
+            # Short-term momentum (1h, 4h) - LOWERED thresholds for better sensitivity
+            if momentum_1h > 0.3:
                 momentum_signals.append(1)
-            elif momentum_1h < -0.5:
+            elif momentum_1h < -0.3:
                 momentum_signals.append(-1)
             else:
                 momentum_signals.append(0)
             
-            if momentum_4h > 1.0:
+            if momentum_4h > 0.7:
                 momentum_signals.append(1)
-            elif momentum_4h < -1.0:
+            elif momentum_4h < -0.7:
                 momentum_signals.append(-1)
             else:
                 momentum_signals.append(0)
             
-            # Medium-term momentum (24h)
-            if momentum_24h > 2.0:
+            # Medium-term momentum (24h) - LOWERED threshold
+            if momentum_24h > 1.5:
                 momentum_signals.append(1)
-            elif momentum_24h < -2.0:
+            elif momentum_24h < -1.5:
                 momentum_signals.append(-1)
             else:
                 momentum_signals.append(0)
@@ -855,7 +855,7 @@ class TransformerModel:
                 direction=direction,
                 confidence=confidence,
                 predicted_change_pct=predicted_change,
-                weight=0.15  # Lower weight - supplementary to XGBoost
+                weight=0.30  # Increased weight - good at reading technicals
             )
             
         except Exception as e:
@@ -865,7 +865,7 @@ class TransformerModel:
                 direction="FLAT",
                 confidence=0.3,
                 predicted_change_pct=0.0,
-                weight=0.15
+                weight=0.30
             )
 
 
@@ -904,6 +904,126 @@ class EnsemblePredictor:
         transformer_pred = self.transformer.predict(features)
         
         predictions = [lstm_pred, xgb_pred, transformer_pred]
+        
+        # =====================================================================
+        # MARKET REGIME OVERRIDE - Fix XGBoost DOWN bias
+        # The XGBoost model was trained on bear market data and has severe DOWN bias
+        # Use Fear & Greed + model consensus to override bad predictions
+        # =====================================================================
+        try:
+            fng = get_fear_greed_index()
+            
+            # Count model directions
+            up_count = sum(1 for p in predictions if p.direction == "UP")
+            down_count = sum(1 for p in predictions if p.direction == "DOWN")
+            flat_count = sum(1 for p in predictions if p.direction == "FLAT")
+            
+            # Situation: XGBoost says DOWN but market is in FEAR and other models disagree
+            if xgb_pred.direction == "DOWN" and fng < 35 and up_count >= 1:
+                logger.warning(
+                    f"[REGIME_OVERRIDE] XGBoost DOWN bias detected! "
+                    f"Fear&Greed={fng} (FEAR), {up_count} models say UP. "
+                    f"Reducing XGBoost weight and boosting bullish signals."
+                )
+                # Create modified XGBoost prediction with reduced confidence
+                from copy import copy
+                xgb_pred_modified = ModelPrediction(
+                    model_name=xgb_pred.model_name,
+                    direction="FLAT",  # Downgrade to FLAT instead of DOWN
+                    confidence=0.40,   # Low confidence
+                    predicted_change_pct=0.0,
+                    weight=0.3  # Reduce weight from 0.7 to 0.3
+                )
+                predictions[1] = xgb_pred_modified
+                logger.info(f"[REGIME_OVERRIDE] XGBoost downgraded: {xgb_pred.direction} -> FLAT (0.40 conf)")
+            
+            # Situation: XGBoost is the ONLY model saying DOWN in FEAR territory (others are FLAT)
+            # In fear markets, we should not be bearish unless multiple models agree
+            elif xgb_pred.direction == "DOWN" and fng < 40 and down_count == 1 and flat_count >= 1:
+                logger.warning(
+                    f"[REGIME_OVERRIDE] XGBoost ALONE says DOWN in FEAR market (FNG={fng}). "
+                    f"Other models: {flat_count} FLAT, {up_count} UP. Downgrading XGBoost to FLAT."
+                )
+                xgb_pred_modified = ModelPrediction(
+                    model_name=xgb_pred.model_name,
+                    direction="FLAT",  # In fear, don't trust single DOWN signal
+                    confidence=0.45,
+                    predicted_change_pct=0.0,
+                    weight=0.4
+                )
+                predictions[1] = xgb_pred_modified
+                
+            # Situation: XGBoost says DOWN but Transformer AND LSTM disagree
+            elif xgb_pred.direction == "DOWN" and lstm_pred.direction != "DOWN" and transformer_pred.direction == "UP":
+                logger.warning(
+                    f"[REGIME_OVERRIDE] XGBoost alone in DOWN call. "
+                    f"LSTM={lstm_pred.direction}, Transformer={transformer_pred.direction}. "
+                    f"Reducing XGBoost influence."
+                )
+                xgb_pred_modified = ModelPrediction(
+                    model_name=xgb_pred.model_name,
+                    direction=xgb_pred.direction,
+                    confidence=xgb_pred.confidence * 0.5,  # Halve confidence
+                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.5,
+                    weight=0.4  # Reduce weight
+                )
+                predictions[1] = xgb_pred_modified
+                logger.info(f"[REGIME_OVERRIDE] XGBoost confidence halved: {xgb_pred.confidence:.1%} -> {xgb_pred_modified.confidence:.1%}")
+                
+            # Situation: Strong FEAR (<25) - boost any UP signals
+            elif fng < 25 and up_count >= 1:
+                logger.info(f"[REGIME_OVERRIDE] EXTREME FEAR ({fng}), boosting bullish signals")
+                for i, pred in enumerate(predictions):
+                    if pred.direction == "UP":
+                        boosted = ModelPrediction(
+                            model_name=pred.model_name,
+                            direction=pred.direction,
+                            confidence=min(0.85, pred.confidence * 1.3),  # Boost UP confidence
+                            predicted_change_pct=pred.predicted_change_pct,
+                            weight=pred.weight * 1.2
+                        )
+                        predictions[i] = boosted
+            
+            # Situation: 2/3 models agree on direction - that consensus should win
+            # This overrides the single biased XGBoost model
+            if up_count >= 2:
+                logger.info(f"[REGIME_OVERRIDE] MODEL CONSENSUS: {up_count}/3 models say UP - boosting UP weight")
+                for i, pred in enumerate(predictions):
+                    if pred.direction == "UP":
+                        boosted = ModelPrediction(
+                            model_name=pred.model_name,
+                            direction=pred.direction,
+                            confidence=min(0.85, pred.confidence * 1.2),
+                            predicted_change_pct=pred.predicted_change_pct,
+                            weight=pred.weight * 1.5  # Significant weight boost
+                        )
+                        predictions[i] = boosted
+                    elif pred.direction != "UP":
+                        # Reduce weight of non-UP predictions when consensus is UP
+                        reduced = ModelPrediction(
+                            model_name=pred.model_name,
+                            direction=pred.direction,
+                            confidence=pred.confidence * 0.7,
+                            predicted_change_pct=pred.predicted_change_pct,
+                            weight=pred.weight * 0.5
+                        )
+                        predictions[i] = reduced
+                        
+            elif down_count >= 2:
+                logger.info(f"[REGIME_OVERRIDE] MODEL CONSENSUS: {down_count}/3 models say DOWN - boosting DOWN weight")
+                for i, pred in enumerate(predictions):
+                    if pred.direction == "DOWN":
+                        boosted = ModelPrediction(
+                            model_name=pred.model_name,
+                            direction=pred.direction,
+                            confidence=min(0.85, pred.confidence * 1.2),
+                            predicted_change_pct=pred.predicted_change_pct,
+                            weight=pred.weight * 1.5
+                        )
+                        predictions[i] = boosted
+                        
+        except Exception as e:
+            logger.error(f"[REGIME_OVERRIDE] Error: {e}")
         
         # Adaptive weights based on recent performance
         weights = self._calculate_adaptive_weights()
