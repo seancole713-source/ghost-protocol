@@ -8937,12 +8937,16 @@ async def _gather_opus_context(symbol: str) -> dict:
     # Get current price
     try:
         if is_crypto:
+            from core.crypto.crypto_providers import get_crypto_price_turbo
             price_data = await get_crypto_price_turbo(symbol.upper())
+            if price_data:
+                context["current_price"] = price_data.get("price")
+                context["price_change_24h"] = price_data.get("change_pct")
         else:
             price_data = await get_stock_price(symbol.upper())
-        
-        context["current_price"] = price_data.get("price") or price_data.get("current_price")
-        context["price_change_24h"] = price_data.get("change_pct") or price_data.get("changePercent")
+            if price_data:
+                context["current_price"] = price_data.get("price") or price_data.get("current_price")
+                context["price_change_24h"] = price_data.get("change_pct") or price_data.get("changePercent")
     except Exception as e:
         LOGGER.debug(f"Price fetch failed for {symbol}: {e}")
     
