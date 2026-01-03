@@ -396,15 +396,17 @@ class LSTMModel:
             total_momentum = sum(momentum_signals)
             agreement = sum(1 for s in momentum_signals if s == np.sign(total_momentum)) if total_momentum != 0 else 0
             
-            if total_momentum > 1:
+            # LOWERED THRESHOLDS: Even 1 aligned signal is meaningful
+            # Old: required > 1 (2+ signals), now: > 0 (1+ signals)
+            if total_momentum > 0:
                 direction = "UP"
-                confidence = min(0.4 + (agreement / len(momentum_signals)) * 0.4, 0.85)
-            elif total_momentum < -1:
+                confidence = min(0.45 + (agreement / len(momentum_signals)) * 0.35, 0.80)
+            elif total_momentum < 0:
                 direction = "DOWN"
-                confidence = min(0.4 + (agreement / len(momentum_signals)) * 0.4, 0.85)
+                confidence = min(0.45 + (agreement / len(momentum_signals)) * 0.35, 0.80)
             else:
                 direction = "FLAT"
-                confidence = 0.3
+                confidence = 0.35
             
             # Predicted change based on momentum strength
             predicted_change = total_momentum * 1.5
@@ -676,8 +678,9 @@ class XGBoostModel:
                     f"Raw={prob_up:.1%}/{prob_down:.1%} → Calibrated={prob_up_calibrated:.1%}/{prob_down_calibrated:.1%}"
                 )
                 
-                # CONVICTION THRESHOLD: Require 57%+ to make directional call
-                conviction_threshold = 0.57
+                # CONVICTION THRESHOLD: Lowered from 57% to 52% - slight edge is still a signal
+                # Markets are inherently uncertain; 52% edge is meaningful
+                conviction_threshold = 0.52
                 
                 if prob_up_calibrated >= conviction_threshold:
                     direction = "UP"
@@ -686,7 +689,7 @@ class XGBoostModel:
                     direction = "DOWN"
                     confidence = prob_down_calibrated
                 else:
-                    # Not enough conviction - FLAT
+                    # Truly uncertain - FLAT (now rare: requires 48-52% band)
                     direction = "FLAT"
                     confidence = max(prob_up_calibrated, prob_down_calibrated)
                 
@@ -740,13 +743,14 @@ class XGBoostModel:
         if volume_ratio is not None and volume_ratio > 1.5:
             score += 1  # High volume = conviction (in current direction)
         
-        # Need clear signal to predict
-        if abs(score) < 2:
-            direction = "FLAT"  # Not enough signal = FLAT, not DOWN
-            confidence = 0.45
+        # LOWERED THRESHOLD: 1+ signal is enough for directional call
+        # Old: required 2+ signals, now: 1+ signals
+        if abs(score) < 1:
+            direction = "FLAT"  # Truly no signal = FLAT
+            confidence = 0.40
         else:
             direction = "UP" if score > 0 else "DOWN"
-            confidence = min(abs(score) / 5 + 0.3, 0.65)
+            confidence = min(abs(score) / 4 + 0.35, 0.70)
         
         return ModelPrediction(
             model_name="XGBoost-Fallback",
@@ -833,16 +837,17 @@ class TransformerModel:
                 total_weight = sum(weights)
                 weighted_signal = sum(s * w for s, w in zip(signals, weights)) / total_weight if total_weight > 0 else 0
                 
-                # Require stronger conviction for directional call (was 0.2)
-                if weighted_signal > 0.3:
+                # LOWERED THRESHOLD: 0.15 (was 0.3) - mild signal is still signal
+                # Markets are noisy; waiting for strong consensus = always FLAT
+                if weighted_signal > 0.15:
                     direction = "UP"
-                    confidence = min(0.45 + abs(weighted_signal) * 0.4, 0.80)
-                elif weighted_signal < -0.3:
+                    confidence = min(0.50 + abs(weighted_signal) * 0.35, 0.75)
+                elif weighted_signal < -0.15:
                     direction = "DOWN"
-                    confidence = min(0.45 + abs(weighted_signal) * 0.4, 0.80)
+                    confidence = min(0.50 + abs(weighted_signal) * 0.35, 0.75)
                 else:
-                    direction = "FLAT"  # Most cases should be FLAT
-                    confidence = 0.35
+                    direction = "FLAT"  # Truly mixed signals
+                    confidence = 0.40
                 
                 predicted_change = weighted_signal * 5
             else:
