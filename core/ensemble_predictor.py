@@ -639,13 +639,47 @@ class XGBoostModel:
                 prediction = self.model.predict(X)[0]
                 proba = self.model.predict_proba(X)[0]
                 
-                direction = "UP" if prediction == 1 else "DOWN"
-                confidence = float(proba[prediction])
+                # Get probabilities for each class
+                prob_down = float(proba[0])  # Class 0 = DOWN
+                prob_up = float(proba[1])    # Class 1 = UP
+                
+                # BIAS CORRECTION: Model trained on more DOWN than UP samples
+                # Training data: 2016 DOWN vs 1865 UP (52% vs 48%)
+                # Apply correction to account for class imbalance
+                bias_correction = 0.04  # 4% correction to favor UP slightly
+                prob_up_corrected = prob_up + bias_correction
+                prob_down_corrected = prob_down - bias_correction
+                
+                # Renormalize
+                total = prob_up_corrected + prob_down_corrected
+                prob_up_corrected = prob_up_corrected / total
+                prob_down_corrected = prob_down_corrected / total
+                
+                # CONVICTION THRESHOLD: Require 55%+ to make directional call
+                # If probabilities are close (45-55%), call it FLAT
+                conviction_threshold = 0.55
+                
+                if prob_up_corrected >= conviction_threshold:
+                    direction = "UP"
+                    confidence = prob_up_corrected
+                elif prob_down_corrected >= conviction_threshold:
+                    direction = "DOWN"
+                    confidence = prob_down_corrected
+                else:
+                    # Not enough conviction - FLAT
+                    direction = "FLAT"
+                    confidence = max(prob_up_corrected, prob_down_corrected)
+                    logger.info(f"🤖 XGBoost {self.model_version}: FLAT (UP={prob_up_corrected:.1%}, DOWN={prob_down_corrected:.1%} - no conviction)")
                 
                 # Scale predicted change based on confidence
-                predicted_change = confidence * 6.0 * (1 if prediction == 1 else -1)
+                if direction == "UP":
+                    predicted_change = confidence * 6.0
+                elif direction == "DOWN":
+                    predicted_change = -confidence * 6.0
+                else:
+                    predicted_change = 0.0
                 
-                logger.debug(f"🤖 XGBoost {self.model_version}: {direction} @ {confidence:.1%}")
+                logger.debug(f"🤖 XGBoost {self.model_version}: {direction} @ {confidence:.1%} (raw: UP={prob_up:.1%}, DOWN={prob_down:.1%})")
                 
                 return ModelPrediction(
                     model_name=f"XGBoost-{self.model_version}",
