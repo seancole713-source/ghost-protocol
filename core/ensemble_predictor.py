@@ -1036,12 +1036,13 @@ class EnsemblePredictor:
                         predictions[i] = reduced
                         
             elif down_count >= 2:
-                # FEAR MARKET OVERRIDE: Don't trust DOWN consensus in FEAR territory
-                # Historical data shows buying in fear beats selling in fear
-                if fng < 35:
+                # EXTREME FEAR OVERRIDE: Only block DOWN in EXTREME fear (<20)
+                # Changed from <35 - moderate fear (20-35) should still allow shorting
+                # when technical signals are clearly bearish
+                if fng < 20:
                     logger.warning(
-                        f"[REGIME_OVERRIDE] DOWN consensus ({down_count}/3) in FEAR market (FNG={fng})! "
-                        f"Converting to FLAT - don't short during fear."
+                        f"[REGIME_OVERRIDE] DOWN consensus ({down_count}/3) in EXTREME FEAR (FNG={fng})! "
+                        f"Converting to FLAT - don't short during panic."
                     )
                     for i, pred in enumerate(predictions):
                         if pred.direction == "DOWN":
