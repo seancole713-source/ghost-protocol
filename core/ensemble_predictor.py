@@ -348,47 +348,69 @@ class LSTMModel:
     def predict(self, features: Dict[str, Any]) -> ModelPrediction:
         """
         Generate prediction based on temporal momentum patterns.
-        Uses multiple timeframe momentum analysis as LSTM proxy.
+        Uses AVAILABLE features from the feature orchestrator.
+        
+        FIXED: Now uses features that actually exist in the pipeline:
+        - RSI_14 (overbought/oversold)
+        - STOCH_K, STOCH_D (stochastic momentum)
+        - BOLLINGER_POSITION (price position in bands)
+        - VOLUME_ROC (volume momentum)
         """
         try:
-            # Multi-timeframe momentum analysis (LSTM-style temporal patterns)
-            momentum_1h = features.get("PRICE_CHANGE_1H", features.get("price_change_1h", 0)) or 0
-            momentum_4h = features.get("PRICE_CHANGE_4H", features.get("price_change_4h", 0)) or 0
-            momentum_24h = features.get("PRICE_CHANGE_24H", features.get("price_change_24h", 0)) or 0
-            roc_10 = features.get("ROC_10", 0) or 0
-            mom_10 = features.get("MOM_10", 0) or 0
+            # Use AVAILABLE features from orchestrator
+            rsi = features.get("RSI_14", 50) or 50
+            stoch_k = features.get("STOCH_K", 50) or 50
+            stoch_d = features.get("STOCH_D", 50) or 50
+            bb_position = features.get("BOLLINGER_POSITION", 0.5) or 0.5
+            volume_roc = features.get("VOLUME_ROC", 0) or 0
+            williams_r = features.get("WILLIAMS_R", -50) or -50
             
-            # Calculate momentum consensus
+            # Calculate momentum consensus from available indicators
             momentum_signals = []
             
-            # Short-term momentum (1h, 4h) - LOWERED thresholds for better sensitivity
-            if momentum_1h > 0.3:
-                momentum_signals.append(1)
-            elif momentum_1h < -0.3:
-                momentum_signals.append(-1)
+            # RSI momentum
+            if rsi < 35:
+                momentum_signals.append(1)  # Oversold = bullish momentum
+            elif rsi > 65:
+                momentum_signals.append(-1)  # Overbought = bearish momentum
             else:
                 momentum_signals.append(0)
             
-            if momentum_4h > 0.7:
-                momentum_signals.append(1)
-            elif momentum_4h < -0.7:
-                momentum_signals.append(-1)
+            # Stochastic momentum (K vs D crossover proxy)
+            stoch_avg = (stoch_k + stoch_d) / 2
+            if stoch_avg < 25:
+                momentum_signals.append(1)  # Oversold
+            elif stoch_avg > 75:
+                momentum_signals.append(-1)  # Overbought
+            elif stoch_k > stoch_d + 3:
+                momentum_signals.append(1)  # Bullish crossover
+            elif stoch_k < stoch_d - 3:
+                momentum_signals.append(-1)  # Bearish crossover
             else:
                 momentum_signals.append(0)
             
-            # Medium-term momentum (24h) - LOWERED threshold
-            if momentum_24h > 1.5:
-                momentum_signals.append(1)
-            elif momentum_24h < -1.5:
-                momentum_signals.append(-1)
+            # Bollinger Band position momentum
+            if bb_position < 0.2:
+                momentum_signals.append(1)  # Near lower band = bullish
+            elif bb_position > 0.8:
+                momentum_signals.append(-1)  # Near upper band = bearish
             else:
                 momentum_signals.append(0)
             
-            # ROC momentum
-            if roc_10 > 3.0:
-                momentum_signals.append(1)
-            elif roc_10 < -3.0:
-                momentum_signals.append(-1)
+            # Volume momentum (VOLUME_ROC: positive = increasing volume)
+            if volume_roc > 20:
+                # High volume surge - confirms current trend
+                # Look at other signals to determine direction
+                if sum(momentum_signals) > 0:
+                    momentum_signals.append(1)  # Confirms bullish
+                elif sum(momentum_signals) < 0:
+                    momentum_signals.append(-1)  # Confirms bearish
+            
+            # Williams %R momentum
+            if williams_r > -20:
+                momentum_signals.append(-1)  # Overbought
+            elif williams_r < -80:
+                momentum_signals.append(1)  # Oversold
             else:
                 momentum_signals.append(0)
             
@@ -397,19 +419,18 @@ class LSTMModel:
             agreement = sum(1 for s in momentum_signals if s == np.sign(total_momentum)) if total_momentum != 0 else 0
             
             # LOWERED THRESHOLDS: Even 1 aligned signal is meaningful
-            # Old: required > 1 (2+ signals), now: > 0 (1+ signals)
             if total_momentum > 0:
                 direction = "UP"
-                confidence = min(0.45 + (agreement / len(momentum_signals)) * 0.35, 0.80)
+                confidence = min(0.48 + (agreement / max(len(momentum_signals), 1)) * 0.30, 0.75)
             elif total_momentum < 0:
                 direction = "DOWN"
-                confidence = min(0.45 + (agreement / len(momentum_signals)) * 0.35, 0.80)
+                confidence = min(0.48 + (agreement / max(len(momentum_signals), 1)) * 0.30, 0.75)
             else:
                 direction = "FLAT"
-                confidence = 0.35
+                confidence = 0.40
             
             # Predicted change based on momentum strength
-            predicted_change = total_momentum * 1.5
+            predicted_change = total_momentum * 1.2
             
             return ModelPrediction(
                 model_name="LSTM-Momentum",
@@ -424,7 +445,7 @@ class LSTMModel:
             return ModelPrediction(
                 model_name="LSTM-Momentum",
                 direction="FLAT",
-                confidence=0.3,
+                confidence=0.35,
                 predicted_change_pct=0.0,
                 weight=0.25
             )
@@ -800,8 +821,8 @@ class TransformerModel:
                     weights.append(0.2)
                 # MACD = 0 is neutral, don't add signal
             
-            # Bollinger Band Position
-            bb_pos = features.get("BB_POSITION", None)
+            # Bollinger Band Position (FIXED: feature name is BOLLINGER_POSITION)
+            bb_pos = features.get("BOLLINGER_POSITION", features.get("BB_POSITION", None))
             if bb_pos is not None:
                 if bb_pos < 0.2:  # Near lower band
                     signals.append(1)
