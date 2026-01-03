@@ -8888,7 +8888,9 @@ async def _gather_opus_context(symbol: str) -> dict:
     try:
         from core.intelligence.ghost_brain import get_ghost_brain
         brain = get_ghost_brain()
+        LOGGER.info(f"[OPUS] Calling Ghost Brain for {symbol}...")
         brain_result = await brain.full_analysis(symbol.upper())
+        LOGGER.info(f"[OPUS] Ghost Brain result ok={brain_result.get('ok')}, signal={brain_result.get('overall_signal')}")
         
         if brain_result.get("ok"):
             context["ghost_brain_signal"] = brain_result.get("overall_signal", "UNKNOWN")
@@ -8902,6 +8904,7 @@ async def _gather_opus_context(symbol: str) -> dict:
                 dom = narratives["dominant_narrative"]
                 context["dominant_narrative"] = dom.get("name", "Unknown")
                 context["narrative_sentiment"] = dom.get("sentiment", "Unknown")
+                LOGGER.info(f"[OPUS] Narrative: {context['dominant_narrative']} ({context['narrative_sentiment']})")
             
             # Influencers
             influencers = brain_result.get("influencers", {})
@@ -8910,6 +8913,7 @@ async def _gather_opus_context(symbol: str) -> dict:
                     f"{m.get('influencer', {}).get('name', '?')}: {m.get('sentiment', '?')}"
                     for m in influencers.get("mentions", [])[:3]
                 ]
+                LOGGER.info(f"[OPUS] Influencers: {context['influencer_activity']}")
             
             # Volume from micro signals
             micro = brain_result.get("micro_signals", {})
@@ -8930,9 +8934,11 @@ async def _gather_opus_context(symbol: str) -> dict:
             elif pattern:
                 context["historical_pattern"] = f"{pattern.get('name', 'Unknown')}: {pattern.get('tendency', 'Unknown')}"
             
-            LOGGER.info(f"[OPUS] Ghost Brain: {context['ghost_brain_signal']} ({context['ghost_brain_confidence_adj']:+}%)")
+            LOGGER.info(f"[OPUS] Ghost Brain loaded: {context['ghost_brain_signal']} ({context['ghost_brain_confidence_adj']:+}%), narrative={context['dominant_narrative']}")
+        else:
+            LOGGER.warning(f"[OPUS] Ghost Brain returned ok=False for {symbol}")
     except Exception as e:
-        LOGGER.warning(f"Ghost Brain fetch failed for {symbol}: {e}")
+        LOGGER.error(f"[OPUS] Ghost Brain fetch FAILED for {symbol}: {e}", exc_info=True)
     
     # Get current price
     try:
