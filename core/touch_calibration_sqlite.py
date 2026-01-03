@@ -123,12 +123,16 @@ def calibrate_touch_confidence(
                 band=label,
             )
 
-        # Final fallback: no data; use raw confidence for both tiers (conservative gating happens elsewhere)
+        # Final fallback: no data - BE CONSERVATIVE!
+        # Without calibration data, we can't trust high confidence predictions
+        # Use 0.50 (MONITOR gate) to prevent untested predictions from auto-execution
+        # This ensures new symbols go through proper validation before hitting EXECUTION gate
+        conservative_calibrated = min(raw * 0.6, 0.50)  # Cap at 50% to stay in MONITOR
         return TouchCalibration(
             symbol=sym,
             raw_confidence=raw,
-            calibrated_1pct=raw,
-            calibrated_0_5pct=raw,
+            calibrated_1pct=conservative_calibrated,
+            calibrated_0_5pct=conservative_calibrated,
             sample_size=len(rows),
             band=label,
         )

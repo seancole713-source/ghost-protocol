@@ -1059,15 +1059,19 @@ class EnsemblePredictor:
         # =====================================================================
         # FEAR & GREED INTEGRATION
         # Boost confidence when Fear & Greed aligns with prediction direction
+        # IMPORTANT: Don't boost FLAT predictions - they should stay conservative
         # =====================================================================
         try:
             fng_signal, fng_modifier = get_fear_greed_signal()
             original_confidence = ensemble_result.confidence
             
-            if fng_signal != "NEUTRAL":
+            # Skip boosting for FLAT predictions - FLAT should remain uncertain
+            if ensemble_result.direction == "FLAT":
+                logger.debug(f"[FEAR&GREED] Skipping boost for FLAT prediction")
+            elif fng_signal != "NEUTRAL":
                 if fng_signal == ensemble_result.direction:
                     # Fear & Greed AGREES with prediction - boost confidence
-                    boosted = min(0.95, ensemble_result.confidence * (1 + fng_modifier))
+                    boosted = min(0.85, ensemble_result.confidence * (1 + fng_modifier))  # Cap at 85%, not 95%
                     logger.info(
                         f"[FEAR&GREED] {fng_signal} aligns with {ensemble_result.direction}, "
                         f"confidence {original_confidence:.1%} -> {boosted:.1%}"
@@ -1102,13 +1106,14 @@ class EnsemblePredictor:
         # =====================================================================
         # BTC CORRELATION INTEGRATION
         # Boost/reduce confidence for crypto based on BTC trend alignment
+        # IMPORTANT: Don't boost FLAT predictions
         # =====================================================================
-        if symbol:
+        if symbol and ensemble_result.direction != "FLAT":  # Skip FLAT
             try:
                 btc_multiplier = get_btc_correlation_boost(symbol, ensemble_result.direction)
                 if btc_multiplier != 1.0:
                     original_conf = ensemble_result.confidence
-                    new_conf = min(0.95, max(0.35, ensemble_result.confidence * btc_multiplier))
+                    new_conf = min(0.85, max(0.35, ensemble_result.confidence * btc_multiplier))  # Cap at 85%
                     logger.info(
                         f"[BTC_CORR] {symbol}: confidence {original_conf:.1%} -> {new_conf:.1%} "
                         f"(multiplier: {btc_multiplier:.2f})"
