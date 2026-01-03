@@ -8807,6 +8807,20 @@ async def api_v3_opus_predict(symbol: str):
         signal_conflict = False
         opus_signal = opus_analysis.get("signal", "NEUTRAL")
         tech_direction = technical.get("direction", "FLAT")
+        final_direction = tech_direction  # Start with technical direction
+        direction_overridden = False
+        
+        # Opus Direction Override: When Opus has high conviction, override FLAT
+        opus_adj_value = opus_analysis.get("confidence_adjustment", 0)
+        if tech_direction == "FLAT" and abs(opus_adj_value) >= 20:
+            if opus_signal == "BULLISH" and opus_adj_value >= 20:
+                final_direction = "UP"
+                direction_overridden = True
+                LOGGER.info(f"[OPUS OVERRIDE] {symbol}: FLAT→UP (Opus BULLISH +{opus_adj_value})")
+            elif opus_signal == "BEARISH" and opus_adj_value <= -20:
+                final_direction = "DOWN"
+                direction_overridden = True
+                LOGGER.info(f"[OPUS OVERRIDE] {symbol}: FLAT→DOWN (Opus BEARISH {opus_adj_value})")
         
         if (opus_signal == "BEARISH" and tech_direction == "UP") or \
            (opus_signal == "BULLISH" and tech_direction == "DOWN"):
@@ -8817,8 +8831,10 @@ async def api_v3_opus_predict(symbol: str):
             "ok": True,
             "symbol": symbol.upper(),
             
-            # Technical analysis
-            "direction": tech_direction,
+            # Technical analysis (with potential Opus override)
+            "direction": final_direction,
+            "original_direction": tech_direction if direction_overridden else None,
+            "direction_overridden": direction_overridden,
             "original_confidence": round(original_confidence, 3),
             
             # Claude's analysis
