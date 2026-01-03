@@ -106,11 +106,27 @@ class OpusBrain:
         historical_pattern = context.get("historical_pattern", "Unknown")
         volume_analysis = context.get("volume_analysis", "Unknown")
         
+        # NEW: Ghost Brain intelligence
+        ghost_brain_signal = context.get("ghost_brain_signal", "UNKNOWN")
+        ghost_brain_confidence_adj = context.get("ghost_brain_confidence_adj", 0)
+        dominant_narrative = context.get("dominant_narrative", "Unknown")
+        narrative_sentiment = context.get("narrative_sentiment", "Unknown")
+        influencer_activity = context.get("influencer_activity", [])
+        warnings = context.get("warnings", [])
+        positives = context.get("positives", [])
+        
         # Format news
         news_text = "\n".join([f"- {h}" for h in news_headlines[:10]]) if news_headlines else "No recent news available"
         
         # Format events
         events_text = "\n".join([f"- {e}" for e in upcoming_events[:5]]) if upcoming_events else "No upcoming events detected"
+        
+        # Format influencers
+        influencer_text = "\n".join([f"  - {i}" for i in influencer_activity]) if influencer_activity else "No notable influencer activity"
+        
+        # Format warnings/positives
+        warnings_text = "\n".join([f"  ⚠️ {w}" for w in warnings]) if warnings else "None"
+        positives_text = "\n".join([f"  ✅ {p}" for p in positives]) if positives else "None"
         
         prompt = f"""You are Ghost's brain - an expert market analyst AI. Analyze this trading opportunity.
 
@@ -121,6 +137,20 @@ class OpusBrain:
 - 24h Change: {price_change_24h}%
 - Technical Signal: {technical_signal} ({technical_confidence}% confidence)
 - Volume: {volume_analysis}
+
+## 🧠 GHOST BRAIN INTELLIGENCE:
+- Overall Signal: {ghost_brain_signal}
+- Confidence Adjustment: {ghost_brain_confidence_adj:+}%
+- Dominant Narrative: {dominant_narrative} ({narrative_sentiment})
+
+### Key Positives:
+{positives_text}
+
+### Warnings:
+{warnings_text}
+
+### Influencer Activity:
+{influencer_text}
 
 ## RECENT NEWS:
 {news_text}

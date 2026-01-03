@@ -8867,7 +8867,15 @@ async def _gather_opus_context(symbol: str) -> dict:
         "social_sentiment": "Unknown",
         "upcoming_events": [],
         "historical_pattern": "Unknown",
-        "volume_analysis": "Unknown"
+        "volume_analysis": "Unknown",
+        # NEW: Ghost Brain intelligence
+        "ghost_brain_signal": "UNKNOWN",
+        "ghost_brain_confidence_adj": 0,
+        "dominant_narrative": "Unknown",
+        "narrative_sentiment": "Unknown",
+        "influencer_activity": [],
+        "warnings": [],
+        "positives": [],
     }
     
     # Determine if crypto
@@ -8875,6 +8883,56 @@ async def _gather_opus_context(symbol: str) -> dict:
                      "LINK", "AVAX", "MATIC", "BCH", "LTC", "ZEC", "METIS", 
                      "LRC", "CHZ", "NEAR", "APT", "ARB"}
     is_crypto = symbol.upper() in crypto_symbols
+    
+    # === NEW: Get Ghost Brain intelligence first ===
+    try:
+        from core.intelligence.ghost_brain import get_ghost_brain
+        brain = get_ghost_brain()
+        brain_result = await brain.analyze(symbol.upper(), is_crypto)
+        
+        if brain_result.get("ok"):
+            context["ghost_brain_signal"] = brain_result.get("overall_signal", "UNKNOWN")
+            context["ghost_brain_confidence_adj"] = brain_result.get("confidence_adjustment", 0)
+            context["warnings"] = brain_result.get("warnings", [])
+            context["positives"] = brain_result.get("positives", [])
+            
+            # Narratives
+            narratives = brain_result.get("narratives", {})
+            if narratives.get("dominant_narrative"):
+                dom = narratives["dominant_narrative"]
+                context["dominant_narrative"] = dom.get("name", "Unknown")
+                context["narrative_sentiment"] = dom.get("sentiment", "Unknown")
+            
+            # Influencers
+            influencers = brain_result.get("influencers", {})
+            if influencers.get("mentions"):
+                context["influencer_activity"] = [
+                    f"{m.get('influencer', {}).get('name', '?')}: {m.get('sentiment', '?')}"
+                    for m in influencers.get("mentions", [])[:3]
+                ]
+            
+            # Volume from micro signals
+            micro = brain_result.get("micro_signals", {})
+            vol = micro.get("signals", {}).get("volume", {})
+            if vol.get("has_data"):
+                metrics = vol.get("metrics", {})
+                ratio = metrics.get("volume_ratio", 1)
+                trend = metrics.get("volume_trend", "FLAT")
+                price_trend = metrics.get("price_trend", "FLAT")
+                context["volume_analysis"] = f"{ratio:.1f}x average, volume {trend}, price {price_trend}"
+            
+            # Seasonal
+            seasonal = brain_result.get("seasonal", {})
+            special = seasonal.get("special_period", {})
+            pattern = seasonal.get("pattern", {})
+            if special:
+                context["historical_pattern"] = f"{special.get('name', 'Unknown')}: {special.get('tendency', 'Unknown')}"
+            elif pattern:
+                context["historical_pattern"] = f"{pattern.get('name', 'Unknown')}: {pattern.get('tendency', 'Unknown')}"
+            
+            LOGGER.info(f"[OPUS] Ghost Brain: {context['ghost_brain_signal']} ({context['ghost_brain_confidence_adj']:+}%)")
+    except Exception as e:
+        LOGGER.warning(f"Ghost Brain fetch failed for {symbol}: {e}")
     
     # Get current price
     try:
