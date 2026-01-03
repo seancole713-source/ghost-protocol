@@ -1276,15 +1276,12 @@ class GhostNotificationSystem:
         
         # Send target/stop alerts immediately (HIGHEST PRIORITY)
         if alerts:
-            msg = format_alert_message(alerts)
-            self.send_telegram(msg)
-            LOGGER.info(f"[NOTIFICATIONS] Sent {len(alerts)} target/stop alerts")
-            
-            # Update status in DB - MUST update PostgreSQL (primary) to prevent repeat alerts!
+            # CRITICAL: Update status BEFORE sending to prevent duplicate alerts
+            # If send fails, we lose the alert but don't spam users
             for a in alerts:
                 status = "target_hit" if a['type'] == 'target_hit' else 'stop_hit'
                 
-                # Update PostgreSQL (persistent, primary)
+                # Update PostgreSQL FIRST (persistent, primary)
                 if self._use_postgres:
                     try:
                         conn = self._get_postgres_conn()
@@ -1296,9 +1293,11 @@ class GhostNotificationSystem:
                         conn.commit()
                         cur.close()
                         conn.close()
-                        LOGGER.info(f"[TRACKING] ✅ Updated {a['symbol']} to {status} in PostgreSQL")
+                        LOGGER.info(f"[TRACKING] ✅ Updated {a['symbol']} to {status} in PostgreSQL (BEFORE alert)")
                     except Exception as e:
                         LOGGER.error(f"[TRACKING] ❌ Failed to update PostgreSQL for {a['symbol']}: {e}")
+                        # DON'T send alert if we couldn't update status - prevents duplicates
+                        continue
                 
                 # Also update SQLite (fallback)
                 try:
@@ -1309,6 +1308,11 @@ class GhostNotificationSystem:
                     sqlite_conn.close()
                 except Exception as e:
                     LOGGER.debug(f"SQLite update failed for {a['symbol']}: {e}")
+            
+            # NOW send the alert (after status is updated)
+            msg = format_alert_message(alerts)
+            self.send_telegram(msg)
+            LOGGER.info(f"[NOTIFICATIONS] Sent {len(alerts)} target/stop alerts")
         
         # Send OFF PATH alerts immediately (separate for stocks vs crypto)
         if off_path_stocks:
