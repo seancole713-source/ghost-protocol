@@ -643,33 +643,52 @@ class XGBoostModel:
                 prob_down = float(proba[0])  # Class 0 = DOWN
                 prob_up = float(proba[1])    # Class 1 = UP
                 
-                # BIAS CORRECTION: Model trained on more DOWN than UP samples
-                # Training data: 2016 DOWN vs 1865 UP (52% vs 48%)
-                # Apply correction to account for class imbalance
-                bias_correction = 0.04  # 4% correction to favor UP slightly
-                prob_up_corrected = prob_up + bias_correction
-                prob_down_corrected = prob_down - bias_correction
+                # AGGRESSIVE BIAS CORRECTION
+                # The XGBoost v2 model was trained on bear market data and has severe DOWN bias
+                # When the model says 95% DOWN, it's really more like 60% DOWN
+                # Apply logistic compression to reduce extreme confidence
+                import math
                 
-                # Renormalize
-                total = prob_up_corrected + prob_down_corrected
-                prob_up_corrected = prob_up_corrected / total
-                prob_down_corrected = prob_down_corrected / total
+                def compress_probability(p: float, center: float = 0.5, strength: float = 2.0) -> float:
+                    """Compress extreme probabilities toward center"""
+                    if p <= 0.01:
+                        return 0.1
+                    if p >= 0.99:
+                        return 0.9
+                    # Logit transform, compress, then back to probability
+                    logit = math.log(p / (1 - p))
+                    compressed_logit = logit / strength
+                    compressed = 1 / (1 + math.exp(-compressed_logit))
+                    # Blend with center
+                    return center + (compressed - center) * 0.8
                 
-                # CONVICTION THRESHOLD: Require 55%+ to make directional call
-                # If probabilities are close (45-55%), call it FLAT
-                conviction_threshold = 0.55
+                prob_up_calibrated = compress_probability(prob_up)
+                prob_down_calibrated = compress_probability(prob_down)
                 
-                if prob_up_corrected >= conviction_threshold:
+                # Normalize
+                total = prob_up_calibrated + prob_down_calibrated
+                prob_up_calibrated = prob_up_calibrated / total
+                prob_down_calibrated = prob_down_calibrated / total
+                
+                # Log the calibration for debugging
+                logger.info(
+                    f"🤖 XGBoost {self.model_version} for {features.get('symbol', '?')}: "
+                    f"Raw={prob_up:.1%}/{prob_down:.1%} → Calibrated={prob_up_calibrated:.1%}/{prob_down_calibrated:.1%}"
+                )
+                
+                # CONVICTION THRESHOLD: Require 57%+ to make directional call
+                conviction_threshold = 0.57
+                
+                if prob_up_calibrated >= conviction_threshold:
                     direction = "UP"
-                    confidence = prob_up_corrected
-                elif prob_down_corrected >= conviction_threshold:
+                    confidence = prob_up_calibrated
+                elif prob_down_calibrated >= conviction_threshold:
                     direction = "DOWN"
-                    confidence = prob_down_corrected
+                    confidence = prob_down_calibrated
                 else:
                     # Not enough conviction - FLAT
                     direction = "FLAT"
-                    confidence = max(prob_up_corrected, prob_down_corrected)
-                    logger.info(f"🤖 XGBoost {self.model_version}: FLAT (UP={prob_up_corrected:.1%}, DOWN={prob_down_corrected:.1%} - no conviction)")
+                    confidence = max(prob_up_calibrated, prob_down_calibrated)
                 
                 # Scale predicted change based on confidence
                 if direction == "UP":
@@ -679,14 +698,12 @@ class XGBoostModel:
                 else:
                     predicted_change = 0.0
                 
-                logger.debug(f"🤖 XGBoost {self.model_version}: {direction} @ {confidence:.1%} (raw: UP={prob_up:.1%}, DOWN={prob_down:.1%})")
-                
                 return ModelPrediction(
                     model_name=f"XGBoost-{self.model_version}",
                     direction=direction,
                     confidence=confidence,
                     predicted_change_pct=predicted_change,
-                    weight=0.7 if self.model_version == "v2" else 0.6  # v2 gets higher weight
+                    weight=0.7 if self.model_version == "v2" else 0.6
                 )
             else:
                 # Fallback to feature-based prediction if model not loaded
