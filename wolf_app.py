@@ -7426,10 +7426,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         from core.ensemble_predictor import get_ensemble_predictor
         
         ensemble = get_ensemble_predictor()
-        ensemble_prediction = ensemble.predict(features, method="confidence_weighted")
+        ensemble_prediction = ensemble.predict(features, method="confidence_weighted", symbol=symbol)
         
-        # Use ensemble direction if confidence is high
-        if ensemble_prediction.confidence > 0.55:
+        # Use ensemble direction if confidence is moderate (lowered from 0.55 to enable regime override)
+        if ensemble_prediction.confidence > 0.45:
             direction = ensemble_prediction.direction
             LOGGER.info(
                 f"[{symbol}] 🤖 Ensemble override: {direction} "
