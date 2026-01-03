@@ -1010,14 +1010,34 @@ class EnsemblePredictor:
                         predictions[i] = reduced
                         
             elif down_count >= 2:
-                logger.info(f"[REGIME_OVERRIDE] MODEL CONSENSUS: {down_count}/3 models say DOWN - boosting DOWN weight")
-                for i, pred in enumerate(predictions):
-                    if pred.direction == "DOWN":
-                        boosted = ModelPrediction(
-                            model_name=pred.model_name,
-                            direction=pred.direction,
-                            confidence=min(0.85, pred.confidence * 1.2),
-                            predicted_change_pct=pred.predicted_change_pct,
+                # FEAR MARKET OVERRIDE: Don't trust DOWN consensus in FEAR territory
+                # Historical data shows buying in fear beats selling in fear
+                if fng < 35:
+                    logger.warning(
+                        f"[REGIME_OVERRIDE] DOWN consensus ({down_count}/3) in FEAR market (FNG={fng})! "
+                        f"Converting to FLAT - don't short during fear."
+                    )
+                    for i, pred in enumerate(predictions):
+                        if pred.direction == "DOWN":
+                            # Convert DOWN to FLAT with reduced confidence
+                            reduced = ModelPrediction(
+                                model_name=pred.model_name,
+                                direction="FLAT",
+                                confidence=pred.confidence * 0.6,
+                                predicted_change_pct=0.0,
+                                weight=pred.weight * 0.5
+                            )
+                            predictions[i] = reduced
+                else:
+                    # Not in fear - trust DOWN consensus
+                    logger.info(f"[REGIME_OVERRIDE] MODEL CONSENSUS: {down_count}/3 models say DOWN - boosting DOWN weight")
+                    for i, pred in enumerate(predictions):
+                        if pred.direction == "DOWN":
+                            boosted = ModelPrediction(
+                                model_name=pred.model_name,
+                                direction=pred.direction,
+                                confidence=min(0.85, pred.confidence * 1.2),
+                                predicted_change_pct=pred.predicted_change_pct,
                             weight=pred.weight * 1.5
                         )
                         predictions[i] = boosted
