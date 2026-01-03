@@ -1214,9 +1214,16 @@ class EnsemblePredictor:
         if direction == "FLAT":
             confidence = min(confidence, 0.55)
         
+        # IMPORTANT: Vote share != probability
+        # Even with 100% model agreement, we should NOT claim 100% confidence
+        # Cap directional predictions at 75% - markets are inherently uncertain
+        # Individual model confidences already factor in their certainty
+        avg_model_conf = sum(p.confidence for p in predictions if p.direction == direction) / max(1, len([p for p in predictions if p.direction == direction]))
+        confidence = min(confidence, avg_model_conf, 0.75)
+        
         return EnsemblePrediction(
             direction=direction,
-            confidence=min(confidence, 0.99),
+            confidence=min(confidence, 0.75),  # Hard cap at 75% - no prediction is ever "certain"
             predicted_change_pct=predicted_change,
             individual_predictions=predictions,
             model_weights=adaptive_weights,
