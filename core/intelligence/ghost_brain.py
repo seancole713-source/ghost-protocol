@@ -114,6 +114,7 @@ class GhostBrain:
         logger.info(f"[BRAIN] Completed {symbol} in {duration_ms:.0f}ms - Signal: {overall_signal}")
         
         return {
+            "ok": True,  # Required for _gather_opus_context to use this data
             "symbol": symbol,
             "is_crypto": is_crypto,
             "timestamp": datetime.now().isoformat(),
