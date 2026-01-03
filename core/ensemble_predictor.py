@@ -1182,6 +1182,11 @@ class EnsemblePredictor:
         confidence = weighted_votes[direction] / total_weight if total_weight > 0 else 0.5
         predicted_change = weighted_change / total_weight if total_weight > 0 else 0.0
         
+        # FLAT predictions should NOT have high confidence - "uncertain" with 95% confidence is nonsense
+        # Cap FLAT confidence at 55% (slightly above random) since FLAT = "we don't have a strong signal"
+        if direction == "FLAT":
+            confidence = min(confidence, 0.55)
+        
         return EnsemblePrediction(
             direction=direction,
             confidence=min(confidence, 0.99),
@@ -1206,6 +1211,10 @@ class EnsemblePredictor:
         direction = max(votes, key=votes.get)
         confidence = votes[direction] / sum(votes.values())
         
+        # FLAT predictions should NOT have high confidence - cap at 55%
+        if direction == "FLAT":
+            confidence = min(confidence, 0.55)
+        
         # Average predicted change from models agreeing with final direction
         agreeing_changes = [
             p.predicted_change_pct for p in predictions if p.direction == direction
@@ -1214,7 +1223,7 @@ class EnsemblePredictor:
         
         return EnsemblePrediction(
             direction=direction,
-            confidence=min(confidence, 0.95),
+            confidence=min(confidence, 0.85),  # Lowered from 0.95 - ensemble should be conservative
             predicted_change_pct=predicted_change,
             individual_predictions=predictions,
             model_weights=adaptive_weights,
@@ -1245,9 +1254,13 @@ class EnsemblePredictor:
         direction = max(weighted_votes, key=weighted_votes.get)
         confidence = weighted_votes[direction]
         
+        # FLAT predictions should NOT have high confidence - cap at 55%
+        if direction == "FLAT":
+            confidence = min(confidence, 0.55)
+        
         return EnsemblePrediction(
             direction=direction,
-            confidence=min(confidence, 0.98),
+            confidence=min(confidence, 0.85),  # Lowered from 0.98 - ensemble should be conservative
             predicted_change_pct=weighted_change,
             individual_predictions=predictions,
             model_weights=adaptive_weights,
