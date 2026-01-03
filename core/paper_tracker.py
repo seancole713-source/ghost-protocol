@@ -46,6 +46,47 @@ class PaperTracker:
         import psycopg2
         return psycopg2.connect(DATABASE_URL)
     
+    def _get_connection(self):
+        """Get database connection (PostgreSQL or SQLite)"""
+        if self.use_postgres:
+            return self._get_postgres_connection()
+        else:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+    
+    def _execute(self, conn, query: str, params: tuple = ()):
+        """Execute query with proper placeholder substitution for PostgreSQL"""
+        if self.use_postgres:
+            # PostgreSQL uses %s placeholders
+            query = query.replace("?", "%s")
+            cur = conn.cursor()
+            cur.execute(query, params)
+            return cur
+        else:
+            return conn.execute(query, params)
+    
+    def _fetchone(self, cur):
+        """Fetch one row as dict"""
+        if self.use_postgres:
+            row = cur.fetchone()
+            if row is None:
+                return None
+            columns = [desc[0] for desc in cur.description]
+            return dict(zip(columns, row))
+        else:
+            row = cur.fetchone()
+            return dict(row) if row else None
+    
+    def _fetchall(self, cur) -> list:
+        """Fetch all rows as list of dicts"""
+        if self.use_postgres:
+            rows = cur.fetchall()
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in rows]
+        else:
+            return [dict(row) for row in cur.fetchall()]
+    
     def _ensure_table(self):
         """Create paper_trades table if not exists"""
         try:
@@ -215,19 +256,18 @@ class PaperTracker:
                 "profit_loss_pct": float
             }
         """
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = self._get_connection()
         
         try:
-            row = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT * FROM paper_trades
                 WHERE paper_trade_id = ?
-            """, (paper_trade_id,)).fetchone()
+            """, (paper_trade_id,))
             
-            if not row:
+            trade = self._fetchone(cur)
+            
+            if not trade:
                 return {"resolved": False, "error": "Trade not found"}
-            
-            trade = dict(row)
             
             # Already resolved?
             if trade["outcome"] != "PENDING":
@@ -308,7 +348,7 @@ class PaperTracker:
             # Update trade
             checked_at = now.isoformat()
             
-            conn.execute("""
+            self._execute(conn, """
                 UPDATE paper_trades
                 SET target_price = ?,
                     actual_direction = ?,
@@ -358,22 +398,22 @@ class PaperTracker:
         Returns:
             List of resolved trades
         """
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = self._get_connection()
         
         try:
-            rows = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT paper_trade_id, symbol, target_time
                 FROM paper_trades
                 WHERE outcome = 'PENDING'
                 ORDER BY target_time ASC
-            """).fetchall()
+            """)
+            
+            rows = self._fetchall(cur)
             
             resolved = []
             now = datetime.utcnow()
             
-            for row in rows:
-                trade = dict(row)
+            for trade in rows:
                 target_time = datetime.fromisoformat(trade["target_time"])
                 
                 # Target time reached?
@@ -411,8 +451,7 @@ class PaperTracker:
         limit: int = 50
     ) -> list:
         """Get paper trades with filters"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = self._get_connection()
         
         try:
             query = "SELECT * FROM paper_trades WHERE 1=1"
@@ -434,9 +473,8 @@ class PaperTracker:
             query += " ORDER BY created_at DESC LIMIT ?"
             params.append(limit)
             
-            rows = conn.execute(query, params).fetchall()
-            
-            return [dict(row) for row in rows]
+            cur = self._execute(conn, query, tuple(params))
+            return self._fetchall(cur)
         
         finally:
             conn.close()
@@ -462,97 +500,109 @@ class PaperTracker:
                 "accuracy_by_symbol": {...}
             }
         """
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = self._get_connection()
         
         try:
             cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
             
             # Overall stats
-            total = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT COUNT(*) as count FROM paper_trades
                 WHERE created_at >= ?
-            """, (cutoff,)).fetchone()["count"]
+            """, (cutoff,))
+            total = self._fetchone(cur)["count"]
             
-            resolved = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT COUNT(*) as count FROM paper_trades
                 WHERE created_at >= ? AND outcome != 'PENDING'
-            """, (cutoff,)).fetchone()["count"]
+            """, (cutoff,))
+            resolved = self._fetchone(cur)["count"]
             
             pending = total - resolved
             
             # Outcome counts
-            wins = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT COUNT(*) as count FROM paper_trades
                 WHERE created_at >= ? AND outcome = 'WIN'
-            """, (cutoff,)).fetchone()["count"]
+            """, (cutoff,))
+            wins = self._fetchone(cur)["count"]
             
-            losses = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT COUNT(*) as count FROM paper_trades
                 WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED')
-            """, (cutoff,)).fetchone()["count"]
+            """, (cutoff,))
+            losses = self._fetchone(cur)["count"]
             
-            stopped = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT COUNT(*) as count FROM paper_trades
                 WHERE created_at >= ? AND outcome = 'STOPPED'
-            """, (cutoff,)).fetchone()["count"]
+            """, (cutoff,))
+            stopped = self._fetchone(cur)["count"]
             
             win_rate = wins / resolved if resolved > 0 else 0.0
             
             # P&L stats
-            pnl_rows = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT profit_loss FROM paper_trades
                 WHERE created_at >= ? AND profit_loss IS NOT NULL
-            """, (cutoff,)).fetchall()
+            """, (cutoff,))
+            pnl_rows = self._fetchall(cur)
             
             total_pnl = sum(row["profit_loss"] for row in pnl_rows)
             
-            win_trades = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT profit_loss FROM paper_trades
                 WHERE created_at >= ? AND outcome = 'WIN'
-            """, (cutoff,)).fetchall()
+            """, (cutoff,))
+            win_trades = self._fetchall(cur)
             
-            loss_trades = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT profit_loss FROM paper_trades
                 WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED')
-            """, (cutoff,)).fetchall()
+            """, (cutoff,))
+            loss_trades = self._fetchall(cur)
             
             avg_win = sum(t["profit_loss"] for t in win_trades) / len(win_trades) if win_trades else 0.0
             avg_loss = sum(t["profit_loss"] for t in loss_trades) / len(loss_trades) if loss_trades else 0.0
             
             # Best/worst trades
-            best = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT * FROM paper_trades
                 WHERE created_at >= ? AND profit_loss IS NOT NULL
                 ORDER BY profit_loss DESC LIMIT 1
-            """, (cutoff,)).fetchone()
+            """, (cutoff,))
+            best = self._fetchone(cur)
             
-            worst = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT * FROM paper_trades
                 WHERE created_at >= ? AND profit_loss IS NOT NULL
                 ORDER BY profit_loss ASC LIMIT 1
-            """, (cutoff,)).fetchone()
+            """, (cutoff,))
+            worst = self._fetchone(cur)
             
             # Accuracy by symbol
-            symbols = conn.execute("""
+            cur = self._execute(conn, """
                 SELECT DISTINCT symbol FROM paper_trades
                 WHERE created_at >= ?
-            """, (cutoff,)).fetchall()
+            """, (cutoff,))
+            symbols = self._fetchall(cur)
             
             accuracy_by_symbol = {}
             
             for sym_row in symbols:
                 symbol = sym_row["symbol"]
                 
-                sym_resolved = conn.execute("""
+                cur = self._execute(conn, """
                     SELECT COUNT(*) as count FROM paper_trades
                     WHERE created_at >= ? AND symbol = ? AND outcome != 'PENDING'
-                """, (cutoff, symbol)).fetchone()["count"]
+                """, (cutoff, symbol))
+                sym_resolved = self._fetchone(cur)["count"]
                 
-                sym_wins = conn.execute("""
+                cur = self._execute(conn, """
                     SELECT COUNT(*) as count FROM paper_trades
                     WHERE created_at >= ? AND symbol = ? AND outcome = 'WIN'
-                """, (cutoff, symbol)).fetchone()["count"]
+                """, (cutoff, symbol))
+                sym_wins = self._fetchone(cur)["count"]
                 
                 sym_win_rate = sym_wins / sym_resolved if sym_resolved > 0 else 0.0
                 
@@ -573,8 +623,8 @@ class PaperTracker:
                 "total_pnl": total_pnl,
                 "avg_win": avg_win,
                 "avg_loss": avg_loss,
-                "best_trade": dict(best) if best else None,
-                "worst_trade": dict(worst) if worst else None,
+                "best_trade": best,
+                "worst_trade": worst,
                 "accuracy_by_symbol": accuracy_by_symbol
             }
         
