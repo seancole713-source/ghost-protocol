@@ -36476,7 +36476,9 @@ try:
             
             return {
                 "ok": True,
-                "stats": stats
+                "stats": stats,
+                "use_postgres": tracker.use_postgres,
+                "db_path": tracker.db_path
             }
         
         except Exception as e:
