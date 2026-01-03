@@ -785,15 +785,16 @@ class TransformerModel:
                     signals.append(0)
                     weights.append(0.1)
             
-            # MACD Signal
+            # MACD Signal - only bearish if clearly negative
             macd = features.get("MACD_HISTOGRAM", features.get("macd", None))
-            if macd is not None:
+            if macd is not None and macd != 0:  # Need actual MACD value
                 if macd > 0:
                     signals.append(1)
                     weights.append(0.2)
-                else:
+                elif macd < 0:  # Only bearish if MACD is negative
                     signals.append(-1)
                     weights.append(0.2)
+                # MACD = 0 is neutral, don't add signal
             
             # Bollinger Band Position
             bb_pos = features.get("BB_POSITION", None)
@@ -832,14 +833,15 @@ class TransformerModel:
                 total_weight = sum(weights)
                 weighted_signal = sum(s * w for s, w in zip(signals, weights)) / total_weight if total_weight > 0 else 0
                 
-                if weighted_signal > 0.2:
+                # Require stronger conviction for directional call (was 0.2)
+                if weighted_signal > 0.3:
                     direction = "UP"
                     confidence = min(0.45 + abs(weighted_signal) * 0.4, 0.80)
-                elif weighted_signal < -0.2:
+                elif weighted_signal < -0.3:
                     direction = "DOWN"
                     confidence = min(0.45 + abs(weighted_signal) * 0.4, 0.80)
                 else:
-                    direction = "FLAT"
+                    direction = "FLAT"  # Most cases should be FLAT
                     confidence = 0.35
                 
                 predicted_change = weighted_signal * 5
