@@ -8888,7 +8888,7 @@ async def _gather_opus_context(symbol: str) -> dict:
     try:
         from core.intelligence.ghost_brain import get_ghost_brain
         brain = get_ghost_brain()
-        brain_result = await brain.analyze(symbol.upper(), is_crypto)
+        brain_result = await brain.full_analysis(symbol.upper())
         
         if brain_result.get("ok"):
             context["ghost_brain_signal"] = brain_result.get("overall_signal", "UNKNOWN")
