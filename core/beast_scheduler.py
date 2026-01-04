@@ -264,6 +264,46 @@ def _run_crypto_predictions(horizon: str):
         time.sleep(0.5)  # Rate limit
 
 
+def _run_news_analysis():
+    """Run AI news analysis and cross-reference with predictions"""
+    try:
+        from core.intelligence.ghost_news_brain import get_news_brain
+        from core.paper_tracker import get_paper_tracker
+        
+        # Get pending predictions for context
+        tracker = get_paper_tracker()
+        trades = tracker.get_trades(days=2, outcome="PENDING")
+        
+        # Format for news brain
+        pending = []
+        for t in trades[:50]:  # Limit to 50
+            pending.append({
+                "symbol": t.get("symbol", "?"),
+                "direction": t.get("direction", "?"),
+                "confidence": t.get("confidence", 0),
+                "entry_price": t.get("entry_price", 0),
+            })
+        
+        # Get telegram sender if available
+        send_telegram = None
+        if TELEGRAM_ALERTS_MODULE:
+            try:
+                send_telegram = TELEGRAM_ALERTS_MODULE.send_telegram_message
+            except:
+                pass
+        
+        # Run analysis
+        brain = get_news_brain(send_telegram)
+        result = brain.analyze_news(pending)
+        
+        if LOGGER:
+            events_count = len(result.get("major_events", []))
+            risk_count = len(result.get("predictions_at_risk", []))
+            LOGGER.info(f"🧠 News analysis complete: {events_count} events, {risk_count} predictions at risk")
+            
+    except Exception as e:
+        if LOGGER:
+            LOGGER.error(f"News analysis failed: {e}")
 def _check_schedule():
     """
     Check if it's time to run predictions
@@ -325,6 +365,14 @@ def _check_schedule():
             LOGGER.info(f"₿ Running {hour:02d}:00 crypto predictions")
         _run_crypto_predictions("SHORT")
         _run_crypto_predictions("LONG")
+        time.sleep(60)
+        return
+    
+    # News Brain schedule: 6 AM and 6 PM CT
+    if minute == 0 and hour in [6, 18]:
+        if LOGGER:
+            LOGGER.info(f"🧠 Running News Brain analysis at {hour:02d}:00 CT")
+        _run_news_analysis()
         time.sleep(60)
         return
 

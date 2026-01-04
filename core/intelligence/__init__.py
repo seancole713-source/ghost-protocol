@@ -11,6 +11,11 @@ from .opus_brain import (
     opus_compare,
     get_opus_brain
 )
+from .ghost_news_brain import (
+    GhostNewsBrain,
+    get_news_brain,
+    analyze_breaking_news,
+)
 
 __all__ = [
     "analyze_with_intelligence",
@@ -20,4 +25,7 @@ __all__ = [
     "opus_explain",
     "opus_compare",
     "get_opus_brain",
+    "GhostNewsBrain",
+    "get_news_brain",
+    "analyze_breaking_news",
 ]
