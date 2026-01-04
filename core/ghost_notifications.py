@@ -73,42 +73,58 @@ TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
 
 def calibrate_display_confidence(raw_confidence: float) -> float:
     """
-    Calibrate model confidence for honest display.
+    Calibrate model confidence for honest display using LINEAR INTERPOLATION.
     
-    Model tends to output 85-95% but actual accuracy is 55-70%.
-    This function transforms raw confidence to realistic values.
+    Model tends to output 70-95% but actual accuracy is 52-68%.
+    This function smoothly transforms raw confidence to realistic values.
     
     Args:
         raw_confidence: Model's raw confidence (0.0-1.0)
     
     Returns:
         Calibrated confidence for display (0.0-1.0)
-    """
-    # Calibration mapping based on actual observed accuracy:
-    # Raw 95% -> Display 68% (actual accuracy ~68%)
-    # Raw 90% -> Display 65%
-    # Raw 85% -> Display 62%
-    # Raw 80% -> Display 58%
-    # Raw 75% -> Display 55%
-    # Raw 70% -> Display 52%
     
-    if raw_confidence >= 0.95:
-        return 0.68
-    elif raw_confidence >= 0.90:
-        return 0.65
-    elif raw_confidence >= 0.85:
-        return 0.62
-    elif raw_confidence >= 0.80:
-        return 0.58
-    elif raw_confidence >= 0.75:
-        return 0.55
-    elif raw_confidence >= 0.70:
-        return 0.52
-    elif raw_confidence >= 0.60:
-        return 0.50
-    else:
-        # Low confidence stays low
+    Calibration curve (linear interpolation between points):
+        Raw 95%+ -> Display 68%
+        Raw 90%  -> Display 65%
+        Raw 85%  -> Display 62%
+        Raw 80%  -> Display 58%
+        Raw 75%  -> Display 55%
+        Raw 70%  -> Display 52%
+        Raw 60%  -> Display 50%
+        Below 60% -> Display = raw * 0.8
+    """
+    # Calibration points: (raw, display)
+    calibration_points = [
+        (0.95, 0.68),
+        (0.90, 0.65),
+        (0.85, 0.62),
+        (0.80, 0.58),
+        (0.75, 0.55),
+        (0.70, 0.52),
+        (0.60, 0.50),
+    ]
+    
+    # Above highest point
+    if raw_confidence >= calibration_points[0][0]:
+        return calibration_points[0][1]
+    
+    # Below lowest calibration point - use simple scaling
+    if raw_confidence < calibration_points[-1][0]:
         return raw_confidence * 0.8
+    
+    # Linear interpolation between calibration points
+    for i in range(len(calibration_points) - 1):
+        high_raw, high_display = calibration_points[i]
+        low_raw, low_display = calibration_points[i + 1]
+        
+        if low_raw <= raw_confidence < high_raw:
+            # Interpolate: display = low_display + (raw - low_raw) / (high_raw - low_raw) * (high_display - low_display)
+            ratio = (raw_confidence - low_raw) / (high_raw - low_raw)
+            return low_display + ratio * (high_display - low_display)
+    
+    # Fallback (should not reach here)
+    return raw_confidence * 0.8
 
 
 # ============================================================================
@@ -1319,13 +1335,28 @@ class GhostNotificationSystem:
         ct = get_central_time()
         today = ct.strftime("%Y-%m-%d")
         
-        # Filter out symbols we already alerted today
+        # First, deduplicate the off_path lists by symbol (keep first occurrence)
+        seen_symbols_stocks = set()
+        deduped_off_path_stocks = []
+        for p in off_path_stocks:
+            if p['symbol'] not in seen_symbols_stocks:
+                seen_symbols_stocks.add(p['symbol'])
+                deduped_off_path_stocks.append(p)
+        
+        seen_symbols_crypto = set()
+        deduped_off_path_crypto = []
+        for p in off_path_crypto:
+            if p['symbol'] not in seen_symbols_crypto:
+                seen_symbols_crypto.add(p['symbol'])
+                deduped_off_path_crypto.append(p)
+        
+        # Then filter out symbols we already alerted today
         new_off_path_stocks = [
-            p for p in off_path_stocks 
+            p for p in deduped_off_path_stocks 
             if self._last_off_path_alerts.get(p['symbol']) != today
         ]
         new_off_path_crypto = [
-            p for p in off_path_crypto 
+            p for p in deduped_off_path_crypto 
             if self._last_off_path_alerts.get(p['symbol']) != today
         ]
         
