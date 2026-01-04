@@ -36494,45 +36494,34 @@ except Exception as e:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# NEWS BRAIN - AI-Powered News Analysis
+# NEWS BRAIN - AI-Powered News Analysis (v2 with real news feeds)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 try:
     from core.intelligence.ghost_news_brain import get_news_brain
-    from core.paper_tracker import get_paper_tracker
 
     @APP.get("/api/v3/news/analyze")
     async def api_v3_news_analyze():
         """
         Run AI news analysis NOW.
         
-        Cross-references breaking news with Ghost's pending predictions.
-        Alerts if any predictions may be wrong due to news.
+        Fetches real news from CryptoPanic + Reuters RSS,
+        sends to Claude for analysis against pending predictions.
         
         Usage:
             GET /api/v3/news/analyze
         """
         try:
-            # Get pending predictions for context
-            tracker = get_paper_tracker()
-            trades = tracker.get_trades(days=2, outcome="PENDING")
-            
-            # Format for news brain
-            pending = []
-            for t in trades[:50]:  # Limit to 50
-                pending.append({
-                    "symbol": t.get("symbol", "?"),
-                    "direction": t.get("direction", "?"),
-                    "confidence": t.get("confidence", 0),
-                    "entry_price": t.get("entry_price", 0),
-                })
-            
-            # Run analysis
             brain = get_news_brain()
-            result = brain.analyze_news(pending)
+            # analyze_news is now async
+            result = await brain.analyze_news()
+            
+            # Send alert if action required
+            if result.get("action_required"):
+                await brain.send_alert(result)
             
             return {
-                "ok": result.get("status") == "success",
+                "ok": result.get("ok", False),
                 **result
             }
         
@@ -36546,7 +36535,7 @@ try:
     @APP.get("/api/v3/news/history")
     async def api_v3_news_history(limit: int = 10):
         """
-        Get news analysis history.
+        Get news analysis history from database.
         
         Usage:
             GET /api/v3/news/history?limit=10
@@ -36571,7 +36560,7 @@ try:
     @APP.get("/api/v3/news/status")
     async def api_v3_news_status():
         """
-        Get news brain status.
+        Get news brain status - shows configured sources.
         
         Usage:
             GET /api/v3/news/status
@@ -36590,7 +36579,32 @@ try:
                 "error": str(e)
             }
 
-    LOGGER.info("✅ News Brain API endpoints registered (/api/v3/news/*)")
+    @APP.get("/api/v3/news/headlines")
+    async def api_v3_news_headlines():
+        """
+        Fetch latest headlines without analysis (for debugging).
+        
+        Usage:
+            GET /api/v3/news/headlines
+        """
+        try:
+            brain = get_news_brain()
+            headlines = await brain.fetch_all_news()
+            
+            return {
+                "ok": True,
+                "count": len(headlines),
+                "headlines": headlines
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"Failed to fetch headlines: {e}")
+            return {
+                "ok": False,
+                "error": str(e)
+            }
+
+    LOGGER.info("✅ News Brain v2 API endpoints registered (/api/v3/news/*)")
 
 except Exception as e:
     LOGGER.error(f"⚠️ News Brain endpoints not loaded: {e}", exc_info=True)

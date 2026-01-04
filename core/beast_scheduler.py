@@ -267,43 +267,37 @@ def _run_crypto_predictions(horizon: str):
 def _run_news_analysis():
     """Run AI news analysis and cross-reference with predictions"""
     try:
+        import asyncio
         from core.intelligence.ghost_news_brain import get_news_brain
-        from core.paper_tracker import get_paper_tracker
         
-        # Get pending predictions for context
-        tracker = get_paper_tracker()
-        trades = tracker.get_trades(days=2, outcome="PENDING")
+        # Run async news analysis
+        brain = get_news_brain()
         
-        # Format for news brain
-        pending = []
-        for t in trades[:50]:  # Limit to 50
-            pending.append({
-                "symbol": t.get("symbol", "?"),
-                "direction": t.get("direction", "?"),
-                "confidence": t.get("confidence", 0),
-                "entry_price": t.get("entry_price", 0),
-            })
+        # Run in event loop
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         
-        # Get telegram sender if available
-        send_telegram = None
-        if TELEGRAM_ALERTS_MODULE:
-            try:
-                send_telegram = TELEGRAM_ALERTS_MODULE.send_telegram_message
-            except:
-                pass
-        
-        # Run analysis
-        brain = get_news_brain(send_telegram)
-        result = brain.analyze_news(pending)
+        result = loop.run_until_complete(brain.analyze_news())
         
         if LOGGER:
             events_count = len(result.get("major_events", []))
             risk_count = len(result.get("predictions_at_risk", []))
             LOGGER.info(f"🧠 News analysis complete: {events_count} events, {risk_count} predictions at risk")
+        
+        # Send alert if needed
+        if result.get("action_required"):
+            loop.run_until_complete(brain.send_alert(result))
+            if LOGGER:
+                LOGGER.info("🧠 News alert sent to Telegram")
             
     except Exception as e:
         if LOGGER:
             LOGGER.error(f"News analysis failed: {e}")
+
+
 def _check_schedule():
     """
     Check if it's time to run predictions
