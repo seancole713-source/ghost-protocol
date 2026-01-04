@@ -718,6 +718,7 @@ class GhostNotificationSystem:
         self._tracked_picks: List[TrackedPick] = []
         self._last_top10_date: str = ""
         self._last_update_hour: int = -1
+        self._last_off_path_alerts: Dict[str, str] = {}  # symbol -> date last alerted
         self._db_path = TRACKING_DB
         self._use_postgres = self._init_postgres()
         if not self._use_postgres:
@@ -1314,27 +1315,45 @@ class GhostNotificationSystem:
             self.send_telegram(msg)
             LOGGER.info(f"[NOTIFICATIONS] Sent {len(alerts)} target/stop alerts")
         
-        # Send OFF PATH alerts immediately (separate for stocks vs crypto)
-        if off_path_stocks:
-            msg = format_off_path_alert(off_path_stocks, asset_type="stock")
-            self.send_telegram(msg)
-            LOGGER.info(f"[NOTIFICATIONS] Sent OFF PATH alert for {len(off_path_stocks)} stocks")
+        # Send OFF PATH alerts - with deduplication (only once per symbol per day)
+        ct = get_central_time()
+        today = ct.strftime("%Y-%m-%d")
         
-        if off_path_crypto:
-            msg = format_off_path_alert(off_path_crypto, asset_type="crypto")
+        # Filter out symbols we already alerted today
+        new_off_path_stocks = [
+            p for p in off_path_stocks 
+            if self._last_off_path_alerts.get(p['symbol']) != today
+        ]
+        new_off_path_crypto = [
+            p for p in off_path_crypto 
+            if self._last_off_path_alerts.get(p['symbol']) != today
+        ]
+        
+        if new_off_path_stocks:
+            msg = format_off_path_alert(new_off_path_stocks, asset_type="stock")
             self.send_telegram(msg)
-            LOGGER.info(f"[NOTIFICATIONS] Sent OFF PATH alert for {len(off_path_crypto)} crypto")
+            # Mark as alerted today
+            for p in new_off_path_stocks:
+                self._last_off_path_alerts[p['symbol']] = today
+            LOGGER.info(f"[NOTIFICATIONS] Sent OFF PATH alert for {len(new_off_path_stocks)} stocks")
+        
+        if new_off_path_crypto:
+            msg = format_off_path_alert(new_off_path_crypto, asset_type="crypto")
+            self.send_telegram(msg)
+            # Mark as alerted today
+            for p in new_off_path_crypto:
+                self._last_off_path_alerts[p['symbol']] = today
+            LOGGER.info(f"[NOTIFICATIONS] Sent OFF PATH alert for {len(new_off_path_crypto)} crypto")
         
         # Send scheduled updates (12 PM, 4 PM, 8 PM) - only if no alerts sent
-        ct = get_central_time()
         if ct.hour in UPDATE_HOURS and ct.hour != self._last_update_hour:
-            if updates and not alerts and not off_path_stocks and not off_path_crypto:
+            if updates and not alerts and not new_off_path_stocks and not new_off_path_crypto:
                 msg = format_update_message(updates)
                 self.send_telegram(msg)
                 self._last_update_hour = ct.hour
                 LOGGER.info(f"[NOTIFICATIONS] Sent scheduled update for {len(updates)} picks")
         
-        return bool(alerts or updates or off_path_stocks or off_path_crypto)
+        return bool(alerts or updates or new_off_path_stocks or new_off_path_crypto)
     
     def get_status(self) -> Dict:
         """Get current status of the notification system"""
