@@ -268,12 +268,28 @@ If no major news, return empty arrays but still provide market_sentiment."""
     
     def get_status(self) -> Dict:
         """Get news brain status"""
+        # Re-check client if not initialized (env vars might be loaded now)
+        if self.client is None:
+            self._init_client()
+        
+        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+        has_key = bool(api_key)
+        key_preview = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else "too_short"
+        
         return {
             "enabled": self.client is not None,
+            "anthropic_available": ANTHROPIC_AVAILABLE,
+            "api_key_present": has_key,
+            "api_key_preview": key_preview if has_key else None,
             "last_analysis": self._last_analysis.get("timestamp") if self._last_analysis else None,
             "analyses_count": len(self._analysis_history),
             "telegram_enabled": self.send_telegram is not None,
         }
+    
+    def reinit(self):
+        """Re-initialize the client (useful if env vars changed)"""
+        self._init_client()
+        return self.client is not None
 
 
 # Singleton instance
