@@ -36887,8 +36887,9 @@ try:
             outcomes = {row['outcome']: row['count'] for row in cur.fetchall()}
             
             # Get total pending
-            cur.execute("SELECT COUNT(*) FROM paper_trades WHERE outcome = 'PENDING'")
-            pending = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) as cnt FROM paper_trades WHERE outcome = 'PENDING'")
+            pending_row = cur.fetchone()
+            pending = pending_row['cnt'] if pending_row else 0
             
             # Get total resolved
             total_resolved = sum(outcomes.values()) if outcomes else 0
