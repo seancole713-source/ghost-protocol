@@ -158,33 +158,55 @@ class GhostNewsBrain:
         return headlines
     
     async def fetch_rss_news(self) -> List[Dict]:
-        """Fetch latest news from RSS feeds (Reuters, etc.)"""
-        if not FEEDPARSER_AVAILABLE:
+        """Fetch latest news from RSS feeds with async + timeout"""
+        if not FEEDPARSER_AVAILABLE or not HTTPX_AVAILABLE:
             return []
         
         headlines = []
         
-        for feed_url in self.rss_feeds:
+        async def fetch_single_feed(feed_url: str) -> List[Dict]:
+            """Fetch a single RSS feed with timeout"""
+            feed_headlines = []
             try:
-                feed = feedparser.parse(feed_url)
-                
-                for entry in feed.entries[:10]:
-                    published = ""
-                    if hasattr(entry, 'published'):
-                        published = entry.published
-                    elif hasattr(entry, 'updated'):
-                        published = entry.updated
-                    
-                    headlines.append({
-                        "title": entry.get("title", ""),
-                        "source": feed.feed.get("title", feed_url),
-                        "url": entry.get("link", ""),
-                        "published": published,
-                        "summary": entry.get("summary", "")[:200],
-                        "type": "general"
-                    })
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(feed_url)
+                    if resp.status_code == 200:
+                        feed = feedparser.parse(resp.text)
+                        for entry in feed.entries[:8]:  # Top 8 per feed
+                            published = ""
+                            if hasattr(entry, 'published'):
+                                published = entry.published
+                            elif hasattr(entry, 'updated'):
+                                published = entry.updated
+                            
+                            feed_headlines.append({
+                                "title": entry.get("title", ""),
+                                "source": feed.feed.get("title", feed_url.split("/")[2]),
+                                "url": entry.get("link", ""),
+                                "published": published,
+                                "summary": entry.get("summary", "")[:200] if entry.get("summary") else "",
+                                "type": "general"
+                            })
             except Exception as e:
-                LOGGER.error(f"RSS fetch error for {feed_url}: {e}")
+                LOGGER.debug(f"RSS fetch error for {feed_url}: {e}")
+            return feed_headlines
+        
+        # Fetch all feeds in parallel with 10 second total timeout
+        try:
+            tasks = [fetch_single_feed(url) for url in self.rss_feeds]
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=15.0
+            )
+            for result in results:
+                if isinstance(result, list):
+                    headlines.extend(result)
+        except asyncio.TimeoutError:
+            LOGGER.warning("RSS fetch timed out after 15 seconds")
+        except Exception as e:
+            LOGGER.error(f"RSS fetch error: {e}")
+        
+        return headlines
         
         return headlines
     
