@@ -100,13 +100,15 @@ class GhostNewsBrain:
         self._ensure_table()
     
     def _ensure_table(self):
-        """Create news_analysis table if not exists"""
+        """Create required tables if not exists"""
         if not self.db_url or not POSTGRES_AVAILABLE:
             return
         
         try:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor()
+            
+            # News analysis table
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS news_analysis (
                     analysis_id SERIAL PRIMARY KEY,
@@ -119,10 +121,35 @@ class GhostNewsBrain:
                     summary TEXT
                 );
             """)
+            
+            # Guardian alerts table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS guardian_alerts (
+                    alert_id SERIAL PRIMARY KEY,
+                    symbol VARCHAR(20) NOT NULL,
+                    alert_type VARCHAR(50) NOT NULL,
+                    severity VARCHAR(20) DEFAULT 'INFO',
+                    message TEXT,
+                    price_at_alert DECIMAL(18,8),
+                    confidence DECIMAL(5,4),
+                    prediction_id INTEGER,
+                    news_event_id INTEGER,
+                    acknowledged BOOLEAN DEFAULT FALSE,
+                    acknowledged_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            
+            # Create indexes for guardian_alerts
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_guardian_symbol ON guardian_alerts(symbol);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_guardian_severity ON guardian_alerts(severity);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_guardian_created ON guardian_alerts(created_at);")
+            
             conn.commit()
             conn.close()
+            LOGGER.info("[NEWS BRAIN] Database tables ensured (news_analysis, guardian_alerts)")
         except Exception as e:
-            LOGGER.error(f"Failed to create news_analysis table: {e}")
+            LOGGER.error(f"Failed to create tables: {e}")
     
     async def fetch_cryptopanic_news(self) -> List[Dict]:
         """Fetch latest crypto news from CryptoPanic API"""
@@ -563,6 +590,238 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
         except Exception as e:
             LOGGER.error(f"Failed to get history: {e}")
             return []
+
+    # ========================================================================
+    # BREAKING NEWS AUTO-PAUSE
+    # ========================================================================
+    
+    def _set_trading_paused(self, paused: bool, reason: str, duration_hours: int = 4):
+        """
+        Set trading pause flag in database.
+        When paused, no new trades should be opened.
+        """
+        if not self.db_url or not POSTGRES_AVAILABLE:
+            return False
+        
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor()
+            
+            # Create system_state table if not exists
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS system_state (
+                    key VARCHAR(50) PRIMARY KEY,
+                    value TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            if paused:
+                pause_until = datetime.utcnow() + timedelta(hours=duration_hours)
+                state = json.dumps({
+                    "paused": True,
+                    "reason": reason,
+                    "paused_at": datetime.utcnow().isoformat(),
+                    "pause_until": pause_until.isoformat(),
+                    "duration_hours": duration_hours
+                })
+            else:
+                state = json.dumps({"paused": False})
+            
+            cur.execute("""
+                INSERT INTO system_state (key, value, updated_at) 
+                VALUES ('trading_pause', %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (key) DO UPDATE SET value = %s, updated_at = CURRENT_TIMESTAMP
+            """, (state, state))
+            
+            conn.commit()
+            conn.close()
+            
+            LOGGER.warning(f"🛑 TRADING {'PAUSED' if paused else 'RESUMED'}: {reason}")
+            return True
+        except Exception as e:
+            LOGGER.error(f"Failed to set trading pause: {e}")
+            return False
+    
+    def get_trading_pause_status(self) -> Dict:
+        """Get current trading pause status"""
+        if not self.db_url or not POSTGRES_AVAILABLE:
+            return {"paused": False, "reason": "Database not available"}
+        
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM system_state WHERE key = 'trading_pause'")
+            row = cur.fetchone()
+            conn.close()
+            
+            if not row:
+                return {"paused": False, "reason": "No pause state set"}
+            
+            state = json.loads(row[0])
+            
+            # Check if pause has expired
+            if state.get("paused") and state.get("pause_until"):
+                pause_until = datetime.fromisoformat(state["pause_until"])
+                if datetime.utcnow() > pause_until:
+                    self._set_trading_paused(False, "Auto-pause expired")
+                    return {"paused": False, "reason": "Auto-pause expired"}
+            
+            return state
+        except Exception as e:
+            return {"paused": False, "error": str(e)}
+    
+    def _create_guardian_alert(self, symbol: str, alert_type: str, severity: str, 
+                                message: str, news_event: Dict = None):
+        """Create a guardian alert for a critical news event"""
+        if not self.db_url or not POSTGRES_AVAILABLE:
+            return
+        
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor()
+            
+            cur.execute("""
+                INSERT INTO guardian_alerts 
+                (symbol, alert_type, severity, message, created_at)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                RETURNING alert_id
+            """, (symbol, alert_type, severity, message))
+            
+            alert_id = cur.fetchone()[0]
+            conn.commit()
+            conn.close()
+            
+            LOGGER.info(f"[GUARDIAN ALERT] Created alert {alert_id}: {severity} - {message[:50]}")
+            return alert_id
+        except Exception as e:
+            LOGGER.error(f"Failed to create guardian alert: {e}")
+            return None
+    
+    async def handle_critical_event(self, event: Dict, auto_pause: bool = True) -> Dict:
+        """
+        Handle a CRITICAL severity news event.
+        - Creates guardian alerts for affected symbols
+        - Optionally pauses trading
+        - Sends urgent Telegram notification
+        
+        Args:
+            event: The major event dict from analysis
+            auto_pause: Whether to automatically pause trading (default True)
+        
+        Returns:
+            Dict with actions taken
+        """
+        actions_taken = {
+            "event": event.get("headline", "Unknown event"),
+            "severity": event.get("severity", "UNKNOWN"),
+            "alerts_created": [],
+            "trading_paused": False,
+            "telegram_sent": False
+        }
+        
+        # Create alerts for all affected symbols
+        affected = []
+        affected.extend(event.get("bullish_symbols", []))
+        affected.extend(event.get("bearish_symbols", []))
+        
+        for symbol in set(affected):
+            alert_id = self._create_guardian_alert(
+                symbol=symbol,
+                alert_type="NEWS_CRITICAL",
+                severity="CRITICAL",
+                message=f"{event.get('headline', 'Major event')}: {event.get('summary', '')}"
+            )
+            if alert_id:
+                actions_taken["alerts_created"].append({"symbol": symbol, "alert_id": alert_id})
+        
+        # Auto-pause trading for CRITICAL events
+        if auto_pause:
+            pause_reason = f"CRITICAL NEWS: {event.get('headline', 'Unknown event')[:100]}"
+            if self._set_trading_paused(True, pause_reason, duration_hours=4):
+                actions_taken["trading_paused"] = True
+        
+        # Send urgent Telegram
+        try:
+            bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+            chat_id = os.getenv("TELEGRAM_CHAT_ID")
+            
+            if bot_token and chat_id and HTTPX_AVAILABLE:
+                message = f"""🚨🚨🚨 CRITICAL NEWS EVENT 🚨🚨🚨
+
+⚡ {event.get('headline', 'Unknown')}
+
+📊 Type: {event.get('event_type', 'Unknown')}
+📝 {event.get('summary', 'No summary')}
+
+🎯 Affected: {', '.join(affected[:10])}
+
+{'🛑 TRADING AUTO-PAUSED FOR 4 HOURS' if actions_taken['trading_paused'] else '⚠️ MANUAL ACTION REQUIRED'}
+
+⏰ {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"""
+                
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={"chat_id": chat_id, "text": message}
+                    )
+                actions_taken["telegram_sent"] = True
+        except Exception as e:
+            LOGGER.error(f"Failed to send critical event telegram: {e}")
+        
+        return actions_taken
+    
+    async def analyze_news_with_auto_pause(self) -> Dict:
+        """
+        Enhanced analyze_news that automatically handles CRITICAL events.
+        
+        This is the main entry point for production use - it:
+        1. Analyzes all news
+        2. Auto-pauses trading on CRITICAL events
+        3. Creates guardian alerts
+        4. Sends Telegram notifications
+        
+        Returns:
+            Dict with analysis results and any auto-pause actions taken
+        """
+        # Run standard analysis
+        analysis = await self.analyze_news()
+        
+        analysis["auto_pause_actions"] = []
+        analysis["trading_paused"] = False
+        
+        # Check for CRITICAL events
+        for event in analysis.get("major_events", []):
+            if event.get("severity") == "CRITICAL":
+                LOGGER.warning(f"🚨 CRITICAL EVENT DETECTED: {event.get('headline', 'Unknown')}")
+                
+                actions = await self.handle_critical_event(event, auto_pause=True)
+                analysis["auto_pause_actions"].append(actions)
+                
+                if actions.get("trading_paused"):
+                    analysis["trading_paused"] = True
+        
+        # Also check HIGH severity for predictions at risk
+        for event in analysis.get("major_events", []):
+            if event.get("severity") == "HIGH":
+                # Create guardian alerts for HIGH events but don't pause
+                affected = set(event.get("bullish_symbols", []) + event.get("bearish_symbols", []))
+                for symbol in affected:
+                    self._create_guardian_alert(
+                        symbol=symbol,
+                        alert_type="NEWS_HIGH_IMPACT",
+                        severity="HIGH",
+                        message=f"{event.get('headline', 'Major event')}: {event.get('summary', '')}"
+                    )
+        
+        # Send standard alert if action required
+        await self.send_alert(analysis)
+        
+        return analysis
+    
+    def resume_trading(self, reason: str = "Manual resume") -> bool:
+        """Manually resume trading after a pause"""
+        return self._set_trading_paused(False, reason)
 
 
 # Singleton

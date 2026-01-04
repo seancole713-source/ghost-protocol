@@ -36604,10 +36604,361 @@ try:
                 "error": str(e)
             }
 
+    @APP.post("/api/v3/news/analyze-with-auto-pause")
+    async def analyze_news_with_auto_pause():
+        """
+        Analyze news AND automatically pause trading on CRITICAL events.
+        This is the PRODUCTION endpoint - use this for scheduled analysis.
+        
+        What it does:
+        - Fetches all news from 14+ RSS feeds + CryptoPanic
+        - Sends to Claude for analysis
+        - If CRITICAL event detected:
+            - AUTO-PAUSES trading for 4 hours
+            - Creates guardian alerts for affected symbols
+            - Sends urgent Telegram notification
+        - If HIGH event detected:
+            - Creates guardian alerts (no pause)
+        
+        Returns full analysis plus auto-pause actions taken.
+        """
+        try:
+            brain = get_news_brain()
+            result = await brain.analyze_news_with_auto_pause()
+            return result
+        except Exception as e:
+            LOGGER.error(f"News analysis with auto-pause failed: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/v3/trading/pause-status")
+    async def get_trading_pause_status():
+        """
+        Get current trading pause status.
+        Use this to check if trading is paused before placing new trades.
+        
+        Returns:
+            paused: bool - True if trading is paused
+            reason: str - Why trading was paused
+            pause_until: str - ISO timestamp when pause expires
+        """
+        try:
+            brain = get_news_brain()
+            status = brain.get_trading_pause_status()
+            return {"ok": True, **status}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "paused": False}
+
+    @APP.post("/api/v3/trading/resume")
+    async def resume_trading(reason: str = "Manual resume via API"):
+        """
+        Manually resume trading after an auto-pause.
+        Use this to clear a pause before the 4-hour timeout.
+        
+        Args:
+            reason: Why trading is being resumed
+        """
+        try:
+            brain = get_news_brain()
+            success = brain.resume_trading(reason)
+            return {"ok": success, "message": f"Trading resumed: {reason}" if success else "Failed to resume"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/trading/pause")
+    async def pause_trading(reason: str, duration_hours: int = 4):
+        """
+        Manually pause trading.
+        Use this to pause trading without a news event trigger.
+        
+        Args:
+            reason: Why trading should be paused
+            duration_hours: How long to pause (default 4 hours)
+        """
+        try:
+            brain = get_news_brain()
+            success = brain._set_trading_paused(True, reason, duration_hours)
+            return {"ok": success, "message": f"Trading paused for {duration_hours}h: {reason}" if success else "Failed to pause"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     LOGGER.info("✅ News Brain v2 API endpoints registered (/api/v3/news/*)")
+    LOGGER.info("✅ Trading Pause/Resume API endpoints registered (/api/v3/trading/*)")
 
 except Exception as e:
     LOGGER.error(f"⚠️ News Brain endpoints not loaded: {e}", exc_info=True)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# GUARDIAN ALERTS - Protective alerts for at-risk positions
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+try:
+    import psycopg2
+    import psycopg2.extras
+
+    @APP.get("/api/v3/guardian/alerts")
+    async def get_guardian_alerts(
+        symbol: str = None,
+        severity: str = None,
+        acknowledged: bool = None,
+        limit: int = 50
+    ):
+        """
+        Get guardian alerts with optional filters.
+        
+        Usage:
+            GET /api/v3/guardian/alerts
+            GET /api/v3/guardian/alerts?symbol=BTC&severity=CRITICAL
+            GET /api/v3/guardian/alerts?acknowledged=false
+        """
+        try:
+            conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            query = "SELECT * FROM guardian_alerts WHERE 1=1"
+            params = []
+            
+            if symbol:
+                query += " AND symbol = %s"
+                params.append(symbol.upper())
+            if severity:
+                query += " AND severity = %s"
+                params.append(severity.upper())
+            if acknowledged is not None:
+                query += " AND acknowledged = %s"
+                params.append(acknowledged)
+            
+            query += " ORDER BY created_at DESC LIMIT %s"
+            params.append(limit)
+            
+            cur.execute(query, params)
+            alerts = cur.fetchall()
+            conn.close()
+            
+            # Convert to serializable format
+            result = []
+            for a in alerts:
+                alert_dict = dict(a)
+                # Convert Decimal to float for JSON
+                if alert_dict.get('price_at_alert'):
+                    alert_dict['price_at_alert'] = float(alert_dict['price_at_alert'])
+                if alert_dict.get('confidence'):
+                    alert_dict['confidence'] = float(alert_dict['confidence'])
+                # Convert datetime to ISO string
+                if alert_dict.get('created_at'):
+                    alert_dict['created_at'] = alert_dict['created_at'].isoformat()
+                if alert_dict.get('acknowledged_at'):
+                    alert_dict['acknowledged_at'] = alert_dict['acknowledged_at'].isoformat()
+                result.append(alert_dict)
+            
+            return {"ok": True, "alerts": result, "count": len(result)}
+        except Exception as e:
+            LOGGER.error(f"Failed to get guardian alerts: {e}")
+            return {"ok": False, "error": str(e), "alerts": []}
+
+    @APP.post("/api/v3/guardian/alert")
+    async def create_guardian_alert(
+        symbol: str,
+        alert_type: str,
+        message: str,
+        severity: str = "INFO",
+        price_at_alert: float = None,
+        confidence: float = None,
+        prediction_id: int = None,
+        news_event_id: int = None
+    ):
+        """
+        Create a guardian alert.
+        
+        Args:
+            symbol: Trading symbol (e.g., BTC, AAPL)
+            alert_type: Type of alert (e.g., NEWS_OVERRIDE, STOP_APPROACHING)
+            message: Alert message
+            severity: INFO, WARNING, HIGH, CRITICAL
+            price_at_alert: Current price when alert was created
+            confidence: Model confidence (0-1)
+            prediction_id: Related prediction ID
+            news_event_id: Related news event ID
+        """
+        try:
+            conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+            cur = conn.cursor()
+            
+            cur.execute("""
+                INSERT INTO guardian_alerts 
+                (symbol, alert_type, severity, message, price_at_alert, confidence, prediction_id, news_event_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING alert_id
+            """, (symbol.upper(), alert_type, severity.upper(), message, price_at_alert, confidence, prediction_id, news_event_id))
+            
+            alert_id = cur.fetchone()[0]
+            conn.commit()
+            conn.close()
+            
+            LOGGER.info(f"[GUARDIAN] Created alert {alert_id} for {symbol}: {alert_type}")
+            return {"ok": True, "alert_id": alert_id}
+        except Exception as e:
+            LOGGER.error(f"Failed to create guardian alert: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/guardian/acknowledge/{alert_id}")
+    async def acknowledge_guardian_alert(alert_id: int):
+        """Acknowledge a guardian alert"""
+        try:
+            conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+            cur = conn.cursor()
+            
+            cur.execute("""
+                UPDATE guardian_alerts 
+                SET acknowledged = TRUE, acknowledged_at = CURRENT_TIMESTAMP
+                WHERE alert_id = %s
+            """, (alert_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            return {"ok": True, "alert_id": alert_id, "acknowledged": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    LOGGER.info("✅ Guardian Alerts API endpoints registered (/api/v3/guardian/*)")
+
+except Exception as e:
+    LOGGER.error(f"⚠️ Guardian Alerts endpoints not loaded: {e}", exc_info=True)
+
+
+# ============================================================================
+# MODEL MANAGEMENT ENDPOINTS
+# ============================================================================
+try:
+    import subprocess
+    import json
+    from pathlib import Path
+
+    @APP.get("/api/v3/model/status")
+    async def get_model_status():
+        """
+        Get current model status and metadata.
+        Returns info about the XGBoost model, last retrain date, accuracy, etc.
+        """
+        try:
+            model_dir = Path("models")
+            metadata_path = model_dir / "xgboost_v2_metadata.json"
+            model_path = model_dir / "xgboost_v2.pkl"
+            
+            status = {
+                "model_exists": model_path.exists(),
+                "metadata": None,
+                "backups": []
+            }
+            
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    status["metadata"] = json.load(f)
+            
+            # List backup models
+            if model_dir.exists():
+                backups = list(model_dir.glob("xgboost_v2_backup_*.pkl"))
+                status["backups"] = [b.name for b in sorted(backups, reverse=True)[:5]]
+            
+            return {"ok": True, **status}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/v3/model/training-data-stats")
+    async def get_training_data_stats():
+        """
+        Get statistics about available training data.
+        Shows how many resolved trades we have for retraining.
+        """
+        try:
+            conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Get outcome distribution
+            cur.execute("""
+                SELECT 
+                    outcome,
+                    COUNT(*) as count
+                FROM paper_trades
+                WHERE outcome IS NOT NULL AND outcome != 'PENDING'
+                GROUP BY outcome
+            """)
+            outcomes = {row['outcome']: row['count'] for row in cur.fetchall()}
+            
+            # Get total pending
+            cur.execute("SELECT COUNT(*) FROM paper_trades WHERE outcome = 'PENDING'")
+            pending = cur.fetchone()[0]
+            
+            # Get total resolved
+            total_resolved = sum(outcomes.values()) if outcomes else 0
+            
+            conn.close()
+            
+            return {
+                "ok": True,
+                "resolved_trades": total_resolved,
+                "pending_trades": pending,
+                "outcome_distribution": outcomes,
+                "ready_for_retrain": total_resolved >= 500,
+                "min_samples_required": 500
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/model/retrain")
+    async def trigger_model_retrain(
+        min_samples: int = 500,
+        test_split: float = 0.2,
+        dry_run: bool = True
+    ):
+        """
+        Trigger model retraining.
+        
+        Args:
+            min_samples: Minimum samples required for training (default 500)
+            test_split: Portion of data to use for testing (default 0.2)
+            dry_run: If True, evaluate but don't save model (default True for safety)
+        """
+        try:
+            script_path = Path("scripts/retrain_xgboost.py")
+            
+            if not script_path.exists():
+                return {"ok": False, "error": "Retrain script not found"}
+            
+            # Build command
+            cmd = [
+                "python", str(script_path),
+                "--min-samples", str(min_samples),
+                "--test-split", str(test_split)
+            ]
+            if dry_run:
+                cmd.append("--dry-run")
+            
+            # Run in subprocess
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            return {
+                "ok": result.returncode == 0,
+                "dry_run": dry_run,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "return_code": result.returncode
+            }
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "Training timed out (5 min limit)"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    LOGGER.info("✅ Model Management API endpoints registered (/api/v3/model/*)")
+
+except Exception as e:
+    LOGGER.error(f"⚠️ Model Management endpoints not loaded: {e}", exc_info=True)
 
 
 # Alias for Railway/Uvicorn compatibility (expects lowercase 'app')
