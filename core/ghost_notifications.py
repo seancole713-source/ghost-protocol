@@ -78,6 +78,10 @@ def calibrate_display_confidence(raw_confidence: float) -> float:
     Model tends to output 70-95% but actual accuracy is 52-68%.
     This function smoothly transforms raw confidence to realistic values.
     
+    UPDATED Jan 2026: Widened output range for visible variation.
+    Old: 75-85% raw → 55-62% display (all looked the same)
+    New: 75-85% raw → 52-65% display (13 percentage points spread)
+    
     Args:
         raw_confidence: Model's raw confidence (0.0-1.0)
     
@@ -85,24 +89,30 @@ def calibrate_display_confidence(raw_confidence: float) -> float:
         Calibrated confidence for display (0.0-1.0)
     
     Calibration curve (linear interpolation between points):
-        Raw 95%+ -> Display 68%
-        Raw 90%  -> Display 65%
-        Raw 85%  -> Display 62%
-        Raw 80%  -> Display 58%
-        Raw 75%  -> Display 55%
-        Raw 70%  -> Display 52%
-        Raw 60%  -> Display 50%
-        Below 60% -> Display = raw * 0.8
+        Raw 95%+ -> Display 72%
+        Raw 90%  -> Display 68%
+        Raw 85%  -> Display 65%
+        Raw 80%  -> Display 60%
+        Raw 78%  -> Display 57%  (NEW: more granular in the common range)
+        Raw 76%  -> Display 54%  (NEW: more granular in the common range)
+        Raw 75%  -> Display 52%
+        Raw 70%  -> Display 48%
+        Raw 60%  -> Display 42%
+        Below 60% -> Display = raw * 0.7
     """
-    # Calibration points: (raw, display)
+    # Calibration points: (raw, display) - WIDENED RANGE for visible variation
+    # Most predictions fall in 75-82% range, so we add extra points there
     calibration_points = [
-        (0.95, 0.68),
-        (0.90, 0.65),
-        (0.85, 0.62),
-        (0.80, 0.58),
-        (0.75, 0.55),
-        (0.70, 0.52),
-        (0.60, 0.50),
+        (0.95, 0.72),
+        (0.90, 0.68),
+        (0.85, 0.65),
+        (0.82, 0.62),  # NEW: granular point in common range
+        (0.80, 0.60),
+        (0.78, 0.57),  # NEW: granular point in common range  
+        (0.76, 0.54),  # NEW: granular point in common range
+        (0.75, 0.52),
+        (0.70, 0.48),
+        (0.60, 0.42),
     ]
     
     # Above highest point
@@ -111,7 +121,7 @@ def calibrate_display_confidence(raw_confidence: float) -> float:
     
     # Below lowest calibration point - use simple scaling
     if raw_confidence < calibration_points[-1][0]:
-        return raw_confidence * 0.8
+        return raw_confidence * 0.7
     
     # Linear interpolation between calibration points
     for i in range(len(calibration_points) - 1):
@@ -124,7 +134,7 @@ def calibrate_display_confidence(raw_confidence: float) -> float:
             return low_display + ratio * (high_display - low_display)
     
     # Fallback (should not reach here)
-    return raw_confidence * 0.8
+    return raw_confidence * 0.7
 
 
 # ============================================================================
@@ -795,6 +805,23 @@ class GhostNotificationSystem:
                 ON ghost_tracked_picks(status)
             """)
             
+            # Create unique index to prevent duplicate active picks
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_symbol 
+                ON ghost_tracked_picks (symbol) 
+                WHERE status = 'active'
+            """)
+            
+            # CLEANUP: Remove duplicate active picks (keep oldest entry for each symbol)
+            cur.execute("""
+                DELETE FROM ghost_tracked_picks a
+                USING ghost_tracked_picks b
+                WHERE a.id > b.id 
+                AND a.symbol = b.symbol 
+                AND a.status = 'active' 
+                AND b.status = 'active'
+            """)
+            
             conn.commit()
             cur.close()
             conn.close()
@@ -1112,15 +1139,33 @@ class GhostNotificationSystem:
                 conn = self._get_postgres_conn()
                 cur = conn.cursor()
                 
+                # First, ensure we have a unique constraint on symbol for active picks
+                # This prevents duplicate registrations
+                cur.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_symbol 
+                    ON ghost_tracked_picks (symbol) 
+                    WHERE status = 'active'
+                """)
+                
                 for p in picks:
                     action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
                     asset_type = p.get('asset_type', 'crypto' if p['symbol'] in ['BTC', 'ETH', 'SOL'] else 'stock')
                     
+                    # Use ON CONFLICT to update existing active picks instead of duplicating
                     cur.execute("""
                         INSERT INTO ghost_tracked_picks 
                         (symbol, asset_type, direction, entry_price, target_price, stop_price, 
                          prediction_48h, confidence, entry_time, expires_at, status)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
+                        ON CONFLICT (symbol) WHERE status = 'active'
+                        DO UPDATE SET
+                            entry_price = EXCLUDED.entry_price,
+                            target_price = EXCLUDED.target_price,
+                            stop_price = EXCLUDED.stop_price,
+                            prediction_48h = EXCLUDED.prediction_48h,
+                            confidence = EXCLUDED.confidence,
+                            entry_time = EXCLUDED.entry_time,
+                            expires_at = EXCLUDED.expires_at
                     """, (
                         p['symbol'],
                         asset_type,
