@@ -71,9 +71,11 @@ class GhostNewsBrain:
         # News source configs
         self.cryptopanic_key = os.getenv("CRYPTOPANIC_API_KEY")
         self.rss_feeds = [
-            "https://feeds.reuters.com/reuters/topNews",
-            "https://feeds.reuters.com/reuters/businessNews",
-            "https://feeds.reuters.com/reuters/technologyNews",
+            "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
+            "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
+            "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+            "https://feeds.bbci.co.uk/news/business/rss.xml",
+            "https://feeds.bbci.co.uk/news/world/rss.xml",
         ]
         
         # Add any custom feeds from env
