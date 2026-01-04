@@ -71,11 +71,25 @@ class GhostNewsBrain:
         # News source configs
         self.cryptopanic_key = os.getenv("CRYPTOPANIC_API_KEY")
         self.rss_feeds = [
-            "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
-            "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
-            "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-            "https://feeds.bbci.co.uk/news/business/rss.xml",
-            "https://feeds.bbci.co.uk/news/world/rss.xml",
+            # Financial
+            "https://www.cnbc.com/id/100003114/device/rss/rss.html",  # CNBC Top
+            "https://feeds.marketwatch.com/marketwatch/topstories/",  # MarketWatch
+            "https://seekingalpha.com/market_currents.xml",           # Seeking Alpha
+            "https://www.investing.com/rss/news.rss",                 # Investing.com
+            "https://www.nasdaq.com/feed/nasdaq-original/rss.xml",    # Nasdaq
+            # Crypto
+            "https://www.coindesk.com/arc/outboundfeeds/rss/",        # CoinDesk
+            "https://cointelegraph.com/rss",                          # Cointelegraph
+            "https://decrypt.co/feed",                                # Decrypt
+            # Geopolitical
+            "https://feeds.bbci.co.uk/news/world/rss.xml",            # BBC World
+            "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", # NYT World
+            "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",  # NYT Business
+            "https://www.aljazeera.com/xml/rss/all.xml",              # Al Jazeera
+            # Energy
+            "https://oilprice.com/rss/main",                          # OilPrice
+            # Fed
+            "https://www.federalreserve.gov/feeds/press_all.xml",     # Federal Reserve
         ]
         
         # Add any custom feeds from env
