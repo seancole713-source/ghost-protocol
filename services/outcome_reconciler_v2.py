@@ -456,6 +456,87 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
             except Exception as e:
                 LOGGER.debug(f"Polygon historical fetch failed for {symbol}: {e}")
         
+        # FALLBACK 1: Try CoinGecko for crypto symbols (has unlimited historical data!)
+        # This is CRITICAL for reconciling old predictions (>30 days)
+        CRYPTO_SYMBOLS = {
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK',
+            'DOGE', 'SHIB', 'LTC', 'TRX', 'TON', 'XLM', 'ATOM', 'UNI', 'AAVE', 'MKR',
+            'PEPE', 'BONK', 'WIF', 'FLOKI', 'FET', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA',
+            'OP', 'ARB', 'APE', 'SAND', 'MANA', 'AXS', 'GRT', 'CRV', 'COMP', 'SNX',
+            'ETC', 'IMX', 'METIS', 'ALGO', 'HBAR', 'FLOW',
+        }
+        
+        if symbol.upper() in CRYPTO_SYMBOLS:
+            # Try CoinGecko with API key if available
+            coingecko_key = os.getenv("COINGECKO_API_KEY")
+            try:
+                import requests
+                from datetime import datetime
+                
+                # CoinGecko coin ID mapping
+                coingecko_ids = {
+                    'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana', 'BNB': 'binancecoin',
+                    'XRP': 'ripple', 'ADA': 'cardano', 'AVAX': 'avalanche-2', 'DOT': 'polkadot',
+                    'MATIC': 'matic-network', 'LINK': 'chainlink', 'DOGE': 'dogecoin', 
+                    'SHIB': 'shiba-inu', 'LTC': 'litecoin', 'TRX': 'tron', 'TON': 'the-open-network',
+                    'XLM': 'stellar', 'ATOM': 'cosmos', 'UNI': 'uniswap', 'AAVE': 'aave',
+                    'MKR': 'maker', 'PEPE': 'pepe', 'OP': 'optimism', 'ARB': 'arbitrum',
+                    'ETC': 'ethereum-classic', 'IMX': 'immutable-x', 'METIS': 'metis-token',
+                }
+                
+                coin_id = coingecko_ids.get(symbol.upper())
+                if coin_id:
+                    dt = datetime.fromtimestamp(timestamp)
+                    date_str = dt.strftime("%d-%m-%Y")  # CoinGecko format: DD-MM-YYYY
+                    
+                    # Use Pro API if key is available, otherwise free tier
+                    if coingecko_key:
+                        url = f"https://pro-api.coingecko.com/api/v3/coins/{coin_id}/history"
+                        headers = {"x-cg-pro-api-key": coingecko_key}
+                    else:
+                        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/history"
+                        headers = {}
+                    
+                    params = {"date": date_str, "localization": "false"}
+                    
+                    response = requests.get(url, params=params, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if "market_data" in data and "current_price" in data["market_data"]:
+                            price = float(data["market_data"]["current_price"].get("usd", 0))
+                            if price > 0:
+                                LOGGER.info(f"✅ CoinGecko historical price for {symbol} at {dt.date()}: ${price:.2f}")
+                                return price
+                    elif response.status_code == 429:
+                        LOGGER.debug(f"⚠️  CoinGecko rate limited for {symbol}")
+            except Exception as e:
+                LOGGER.debug(f"CoinGecko historical fetch failed for {symbol}: {e}")
+            
+            # FALLBACK 2: Try CryptoCompare for historical data (another free source)
+            try:
+                import requests
+                from datetime import datetime
+                
+                dt = datetime.fromtimestamp(timestamp)
+                # CryptoCompare uses Unix timestamp
+                url = f"https://min-api.cryptocompare.com/data/pricehistorical"
+                params = {
+                    "fsym": symbol.upper(),
+                    "tsyms": "USD",
+                    "ts": int(timestamp)
+                }
+                
+                response = requests.get(url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    if symbol.upper() in data and "USD" in data[symbol.upper()]:
+                        price = float(data[symbol.upper()]["USD"])
+                        if price > 0:
+                            LOGGER.info(f"✅ CryptoCompare historical price for {symbol} at {dt.date()}: ${price:.2f}")
+                            return price
+            except Exception as e:
+                LOGGER.debug(f"CryptoCompare historical fetch failed for {symbol}: {e}")
+        
         # Last resort: if within 24h, use current price (acceptable approximation)
         if abs(now - timestamp) < 86400:
             price = get_symbol_price(symbol)
