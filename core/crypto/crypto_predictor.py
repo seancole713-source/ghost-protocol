@@ -141,6 +141,57 @@ class CryptoPredictionEngine:
 
         # 3. Calculate crypto metrics
         metrics = self._calculate_metrics(history, price_data)
+        
+        # ============================================
+        # FEEDBACK LOOP - APPLY LEARNED ADJUSTMENTS
+        # ============================================
+        # This is the KEY missing piece - we learn from past mistakes!
+        try:
+            from core.feedback_loop import get_feedback_loop
+            feedback = get_feedback_loop()
+            
+            # Get past performance for this symbol
+            symbol_perf = feedback.signal_performance.get(f"SYMBOL_{symbol}", {})
+            symbol_total = symbol_perf.get("total", 0)
+            symbol_correct = symbol_perf.get("correct", 0)
+            
+            if symbol_total >= 5:  # Need minimum sample
+                symbol_accuracy = symbol_correct / symbol_total
+                LOGGER.info(
+                    f"📊 {symbol} historical accuracy: {symbol_accuracy:.0%} ({symbol_correct}/{symbol_total})"
+                )
+                
+                # Store for direction analysis
+                metrics["_symbol_accuracy"] = symbol_accuracy
+                metrics["_symbol_total"] = symbol_total
+                
+                # If we've been consistently wrong on this symbol, reduce confidence
+                if symbol_accuracy < 0.35:
+                    LOGGER.warning(f"⚠️ {symbol} accuracy very low ({symbol_accuracy:.0%}) - will reduce confidence")
+                    metrics["_accuracy_penalty"] = 0.15
+                elif symbol_accuracy < 0.45:
+                    metrics["_accuracy_penalty"] = 0.08
+                else:
+                    metrics["_accuracy_penalty"] = 0
+            
+            # Also check direction-specific accuracy
+            for dir_name in ["UP", "DOWN"]:
+                dir_perf = feedback.signal_performance.get(f"DIR_{dir_name}", {})
+                dir_total = dir_perf.get("total", 0)
+                dir_correct = dir_perf.get("correct", 0)
+                if dir_total >= 10:
+                    dir_accuracy = dir_correct / dir_total
+                    metrics[f"_dir_{dir_name}_accuracy"] = dir_accuracy
+                    LOGGER.debug(f"Direction {dir_name} accuracy: {dir_accuracy:.0%} ({dir_correct}/{dir_total})")
+            
+            # Apply feature weight adjustments from feedback loop
+            adjusted_metrics = feedback.get_adjusted_features(metrics)
+            if adjusted_metrics != metrics:
+                LOGGER.info(f"🔄 Applied feedback loop feature adjustments for {symbol}")
+                metrics = adjusted_metrics
+                
+        except Exception as e:
+            LOGGER.debug(f"Feedback loop not available: {e}")
 
         # 4. Generate forecast grid
         forecast_points = self._generate_forecast_grid(
@@ -456,7 +507,26 @@ class CryptoPredictionEngine:
             confidence -= 0.04
         
         # ========================================
-        # STEP 5: Clamp and return
+        # STEP 5: FEEDBACK LOOP - Learn from mistakes!
+        # ========================================
+        # Apply accuracy penalty if we've been wrong on this symbol
+        accuracy_penalty = metrics.get("_accuracy_penalty", 0)
+        if accuracy_penalty > 0:
+            confidence -= accuracy_penalty
+            LOGGER.warning(f"⚠️ Applied accuracy penalty: -{accuracy_penalty:.0%} (low historical accuracy)")
+        
+        # Check direction-specific accuracy
+        dir_accuracy = metrics.get(f"_dir_{direction}_accuracy")
+        if dir_accuracy is not None and dir_accuracy < 0.40:
+            # We've been wrong predicting this direction - reduce confidence
+            dir_penalty = 0.10
+            confidence -= dir_penalty
+            LOGGER.warning(
+                f"⚠️ Direction {direction} has poor accuracy ({dir_accuracy:.0%}) - applying -{dir_penalty:.0%} penalty"
+            )
+        
+        # ========================================
+        # STEP 6: Clamp and return
         # ========================================
         confidence = max(0.50, min(0.92, confidence))
         
