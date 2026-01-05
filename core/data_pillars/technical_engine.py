@@ -107,11 +107,16 @@ class TechnicalEngine(BasePillar):
             cached=False,
         )
 
-    def _fetch_historical_data(self, symbol: str, days: int) -> pd.DataFrame | None:
+    def _fetch_historical_data(self, symbol: str, days: int, interval: str = "1h") -> pd.DataFrame | None:
         """
         Fetch historical OHLCV data with fallback providers.
         
-        Provider priority (FREE-TIER FIRST - Nov 24, 2025):
+        CRITICAL FIX (Jan 5, 2026): Use HOURLY data by default!
+        
+        The XGBoost model was trained on HOURLY data (histohour).
+        Features like SMA_24 mean "24-hour moving average" not "24-day".
+        
+        Provider priority (FREE-TIER FIRST):
         STOCKS: Yahoo → yfinance → cache (100% FREE)
         CRYPTO: Binance → CoinGecko → cache (100% FREE)
         
@@ -119,7 +124,8 @@ class TechnicalEngine(BasePillar):
         
         Args:
             symbol: Ticker symbol
-            days: Lookback period
+            days: Lookback period in days
+            interval: Data interval - "1h" for hourly (default), "1d" for daily
         
         Returns:
             DataFrame with columns: timestamp, open, high, low, close, volume
@@ -133,8 +139,14 @@ class TechnicalEngine(BasePillar):
             from core.providers.unified_provider import get_unified_provider
             
             provider = get_unified_provider()
-            interval = "1d"  # Daily bars for technical indicators
-            lookback = max(days + 10, 100)  # Add buffer for indicator calculations
+            # CRITICAL: Use hourly data for crypto (matches training data!)
+            # For stocks, use daily since Yahoo's hourly is limited
+            if interval == "1h" and self._is_crypto_symbol(symbol):
+                # Hourly: need days * 24 bars
+                lookback = max(days * 24 + 48, 500)  # Buffer for 168h MA
+            else:
+                # Daily: need days bars
+                lookback = max(days + 10, 100)
             
             ohlcv = provider.get_ohlcv(symbol, interval=interval, lookback=lookback)
             
@@ -641,8 +653,14 @@ class TechnicalEngine(BasePillar):
         """
         Calculate all 59 features expected by XGBoost v3 model.
         
-        This ensures feature names EXACTLY match what the model was trained on.
-        Features not already calculated above are added here.
+        CRITICAL FIX (Jan 5, 2026): Now uses HOURLY DATA directly!
+        
+        The model was trained on HOURLY bars, so:
+        - SMA_24 = 24-hour moving average (24 bars)
+        - RSI_14 = 14-hour RSI
+        - MOMENTUM_4H = 4-hour price change (4 bars)
+        
+        This function now expects df to contain HOURLY OHLCV data.
         """
         signals = []
         
@@ -652,15 +670,14 @@ class TechnicalEngine(BasePillar):
             low = df["low"]
             volume = df.get("volume", pd.Series([0] * len(df)))
             current_price = float(close.iloc[-1])
+            n_bars = len(close)
             
-            # === SMAs for XGBoost (12, 24, 48, 168 hour equivalents) ===
-            # Note: We're using daily data, so approximate with daily periods
+            # === SMAs for XGBoost (HOURLY periods - direct!) ===
+            # Now using actual hourly periods since we fetch hourly data
             for period, name in [(12, "SMA_12"), (24, "SMA_24"), (48, "SMA_48"), (168, "SMA_168")]:
                 try:
-                    # Use daily equivalent (divide by 24 for hourly approximation)
-                    daily_period = max(1, period // 24) if period > 24 else period
-                    if len(close) >= daily_period:
-                        ma_val = close.rolling(window=daily_period).mean().iloc[-1]
+                    if n_bars >= period:
+                        ma_val = close.rolling(window=period).mean().iloc[-1]
                         if not np.isnan(ma_val):
                             signals.append(DataSignal(
                                 name=name, value=round(float(ma_val), 4),
@@ -670,12 +687,11 @@ class TechnicalEngine(BasePillar):
                 except:
                     pass
             
-            # === EMAs (12, 24) ===
+            # === EMAs (12h, 24h) ===
             for period, name in [(12, "EMA_12"), (24, "EMA_24")]:
                 try:
-                    daily_period = max(1, period // 24) if period > 24 else period
-                    if len(close) >= daily_period:
-                        ema_val = close.ewm(span=daily_period).mean().iloc[-1]
+                    if n_bars >= period:
+                        ema_val = close.ewm(span=period).mean().iloc[-1]
                         if not np.isnan(ema_val):
                             signals.append(DataSignal(
                                 name=name, value=round(float(ema_val), 4),
@@ -810,14 +826,13 @@ class TechnicalEngine(BasePillar):
             except:
                 pass
             
-            # === Momentum features (1H, 4H, 12H, 24H, 48H approximations) ===
+            # === Momentum features (HOURLY - direct lookback!) ===
+            # Now using actual hourly bars, so 4H = 4 bars back, 24H = 24 bars back
             for hours, name in [(1, "MOMENTUM_1H"), (4, "MOMENTUM_4H"), (12, "MOMENTUM_12H"), 
                                 (24, "MOMENTUM_24H"), (48, "MOMENTUM_48H")]:
                 try:
-                    # Use daily approximation (1 day ≈ 24 hours)
-                    lookback = max(1, hours // 24) if hours >= 24 else 1
-                    if len(close) > lookback:
-                        mom = (close.iloc[-1] - close.iloc[-lookback-1]) / close.iloc[-lookback-1] * 100
+                    if n_bars > hours:
+                        mom = (close.iloc[-1] - close.iloc[-hours-1]) / close.iloc[-hours-1] * 100
                         signals.append(DataSignal(
                             name=name, value=round(float(mom), 4),
                             confidence=1.0, data_available=True,
@@ -826,10 +841,10 @@ class TechnicalEngine(BasePillar):
                 except:
                     pass
             
-            # === ROC (Rate of Change) ===
+            # === ROC (Rate of Change - 24 hours) ===
             try:
-                if len(close) > 1:
-                    roc = (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100
+                if n_bars > 24:
+                    roc = (close.iloc[-1] - close.iloc[-25]) / close.iloc[-25] * 100
                     signals.append(DataSignal(
                         name="ROC_24", value=round(float(roc), 4),
                         confidence=1.0, data_available=True,
@@ -838,12 +853,11 @@ class TechnicalEngine(BasePillar):
             except:
                 pass
             
-            # === ABOVE_SMA features ===
+            # === ABOVE_SMA features (HOURLY periods - direct!) ===
             for period, name in [(24, "ABOVE_SMA_24"), (48, "ABOVE_SMA_48"), (168, "ABOVE_SMA_168")]:
                 try:
-                    daily_period = max(1, period // 24)
-                    if len(close) >= daily_period:
-                        ma_val = close.rolling(window=daily_period).mean().iloc[-1]
+                    if n_bars >= period:
+                        ma_val = close.rolling(window=period).mean().iloc[-1]
                         signals.append(DataSignal(
                             name=name, value=1 if current_price > ma_val else 0,
                             confidence=1.0, data_available=True,
@@ -853,10 +867,11 @@ class TechnicalEngine(BasePillar):
                     pass
             
             # === EMA_BULLISH ===
+            # === EMA_BULLISH (12h vs 24h EMA) ===
             try:
-                if len(close) >= 2:
-                    ema_12 = close.ewm(span=1).mean().iloc[-1]  # Short EMA
-                    ema_24 = close.ewm(span=2).mean().iloc[-1]  # Long EMA
+                if n_bars >= 24:
+                    ema_12 = close.ewm(span=12).mean().iloc[-1]  # 12-hour EMA
+                    ema_24 = close.ewm(span=24).mean().iloc[-1]  # 24-hour EMA
                     signals.append(DataSignal(
                         name="EMA_BULLISH", value=1 if ema_12 > ema_24 else 0,
                         confidence=1.0, data_available=True,
@@ -865,60 +880,58 @@ class TechnicalEngine(BasePillar):
             except:
                 pass
             
-            # === SMA Cross ===
+            # === SMA Cross (24h vs 48h) ===
             try:
-                if len(close) >= 3:
-                    sma_short = close.rolling(window=2).mean()
-                    sma_long = close.rolling(window=3).mean()
-                    # Cross detection: was below, now above = 1; was above, now below = -1
-                    prev_cross = 1 if sma_short.iloc[-2] < sma_long.iloc[-2] else -1
-                    curr_cross = 1 if sma_short.iloc[-1] > sma_long.iloc[-1] else -1
-                    cross = 1 if curr_cross > prev_cross else (-1 if curr_cross < prev_cross else 0)
+                if n_bars >= 48:
+                    sma_24 = close.rolling(window=24).mean()
+                    sma_48 = close.rolling(window=48).mean()
+                    # Simple: is SMA_24 above SMA_48?
                     signals.append(DataSignal(
-                        name="SMA_CROSS_24_48", value=cross,
+                        name="SMA_CROSS_24_48", value=1 if sma_24.iloc[-1] > sma_48.iloc[-1] else 0,
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
             except:
                 pass
             
-            # === Near High/Low features ===
+            # === Near High/Low features (HOURLY - 24 bars = 24 hours) ===
             try:
-                if len(close) >= 2:
-                    high_24h = high.iloc[-1:].max()
-                    low_24h = low.iloc[-1:].min()
-                    high_48h = high.iloc[-2:].max() if len(high) >= 2 else high_24h
-                    low_48h = low.iloc[-2:].min() if len(low) >= 2 else low_24h
+                if n_bars >= 48:
+                    high_24h = high.iloc[-24:].max()
+                    low_24h = low.iloc[-24:].min()
+                    high_48h = high.iloc[-48:].max()
+                    low_48h = low.iloc[-48:].min()
                     
                     signals.append(DataSignal(
-                        name="NEAR_24H_HIGH", value=1 if current_price >= high_24h * 0.98 else 0,
+                        name="NEAR_24H_HIGH", value=round(current_price / high_24h, 4) if high_24h > 0 else 1.0,
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
                     signals.append(DataSignal(
-                        name="NEAR_24H_LOW", value=1 if current_price <= low_24h * 1.02 else 0,
+                        name="NEAR_24H_LOW", value=round(current_price / low_24h, 4) if low_24h > 0 else 1.0,
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
                     signals.append(DataSignal(
-                        name="NEAR_48H_HIGH", value=1 if current_price >= high_48h * 0.98 else 0,
+                        name="NEAR_48H_HIGH", value=round(current_price / high_48h, 4) if high_48h > 0 else 1.0,
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
                     signals.append(DataSignal(
-                        name="NEAR_48H_LOW", value=1 if current_price <= low_48h * 1.02 else 0,
+                        name="NEAR_48H_LOW", value=round(current_price / low_48h, 4) if low_48h > 0 else 1.0,
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
             except:
                 pass
             
-            # === Volatility features ===
+            # === Volatility features (HOURLY - use last 24/48 bars) ===
             try:
                 returns = close.pct_change().dropna()
-                if len(returns) >= 2:
-                    vol_24h = returns.iloc[-1:].std() * np.sqrt(24) if len(returns) >= 1 else 0
-                    vol_48h = returns.iloc[-2:].std() * np.sqrt(48) if len(returns) >= 2 else vol_24h
+                if len(returns) >= 48:
+                    # Standard deviation over last 24 and 48 hours
+                    vol_24h = returns.iloc[-24:].std() * 100  # Convert to percentage
+                    vol_48h = returns.iloc[-48:].std() * 100
                     
                     signals.append(DataSignal(
                         name="VOLATILITY_24H", value=round(float(vol_24h), 4) if not np.isnan(vol_24h) else 0,
@@ -933,11 +946,11 @@ class TechnicalEngine(BasePillar):
             except:
                 pass
             
-            # === Range features ===
+            # === Hourly Range features ===
             try:
-                daily_range = (high.iloc[-1] - low.iloc[-1]) / close.iloc[-1] * 100
+                hourly_range = (high.iloc[-1] - low.iloc[-1]) / close.iloc[-1] * 100
                 signals.append(DataSignal(
-                    name="HOURLY_RANGE_PCT", value=round(float(daily_range), 4),
+                    name="HOURLY_RANGE_PCT", value=round(float(hourly_range), 4),
                     confidence=1.0, data_available=True,
                     source="calculated", timestamp=ts, metadata={}
                 ))
@@ -996,31 +1009,33 @@ class TechnicalEngine(BasePillar):
         return signals
     
     def _get_btc_features(self, ts: float) -> list[DataSignal]:
-        """Get BTC-related features for altcoin correlation."""
+        """Get BTC-related features for altcoin correlation (HOURLY DATA)."""
         signals = []
         
         try:
-            # Fetch BTC data
-            btc_data = self._fetch_historical_data("BTC", 30)
-            if btc_data is not None and len(btc_data) >= 2:
+            # Fetch BTC HOURLY data (matching model training)
+            btc_data = self._fetch_historical_data("BTC", 30, interval="1h")
+            if btc_data is not None and len(btc_data) >= 48:
                 close = btc_data["close"]
+                n_bars = len(close)
                 
-                # BTC momentum
-                if len(close) >= 2:
-                    mom_24h = (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100
+                # BTC momentum (HOURLY - 4h and 24h lookback)
+                if n_bars > 24:
+                    mom_4h = (close.iloc[-1] - close.iloc[-5]) / close.iloc[-5] * 100 if n_bars > 4 else 0
+                    mom_24h = (close.iloc[-1] - close.iloc[-25]) / close.iloc[-25] * 100
+                    signals.append(DataSignal(
+                        name="BTC_MOMENTUM_4H", value=round(float(mom_4h), 4),
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
                     signals.append(DataSignal(
                         name="BTC_MOMENTUM_24H", value=round(float(mom_24h), 4),
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-                    signals.append(DataSignal(
-                        name="BTC_MOMENTUM_4H", value=round(float(mom_24h / 6), 4),  # Approximate
-                        confidence=1.0, data_available=True,
-                        source="calculated", timestamp=ts, metadata={}
-                    ))
                 
-                # BTC RSI
-                if len(close) >= 14:
+                # BTC RSI (14-hour RSI)
+                if n_bars >= 14:
                     btc_rsi = rsi(close, period=14).iloc[-1]
                     signals.append(DataSignal(
                         name="BTC_RSI", value=round(float(btc_rsi), 2) if not np.isnan(btc_rsi) else 50,
@@ -1028,8 +1043,8 @@ class TechnicalEngine(BasePillar):
                         source="calculated", timestamp=ts, metadata={}
                     ))
                 
-                # BTC MACD
-                if len(close) >= 26:
+                # BTC MACD (12/26 hour)
+                if n_bars >= 26:
                     btc_macd = macd(close, fast=12, slow=26, signal=9)
                     if not btc_macd.empty:
                         last = btc_macd.iloc[-1]
