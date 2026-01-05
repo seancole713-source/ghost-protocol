@@ -150,13 +150,23 @@ class TurboProvider:
                 time.monotonic() - start,
             )
 
-        # Define provider chain (PAID FIRST: AlphaVantage → Polygon → yfinance → Yahoo HTTP)
+        # Import TwelveData fallback
+        try:
+            from wolf_app import _fetch_price_twelvedata
+        except ImportError:
+            _fetch_price_twelvedata = None
+
+        # Define provider chain (PAID FIRST: AlphaVantage → Polygon → yfinance → Yahoo HTTP → TwelveData)
         providers: List[Tuple[str, Callable[[], Any]]] = [
             ("alphavantage", lambda: _fetch_price_alphavantage(symbol_upper)),
             ("polygon", lambda: _fetch_price_polygon(symbol_upper)),
             ("yfinance", lambda: _fetch_price_yfinance(symbol_upper)),
             ("yahoo_http", lambda: _fetch_price_yahoo_http(symbol_upper)),
         ]
+        
+        # Add TwelveData as final fallback (free tier with demo key)
+        if _fetch_price_twelvedata:
+            providers.append(("twelvedata", lambda: _fetch_price_twelvedata(symbol_upper)))
 
         # Try each provider with timeout
         logs: List[str] = []

@@ -69,13 +69,15 @@ def _reconcile_single(
     # Match timestamps with 60s tolerance
     aligned_f = []
     aligned_a = []
+    # ALIGNMENT_TOLERANCE: 7200s (2 hours) - accounts for hourly data granularity
+    ALIGNMENT_TOLERANCE_SEC = 7200
     for f_ts, f_price in sorted(forecast_map.items()):
-        # Find closest actual within 60s
+        # Find closest actual within tolerance window
         best_match = None
         best_diff = float("inf")
         for a_ts, a_price in actual_map.items():
             diff = abs(a_ts - f_ts)
-            if diff < best_diff and diff <= 60:
+            if diff < best_diff and diff <= ALIGNMENT_TOLERANCE_SEC:
                 best_diff = diff
                 best_match = (a_ts, a_price)
 

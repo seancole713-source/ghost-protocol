@@ -16342,6 +16342,42 @@ def _fetch_price_yahoo_http(symbol: str) -> tuple[float | None, float | None, st
     return None, None, ""
 
 
+def _fetch_price_twelvedata(symbol: str) -> tuple[float | None, float | None, str]:
+    """Fetch stock price from TwelveData API (free tier available).
+    Returns (price, prev_close, provider_label).
+    """
+    try:
+        import requests
+        t0 = time.perf_counter()
+        api_key = os.getenv("TWELVEDATA_API_KEY", "demo")  # Free demo key works!
+        url = f"https://api.twelvedata.com/price?symbol={symbol.upper()}&apikey={api_key}"
+        
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        
+        if "price" in data:
+            price = float(data["price"])
+            if price > 0:
+                LOGGER.debug(f"TwelveData price for {symbol}: ${price:.2f}")
+                try:
+                    if _H_PROVIDER_FETCH is not None:
+                        _H_PROVIDER_FETCH.labels(provider="twelvedata").observe(time.perf_counter() - t0)
+                    if _C_PROVIDER_FETCH is not None:
+                        _C_PROVIDER_FETCH.labels(provider="twelvedata", result="ok").inc()
+                except Exception:
+                    pass
+                return price, None, "twelvedata"
+    except Exception as e:
+        LOGGER.debug(f"TwelveData error for {symbol}: {e}")
+        try:
+            if _C_PROVIDER_FETCH is not None:
+                _C_PROVIDER_FETCH.labels(provider="twelvedata", result="error").inc()
+        except Exception:
+            pass
+    return None, None, ""
+
+
 def _build_price_providers(symbol: str, *, is_market_open: bool) -> list[PriceProvider]:
     providers: list[PriceProvider] = []
     blocklist = PROVIDER_BLOCKLIST.get(symbol.upper(), set())
