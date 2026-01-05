@@ -974,14 +974,38 @@ async def generate_prediction(symbol: str):
     """
     try:
         from services import predictor
-        import random
+        from core.ensemble_predictor import get_ensemble_predictor
+        from core.data_pillars.feature_orchestrator import FeatureOrchestrator
+        import asyncio
         
         symbol = symbol.upper()
         
-        # Simple prediction logic based on randomness (placeholder)
-        # In production, this would use actual price data and ML models
-        confidence = random.uniform(0.55, 0.85)
-        direction = random.choice(["UP", "DOWN", "FLAT"])
+        # FIXED: Use actual ML model instead of random
+        # Get features and run through ensemble predictor
+        try:
+            orchestrator = FeatureOrchestrator()
+            # Determine asset type
+            crypto_symbols = {"BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "AVAX"}
+            asset_type = "crypto" if symbol in crypto_symbols or symbol.endswith("USD") else "stock"
+            
+            features = asyncio.get_event_loop().run_until_complete(
+                orchestrator.get_features(symbol, asset_type)
+            )
+            
+            if features:
+                ensemble = get_ensemble_predictor()
+                result = ensemble.predict(features, symbol=symbol)
+                confidence = result.confidence
+                direction = result.direction
+            else:
+                # No features = low confidence, neutral
+                confidence = 0.45
+                direction = "FLAT"
+                LOGGER.warning(f"No features for {symbol}, using fallback")
+        except Exception as ml_error:
+            LOGGER.warning(f"ML prediction failed: {ml_error}, using fallback")
+            confidence = 0.45
+            direction = "FLAT"
         
         # Create forecast points (48h ahead, every 4 hours)
         now = time.time()

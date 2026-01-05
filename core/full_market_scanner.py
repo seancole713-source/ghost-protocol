@@ -469,24 +469,31 @@ class FullMarketScanner:
     
     async def _estimate_confidence(self, symbol: str, price: float, asset_type: str) -> float:
         """
-        Estimate prediction confidence.
-        In production, this uses the full ML model.
-        For now, uses simplified heuristics.
+        Estimate prediction confidence using the actual ML model.
+        
+        FIXED: Previously used random.uniform which was not real ML.
+        Now calls the ensemble predictor for proper confidence.
         """
-        # TODO: Replace with actual ML model call
-        # This is a placeholder that returns reasonable confidence
-        import random
-        
-        # Base confidence varies by asset type
-        if asset_type == "crypto":
-            base = 0.75
-        else:
-            base = 0.80
-        
-        # Add some variance
-        confidence = base + random.uniform(-0.1, 0.15)
-        
-        return min(0.95, max(0.5, confidence))
+        try:
+            from core.ensemble_predictor import get_ensemble_predictor
+            from core.data_pillars.feature_orchestrator import FeatureOrchestrator
+            
+            # Get features for the symbol
+            orchestrator = FeatureOrchestrator()
+            features = await orchestrator.get_features(symbol, asset_type)
+            
+            if features:
+                predictor = get_ensemble_predictor()
+                result = predictor.predict(features, symbol=symbol)
+                return result.confidence
+            
+            # If no features available, return conservative estimate
+            LOGGER.warning(f"No features for {symbol}, using conservative confidence")
+            return 0.50  # Low confidence when we can't get features
+            
+        except Exception as e:
+            LOGGER.warning(f"Confidence estimation failed for {symbol}: {e}")
+            return 0.50  # Conservative fallback
     
     # ==================== TELEGRAM ALERT ====================
     

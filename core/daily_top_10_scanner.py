@@ -293,12 +293,11 @@ class DailyTop10Scanner:
         except Exception as e:
             LOGGER.warning(f"ML prediction failed for {symbol}, using fallback: {e}")
             
-            # Fallback to simple technical analysis
-            import random
-            
-            # Conservative prediction: 5-20% gains only
-            gain_pct = random.uniform(5.0, 20.0)
-            confidence = random.uniform(0.60, 0.75)
+            # Fallback to conservative estimate
+            # FIXED: Use fixed conservative values instead of random
+            # Random confidence was masking prediction failures
+            gain_pct = 8.0  # Conservative fixed estimate
+            confidence = 0.50  # Low confidence since ML failed
             predicted_price = current_price * (1 + gain_pct / 100)
             sell_time = datetime.utcnow() + timedelta(hours=48)
             
@@ -308,7 +307,7 @@ class DailyTop10Scanner:
                 "confidence": confidence,
                 "direction": "UP",
                 "sell_at": sell_time.isoformat(),
-                "reasoning": "Fallback prediction - ML model unavailable",
+                "reasoning": "⚠️ FALLBACK: ML model unavailable - low confidence estimate",
                 "has_liquidity": True
             }
     

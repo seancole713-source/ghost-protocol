@@ -339,116 +339,15 @@ class EnsemblePrediction:
     ensemble_method: str  # weighted_vote, confidence_weighted, inverse_variance
 
 
-class LSTMModel:
-    """LSTM-style temporal pattern recognition using momentum signals"""
-    
-    def __init__(self):
-        self.lookback = 24  # Hours of momentum to consider
-        
-    def predict(self, features: Dict[str, Any]) -> ModelPrediction:
-        """
-        Generate prediction based on temporal momentum patterns.
-        Uses AVAILABLE features from the feature orchestrator.
-        
-        FIXED: Now uses features that actually exist in the pipeline:
-        - RSI_14 (overbought/oversold)
-        - STOCH_K, STOCH_D (stochastic momentum)
-        - BOLLINGER_POSITION (price position in bands)
-        - VOLUME_ROC (volume momentum)
-        """
-        try:
-            # Use AVAILABLE features from orchestrator
-            rsi = features.get("RSI_14", 50) or 50
-            stoch_k = features.get("STOCH_K", 50) or 50
-            stoch_d = features.get("STOCH_D", 50) or 50
-            bb_position = features.get("BOLLINGER_POSITION", 0.5) or 0.5
-            volume_roc = features.get("VOLUME_ROC", 0) or 0
-            williams_r = features.get("WILLIAMS_R", -50) or -50
-            
-            # Calculate momentum consensus from available indicators
-            momentum_signals = []
-            
-            # RSI momentum
-            if rsi < 35:
-                momentum_signals.append(1)  # Oversold = bullish momentum
-            elif rsi > 65:
-                momentum_signals.append(-1)  # Overbought = bearish momentum
-            else:
-                momentum_signals.append(0)
-            
-            # Stochastic momentum (K vs D crossover proxy)
-            stoch_avg = (stoch_k + stoch_d) / 2
-            if stoch_avg < 25:
-                momentum_signals.append(1)  # Oversold
-            elif stoch_avg > 75:
-                momentum_signals.append(-1)  # Overbought
-            elif stoch_k > stoch_d + 3:
-                momentum_signals.append(1)  # Bullish crossover
-            elif stoch_k < stoch_d - 3:
-                momentum_signals.append(-1)  # Bearish crossover
-            else:
-                momentum_signals.append(0)
-            
-            # Bollinger Band position momentum
-            if bb_position < 0.2:
-                momentum_signals.append(1)  # Near lower band = bullish
-            elif bb_position > 0.8:
-                momentum_signals.append(-1)  # Near upper band = bearish
-            else:
-                momentum_signals.append(0)
-            
-            # Volume momentum (VOLUME_ROC: positive = increasing volume)
-            if volume_roc > 20:
-                # High volume surge - confirms current trend
-                # Look at other signals to determine direction
-                if sum(momentum_signals) > 0:
-                    momentum_signals.append(1)  # Confirms bullish
-                elif sum(momentum_signals) < 0:
-                    momentum_signals.append(-1)  # Confirms bearish
-            
-            # Williams %R momentum
-            if williams_r > -20:
-                momentum_signals.append(-1)  # Overbought
-            elif williams_r < -80:
-                momentum_signals.append(1)  # Oversold
-            else:
-                momentum_signals.append(0)
-            
-            # Calculate consensus
-            total_momentum = sum(momentum_signals)
-            agreement = sum(1 for s in momentum_signals if s == np.sign(total_momentum)) if total_momentum != 0 else 0
-            
-            # LOWERED THRESHOLDS: Even 1 aligned signal is meaningful
-            if total_momentum > 0:
-                direction = "UP"
-                confidence = min(0.48 + (agreement / max(len(momentum_signals), 1)) * 0.30, 0.75)
-            elif total_momentum < 0:
-                direction = "DOWN"
-                confidence = min(0.48 + (agreement / max(len(momentum_signals), 1)) * 0.30, 0.75)
-            else:
-                direction = "FLAT"
-                confidence = 0.40
-            
-            # Predicted change based on momentum strength
-            predicted_change = total_momentum * 1.2
-            
-            return ModelPrediction(
-                model_name="LSTM-Momentum",
-                direction=direction,
-                confidence=confidence,
-                predicted_change_pct=predicted_change,
-                weight=0.25  # Lower weight - momentum is supplementary
-            )
-            
-        except Exception as e:
-            logger.error(f"LSTM momentum prediction failed: {e}")
-            return ModelPrediction(
-                model_name="LSTM-Momentum",
-                direction="FLAT",
-                confidence=0.35,
-                predicted_change_pct=0.0,
-                weight=0.25
-            )
+# =============================================================================
+# REMOVED: LSTMModel class (was fake - just if/else on RSI/Stochastic)
+# 
+# The "LSTM" was not an actual LSTM neural network. It was simple momentum
+# calculations dressed up with a fancy name. Removed in Phase 2 cleanup.
+# 
+# If you need temporal sequence modeling, implement a real LSTM using PyTorch
+# or TensorFlow with proper time-series data.
+# =============================================================================
 
 
 class XGBoostModel:
@@ -782,306 +681,120 @@ class XGBoostModel:
         )
 
 
-class TransformerModel:
-    """Market context model - combines multiple indicator signals"""
-    
-    def __init__(self):
-        self.indicators = ["RSI", "MACD", "BB", "STOCH", "VOLUME"]
-        
-    def predict(self, features: Dict[str, Any]) -> ModelPrediction:
-        """
-        Generate prediction by weighing multiple technical indicators.
-        Acts as a market context synthesizer.
-        """
-        try:
-            signals = []
-            weights = []
-            
-            # RSI Signal (high weight - reliable)
-            rsi = features.get("RSI_14", features.get("rsi", None))
-            if rsi is not None:
-                if rsi < 30:
-                    signals.append(1)  # Oversold = UP
-                    weights.append(0.25)
-                elif rsi > 70:
-                    signals.append(-1)  # Overbought = DOWN
-                    weights.append(0.25)
-                else:
-                    signals.append(0)
-                    weights.append(0.1)
-            
-            # MACD Signal - only bearish if clearly negative
-            macd = features.get("MACD_HISTOGRAM", features.get("macd", None))
-            if macd is not None and macd != 0:  # Need actual MACD value
-                if macd > 0:
-                    signals.append(1)
-                    weights.append(0.2)
-                elif macd < 0:  # Only bearish if MACD is negative
-                    signals.append(-1)
-                    weights.append(0.2)
-                # MACD = 0 is neutral, don't add signal
-            
-            # Bollinger Band Position (FIXED: feature name is BOLLINGER_POSITION)
-            bb_pos = features.get("BOLLINGER_POSITION", features.get("BB_POSITION", None))
-            if bb_pos is not None:
-                if bb_pos < 0.2:  # Near lower band
-                    signals.append(1)
-                    weights.append(0.15)
-                elif bb_pos > 0.8:  # Near upper band
-                    signals.append(-1)
-                    weights.append(0.15)
-                else:
-                    signals.append(0)
-                    weights.append(0.05)
-            
-            # Stochastic Signal
-            stoch_k = features.get("STOCH_K", None)
-            if stoch_k is not None:
-                if stoch_k < 20:
-                    signals.append(1)
-                    weights.append(0.15)
-                elif stoch_k > 80:
-                    signals.append(-1)
-                    weights.append(0.15)
-                else:
-                    signals.append(0)
-                    weights.append(0.05)
-            
-            # Volume confirmation
-            vol_ratio = features.get("VOLUME_RATIO", features.get("volume_ratio", None))
-            if vol_ratio is not None and vol_ratio > 1.5:
-                # High volume confirms existing signals
-                weights = [w * 1.2 for w in weights]
-            
-            # Calculate weighted consensus
-            if signals and weights:
-                total_weight = sum(weights)
-                weighted_signal = sum(s * w for s, w in zip(signals, weights)) / total_weight if total_weight > 0 else 0
-                
-                # LOWERED THRESHOLD: 0.15 (was 0.3) - mild signal is still signal
-                # Markets are noisy; waiting for strong consensus = always FLAT
-                if weighted_signal > 0.15:
-                    direction = "UP"
-                    confidence = min(0.50 + abs(weighted_signal) * 0.35, 0.75)
-                elif weighted_signal < -0.15:
-                    direction = "DOWN"
-                    confidence = min(0.50 + abs(weighted_signal) * 0.35, 0.75)
-                else:
-                    direction = "FLAT"  # Truly mixed signals
-                    confidence = 0.40
-                
-                predicted_change = weighted_signal * 5
-            else:
-                direction = "FLAT"
-                confidence = 0.3
-                predicted_change = 0
-            
-            return ModelPrediction(
-                model_name="Context-Synthesizer",
-                direction=direction,
-                confidence=confidence,
-                predicted_change_pct=predicted_change,
-                weight=0.30  # Increased weight - good at reading technicals
-            )
-            
-        except Exception as e:
-            logger.error(f"Context synthesizer prediction failed: {e}")
-            return ModelPrediction(
-                model_name="Context-Synthesizer",
-                direction="FLAT",
-                confidence=0.3,
-                predicted_change_pct=0.0,
-                weight=0.30
-            )
+# =============================================================================
+# REMOVED: TransformerModel class (was fake - just weighted average of RSI/MACD/BB)
+# 
+# The "Transformer" was not an actual Transformer neural network. It was a simple
+# weighted average of technical indicators dressed up with a fancy name.
+# Removed in Phase 2 cleanup.
+# 
+# If you need attention-based sequence modeling, implement a real Transformer
+# using PyTorch or TensorFlow with proper positional encoding and self-attention.
+# =============================================================================
 
 
 class EnsemblePredictor:
-    """Weighted ensemble of LSTM + XGBoost + Transformer"""
+    """
+    Simplified Predictor - XGBoost Only
+    
+    Phase 2 Cleanup: Removed fake LSTM and Transformer models.
+    Now uses only the trained XGBoost model + market regime signals.
+    
+    Market regime signals (Fear & Greed, BTC correlation) are kept because
+    they provide legitimate external market context.
+    """
     
     def __init__(self):
-        self.lstm = LSTMModel()
         self.xgboost = XGBoostModel()
-        self.transformer = TransformerModel()
         
-        # Model performance tracking (for adaptive weights)
+        # Model performance tracking
         self.performance_history = {
-            "LSTM": deque(maxlen=100),
             "XGBoost": deque(maxlen=100),
-            "Transformer": deque(maxlen=100)
         }
         
     def predict(self, features: dict[str, Any], method: str = "confidence_weighted", symbol: str = "") -> EnsemblePrediction:
         """
-        Generate ensemble prediction
+        Generate prediction using XGBoost + market regime signals.
         
         Args:
-            features: Feature dict with price_history, technical indicators, etc.
-            method: Ensemble method (weighted_vote, confidence_weighted, inverse_variance)
+            features: Feature dict with technical indicators
+            method: Ignored (kept for API compatibility)
             symbol: Optional symbol for BTC correlation boost (crypto only)
         
         Returns:
-            EnsemblePrediction with aggregated results
+            EnsemblePrediction with XGBoost result + market adjustments
         """
         start = time.time()
         
-        # Get predictions from all models
-        lstm_pred = self.lstm.predict(features)
+        # Get XGBoost prediction (the only real ML model)
         xgb_pred = self.xgboost.predict(features)
-        transformer_pred = self.transformer.predict(features)
-        
-        predictions = [lstm_pred, xgb_pred, transformer_pred]
+        predictions = [xgb_pred]
         
         # =====================================================================
-        # MARKET REGIME OVERRIDE - Fix XGBoost DOWN bias
-        # The XGBoost model was trained on bear market data and has severe DOWN bias
-        # Use Fear & Greed + model consensus to override bad predictions
+        # MARKET REGIME ADJUSTMENT
+        # Use Fear & Greed to adjust XGBoost predictions in extreme conditions
         # =====================================================================
         try:
             fng = get_fear_greed_index()
             
-            # Count model directions
-            up_count = sum(1 for p in predictions if p.direction == "UP")
-            down_count = sum(1 for p in predictions if p.direction == "DOWN")
-            flat_count = sum(1 for p in predictions if p.direction == "FLAT")
-            
-            # Situation: XGBoost says DOWN but market is in FEAR and other models disagree
-            if xgb_pred.direction == "DOWN" and fng < 35 and up_count >= 1:
+            # Extreme Fear (<25): Be cautious about DOWN predictions
+            # During panic, markets often bounce - don't short the bottom
+            if xgb_pred.direction == "DOWN" and fng < 25:
                 logger.warning(
-                    f"[REGIME_OVERRIDE] XGBoost DOWN bias detected! "
-                    f"Fear&Greed={fng} (FEAR), {up_count} models say UP. "
-                    f"Reducing XGBoost weight and boosting bullish signals."
+                    f"[REGIME] XGBoost says DOWN but Fear&Greed={fng} (EXTREME FEAR). "
+                    f"Reducing confidence - don't short during panic."
                 )
-                # Create modified XGBoost prediction with reduced confidence
-                from copy import copy
-                xgb_pred_modified = ModelPrediction(
-                    model_name=xgb_pred.model_name,
-                    direction="FLAT",  # Downgrade to FLAT instead of DOWN
-                    confidence=0.40,   # Low confidence
-                    predicted_change_pct=0.0,
-                    weight=0.3  # Reduce weight from 0.7 to 0.3
-                )
-                predictions[1] = xgb_pred_modified
-                logger.info(f"[REGIME_OVERRIDE] XGBoost downgraded: {xgb_pred.direction} -> FLAT (0.40 conf)")
-            
-            # Situation: XGBoost is the ONLY model saying DOWN in FEAR territory (others are FLAT)
-            # In fear markets, we should not be bearish unless multiple models agree
-            elif xgb_pred.direction == "DOWN" and fng < 40 and down_count == 1 and flat_count >= 1:
-                logger.warning(
-                    f"[REGIME_OVERRIDE] XGBoost ALONE says DOWN in FEAR market (FNG={fng}). "
-                    f"Other models: {flat_count} FLAT, {up_count} UP. Downgrading XGBoost to FLAT."
-                )
-                xgb_pred_modified = ModelPrediction(
-                    model_name=xgb_pred.model_name,
-                    direction="FLAT",  # In fear, don't trust single DOWN signal
-                    confidence=0.45,
-                    predicted_change_pct=0.0,
-                    weight=0.4
-                )
-                predictions[1] = xgb_pred_modified
-                
-            # Situation: XGBoost says DOWN but Transformer AND LSTM disagree
-            elif xgb_pred.direction == "DOWN" and lstm_pred.direction != "DOWN" and transformer_pred.direction == "UP":
-                logger.warning(
-                    f"[REGIME_OVERRIDE] XGBoost alone in DOWN call. "
-                    f"LSTM={lstm_pred.direction}, Transformer={transformer_pred.direction}. "
-                    f"Reducing XGBoost influence."
-                )
-                xgb_pred_modified = ModelPrediction(
+                xgb_pred = ModelPrediction(
                     model_name=xgb_pred.model_name,
                     direction=xgb_pred.direction,
-                    confidence=xgb_pred.confidence * 0.5,  # Halve confidence
-                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.5,
-                    weight=0.4  # Reduce weight
+                    confidence=xgb_pred.confidence * 0.7,  # Reduce confidence
+                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.7,
+                    weight=xgb_pred.weight
                 )
-                predictions[1] = xgb_pred_modified
-                logger.info(f"[REGIME_OVERRIDE] XGBoost confidence halved: {xgb_pred.confidence:.1%} -> {xgb_pred_modified.confidence:.1%}")
-                
-            # Situation: Strong FEAR (<25) - boost any UP signals
-            elif fng < 25 and up_count >= 1:
-                logger.info(f"[REGIME_OVERRIDE] EXTREME FEAR ({fng}), boosting bullish signals")
-                for i, pred in enumerate(predictions):
-                    if pred.direction == "UP":
-                        boosted = ModelPrediction(
-                            model_name=pred.model_name,
-                            direction=pred.direction,
-                            confidence=min(0.85, pred.confidence * 1.3),  # Boost UP confidence
-                            predicted_change_pct=pred.predicted_change_pct,
-                            weight=pred.weight * 1.2
-                        )
-                        predictions[i] = boosted
+                predictions = [xgb_pred]
             
-            # Situation: 2/3 models agree on direction - that consensus should win
-            # This overrides the single biased XGBoost model
-            if up_count >= 2:
-                logger.info(f"[REGIME_OVERRIDE] MODEL CONSENSUS: {up_count}/3 models say UP - boosting UP weight")
-                for i, pred in enumerate(predictions):
-                    if pred.direction == "UP":
-                        boosted = ModelPrediction(
-                            model_name=pred.model_name,
-                            direction=pred.direction,
-                            confidence=min(0.85, pred.confidence * 1.2),
-                            predicted_change_pct=pred.predicted_change_pct,
-                            weight=pred.weight * 1.5  # Significant weight boost
-                        )
-                        predictions[i] = boosted
-                    elif pred.direction != "UP":
-                        # Reduce weight of non-UP predictions when consensus is UP
-                        reduced = ModelPrediction(
-                            model_name=pred.model_name,
-                            direction=pred.direction,
-                            confidence=pred.confidence * 0.7,
-                            predicted_change_pct=pred.predicted_change_pct,
-                            weight=pred.weight * 0.5
-                        )
-                        predictions[i] = reduced
-                        
-            elif down_count >= 2:
-                # EXTREME FEAR OVERRIDE: Only block DOWN in EXTREME fear (<20)
-                # Changed from <35 - moderate fear (20-35) should still allow shorting
-                # when technical signals are clearly bearish
-                if fng < 20:
-                    logger.warning(
-                        f"[REGIME_OVERRIDE] DOWN consensus ({down_count}/3) in EXTREME FEAR (FNG={fng})! "
-                        f"Converting to FLAT - don't short during panic."
-                    )
-                    for i, pred in enumerate(predictions):
-                        if pred.direction == "DOWN":
-                            # Convert DOWN to FLAT with reduced confidence
-                            reduced = ModelPrediction(
-                                model_name=pred.model_name,
-                                direction="FLAT",
-                                confidence=pred.confidence * 0.6,
-                                predicted_change_pct=0.0,
-                                weight=pred.weight * 0.5
-                            )
-                            predictions[i] = reduced
-                else:
-                    # Not in fear - trust DOWN consensus
-                    logger.info(f"[REGIME_OVERRIDE] MODEL CONSENSUS: {down_count}/3 models say DOWN - boosting DOWN weight")
-                    for i, pred in enumerate(predictions):
-                        if pred.direction == "DOWN":
-                            boosted = ModelPrediction(
-                                model_name=pred.model_name,
-                                direction=pred.direction,
-                                confidence=min(0.85, pred.confidence * 1.2),
-                                predicted_change_pct=pred.predicted_change_pct,
-                            weight=pred.weight * 1.5
-                        )
-                        predictions[i] = boosted
-                        
+            # Extreme Fear + UP signal: Boost confidence (contrarian buy)
+            elif xgb_pred.direction == "UP" and fng < 30:
+                logger.info(
+                    f"[REGIME] XGBoost says UP in Fear&Greed={fng} (FEAR). "
+                    f"Boosting confidence - contrarian buy signal."
+                )
+                xgb_pred = ModelPrediction(
+                    model_name=xgb_pred.model_name,
+                    direction=xgb_pred.direction,
+                    confidence=min(0.80, xgb_pred.confidence * 1.15),
+                    predicted_change_pct=xgb_pred.predicted_change_pct,
+                    weight=xgb_pred.weight
+                )
+                predictions = [xgb_pred]
+            
+            # Extreme Greed (>75): Be cautious about UP predictions
+            elif xgb_pred.direction == "UP" and fng > 75:
+                logger.warning(
+                    f"[REGIME] XGBoost says UP but Fear&Greed={fng} (GREED). "
+                    f"Reducing confidence - market may be overheated."
+                )
+                xgb_pred = ModelPrediction(
+                    model_name=xgb_pred.model_name,
+                    direction=xgb_pred.direction,
+                    confidence=xgb_pred.confidence * 0.8,
+                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.8,
+                    weight=xgb_pred.weight
+                )
+                predictions = [xgb_pred]
+                
         except Exception as e:
-            logger.error(f"[REGIME_OVERRIDE] Error: {e}")
+            logger.error(f"[REGIME] Error getting Fear&Greed: {e}")
         
-        # Adaptive weights based on recent performance
-        weights = self._calculate_adaptive_weights()
-        
-        # Apply ensemble method
-        if method == "confidence_weighted":
-            ensemble_result = self._confidence_weighted_ensemble(predictions, weights)
-        elif method == "inverse_variance":
-            ensemble_result = self._inverse_variance_ensemble(predictions, weights)
-        else:  # weighted_vote
-            ensemble_result = self._weighted_vote_ensemble(predictions, weights)
+        # Build ensemble result (now just XGBoost)
+        ensemble_result = EnsemblePrediction(
+            direction=xgb_pred.direction,
+            confidence=min(xgb_pred.confidence, 0.75),  # Cap at 75%
+            predicted_change_pct=xgb_pred.predicted_change_pct,
+            individual_predictions=predictions,
+            model_weights={"XGBoost": 1.0},
+            ensemble_method="xgboost_only"
+        )
         
         # =====================================================================
         # FEAR & GREED INTEGRATION
@@ -1165,144 +878,31 @@ class EnsemblePredictor:
         return ensemble_result
     
     def _calculate_adaptive_weights(self) -> dict[str, float]:
-        """Calculate model weights based on recent performance"""
-        weights = {}
-        total_accuracy = 0
+        """Calculate model weights based on recent performance (simplified for XGBoost-only)"""
+        weights = {"XGBoost": 1.0}
         
-        for model_name, history in self.performance_history.items():
-            if len(history) > 10:
-                # Use recent accuracy as weight
-                accuracy = sum(history) / len(history)
-                weights[model_name] = accuracy
-                total_accuracy += accuracy
-            else:
-                # Default weights until we have performance data
-                weights[model_name] = {"LSTM": 0.4, "XGBoost": 0.4, "Transformer": 0.2}[model_name]
-                total_accuracy += weights[model_name]
-        
-        # Normalize weights to sum to 1.0
-        if total_accuracy > 0:
-            weights = {k: v / total_accuracy for k, v in weights.items()}
+        # If we have performance history, use it
+        if "XGBoost" in self.performance_history and len(self.performance_history["XGBoost"]) > 10:
+            accuracy = sum(self.performance_history["XGBoost"]) / len(self.performance_history["XGBoost"])
+            # Weight stays at 1.0 for single model, but we track accuracy
+            logger.debug(f"XGBoost recent accuracy: {accuracy:.1%}")
         
         return weights
     
-    def _confidence_weighted_ensemble(
-        self,
-        predictions: List[ModelPrediction],
-        adaptive_weights: Dict[str, float]
-    ) -> EnsemblePrediction:
-        """Ensemble weighted by model confidence * adaptive weight"""
-        
-        # Weight by confidence and adaptive performance
-        weighted_votes = {"UP": 0.0, "DOWN": 0.0, "FLAT": 0.0}
-        total_weight = 0.0
-        weighted_change = 0.0
-        
-        for pred in predictions:
-            weight = pred.confidence * adaptive_weights.get(pred.model_name, pred.weight)
-            weighted_votes[pred.direction] += weight
-            weighted_change += pred.predicted_change_pct * weight
-            total_weight += weight
-        
-        # Determine final direction
-        direction = max(weighted_votes, key=weighted_votes.get)
-        confidence = weighted_votes[direction] / total_weight if total_weight > 0 else 0.5
-        predicted_change = weighted_change / total_weight if total_weight > 0 else 0.0
-        
-        # FLAT predictions should NOT have high confidence - "uncertain" with 95% confidence is nonsense
-        # Cap FLAT confidence at 55% (slightly above random) since FLAT = "we don't have a strong signal"
-        if direction == "FLAT":
-            confidence = min(confidence, 0.55)
-        
-        # IMPORTANT: Vote share != probability
-        # Even with 100% model agreement, we should NOT claim 100% confidence
-        # Cap directional predictions at 75% - markets are inherently uncertain
-        # Individual model confidences already factor in their certainty
-        avg_model_conf = sum(p.confidence for p in predictions if p.direction == direction) / max(1, len([p for p in predictions if p.direction == direction]))
-        confidence = min(confidence, avg_model_conf, 0.75)
-        
-        return EnsemblePrediction(
-            direction=direction,
-            confidence=min(confidence, 0.75),  # Hard cap at 75% - no prediction is ever "certain"
-            predicted_change_pct=predicted_change,
-            individual_predictions=predictions,
-            model_weights=adaptive_weights,
-            ensemble_method="confidence_weighted"
-        )
-    
-    def _weighted_vote_ensemble(
-        self,
-        predictions: list[ModelPrediction],
-        adaptive_weights: dict[str, float]
-    ) -> EnsemblePrediction:
-        """Majority vote weighted by model performance"""
-        
-        votes = {"UP": 0.0, "DOWN": 0.0, "FLAT": 0.0}
-        
-        for pred in predictions:
-            votes[pred.direction] += adaptive_weights.get(pred.model_name, pred.weight)
-        
-        direction = max(votes, key=votes.get)
-        confidence = votes[direction] / sum(votes.values())
-        
-        # FLAT predictions should NOT have high confidence - cap at 55%
-        if direction == "FLAT":
-            confidence = min(confidence, 0.55)
-        
-        # Average predicted change from models agreeing with final direction
-        agreeing_changes = [
-            p.predicted_change_pct for p in predictions if p.direction == direction
-        ]
-        predicted_change = sum(agreeing_changes) / len(agreeing_changes) if agreeing_changes else 0.0
-        
-        return EnsemblePrediction(
-            direction=direction,
-            confidence=min(confidence, 0.85),  # Lowered from 0.95 - ensemble should be conservative
-            predicted_change_pct=predicted_change,
-            individual_predictions=predictions,
-            model_weights=adaptive_weights,
-            ensemble_method="weighted_vote"
-        )
-    
-    def _inverse_variance_ensemble(
-        self,
-        predictions: list[ModelPrediction],
-        adaptive_weights: dict[str, float]
-    ) -> EnsemblePrediction:
-        """Weight by inverse variance (higher confidence = lower variance)"""
-        
-        # Inverse variance weighting: higher confidence = more weight
-        total_inv_var = sum(p.confidence for p in predictions)
-        
-        if total_inv_var == 0:
-            return self._weighted_vote_ensemble(predictions, adaptive_weights)
-        
-        weighted_change = 0.0
-        weighted_votes = {"UP": 0.0, "DOWN": 0.0, "FLAT": 0.0}
-        
-        for pred in predictions:
-            inv_var_weight = pred.confidence / total_inv_var
-            weighted_votes[pred.direction] += inv_var_weight
-            weighted_change += pred.predicted_change_pct * inv_var_weight
-        
-        direction = max(weighted_votes, key=weighted_votes.get)
-        confidence = weighted_votes[direction]
-        
-        # FLAT predictions should NOT have high confidence - cap at 55%
-        if direction == "FLAT":
-            confidence = min(confidence, 0.55)
-        
-        return EnsemblePrediction(
-            direction=direction,
-            confidence=min(confidence, 0.85),  # Lowered from 0.98 - ensemble should be conservative
-            predicted_change_pct=weighted_change,
-            individual_predictions=predictions,
-            model_weights=adaptive_weights,
-            ensemble_method="inverse_variance"
-        )
+    # =========================================================================
+    # REMOVED: _confidence_weighted_ensemble, _weighted_vote_ensemble, 
+    # _inverse_variance_ensemble methods
+    # 
+    # These were only needed when combining multiple models. With XGBoost-only,
+    # we use the XGBoost prediction directly (with market regime adjustments).
+    # =========================================================================
     
     def update_performance(self, model_name: str, was_correct: bool) -> None:
-        """Update model performance history for adaptive weighting"""
+        """Update model performance history for tracking accuracy"""
+        # Normalize model name to XGBoost for backward compatibility
+        if "xgboost" in model_name.lower() or "XGBoost" in model_name:
+            model_name = "XGBoost"
+        
         if model_name in self.performance_history:
             self.performance_history[model_name].append(1.0 if was_correct else 0.0)
             logger.debug(f"Updated {model_name} performance: {was_correct}")
@@ -1317,45 +917,39 @@ def get_ensemble_predictor() -> EnsemblePredictor:
     global _ensemble_predictor
     if _ensemble_predictor is None:
         _ensemble_predictor = EnsemblePredictor()
-        logger.info("✅ Ensemble predictor initialized (LSTM + XGBoost + Transformer)")
+        logger.info("✅ Predictor initialized (XGBoost + Market Regime signals)")
     return _ensemble_predictor
 
 
 if __name__ == "__main__":
-    # Test ensemble
+    # Test predictor
     logging.basicConfig(level=logging.INFO)
     
-    print("🤖 Testing Ensemble Predictor")
+    print("🤖 Testing Predictor (XGBoost + Market Regime)")
     print("=" * 60)
     
-    ensemble = get_ensemble_predictor()
+    predictor = get_ensemble_predictor()
     
     # Test features
     test_features = {
-        "price_history_48h": [100 + i * 0.5 for i in range(48)],  # Uptrend
-        "rsi": 45,
-        "macd": 0.5,
-        "volume_ratio": 1.8,
-        "volatility": 0.02,
-        "sentiment": 0.3,
-        "confidence": 0.7
+        "RSI_14": 45,
+        "MACD_HISTOGRAM": 0.5,
+        "VOLUME_RATIO": 1.8,
+        "STOCH_K": 50,
+        "BB_POSITION": 0.5,
     }
     
     # Generate prediction
-    result = ensemble.predict(test_features, method="confidence_weighted")
+    result = predictor.predict(test_features, symbol="BTC")
     
-    print(f"\n📊 Ensemble Result:")
+    print(f"\n📊 Prediction Result:")
     print(f"  Direction: {result.direction}")
     print(f"  Confidence: {result.confidence:.1%}")
     print(f"  Predicted Change: {result.predicted_change_pct:+.2f}%")
     print(f"  Method: {result.ensemble_method}")
     
-    print(f"\n🎯 Individual Models:")
+    print(f"\n🎯 Model:")
     for pred in result.individual_predictions:
-        print(f"  {pred.model_name}: {pred.direction} ({pred.confidence:.1%}, weight={pred.weight})")
+        print(f"  {pred.model_name}: {pred.direction} ({pred.confidence:.1%})")
     
-    print(f"\n⚖️ Adaptive Weights:")
-    for model, weight in result.model_weights.items():
-        print(f"  {model}: {weight:.2%}")
-    
-    print("\n✅ Ensemble test complete")
+    print("\n✅ Predictor test complete")
