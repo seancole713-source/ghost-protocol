@@ -1395,12 +1395,14 @@ class PostgresBackend:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+            # CRITICAL FIX: Join with ghost_prediction_outcomes (where reconciler writes)
+            # NOT the outcomes table (which is separate/legacy)
             cursor.execute(
                 """
                 SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.direction,
                        p.confidence, p.features_json
                 FROM predictions p
-                LEFT JOIN outcomes o ON p.id = o.prediction_id
+                LEFT JOIN ghost_prediction_outcomes o ON p.id = o.prediction_id
                 WHERE o.prediction_id IS NULL
                   AND (p.run_at + (p.horizon_h * 3600)) <= %s
                 ORDER BY p.run_at
@@ -1449,12 +1451,13 @@ class PostgresBackend:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+            # CRITICAL FIX: Use ghost_prediction_outcomes table (where reconciler writes)
             cursor.execute(
                 """
-                SELECT p.confidence, o.mae, o.map, o.rmse, o.hit_direction
+                SELECT p.confidence, o.realized_move_pct as map, o.hit_direction
                 FROM predictions p
-                JOIN outcomes o ON p.id = o.prediction_id
-                WHERE p.symbol = %s
+                JOIN ghost_prediction_outcomes o ON p.id = o.prediction_id
+                WHERE p.symbol = %s AND o.status = 'completed'
                 """,
                 (symbol,),
             )
@@ -1464,9 +1467,9 @@ class PostgresBackend:
             return [
                 {
                     "confidence": row["confidence"],
-                    "mae": row["mae"],
-                    "map": row["map"],
-                    "rmse": row["rmse"],
+                    "mae": abs(row["map"]) if row["map"] else 0,  # Approximate MAE from realized_move_pct
+                    "map": row["map"] if row["map"] else 0,
+                    "rmse": abs(row["map"]) if row["map"] else 0,  # Approximate RMSE
                     "hit_direction": row["hit_direction"],
                 }
                 for row in rows
@@ -1482,12 +1485,14 @@ class PostgresBackend:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+            # CRITICAL FIX: Use ghost_prediction_outcomes table (where reconciler writes)
             cursor.execute(
                 """
-                SELECT p.confidence, o.mae, o.map, o.rmse, o.hit_direction
+                SELECT p.confidence, o.realized_move_pct as map, o.hit_direction
                 FROM predictions p
-                JOIN outcomes o ON p.id = o.prediction_id
-                WHERE p.symbol = %s AND o.closed_at >= %s
+                JOIN ghost_prediction_outcomes o ON p.id = o.prediction_id
+                WHERE p.symbol = %s AND EXTRACT(EPOCH FROM o.closed_at) >= %s
+                  AND o.status = 'completed'
                 """,
                 (symbol, since_ts),
             )
@@ -1497,9 +1502,9 @@ class PostgresBackend:
             return [
                 {
                     "confidence": row["confidence"],
-                    "mae": row["mae"],
-                    "map": row["map"],
-                    "rmse": row["rmse"],
+                    "mae": abs(row["map"]) if row["map"] else 0,
+                    "map": row["map"] if row["map"] else 0,
+                    "rmse": abs(row["map"]) if row["map"] else 0,
                     "hit_direction": row["hit_direction"],
                 }
                 for row in rows
