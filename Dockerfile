@@ -36,7 +36,8 @@ RUN mkdir -p /app/data /data /tmp/prom_multiproc && \
 ENV SIM_MODE=0 \
     PYTHONUNBUFFERED=1 \
     PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc \
-    GHOST_PREDICT_DB=/app/data/ghost_predictions.db
+    GHOST_PREDICT_DB=/app/data/ghost_predictions.db \
+    PREDICTION_STORE_ENGINE=postgres
 
 # Expose port (Railway assigns PORT dynamically)
 EXPOSE 8080
