@@ -201,7 +201,7 @@ class CryptoPredictionEngine:
         # 5. Determine direction and confidence
         direction, confidence = self._analyze_direction(metrics, history)
 
-        # 6. Store prediction
+        # 6. Store prediction to SQLite (local crypto db)
         prediction_id = str(uuid.uuid4())
         self._store_prediction(
             prediction_id=prediction_id,
@@ -212,6 +212,38 @@ class CryptoPredictionEngine:
             confidence=confidence,
             metrics=metrics,
         )
+
+        # 7. ALSO store to PostgreSQL so outcome reconciler can find it!
+        # This is the CRITICAL piece - without this, predictions can't be evaluated
+        try:
+            from core.prediction_store import get_prediction_store
+            store = get_prediction_store()
+            
+            # Convert forecast points to (ts, price) tuples for predictor module
+            forecast_tuples = [(p["t"], p["p"]) for p in forecast_points]
+            
+            # Add current_price to features so reconciler can find t0 price
+            features_with_price = {
+                **metrics,
+                "current_price": current_price,
+                "PRICE": current_price,  # Backup field name
+            }
+            
+            pg_prediction_id = store.save_prediction(
+                symbol=symbol,
+                forecast_points=forecast_tuples,
+                method="ghost-crypto-v1",
+                confidence=confidence,
+                direction=direction,
+                features=features_with_price,
+                params={"horizon_h": self.horizon_hours, "crypto": True},
+                tag="crypto",
+            )
+            
+            LOGGER.info(f"✅ Crypto prediction also saved to PostgreSQL (ID: {pg_prediction_id})")
+        except Exception as e:
+            LOGGER.warning(f"⚠️ Failed to dual-write crypto prediction to PostgreSQL: {e}")
+            # Continue - SQLite write succeeded, this is a secondary write
 
         LOGGER.info(
             f"Crypto prediction generated: {symbol} {direction} "

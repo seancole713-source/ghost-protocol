@@ -4052,25 +4052,9 @@ async def _on_startup():
         LOGGER.error(f"killswitch_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
     # Start outcome reconciler background task (runs hourly)
-    try:
-        async def _outcome_reconciler_loop():
-            """Background task to reconcile prediction outcomes every hour"""
-            await asyncio.sleep(300)  # Wait 5 minutes after startup
-            while True:
-                try:
-                    from services.outcome_reconciler import reconcile_outcomes
-                    LOGGER.info("[RECONCILER] Running outcome reconciliation...")
-                    reconcile_outcomes()
-                    LOGGER.info("[RECONCILER] ✅ Reconciliation complete")
-                except Exception as e:
-                    LOGGER.error(f"[RECONCILER] Error: {e}", exc_info=False)
-                await asyncio.sleep(3600)  # Run every hour
-        
-        loop = asyncio.get_running_loop()
-        loop.create_task(_outcome_reconciler_loop())
-        LOGGER.info("[GHOST STARTUP] ✅ Outcome reconciler scheduled (hourly)")
-    except Exception as e:
-        LOGGER.error(f"reconciler_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    # NOTE: DISABLED - Using outcome_reconciler_v2 instead (started at line 3973)
+    # The old reconciler uses prediction_points table which isn't populated for crypto
+    LOGGER.info("[GHOST STARTUP] ⚠️ Old outcome reconciler DISABLED - using V2 at line 3973")
 
     # ========================================================================
     # CRITICAL: Auto-trigger stock AND crypto predictions on startup
