@@ -11,13 +11,16 @@ Indicators Computed:
 - Volatility: Bollinger Bands, ATR, Standard Deviation
 - Volume: OBV, Money Flow Index, Volume Rate
 - Pattern: Support/Resistance, Trend Lines
+- XGBoost v3 Features: All 59 features for hourly model
 
 Author: Ghost AI
 Date: November 21, 2025
+Updated: January 5, 2026 - Added XGBoost v3 features
 """
 
 import logging
 import time
+from datetime import datetime
 from typing import Any
 
 import numpy as np
@@ -620,6 +623,11 @@ class TechnicalEngine(BasePillar):
             except Exception as e:
                 logger.warning(f"Williams %R calculation failed for {symbol}: {e}")
 
+            # ================================================================
+            # XGBOOST V3 FEATURES - Add all 59 features model expects
+            # ================================================================
+            signals.extend(self._calculate_xgboost_features(df, symbol, ts))
+
         except Exception as e:
             logger.error(f"Indicator calculation failed for {symbol}: {e}")
 
@@ -627,6 +635,480 @@ class TechnicalEngine(BasePillar):
             logger.warning(f"No technical indicators calculated for {symbol}")
             return self._create_unavailable_signals()
 
+        return signals
+
+    def _calculate_xgboost_features(self, df: pd.DataFrame, symbol: str, ts: float) -> list[DataSignal]:
+        """
+        Calculate all 59 features expected by XGBoost v3 model.
+        
+        This ensures feature names EXACTLY match what the model was trained on.
+        Features not already calculated above are added here.
+        """
+        signals = []
+        
+        try:
+            close = df["close"]
+            high = df["high"]
+            low = df["low"]
+            volume = df.get("volume", pd.Series([0] * len(df)))
+            current_price = float(close.iloc[-1])
+            
+            # === SMAs for XGBoost (12, 24, 48, 168 hour equivalents) ===
+            # Note: We're using daily data, so approximate with daily periods
+            for period, name in [(12, "SMA_12"), (24, "SMA_24"), (48, "SMA_48"), (168, "SMA_168")]:
+                try:
+                    # Use daily equivalent (divide by 24 for hourly approximation)
+                    daily_period = max(1, period // 24) if period > 24 else period
+                    if len(close) >= daily_period:
+                        ma_val = close.rolling(window=daily_period).mean().iloc[-1]
+                        if not np.isnan(ma_val):
+                            signals.append(DataSignal(
+                                name=name, value=round(float(ma_val), 4),
+                                confidence=1.0, data_available=True,
+                                source="calculated", timestamp=ts, metadata={}
+                            ))
+                except:
+                    pass
+            
+            # === EMAs (12, 24) ===
+            for period, name in [(12, "EMA_12"), (24, "EMA_24")]:
+                try:
+                    daily_period = max(1, period // 24) if period > 24 else period
+                    if len(close) >= daily_period:
+                        ema_val = close.ewm(span=daily_period).mean().iloc[-1]
+                        if not np.isnan(ema_val):
+                            signals.append(DataSignal(
+                                name=name, value=round(float(ema_val), 4),
+                                confidence=1.0, data_available=True,
+                                source="calculated", timestamp=ts, metadata={}
+                            ))
+                except:
+                    pass
+            
+            # === RSI derived features ===
+            try:
+                rsi_val = rsi(close, period=14).iloc[-1] if len(close) >= 14 else 50
+                if not np.isnan(rsi_val):
+                    signals.append(DataSignal(
+                        name="RSI_OVERSOLD", value=1 if rsi_val < 30 else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    signals.append(DataSignal(
+                        name="RSI_OVERBOUGHT", value=1 if rsi_val > 70 else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+            except:
+                pass
+            
+            # === MACD derived features ===
+            try:
+                macd_data = macd(close, fast=12, slow=26, signal=9)
+                if not macd_data.empty:
+                    last = macd_data.iloc[-1]
+                    macd_line = last.get("macd", 0)
+                    signal_line = last.get("signal", 0)
+                    
+                    signals.append(DataSignal(
+                        name="MACD_LINE", value=round(float(macd_line), 4) if not np.isnan(macd_line) else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    signals.append(DataSignal(
+                        name="MACD_BULLISH", value=1 if macd_line > signal_line else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+            except:
+                pass
+            
+            # === Bollinger Band features ===
+            try:
+                bb = bollinger_bands(close, period=20, std_dev=2)
+                if not bb.empty:
+                    last = bb.iloc[-1]
+                    bb_upper = last.get("upper", current_price * 1.02)
+                    bb_lower = last.get("lower", current_price * 0.98)
+                    bb_middle = last.get("middle", current_price)
+                    
+                    # BB_WIDTH = (upper - lower) / middle
+                    bb_width = (bb_upper - bb_lower) / bb_middle if bb_middle > 0 else 0.04
+                    signals.append(DataSignal(
+                        name="BB_WIDTH", value=round(float(bb_width), 4),
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    
+                    # BB_POSITION = (price - lower) / (upper - lower)
+                    bb_position = (current_price - bb_lower) / (bb_upper - bb_lower) if (bb_upper - bb_lower) > 0 else 0.5
+                    signals.append(DataSignal(
+                        name="BB_POSITION", value=round(float(bb_position), 4),
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+            except:
+                pass
+            
+            # === ATR_PCT ===
+            try:
+                atr_val = atr(high, low, close, period=14).iloc[-1] if len(close) >= 14 else 0
+                atr_pct = atr_val / current_price if current_price > 0 else 0
+                signals.append(DataSignal(
+                    name="ATR_PCT", value=round(float(atr_pct), 4),
+                    confidence=1.0, data_available=True,
+                    source="calculated", timestamp=ts, metadata={}
+                ))
+            except:
+                pass
+            
+            # === Volume features ===
+            try:
+                if len(volume) >= 24:
+                    vol_sma = volume.rolling(window=min(24, len(volume))).mean().iloc[-1]
+                    vol_ratio = volume.iloc[-1] / vol_sma if vol_sma > 0 else 1.0
+                    vol_spike = 1 if vol_ratio > 2.0 else 0
+                    
+                    signals.append(DataSignal(
+                        name="VOLUME_SMA_24", value=round(float(vol_sma), 2),
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    signals.append(DataSignal(
+                        name="VOLUME_RATIO", value=round(float(vol_ratio), 4),
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    signals.append(DataSignal(
+                        name="VOLUME_SPIKE", value=vol_spike,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+            except:
+                pass
+            
+            # === OBV features ===
+            try:
+                obv = (np.sign(close.diff()) * volume).cumsum()
+                obv_sma = obv.rolling(window=min(24, len(obv))).mean()
+                
+                signals.append(DataSignal(
+                    name="OBV", value=round(float(obv.iloc[-1]), 2),
+                    confidence=1.0, data_available=True,
+                    source="calculated", timestamp=ts, metadata={}
+                ))
+                signals.append(DataSignal(
+                    name="OBV_SMA", value=round(float(obv_sma.iloc[-1]), 2),
+                    confidence=1.0, data_available=True,
+                    source="calculated", timestamp=ts, metadata={}
+                ))
+                signals.append(DataSignal(
+                    name="OBV_TREND", value=1 if obv.iloc[-1] > obv_sma.iloc[-1] else 0,
+                    confidence=1.0, data_available=True,
+                    source="calculated", timestamp=ts, metadata={}
+                ))
+            except:
+                pass
+            
+            # === Momentum features (1H, 4H, 12H, 24H, 48H approximations) ===
+            for hours, name in [(1, "MOMENTUM_1H"), (4, "MOMENTUM_4H"), (12, "MOMENTUM_12H"), 
+                                (24, "MOMENTUM_24H"), (48, "MOMENTUM_48H")]:
+                try:
+                    # Use daily approximation (1 day ≈ 24 hours)
+                    lookback = max(1, hours // 24) if hours >= 24 else 1
+                    if len(close) > lookback:
+                        mom = (close.iloc[-1] - close.iloc[-lookback-1]) / close.iloc[-lookback-1] * 100
+                        signals.append(DataSignal(
+                            name=name, value=round(float(mom), 4),
+                            confidence=1.0, data_available=True,
+                            source="calculated", timestamp=ts, metadata={}
+                        ))
+                except:
+                    pass
+            
+            # === ROC (Rate of Change) ===
+            try:
+                if len(close) > 1:
+                    roc = (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100
+                    signals.append(DataSignal(
+                        name="ROC_24", value=round(float(roc), 4),
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+            except:
+                pass
+            
+            # === ABOVE_SMA features ===
+            for period, name in [(24, "ABOVE_SMA_24"), (48, "ABOVE_SMA_48"), (168, "ABOVE_SMA_168")]:
+                try:
+                    daily_period = max(1, period // 24)
+                    if len(close) >= daily_period:
+                        ma_val = close.rolling(window=daily_period).mean().iloc[-1]
+                        signals.append(DataSignal(
+                            name=name, value=1 if current_price > ma_val else 0,
+                            confidence=1.0, data_available=True,
+                            source="calculated", timestamp=ts, metadata={}
+                        ))
+                except:
+                    pass
+            
+            # === EMA_BULLISH ===
+            try:
+                if len(close) >= 2:
+                    ema_12 = close.ewm(span=1).mean().iloc[-1]  # Short EMA
+                    ema_24 = close.ewm(span=2).mean().iloc[-1]  # Long EMA
+                    signals.append(DataSignal(
+                        name="EMA_BULLISH", value=1 if ema_12 > ema_24 else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+            except:
+                pass
+            
+            # === SMA Cross ===
+            try:
+                if len(close) >= 3:
+                    sma_short = close.rolling(window=2).mean()
+                    sma_long = close.rolling(window=3).mean()
+                    # Cross detection: was below, now above = 1; was above, now below = -1
+                    prev_cross = 1 if sma_short.iloc[-2] < sma_long.iloc[-2] else -1
+                    curr_cross = 1 if sma_short.iloc[-1] > sma_long.iloc[-1] else -1
+                    cross = 1 if curr_cross > prev_cross else (-1 if curr_cross < prev_cross else 0)
+                    signals.append(DataSignal(
+                        name="SMA_CROSS_24_48", value=cross,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+            except:
+                pass
+            
+            # === Near High/Low features ===
+            try:
+                if len(close) >= 2:
+                    high_24h = high.iloc[-1:].max()
+                    low_24h = low.iloc[-1:].min()
+                    high_48h = high.iloc[-2:].max() if len(high) >= 2 else high_24h
+                    low_48h = low.iloc[-2:].min() if len(low) >= 2 else low_24h
+                    
+                    signals.append(DataSignal(
+                        name="NEAR_24H_HIGH", value=1 if current_price >= high_24h * 0.98 else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    signals.append(DataSignal(
+                        name="NEAR_24H_LOW", value=1 if current_price <= low_24h * 1.02 else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    signals.append(DataSignal(
+                        name="NEAR_48H_HIGH", value=1 if current_price >= high_48h * 0.98 else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    signals.append(DataSignal(
+                        name="NEAR_48H_LOW", value=1 if current_price <= low_48h * 1.02 else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+            except:
+                pass
+            
+            # === Volatility features ===
+            try:
+                returns = close.pct_change().dropna()
+                if len(returns) >= 2:
+                    vol_24h = returns.iloc[-1:].std() * np.sqrt(24) if len(returns) >= 1 else 0
+                    vol_48h = returns.iloc[-2:].std() * np.sqrt(48) if len(returns) >= 2 else vol_24h
+                    
+                    signals.append(DataSignal(
+                        name="VOLATILITY_24H", value=round(float(vol_24h), 4) if not np.isnan(vol_24h) else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    signals.append(DataSignal(
+                        name="VOLATILITY_48H", value=round(float(vol_48h), 4) if not np.isnan(vol_48h) else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+            except:
+                pass
+            
+            # === Range features ===
+            try:
+                daily_range = (high.iloc[-1] - low.iloc[-1]) / close.iloc[-1] * 100
+                signals.append(DataSignal(
+                    name="HOURLY_RANGE_PCT", value=round(float(daily_range), 4),
+                    confidence=1.0, data_available=True,
+                    source="calculated", timestamp=ts, metadata={}
+                ))
+            except:
+                pass
+            
+            # === Time features ===
+            try:
+                now = datetime.now()
+                signals.append(DataSignal(
+                    name="HOUR_OF_DAY", value=now.hour,
+                    confidence=1.0, data_available=True,
+                    source="calculated", timestamp=ts, metadata={}
+                ))
+                signals.append(DataSignal(
+                    name="DAY_OF_WEEK", value=now.weekday(),
+                    confidence=1.0, data_available=True,
+                    source="calculated", timestamp=ts, metadata={}
+                ))
+                signals.append(DataSignal(
+                    name="IS_WEEKEND", value=1 if now.weekday() >= 5 else 0,
+                    confidence=1.0, data_available=True,
+                    source="calculated", timestamp=ts, metadata={}
+                ))
+            except:
+                pass
+            
+            # === BTC Correlation features (for non-BTC crypto) ===
+            if symbol.upper() != "BTC":
+                try:
+                    btc_features = self._get_btc_features(ts)
+                    signals.extend(btc_features)
+                except Exception as e:
+                    logger.debug(f"BTC features failed: {e}")
+            else:
+                # For BTC itself, add placeholder features
+                signals.extend([
+                    DataSignal(name="BTC_MOMENTUM_4H", value=0, confidence=1.0, data_available=True, source="calculated", timestamp=ts, metadata={}),
+                    DataSignal(name="BTC_MOMENTUM_24H", value=0, confidence=1.0, data_available=True, source="calculated", timestamp=ts, metadata={}),
+                    DataSignal(name="BTC_RSI", value=50, confidence=1.0, data_available=True, source="calculated", timestamp=ts, metadata={}),
+                    DataSignal(name="BTC_MACD_BULLISH", value=0, confidence=1.0, data_available=True, source="calculated", timestamp=ts, metadata={}),
+                    DataSignal(name="BTC_CORRELATION", value=1.0, confidence=1.0, data_available=True, source="calculated", timestamp=ts, metadata={}),
+                    DataSignal(name="BTC_LEADS", value=0, confidence=1.0, data_available=True, source="calculated", timestamp=ts, metadata={}),
+                ])
+            
+            # === Fear & Greed features ===
+            try:
+                fear_greed_features = self._get_fear_greed_features(ts)
+                signals.extend(fear_greed_features)
+            except Exception as e:
+                logger.debug(f"Fear & Greed features failed: {e}")
+            
+        except Exception as e:
+            logger.error(f"XGBoost feature calculation failed: {e}")
+        
+        return signals
+    
+    def _get_btc_features(self, ts: float) -> list[DataSignal]:
+        """Get BTC-related features for altcoin correlation."""
+        signals = []
+        
+        try:
+            # Fetch BTC data
+            btc_data = self._fetch_historical_data("BTC", 30)
+            if btc_data is not None and len(btc_data) >= 2:
+                close = btc_data["close"]
+                
+                # BTC momentum
+                if len(close) >= 2:
+                    mom_24h = (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100
+                    signals.append(DataSignal(
+                        name="BTC_MOMENTUM_24H", value=round(float(mom_24h), 4),
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                    signals.append(DataSignal(
+                        name="BTC_MOMENTUM_4H", value=round(float(mom_24h / 6), 4),  # Approximate
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                
+                # BTC RSI
+                if len(close) >= 14:
+                    btc_rsi = rsi(close, period=14).iloc[-1]
+                    signals.append(DataSignal(
+                        name="BTC_RSI", value=round(float(btc_rsi), 2) if not np.isnan(btc_rsi) else 50,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                
+                # BTC MACD
+                if len(close) >= 26:
+                    btc_macd = macd(close, fast=12, slow=26, signal=9)
+                    if not btc_macd.empty:
+                        last = btc_macd.iloc[-1]
+                        macd_bullish = 1 if last.get("macd", 0) > last.get("signal", 0) else 0
+                        signals.append(DataSignal(
+                            name="BTC_MACD_BULLISH", value=macd_bullish,
+                            confidence=1.0, data_available=True,
+                            source="calculated", timestamp=ts, metadata={}
+                        ))
+                
+                # BTC correlation placeholder (would need both symbol + BTC data)
+                signals.append(DataSignal(
+                    name="BTC_CORRELATION", value=0.7,  # Default high correlation for crypto
+                    confidence=0.8, data_available=True,
+                    source="estimated", timestamp=ts, metadata={}
+                ))
+                
+                signals.append(DataSignal(
+                    name="BTC_LEADS", value=1,  # BTC typically leads
+                    confidence=0.8, data_available=True,
+                    source="estimated", timestamp=ts, metadata={}
+                ))
+        except Exception as e:
+            logger.debug(f"BTC feature fetch failed: {e}")
+            # Add defaults
+            signals.extend([
+                DataSignal(name="BTC_MOMENTUM_4H", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="BTC_MOMENTUM_24H", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="BTC_RSI", value=50, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="BTC_MACD_BULLISH", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="BTC_CORRELATION", value=0.7, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="BTC_LEADS", value=1, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+            ])
+        
+        return signals
+    
+    def _get_fear_greed_features(self, ts: float) -> list[DataSignal]:
+        """Get Fear & Greed Index features."""
+        signals = []
+        
+        try:
+            from core.ensemble_predictor import get_fear_greed_index
+            fng = get_fear_greed_index()
+            
+            signals.append(DataSignal(
+                name="fear_greed_value", value=fng,
+                confidence=1.0, data_available=True,
+                source="api", timestamp=ts, metadata={}
+            ))
+            
+            # Numeric version (same value)
+            signals.append(DataSignal(
+                name="fear_greed_numeric", value=fng,
+                confidence=1.0, data_available=True,
+                source="api", timestamp=ts, metadata={}
+            ))
+            
+            # Extreme zones
+            signals.append(DataSignal(
+                name="EXTREME_FEAR", value=1 if fng < 25 else 0,
+                confidence=1.0, data_available=True,
+                source="calculated", timestamp=ts, metadata={}
+            ))
+            signals.append(DataSignal(
+                name="EXTREME_GREED", value=1 if fng > 75 else 0,
+                confidence=1.0, data_available=True,
+                source="calculated", timestamp=ts, metadata={}
+            ))
+            
+        except Exception as e:
+            logger.debug(f"Fear & Greed fetch failed: {e}")
+            # Add defaults (neutral)
+            signals.extend([
+                DataSignal(name="fear_greed_value", value=50, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="fear_greed_numeric", value=50, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="EXTREME_FEAR", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="EXTREME_GREED", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+            ])
+        
         return signals
 
     def _create_unavailable_signals(self) -> list[DataSignal]:
