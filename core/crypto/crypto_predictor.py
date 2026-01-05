@@ -308,42 +308,163 @@ class CryptoPredictionEngine:
 
     def _analyze_direction(self, metrics: dict, history: list[dict]) -> tuple:
         """
-        Determine direction and confidence
+        Determine direction and confidence using trend-following + sentiment.
+
+        KEY CHANGES (Dec 2025):
+        1. Uses trend_strength to detect strong trends (MAs aligned)
+        2. Integrates news sentiment when available
+        3. Uses momentum CONTINUATION for strong trends (not mean-reversion)
+        4. RSI in trends = strength confirmation, not reversal signal
 
         Returns: (direction, confidence)
         """
-        momentum = metrics.get("momentum", 0)
-        rsi = metrics.get("rsi", 50)
+        # Extract indicators
+        momentum_7d = metrics.get("momentum_7d", metrics.get("momentum", 0))
+        momentum_14d = metrics.get("momentum_14d", 0)
+        rsi = metrics.get("rsi_14", metrics.get("rsi", 50))
         volatility = metrics.get("volatility", 0.03)
-
+        trend_strength = metrics.get("trend_strength", 0)  # -1 (down), 0 (mixed), +1 (up)
+        macd_histogram = metrics.get("macd_histogram", 0)
+        ema_cross = metrics.get("ema_cross", 0)
+        golden_cross = metrics.get("golden_cross", 0)
+        death_cross = metrics.get("death_cross", 0)
+        
         # Base confidence
-        confidence = 0.7
-
-        # Strong momentum signals
-        if abs(momentum) > 0.05:  # >5% recent move
-            direction = "UP" if momentum > 0 else "DOWN"
-            confidence += 0.1
-        elif abs(momentum) > 0.02:  # >2% move
-            direction = "UP" if momentum > 0 else "DOWN"
+        confidence = 0.65
+        direction = "FLAT"
+        
+        # ========================================
+        # STEP 1: Detect if we're in a TREND mode
+        # ========================================
+        is_trending = abs(trend_strength) > 0.5 or abs(momentum_14d) > 0.08
+        
+        if is_trending:
+            # TREND MODE: Follow the trend, momentum continues
+            LOGGER.debug(f"TREND MODE: trend_strength={trend_strength}, momentum_14d={momentum_14d}")
+            
+            if trend_strength > 0 or momentum_14d > 0.05:
+                direction = "UP"
+                confidence = 0.72
+                
+                # Strong trend confirmation
+                if trend_strength > 0 and momentum_7d > 0 and macd_histogram > 0:
+                    confidence += 0.08  # Triple confirmation
+                elif trend_strength > 0 and momentum_7d > 0:
+                    confidence += 0.05
+                
+                # RSI > 60 in uptrend = STRENGTH, not weakness
+                if rsi > 60:
+                    confidence += 0.03
+                    
+            elif trend_strength < 0 or momentum_14d < -0.05:
+                direction = "DOWN"
+                confidence = 0.72
+                
+                # Strong downtrend confirmation
+                if trend_strength < 0 and momentum_7d < 0 and macd_histogram < 0:
+                    confidence += 0.08
+                elif trend_strength < 0 and momentum_7d < 0:
+                    confidence += 0.05
+                
+                # RSI < 40 in downtrend = weakness, not oversold bounce
+                if rsi < 40:
+                    confidence += 0.03
         else:
-            direction = "FLAT"
-            confidence = 0.6
-
-        # RSI adjustments
-        if rsi > 70:  # Overbought
-            if direction == "UP":
-                confidence -= 0.1
-        elif rsi < 30:  # Oversold
-            if direction == "DOWN":
-                confidence -= 0.1
-
-        # Volatility penalty (high volatility = lower confidence)
-        if volatility > 0.05:
-            confidence -= 0.05
-
-        # Clamp confidence
-        confidence = max(0.5, min(0.95, confidence))
-
+            # RANGE MODE: Mean-reversion logic applies
+            LOGGER.debug(f"RANGE MODE: trend_strength={trend_strength}, using mean-reversion")
+            
+            if abs(momentum_7d) > 0.03:
+                direction = "UP" if momentum_7d > 0 else "DOWN"
+                confidence = 0.62
+            else:
+                direction = "FLAT"
+                confidence = 0.55
+            
+            # In range, RSI extremes DO signal reversals
+            if rsi > 75:
+                if direction == "UP":
+                    confidence -= 0.08  # Likely to reverse
+            elif rsi < 25:
+                if direction == "DOWN":
+                    confidence -= 0.08
+        
+        # ========================================
+        # STEP 2: EMA Cross signals (strong)
+        # ========================================
+        if golden_cross:
+            direction = "UP"
+            confidence = max(confidence, 0.78)
+            LOGGER.info("Golden cross detected - bullish signal")
+        elif death_cross:
+            direction = "DOWN"
+            confidence = max(confidence, 0.78)
+            LOGGER.info("Death cross detected - bearish signal")
+        
+        # ========================================
+        # STEP 3: News Sentiment Integration
+        # ========================================
+        try:
+            from core.news_sentiment import fetch_news_sentiment
+            
+            # Determine symbol from history or use BTC default
+            symbol = "BTC"  # Will be passed in future refactor
+            if history and isinstance(history[0], dict):
+                symbol = history[0].get("symbol", "BTC")
+            
+            news_data = fetch_news_sentiment(symbol, limit=5)
+            
+            if news_data.get("ok"):
+                sentiment = news_data.get("sentiment_score", 0)
+                
+                if abs(sentiment) > 0.3:  # Strong sentiment
+                    LOGGER.info(f"News sentiment for {symbol}: {sentiment:.2f} ({news_data.get('sentiment_label')})")
+                    
+                    # Sentiment alignment with direction = boost confidence
+                    if sentiment > 0.3 and direction == "UP":
+                        confidence += 0.05
+                    elif sentiment < -0.3 and direction == "DOWN":
+                        confidence += 0.05
+                    # Sentiment contradiction = reduce confidence
+                    elif sentiment > 0.3 and direction == "DOWN":
+                        confidence -= 0.05
+                        LOGGER.warning(f"Direction {direction} contradicts positive news sentiment")
+                    elif sentiment < -0.3 and direction == "UP":
+                        confidence -= 0.05
+                        LOGGER.warning(f"Direction {direction} contradicts negative news sentiment")
+                    
+                    # Very strong sentiment can flip direction
+                    if abs(sentiment) > 0.6:
+                        if sentiment > 0.6 and direction != "UP":
+                            LOGGER.info(f"Very positive sentiment overriding {direction} -> UP")
+                            direction = "UP"
+                            confidence = 0.70
+                        elif sentiment < -0.6 and direction != "DOWN":
+                            LOGGER.info(f"Very negative sentiment overriding {direction} -> DOWN")
+                            direction = "DOWN"
+                            confidence = 0.70
+        except ImportError:
+            LOGGER.debug("News sentiment module not available")
+        except Exception as e:
+            LOGGER.debug(f"News sentiment check failed: {e}")
+        
+        # ========================================
+        # STEP 4: Volatility adjustments
+        # ========================================
+        if volatility > 0.08:  # Very high volatility
+            confidence -= 0.08
+        elif volatility > 0.05:
+            confidence -= 0.04
+        
+        # ========================================
+        # STEP 5: Clamp and return
+        # ========================================
+        confidence = max(0.50, min(0.92, confidence))
+        
+        LOGGER.info(
+            f"Direction analysis: {direction} @ {confidence:.0%} "
+            f"[trend={trend_strength:.1f}, mom7={momentum_7d:.2%}, rsi={rsi:.0f}]"
+        )
+        
         return direction, confidence
 
     def _store_prediction(
