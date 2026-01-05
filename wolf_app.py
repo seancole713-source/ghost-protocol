@@ -36392,18 +36392,31 @@ try:
         Fetches current prices and resolves trades that reached target time.
         """
         try:
+            import psycopg2
             tracker = get_paper_tracker()
             
             # Get current prices for all tracked symbols
             from core.crypto.crypto_providers import get_crypto_price_quorum
             price_data = {}
             
-            # Get unique symbols from pending trades
-            conn = sqlite3.connect("data/ghost_predictions.db")
-            symbols = conn.execute("""
-                SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
-            """).fetchall()
-            conn.close()
+            # Get unique symbols from pending trades (PostgreSQL)
+            database_url = os.getenv("DATABASE_URL")
+            if database_url:
+                conn = psycopg2.connect(database_url)
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
+                """)
+                symbols = cur.fetchall()
+                cur.close()
+                conn.close()
+            else:
+                # Fallback to SQLite (local dev only)
+                conn = sqlite3.connect("data/ghost_predictions.db")
+                symbols = conn.execute("""
+                    SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
+                """).fetchall()
+                conn.close()
             
             # Fetch current prices
             for (symbol,) in symbols:

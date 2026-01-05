@@ -176,16 +176,29 @@ def _check_pending_cascades():
         try:
             from core.paper_tracker import get_paper_tracker
             from core.crypto.crypto_providers import get_crypto_price_quorum
+            import psycopg2
             
             tracker = get_paper_tracker()
             price_data = {}
             
-            # Get unique symbols from pending trades
-            paper_conn = sqlite3.connect("data/ghost_predictions.db")
-            symbols = paper_conn.execute("""
-                SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
-            """).fetchall()
-            paper_conn.close()
+            # Get unique symbols from pending trades (PostgreSQL)
+            database_url = os.getenv("DATABASE_URL")
+            if database_url:
+                paper_conn = psycopg2.connect(database_url)
+                cur = paper_conn.cursor()
+                cur.execute("""
+                    SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
+                """)
+                symbols = cur.fetchall()
+                cur.close()
+                paper_conn.close()
+            else:
+                # Fallback to SQLite (local dev only)
+                paper_conn = sqlite3.connect("data/ghost_predictions.db")
+                symbols = paper_conn.execute("""
+                    SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
+                """).fetchall()
+                paper_conn.close()
             
             # Fetch current prices
             for (symbol,) in symbols:
