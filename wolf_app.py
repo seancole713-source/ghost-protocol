@@ -18387,38 +18387,41 @@ def _get_price_quorum(symbol: str, asset_type: str = "stock") -> dict[str, Any] 
 
 
 def _append_actual_prices():
-    """Append current live prices to active predictions"""
-    import sqlite3
+    """Append current live prices to active predictions.
+    
+    CRITICAL: Uses get_prediction_store() to read from correct backend (PostgreSQL or SQLite)
+    based on PREDICTION_STORE_ENGINE environment variable.
+    """
+    from core.prediction_store import get_prediction_store
+    
+    store = get_prediction_store()
+    
+    # Get active predictions (window still open, no outcome yet)
+    rows = store.get_active_predictions()
+    
+    if not rows:
+        LOGGER.debug("No active predictions to append actual prices to")
+        return
+    
+    LOGGER.info(f"Appending actual prices to {len(rows)} active predictions")
+    
+    for pred in rows:
+        pred_id = pred["id"]
+        symbol = pred["symbol"]
+        try:
+            # Get current price - detect if crypto or stock
+            asset_type = "crypto" if symbol in ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "AVAX", "LINK", "DOT", "LTC", "UNI", "ATOM", "MATIC"] else "stock"
+            price_data = _get_price_quorum(symbol, asset_type)
+            
+            if price_data and price_data.get("price"):
+                current_price = float(price_data["price"])
+                current_ts = time.time()
 
-    conn = sqlite3.connect(predictor.DB_PATH)
-    try:
-        # Get active predictions (not yet closed)
-        now = time.time()
-        rows = conn.execute(
-            """
-            SELECT p.id, p.symbol, p.run_at, p.horizon_h
-            FROM predictions p
-            LEFT JOIN outcomes o ON p.id = o.prediction_id
-            WHERE o.prediction_id IS NULL
-              AND (p.run_at + (p.horizon_h * 3600)) > ?
-            """,
-            (now,),
-        ).fetchall()
-
-        for pred_id, symbol, _run_at, _horizon_h in rows:
-            try:
-                # Get current price
-                price_data = _get_price_quorum(symbol, "stock")
-                if price_data and price_data.get("price"):
-                    current_price = float(price_data["price"])
-                    current_ts = time.time()
-
-                    # Append as actual point
-                    predictor.append_actual_points(pred_id, [(current_ts, current_price)])
-            except Exception as e:
-                LOGGER.debug(f"Failed to append actual price for prediction {pred_id}: {e}")
-    finally:
-        conn.close()
+                # Append as actual point using the store abstraction
+                predictor.append_actual_points(pred_id, [(current_ts, current_price)])
+                LOGGER.debug(f"Appended actual price ${current_price:.2f} for {symbol} (pred {pred_id})")
+        except Exception as e:
+            LOGGER.debug(f"Failed to append actual price for prediction {pred_id} ({symbol}): {e}")
 
 
 # Optional admin IP allowlist for write operations (POST/PUT/PATCH/DELETE)

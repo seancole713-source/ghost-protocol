@@ -357,6 +357,12 @@ class PredictionStore:
             return self.backend.get_pending_outcomes()
         return []
     
+    def get_active_predictions(self) -> list[dict[str, Any]]:
+        """Get predictions where the 48h window is STILL OPEN (for appending actual prices)."""
+        if hasattr(self.backend, 'get_active_predictions'):
+            return self.backend.get_active_predictions()
+        return []
+    
     def get_predictions_with_outcomes(self, symbol: str) -> list[dict[str, Any]]:
         """Get predictions with their outcomes for accuracy computation."""
         if hasattr(self.backend, 'get_predictions_with_outcomes'):
@@ -728,6 +734,35 @@ class SQLiteBackend:
                     "run_at": row[2],
                     "horizon_h": row[3],
                     "direction": row[4],
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+    
+    def get_active_predictions(self) -> list[dict[str, Any]]:
+        """Get predictions where 48h window is STILL OPEN (for appending actual prices)."""
+        now = time.time()
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT p.id, p.symbol, p.run_at, p.horizon_h
+                FROM predictions p
+                LEFT JOIN outcomes o ON p.id = o.prediction_id
+                WHERE o.prediction_id IS NULL
+                  AND (p.run_at + (p.horizon_h * 3600)) > ?
+                ORDER BY p.run_at
+                """,
+                (now,),
+            ).fetchall()
+            
+            return [
+                {
+                    "id": row[0],
+                    "symbol": row[1],
+                    "run_at": row[2],
+                    "horizon_h": row[3],
                 }
                 for row in rows
             ]
@@ -1442,6 +1477,42 @@ class PostgresBackend:
             return results
         except Exception as e:
             LOGGER.error(f"[POSTGRES] Failed to get pending outcomes: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+    
+    def get_active_predictions(self) -> list[dict[str, Any]]:
+        """Get predictions where 48h window is STILL OPEN (for appending actual prices)."""
+        now = time.time()
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT p.id, p.symbol, p.run_at, p.horizon_h
+                FROM predictions p
+                LEFT JOIN ghost_prediction_outcomes o ON p.id = o.prediction_id
+                WHERE o.prediction_id IS NULL
+                  AND (p.run_at + (p.horizon_h * 3600)) > %s
+                ORDER BY p.run_at
+                LIMIT 200
+                """,
+                (now,),
+            )
+            
+            rows = cursor.fetchall()
+            
+            return [
+                {
+                    "id": row["id"],
+                    "symbol": row["symbol"],
+                    "run_at": row["run_at"],
+                    "horizon_h": row["horizon_h"],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            LOGGER.error(f"[POSTGRES] Failed to get active predictions: {e}")
             return []
         finally:
             self._return_connection(conn)
