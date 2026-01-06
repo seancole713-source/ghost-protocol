@@ -998,6 +998,52 @@ class PostgresBackend:
                 ON outcomes(prediction_id)
             """)
             
+            # ghost_prediction_outcomes table (used by reconciler - more detailed)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_prediction_outcomes (
+                    id SERIAL PRIMARY KEY,
+                    prediction_id INTEGER NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    closed_at TIMESTAMP NOT NULL,
+                    price_at_prediction NUMERIC(20, 8) NOT NULL,
+                    price_at_resolution NUMERIC(20, 8),
+                    realized_move_pct NUMERIC(10, 4),
+                    predicted_direction VARCHAR(10),
+                    actual_direction VARCHAR(10),
+                    hit_direction INTEGER,
+                    direction_threshold_pct NUMERIC(5, 2) DEFAULT 0.25,
+                    mae NUMERIC(20, 8),
+                    mape NUMERIC(10, 4),
+                    rmse NUMERIC(20, 8),
+                    predicted_confidence NUMERIC(5, 4),
+                    confidence_calibration NUMERIC(10, 4),
+                    resolution_method VARCHAR(50),
+                    resolution_provider VARCHAR(50),
+                    notes TEXT,
+                    status VARCHAR(20) DEFAULT 'completed',
+                    reconciled_by VARCHAR(50) DEFAULT 'outcome_reconciler',
+                    reconciliation_version VARCHAR(20) DEFAULT '1.0'
+                )
+            """)
+            
+            # Indexes for ghost_prediction_outcomes
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_gpo_prediction_id 
+                ON ghost_prediction_outcomes(prediction_id)
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_gpo_unique_prediction 
+                ON ghost_prediction_outcomes(prediction_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_gpo_status 
+                ON ghost_prediction_outcomes(status)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_gpo_closed_at 
+                ON ghost_prediction_outcomes(closed_at)
+            """)
+            
             conn.commit()
             LOGGER.info("✅ PostgreSQL prediction schema initialized")
             

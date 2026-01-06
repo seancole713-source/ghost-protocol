@@ -206,7 +206,7 @@ class PriceEngine(BasePillar):
                 result = loop.run_until_complete(crypto_quorum(symbol))
                 loop.close()
 
-            if result and result.get("ok"):
+            if result and result.get("price"):
                 price = result.get("price")
                 confidence = result.get("confidence", 0.5)
 
@@ -258,7 +258,7 @@ class PriceEngine(BasePillar):
                     )
 
             else:
-                error_msg = result.get("error", "Unknown crypto fetch error")
+                error_msg = result.get("error", "Unknown crypto fetch error") if result else "Crypto quorum failed - no data"
                 errors.append(error_msg)
                 signals.append(self._create_unavailable_signal("PRICE", error_msg))
 

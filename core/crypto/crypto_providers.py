@@ -233,6 +233,25 @@ class CoinGeckoProvider:
         "QTUM": "qtum",
         "ZEC": "zcash",
         "DASH": "dash",
+        # BUG FIX (Jan 6, 2026): Added missing symbols that fail on Binance US
+        "DYDX": "dydx",
+        "RPL": "rocket-pool",
+        "1INCH": "1inch",
+        "BAL": "balancer",
+        "SNX": "synthetix-network-token",
+        "YFI": "yearn-finance",
+        "ZRX": "0x",
+        "ENS": "ethereum-name-service",
+        "LRC": "loopring",
+        "GRT": "the-graph",
+        "OCEAN": "ocean-protocol",
+        "REN": "republic-protocol",
+        "BAND": "band-protocol",
+        "KNC": "kyber-network-crystal",
+        "BAT": "basic-attention-token",
+        "SKL": "skale",
+        "CELO": "celo",
+        "ANKR": "ankr",
     }
 
     def __init__(self):
@@ -383,6 +402,74 @@ class CoinGeckoProvider:
 
         except Exception as e:
             LOGGER.warning(f"CoinGecko historical fetch failed for {symbol}: {e}")
+            return None
+
+    def get_ohlcv(self, symbol: str, days: int = 100) -> list[dict] | None:
+        """
+        Get OHLCV data from CoinGecko's market_chart/range endpoint.
+        
+        CoinGecko doesn't provide true OHLCV, but we can derive it from their data.
+        Returns list of OHLCV bars for technical analysis.
+        
+        NOTE: CoinGecko provides hourly/daily granularity based on days parameter:
+        - 1 day: 5-minute intervals
+        - 2-90 days: hourly intervals
+        - >90 days: daily intervals
+        
+        BUG FIX (Jan 6, 2026): Added for symbols not on Binance US (DYDX, RPL, etc.)
+        """
+        coin_id = self.get_coin_id(symbol)
+        if not coin_id:
+            LOGGER.warning(f"CoinGecko: Unknown symbol {symbol}")
+            return None
+
+        try:
+            self._rate_limit()
+            
+            # Use market_chart for OHLCV-like data
+            url = f"{self.BASE_URL}/coins/{coin_id}/ohlc"
+            params = {"vs_currency": "usd", "days": min(days, 365)}  # Max 365 days
+            
+            response = _session.get(url, params=params, timeout=10)
+            
+            # Handle rate limits
+            if response.status_code == 429:
+                self.consecutive_429s += 1
+                if self.consecutive_429s >= 3:
+                    self.circuit_open = True
+                    self.circuit_open_until = time.time() + 120
+                    LOGGER.warning(f"CoinGecko circuit OPEN - 429 rate limit for {symbol}")
+                return None
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            # CoinGecko OHLC format: [[timestamp, open, high, low, close], ...]
+            if not data or len(data) < 20:
+                LOGGER.warning(f"CoinGecko insufficient OHLC data for {symbol}: {len(data) if data else 0}")
+                return None
+            
+            # Convert to standard bar format
+            bars = []
+            for candle in data:
+                if len(candle) >= 5:
+                    bars.append({
+                        "timestamp": int(candle[0] / 1000),  # ms to seconds
+                        "open": float(candle[1]),
+                        "high": float(candle[2]),
+                        "low": float(candle[3]),
+                        "close": float(candle[4]),
+                        "volume": 0  # CoinGecko OHLC doesn't include volume
+                    })
+            
+            # Reset circuit breaker on success
+            self.consecutive_429s = 0
+            
+            LOGGER.info(f"CoinGecko OHLC fetched {len(bars)} bars for {symbol}")
+            return bars
+
+        except Exception as e:
+            LOGGER.warning(f"CoinGecko OHLC fetch failed for {symbol}: {e}")
             return None
 
 

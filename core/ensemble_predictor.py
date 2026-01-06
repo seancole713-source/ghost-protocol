@@ -565,14 +565,30 @@ class XGBoostModel:
                 prob_down = float(proba[0])  # Class 0 = DOWN
                 prob_up = float(proba[1])    # Class 1 = UP
                 
-                # AGGRESSIVE BIAS CORRECTION
-                # The XGBoost v2 model was trained on bear market data and has severe DOWN bias
-                # When the model says 95% DOWN, it's really more like 60% DOWN
-                # Apply logistic compression to reduce extreme confidence
+                # AGGRESSIVE BIAS CORRECTION (Fixed Jan 6, 2026)
+                # The XGBoost v2 model was trained on 58% DOWN / 42% UP data
+                # It has severe DOWN bias - saying 95% DOWN even for neutral scenarios
+                # 
+                # Two-stage correction:
+                # 1. Compensate for training class imbalance (add 16% to UP probability)
+                # 2. Apply logistic compression to reduce extreme confidence
                 import math
                 
-                def compress_probability(p: float, center: float = 0.5, strength: float = 2.0) -> float:
-                    """Compress extreme probabilities toward center"""
+                # Stage 1: Class imbalance correction
+                # Training data was 58% DOWN, 42% UP - bias factor = 0.58/0.42 = 1.38
+                # Adjust UP probability by the inverse of the bias
+                bias_correction = 0.16  # 58% - 42% = 16% bias toward DOWN
+                prob_up_adjusted = min(prob_up + bias_correction, 0.95)
+                prob_down_adjusted = max(prob_down - bias_correction, 0.05)
+                
+                # Stage 2: Logistic compression (stronger than before)
+                def compress_probability(p: float, center: float = 0.5, strength: float = 3.0) -> float:
+                    """Compress extreme probabilities toward center (strength increased from 2.0 to 3.0)"""
+                    # BUG FIX (Jan 6, 2026): Handle exact 0.0 and 1.0 to prevent math domain error
+                    if p <= 0.0:
+                        return 0.1
+                    if p >= 1.0:
+                        return 0.9
                     if p <= 0.01:
                         return 0.1
                     if p >= 0.99:
@@ -581,26 +597,32 @@ class XGBoostModel:
                     logit = math.log(p / (1 - p))
                     compressed_logit = logit / strength
                     compressed = 1 / (1 + math.exp(-compressed_logit))
-                    # Blend with center
-                    return center + (compressed - center) * 0.8
+                    # Blend with center (reduced from 0.8 to 0.6 for more compression)
+                    return center + (compressed - center) * 0.6
                 
-                prob_up_calibrated = compress_probability(prob_up)
-                prob_down_calibrated = compress_probability(prob_down)
+                prob_up_calibrated = compress_probability(prob_up_adjusted)
+                prob_down_calibrated = compress_probability(prob_down_adjusted)
                 
-                # Normalize
+                # Normalize (BUG FIX: prevent division by zero)
                 total = prob_up_calibrated + prob_down_calibrated
-                prob_up_calibrated = prob_up_calibrated / total
-                prob_down_calibrated = prob_down_calibrated / total
+                if total > 0:
+                    prob_up_calibrated = prob_up_calibrated / total
+                    prob_down_calibrated = prob_down_calibrated / total
+                else:
+                    # Fallback to neutral if both probabilities are 0
+                    prob_up_calibrated = 0.5
+                    prob_down_calibrated = 0.5
                 
                 # Log the calibration for debugging
                 logger.info(
                     f"🤖 XGBoost {self.model_version} for {features.get('symbol', '?')}: "
-                    f"Raw={prob_up:.1%}/{prob_down:.1%} → Calibrated={prob_up_calibrated:.1%}/{prob_down_calibrated:.1%}"
+                    f"Raw={prob_up:.1%}/{prob_down:.1%} → Bias-adjusted={prob_up_adjusted:.1%}/{prob_down_adjusted:.1%} "
+                    f"→ Calibrated={prob_up_calibrated:.1%}/{prob_down_calibrated:.1%}"
                 )
                 
-                # CONVICTION THRESHOLD: Lowered from 57% to 52% - slight edge is still a signal
-                # Markets are inherently uncertain; 52% edge is meaningful
-                conviction_threshold = 0.52
+                # CONVICTION THRESHOLD: Raised to 55% to require stronger signals
+                # With better bias correction, we can be more selective
+                conviction_threshold = 0.55
                 
                 if prob_up_calibrated >= conviction_threshold:
                     direction = "UP"

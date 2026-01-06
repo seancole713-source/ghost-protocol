@@ -105,8 +105,21 @@ class WatchlistPredictionScheduler:
         if now - self.last_open_check < (6 * 3600):  # 6 hour cooldown
             return False
 
-        # Check if current time is near market open hour
-        current_hour = datetime.now().hour
+        # BUG FIX (Jan 6, 2026): Use Eastern timezone instead of server time
+        # Railway servers run in UTC, so we need explicit timezone conversion
+        try:
+            from zoneinfo import ZoneInfo
+            eastern = ZoneInfo("America/New_York")
+            current_hour = datetime.now(eastern).hour
+        except ImportError:
+            # Fallback for older Python versions
+            import pytz
+            eastern = pytz.timezone("America/New_York")
+            current_hour = datetime.now(eastern).hour
+        except Exception:
+            # Last resort fallback - use local time (may be wrong)
+            current_hour = datetime.now().hour
+            
         return current_hour == WATCHLIST_OPEN_HOUR
 
     def _should_run_close_check(self, now: float) -> bool:
@@ -115,8 +128,18 @@ class WatchlistPredictionScheduler:
         if now - self.last_close_check < (6 * 3600):  # 6 hour cooldown
             return False
 
-        # Check if current time is near market close hour
-        current_hour = datetime.now().hour
+        # BUG FIX (Jan 6, 2026): Use Eastern timezone instead of server time
+        try:
+            from zoneinfo import ZoneInfo
+            eastern = ZoneInfo("America/New_York")
+            current_hour = datetime.now(eastern).hour
+        except ImportError:
+            import pytz
+            eastern = pytz.timezone("America/New_York")
+            current_hour = datetime.now(eastern).hour
+        except Exception:
+            current_hour = datetime.now().hour
+            
         return current_hour == WATCHLIST_CLOSE_HOUR
 
     def _run_market_open_predictions(self):

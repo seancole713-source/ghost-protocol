@@ -81,12 +81,46 @@ class UnifiedProvider:
             LOGGER.warning(f"Yahoo Finance provider unavailable: {e}")
             self.yahoo = None
         
+        # Initialize crypto spot price providers (BUG FIX Jan 6, 2026)
+        try:
+            from core.crypto.crypto_providers import BinanceProvider, CoinGeckoProvider
+            self.binance = BinanceProvider()
+            self.coingecko = CoinGeckoProvider()
+            LOGGER.info("✅ Binance + CoinGecko providers initialized")
+        except Exception as e:
+            LOGGER.warning(f"Crypto providers unavailable: {e}")
+            self.binance = None
+            self.coingecko = None
+        
+        # Initialize Coinbase (optional)
+        try:
+            from core.crypto.crypto_providers import CoinbaseProvider
+            self.coinbase = CoinbaseProvider()
+            LOGGER.info("✅ Coinbase provider initialized")
+        except Exception as e:
+            LOGGER.debug(f"Coinbase provider unavailable: {e}")
+            self.coinbase = None
+        
+        # Initialize Polygon for stocks (PAID but reliable)
+        try:
+            from core.polygon_integration import PolygonClient
+            import os
+            if os.getenv("POLYGON_API_KEY"):
+                self.polygon = PolygonClient()
+                LOGGER.info("✅ Polygon provider initialized")
+            else:
+                self.polygon = None
+        except Exception as e:
+            LOGGER.debug(f"Polygon provider unavailable: {e}")
+            self.polygon = None
+        
         # Health tracking
         self.provider_stats = {
             "binance": {"requests": 0, "successes": 0, "failures": 0, "total_latency": 0},
             "polygon": {"requests": 0, "successes": 0, "failures": 0, "total_latency": 0},
             "yahoo": {"requests": 0, "successes": 0, "failures": 0, "total_latency": 0},
             "coingecko": {"requests": 0, "successes": 0, "failures": 0, "total_latency": 0},
+            "coinbase": {"requests": 0, "successes": 0, "failures": 0, "total_latency": 0},
         }
         
         LOGGER.info("✅ Unified provider initialized")
@@ -191,34 +225,37 @@ class UnifiedProvider:
         Priority: Binance → CoinGecko → Coinbase
         """
         # Try Binance first
-        try:
-            result = self.binance.get_price(symbol)
-            if result and result.get("price"):
-                self._track_success("binance")
-                return result
-        except Exception as e:
-            self._track_failure("binance")
-            LOGGER.debug(f"Binance failed for {symbol}: {e}")
+        if self.binance:
+            try:
+                result = self.binance.get_price(symbol)
+                if result and result.get("price"):
+                    self._track_success("binance")
+                    return result
+            except Exception as e:
+                self._track_failure("binance")
+                LOGGER.debug(f"Binance failed for {symbol}: {e}")
         
         # Try CoinGecko
-        try:
-            result = self.coingecko.get_price(symbol)
-            if result and result.get("price"):
-                self._track_success("coingecko")
-                return result
-        except Exception as e:
-            self._track_failure("coingecko")
-            LOGGER.debug(f"CoinGecko failed for {symbol}: {e}")
+        if self.coingecko:
+            try:
+                result = self.coingecko.get_price(symbol)
+                if result and result.get("price"):
+                    self._track_success("coingecko")
+                    return result
+            except Exception as e:
+                self._track_failure("coingecko")
+                LOGGER.debug(f"CoinGecko failed for {symbol}: {e}")
         
         # Try Coinbase
-        try:
-            result = self.coinbase.get_price(symbol)
-            if result and result.get("price"):
-                self._track_success("coinbase")
-                return result
-        except Exception as e:
-            self._track_failure("coinbase")
-            LOGGER.debug(f"Coinbase failed for {symbol}: {e}")
+        if self.coinbase:
+            try:
+                result = self.coinbase.get_price(symbol)
+                if result and result.get("price"):
+                    self._track_success("coinbase")
+                    return result
+            except Exception as e:
+                self._track_failure("coinbase")
+                LOGGER.debug(f"Coinbase failed for {symbol}: {e}")
         
         LOGGER.warning(f"All crypto providers failed for {symbol}")
         return None
@@ -229,25 +266,27 @@ class UnifiedProvider:
         
         Priority: Polygon → Yahoo → yfinance
         """
-        # Try Polygon first
-        try:
-            result = self.polygon.get_price(symbol)
-            if result and result.get("price"):
-                self._track_success("polygon")
-                return result
-        except Exception as e:
-            self._track_failure("polygon")
-            LOGGER.debug(f"Polygon failed for {symbol}: {e}")
+        # Try Polygon first (BUG FIX: check if initialized)
+        if self.polygon:
+            try:
+                result = self.polygon.get_realtime_quote(symbol)
+                if result and result.price:
+                    self._track_success("polygon")
+                    return {"price": result.price, "provider": "polygon", "symbol": symbol, "timestamp": result.timestamp}
+            except Exception as e:
+                self._track_failure("polygon")
+                LOGGER.debug(f"Polygon failed for {symbol}: {e}")
         
-        # Try Yahoo Finance
-        try:
-            result = self.yahoo.get_price(symbol)
-            if result and result.get("price"):
-                self._track_success("yahoo")
-                return result
-        except Exception as e:
-            self._track_failure("yahoo")
-            LOGGER.debug(f"Yahoo failed for {symbol}: {e}")
+        # Try Yahoo Finance (BUG FIX: check if initialized)
+        if self.yahoo:
+            try:
+                result = self.yahoo.get_price(symbol)
+                if result and result.get("price"):
+                    self._track_success("yahoo")
+                    return result
+            except Exception as e:
+                self._track_failure("yahoo")
+                LOGGER.debug(f"Yahoo failed for {symbol}: {e}")
         
         # Try yfinance fallback
         try:
@@ -256,7 +295,7 @@ class UnifiedProvider:
             hist = ticker.history(period="1d")
             if not hist.empty:
                 self._track_success("yfinance")
-                return {"price": float(hist['Close'].iloc[-1]), "provider": "yfinance"}
+                return {"price": float(hist['Close'].iloc[-1]), "provider": "yfinance", "symbol": symbol, "timestamp": int(time.time())}
         except Exception as e:
             self._track_failure("yfinance")
             LOGGER.debug(f"yfinance failed for {symbol}: {e}")
@@ -271,10 +310,14 @@ class UnifiedProvider:
         lookback: int
     ) -> Optional[dict]:
         """
-        Get crypto OHLCV from Binance.
+        Get crypto OHLCV from Binance with CoinGecko fallback.
         
-        This is the CRITICAL fix for crypto predictions!
+        Priority: Binance → CoinGecko
+        
+        BUG FIX (Jan 6, 2026): Added CoinGecko fallback for symbols not on Binance US
+        (e.g., DYDX, RPL).
         """
+        # Try Binance first
         start_time = time.time()
         self._track_request("binance")
         
@@ -305,12 +348,41 @@ class UnifiedProvider:
             else:
                 self._track_failure("binance")
                 LOGGER.warning(f"[BINANCE] Insufficient bars for {symbol}: {len(bars) if bars else 0}")
-                return None
         
         except Exception as e:
             self._track_failure("binance")
-            LOGGER.error(f"[BINANCE] OHLCV failed for {symbol}: {e}")
-            return None
+            LOGGER.debug(f"[BINANCE] OHLCV failed for {symbol}: {e}")
+        
+        # Fallback: CoinGecko OHLCV
+        if self.coingecko:
+            try:
+                start_time = time.time()
+                self._track_request("coingecko")
+                
+                # CoinGecko returns OHLCV via market_chart endpoint
+                result = self.coingecko.get_ohlcv(symbol, days=lookback)
+                
+                if result and len(result) >= 20:
+                    latency = (time.time() - start_time) * 1000
+                    self._track_success("coingecko", latency)
+                    LOGGER.info(f"[COINGECKO] ✅ Fetched {len(result)} bars for {symbol} (fallback)")
+                    
+                    return {
+                        "symbol": symbol,
+                        "interval": interval,
+                        "bars": result,
+                        "provider": "coingecko",
+                        "timestamp": int(time.time())
+                    }
+                else:
+                    self._track_failure("coingecko")
+                    LOGGER.warning(f"[COINGECKO] Insufficient bars for {symbol}: {len(result) if result else 0}")
+            except Exception as e:
+                self._track_failure("coingecko")
+                LOGGER.debug(f"[COINGECKO] OHLCV failed for {symbol}: {e}")
+        
+        LOGGER.warning(f"All crypto OHLCV providers failed for {symbol}")
+        return None
     
     def _get_stock_ohlcv(
         self,
