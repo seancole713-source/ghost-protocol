@@ -24465,16 +24465,24 @@ async def notifications_retry_postgres():
                 "persistent": True
             }
         
+        # Try to get DATABASE_URL to diagnose
+        db_url = os.getenv("DATABASE_URL", "")
+        db_url_exists = bool(db_url)
+        db_url_len = len(db_url) if db_url else 0
+        
         success = notif.retry_postgres_connection()
         
         return {
             "ok": success,
             "message": "Switched to PostgreSQL" if success else "PostgreSQL connection failed - still using SQLite",
             "database": "postgres" if success else "sqlite",
-            "persistent": success
+            "persistent": success,
+            "database_url_exists": db_url_exists,
+            "database_url_length": db_url_len,
         }
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
 @APP.get("/alerts/notifications/debug")

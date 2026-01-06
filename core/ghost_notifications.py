@@ -783,9 +783,12 @@ class GhostNotificationSystem:
             LOGGER.info("[TRACKING] No DATABASE_URL - using SQLite fallback")
             return False
         
+        LOGGER.info(f"[TRACKING] Attempting PostgreSQL connection (URL length: {len(database_url)} chars)")
+        
         try:
             import psycopg2
             conn = psycopg2.connect(database_url)
+            LOGGER.info("[TRACKING] PostgreSQL connection successful!")
             cur = conn.cursor()
             
             # Create tracking table in PostgreSQL
