@@ -24479,6 +24479,7 @@ async def notifications_retry_postgres():
             "persistent": success,
             "database_url_exists": db_url_exists,
             "database_url_length": db_url_len,
+            "last_postgres_error": getattr(notif, '_last_postgres_error', None),
         }
     except Exception as e:
         import traceback

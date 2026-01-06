@@ -746,6 +746,7 @@ class GhostNotificationSystem:
         self._last_update_hour: int = -1
         self._last_off_path_alerts: Dict[str, str] = {}  # symbol -> date last alerted
         self._db_path = TRACKING_DB
+        self._last_postgres_error: Optional[str] = None
         self._use_postgres = self._init_postgres()
         if not self._use_postgres:
             self._init_sqlite()
@@ -848,9 +849,11 @@ class GhostNotificationSystem:
             conn.close()
             
             LOGGER.info("[TRACKING] ✅ PostgreSQL initialized - picks will persist across deploys!")
+            self._last_postgres_error = None
             return True
             
         except Exception as e:
+            self._last_postgres_error = str(e)
             LOGGER.warning(f"[TRACKING] PostgreSQL init failed: {e} - using SQLite fallback")
             return False
     
