@@ -781,6 +781,7 @@ class GhostNotificationSystem:
         """Initialize PostgreSQL tracking tables. Returns True if successful."""
         database_url = os.getenv("DATABASE_URL", "")
         if not database_url:
+            self._last_postgres_error = "No DATABASE_URL environment variable"
             LOGGER.info("[TRACKING] No DATABASE_URL - using SQLite fallback")
             return False
         
@@ -788,6 +789,12 @@ class GhostNotificationSystem:
         
         try:
             import psycopg2
+        except ImportError as ie:
+            self._last_postgres_error = f"psycopg2 not installed: {ie}"
+            LOGGER.warning(f"[TRACKING] psycopg2 import failed: {ie}")
+            return False
+        
+        try:
             conn = psycopg2.connect(database_url)
             LOGGER.info("[TRACKING] PostgreSQL connection successful!")
             cur = conn.cursor()
