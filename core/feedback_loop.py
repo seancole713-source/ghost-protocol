@@ -423,6 +423,37 @@ class FeedbackLoop:
         else:
             return -0.05  # -5% penalty for inaccurate signals
     
+    def get_signals_confidence_adjustment(self, signals_used: list[str]) -> float:
+        """
+        Calculate total confidence adjustment based on historical signal performance.
+        
+        This is the KEY learning mechanism - if a signal has been consistently wrong,
+        we reduce confidence when it fires. If it's been accurate, we boost confidence.
+        
+        Args:
+            signals_used: List of signal names that fired for this prediction
+            
+        Returns:
+            Total confidence adjustment (can be positive or negative)
+        """
+        if not signals_used:
+            return 0.0
+        
+        total_adjustment = 0.0
+        adjustments_applied = []
+        
+        for signal in signals_used:
+            boost = self.get_signal_boost(signal)
+            if abs(boost) > 0.01:  # Only log meaningful adjustments
+                total_adjustment += boost
+                adjustments_applied.append(f"{signal}:{boost:+.0%}")
+        
+        if adjustments_applied:
+            logger.info(f"📊 Signal confidence adjustments: {adjustments_applied} = {total_adjustment:+.0%}")
+        
+        # Cap total adjustment to prevent wild swings
+        return max(-0.20, min(0.20, total_adjustment))
+    
     def get_performance_report(self, days: int = 7) -> dict[str, Any]:
         """Generate performance report"""
         cutoff = time.time() - (days * 86400)
@@ -505,6 +536,88 @@ def get_feedback_loop() -> FeedbackLoop:
         _feedback_loop = FeedbackLoop()
         logger.info("🔄 Feedback loop initialized - continuous learning enabled")
     return _feedback_loop
+
+
+# ============================================================================
+# LEARNING CYCLE SCHEDULER - Runs every hour to update weights
+# ============================================================================
+
+_learning_scheduler_started = False
+
+
+def start_learning_scheduler():
+    """
+    Start automated learning cycle as background thread.
+    Runs every hour to:
+    1. Analyze recent outcomes
+    2. Update feature weights
+    3. Adjust signal performance metrics
+    
+    THIS IS THE KEY MISSING PIECE - Without this, Ghost never learns!
+    """
+    global _learning_scheduler_started
+    
+    if _learning_scheduler_started:
+        logger.warning("Learning scheduler already started")
+        return
+    
+    import threading
+    import os
+    
+    interval_hours = int(os.getenv("LEARNING_CYCLE_INTERVAL_HOURS", "1"))
+    enabled = int(os.getenv("LEARNING_CYCLE_ENABLED", "1"))
+    
+    if not enabled:
+        logger.info("⏸️  Learning cycle disabled (LEARNING_CYCLE_ENABLED=0)")
+        return
+    
+    def learning_loop():
+        """Background loop that runs learning cycle periodically."""
+        logger.info(f"🧠 Starting learning cycle scheduler (every {interval_hours}h)")
+        
+        # Sleep first on startup to let server initialize and outcomes accumulate
+        time.sleep(120)  # Wait 2 min before first learning run
+        
+        while True:
+            try:
+                feedback = get_feedback_loop()
+                
+                # Step 1: Update feature weights based on recent outcomes
+                feedback._update_feature_weights()
+                
+                # Step 2: Compute symbol-specific performance
+                feedback._compute_symbol_performance()
+                
+                # Step 3: Generate and log performance report
+                report = feedback.get_performance_report(days=7)
+                
+                logger.info(
+                    f"🧠 Learning cycle complete: "
+                    f"{report['total_predictions']} predictions, "
+                    f"{report['accuracy_rate']:.1%} accuracy, "
+                    f"{len(feedback.feature_weights)} feature weights"
+                )
+                
+                # Log top performing signals
+                if report.get('top_signals'):
+                    top_3 = report['top_signals'][:3]
+                    logger.info(
+                        f"📊 Top signals: " + 
+                        ", ".join([f"{s['name']}={s['accuracy']:.0%}" for s in top_3])
+                    )
+                
+            except Exception as e:
+                logger.error(f"❌ Learning cycle error: {e}", exc_info=True)
+            
+            # Sleep for configured interval
+            time.sleep(interval_hours * 3600)
+    
+    # Start background thread
+    thread = threading.Thread(target=learning_loop, daemon=True, name="learning_cycle")
+    thread.start()
+    
+    _learning_scheduler_started = True
+    logger.info(f"✅ Learning cycle scheduler started (interval: {interval_hours}h)")
 
 
 if __name__ == "__main__":

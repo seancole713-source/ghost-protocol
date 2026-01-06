@@ -3977,6 +3977,16 @@ async def _on_startup():
         LOGGER.error(f"outcome_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
+    # 🧠 Start Learning Cycle Scheduler (Ghost learns from mistakes!)
+    # THIS IS THE KEY FIX - Without this, Ghost never improves over time
+    try:
+        from core.feedback_loop import start_learning_scheduler
+        start_learning_scheduler()
+        LOGGER.info("[GHOST STARTUP] ✅ Learning cycle scheduler started (continuous improvement)")
+    except Exception as e:
+        LOGGER.error(f"learning_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # CRITICAL: Initialize prediction store tables EARLY to prevent "table not found" errors
     # Do NOT wait for full pool init - just ensure tables exist
     try:

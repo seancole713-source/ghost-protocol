@@ -198,8 +198,8 @@ class CryptoPredictionEngine:
             current_price=current_price, metrics=metrics, run_at=run_at
         )
 
-        # 5. Determine direction and confidence
-        direction, confidence = self._analyze_direction(metrics, history)
+        # 5. Determine direction and confidence + collect signals used
+        direction, confidence, signals_used = self._analyze_direction_with_signals(metrics, history)
 
         # 6. Store prediction to SQLite (local crypto db)
         prediction_id = str(uuid.uuid4())
@@ -222,11 +222,13 @@ class CryptoPredictionEngine:
             # Convert forecast points to (ts, price) tuples for predictor module
             forecast_tuples = [(p["t"], p["p"]) for p in forecast_points]
             
-            # Add current_price to features so reconciler can find t0 price
+            # Add current_price AND signals to features so FeedbackLoop can learn!
+            # THIS IS THE KEY FIX - signals_used tells us WHAT caused this prediction
             features_with_price = {
                 **metrics,
                 "current_price": current_price,
                 "PRICE": current_price,  # Backup field name
+                "signals_used": signals_used,  # 🔥 NEW: Store what signals fired!
             }
             
             pg_prediction_id = store.save_prediction(
@@ -390,8 +392,14 @@ class CryptoPredictionEngine:
         return points
 
     def _analyze_direction(self, metrics: dict, history: list[dict]) -> tuple:
+        """Legacy wrapper - calls new method without signals."""
+        direction, confidence, _ = self._analyze_direction_with_signals(metrics, history)
+        return direction, confidence
+
+    def _analyze_direction_with_signals(self, metrics: dict, history: list[dict]) -> tuple:
         """
         Determine direction and confidence using trend-following + sentiment.
+        NOW ALSO RETURNS signals_used so FeedbackLoop can learn from mistakes!
 
         KEY CHANGES (Dec 2025):
         1. Uses trend_strength to detect strong trends (MAs aligned)
@@ -399,8 +407,11 @@ class CryptoPredictionEngine:
         3. Uses momentum CONTINUATION for strong trends (not mean-reversion)
         4. RSI in trends = strength confirmation, not reversal signal
 
-        Returns: (direction, confidence)
+        Returns: (direction, confidence, signals_used)
         """
+        # 🔥 NEW: Track which signals influenced this prediction
+        signals_used = []
+        
         # Extract indicators
         momentum_7d = metrics.get("momentum_7d", metrics.get("momentum", 0))
         momentum_14d = metrics.get("momentum_14d", 0)
@@ -424,50 +435,64 @@ class CryptoPredictionEngine:
         if is_trending:
             # TREND MODE: Follow the trend, momentum continues
             LOGGER.debug(f"TREND MODE: trend_strength={trend_strength}, momentum_14d={momentum_14d}")
+            signals_used.append("TREND_MODE")
             
             if trend_strength > 0 or momentum_14d > 0.05:
                 direction = "UP"
                 confidence = 0.72
+                signals_used.append("TREND_UP")
                 
                 # Strong trend confirmation
                 if trend_strength > 0 and momentum_7d > 0 and macd_histogram > 0:
                     confidence += 0.08  # Triple confirmation
+                    signals_used.append("TRIPLE_CONFIRM_UP")
                 elif trend_strength > 0 and momentum_7d > 0:
                     confidence += 0.05
+                    signals_used.append("DOUBLE_CONFIRM_UP")
                 
                 # RSI > 60 in uptrend = STRENGTH, not weakness
                 if rsi > 60:
                     confidence += 0.03
+                    signals_used.append("RSI_STRENGTH_UP")
                     
             elif trend_strength < 0 or momentum_14d < -0.05:
                 direction = "DOWN"
                 confidence = 0.72
+                signals_used.append("TREND_DOWN")
                 
                 # Strong downtrend confirmation
                 if trend_strength < 0 and momentum_7d < 0 and macd_histogram < 0:
                     confidence += 0.08
+                    signals_used.append("TRIPLE_CONFIRM_DOWN")
                 elif trend_strength < 0 and momentum_7d < 0:
                     confidence += 0.05
+                    signals_used.append("DOUBLE_CONFIRM_DOWN")
                 
                 # RSI < 40 in downtrend = weakness, not oversold bounce
                 if rsi < 40:
                     confidence += 0.03
+                    signals_used.append("RSI_WEAKNESS_DOWN")
         else:
             # RANGE MODE: Mean-reversion logic applies
             LOGGER.debug(f"RANGE MODE: trend_strength={trend_strength}, using mean-reversion")
+            signals_used.append("RANGE_MODE")
             
             if abs(momentum_7d) > 0.03:
                 direction = "UP" if momentum_7d > 0 else "DOWN"
                 confidence = 0.62
+                signals_used.append(f"MOMENTUM_{direction}")
             else:
                 direction = "FLAT"
                 confidence = 0.55
+                signals_used.append("NO_MOMENTUM")
             
             # In range, RSI extremes DO signal reversals
             if rsi > 75:
+                signals_used.append("RSI_OVERBOUGHT")
                 if direction == "UP":
                     confidence -= 0.08  # Likely to reverse
             elif rsi < 25:
+                signals_used.append("RSI_OVERSOLD")
                 if direction == "DOWN":
                     confidence -= 0.08
         
@@ -477,10 +502,12 @@ class CryptoPredictionEngine:
         if golden_cross:
             direction = "UP"
             confidence = max(confidence, 0.78)
+            signals_used.append("GOLDEN_CROSS")
             LOGGER.info("Golden cross detected - bullish signal")
         elif death_cross:
             direction = "DOWN"
             confidence = max(confidence, 0.78)
+            signals_used.append("DEATH_CROSS")
             LOGGER.info("Death cross detected - bearish signal")
         
         # ========================================
@@ -501,18 +528,23 @@ class CryptoPredictionEngine:
                 
                 if abs(sentiment) > 0.3:  # Strong sentiment
                     LOGGER.info(f"News sentiment for {symbol}: {sentiment:.2f} ({news_data.get('sentiment_label')})")
+                    signals_used.append(f"NEWS_SENTIMENT_{news_data.get('sentiment_label', 'UNKNOWN').upper()}")
                     
                     # Sentiment alignment with direction = boost confidence
                     if sentiment > 0.3 and direction == "UP":
                         confidence += 0.05
+                        signals_used.append("SENTIMENT_ALIGNED")
                     elif sentiment < -0.3 and direction == "DOWN":
                         confidence += 0.05
+                        signals_used.append("SENTIMENT_ALIGNED")
                     # Sentiment contradiction = reduce confidence
                     elif sentiment > 0.3 and direction == "DOWN":
                         confidence -= 0.05
+                        signals_used.append("SENTIMENT_CONTRADICTION")
                         LOGGER.warning(f"Direction {direction} contradicts positive news sentiment")
                     elif sentiment < -0.3 and direction == "UP":
                         confidence -= 0.05
+                        signals_used.append("SENTIMENT_CONTRADICTION")
                         LOGGER.warning(f"Direction {direction} contradicts negative news sentiment")
                     
                     # Very strong sentiment can flip direction
@@ -521,10 +553,12 @@ class CryptoPredictionEngine:
                             LOGGER.info(f"Very positive sentiment overriding {direction} -> UP")
                             direction = "UP"
                             confidence = 0.70
+                            signals_used.append("SENTIMENT_OVERRIDE_UP")
                         elif sentiment < -0.6 and direction != "DOWN":
                             LOGGER.info(f"Very negative sentiment overriding {direction} -> DOWN")
                             direction = "DOWN"
                             confidence = 0.70
+                            signals_used.append("SENTIMENT_OVERRIDE_DOWN")
         except ImportError:
             LOGGER.debug("News sentiment module not available")
         except Exception as e:
@@ -535,8 +569,10 @@ class CryptoPredictionEngine:
         # ========================================
         if volatility > 0.08:  # Very high volatility
             confidence -= 0.08
+            signals_used.append("HIGH_VOLATILITY")
         elif volatility > 0.05:
             confidence -= 0.04
+            signals_used.append("MODERATE_VOLATILITY")
         
         # ========================================
         # STEP 5: FEEDBACK LOOP - Learn from mistakes!
@@ -545,6 +581,7 @@ class CryptoPredictionEngine:
         accuracy_penalty = metrics.get("_accuracy_penalty", 0)
         if accuracy_penalty > 0:
             confidence -= accuracy_penalty
+            signals_used.append("ACCURACY_PENALTY")
             LOGGER.warning(f"⚠️ Applied accuracy penalty: -{accuracy_penalty:.0%} (low historical accuracy)")
         
         # Check direction-specific accuracy
@@ -553,21 +590,39 @@ class CryptoPredictionEngine:
             # We've been wrong predicting this direction - reduce confidence
             dir_penalty = 0.10
             confidence -= dir_penalty
+            signals_used.append("DIRECTION_ACCURACY_PENALTY")
             LOGGER.warning(
                 f"⚠️ Direction {direction} has poor accuracy ({dir_accuracy:.0%}) - applying -{dir_penalty:.0%} penalty"
             )
         
         # ========================================
-        # STEP 6: Clamp and return
+        # STEP 6: APPLY LEARNED SIGNAL ADJUSTMENTS
+        # ========================================
+        # This is the KEY learning mechanism - adjust confidence based on
+        # how well each signal has performed historically
+        try:
+            from core.feedback_loop import get_feedback_loop
+            feedback = get_feedback_loop()
+            signal_adjustment = feedback.get_signals_confidence_adjustment(signals_used)
+            if abs(signal_adjustment) > 0.01:
+                confidence += signal_adjustment
+                signals_used.append(f"LEARNED_ADJUSTMENT_{'+' if signal_adjustment > 0 else ''}{int(signal_adjustment*100)}")
+                LOGGER.info(f"🧠 Applied learned signal adjustment: {signal_adjustment:+.0%}")
+        except Exception as e:
+            LOGGER.debug(f"Could not apply signal adjustments: {e}")
+        
+        # ========================================
+        # STEP 7: Clamp and return WITH SIGNALS
         # ========================================
         confidence = max(0.50, min(0.92, confidence))
         
         LOGGER.info(
             f"Direction analysis: {direction} @ {confidence:.0%} "
-            f"[trend={trend_strength:.1f}, mom7={momentum_7d:.2%}, rsi={rsi:.0f}]"
+            f"[trend={trend_strength:.1f}, mom7={momentum_7d:.2%}, rsi={rsi:.0f}] "
+            f"signals={signals_used}"
         )
         
-        return direction, confidence
+        return direction, confidence, signals_used
 
     def _store_prediction(
         self,
