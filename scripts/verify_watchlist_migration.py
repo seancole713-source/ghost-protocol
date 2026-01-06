@@ -48,15 +48,22 @@ def verify_table_exists() -> bool:
             """)
             
             result = cursor.fetchone()
-            table_exists = result['exists'] if result else False
+            # Handle both dict-like (RealDictCursor) and tuple access
+            if isinstance(result, dict):
+                table_exists = result.get('exists', False)
+            else:
+                table_exists = result[0] if result else False
             
             if table_exists:
                 LOGGER.info("✅ ghost_watchlist_items table EXISTS")
                 
-                # Get row count
-                cursor.execute("SELECT COUNT(*) as count FROM ghost_watchlist_items WHERE removed_at IS NULL")
+                # Get row count - handle 'active' column instead of 'removed_at'
+                cursor.execute("SELECT COUNT(*) as count FROM ghost_watchlist_items WHERE active = TRUE")
                 count_result = cursor.fetchone()
-                active_count = count_result['count'] if count_result else 0
+                if isinstance(count_result, dict):
+                    active_count = count_result.get('count', 0)
+                else:
+                    active_count = count_result[0] if count_result else 0
                 
                 LOGGER.info(f"   Active items: {active_count}")
                 
@@ -64,7 +71,7 @@ def verify_table_exists() -> bool:
                 cursor.execute("""
                     SELECT symbol, asset_type, owns_position, priority, added_at
                     FROM ghost_watchlist_items
-                    WHERE removed_at IS NULL
+                    WHERE active = TRUE
                     ORDER BY priority DESC, added_at DESC
                     LIMIT 5
                 """)
@@ -73,7 +80,10 @@ def verify_table_exists() -> bool:
                 if samples:
                     LOGGER.info("   Sample items:")
                     for row in samples:
-                        LOGGER.info(f"      {row['symbol']} ({row['asset_type']}) - Priority: {row['priority']}, Owns: {row['owns_position']}")
+                        if isinstance(row, dict):
+                            LOGGER.info(f"      {row['symbol']} ({row['asset_type']}) - Priority: {row['priority']}, Owns: {row['owns_position']}")
+                        else:
+                            LOGGER.info(f"      {row[0]} ({row[1]}) - Priority: {row[3]}, Owns: {row[2]}")
                 
                 return True
             else:

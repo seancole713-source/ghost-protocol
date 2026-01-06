@@ -3685,7 +3685,7 @@ async def _on_startup():
     # Run database migrations (personal watchlist, etc.)
     # NOTE: Wrapped in try/except, non-blocking, has 5s timeout on PostgreSQL connection
     try:
-        from core.migration_runner import run_migrations
+        from core.migration_runner import run_migrations, ensure_personal_watchlist_table
         success, messages = run_migrations()
         for msg in messages:
             LOGGER.info(msg)
@@ -3693,6 +3693,12 @@ async def _on_startup():
             LOGGER.info("[GHOST STARTUP] ✅ Database migrations complete")
         else:
             LOGGER.warning("[GHOST STARTUP] ⚠️  Some migrations failed (see logs above)")
+        
+        # Double-check personal watchlist table exists (creates if missing)
+        if ensure_personal_watchlist_table():
+            LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist table ready")
+        else:
+            LOGGER.warning("[GHOST STARTUP] ⚠️  Personal watchlist table could not be verified")
     except Exception as e:
         LOGGER.error(f"migrations_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup

@@ -69,7 +69,11 @@ def run_migrations() -> Tuple[bool, List[str]]:
                         ) as exists
                     """)
                     result = cursor.fetchone()
-                    table_exists = result['exists'] if result else False
+                    # Handle both dict-like (RealDictCursor) and tuple access
+                    if isinstance(result, dict):
+                        table_exists = result.get('exists', False)
+                    else:
+                        table_exists = result[0] if result else False
                     
                     if table_exists:
                         msg = f"[MIGRATION] ✅ {migration_name} - already applied (table exists)"
@@ -142,17 +146,40 @@ def ensure_personal_watchlist_table() -> bool:
                 ) as exists
             """)
             result = cursor.fetchone()
-            table_exists = result['exists'] if result else False
+            # Handle both dict-like (RealDictCursor) and tuple access
+            if isinstance(result, dict):
+                table_exists = result.get('exists', False)
+            else:
+                table_exists = result[0] if result else False
             
             if table_exists:
                 LOGGER.info("[MIGRATION] ✅ ghost_watchlist_items table exists")
                 return True
             else:
-                LOGGER.warning("[MIGRATION] ⚠️  ghost_watchlist_items table missing - run migrations")
-                return False
+                LOGGER.warning("[MIGRATION] ⚠️  ghost_watchlist_items table missing - creating now...")
+                # Create the table directly
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS ghost_watchlist_items (
+                        id BIGSERIAL PRIMARY KEY,
+                        symbol TEXT NOT NULL,
+                        asset_type TEXT NOT NULL CHECK (asset_type IN ('crypto', 'stock')),
+                        owns_position BOOLEAN DEFAULT FALSE,
+                        notes TEXT DEFAULT '',
+                        added_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW(),
+                        active BOOLEAN DEFAULT TRUE,
+                        price_at_add REAL,
+                        alert_threshold_pct REAL DEFAULT 5.0,
+                        priority INTEGER DEFAULT 1,
+                        CHECK (LENGTH(symbol) > 0 AND LENGTH(symbol) <= 20)
+                    )
+                """)
+                conn.commit()
+                LOGGER.info("[MIGRATION] ✅ ghost_watchlist_items table created")
+                return True
                 
     except Exception as e:
-        LOGGER.error(f"[MIGRATION] ❌ Table check failed: {e}", exc_info=True)
+        LOGGER.error(f"[MIGRATION] ❌ Table check/create failed: {e}", exc_info=True)
         return False
 
 
