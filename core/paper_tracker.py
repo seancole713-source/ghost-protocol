@@ -307,8 +307,12 @@ class PaperTracker:
                 actual_direction = "DOWN"
             
             # Calculate P&L based on signal direction
-            if signal_direction == "LONG":
-                # LONG position
+            # Note: Signal direction can be "LONG"/"SHORT" or "UP"/"DOWN"
+            is_long = signal_direction in ("LONG", "UP")
+            is_short = signal_direction in ("SHORT", "DOWN")
+            
+            if is_long:
+                # LONG/UP position - profit when price goes up
                 if price_change_pct <= -stop_loss_pct:
                     outcome = "STOPPED"
                     pnl_pct = -stop_loss_pct
@@ -325,8 +329,8 @@ class PaperTracker:
                     outcome = "BREAK_EVEN"
                     pnl_pct = 0.0
             
-            else:  # SHORT
-                # SHORT position (inverted)
+            elif is_short:
+                # SHORT/DOWN position - profit when price goes down
                 if price_change_pct >= stop_loss_pct:
                     outcome = "STOPPED"
                     pnl_pct = -stop_loss_pct
@@ -342,6 +346,12 @@ class PaperTracker:
                 else:
                     outcome = "BREAK_EVEN"
                     pnl_pct = 0.0
+            
+            else:
+                # Unknown direction - treat as directional based on prediction
+                LOGGER.warning(f"Unknown signal_direction: {signal_direction}, treating as FLAT")
+                outcome = "BREAK_EVEN"
+                pnl_pct = 0.0
             
             pnl = position_size * pnl_pct
             

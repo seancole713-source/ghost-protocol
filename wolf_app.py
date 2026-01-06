@@ -1492,6 +1492,9 @@ _LAST_TELEGRAM_ERROR: str | None = None
 # Structure: flat dict where symbol is the key
 # Use _classify_symbol_category() to determine if stocks/crypto/vip
 _LATEST_PREDICTIONS: dict[str, dict[str, Any]] = {}
+# BUG FIX (Jan 6, 2026): Add thread lock for race condition protection
+import threading
+_LATEST_PREDICTIONS_LOCK = threading.Lock()
 
 # ============================================================
 # NOTIFICATION LOOP STATUS TRACKING (for /debug/notification-loop-status)
@@ -2234,23 +2237,22 @@ def _collect_actual_prices(t_grid: list[int], symbol: str = WOLF) -> dict[str, A
     try:
         import sqlite3
 
-        conn = sqlite3.connect(WOLF_SQLITE_PATH)
-        cur = conn.cursor()
+        # BUG FIX (Jan 6, 2026): Use context manager to prevent connection leaks
+        with sqlite3.connect(WOLF_SQLITE_PATH) as conn:
+            cur = conn.cursor()
 
-        # For each timestamp, find closest tick within ±5min window
-        tolerance_s = 300  # 5 minutes
-        for t in past_grid:
-            cur.execute(
-                """SELECT price FROM realized_prices
-                   WHERE symbol=? AND ABS(ts - ?) < ?
-                   ORDER BY ABS(ts - ?) ASC LIMIT 1""",
-                (symbol, t, tolerance_s, t),
-            )
-            row = cur.fetchone()
-            if row and row[0] is not None:
-                points.append({"t": t, "p": round(float(row[0]), 4)})
-
-        conn.close()
+            # For each timestamp, find closest tick within ±5min window
+            tolerance_s = 300  # 5 minutes
+            for t in past_grid:
+                cur.execute(
+                    """SELECT price FROM realized_prices
+                       WHERE symbol=? AND ABS(ts - ?) < ?
+                       ORDER BY ABS(ts - ?) ASC LIMIT 1""",
+                    (symbol, t, tolerance_s, t),
+                )
+                row = cur.fetchone()
+                if row and row[0] is not None:
+                    points.append({"t": t, "p": round(float(row[0]), 4)})
 
         if points:
             src = "history"
@@ -2777,58 +2779,59 @@ def _init_forecast_tables():
     import sqlite3
 
     try:
-        conn = sqlite3.connect(WOLF_SQLITE_PATH)
+        # BUG FIX (Jan 6, 2026): Use context manager to prevent connection leaks
+        with sqlite3.connect(WOLF_SQLITE_PATH) as conn:
 
-        # Spec-compliant forecast table
-        conn.execute(
+            # Spec-compliant forecast table
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS forecast_48h (
+                    id INTEGER PRIMARY KEY,
+                    ts_issued INTEGER NOT NULL,
+                    symbol TEXT NOT NULL,
+                    horizon_hours INTEGER NOT NULL,
+                    price_now REAL NOT NULL,
+                    price_pred_mid REAL NOT NULL,
+                    price_pred_lo REAL,
+                    price_pred_hi REAL,
+                    pnl_pred_mid REAL,
+                    confidence REAL,
+                    model TEXT NOT NULL,
+                    features_json TEXT
+                )
             """
-            CREATE TABLE IF NOT EXISTS forecast_48h (
-                id INTEGER PRIMARY KEY,
-                ts_issued INTEGER NOT NULL,
-                symbol TEXT NOT NULL,
-                horizon_hours INTEGER NOT NULL,
-                price_now REAL NOT NULL,
-                price_pred_mid REAL NOT NULL,
-                price_pred_lo REAL,
-                price_pred_hi REAL,
-                pnl_pred_mid REAL,
-                confidence REAL,
-                model TEXT NOT NULL,
-                features_json TEXT
             )
-        """
-        )
 
-        # Spec-compliant actuals table
-        conn.execute(
+            # Spec-compliant actuals table
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS price_actuals (
+                    ts INTEGER NOT NULL,
+                    symbol TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    PRIMARY KEY (symbol, ts)
+                )
             """
-            CREATE TABLE IF NOT EXISTS price_actuals (
-                ts INTEGER NOT NULL,
-                symbol TEXT NOT NULL,
-                price REAL NOT NULL,
-                PRIMARY KEY (symbol, ts)
             )
-        """
-        )
 
-        # Legacy tables (keep for backward compatibility)
-        conn.execute(
+            # Legacy tables (keep for backward compatibility)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS forecasts (
+                    id TEXT PRIMARY KEY,
+                    symbol TEXT NOT NULL,
+                    as_of INTEGER NOT NULL,
+                    hours INTEGER NOT NULL,
+                    path_mid TEXT NOT NULL,
+                    path_lo TEXT,
+                    path_hi TEXT,
+                    metadata TEXT,
+                    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+                )
             """
-            CREATE TABLE IF NOT EXISTS forecasts (
-                id TEXT PRIMARY KEY,
-                symbol TEXT NOT NULL,
-                as_of INTEGER NOT NULL,
-                hours INTEGER NOT NULL,
-                path_mid TEXT NOT NULL,
-                path_lo TEXT,
-                path_hi TEXT,
-                metadata TEXT,
-                created_at INTEGER DEFAULT (strftime('%s', 'now'))
             )
-        """
-        )
-        conn.execute(
-            """
+            conn.execute(
+                """
             CREATE TABLE IF NOT EXISTS forecast_actuals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 forecast_id TEXT NOT NULL,
@@ -2894,7 +2897,6 @@ def _init_forecast_tables():
         """
         )
         conn.commit()
-        conn.close()
     except Exception as e:
         print(f"[forecast tables init] {e}")
 
@@ -2966,26 +2968,25 @@ async def _auto_record_actual_prices():
             if not FORECAST_STORE:
                 await asyncio.sleep(60)
                 continue
-            conn = sqlite3.connect(WOLF_SQLITE_PATH)
-            for forecast_id, forecast in FORECAST_STORE.items():
-                # Get current price for the forecast symbol
-                symbol = forecast.get("symbol")
-                if not symbol:
-                    continue
-                price, _, provider = get_wolf_price() if symbol == WOLF else (None, None, None)
-                if price is None:
-                    continue
-                ts = int(time.time())
-                # Insert actual price for this forecast_id and timestamp
-                conn.execute(
-                    """
-                    INSERT INTO forecast_actuals (forecast_id, t, p, provider)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (forecast_id, ts, price, provider),
-                )
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(WOLF_SQLITE_PATH) as conn:
+                for forecast_id, forecast in FORECAST_STORE.items():
+                    # Get current price for the forecast symbol
+                    symbol = forecast.get("symbol")
+                    if not symbol:
+                        continue
+                    price, _, provider = get_wolf_price() if symbol == WOLF else (None, None, None)
+                    if price is None:
+                        continue
+                    ts = int(time.time())
+                    # Insert actual price for this forecast_id and timestamp
+                    conn.execute(
+                        """
+                        INSERT INTO forecast_actuals (forecast_id, t, p, provider)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (forecast_id, ts, price, provider),
+                    )
+                conn.commit()
         except Exception as e:
             print(f"[auto_record_actual_prices] {e}")
         await asyncio.sleep(60)
@@ -3002,26 +3003,25 @@ async def _auto_record_forecast():
             if not FORECAST_STORE:
                 await asyncio.sleep(60)
                 continue
-            conn = sqlite3.connect(WOLF_SQLITE_PATH)
-            for forecast_id, forecast in FORECAST_STORE.items():
-                # Insert or ignore (idempotent)
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO forecast_overlay (forecast_id, symbol, as_of, hours, path_mid, path_lo, path_hi)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        forecast_id,
-                        forecast.get("symbol"),
-                        forecast.get("as_o"),
-                        forecast.get("hours"),
-                        json.dumps(forecast.get("path_mid")),
-                        json.dumps(forecast.get("path_lo")),
-                        json.dumps(forecast.get("path_hi")),
-                    ),
-                )
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(WOLF_SQLITE_PATH) as conn:
+                for forecast_id, forecast in FORECAST_STORE.items():
+                    # Insert or ignore (idempotent)
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO forecast_overlay (forecast_id, symbol, as_of, hours, path_mid, path_lo, path_hi)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            forecast_id,
+                            forecast.get("symbol"),
+                            forecast.get("as_o"),
+                            forecast.get("hours"),
+                            json.dumps(forecast.get("path_mid")),
+                            json.dumps(forecast.get("path_lo")),
+                            json.dumps(forecast.get("path_hi")),
+                        ),
+                    )
+                conn.commit()
         except Exception as e:
             print(f"[auto_record_forecast] {e}")
         await asyncio.sleep(60)
@@ -3050,37 +3050,36 @@ def _store_forecast_48h(
     import sqlite3
 
     try:
-        conn = sqlite3.connect(WOLF_SQLITE_PATH)
-        cur = conn.cursor()
-        ts_issued = int(time.time())
-        features_json = json.dumps(features) if features else None
+        with sqlite3.connect(WOLF_SQLITE_PATH) as conn:
+            cur = conn.cursor()
+            ts_issued = int(time.time())
+            features_json = json.dumps(features) if features else None
 
-        cur.execute(
-            """
-            INSERT INTO forecast_48h (
-                ts_issued, symbol, horizon_hours, price_now,
-                price_pred_mid, price_pred_lo, price_pred_hi,
-                pnl_pred_mid, confidence, model, features_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                ts_issued,
-                symbol,
-                48,
-                price_now,
-                price_pred_mid,
-                price_pred_lo,
-                price_pred_hi,
-                pnl_pred_mid,
-                confidence,
-                model,
-                features_json,
-            ),
-        )
-        forecast_id = cur.lastrowid
-        conn.commit()
-        conn.close()
-        return forecast_id
+            cur.execute(
+                """
+                INSERT INTO forecast_48h (
+                    ts_issued, symbol, horizon_hours, price_now,
+                    price_pred_mid, price_pred_lo, price_pred_hi,
+                    pnl_pred_mid, confidence, model, features_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    ts_issued,
+                    symbol,
+                    48,
+                    price_now,
+                    price_pred_mid,
+                    price_pred_lo,
+                    price_pred_hi,
+                    pnl_pred_mid,
+                    confidence,
+                    model,
+                    features_json,
+                ),
+            )
+            forecast_id = cur.lastrowid
+            conn.commit()
+            return forecast_id
     except Exception as e:
         print(f"[store_forecast_48h] {e}")
         return -1
@@ -3094,16 +3093,15 @@ def _store_price_actual(symbol: str, price: float, ts: int | None = None):
         if ts is None:
             ts = int(time.time())
 
-        conn = sqlite3.connect(WOLF_SQLITE_PATH)
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO price_actuals (ts, symbol, price)
-            VALUES (?, ?, ?)
-        """,
-            (ts, symbol, price),
-        )
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(WOLF_SQLITE_PATH) as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO price_actuals (ts, symbol, price)
+                VALUES (?, ?, ?)
+            """,
+                (ts, symbol, price),
+            )
+            conn.commit()
     except Exception as e:
         print(f"[store_price_actual] {e}")
 
@@ -3116,32 +3114,30 @@ def _get_forecast_48h_series(symbol: str, limit: int = 50) -> list[dict[str, Any
     import sqlite3
 
     try:
-        conn = sqlite3.connect(WOLF_SQLITE_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        with sqlite3.connect(WOLF_SQLITE_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
 
-        cur.execute(
-            """
-            SELECT
-                ts_issued as t,
-                price_now as now,
-                price_pred_mid as mid,
-                price_pred_lo as lo,
-                price_pred_hi as hi,
-                confidence as conf,
-                model
-            FROM forecast_48h
-            WHERE symbol = ?
-            ORDER BY ts_issued DESC
-            LIMIT ?
-        """,
-            (symbol, limit),
-        )
+            cur.execute(
+                """
+                SELECT
+                    ts_issued as t,
+                    price_now as now,
+                    price_pred_mid as mid,
+                    price_pred_lo as lo,
+                    price_pred_hi as hi,
+                    confidence as conf,
+                    model
+                FROM forecast_48h
+                WHERE symbol = ?
+                ORDER BY ts_issued DESC
+                LIMIT ?
+            """,
+                (symbol, limit),
+            )
 
-        rows = cur.fetchall()
-        conn.close()
-
-        return [dict(row) for row in rows]
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
     except Exception as e:
         print(f"[get_forecast_48h_series] {e}")
         return []
@@ -3163,145 +3159,143 @@ def _compute_forecast_48h_metrics(symbol: str, window: int = 30) -> dict[str, An
     import sqlite3
 
     try:
-        conn = sqlite3.connect(WOLF_SQLITE_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        with sqlite3.connect(WOLF_SQLITE_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
 
-        # Get recent forecasts
-        cur.execute(
-            """
-            SELECT
-                id, ts_issued, price_now, price_pred_mid,
-                price_pred_lo, price_pred_hi, horizon_hours
-            FROM forecast_48h
-            WHERE symbol = ?
-            ORDER BY ts_issued DESC
-            LIMIT ?
-        """,
-            (symbol, window),
-        )
-
-        forecasts = [dict(row) for row in cur.fetchall()]
-
-        if not forecasts:
-            return {
-                "symbol": symbol,
-                "window": window,
-                "mape48h": 0.0,
-                "mae48h": 0.0,
-                "hit_rate_band": 0.0,
-                "direction_hit": 0.0,
-                "bias": "neutral",
-                "bias_bps": 0,
-                "last_verified_at": 0,
-                "count": 0,
-            }
-
-        # Compute metrics
-        errors = []
-        abs_errors = []
-        in_band = 0
-        direction_correct = 0
-        verified_count = 0
-        last_verified = 0
-
-        for fc in forecasts:
-            fc["id"]
-            ts_target = fc["ts_issued"] + (fc["horizon_hours"] * 3600)
-            price_now = fc["price_now"]
-            price_pred = fc["price_pred_mid"]
-            lo = fc["price_pred_lo"]
-            hi = fc["price_pred_hi"]
-
-            # Get actual price at target time (±1 hour tolerance)
+            # Get recent forecasts
             cur.execute(
                 """
-                SELECT price FROM price_actuals
-                WHERE symbol = ? AND ts BETWEEN ? AND ?
-                ORDER BY ABS(ts - ?) ASC
-                LIMIT 1
+                SELECT
+                    id, ts_issued, price_now, price_pred_mid,
+                    price_pred_lo, price_pred_hi, horizon_hours
+                FROM forecast_48h
+                WHERE symbol = ?
+                ORDER BY ts_issued DESC
+                LIMIT ?
             """,
-                (symbol, ts_target - 3600, ts_target + 3600, ts_target),
+                (symbol, window),
             )
 
-            actual_row = cur.fetchone()
-            if not actual_row:
-                continue
+            forecasts = [dict(row) for row in cur.fetchall()]
 
-            actual_price = actual_row["price"]
-            verified_count += 1
-            last_verified = max(last_verified, ts_target)
+            if not forecasts:
+                return {
+                    "symbol": symbol,
+                    "window": window,
+                    "mape48h": 0.0,
+                    "mae48h": 0.0,
+                    "hit_rate_band": 0.0,
+                    "direction_hit": 0.0,
+                    "bias": "neutral",
+                    "bias_bps": 0,
+                    "last_verified_at": 0,
+                    "count": 0,
+                }
 
-            # Compute error
-            error = actual_price - price_pred
-            abs_error = abs(error)
-            abs_error / price_pred if price_pred > 0 else 0
+            # Compute metrics
+            errors = []
+            abs_errors = []
+            in_band = 0
+            direction_correct = 0
+            verified_count = 0
+            last_verified = 0
 
-            errors.append(error)
-            abs_errors.append(abs_error)
+            for fc in forecasts:
+                fc["id"]
+                ts_target = fc["ts_issued"] + (fc["horizon_hours"] * 3600)
+                price_now = fc["price_now"]
+                price_pred = fc["price_pred_mid"]
+                lo = fc["price_pred_lo"]
+                hi = fc["price_pred_hi"]
 
-            # Check if in band
-            if lo is not None and hi is not None:
-                if lo <= actual_price <= hi:
-                    in_band += 1
+                # Get actual price at target time (±1 hour tolerance)
+                cur.execute(
+                    """
+                    SELECT price FROM price_actuals
+                    WHERE symbol = ? AND ts BETWEEN ? AND ?
+                    ORDER BY ABS(ts - ?) ASC
+                    LIMIT 1
+                """,
+                    (symbol, ts_target - 3600, ts_target + 3600, ts_target),
+                )
 
-            # Check direction
-            pred_direction = 1 if price_pred > price_now else -1
-            actual_direction = 1 if actual_price > price_now else -1
-            if pred_direction == actual_direction:
-                direction_correct += 1
+                actual_row = cur.fetchone()
+                if not actual_row:
+                    continue
 
-        conn.close()
+                actual_price = actual_row["price"]
+                verified_count += 1
+                last_verified = max(last_verified, ts_target)
 
-        if verified_count == 0:
+                # Compute error
+                error = actual_price - price_pred
+                abs_error = abs(error)
+                abs_error / price_pred if price_pred > 0 else 0
+
+                errors.append(error)
+                abs_errors.append(abs_error)
+
+                # Check if in band
+                if lo is not None and hi is not None:
+                    if lo <= actual_price <= hi:
+                        in_band += 1
+
+                # Check direction
+                pred_direction = 1 if price_pred > price_now else -1
+                actual_direction = 1 if actual_price > price_now else -1
+                if pred_direction == actual_direction:
+                    direction_correct += 1
+
+            if verified_count == 0:
+                return {
+                    "symbol": symbol,
+                    "window": window,
+                    "mape48h": 0.0,
+                    "mae48h": 0.0,
+                    "hit_rate_band": 0.0,
+                    "direction_hit": 0.0,
+                    "bias": "neutral",
+                    "bias_bps": 0,
+                    "last_verified_at": 0,
+                    "count": 0,
+                }
+
+            # Calculate metrics
+            mae = sum(abs_errors) / verified_count
+            map = (
+                mae / (sum(fc["price_pred_mid"] for fc in forecasts[:verified_count]) / verified_count)
+            ) * 100
+
+            mean_error = sum(errors) / verified_count
+            bias_bps = int(
+                mean_error
+                / (sum(fc["price_pred_mid"] for fc in forecasts[:verified_count]) / verified_count)
+                * 10000
+            )
+
+            if bias_bps > 20:
+                bias = "over"
+            elif bias_bps < -20:
+                bias = "under"
+            else:
+                bias = "neutral"
+
+            hit_rate = (in_band / verified_count) if verified_count > 0 else 0.0
+            direction_rate = (direction_correct / verified_count) if verified_count > 0 else 0.0
+
             return {
                 "symbol": symbol,
                 "window": window,
-                "mape48h": 0.0,
-                "mae48h": 0.0,
-                "hit_rate_band": 0.0,
-                "direction_hit": 0.0,
-                "bias": "neutral",
-                "bias_bps": 0,
-                "last_verified_at": 0,
-                "count": 0,
+                "mape48h": round(map / 100, 4),  # Convert to decimal
+                "mae48h": round(mae, 2),
+                "hit_rate_band": round(hit_rate, 2),
+                "direction_hit": round(direction_rate, 2),
+                "bias": bias,
+                "bias_bps": bias_bps,
+                "last_verified_at": last_verified,
+                "count": verified_count,
             }
-
-        # Calculate metrics
-        mae = sum(abs_errors) / verified_count
-        map = (
-            mae / (sum(fc["price_pred_mid"] for fc in forecasts[:verified_count]) / verified_count)
-        ) * 100
-
-        mean_error = sum(errors) / verified_count
-        bias_bps = int(
-            mean_error
-            / (sum(fc["price_pred_mid"] for fc in forecasts[:verified_count]) / verified_count)
-            * 10000
-        )
-
-        if bias_bps > 20:
-            bias = "over"
-        elif bias_bps < -20:
-            bias = "under"
-        else:
-            bias = "neutral"
-
-        hit_rate = (in_band / verified_count) if verified_count > 0 else 0.0
-        direction_rate = (direction_correct / verified_count) if verified_count > 0 else 0.0
-
-        return {
-            "symbol": symbol,
-            "window": window,
-            "mape48h": round(map / 100, 4),  # Convert to decimal
-            "mae48h": round(mae, 2),
-            "hit_rate_band": round(hit_rate, 2),
-            "direction_hit": round(direction_rate, 2),
-            "bias": bias,
-            "bias_bps": bias_bps,
-            "last_verified_at": last_verified,
-            "count": verified_count,
-        }
 
     except Exception as e:
         print(f"[compute_forecast_48h_metrics] {e}")
@@ -3969,6 +3963,85 @@ async def _on_startup():
         LOGGER.info("[GHOST STARTUP] ✅ Accuracy evaluator + feedback loop scheduled (hourly)")
     except Exception as e:
         LOGGER.error(f"accuracy_evaluator_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
+    # 📈 Start Paper Trade Reconciliation Scheduler
+    # Runs every hour to check if any paper trades have reached their 48h target time
+    try:
+        import asyncio as _asyncio_module
+        
+        async def _paper_trade_reconciler_loop():
+            """Background task to reconcile paper trades every hour."""
+            # Wait 5 minutes on startup before first run
+            await _asyncio_module.sleep(300)
+            
+            while True:
+                try:
+                    from core.paper_tracker import get_paper_tracker
+                    from core.crypto.crypto_providers import get_crypto_price_quorum
+                    import psycopg2
+                    
+                    tracker = get_paper_tracker()
+                    price_data = {}
+                    
+                    # Get unique symbols from pending trades
+                    database_url = os.getenv("DATABASE_URL")
+                    if database_url:
+                        conn = psycopg2.connect(database_url)
+                        cur = conn.cursor()
+                        cur.execute("""
+                            SELECT DISTINCT symbol FROM paper_trades 
+                            WHERE outcome = 'PENDING' 
+                            AND target_time <= NOW()
+                        """)
+                        symbols = cur.fetchall()
+                        cur.close()
+                        conn.close()
+                    else:
+                        symbols = []
+                    
+                    if symbols:
+                        LOGGER.info(f"[PAPER] Found {len(symbols)} symbols with due trades, fetching prices...")
+                        
+                        # Fetch current prices for symbols with due trades
+                        for (symbol,) in symbols:
+                            try:
+                                result = await get_crypto_price_quorum(symbol, use_cache=True)
+                                if result and result.get("price"):
+                                    price_data[symbol] = result["price"]
+                            except Exception as price_err:
+                                LOGGER.debug(f"[PAPER] Price fetch failed for {symbol}: {price_err}")
+                        
+                        if price_data:
+                            resolved = tracker.check_all_pending(price_data)
+                            if resolved:
+                                LOGGER.info(f"[PAPER] ✅ Resolved {len(resolved)} paper trades")
+                                
+                                # Alert on first significant resolution batch
+                                if len(resolved) >= 10:
+                                    try:
+                                        stats = tracker.get_stats(days=365)
+                                        win_rate = stats.get("win_rate", 0)
+                                        LOGGER.info(
+                                            f"[PAPER] 📊 Stats update: "
+                                            f"resolved={stats.get('resolved_trades', 0)}, "
+                                            f"win_rate={win_rate:.1%}"
+                                        )
+                                    except:
+                                        pass
+                    else:
+                        LOGGER.debug("[PAPER] No paper trades due for resolution yet")
+                
+                except Exception as paper_err:
+                    LOGGER.error(f"[PAPER] Reconciler error: {paper_err}", exc_info=False)
+                
+                # Sleep for 1 hour
+                await _asyncio_module.sleep(3600)
+        
+        _asyncio_module.create_task(_paper_trade_reconciler_loop())
+        LOGGER.info("[GHOST STARTUP] ✅ Paper trade reconciler scheduled (hourly)")
+    except Exception as e:
+        LOGGER.error(f"paper_trade_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
     # Phase 4/5 moved to _post_startup_init() to avoid blocking startup event
@@ -5558,78 +5631,77 @@ def _init_security_tables():
     try:
         import sqlite3
 
-        conn = sqlite3.connect(WOLF_SQLITE_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        with sqlite3.connect(WOLF_SQLITE_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
 
-        # API Keys table with hashed secrets
-        cur.execute(
+            # API Keys table with hashed secrets
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    id TEXT PRIMARY KEY,
+                    key_hash TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    rate_limit INTEGER NOT NULL DEFAULT 100,
+                    created_at REAL NOT NULL,
+                    last_used REAL,
+                    request_count INTEGER NOT NULL DEFAULT 0,
+                    active INTEGER NOT NULL DEFAULT 1
+                )
             """
-            CREATE TABLE IF NOT EXISTS api_keys (
-                id TEXT PRIMARY KEY,
-                key_hash TEXT NOT NULL UNIQUE,
-                name TEXT NOT NULL,
-                rate_limit INTEGER NOT NULL DEFAULT 100,
-                created_at REAL NOT NULL,
-                last_used REAL,
-                request_count INTEGER NOT NULL DEFAULT 0,
-                active INTEGER NOT NULL DEFAULT 1
             )
-        """
-        )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(active)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(active)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)")
 
-        # Webhooks table with hashed secrets
-        cur.execute(
+            # Webhooks table with hashed secrets
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS webhooks (
+                    id TEXT PRIMARY KEY,
+                    url TEXT NOT NULL,
+                    events_json TEXT NOT NULL,
+                    secret_hash TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    last_success_ts REAL,
+                    failure_count INTEGER NOT NULL DEFAULT 0,
+                    active INTEGER NOT NULL DEFAULT 1
+                )
             """
-            CREATE TABLE IF NOT EXISTS webhooks (
-                id TEXT PRIMARY KEY,
-                url TEXT NOT NULL,
-                events_json TEXT NOT NULL,
-                secret_hash TEXT NOT NULL,
-                created_at REAL NOT NULL,
-                last_success_ts REAL,
-                failure_count INTEGER NOT NULL DEFAULT 0,
-                active INTEGER NOT NULL DEFAULT 1
             )
-        """
-        )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_webhooks_active ON webhooks(active)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_webhooks_active ON webhooks(active)")
 
-        conn.commit()
+            conn.commit()
 
-        # Load API keys into memory cache
-        cur.execute("SELECT * FROM api_keys WHERE active=1")
-        for row in cur.fetchall():
-            API_KEYS_DB[row["id"]] = {
-                "key_hash": row["key_hash"],
-                "name": row["name"],
-                "rate_limit": row["rate_limit"],
-                "created_at": row["created_at"],
-                "last_used": row["last_used"],
-                "request_count": row["request_count"],
-                "active": bool(row["active"]),
-            }
+            # Load API keys into memory cache
+            cur.execute("SELECT * FROM api_keys WHERE active=1")
+            for row in cur.fetchall():
+                API_KEYS_DB[row["id"]] = {
+                    "key_hash": row["key_hash"],
+                    "name": row["name"],
+                    "rate_limit": row["rate_limit"],
+                    "created_at": row["created_at"],
+                    "last_used": row["last_used"],
+                    "request_count": row["request_count"],
+                    "active": bool(row["active"]),
+                }
 
-        # Load webhooks into memory cache
-        cur.execute("SELECT * FROM webhooks WHERE active=1")
-        for row in cur.fetchall():
-            import json
+            # Load webhooks into memory cache
+            cur.execute("SELECT * FROM webhooks WHERE active=1")
+            for row in cur.fetchall():
+                import json
 
-            WEBHOOK_SUBSCRIPTIONS[row["id"]] = {
-                "url": row["url"],
-                "events": json.loads(row["events_json"]),
-                "secret_hash": row["secret_hash"],
-                "created_at": row["created_at"],
-                "last_success_ts": row["last_success_ts"],
-                "failure_count": row["failure_count"],
-            }
+                WEBHOOK_SUBSCRIPTIONS[row["id"]] = {
+                    "url": row["url"],
+                    "events": json.loads(row["events_json"]),
+                    "secret_hash": row["secret_hash"],
+                    "created_at": row["created_at"],
+                    "last_success_ts": row["last_success_ts"],
+                    "failure_count": row["failure_count"],
+                }
 
-        conn.close()
-        LOGGER.info(
-            f"Security tables initialized: {len(API_KEYS_DB)} API keys, {len(WEBHOOK_SUBSCRIPTIONS)} webhooks loaded"
-        )
+            LOGGER.info(
+                f"Security tables initialized: {len(API_KEYS_DB)} API keys, {len(WEBHOOK_SUBSCRIPTIONS)} webhooks loaded"
+            )
     except Exception as e:
         LOGGER.error(f"Failed to initialize security tables: {e}", exc_info=True)
 
@@ -7926,26 +7998,28 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
 
         from core.asset_classification import is_crypto_symbol as _is_crypto_symbol
 
-        _LATEST_PREDICTIONS[symbol] = {
-            "prediction_id": prediction_id,
-            "symbol": symbol,
-            "run_at": run_at,  # Store as float timestamp
-            "confidence": confidence,
-            "direction": direction,
-            "action": action,  # For autonomous execution / telegram gating
-            "horizon_h": horizon_h,
-            "provider": price_provider,
-            "price": current_price,  # For trade decision engine
-            "price_at_prediction": current_price,
-            "market": "crypto" if _is_crypto_symbol(symbol) else "stock",  # Market type
-            "feature_status": feature_status.to_dict(),
-            "confidence_metadata": confidence_metadata,
-            "should_predict": bool(should_predict),
-            "momentum": momentum_data,  # Add momentum tracking data
-        }
+        # BUG FIX (Jan 6, 2026): Use lock to prevent race conditions
+        with _LATEST_PREDICTIONS_LOCK:
+            _LATEST_PREDICTIONS[symbol] = {
+                "prediction_id": prediction_id,
+                "symbol": symbol,
+                "run_at": run_at,  # Store as float timestamp
+                "confidence": confidence,
+                "direction": direction,
+                "action": action,  # For autonomous execution / telegram gating
+                "horizon_h": horizon_h,
+                "provider": price_provider,
+                "price": current_price,  # For trade decision engine
+                "price_at_prediction": current_price,
+                "market": "crypto" if _is_crypto_symbol(symbol) else "stock",  # Market type
+                "feature_status": feature_status.to_dict(),
+                "confidence_metadata": confidence_metadata,
+                "should_predict": bool(should_predict),
+                "momentum": momentum_data,  # Add momentum tracking data
+            }
 
-        if expected_move_pct is not None:
-            _LATEST_PREDICTIONS[symbol]["expected_move_pct"] = expected_move_pct
+            if expected_move_pct is not None:
+                _LATEST_PREDICTIONS[symbol]["expected_move_pct"] = expected_move_pct
 
         # ==========================================================================
         # TRADE PARAMETERS (FIXED Dec 21, 2025)
