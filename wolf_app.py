@@ -1456,42 +1456,88 @@ DEFAULT_STOCK_SYMBOLS = [
 ]
 
 DEFAULT_CRYPTO_SYMBOLS = [
-    # Top 200+ by market cap + trading volume (expandable to 1000+)
-    # Major Layer 1s
-    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT", "MATIC", "SHIB", "LTC", 
-    "TRX", "TON", "ATOM", "ETC", "XLM", "XMR", "BCH", "ALGO", "VET", "ICP", "HBAR", "FIL",
-    "APT", "SUI", "SEI", "INJ", "TIA", "NEAR", "FTM", "KAVA", "ROSE", "OSMO", "CELO", "ZIL",
-    # Layer 2s & Scaling
-    "ARB", "OP", "STRK", "MANTA", "METIS", "IMX", "LRC", "BOBA",
-    # DeFi Protocols
-    "UNI", "LINK", "AAVE", "MKR", "SNX", "COMP", "CRV", "SUSHI", "YFI", "LDO", "RPL",
-    "BAL", "1INCH", "DYDX", "GMX", "GNS", "PENDLE", "CVX", "FXS", "FRAX", "RAI",
-    # Meme Coins
+    # === MAJOR LAYER 1s (Top 50 by Market Cap) ===
+    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT", "MATIC",
+    "SHIB", "LTC", "TRX", "TON", "ATOM", "ETC", "XLM", "XMR", "BCH", "ALGO",
+    "VET", "ICP", "HBAR", "FIL", "APT", "SUI", "SEI", "INJ", "TIA", "NEAR",
+    "FTM", "KAVA", "ROSE", "OSMO", "CELO", "ZIL", "EOS", "NEO", "IOTA", "XDC",
+    "EGLD", "XTZ", "MINA", "KAS", "STX", "CORE", "CFX", "ASTR", "CANTO",
+    
+    # === LAYER 2s & SCALING ===
+    "ARB", "OP", "STRK", "MANTA", "METIS", "IMX", "LRC", "BOBA", "ZK", "SCROLL",
+    "LINEA", "BASE", "ZKSYNC", "POLYGON", "BLAST", "MODE",
+    
+    # === SOLANA ECOSYSTEM (Hot in 2024-2026) ===
+    "RAY", "JTO", "JUP", "PYTH", "ORCA", "MNGO", "SRM", "STEP", "COPE", "FIDA",
+    "TULIP", "SLND", "MARINADE", "MSOL", "JITO",
+    
+    # === DEFI PROTOCOLS (Blue Chips) ===
+    "UNI", "LINK", "AAVE", "MKR", "SNX", "COMP", "CRV", "SUSHI", "YFI", "LDO",
+    "RPL", "BAL", "1INCH", "DYDX", "GMX", "GNS", "PENDLE", "CVX", "FXS", "FRAX",
+    "RAI", "LQTY", "SPELL", "ALCX", "RUNE", "THOR",
+    
+    # === AI & DATA TOKENS (Hottest Narrative) ===
+    "FET", "AGIX", "OCEAN", "RNDR", "TAO", "ARKM", "AIOZ", "OLAS", "NMR", "RLC",
+    "PRIME", "AKT", "CLORE", "NOSANA", "GRASS", "IO", "ATH", "VIRTUAL", "AI16Z",
+    
+    # === MEME COINS (High Volatility = High Opportunity) ===
     "PEPE", "WIF", "BONK", "FLOKI", "BABYDOGE", "ELON", "SAMO", "LADYS", "TURBO", "MEME",
-    # NFT & Gaming
-    "SAND", "MANA", "AXS", "GALA", "ENJ", "CHZ", "FLOW", "APE", "ILV", "MAGIC", "PIXEL",
-    # Privacy
-    "DASH", "ZEC", "SCRT", "BEAM",
-    # Storage & Infrastructure  
-    "AR", "STORJ", "GRT", "RNDR", "ANKR", "POKT",
-    # Oracle & Data
-    "BAND", "TRB", "DIA",
-    # Exchange Tokens
-    "CRO", "FTT", "OKB", "HT", "LEO", "KCS", "GT", "MX",
-    # Stablecoins & Wrapped Assets
-    "WBTC", "STETH", "USDT", "USDC", "DAI", "BUSD", "TUSD", "USDP", "GUSD",
-    # AI & Data
-    "FET", "AGIX", "OCEAN", "NMR", "RLC",
-    # Real World Assets
-    "ONDO", "MPL", "CFG", "POLS",
-    # Emerging DeFi
-    "JOE", "LYRA", "VELO", "HOOK", "MAV", "RDNT", "CANTO", "RUNE", "QNT",
-    # Additional High-Volume Coins
-    "THETA", "EGLD", "XTZ", "MINA", "ONE", "HIVE", "ICX", "QTUM", "WAVES", "ZEN",
-    "KDA", "FLUX", "ERG", "RVN", "DGB", "SYS", "ARRR", "FIRO", "XVG", "NAV",
-    # Top 100-200 Extended
-    "OMG", "SNT", "ANT", "MLN", "REP", "NMR", "LOOM", "MANA", "ENJ", "BAT",
-    "ZRX", "STORJ", "DENT", "CVC", "GNO", "DNT", "FUN", "RLC", "MYST", "TNT"
+    "POPCAT", "MYRO", "SLERF", "BOME", "WEN", "BRETT", "DEGEN", "TOSHI", "MOCHI",
+    "NEIRO", "GOAT", "PNUT", "ACT", "CHILLGUY", "MOODENG", "SPX", "GIGA", "MOG",
+    "SNEK", "ANDY", "TROLL", "WOLF", "HPOS10I", "BITCOIN", "ANALOS",
+    
+    # === NFT & GAMING ===
+    "SAND", "MANA", "AXS", "GALA", "ENJ", "CHZ", "FLOW", "APE", "ILV", "MAGIC",
+    "PIXEL", "PRIME", "IMX", "GODS", "SUPER", "YGG", "MC", "ALICE", "HERO",
+    "PYR", "VOXEL", "HIGH", "GHST", "REVV", "TOWER", "NAKA",
+    
+    # === PRIVACY COINS ===
+    "DASH", "ZEC", "SCRT", "BEAM", "XVG", "ARRR", "FIRO", "ZEN", "PIVX", "GRIN",
+    
+    # === STORAGE & INFRASTRUCTURE ===
+    "AR", "STORJ", "GRT", "ANKR", "POKT", "LPT", "AIOZ", "THETA", "TFUEL", "HNT",
+    "MOBILE", "IOT", "AKT", "GLM", "SC",
+    
+    # === ORACLE & DATA ===
+    "LINK", "BAND", "TRB", "DIA", "API3", "UMA", "PYTH",
+    
+    # === EXCHANGE TOKENS ===
+    "CRO", "OKB", "HT", "LEO", "KCS", "GT", "MX", "BGB", "WOO", "DYDX",
+    
+    # === DEPIN (Decentralized Physical Infrastructure) ===
+    "HNT", "MOBILE", "IOT", "IOTX", "DIMO", "WIFI", "HONEY", "ARKM",
+    
+    # === REAL WORLD ASSETS (RWA) ===
+    "ONDO", "MPL", "CFG", "POLS", "CPOOL", "GFI", "MAPLE", "TRU", "PROPC",
+    
+    # === LIQUID STAKING ===
+    "LDO", "RPL", "FXS", "ANKR", "SD", "SWISE", "OETH", "SWETH",
+    "STETH", "RETH", "CBETH", "MSOL", "BSOL", "JITOSOL",
+    
+    # === PERPS & DERIVATIVES ===
+    "DYDX", "GMX", "GNS", "KWENTA", "LYRA", "PREMIA", "DOPEX", "HEGIC", "OPYN",
+    "SNX", "PERP", "MCB", "VELA", "HMX", "VERTEX",
+    
+    # === BASE ECOSYSTEM (Coinbase L2) ===
+    "BRETT", "DEGEN", "TOSHI", "MOCHI", "WELL", "AERO", "EXTRA",
+    
+    # === COSMOS ECOSYSTEM ===
+    "ATOM", "OSMO", "INJ", "TIA", "SEI", "KAVA", "SCRT", "JUNO", "EVMOS", "STARS",
+    "KUJI", "NTRN", "DYM", "SAGA",
+    
+    # === POLKADOT ECOSYSTEM ===
+    "DOT", "KSM", "ASTR", "GLMR", "ACA", "PARA", "CLV", "NODL", "AZERO",
+    
+    # === STABLECOINS & WRAPPED (for reference/pairs) ===
+    "WBTC", "STETH", "USDT", "USDC", "DAI", "BUSD", "TUSD", "USDP", "GUSD", "FRAX",
+    "LUSD", "SUSD", "MIM", "USDD", "FDUSD",
+    
+    # === LEGACY TOP 100-200 ===
+    "THETA", "ONE", "HIVE", "ICX", "QTUM", "WAVES",
+    "KDA", "FLUX", "ERG", "RVN", "DGB", "SYS", "NAV",
+    "OMG", "SNT", "ANT", "MLN", "REP", "LOOM", "BAT",
+    "ZRX", "DENT", "CVC", "GNO", "DNT", "FUN", "MYST", "TNT",
+    "QNT", "MASK", "ENS", "SSV", "BLUR", "ID", "HOOK", "EDU",
 ]
 
 # Load from environment or use defaults
