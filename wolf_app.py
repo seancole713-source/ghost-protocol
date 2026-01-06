@@ -5222,6 +5222,47 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.exception("guardian_oracle_start_failed", extra={"component": "startup", "error": str(e)})
 
+    # Start Real-Time Market Movers Scanner (discovers TODAY's biggest movers)
+    try:
+        from core.realtime_market_movers import (
+            start_movers_scanner, 
+            set_discovery_callback,
+            get_scanner_status
+        )
+        
+        def on_movers_discovered(movers):
+            """Callback when new movers are discovered - add to prediction queue."""
+            for mover in movers:
+                symbol = mover["symbol"]
+                asset_type = mover["type"]
+                change_pct = mover["change_pct"]
+                
+                LOGGER.info(f"🔥 MOVER DISCOVERED: {symbol} ({asset_type}) {change_pct:+.1f}%")
+                
+                # Add to appropriate tracking list
+                if asset_type == "crypto":
+                    if symbol not in HUNTER_CRYPTO_SYMBOLS:
+                        HUNTER_CRYPTO_SYMBOLS.append(symbol)
+                        LOGGER.info(f"Added {symbol} to crypto tracking")
+                else:
+                    if symbol not in HUNTER_STOCK_SYMBOLS:
+                        HUNTER_STOCK_SYMBOLS.append(symbol)
+                        LOGGER.info(f"Added {symbol} to stock tracking")
+                
+                # Trigger immediate prediction via cascade
+                try:
+                    asyncio.create_task(_trigger_prediction_for_mover(symbol, mover))
+                except Exception as e:
+                    LOGGER.error(f"Failed to trigger prediction for {symbol}: {e}")
+        
+        set_discovery_callback(on_movers_discovered)
+        start_movers_scanner()
+        
+        LOGGER.info("🔥 Real-Time Movers Scanner: STARTED (scanning every 30 min for big moves)")
+        
+    except Exception as e:
+        LOGGER.exception("realtime_movers_start_failed", extra={"component": "startup", "error": str(e)})
+
     # Optional heartbeat (skip price fetch to avoid blocking startup)
     try:
         if TELEGRAM_HEARTBEAT_ON_START:
@@ -5235,6 +5276,50 @@ async def _post_startup_init():
         _start_autosave_worker()
     except Exception:
         LOGGER.exception("autosave_worker_start_failed", extra={"component": "startup"})
+
+
+async def _trigger_prediction_for_mover(symbol: str, mover_info: dict):
+    """
+    Generate prediction for a newly discovered mover.
+    Called by real-time movers scanner when it finds a big move.
+    """
+    try:
+        asset_type = mover_info.get("type", "stock")
+        change_pct = mover_info.get("change_pct", 0)
+        
+        LOGGER.info(f"🎯 Generating prediction for mover: {symbol} ({asset_type}) {change_pct:+.1f}%")
+        
+        # Use the appropriate prediction engine
+        if asset_type == "crypto":
+            engine = _get_crypto_engine()
+        else:
+            # For stocks, use the stock engine if available
+            engine = _get_crypto_engine()  # Crypto engine can handle both
+        
+        # Generate prediction
+        prediction = await engine.generate_prediction(symbol)
+        
+        if prediction:
+            direction = prediction.get("direction", "FLAT")
+            confidence = prediction.get("confidence", 0)
+            
+            # Send Telegram alert for high-confidence movers
+            if confidence >= 0.60:
+                alert_text = (
+                    f"🔥 *MOVER ALERT: {symbol}*\n"
+                    f"📈 Today's Move: {change_pct:+.1f}%\n"
+                    f"🎯 Prediction: {direction} ({confidence:.0%})\n"
+                    f"💡 Source: Real-time scanner"
+                )
+                try:
+                    enqueue_alert_text(alert_text)
+                except Exception:
+                    pass
+            
+            LOGGER.info(f"✅ Prediction generated for mover {symbol}: {direction} ({confidence:.0%})")
+        
+    except Exception as e:
+        LOGGER.error(f"Failed to generate prediction for mover {symbol}: {e}")
 
 
 @APP.on_event("shutdown")
@@ -22642,6 +22727,79 @@ async def debug_btc_trend(secret: str = "", symbol: str = "BTC"):
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/debug/movers-scanner")
+async def debug_movers_scanner(secret: str = ""):
+    """
+    Debug endpoint to check real-time market movers scanner status.
+    Shows discovered symbols today, scanner settings, and manual trigger.
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret"}
+    
+    try:
+        from core.realtime_market_movers import get_scanner_status
+        
+        status = get_scanner_status()
+        
+        return {
+            "ok": True,
+            "scanner_status": status,
+            "description": "Scans Yahoo Finance + CoinGecko for stocks/crypto moving 3%+ today",
+            "endpoints": {
+                "manual_scan": "/api/movers/scan",
+                "discovered_today": "/api/movers/discovered"
+            }
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/api/movers/scan")
+async def api_movers_scan():
+    """
+    Manually trigger a market movers scan.
+    Returns today's biggest movers (stocks + crypto).
+    """
+    try:
+        from core.realtime_market_movers import manual_scan
+        
+        movers = await manual_scan()
+        
+        return {
+            "ok": True,
+            "scan_time": datetime.now().isoformat(),
+            "movers_found": len(movers),
+            "movers": movers[:20]  # Top 20
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Manual movers scan failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/movers/discovered")
+async def api_movers_discovered():
+    """
+    Get list of symbols discovered by the movers scanner today.
+    """
+    try:
+        from core.realtime_market_movers import get_scanner_status
+        
+        status = get_scanner_status()
+        
+        return {
+            "ok": True,
+            "date": status.get("last_discovery_date", ""),
+            "count": status.get("discovered_count", 0),
+            "symbols": status.get("discovered_today", [])
+        }
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @APP.get("/debug/stock-status")
