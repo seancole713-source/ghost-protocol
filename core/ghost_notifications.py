@@ -834,14 +834,8 @@ class GhostNotificationSystem:
                 ON ghost_tracked_picks(status)
             """)
             
-            # Create unique index to prevent duplicate active picks
-            cur.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_symbol 
-                ON ghost_tracked_picks (symbol) 
-                WHERE status = 'active'
-            """)
-            
-            # CLEANUP: Remove duplicate active picks (keep oldest entry for each symbol)
+            # CLEANUP FIRST: Remove duplicate active picks BEFORE creating unique index
+            # (Keeps the OLDEST entry for each symbol)
             cur.execute("""
                 DELETE FROM ghost_tracked_picks a
                 USING ghost_tracked_picks b
@@ -849,6 +843,16 @@ class GhostNotificationSystem:
                 AND a.symbol = b.symbol 
                 AND a.status = 'active' 
                 AND b.status = 'active'
+            """)
+            deleted_count = cur.rowcount
+            if deleted_count > 0:
+                LOGGER.info(f"[TRACKING] Cleaned up {deleted_count} duplicate active picks")
+            
+            # NOW create unique index (duplicates removed above)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_symbol 
+                ON ghost_tracked_picks (symbol) 
+                WHERE status = 'active'
             """)
             
             conn.commit()
