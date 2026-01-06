@@ -1404,33 +1404,55 @@ POLYGON_KEY = os.getenv("POLYGON_API_KEY", "")
 
 DEFAULT_STOCK_SYMBOLS = [
     # Mega Cap Tech (FAANG+)
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA",
+    "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "TSLA", "NVDA",
     # Major Tech
     "ORCL", "CRM", "ADBE", "NFLX", "INTC", "AMD", "CSCO", "IBM", "QCOM", "TXN", "AVGO",
+    "MU", "MRVL", "KLAC", "LRCX", "AMAT", "ASML", "TSM", "SNPS", "CDNS", "ARM",
+    # AI & Cloud Leaders
+    "PLTR", "SNOW", "DDOG", "MDB", "NET", "ZS", "CRWD", "PANW", "FTNT", "OKTA",
+    "TEAM", "WDAY", "NOW", "SPLK", "VEEV", "HUBS", "TTD", "BILL", "DOCN", "PATH",
+    # Semiconductors Extended
+    "ON", "SWKS", "QRVO", "NXPI", "MCHP", "ADI", "MPWR", "WOLF", "SIMO", "SMCI",
     # Finance
     "JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW", "USB", "PNC", "TFC", "COF", "AXP",
-    # Healthcare
+    "V", "MA", "PYPL", "SQ", "COIN", "HOOD", "AFRM", "UPST", "SOFI",
+    # Healthcare & Biotech
     "UNH", "JNJ", "PFE", "ABBV", "TMO", "ABT", "MRK", "LLY", "AMGN", "GILD", "BMY", "CVS",
+    "MRNA", "BNTX", "REGN", "VRTX", "BIIB", "ISRG", "DXCM", "ZTS", "GEHC",
     # Consumer Discretionary
     "WMT", "HD", "MCD", "NKE", "SBUX", "TGT", "LOW", "DIS", "BKNG", "ABNB", "EBAY", "ETSY",
+    "LULU", "ROST", "TJX", "DHI", "LEN", "PHM", "ORLY", "AZO", "TSCO",
     # Consumer Staples
     "PG", "KO", "PEP", "COST", "PM", "MDLZ", "CL", "KHC", "GIS", "KMB",
     # Energy
-    "XOM", "CVX", "COP", "SLB", "EOG", "PXD", "MPC", "PSX", "VLO", "OXY",
+    "XOM", "CVX", "COP", "SLB", "EOG", "PXD", "MPC", "PSX", "VLO", "OXY", "HAL", "DVN",
+    # EV & Clean Energy
+    "RIVN", "LCID", "NIO", "XPEV", "LI", "FSR", "CHPT", "BLNK", "PLUG", "FCEL", "ENVX",
+    "ENPH", "SEDG", "FSLR", "RUN", "NOVA", "ARRY", "STEM",
     # Industrials
-    "BA", "CAT", "GE", "HON", "UPS", "LMT", "RTX", "MMM", "DE", "UNP",
+    "BA", "CAT", "GE", "HON", "UPS", "LMT", "RTX", "MMM", "DE", "UNP", "FDX", "DAL", "UAL",
     # Materials
-    "LIN", "APD", "FCX", "NEM", "CTVA", "DD", "DOW", "PPG", "NUE",
+    "LIN", "APD", "FCX", "NEM", "CTVA", "DD", "DOW", "PPG", "NUE", "CLF", "X", "AA",
     # Real Estate
     "AMT", "PLD", "CCI", "EQIX", "PSA", "SPG", "DLR", "O", "VICI",
     # Communication Services
-    "GOOGL", "META", "DIS", "CMCSA", "VZ", "T", "NFLX", "TMUS",
+    "CMCSA", "VZ", "T", "TMUS", "CHTR", "PARA", "WBD", "FOX", "NWSA",
     # Utilities
     "NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "PEG",
-    # Market Indices
-    "SPY", "QQQ", "DIA", "IWM",
-    # High Momentum/Volatility
-    "WOLF", "GME", "AMC", "PLTR", "SOFI", "RIVN", "LCID", "NIO", "SNAP", "PINS", "UBER", "LYFT"
+    # Market Indices & ETFs
+    "SPY", "QQQ", "DIA", "IWM", "ARKK", "ARKG", "SOXL", "TQQQ", "SQQQ", "VXX",
+    # High Momentum/Meme/Volatility
+    "GME", "AMC", "BBBY", "KOSS", "EXPR", "BB", "NOK", "CLOV", "WISH", "SPCE",
+    "SNAP", "PINS", "UBER", "LYFT", "DASH", "RBLX", "U", "ROKU", "SPOT", "SHOP",
+    # Space & Defense
+    "RKLB", "ASTR", "ASTS", "RDW", "LUNR", "MNTS",
+    # Biotech Momentum
+    "ARWR", "SRPT", "EXAS", "RARE", "BMRN", "ALNY", "NTLA", "CRSP", "EDIT", "BEAM",
+    # Recent IPOs & SPACs
+    "IONQ", "QBTS", "RGTI", "QUBT",  # Quantum computing
+    "GRAB", "SE", "MELI", "NU",  # EM Fintech
+    # Storage & Data (today's movers category)
+    "WDC", "STX", "NTAP", "PSTG",
 ]
 
 DEFAULT_CRYPTO_SYMBOLS = [
