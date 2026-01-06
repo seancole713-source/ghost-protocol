@@ -127,8 +127,25 @@ class YahooFinanceProvider:
                     time.sleep(backoff)
                     continue
                 
+                # Handle 404 (symbol not found) silently
+                if response.status_code == 404:
+                    LOGGER.debug(f"[YAHOO] Symbol not found: {symbol}")
+                    return None
+                
                 response.raise_for_status()
-                data = response.json()
+                
+                # BUG FIX (Jan 6, 2026): Handle empty response body
+                # When market is closed, Yahoo sometimes returns empty response
+                response_text = response.text.strip()
+                if not response_text:
+                    LOGGER.warning(f"[YAHOO] Empty response for {symbol} (market may be closed)")
+                    return None
+                
+                try:
+                    data = response.json()
+                except Exception as json_err:
+                    LOGGER.warning(f"[YAHOO] Invalid JSON for {symbol}: {json_err}")
+                    return None
                 
                 # Parse Yahoo Finance response
                 bars = self._parse_response(data, symbol)

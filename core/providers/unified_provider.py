@@ -319,14 +319,71 @@ class UnifiedProvider:
         lookback: int
     ) -> Optional[dict]:
         """
-        Get stock OHLCV from FREE provider chain.
+        Get stock OHLCV from provider chain.
         
-        Priority: Yahoo Finance (FREE) → yfinance (FREE) → cache
+        Priority: Polygon (PAID, most reliable) → Yahoo Finance (FREE) → yfinance (FREE)
+        
+        BUG FIX (Jan 6, 2026): Added Polygon as primary for OHLCV data.
+        Yahoo/yfinance return empty data when market is closed.
         """
+        import os
+        from datetime import datetime, timedelta
+        
         # Calculate lookback days from bar count
         lookback_days = lookback if interval == "1d" else min(lookback // 78, 90)  # ~78 bars/day for 1h
         
-        # PRIMARY: Yahoo Finance (FREE)
+        # PRIMARY: Polygon (PAID - most reliable, works after hours)
+        polygon_api_key = os.getenv("POLYGON_API_KEY")
+        if polygon_api_key:
+            start_time = time.time()
+            self._track_request("polygon")
+            
+            try:
+                import requests
+                
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=lookback_days + 5)  # Buffer
+                
+                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}"
+                params = {"adjusted": "true", "sort": "asc", "limit": 500, "apiKey": polygon_api_key}
+                
+                response = requests.get(url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    results = data.get("results", [])
+                    
+                    if results and len(results) >= 20:
+                        latency = (time.time() - start_time) * 1000
+                        self._track_success("polygon", latency)
+                        
+                        LOGGER.info(f"[POLYGON] ✅ Fetched {len(results)} bars for {symbol}")
+                        return {
+                            "symbol": symbol,
+                            "interval": interval,
+                            "bars": [
+                                {
+                                    "timestamp": bar["t"] // 1000,  # ms to seconds
+                                    "open": bar["o"],
+                                    "high": bar["h"],
+                                    "low": bar["l"],
+                                    "close": bar["c"],
+                                    "volume": bar["v"]
+                                }
+                                for bar in results
+                            ],
+                            "provider": "polygon",
+                            "timestamp": int(time.time())
+                        }
+                    else:
+                        LOGGER.warning(f"[POLYGON] Insufficient bars for {symbol}: {len(results) if results else 0}")
+                else:
+                    LOGGER.warning(f"[POLYGON] HTTP {response.status_code} for {symbol}")
+                    self._track_failure("polygon")
+            except Exception as e:
+                self._track_failure("polygon")
+                LOGGER.warning(f"[POLYGON] OHLCV failed for {symbol}: {e}")
+        
+        # FALLBACK 1: Yahoo Finance (FREE)
         if self.yahoo:
             start_time = time.time()
             self._track_request("yahoo")
@@ -363,17 +420,46 @@ class UnifiedProvider:
                 self._track_failure("yahoo")
                 LOGGER.error(f"[YAHOO] OHLCV failed for {symbol}: {e}")
         
-        # FALLBACK: yfinance (FREE)
+        # FALLBACK 2: yfinance (FREE) - fixed to return proper OHLCV bars
         LOGGER.warning(f"[STOCK] {symbol}: Yahoo failed, trying yfinance...")
         try:
             import yfinance as yf
+            
             ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="1d")
-            if not hist.empty:
-                return {"price": float(hist['Close'].iloc[-1]), "provider": "yfinance"}
+            # Use longer period to ensure we get enough bars
+            hist = ticker.history(period="3mo")  # 3 months of daily data
+            
+            if hist is not None and len(hist) >= 20:
+                hist = hist.reset_index()
+                
+                bars = []
+                for _, row in hist.iterrows():
+                    try:
+                        ts = int(row['Date'].timestamp()) if hasattr(row['Date'], 'timestamp') else int(row['Date'].value // 10**9)
+                        bars.append({
+                            "timestamp": ts,
+                            "open": float(row['Open']),
+                            "high": float(row['High']),
+                            "low": float(row['Low']),
+                            "close": float(row['Close']),
+                            "volume": float(row['Volume'])
+                        })
+                    except Exception:
+                        continue
+                
+                if len(bars) >= 20:
+                    LOGGER.info(f"[YFINANCE] ✅ Fetched {len(bars)} bars for {symbol}")
+                    return {
+                        "symbol": symbol,
+                        "interval": interval,
+                        "bars": bars,
+                        "provider": "yfinance",
+                        "timestamp": int(time.time())
+                    }
         except Exception as e:
             LOGGER.debug(f"yfinance fallback failed for {symbol}: {e}")
         
+        LOGGER.error(f"[STOCK] {symbol}: ALL OHLCV providers failed")
         return None
     
     def _is_crypto(self, symbol: str) -> bool:
