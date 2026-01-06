@@ -750,6 +750,24 @@ class GhostNotificationSystem:
         if not self._use_postgres:
             self._init_sqlite()
     
+    def retry_postgres_connection(self) -> bool:
+        """
+        Retry PostgreSQL connection if currently using SQLite.
+        Call this if DATABASE_URL wasn't available at startup but is now.
+        Returns True if successfully switched to PostgreSQL.
+        """
+        if self._use_postgres:
+            return True  # Already using PostgreSQL
+        
+        LOGGER.info("[TRACKING] Retrying PostgreSQL connection...")
+        self._use_postgres = self._init_postgres()
+        if self._use_postgres:
+            LOGGER.info("[TRACKING] ✅ Successfully switched to PostgreSQL!")
+            return True
+        else:
+            LOGGER.warning("[TRACKING] PostgreSQL retry failed - still using SQLite")
+            return False
+    
     def _get_postgres_conn(self):
         """Get PostgreSQL connection from DATABASE_URL"""
         import psycopg2

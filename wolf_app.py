@@ -4114,8 +4114,14 @@ async def _on_startup():
         LOGGER.error(f"paper_trade_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
-    # Phase 4/5 moved to _post_startup_init() to avoid blocking startup event
-    LOGGER.info("[GHOST STARTUP] ⚠️  Personal watchlist scheduler DISABLED (optimization in progress)")
+    # Phase 4/5: Start Watchlist Prediction Scheduler (Market Open/Close + Big Move Alerts)
+    try:
+        from core.watchlist_prediction_scheduler import start_watchlist_scheduler
+        start_watchlist_scheduler()
+        LOGGER.info("[GHOST STARTUP] ✅ Watchlist prediction scheduler started (market open/close + big moves)")
+    except Exception as e:
+        LOGGER.error(f"watchlist_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
 
     # Start Outcome Reconciler (70% Accuracy Goal)
     try:
@@ -24299,6 +24305,7 @@ async def watchdog_check_updates(request: Request):
     - Checks all picks from morning's TOP 10
     - Sends ALERT if target or stop is hit
     - Sends UPDATE if any pick moved >3%
+    - At 8 AM: Also sends TOP 10 if not sent today (auto-integration)
     """
     # Check cron secret for authentication
     cron_secret = os.getenv("CRON_SECRET", "")
@@ -24313,7 +24320,7 @@ async def watchdog_check_updates(request: Request):
         return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
     
     try:
-        from core.ghost_notifications import get_notification_system
+        from core.ghost_notifications import get_notification_system, get_central_time
         from core.asset_classifier import get_asset_type
         
         LOGGER.info("[WATCHDOG] 🐺 Authenticated cron request - checking for updates...")
@@ -24324,6 +24331,29 @@ async def watchdog_check_updates(request: Request):
         
         notif = get_notification_system()
         notif.set_telegram_func(_send_telegram)
+        
+        # AUTO-RETRY: If using SQLite, try to reconnect to PostgreSQL
+        if not notif._use_postgres:
+            LOGGER.info("[WATCHDOG] 🔄 Retrying PostgreSQL connection...")
+            notif.retry_postgres_connection()
+        
+        # AUTO-TOP10: At 8 AM, send TOP 10 if not already sent today
+        now_central = get_central_time()
+        current_hour = now_central.hour
+        current_date = now_central.strftime("%Y-%m-%d")
+        top10_sent = False
+        
+        status = notif.get_status()
+        if current_hour == 8 and status.get("last_top10_date") != current_date:
+            LOGGER.info("[WATCHDOG] 🌅 8 AM detected - auto-sending TOP 10...")
+            try:
+                stocks, crypto = notif.get_top10_predictions(_LATEST_PREDICTIONS)
+                if stocks or crypto:
+                    top10_sent = notif.send_top10_message(stocks, crypto, _LATEST_PREDICTIONS)
+                    if top10_sent:
+                        LOGGER.info("[WATCHDOG] ✅ TOP 10 sent successfully via Watchdog at 8 AM")
+            except Exception as top10_err:
+                LOGGER.error(f"[WATCHDOG] TOP 10 auto-send failed: {top10_err}")
         
         # Create price lookup function using _LATEST_PREDICTIONS + live refresh
         async def get_current_price(symbol: str) -> float:
@@ -24380,10 +24410,13 @@ async def watchdog_check_updates(request: Request):
         return {
             "ok": True,
             "message": "Watchdog check complete",
+            "top10_sent_at_8am": top10_sent,
             "sent_notifications": had_updates,
             "active_picks": status.get("active_picks", 0),
             "target_hits": status.get("target_hits", 0),
             "stop_hits": status.get("stop_hits", 0),
+            "database": "postgres" if notif._use_postgres else "sqlite",
+            "persistent": notif._use_postgres,
         }
         
     except Exception as e:
@@ -24398,6 +24431,11 @@ async def notifications_status():
         from core.ghost_notifications import get_notification_system, get_central_time
         
         notif = get_notification_system()
+        
+        # Auto-retry PostgreSQL if using SQLite (it might be available now)
+        if not notif._use_postgres:
+            notif.retry_postgres_connection()
+        
         status = notif.get_status()
         
         return {
@@ -24405,6 +24443,35 @@ async def notifications_status():
             "system": "ghost_notifications",
             **status,
             "predictions_in_memory": len(_LATEST_PREDICTIONS),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/alerts/notifications/retry-postgres")
+async def notifications_retry_postgres():
+    """Retry PostgreSQL connection if currently using SQLite fallback"""
+    try:
+        from core.ghost_notifications import get_notification_system
+        
+        notif = get_notification_system()
+        was_postgres = notif._use_postgres
+        
+        if was_postgres:
+            return {
+                "ok": True,
+                "message": "Already using PostgreSQL",
+                "database": "postgres",
+                "persistent": True
+            }
+        
+        success = notif.retry_postgres_connection()
+        
+        return {
+            "ok": success,
+            "message": "Switched to PostgreSQL" if success else "PostgreSQL connection failed - still using SQLite",
+            "database": "postgres" if success else "sqlite",
+            "persistent": success
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
