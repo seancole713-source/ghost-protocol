@@ -383,22 +383,50 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
         
         # Try to get recorded price from prediction store (most accurate)
         try:
-            from core.prediction_store import get_prediction_store
-            store = get_prediction_store()
-            # Look for predictions made within ±10 minutes of target timestamp
-            # that have recorded price_at_prediction
-            time_window = 600  # 10 minutes
-            recent_preds = store.backend.query(
-                "SELECT price_at_prediction FROM predictions "
-                "WHERE symbol = ? AND run_at BETWEEN ? AND ? "
-                "AND price_at_prediction IS NOT NULL "
-                "ORDER BY ABS(run_at - ?) LIMIT 1",
-                (symbol, timestamp - time_window, timestamp + time_window, timestamp)
-            )
-            if recent_preds and recent_preds[0] and recent_preds[0][0]:
-                price = float(recent_preds[0][0])
-                LOGGER.debug(f"✅ Found recorded price for {symbol} at {datetime.fromtimestamp(timestamp)}: ${price:.2f}")
-                return price
+            import os
+            import psycopg2
+            
+            database_url = os.getenv("DATABASE_URL")
+            if database_url:
+                # Query PostgreSQL directly for ghost_predictions table
+                conn = psycopg2.connect(database_url)
+                cur = conn.cursor()
+                
+                # Look for predictions made within ±10 minutes of target timestamp
+                # that have recorded price_at_prediction  
+                time_window = 600  # 10 minutes
+                cur.execute(
+                    """
+                    SELECT price_at_prediction FROM ghost_predictions 
+                    WHERE symbol = %s AND run_at BETWEEN %s AND %s 
+                    AND price_at_prediction IS NOT NULL 
+                    ORDER BY ABS(run_at - %s) LIMIT 1
+                    """,
+                    (symbol, timestamp - time_window, timestamp + time_window, timestamp)
+                )
+                result = cur.fetchone()
+                cur.close()
+                conn.close()
+                
+                if result and result[0]:
+                    price = float(result[0])
+                    LOGGER.debug(f"✅ Found recorded price for {symbol} at {datetime.fromtimestamp(timestamp)}: ${price:.2f}")
+                    return price
+            else:
+                # Fallback to SQLite in dev container
+                from core.prediction_store import get_prediction_store
+                store = get_prediction_store()
+                recent_preds = store.backend.query(
+                    "SELECT price_at_prediction FROM predictions "
+                    "WHERE symbol = ? AND run_at BETWEEN ? AND ? "
+                    "AND price_at_prediction IS NOT NULL "
+                    "ORDER BY ABS(run_at - ?) LIMIT 1",
+                    (symbol, timestamp - time_window, timestamp + time_window, timestamp)
+                )
+                if recent_preds and recent_preds[0] and recent_preds[0][0]:
+                    price = float(recent_preds[0][0])
+                    LOGGER.debug(f"✅ Found recorded price for {symbol} at {datetime.fromtimestamp(timestamp)}: ${price:.2f}")
+                    return price
         except Exception as e:
             LOGGER.debug(f"Could not query prediction store for historical price: {e}")
         

@@ -100,10 +100,10 @@ class PaperTracker:
                         symbol TEXT NOT NULL,
                         signal_direction TEXT NOT NULL,
                         signal_confidence REAL NOT NULL,
-                        signal_time TEXT NOT NULL,
+                        signal_time TIMESTAMP WITH TIME ZONE NOT NULL,
                         entry_price REAL NOT NULL,
-                        entry_time TEXT NOT NULL,
-                        target_time TEXT NOT NULL,
+                        entry_time TIMESTAMP WITH TIME ZONE NOT NULL,
+                        target_time TIMESTAMP WITH TIME ZONE NOT NULL,
                         target_price REAL,
                         position_size REAL DEFAULT 1000.0,
                         stop_loss_pct REAL DEFAULT 0.05,
@@ -112,9 +112,9 @@ class PaperTracker:
                         outcome TEXT,
                         profit_loss REAL,
                         profit_loss_pct REAL,
-                        checked_at TEXT,
+                        checked_at TIMESTAMP WITH TIME ZONE,
                         notes TEXT,
-                        created_at TEXT NOT NULL
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL
                     )
                 """)
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")

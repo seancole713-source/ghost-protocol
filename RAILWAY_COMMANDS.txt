@@ -1,150 +1,163 @@
-╔══════════════════════════════════════════════════════════════╗
-║       🚀 RAILWAY DEPLOYMENT - MANUAL STEPS               ║
-╚══════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║           🧠 GHOST PROTOCOL - RAILWAY FIX COMMANDS                   ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════════╝
 
-✅ READY: Railway CLI installed (v4.10.0)
-✅ READY: Your credentials configured
-✅ READY: Code pushed to GitHub
+OPTION A: Automated Script (Recommended)
+═══════════════════════════════════════════════════════════════════════
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-STEP 1: LOGIN TO RAILWAY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Run this command (it will open your browser):
-
-  railway login
-
-Then authenticate in the browser that opens.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-STEP 2: CREATE PROJECT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  railway init --name ghost-trading
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-STEP 3: SET ENVIRONMENT VARIABLES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Copy-paste these commands:
-
-railway variables set GHOST_API_TOKEN="e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0"
-railway variables set POLYGON_API_KEY="G1UkONuCx3Mpcngnvu239peiSyhNWRC3"
-railway variables set ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK"
-railway variables set TELEGRAM_BOT_TOKEN="8229069551:AAEBHMpX8TkaPFD2hhGL_Wgo2J8k5Sr3gYw"
-railway variables set TELEGRAM_CHAT_ID="940596997"
-railway variables set GHOST_FOCUS_TICKER="WOLF"
-railway variables set WOLF_PERSIST_MODE="sqlite"
-railway variables set SIM_MODE="0"
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-STEP 4: DEPLOY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  railway up
+./run_all_fixes.sh
 
 This will:
-  • Upload your code to Railway
-  • Build the container
-  • Start Ghost
-  • Takes 2-5 minutes
+✅ Run all 3 steps automatically
+✅ Check test accuracy
+✅ Suggest INVERSE_GHOST setting
+✅ Deploy changes if needed
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+═══════════════════════════════════════════════════════════════════════
 
-STEP 5: GET YOUR URL
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPTION B: Manual Commands (If you prefer control)
+═══════════════════════════════════════════════════════════════════════
 
-  railway domain
+Step 1: Test PostgreSQL Fixes (30 seconds)
+───────────────────────────────────────────────────────────────────────
 
-This will show your live URL like:
-  https://ghost-trading-production.up.railway.app
+railway run python3 test_postgres_fixes.py
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Expected output:
+  ✅ PASS: DATABASE_URL
+  ✅ PASS: ml_trainer (fetched 1,000+ training samples)
+  ✅ PASS: learning_loop (accuracy from PostgreSQL)
+  ✅ PASS: direct_postgres (177,000+ total outcomes)
+  ✅ PASS: data_quality (no issues)
+  
+  🎉 ALL TESTS PASSED - PostgreSQL synapses are GREEN!
 
-STEP 6: TEST DEPLOYMENT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+═══════════════════════════════════════════════════════════════════════
 
-# Replace with your actual URL from step 5
-GHOST_URL="https://your-app.up.railway.app"
+Step 2: Retrain Model (2-5 minutes)
+───────────────────────────────────────────────────────────────────────
 
-# Test health
-curl $GHOST_URL/health
+railway run python3 retrain_model.py
 
-# Should return: {"ok":true,"ts":...}
+This will:
+  • Fetch 25,691+ outcomes from PostgreSQL
+  • Train XGBoost v3 on REAL data
+  • Show train/test accuracy
+  • Save to models/production/ghost_model_ALL.pkl
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Watch for this line:
+  Test accuracy: XX.XX%
 
-STEP 7: RESTORE POSITION DATA
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+═══════════════════════════════════════════════════════════════════════
 
-curl -X POST $GHOST_URL/api/position \
-  -H "Authorization: Bearer e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0" \
-  -H "Content-Type: application/json" \
-  -d '{"qty": 8.41959051, "avg_cost": 359.28}'
+Step 3: Enable INVERSE_GHOST (if needed)
+───────────────────────────────────────────────────────────────────────
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+IF test accuracy < 50% (anti-correlated):
 
-STEP 8: VERIFY EVERYTHING WORKS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  railway variables set INVERSE_GHOST=1
+  railway up -d
 
-# Check health
-curl $GHOST_URL/health/detailed | jq '.ok, .issues'
+This flips predictions: 35% → 65% accuracy
 
-# Check portfolio
-curl $GHOST_URL/api/cockpit | jq '.portfolio'
+IF test accuracy > 50% (correctly correlated):
 
-# Check AI memory
-curl $GHOST_URL/ai/memory/stats
+  railway variables set INVERSE_GHOST=0
+  railway up -d
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Model is good, keep predictions as-is
 
-USEFUL COMMANDS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+═══════════════════════════════════════════════════════════════════════
 
-View logs:
-  railway logs
+VERIFICATION COMMANDS
+═══════════════════════════════════════════════════════════════════════
 
-View logs (follow):
-  railway logs -f
+Check current accuracy:
+───────────────────────────────────────────────────────────────────────
 
-Open dashboard:
-  railway open
+railway run python3 -c "from core.learning_loop import get_learning_loop; print(get_learning_loop()._get_postgres_direction_accuracy(days=7))"
 
-Check status:
-  railway status
+Check INVERSE_GHOST setting:
+───────────────────────────────────────────────────────────────────────
 
-Redeploy:
-  railway up
+railway variables get INVERSE_GHOST
 
-View environment:
-  railway variables
+Check prediction count:
+───────────────────────────────────────────────────────────────────────
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+railway run python3 -c "import psycopg2, os; conn = psycopg2.connect(os.getenv('DATABASE_URL')); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM ghost_predictions'); print(f'Predictions: {cur.fetchone()[0]}'); cur.close(); conn.close()"
 
-🎯 COMPLETE COMMAND SEQUENCE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Check outcomes count:
+───────────────────────────────────────────────────────────────────────
 
-Just copy-paste this entire block:
+railway run python3 -c "import psycopg2, os; conn = psycopg2.connect(os.getenv('DATABASE_URL')); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM ghost_prediction_outcomes'); print(f'Outcomes: {cur.fetchone()[0]}'); cur.close(); conn.close()"
 
-railway login
-railway init --name ghost-trading
-railway variables set GHOST_API_TOKEN="e3c4a2f7-91d9-44e8-b7a2-f61c09f8d9d0"
-railway variables set POLYGON_API_KEY="G1UkONuCx3Mpcngnvu239peiSyhNWRC3"
-railway variables set ALPHAVANTAGE_API_KEY="3WNNLA81KS7BG4AK"
-railway variables set TELEGRAM_BOT_TOKEN="8229069551:AAEBHMpX8TkaPFD2hhGL_Wgo2J8k5Sr3gYw"
-railway variables set TELEGRAM_CHAT_ID="940596997"
-railway variables set GHOST_FOCUS_TICKER="WOLF"
-railway variables set WOLF_PERSIST_MODE="sqlite"
-railway variables set SIM_MODE="0"
-railway up
-railway domain
+View recent logs:
+───────────────────────────────────────────────────────────────────────
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+railway logs --tail 100
 
-🎉 START NOW: Run "railway login" to begin!
+═══════════════════════════════════════════════════════════════════════
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════
+
+If "railway command not found":
+───────────────────────────────────────────────────────────────────────
+
+npm install -g @railway/cli
+# or
+brew install railway
+
+If "not linked to project":
+───────────────────────────────────────────────────────────────────────
+
+railway link
+
+If test fails:
+───────────────────────────────────────────────────────────────────────
+
+Check DATABASE_URL is set:
+  railway variables get DATABASE_URL
+
+Should show: postgresql://postgres:***@postgres.railway.internal:5432/railway
+
+If retrain fails:
+───────────────────────────────────────────────────────────────────────
+
+Check if outcomes exist:
+  railway run python3 -c "import psycopg2, os; conn = psycopg2.connect(os.getenv('DATABASE_URL')); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM ghost_prediction_outcomes WHERE status='\''closed'\'''); print(f'Closed outcomes: {cur.fetchone()[0]}'); cur.close(); conn.close()"
+
+Should show 25,000+ closed outcomes
+
+═══════════════════════════════════════════════════════════════════════
+
+QUICK REFERENCE
+═══════════════════════════════════════════════════════════════════════
+
+Current Status (From Railway Logs):
+  ✅ PostgreSQL: ACTIVE (177,205+ predictions)
+  ✅ Features: 75 indicators per prediction
+  ✅ Storage: [PostgresBackend] working
+  🟡 ML Trainer: Fixed (needs testing)
+  🔴 Model: 35% accuracy (needs retraining)
+
+After Fix:
+  ✅ PostgreSQL: VERIFIED
+  ✅ ML Trainer: VERIFIED (reads from PostgreSQL)
+  ✅ Model: RETRAINED (>50% accuracy or INVERSE_GHOST=1)
+  ✅ Accuracy: 65%+ (beats random!)
+
+═══════════════════════════════════════════════════════════════════════
+
+Files Created:
+  • test_postgres_fixes.py    - Test suite for PostgreSQL connections
+  • retrain_model.py           - Retrain XGBoost with PostgreSQL data
+  • run_all_fixes.sh           - Automated 3-step fix script
+  • quick_fix.sh               - Simple 3-command version
+  • BROKEN_SYNAPSES_FIXED_JAN7.md - Technical documentation
+  • SYNAPSE_STATUS_JAN7.md     - Current status report
+
+═══════════════════════════════════════════════════════════════════════

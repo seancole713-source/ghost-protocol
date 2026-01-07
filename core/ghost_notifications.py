@@ -538,13 +538,13 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     lines = [
         f"{title} — {date_str}",
         "",
-        "📈 STOCKS (5)",
+        "📈 STOCKS (10)",
         "━━━━━━━━━━━━━━━━━━━━━",
         ""
     ]
     
     if stocks:
-        for i, s in enumerate(stocks[:5], 1):
+        for i, s in enumerate(stocks[:10], 1):  # Show all 10 stocks
             # Use the direction already calculated (which has inverse applied)
             direction = s.get('direction', 'DOWN')
             
@@ -571,12 +571,12 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         lines.append("   (No stock picks today)")
         lines.append("")
     
-    lines.append("📊 CRYPTO (5)")
+    lines.append("📊 CRYPTO (10)")
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
     lines.append("")
     
     if crypto:
-        for i, c in enumerate(crypto[:5], 1):
+        for i, c in enumerate(crypto[:10], 1):  # Show all 10 crypto
             # Use the direction already calculated (which has inverse applied)
             direction = c.get('direction', 'DOWN')
             

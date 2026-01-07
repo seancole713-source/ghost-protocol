@@ -52,20 +52,31 @@ def start_cron_scheduler():
         logger.warning("Cron scheduler already running")
         return
     
-    _SCHEDULER = AsyncIOScheduler()
-    
-    # Schedule morning prophecy at 6:00 AM America/Chicago time
-    _SCHEDULER.add_job(
-        send_morning_prophecy,
-        trigger=CronTrigger(hour=6, minute=0, timezone='America/Chicago'),
-        id='morning_prophecy',
-        name='Morning Prophecy 6 AM',
-        replace_existing=True
-    )
-    
-    _SCHEDULER.start()
-    
-    logger.info("✅ Cron Scheduler started: Morning prophecy at 6:00 AM CT daily")
+    try:
+        _SCHEDULER = AsyncIOScheduler()
+        
+        # Schedule morning prophecy at 6:00 AM America/Chicago time
+        _SCHEDULER.add_job(
+            send_morning_prophecy,
+            trigger=CronTrigger(hour=6, minute=0, timezone='America/Chicago'),
+            id='morning_prophecy',
+            name='Morning Prophecy 6 AM',
+            replace_existing=True,
+            misfire_grace_time=3600  # Allow up to 1 hour late execution
+        )
+        
+        _SCHEDULER.start()
+        
+        logger.info("✅ Cron Scheduler started: Morning prophecy at 6:00 AM CT daily")
+        
+        # Log next scheduled run
+        job = _SCHEDULER.get_job('morning_prophecy')
+        if job and job.next_run_time:
+            logger.info(f"📅 Next morning prophecy: {job.next_run_time}")
+        
+    except Exception as e:
+        logger.exception(f"Failed to start cron scheduler: {e}")
+        _SCHEDULER = None
 
 
 def stop_cron_scheduler():

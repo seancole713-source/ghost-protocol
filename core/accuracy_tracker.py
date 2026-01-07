@@ -507,3 +507,8 @@ def get_accuracy_report(*args, **kwargs) -> dict[str, Any]:
 def calculate_metrics(*args, **kwargs) -> dict[str, Any]:
     """Calculate accuracy metrics (convenience wrapper)."""
     return get_accuracy_tracker().calculate_metrics(*args, **kwargs)
+
+
+def calculate_accuracy(*args, **kwargs) -> dict[str, Any]:
+    """Calculate accuracy (alias for calculate_metrics)."""
+    return calculate_metrics(*args, **kwargs)

@@ -119,15 +119,70 @@ class DailyTop10Scanner:
         from core.beast_scheduler import STOCK_SYMBOLS, CRYPTO_SYMBOLS
         from core.crypto.crypto_providers import get_crypto_price_quorum
         
-        LOGGER.info("🔍 Scanning market for top 10 opportunities...")
+        LOGGER.info("🔍 Scanning market for top 10 stocks + top 10 crypto opportunities...")
         
         # Check active positions first
         active_positions = self.position_manager.get_all_active()
         LOGGER.info(f"📍 Found {len(active_positions)} active positions with locked entry prices")
         
-        opportunities = []
+        stock_opportunities = []
+        crypto_opportunities = []
         
-        # Scan all crypto
+        # Scan STOCKS FIRST (top 100 by volume/momentum)
+        LOGGER.info("📊 Scanning stocks...")
+        for symbol in STOCK_SYMBOLS[:100]:  # Scan top 100 stocks
+            try:
+                # Get current price for stock
+                from core.providers.unified_provider import get_unified_price
+                price_data = await get_unified_price(symbol)
+                if not price_data or not price_data.get("price"):
+                    continue
+                
+                current_price = price_data["price"]
+                
+                # Generate prediction
+                prediction = await self._predict_48h(symbol, "stock", current_price)
+                
+                # Accept quality predictions (UP or DOWN)
+                if (prediction 
+                    and abs(prediction.get("gain_pct", 0)) >= 2.0  # 2%+ move for stocks
+                    and prediction.get("confidence", 0) >= 0.55):  # 55%+ confidence
+                    
+                    # Check if position already exists (maintain entry price)
+                    existing_position = next((p for p in active_positions if p['symbol'] == symbol), None)
+                    
+                    if existing_position:
+                        entry_price = existing_position['entry_price']
+                        LOGGER.info(f"📍 {symbol}: Keeping original entry ${entry_price:.2f} (current: ${current_price:.2f})")
+                    else:
+                        entry_price = current_price
+                    
+                    stock_opportunities.append({
+                        "symbol": symbol,
+                        "asset_type": "stock",
+                        "current_price": current_price,
+                        "predicted_48h_price": prediction["predicted_price"],
+                        "gain_pct": prediction["gain_pct"],
+                        "confidence": prediction["confidence"],
+                        "direction": prediction["direction"],
+                        "sell_at": prediction["sell_at"],
+                        "entry_price": entry_price,
+                        "target_price": prediction["predicted_price"],
+                        "reasoning": prediction.get("reasoning", "Technical alignment"),
+                        "is_continuation": existing_position is not None
+                    })
+            
+            except Exception as e:
+                LOGGER.debug(f"Failed to scan stock {symbol}: {e}")
+                continue
+        
+        # Sort stocks by absolute gain and take top 10
+        stock_opportunities.sort(key=lambda x: abs(x["gain_pct"]), reverse=True)
+        top_10_stocks = stock_opportunities[:10]
+        LOGGER.info(f"✅ Found {len(stock_opportunities)} stock opportunities, taking top 10")
+        
+        # Scan CRYPTO (top 50)
+        LOGGER.info("💰 Scanning crypto...")
         for symbol in CRYPTO_SYMBOLS[:50]:  # Limit to top 50 crypto
             try:
                 # Get current price
@@ -160,7 +215,7 @@ class DailyTop10Scanner:
                         # New position - use current price as entry
                         entry_price = current_price
                     
-                    opportunities.append({
+                    crypto_opportunities.append({
                         "symbol": symbol,
                         "asset_type": "crypto",
                         "current_price": current_price,
@@ -176,21 +231,23 @@ class DailyTop10Scanner:
                     })
             
             except Exception as e:
-                LOGGER.debug(f"Failed to scan {symbol}: {e}")
+                LOGGER.debug(f"Failed to scan crypto {symbol}: {e}")
                 continue
         
-        # Sort by absolute gain potential (best opportunities regardless of direction)
-        opportunities.sort(key=lambda x: abs(x["gain_pct"]), reverse=True)
+        # Sort crypto by absolute gain and take top 10
+        crypto_opportunities.sort(key=lambda x: abs(x["gain_pct"]), reverse=True)
+        top_10_crypto = crypto_opportunities[:10]
+        LOGGER.info(f"✅ Found {len(crypto_opportunities)} crypto opportunities, taking top 10")
         
-        LOGGER.info(f"✅ Found {len(opportunities)} opportunities (UP and DOWN, returning top 10)")
+        # Combine: 10 stocks + 10 crypto = 20 total opportunities
+        all_opportunities = top_10_stocks + top_10_crypto
         
-        # Return top 10 by absolute move size
-        top_10 = opportunities[:10]
+        LOGGER.info(f"🎯 Returning {len(top_10_stocks)} stocks + {len(top_10_crypto)} crypto = {len(all_opportunities)} total opportunities")
         
-        if len(top_10) < 10:
-            LOGGER.warning(f"⚠️ Only found {len(top_10)} opportunities (expected 10)")
+        if len(all_opportunities) < 20:
+            LOGGER.warning(f"⚠️ Only found {len(all_opportunities)}/20 opportunities (expected 10 stocks + 10 crypto)")
         
-        return top_10
+        return all_opportunities
     
     async def _predict_48h(self, symbol: str, asset_type: str, current_price: float) -> dict:
         """

@@ -5283,11 +5283,29 @@ async def _post_startup_init():
     try:
         from core.cron_scheduler import start_cron_scheduler
         from core.guardian_oracle import get_guardian_oracle
+        from core.daily_top_10_scanner import DailyTop10Scanner
         
         # Start cron-based 6 AM morning prophecy
         start_cron_scheduler()
         
         LOGGER.info("🔮 Morning Prophecy Scheduler: STARTED (6:00 AM CT daily)")
+        
+        # Send initial Top 10 scan on startup
+        async def send_startup_prophecy():
+            try:
+                LOGGER.info("📡 Sending startup Top 10 scan...")
+                scanner = DailyTop10Scanner()
+                opportunities = await scanner.scan_for_top_10()
+                if opportunities:
+                    scanner.save_top_10(opportunities)
+                    await scanner.send_daily_alert()
+                    LOGGER.info(f"✅ Startup prophecy sent: {len(opportunities)} opportunities")
+                else:
+                    LOGGER.info("No startup opportunities found")
+            except Exception as e:
+                LOGGER.exception(f"Startup prophecy failed: {e}")
+        
+        asyncio.create_task(send_startup_prophecy())
         
         # Start 24/7 Guardian monitoring for immediate alerts
         guardian = get_guardian_oracle()
