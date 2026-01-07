@@ -148,17 +148,84 @@ def train_model(
 
 
 def _fetch_training_data(symbol: str | None, lookback_days: int) -> list[dict]:
-    """Fetch prediction outcomes with features for training"""
-    import sqlite3
+    """Fetch prediction outcomes with features for training from PostgreSQL"""
+    import os
     import time
+    from datetime import datetime, timedelta
 
     cutoff_time = time.time() - (lookback_days * 86400)
+    cutoff_dt = datetime.utcnow() - timedelta(days=lookback_days)
+    training_data = []
 
+    # TRY POSTGRESQL FIRST (where 25,691 outcomes live)
+    database_url = os.getenv("DATABASE_URL", "")
+    if database_url.startswith(("postgres://", "postgresql://")):
+        try:
+            import psycopg2
+            conn = psycopg2.connect(database_url)
+            cursor = conn.cursor()
+            
+            if symbol:
+                cursor.execute("""
+                    SELECT 
+                        o.prediction_id, o.symbol, p.predicted_direction, p.confidence,
+                        o.hit_direction, o.open_price, o.close_price, p.features_json
+                    FROM ghost_prediction_outcomes o
+                    JOIN ghost_predictions p ON o.prediction_id = p.id
+                    WHERE o.symbol = %s 
+                      AND o.status = 'closed'
+                      AND o.closed_at >= %s
+                    ORDER BY o.closed_at DESC
+                    LIMIT 10000
+                """, (symbol, cutoff_dt))
+            else:
+                cursor.execute("""
+                    SELECT 
+                        o.prediction_id, o.symbol, p.predicted_direction, p.confidence,
+                        o.hit_direction, o.open_price, o.close_price, p.features_json
+                    FROM ghost_prediction_outcomes o
+                    JOIN ghost_predictions p ON o.prediction_id = p.id
+                    WHERE o.status = 'closed'
+                      AND o.closed_at >= %s
+                    ORDER BY o.closed_at DESC
+                    LIMIT 10000
+                """, (cutoff_dt,))
+            
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            for row in rows:
+                features = {}
+                if row[7]:  # features_json
+                    try:
+                        features = json.loads(row[7]) if isinstance(row[7], str) else row[7]
+                    except Exception:
+                        pass
+                
+                training_data.append({
+                    "prediction_id": row[0],
+                    "symbol": row[1],
+                    "direction_predicted": row[2],
+                    "confidence": row[3] or 0.5,
+                    "direction_correct": 1 if row[4] else 0,  # hit_direction
+                    "price_at_prediction": row[5] or 0,
+                    "price_at_outcome": row[6] or 0,
+                    "features": features,
+                })
+            
+            logger.info(f"Fetched {len(training_data)} training samples from PostgreSQL")
+            return training_data
+            
+        except Exception as e:
+            logger.error(f"PostgreSQL fetch failed, falling back to SQLite: {e}")
+
+    # FALLBACK: SQLite (local development only - usually empty on Railway)
+    import sqlite3
     outcomes_db = Path(__file__).parent.parent / "data" / "prediction_outcomes.db"
     if not outcomes_db.exists():
+        logger.warning(f"No SQLite outcomes DB at {outcomes_db} and PostgreSQL unavailable")
         return []
-
-    training_data = []
 
     try:
         with sqlite3.connect(str(outcomes_db)) as conn:
@@ -166,10 +233,10 @@ def _fetch_training_data(symbol: str | None, lookback_days: int) -> list[dict]:
                 rows = conn.execute(
                     """
                     SELECT 
-                        prediction_id, symbol, direction_predicted, confidence,
-                        direction_correct, price_at_prediction, price_at_outcome
+                        prediction_id, symbol, predicted_direction, confidence,
+                        correct, target_price, actual_price
                     FROM prediction_outcomes
-                    WHERE symbol = ? AND reconciled_at >= ?
+                    WHERE symbol = ? AND created_at >= ?
                 """,
                     (symbol, cutoff_time),
                 ).fetchall()
@@ -177,10 +244,10 @@ def _fetch_training_data(symbol: str | None, lookback_days: int) -> list[dict]:
                 rows = conn.execute(
                     """
                     SELECT 
-                        prediction_id, symbol, direction_predicted, confidence,
-                        direction_correct, price_at_prediction, price_at_outcome
+                        prediction_id, symbol, predicted_direction, confidence,
+                        correct, target_price, actual_price
                     FROM prediction_outcomes
-                    WHERE reconciled_at >= ?
+                    WHERE created_at >= ?
                 """,
                     (cutoff_time,),
                 ).fetchall()
@@ -190,14 +257,17 @@ def _fetch_training_data(symbol: str | None, lookback_days: int) -> list[dict]:
                     "prediction_id": row[0],
                     "symbol": row[1],
                     "direction_predicted": row[2],
-                    "confidence": row[3],
-                    "direction_correct": row[4],
-                    "price_at_prediction": row[5],
-                    "price_at_outcome": row[6],
+                    "confidence": row[3] or 0.5,
+                    "direction_correct": row[4] or 0,
+                    "price_at_prediction": row[5] or 0,
+                    "price_at_outcome": row[6] or 0,
+                    "features": {},  # SQLite doesn't store features
                 })
+            
+            logger.info(f"Fetched {len(training_data)} training samples from SQLite (fallback)")
 
     except Exception as e:
-        logger.error(f"Failed to fetch training data: {e}")
+        logger.error(f"Failed to fetch training data from SQLite: {e}")
 
     return training_data
 

@@ -622,6 +622,38 @@ async def start_all_background_services(
         LOGGER.info("⚪ Performance Tracker: DISABLED")
     
     # ============================================================================
+    # PHASE 13: AUTOFIX STARTUP (PostgreSQL Fix Verification & Model Retraining)
+    # ============================================================================
+    autofix_enabled = os.getenv("AUTOFIX_STARTUP_ENABLED", "1") == "1"
+    
+    if autofix_enabled:
+        try:
+            from autofix_startup import run_autofix_startup
+            
+            # Run autofix in background (won't block main app startup)
+            _TASKS["autofix_startup"] = asyncio.create_task(run_autofix_startup())
+            _SYSTEM_STATUS["autofix_startup"] = {
+                "status": "running",
+                "enabled": True,
+                "last_run": int(time.time())
+            }
+            
+            LOGGER.info("🔧 Autofix Startup: STARTED")
+            LOGGER.info("   ✅ PostgreSQL connection tests")
+            LOGGER.info("   ✅ Model retraining (if accuracy < 55%)")
+            LOGGER.info("   ✅ INVERSE_GHOST recommendation")
+        except Exception as e:
+            _SYSTEM_STATUS["autofix_startup"] = {
+                "status": "failed",
+                "enabled": False,
+                "error": str(e)
+            }
+            LOGGER.error(f"❌ Autofix Startup FAILED: {e}", exc_info=True)
+    else:
+        _SYSTEM_STATUS["autofix_startup"] = {"status": "disabled", "enabled": False}
+        LOGGER.info("⚪ Autofix Startup: DISABLED (set AUTOFIX_STARTUP_ENABLED=1 to enable)")
+    
+    # ============================================================================
     # ORCHESTRATION COMPLETE
     # ============================================================================
     uptime = time.time() - _START_TIME
