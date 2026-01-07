@@ -103,8 +103,17 @@ class AccuracyTracker:
     
     def record_forecast(self, symbol: str, direction: str, confidence: float,
                        entry_price: float, target_price: Optional[float] = None,
-                       horizon_hours: int = 48, prediction_id: Optional[int] = None) -> int:
-        """Record a new forecast"""
+                       horizon_hours: int = 48, prediction_id: Optional[int] = None,
+                       forecast_price: Optional[float] = None) -> int:
+        """Record a new forecast
+        
+        Args:
+            forecast_price: Alias for target_price (for backwards compatibility)
+        """
+        # Handle forecast_price alias for backwards compatibility
+        if target_price is None and forecast_price is not None:
+            target_price = forecast_price
+            
         if not self._enabled:
             return -1
             
