@@ -66,6 +66,41 @@ SIGNIFICANT_MOVE_PCT = 0.03  # 3% move to trigger update
 TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
 
 # ============================================================================
+# MARKET HOURS (Eastern Time for US stocks)
+# ============================================================================
+# Regular trading hours: 9:30 AM - 4:00 PM ET
+# Pre-market: 4:00 AM - 9:30 AM ET
+# After-hours: 4:00 PM - 8:00 PM ET
+# We'll check during extended hours (4 AM - 8 PM ET) when prices can change
+
+MARKET_OPEN_HOUR = 4    # 4 AM ET (pre-market starts)
+MARKET_CLOSE_HOUR = 20  # 8 PM ET (after-hours ends)
+
+try:
+    EASTERN_TZ = ZoneInfo("America/New_York")
+except:
+    EASTERN_TZ = ZoneInfo("US/Eastern")
+
+def is_stock_market_hours() -> bool:
+    """
+    Check if US stock market is in extended trading hours.
+    Returns True during pre-market + regular + after-hours (4 AM - 8 PM ET).
+    Returns False overnight and on weekends.
+    
+    Crypto trades 24/7 so this only applies to stocks.
+    """
+    from datetime import datetime
+    now_et = datetime.now(EASTERN_TZ)
+    
+    # Check if weekend (Saturday=5, Sunday=6)
+    if now_et.weekday() >= 5:
+        return False
+    
+    # Check if within extended hours (4 AM - 8 PM ET)
+    hour = now_et.hour
+    return MARKET_OPEN_HOUR <= hour < MARKET_CLOSE_HOUR
+
+# ============================================================================
 # CONFIDENCE CALIBRATION FOR DISPLAY
 # ============================================================================
 # Model outputs 85-95% but actual accuracy is 55-70%
@@ -1343,6 +1378,8 @@ class GhostNotificationSystem:
                     "stop": stop,
                 })
             # Check for OFF PATH (moving against prediction)
+            # MARKET HOURS AWARENESS: Only add stock path alerts during trading hours
+            # Crypto trades 24/7 so always check crypto
             elif is_off_path:
                 off_path_pick = {
                     "symbol": symbol,
@@ -1355,9 +1392,13 @@ class GhostNotificationSystem:
                     "pct_change": pct_change,
                 }
                 if asset_type == "crypto":
+                    # Crypto trades 24/7 - always alert
                     off_path_crypto.append(off_path_pick)
-                else:
+                elif is_stock_market_hours():
+                    # Stocks only during market hours (to avoid duplicate overnight alerts)
                     off_path_stocks.append(off_path_pick)
+                else:
+                    LOGGER.debug(f"[WATCHDOG] Skipping stock {symbol} path alert - market closed")
             # Check for significant moves (for scheduled updates)
             elif abs(pct_change) >= SIGNIFICANT_MOVE_PCT:
                 updates.append({
@@ -1507,6 +1548,7 @@ class GhostNotificationSystem:
             "update_hours": UPDATE_HOURS,
             "database": db_type,
             "persistent": db_type == "postgresql",
+            "stock_market_open": is_stock_market_hours(),
         }
 
 
