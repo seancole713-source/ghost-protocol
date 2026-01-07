@@ -807,6 +807,38 @@ class EnsemblePredictor:
         )
         
         # =====================================================================
+        # INVERSE GHOST FIX
+        # Model trained on old data is anti-correlated (35% accuracy = 65% wrong)
+        # Flip predictions until model is retrained with real PostgreSQL outcomes
+        # Set INVERSE_GHOST=1 to enable this fix
+        # =====================================================================
+        import os
+        if os.getenv("INVERSE_GHOST", "0") == "1":
+            original_direction = ensemble_result.direction
+            
+            # Flip UP ↔ DOWN (keep FLAT as is)
+            if ensemble_result.direction == "UP":
+                flipped_direction = "DOWN"
+            elif ensemble_result.direction == "DOWN":
+                flipped_direction = "UP"
+            else:
+                flipped_direction = "FLAT"
+            
+            logger.warning(
+                f"[INVERSE_GHOST] Flipping {original_direction} → {flipped_direction} "
+                f"(model anti-correlated, 35% accuracy)"
+            )
+            
+            ensemble_result = EnsemblePrediction(
+                direction=flipped_direction,
+                confidence=ensemble_result.confidence,
+                predicted_change_pct=-ensemble_result.predicted_change_pct,  # Flip change direction too
+                individual_predictions=ensemble_result.individual_predictions,
+                model_weights=ensemble_result.model_weights,
+                ensemble_method=f"{ensemble_result.ensemble_method}_inverted"
+            )
+        
+        # =====================================================================
         # FEAR & GREED INTEGRATION
         # Boost confidence when Fear & Greed aligns with prediction direction
         # IMPORTANT: Don't boost FLAT predictions - they should stay conservative
