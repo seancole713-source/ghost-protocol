@@ -219,50 +219,15 @@ def _fetch_training_data(symbol: str | None, lookback_days: int) -> list[dict]:
             return training_data
             
         except Exception as e:
-            logger.error(f"PostgreSQL fetch failed, falling back to SQLite: {e}")
+            logger.error(f"PostgreSQL fetch FAILED: {e}")
+            logger.error("Cannot train model without PostgreSQL. Set DATABASE_URL environment variable.")
+            return []
 
-    # FALLBACK: SQLite (local development only - usually empty on Railway)
-    import sqlite3
-    outcomes_db = Path(__file__).parent.parent / "data" / "prediction_outcomes.db"
-    if not outcomes_db.exists():
-        logger.warning(f"No SQLite outcomes DB at {outcomes_db} and PostgreSQL unavailable")
-        return []
-
-    try:
-        with sqlite3.connect(str(outcomes_db)) as conn:
-            if symbol:
-                rows = conn.execute(
-                    """
-                    SELECT 
-                        prediction_id, symbol, predicted_direction, confidence,
-                        correct, target_price, actual_price
-                    FROM prediction_outcomes
-                    WHERE symbol = ? AND created_at >= ?
-                """,
-                    (symbol, cutoff_time),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT 
-                        prediction_id, symbol, predicted_direction, confidence,
-                        correct, target_price, actual_price
-                    FROM prediction_outcomes
-                    WHERE created_at >= ?
-                """,
-                    (cutoff_time,),
-                ).fetchall()
-
-            for row in rows:
-                training_data.append({
-                    "prediction_id": row[0],
-                    "symbol": row[1],
-                    "direction_predicted": row[2],
-                    "confidence": row[3] or 0.5,
-                    "direction_correct": row[4] or 0,
-                    "price_at_prediction": row[5] or 0,
-                    "price_at_outcome": row[6] or 0,
-                    "features": {},  # SQLite doesn't store features
+    # NO SQLITE FALLBACK - PostgreSQL is required for production
+    # SQLite was causing data loss on Railway deploys (ephemeral filesystem)
+    logger.error("DATABASE_URL not set or not PostgreSQL. Cannot fetch training data.")
+    logger.error("Training requires PostgreSQL with ghost_prediction_outcomes table.")
+    return []
                 })
             
             logger.info(f"Fetched {len(training_data)} training samples from SQLite (fallback)")
