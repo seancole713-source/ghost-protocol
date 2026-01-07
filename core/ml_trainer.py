@@ -68,7 +68,7 @@ def train_model(
     """
     try:
         import xgboost as xgb
-        from sklearn.model_selection import train_test_split
+        from sklearn.model_selection import TimeSeriesSplit
     except ImportError:
         return {
             "ok": False,
@@ -90,10 +90,11 @@ def train_model(
     # Prepare features and labels
     X, y, feature_names = _prepare_training_data(training_data)
 
-    # Split train/test
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+    # TIME-SERIES SPLIT (prevents look-ahead bias)
+    # Train on past, test on future (80/20 split)
+    split_idx = int(len(X) * 0.8)
+    X_train, X_test = X[:split_idx], X[split_idx:]
+    y_train, y_test = y[:split_idx], y[split_idx:]
 
     # Train XGBoost
     model = xgb.XGBClassifier(

@@ -565,59 +565,23 @@ class XGBoostModel:
                 prob_down = float(proba[0])  # Class 0 = DOWN
                 prob_up = float(proba[1])    # Class 1 = UP
                 
-                # BIAS CORRECTION v5 (Jan 6, 2026) - RELATIVE THRESHOLD
-                # XGBoost v2 outputs ~57% DOWN for nearly everything due to training bias
-                # 
-                # Key insight: After calibration, the model outputs ~57% DOWN baseline
-                # We should measure conviction as DEVIATION from 50%, not absolute value
-                import math
-                
-                # Stage 1: Moderate bias correction (16% shift toward UP)
-                bias_correction = 0.16
-                prob_up_adjusted = min(prob_up + bias_correction, 0.95)
-                prob_down_adjusted = max(prob_down - bias_correction, 0.05)
-                
-                # Stage 2: Lighter compression to preserve signal strength
-                def compress_probability(p: float, center: float = 0.5, strength: float = 2.5) -> float:
-                    """Compress extreme probabilities toward center"""
-                    if p <= 0.01: return 0.1
-                    if p >= 0.99: return 0.9
-                    logit = math.log(p / (1 - p))
-                    compressed_logit = logit / strength
-                    compressed = 1 / (1 + math.exp(-compressed_logit))
-                    return center + (compressed - center) * 0.7
-                
-                prob_up_calibrated = compress_probability(prob_up_adjusted)
-                prob_down_calibrated = compress_probability(prob_down_adjusted)
-                
-                # Normalize
-                total = prob_up_calibrated + prob_down_calibrated
-                if total > 0:
-                    prob_up_calibrated = prob_up_calibrated / total
-                    prob_down_calibrated = prob_down_calibrated / total
-                else:
-                    prob_up_calibrated = 0.5
-                    prob_down_calibrated = 0.5
-                
-                # Log the calibration for debugging
+                # RAW MODEL OUTPUT (no hacks, no bias correction, no compression)
+                # Let the model speak for itself - we'll measure REAL accuracy
                 logger.info(
                     f"🤖 XGBoost {self.model_version} for {features.get('symbol', '?')}: "
-                    f"Raw={prob_up:.1%}/{prob_down:.1%} → Calibrated={prob_up_calibrated:.1%}/{prob_down_calibrated:.1%}"
+                    f"UP={prob_up:.1%}, DOWN={prob_down:.1%}"
                 )
                 
-                # CONVICTION THRESHOLD: 58% - sweet spot between filtering noise and allowing trades
-                # After calibration:
-                # - 98% DOWN raw → ~55% DOWN calibrated → HOLD (baseline bias, not real signal)
-                # - 98% UP raw → ~60% UP calibrated → UP (genuine bullish)
-                # - Real bearish with strong technicals should exceed 58%
-                conviction_threshold = 0.58
+                # Simple threshold: 55% conviction required
+                # (Slightly above 50% to filter pure noise)
+                conviction_threshold = 0.55
                 
-                if prob_up_calibrated >= conviction_threshold:
+                if prob_up >= conviction_threshold:
                     direction = "UP"
-                    confidence = prob_up_calibrated
-                elif prob_down_calibrated >= conviction_threshold:
+                    confidence = prob_up
+                elif prob_down >= conviction_threshold:
                     direction = "DOWN"
-                    confidence = prob_down_calibrated
+                    confidence = prob_down
                 else:
                     # Truly uncertain - FLAT (now rare: requires 48-52% band)
                     direction = "FLAT"
@@ -805,38 +769,6 @@ class EnsemblePredictor:
             model_weights={"XGBoost": 1.0},
             ensemble_method="xgboost_only"
         )
-        
-        # =====================================================================
-        # INVERSE GHOST FIX
-        # Model trained on old data is anti-correlated (35% accuracy = 65% wrong)
-        # Flip predictions until model is retrained with real PostgreSQL outcomes
-        # Set INVERSE_GHOST=1 to enable this fix
-        # =====================================================================
-        import os
-        if os.getenv("INVERSE_GHOST", "0") == "1":
-            original_direction = ensemble_result.direction
-            
-            # Flip UP ↔ DOWN (keep FLAT as is)
-            if ensemble_result.direction == "UP":
-                flipped_direction = "DOWN"
-            elif ensemble_result.direction == "DOWN":
-                flipped_direction = "UP"
-            else:
-                flipped_direction = "FLAT"
-            
-            logger.warning(
-                f"[INVERSE_GHOST] Flipping {original_direction} → {flipped_direction} "
-                f"(model anti-correlated, 35% accuracy)"
-            )
-            
-            ensemble_result = EnsemblePrediction(
-                direction=flipped_direction,
-                confidence=ensemble_result.confidence,
-                predicted_change_pct=-ensemble_result.predicted_change_pct,  # Flip change direction too
-                individual_predictions=ensemble_result.individual_predictions,
-                model_weights=ensemble_result.model_weights,
-                ensemble_method=f"{ensemble_result.ensemble_method}_inverted"
-            )
         
         # =====================================================================
         # FEAR & GREED INTEGRATION
