@@ -644,16 +644,19 @@ class SQLiteBackend:
             conn.close()
     
     def get_recent_predictions(self, limit: int = 50, since_ts: float | None = None) -> list[dict[str, Any]]:
-        """Get recent predictions across all symbols."""
+        """Get recent predictions across all symbols with entry prices."""
         conn = sqlite3.connect(self.db_path)
         try:
             if since_ts:
                 rows = conn.execute(
                     """
-                    SELECT id, symbol, run_at, horizon_h, method, confidence, direction, tag
-                    FROM predictions
-                    WHERE run_at >= ?
-                    ORDER BY run_at DESC
+                    SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.method, p.confidence, p.direction, p.tag,
+                           (SELECT pp.price FROM prediction_points pp 
+                            WHERE pp.prediction_id = p.id AND pp.kind = 'forecast' 
+                            ORDER BY pp.ts ASC LIMIT 1) as entry_price
+                    FROM predictions p
+                    WHERE p.run_at >= ?
+                    ORDER BY p.run_at DESC
                     LIMIT ?
                     """,
                     (since_ts, limit)
@@ -661,9 +664,12 @@ class SQLiteBackend:
             else:
                 rows = conn.execute(
                     """
-                    SELECT id, symbol, run_at, horizon_h, method, confidence, direction, tag
-                    FROM predictions
-                    ORDER BY run_at DESC
+                    SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.method, p.confidence, p.direction, p.tag,
+                           (SELECT pp.price FROM prediction_points pp 
+                            WHERE pp.prediction_id = p.id AND pp.kind = 'forecast' 
+                            ORDER BY pp.ts ASC LIMIT 1) as entry_price
+                    FROM predictions p
+                    ORDER BY p.run_at DESC
                     LIMIT ?
                     """,
                     (limit,)
@@ -679,6 +685,8 @@ class SQLiteBackend:
                     "confidence": row[5],
                     "direction": row[6],
                     "tag": row[7],
+                    "entry_price": row[8],
+                    "price_at_prediction": row[8],  # Alias for compatibility
                 }
                 for row in rows
             ]
@@ -1422,7 +1430,7 @@ class PostgresBackend:
             self._return_connection(conn)
     
     def get_recent_predictions(self, limit: int = 50, since_ts: float | None = None) -> list[dict[str, Any]]:
-        """Get recent predictions across all symbols from PostgreSQL."""
+        """Get recent predictions across all symbols from PostgreSQL with entry prices."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
@@ -1430,10 +1438,13 @@ class PostgresBackend:
             if since_ts:
                 cursor.execute(
                     """
-                    SELECT id, symbol, run_at, horizon_h, method, confidence, direction, tag
-                    FROM predictions
-                    WHERE run_at >= %s
-                    ORDER BY run_at DESC
+                    SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.method, p.confidence, p.direction, p.tag,
+                           (SELECT pp.price FROM prediction_points pp 
+                            WHERE pp.prediction_id = p.id AND pp.kind = 'forecast' 
+                            ORDER BY pp.ts ASC LIMIT 1) as entry_price
+                    FROM predictions p
+                    WHERE p.run_at >= %s
+                    ORDER BY p.run_at DESC
                     LIMIT %s
                     """,
                     (since_ts, limit)
@@ -1441,9 +1452,12 @@ class PostgresBackend:
             else:
                 cursor.execute(
                     """
-                    SELECT id, symbol, run_at, horizon_h, method, confidence, direction, tag
-                    FROM predictions
-                    ORDER BY run_at DESC
+                    SELECT p.id, p.symbol, p.run_at, p.horizon_h, p.method, p.confidence, p.direction, p.tag,
+                           (SELECT pp.price FROM prediction_points pp 
+                            WHERE pp.prediction_id = p.id AND pp.kind = 'forecast' 
+                            ORDER BY pp.ts ASC LIMIT 1) as entry_price
+                    FROM predictions p
+                    ORDER BY p.run_at DESC
                     LIMIT %s
                     """,
                     (limit,)
@@ -1461,6 +1475,8 @@ class PostgresBackend:
                     "confidence": row["confidence"],
                     "direction": row["direction"],
                     "tag": row["tag"],
+                    "entry_price": row["entry_price"],
+                    "price_at_prediction": row["entry_price"],  # Alias for compatibility
                 }
                 for row in rows
             ]
