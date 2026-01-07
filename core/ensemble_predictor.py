@@ -585,7 +585,7 @@ class XGBoostModel:
                 else:
                     # Truly uncertain - FLAT (now rare: requires 48-52% band)
                     direction = "FLAT"
-                    confidence = max(prob_up_calibrated, prob_down_calibrated)
+                    confidence = max(prob_up, prob_down)
                 
                 # Scale predicted change based on confidence
                 if direction == "UP":

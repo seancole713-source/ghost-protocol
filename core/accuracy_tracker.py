@@ -1,514 +1,325 @@
 """
-GHOST Stage 2: Accuracy Tracker
-================================
-Tracks forecast accuracy by comparing predictions vs actual prices.
-
-Features:
-- Store forecasts with timestamp, symbol, predicted price, confidence
-- Compare predictions to actual prices after time window
-- Calculate MAP (Mean Absolute Percentage Error)
-- Calculate RMSE (Root Mean Square Error)
-- Track bias (over-prediction vs under-prediction)
-- Historical accuracy trends
-
-Intelligence Level: 8 → 9 (Self-Evaluation System)
-
-Author: Ghost AI
-Date: 2025-10-05
+Accuracy Tracker - FIXED VERSION
+Uses PostgreSQL (DATABASE_URL) instead of SQLite
 """
-
-import json
+import os
 import logging
-import sqlite3
-import time
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Optional, Dict, List, Any
+from dataclasses import dataclass
 
-logger = logging.getLogger(__name__)
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    HAS_POSTGRES = True
+except ImportError:
+    HAS_POSTGRES = False
 
-# Database path
-DB_PATH = Path(__file__).parent.parent / "data" / "forecast_accuracy.db"
+LOGGER = logging.getLogger(__name__)
+
+@dataclass
+class ForecastRecord:
+    """Single forecast record"""
+    forecast_id: int
+    symbol: str
+    direction: str
+    confidence: float
+    entry_price: float
+    target_price: Optional[float]
+    horizon_hours: int
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+    exit_price: Optional[float] = None
+    was_correct: Optional[bool] = None
+    pnl_pct: Optional[float] = None
 
 
 class AccuracyTracker:
     """
-    Tracks forecast accuracy and model performance.
-
-    Workflow:
-    1. record_forecast() - Store prediction when made
-    2. update_actual() - Update with actual price (manual or auto)
-    3. calculate_metrics() - Compute MAP, RMSE, bias
-    4. get_accuracy_report() - Return performance summary
+    Tracks prediction accuracy using PostgreSQL.
+    NO SQLITE - all data persists in Railway PostgreSQL.
     """
-
-    def __init__(self, db_path: str | None = None):
-        """Initialize accuracy tracker with database."""
-        self.db_path = db_path or str(DB_PATH)
-        self._init_db()
-
-    def _init_db(self):
-        """Create database tables if they don't exist."""
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS forecasts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp REAL NOT NULL,
-                    symbol TEXT NOT NULL,
-                    forecast_price REAL NOT NULL,
-                    forecast_horizon_hours INTEGER NOT NULL,
-                    confidence REAL,
-                    actual_price REAL,
-                    actual_timestamp REAL,
-                    absolute_error REAL,
-                    percentage_error REAL,
-                    squared_error REAL,
-                    model_version TEXT,
-                    metadata TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            # Index for fast lookups
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_forecasts_symbol
-                ON forecasts(symbol)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_forecasts_timestamp
-                ON forecasts(timestamp)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_forecasts_actual
-                ON forecasts(actual_price)
-            """)
-
-            conn.commit()
-            logger.info(f"Accuracy tracker initialized: {self.db_path}")
-
-    def record_forecast(
-        self,
-        symbol: str,
-        forecast_price: float,
-        forecast_horizon_hours: int = 24,
-        confidence: float | None = None,
-        model_version: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> int:
-        """
-        Record a new forecast.
-
-        Args:
-            symbol: Stock ticker (e.g., 'WOLF')
-            forecast_price: Predicted price
-            forecast_horizon_hours: How far ahead (default 24h)
-            confidence: Model confidence (0-1)
-            model_version: Model identifier for tracking
-            metadata: Additional context (dict)
-
-        Returns:
-            Forecast ID
-        """
-        timestamp = time.time()
-        metadata_json = json.dumps(metadata) if metadata else None
-
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO forecasts (
-                    timestamp, symbol, forecast_price, forecast_horizon_hours,
-                    confidence, model_version, metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    timestamp,
-                    symbol,
-                    forecast_price,
-                    forecast_horizon_hours,
-                    confidence,
-                    model_version,
-                    metadata_json,
-                ),
-            )
-            forecast_id = cursor.lastrowid
-            assert forecast_id is not None, "Failed to get forecast ID from database"
-            conn.commit()
-
-        logger.info(
-            f"Forecast recorded: {symbol} @ ${forecast_price:.2f} "
-            f"(horizon={forecast_horizon_hours}h, id={forecast_id})"
-        )
+    
+    def __init__(self):
+        self.database_url = os.getenv("DATABASE_URL")
+        if not self.database_url:
+            LOGGER.warning("DATABASE_URL not set - accuracy tracking disabled")
+            self._enabled = False
+            return
+            
+        if not HAS_POSTGRES:
+            LOGGER.error("psycopg2 not installed - accuracy tracking disabled")
+            self._enabled = False
+            return
+            
+        self._enabled = True
+        self._init_tables()
+        LOGGER.info("AccuracyTracker initialized with PostgreSQL")
+    
+    def _get_conn(self):
+        """Get PostgreSQL connection"""
+        return psycopg2.connect(self.database_url)
+    
+    def _init_tables(self):
+        """Create tables if they don't exist"""
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS accuracy_forecasts (
+                        id SERIAL PRIMARY KEY,
+                        symbol VARCHAR(20) NOT NULL,
+                        direction VARCHAR(10) NOT NULL,
+                        confidence REAL NOT NULL,
+                        entry_price REAL NOT NULL,
+                        target_price REAL,
+                        horizon_hours INT DEFAULT 48,
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        resolved_at TIMESTAMP,
+                        exit_price REAL,
+                        was_correct BOOLEAN,
+                        pnl_pct REAL,
+                        prediction_id INT
+                    );
+                    
+                    CREATE INDEX IF NOT EXISTS idx_accuracy_symbol 
+                    ON accuracy_forecasts(symbol);
+                    
+                    CREATE INDEX IF NOT EXISTS idx_accuracy_resolved 
+                    ON accuracy_forecasts(resolved_at) WHERE resolved_at IS NULL;
+                    
+                    CREATE TABLE IF NOT EXISTS accuracy_daily_stats (
+                        id SERIAL PRIMARY KEY,
+                        date DATE NOT NULL UNIQUE,
+                        total_predictions INT DEFAULT 0,
+                        correct_predictions INT DEFAULT 0,
+                        accuracy_pct REAL,
+                        avg_confidence REAL,
+                        total_pnl_pct REAL DEFAULT 0,
+                        updated_at TIMESTAMP DEFAULT NOW()
+                    );
+                """)
+                conn.commit()
+        LOGGER.info("Accuracy tables initialized in PostgreSQL")
+    
+    def record_forecast(self, symbol: str, direction: str, confidence: float,
+                       entry_price: float, target_price: Optional[float] = None,
+                       horizon_hours: int = 48, prediction_id: Optional[int] = None) -> int:
+        """Record a new forecast"""
+        if not self._enabled:
+            return -1
+            
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO accuracy_forecasts 
+                    (symbol, direction, confidence, entry_price, target_price, 
+                     horizon_hours, prediction_id, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    RETURNING id
+                """, (symbol, direction, confidence, entry_price, target_price,
+                      horizon_hours, prediction_id))
+                forecast_id = cur.fetchone()[0]
+                conn.commit()
+                
+        LOGGER.info(f"Recorded forecast {forecast_id}: {symbol} {direction} @ {confidence:.0%}")
         return forecast_id
-
-    def update_actual(
-        self, forecast_id: int, actual_price: float, actual_timestamp: float | None = None
-    ) -> bool:
-        """
-        Update forecast with actual price and calculate errors.
-
-        Args:
-            forecast_id: ID from record_forecast()
-            actual_price: Observed price
-            actual_timestamp: When price was observed (default: now)
-
-        Returns:
-            True if updated successfully
-        """
-        if actual_timestamp is None:
-            actual_timestamp = time.time()
-
-        with sqlite3.connect(self.db_path) as conn:
-            # Get forecast
-            row = conn.execute(
-                "SELECT forecast_price FROM forecasts WHERE id = ?", (forecast_id,)
-            ).fetchone()
-
-            if not row:
-                logger.warning(f"Forecast {forecast_id} not found")
-                return False
-
-            forecast_price = row[0]
-
-            # Calculate errors
-            absolute_error = abs(actual_price - forecast_price)
-            percentage_error = (absolute_error / actual_price * 100.0) if actual_price > 0 else 0.0
-            squared_error = (actual_price - forecast_price) ** 2
-
-            # Update record
-            conn.execute(
-                """
-                UPDATE forecasts SET
-                    actual_price = ?,
-                    actual_timestamp = ?,
-                    absolute_error = ?,
-                    percentage_error = ?,
-                    squared_error = ?
-                WHERE id = ?
-            """,
-                (
-                    actual_price,
-                    actual_timestamp,
-                    absolute_error,
-                    percentage_error,
-                    squared_error,
-                    forecast_id,
-                ),
-            )
-            conn.commit()
-
-        logger.info(
-            f"Forecast {forecast_id} updated: actual=${actual_price:.2f}, "
-            f"error={percentage_error:.2f}%"
-        )
-        return True
-
-    def update_actuals_batch(
-        self, symbol: str, current_price: float, max_age_hours: int = 48
-    ) -> int:
-        """
-        Batch update all pending forecasts for a symbol.
-
-        Args:
-            symbol: Stock ticker
-            current_price: Latest price
-            max_age_hours: Only update forecasts within this window
-
-        Returns:
-            Number of forecasts updated
-        """
-        cutoff_time = time.time() - (max_age_hours * 3600)
-
-        with sqlite3.connect(self.db_path) as conn:
-            # Find pending forecasts
-            rows = conn.execute(
-                """
-                SELECT id, forecast_price FROM forecasts
-                WHERE symbol = ?
-                  AND actual_price IS NULL
-                  AND timestamp >= ?
-            """,
-                (symbol, cutoff_time),
-            ).fetchall()
-
-            if not rows:
-                return 0
-
-            # Update each forecast
-            updated = 0
-            for forecast_id, _forecast_price in rows:
-                if self.update_actual(forecast_id, current_price):
-                    updated += 1
-
-        logger.info(f"Batch updated {updated} forecasts for {symbol} @ ${current_price:.2f}")
-        return updated
-
-    def calculate_metrics(self, symbol: str | None = None, days: int = 30) -> dict[str, Any]:
-        """
-        Calculate accuracy metrics.
-
-        Args:
-            symbol: Filter by symbol (None = all symbols)
-            days: Look back window
-
-        Returns:
-            Dict with MAP, RMSE, bias, count
-        """
-        cutoff_time = time.time() - (days * 86400)
-
-        with sqlite3.connect(self.db_path) as conn:
-            if symbol:
-                rows = conn.execute(
-                    """
-                    SELECT
-                        percentage_error,
-                        squared_error,
-                        forecast_price,
-                        actual_price,
-                        confidence
-                    FROM forecasts
-                    WHERE symbol = ?
-                      AND actual_price IS NOT NULL
-                      AND timestamp >= ?
-                """,
-                    (symbol, cutoff_time),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT
-                        percentage_error,
-                        squared_error,
-                        forecast_price,
-                        actual_price,
-                        confidence
-                    FROM forecasts
-                    WHERE actual_price IS NOT NULL
-                      AND timestamp >= ?
-                """,
-                    (cutoff_time,),
-                ).fetchall()
-
-        if not rows:
-            return {
-                "error": "No completed forecasts found",
-                "count": 0,
-                "symbol": symbol,
-                "days": days,
-            }
-
-        # Calculate metrics
-        count = len(rows)
-        percentage_errors = [r[0] for r in rows]
-        squared_errors = [r[1] for r in rows]
-        forecast_prices = [r[2] for r in rows]
-        actual_prices = [r[3] for r in rows]
-        confidences = [r[4] for r in rows if r[4] is not None]
-
-        map = sum(percentage_errors) / count
-        rmse = (sum(squared_errors) / count) ** 0.5
-
-        # Bias: avg(forecast - actual)
-        bias = sum(f - a for f, a in zip(forecast_prices, actual_prices, strict=False)) / count
-        bias_pct = (bias / sum(actual_prices) * count * 100.0) if actual_prices else 0.0
-
-        # Confidence statistics
-        avg_confidence = sum(confidences) / len(confidences) if confidences else None
-
-        return {
-            "map": round(map, 4),
-            "rmse": round(rmse, 4),
-            "bias": round(bias, 4),
-            "bias_pct": round(bias_pct, 4),
-            "count": count,
-            "avg_confidence": round(avg_confidence, 4) if avg_confidence else None,
-            "symbol": symbol or "all",
-            "days": days,
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
-
-    def get_accuracy_report(self, symbol: str | None = None, days: int = 30) -> dict[str, Any]:
-        """
-        Generate comprehensive accuracy report.
-
-        Args:
-            symbol: Filter by symbol (None = all)
-            days: Look back window
-
-        Returns:
-            Dict with metrics, trends, and recommendations
-        """
-        metrics = self.calculate_metrics(symbol=symbol, days=days)
-
-        if "error" in metrics:
-            return metrics
-
-        # Determine accuracy rating
-        map = metrics["map"]
-        if map < 2.0:
-            rating = "excellent"
-            color = "green"
-        elif map < 5.0:
-            rating = "good"
-            color = "green"
-        elif map < 10.0:
-            rating = "fair"
-            color = "yellow"
-        else:
-            rating = "poor"
-            color = "red"
-
-        # Recommendations
-        recommendations = []
-        if map > 5.0:
-            recommendations.append("Consider model retuning (MAP > 5%)")
-        if abs(metrics["bias_pct"]) > 3.0:
-            direction = "over-predicting" if metrics["bias_pct"] > 0 else "under-predicting"
-            recommendations.append(f"Model is {direction} by {abs(metrics['bias_pct']):.2f}%")
-        if metrics["count"] < 10:
-            recommendations.append("Limited sample size, continue collecting data")
-
-        return {
-            "metrics": metrics,
-            "rating": rating,
-            "rating_color": color,
-            "recommendations": recommendations,
-            "summary": (
-                f"MAP: {map:.2f}% ({rating}), "
-                f"RMSE: ${metrics['rmse']:.2f}, "
-                f"Bias: {metrics['bias_pct']:+.2f}%, "
-                f"n={metrics['count']}"
-            ),
-        }
-
-    def get_recent_forecasts(
-        self, symbol: str | None = None, limit: int = 10, include_pending: bool = True
-    ) -> list[dict[str, Any]]:
-        """
-        Get recent forecasts with details.
-
-        Args:
-            symbol: Filter by symbol
-            limit: Max forecasts to return
-            include_pending: Include forecasts without actual prices
-
-        Returns:
-            List of forecast dicts
-        """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-
-            if symbol:
-                if include_pending:
-                    rows = conn.execute(
-                        """
-                        SELECT * FROM forecasts
-                        WHERE symbol = ?
-                        ORDER BY timestamp DESC
-                        LIMIT ?
-                    """,
-                        (symbol, limit),
-                    ).fetchall()
+    
+    def resolve_forecast(self, forecast_id: int, exit_price: float) -> Dict[str, Any]:
+        """Resolve a forecast with actual outcome"""
+        if not self._enabled:
+            return {}
+            
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get forecast
+                cur.execute("""
+                    SELECT * FROM accuracy_forecasts WHERE id = %s
+                """, (forecast_id,))
+                forecast = cur.fetchone()
+                
+                if not forecast:
+                    return {"error": "Forecast not found"}
+                
+                # Calculate outcome
+                entry = forecast['entry_price']
+                direction = forecast['direction']
+                pnl_pct = ((exit_price - entry) / entry) * 100
+                
+                # Determine if correct
+                if direction == "UP":
+                    was_correct = exit_price > entry
+                elif direction == "DOWN":
+                    was_correct = exit_price < entry
                 else:
-                    rows = conn.execute(
-                        """
-                        SELECT * FROM forecasts
-                        WHERE symbol = ?
-                          AND actual_price IS NOT NULL
-                        ORDER BY timestamp DESC
-                        LIMIT ?
-                    """,
-                        (symbol, limit),
-                    ).fetchall()
-            else:
-                if include_pending:
-                    rows = conn.execute(
-                        """
-                        SELECT * FROM forecasts
-                        ORDER BY timestamp DESC
-                        LIMIT ?
-                    """,
-                        (limit,),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        """
-                        SELECT * FROM forecasts
-                        WHERE actual_price IS NOT NULL
-                        ORDER BY timestamp DESC
-                        LIMIT ?
-                    """,
-                        (limit,),
-                    ).fetchall()
-
-        forecasts = []
-        for row in rows:
-            forecast = dict(row)
-            # Parse metadata
-            if forecast.get("metadata"):
-                try:
-                    forecast["metadata"] = json.loads(forecast["metadata"])
-                except Exception:
-                    pass
-            forecasts.append(forecast)
-
-        return forecasts
-
-    def cleanup_old_forecasts(self, days: int = 90) -> int:
-        """
-        Delete forecasts older than N days.
-
-        Args:
-            days: Age threshold
-
-        Returns:
-            Number of forecasts deleted
-        """
-        cutoff_time = time.time() - (days * 86400)
-
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("DELETE FROM forecasts WHERE timestamp < ?", (cutoff_time,))
-            deleted = cursor.rowcount
-            conn.commit()
-
-        logger.info(f"Cleaned up {deleted} forecasts older than {days} days")
-        return deleted
+                    was_correct = abs(pnl_pct) < 1.0  # FLAT = within 1%
+                
+                # Update forecast
+                cur.execute("""
+                    UPDATE accuracy_forecasts SET
+                        resolved_at = NOW(),
+                        exit_price = %s,
+                        was_correct = %s,
+                        pnl_pct = %s
+                    WHERE id = %s
+                """, (exit_price, was_correct, pnl_pct, forecast_id))
+                
+                # Update daily stats
+                self._update_daily_stats(cur)
+                conn.commit()
+                
+        return {
+            "forecast_id": forecast_id,
+            "symbol": forecast['symbol'],
+            "direction": direction,
+            "entry_price": entry,
+            "exit_price": exit_price,
+            "pnl_pct": pnl_pct,
+            "was_correct": was_correct
+        }
+    
+    def _update_daily_stats(self, cur):
+        """Update daily statistics"""
+        today = datetime.now().date()
+        cur.execute("""
+            INSERT INTO accuracy_daily_stats (date, total_predictions, correct_predictions,
+                                              accuracy_pct, avg_confidence, total_pnl_pct)
+            SELECT 
+                %s as date,
+                COUNT(*) as total,
+                SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct,
+                ROUND(100.0 * SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) as acc,
+                ROUND(AVG(confidence) * 100, 1) as avg_conf,
+                ROUND(SUM(COALESCE(pnl_pct, 0)), 2) as pnl
+            FROM accuracy_forecasts
+            WHERE DATE(created_at) = %s AND resolved_at IS NOT NULL
+            ON CONFLICT (date) DO UPDATE SET
+                total_predictions = EXCLUDED.total_predictions,
+                correct_predictions = EXCLUDED.correct_predictions,
+                accuracy_pct = EXCLUDED.accuracy_pct,
+                avg_confidence = EXCLUDED.avg_confidence,
+                total_pnl_pct = EXCLUDED.total_pnl_pct,
+                updated_at = NOW()
+        """, (today, today))
+    
+    def get_accuracy_stats(self, days: int = 30, symbol: Optional[str] = None) -> Dict[str, Any]:
+        """Get accuracy statistics"""
+        if not self._enabled:
+            return {"enabled": False, "error": "Accuracy tracking disabled"}
+            
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Build query
+                where_clauses = ["resolved_at IS NOT NULL"]
+                params = []
+                
+                if days:
+                    where_clauses.append("created_at > NOW() - INTERVAL '%s days'")
+                    params.append(days)
+                    
+                if symbol:
+                    where_clauses.append("symbol = %s")
+                    params.append(symbol)
+                
+                where_sql = " AND ".join(where_clauses)
+                
+                cur.execute(f"""
+                    SELECT 
+                        COUNT(*) as total_predictions,
+                        SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct_predictions,
+                        ROUND(100.0 * SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) / 
+                              NULLIF(COUNT(*), 0), 1) as accuracy_pct,
+                        ROUND(AVG(confidence) * 100, 1) as avg_confidence,
+                        ROUND(SUM(COALESCE(pnl_pct, 0)), 2) as total_pnl_pct,
+                        MIN(created_at) as first_prediction,
+                        MAX(resolved_at) as last_resolved
+                    FROM accuracy_forecasts
+                    WHERE {where_sql}
+                """, params)
+                
+                stats = dict(cur.fetchone())
+                
+                # Get by direction
+                cur.execute(f"""
+                    SELECT 
+                        direction,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct,
+                        ROUND(100.0 * SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) / 
+                              NULLIF(COUNT(*), 0), 1) as accuracy
+                    FROM accuracy_forecasts
+                    WHERE {where_sql}
+                    GROUP BY direction
+                """, params)
+                
+                stats['by_direction'] = {row['direction']: dict(row) for row in cur.fetchall()}
+                
+                # Get top symbols
+                cur.execute(f"""
+                    SELECT 
+                        symbol,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct,
+                        ROUND(100.0 * SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) / 
+                              NULLIF(COUNT(*), 0), 1) as accuracy
+                    FROM accuracy_forecasts
+                    WHERE {where_sql}
+                    GROUP BY symbol
+                    ORDER BY total DESC
+                    LIMIT 20
+                """, params)
+                
+                stats['by_symbol'] = [dict(row) for row in cur.fetchall()]
+                
+        return stats
+    
+    def get_pending_forecasts(self) -> List[Dict]:
+        """Get forecasts that need resolution"""
+        if not self._enabled:
+            return []
+            
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT * FROM accuracy_forecasts
+                    WHERE resolved_at IS NULL
+                    AND created_at < NOW() - INTERVAL '1 hour' * horizon_hours
+                    ORDER BY created_at ASC
+                    LIMIT 100
+                """)
+                return [dict(row) for row in cur.fetchall()]
+    
+    def get_recent_forecasts(self, limit: int = 50) -> List[Dict]:
+        """Get recent forecasts"""
+        if not self._enabled:
+            return []
+            
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT * FROM accuracy_forecasts
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (limit,))
+                return [dict(row) for row in cur.fetchall()]
+    
+    def calculate_metrics(self, symbol: Optional[str] = None, days: int = 30) -> Dict[str, Any]:
+        """Legacy method for compatibility - redirects to get_accuracy_stats"""
+        return self.get_accuracy_stats(days=days, symbol=symbol)
 
 
 # Singleton instance
-_tracker = None
-
+_tracker: Optional[AccuracyTracker] = None
 
 def get_accuracy_tracker() -> AccuracyTracker:
-    """Get or create the global accuracy tracker instance."""
+    """Get or create AccuracyTracker singleton"""
     global _tracker
     if _tracker is None:
         _tracker = AccuracyTracker()
     return _tracker
 
 
-# Convenience functions
-def record_forecast(*args, **kwargs) -> int:
-    """Record a forecast (convenience wrapper)."""
-    return get_accuracy_tracker().record_forecast(*args, **kwargs)
-
-
-def update_actual(*args, **kwargs) -> bool:
-    """Update forecast with actual price (convenience wrapper)."""
-    return get_accuracy_tracker().update_actual(*args, **kwargs)
-
-
-def get_accuracy_report(*args, **kwargs) -> dict[str, Any]:
-    """Get accuracy report (convenience wrapper)."""
-    return get_accuracy_tracker().get_accuracy_report(*args, **kwargs)
-
-
-def calculate_metrics(*args, **kwargs) -> dict[str, Any]:
-    """Calculate accuracy metrics (convenience wrapper)."""
-    return get_accuracy_tracker().calculate_metrics(*args, **kwargs)
-
-
-def calculate_accuracy(*args, **kwargs) -> dict[str, Any]:
-    """Calculate accuracy (alias for calculate_metrics)."""
-    return calculate_metrics(*args, **kwargs)
+# Legacy function exports for compatibility
+def get_accuracy_report(symbol: Optional[str] = None, days: int = 30) -> Dict[str, Any]:
+    """Legacy function - get accuracy report"""
+    tracker = get_accuracy_tracker()
+    return tracker.get_accuracy_stats(days=days, symbol=symbol)
