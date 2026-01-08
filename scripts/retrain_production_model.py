@@ -125,7 +125,29 @@ def extract_features(data):
         
         y.append(label)
     
-    X = np.array(X)
+    # Clean feature values - convert strings to numeric
+    print(f"\n🧹 Cleaning feature data...")
+    for i, row in enumerate(X):
+        for j, val in enumerate(row):
+            if isinstance(val, str):
+                # Map common string values to numbers
+                val_lower = val.lower()
+                if val_lower in ['up', 'bullish', 'positive', 'buy']:
+                    X[i][j] = 1.0
+                elif val_lower in ['down', 'bearish', 'negative', 'sell']:
+                    X[i][j] = -1.0
+                elif val_lower in ['neutral', 'flat', 'hold', 'none', '']:
+                    X[i][j] = 0.0
+                else:
+                    try:
+                        X[i][j] = float(val)
+                    except:
+                        X[i][j] = 0.0
+            elif val is None:
+                X[i][j] = 0.0
+    
+    # Convert to numpy array with float type
+    X = np.array(X, dtype=np.float32)
     y = np.array(y)
     
     # Distribution
@@ -141,7 +163,6 @@ def extract_features(data):
     print(f"\n⚖️  scale_pos_weight = {scale_pos_weight:.2f}")
     
     return X, y, feature_names, scale_pos_weight
-
 
 def train_model(X, y, scale_pos_weight):
     """Train XGBoost with balanced classes"""
