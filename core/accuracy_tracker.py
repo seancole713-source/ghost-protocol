@@ -78,7 +78,9 @@ class AccuracyTracker:
                         exit_price REAL,
                         was_correct BOOLEAN,
                         pnl_pct REAL,
-                        prediction_id INT
+                        prediction_id INT,
+                        model_version VARCHAR(50),
+                        metadata JSONB
                     );
                     
                     CREATE INDEX IF NOT EXISTS idx_accuracy_symbol 
@@ -97,6 +99,13 @@ class AccuracyTracker:
                         total_pnl_pct REAL DEFAULT 0,
                         updated_at TIMESTAMP DEFAULT NOW()
                     );
+                    
+                    -- Add new columns if they don't exist (for existing databases)
+                    ALTER TABLE accuracy_forecasts 
+                    ADD COLUMN IF NOT EXISTS model_version VARCHAR(50);
+                    
+                    ALTER TABLE accuracy_forecasts 
+                    ADD COLUMN IF NOT EXISTS metadata JSONB;
                 """)
                 conn.commit()
         LOGGER.info("Accuracy tables initialized in PostgreSQL")
@@ -105,12 +114,16 @@ class AccuracyTracker:
                        entry_price: float, target_price: Optional[float] = None,
                        horizon_hours: int = 48, prediction_id: Optional[int] = None,
                        forecast_price: Optional[float] = None,
-                       forecast_horizon_hours: Optional[int] = None) -> int:
+                       forecast_horizon_hours: Optional[int] = None,
+                       model_version: Optional[str] = None,
+                       metadata: Optional[dict] = None) -> int:
         """Record a new forecast
         
         Args:
             forecast_price: Alias for target_price (for backwards compatibility)
             forecast_horizon_hours: Alias for horizon_hours (for backwards compatibility)
+            model_version: Name/version of the model that made the prediction
+            metadata: Additional metadata as a dict (stored as JSONB)
         """
         # Handle parameter aliases for backwards compatibility
         if target_price is None and forecast_price is not None:
@@ -123,14 +136,18 @@ class AccuracyTracker:
             
         with self._get_conn() as conn:
             with conn.cursor() as cur:
+                # Convert metadata dict to JSON string if provided
+                import json
+                metadata_json = json.dumps(metadata) if metadata else None
+                
                 cur.execute("""
                     INSERT INTO accuracy_forecasts 
                     (symbol, direction, confidence, entry_price, target_price, 
-                     horizon_hours, prediction_id, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                     horizon_hours, prediction_id, model_version, metadata, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                     RETURNING id
                 """, (symbol, direction, confidence, entry_price, target_price,
-                      horizon_hours, prediction_id))
+                      horizon_hours, prediction_id, model_version, metadata_json))
                 forecast_id = cur.fetchone()[0]
                 conn.commit()
                 
