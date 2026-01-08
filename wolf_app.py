@@ -785,6 +785,10 @@ async def auth_fast_fail_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/price/"):
         return await call_next(request)
 
+    # Allow retrain trigger (one-time use, no auth)
+    if request.url.path == "/retrain-trigger":
+        return await call_next(request)
+
     # Allow all Stage 1-5 endpoints (cockpit data feeds - read-only)
     if request.url.path.startswith("/api/stage1/"):
         return await call_next(request)
@@ -1279,6 +1283,33 @@ async def health_check():
             "message": "Server is accepting connections",
             "health_check_error": str(e)
         }
+
+@APP.get("/retrain-trigger")
+async def retrain_trigger_no_auth():
+    """Trigger retraining - no auth required (one-time use)"""
+    import subprocess
+    import sys
+    import os
+    
+    for path in ["scripts/retrain_production_model.py", "retrain_model.py", "scripts/retrain_xgboost.py"]:
+        if os.path.exists(path):
+            try:
+                result = subprocess.run(
+                    [sys.executable, path],
+                    capture_output=True,
+                    text=True,
+                    timeout=600
+                )
+                return {
+                    "ok": result.returncode == 0,
+                    "script": path,
+                    "output": result.stdout[-8000:] if result.stdout else "",
+                    "errors": result.stderr[-2000:] if result.stderr else ""
+                }
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+    
+    return {"ok": False, "error": "No retrain script found", "files": os.listdir(".")[:30]}
 
 @APP.get("/", include_in_schema=False)
 async def _root_index():
