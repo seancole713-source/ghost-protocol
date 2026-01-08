@@ -62,17 +62,18 @@ def fetch_outcomes(days=90):
     cur.execute("""
         SELECT 
             o.prediction_id,
-            o.symbol,
+            p.symbol,
             o.hit_direction,
-            o.entry_price,
-            o.exit_price,
+            o.price_at_prediction as entry_price,
+            o.price_at_resolution as exit_price,
             p.features_json,
             o.created_at
         FROM ghost_prediction_outcomes o
-        JOIN ghost_predictions p ON o.prediction_id = p.id
-        WHERE o.status = 'closed'
+        JOIN predictions p ON o.prediction_id = p.id
+        WHERE o.status = 'completed'
           AND o.created_at > NOW() - INTERVAL '%s days'
           AND p.features_json IS NOT NULL
+          AND o.hit_direction IS NOT NULL
         ORDER BY o.created_at ASC
     """, (days,))
     
