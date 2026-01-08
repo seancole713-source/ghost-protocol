@@ -127,27 +127,34 @@ def extract_features(data):
     
     # Clean feature values - convert strings to numeric
     print(f"\n🧹 Cleaning feature data...")
+    cleaned_X = []
     for i, row in enumerate(X):
+        cleaned_row = []
         for j, val in enumerate(row):
             if isinstance(val, str):
                 # Map common string values to numbers
                 val_lower = val.lower()
                 if val_lower in ['up', 'bullish', 'positive', 'buy']:
-                    X[i][j] = 1.0
+                    cleaned_row.append(1.0)
                 elif val_lower in ['down', 'bearish', 'negative', 'sell']:
-                    X[i][j] = -1.0
+                    cleaned_row.append(-1.0)
                 elif val_lower in ['neutral', 'flat', 'hold', 'none', '']:
-                    X[i][j] = 0.0
+                    cleaned_row.append(0.0)
                 else:
                     try:
-                        X[i][j] = float(val)
+                        cleaned_row.append(float(val))
                     except:
-                        X[i][j] = 0.0
+                        cleaned_row.append(0.0)
             elif val is None:
-                X[i][j] = 0.0
+                cleaned_row.append(0.0)
+            elif isinstance(val, (int, float)):
+                cleaned_row.append(float(val))
+            else:
+                cleaned_row.append(0.0)
+        cleaned_X.append(cleaned_row)
     
     # Convert to numpy array with float type
-    X = np.array(X, dtype=np.float32)
+    X = np.array(cleaned_X, dtype=np.float64)
     y = np.array(y)
     
     # Distribution
