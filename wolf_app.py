@@ -8454,9 +8454,11 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             # Record forecast for accuracy tracking
             forecast_id = tracker.record_forecast(
                 symbol=symbol,
+                direction=direction,
+                confidence=confidence,
+                entry_price=current_price,
                 forecast_price=current_price,
                 forecast_horizon_hours=horizon_h,
-                confidence=confidence,
                 model_version="ghost_v3_pillars",
                 metadata={
                     "prediction_id": prediction_id,
