@@ -1284,32 +1284,85 @@ async def health_check():
             "health_check_error": str(e)
         }
 
+# Global variable to track retraining status
+_RETRAIN_STATUS = {"running": False, "last_result": None, "started_at": None}
+
 @APP.get("/retrain-trigger")
 async def retrain_trigger_no_auth():
-    """Trigger retraining - no auth required (one-time use)"""
+    """Trigger retraining - no auth required (runs async in background)"""
     import subprocess
     import sys
     import os
+    import asyncio
+    from datetime import datetime
     
+    # Check if already running
+    if _RETRAIN_STATUS["running"]:
+        return {
+            "ok": False,
+            "message": "Retraining already in progress",
+            "started_at": _RETRAIN_STATUS["started_at"]
+        }
+    
+    # Find script
+    script_path = None
     for path in ["scripts/retrain_production_model.py", "retrain_model.py", "scripts/retrain_xgboost.py"]:
         if os.path.exists(path):
-            try:
-                result = subprocess.run(
-                    [sys.executable, path],
-                    capture_output=True,
-                    text=True,
-                    timeout=600
-                )
-                return {
-                    "ok": result.returncode == 0,
-                    "script": path,
-                    "output": result.stdout[-8000:] if result.stdout else "",
-                    "errors": result.stderr[-2000:] if result.stderr else ""
-                }
-            except Exception as e:
-                return {"ok": False, "error": str(e)}
+            script_path = path
+            break
     
-    return {"ok": False, "error": "No retrain script found", "files": os.listdir(".")[:30]}
+    if not script_path:
+        return {"ok": False, "error": "No retrain script found", "files": os.listdir(".")[:30]}
+    
+    # Start background task
+    async def run_retraining():
+        _RETRAIN_STATUS["running"] = True
+        _RETRAIN_STATUS["started_at"] = datetime.now().isoformat()
+        
+        try:
+            result = await asyncio.create_subprocess_exec(
+                sys.executable, script_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+            
+            _RETRAIN_STATUS["last_result"] = {
+                "ok": result.returncode == 0,
+                "script": script_path,
+                "output": stdout.decode()[-8000:] if stdout else "",
+                "errors": stderr.decode()[-2000:] if stderr else "",
+                "return_code": result.returncode,
+                "completed_at": datetime.now().isoformat()
+            }
+        except Exception as e:
+            _RETRAIN_STATUS["last_result"] = {
+                "ok": False,
+                "error": str(e),
+                "completed_at": datetime.now().isoformat()
+            }
+        finally:
+            _RETRAIN_STATUS["running"] = False
+    
+    # Start in background
+    asyncio.create_task(run_retraining())
+    
+    return {
+        "ok": True,
+        "message": "Retraining started in background",
+        "script": script_path,
+        "started_at": _RETRAIN_STATUS["started_at"],
+        "check_status_at": "/retrain-status"
+    }
+
+@APP.get("/retrain-status")
+async def retrain_status_check():
+    """Check status of background retraining"""
+    return {
+        "running": _RETRAIN_STATUS["running"],
+        "started_at": _RETRAIN_STATUS["started_at"],
+        "last_result": _RETRAIN_STATUS["last_result"]
+    }
 
 @APP.get("/", include_in_schema=False)
 async def _root_index():
