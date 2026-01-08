@@ -109,9 +109,16 @@ def extract_features(data):
         
         # Label: UP=1, DOWN=0
         direction = row['hit_direction']
-        if direction:
-            label = 1 if direction.upper() == 'UP' else 0
+        if direction is not None:
+            # Handle both int and string direction values
+            if isinstance(direction, int):
+                label = direction  # Already 1 or 0
+            elif isinstance(direction, str):
+                label = 1 if direction.upper() == 'UP' else 0
+            else:
+                label = 1 if direction else 0
         else:
+            # Fallback: compare exit vs entry price
             entry = float(row.get('entry_price', 0))
             exit_price = float(row.get('exit_price', 0))
             label = 1 if exit_price > entry else 0
