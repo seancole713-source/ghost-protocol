@@ -30454,6 +30454,60 @@ async def api_health():
     return {"ok": True, "ts": int(time.time() * 1000)}
 
 
+@APP.get("/api/retrain-now")
+async def retrain_now():
+    """Trigger model retraining via web request"""
+    import subprocess
+    import sys
+    import os
+    
+    # Find the retrain script
+    possible_paths = [
+        "scripts/retrain_production_model.py",
+        "retrain_production_model.py",
+        "retrain_model.py",
+        "scripts/retrain_xgboost.py"
+    ]
+    
+    script_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            script_path = path
+            break
+    
+    if not script_path:
+        # List what files exist
+        files = os.listdir(".")
+        scripts_dir = os.listdir("scripts") if os.path.exists("scripts") else []
+        return {
+            "ok": False, 
+            "error": "No retrain script found",
+            "root_files": [f for f in files if f.endswith('.py')][:20],
+            "scripts_dir": scripts_dir
+        }
+    
+    try:
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            cwd=os.getcwd()
+        )
+        
+        return {
+            "ok": result.returncode == 0,
+            "script": script_path,
+            "stdout": result.stdout[-10000:] if result.stdout else "",
+            "stderr": result.stderr[-3000:] if result.stderr else "",
+            "return_code": result.returncode
+        }
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "Timeout after 10 minutes"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/api/debug/predictions")
 async def api_debug_predictions():
     """
