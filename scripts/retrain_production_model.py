@@ -165,9 +165,13 @@ def extract_features(data):
     print(f"  UP:   {up_count:>5} ({up_count/len(y)*100:.1f}%)")
     print(f"  DOWN: {down_count:>5} ({down_count/len(y)*100:.1f}%)")
     
-    # Calculate scale_pos_weight
-    scale_pos_weight = down_count / up_count if up_count > 0 else 1.0
-    print(f"\n⚖️  scale_pos_weight = {scale_pos_weight:.2f}")
+    # Calculate scale_pos_weight with aggressive balancing
+    # Use 2x multiplier to force more balanced predictions
+    base_weight = down_count / up_count if up_count > 0 else 1.0
+    scale_pos_weight = base_weight * 2.0  # Aggressive: double the weight
+    
+    print(f"\n⚖️  scale_pos_weight = {scale_pos_weight:.2f} (base={base_weight:.2f}, 2x aggressive)")
+    print(f"   This will force model to predict more UP outcomes")
     
     return X, y, feature_names, scale_pos_weight
 
