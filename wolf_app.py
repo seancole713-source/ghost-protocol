@@ -1364,6 +1364,86 @@ async def retrain_status_check():
         "last_result": _RETRAIN_STATUS["last_result"]
     }
 
+# Global variable to track paper trade re-evaluation status
+_REEVALUATION_STATUS = {"running": False, "last_result": None, "started_at": None}
+
+@APP.get("/paper-reevaluate")
+async def paper_reevaluate_trigger():
+    """
+    Re-evaluate all paper trades with corrected logic.
+    
+    The old logic triggered stop losses during 6-48h period, marking correct predictions as losses.
+    This endpoint re-evaluates all trades using FIXED logic that only checks outcome at target time.
+    """
+    import subprocess
+    import sys
+    import os
+    import asyncio
+    from datetime import datetime
+    
+    # Check if already running
+    if _REEVALUATION_STATUS["running"]:
+        return {
+            "ok": False,
+            "message": "Re-evaluation already in progress",
+            "started_at": _REEVALUATION_STATUS["started_at"]
+        }
+    
+    script_path = "scripts/reevaluate_paper_trades.py"
+    
+    if not os.path.exists(script_path):
+        return {"ok": False, "error": f"Script not found: {script_path}"}
+    
+    # Start background task
+    async def run_reevaluation():
+        _REEVALUATION_STATUS["running"] = True
+        _REEVALUATION_STATUS["started_at"] = datetime.now().isoformat()
+        
+        try:
+            result = await asyncio.create_subprocess_exec(
+                sys.executable, script_path,  # No --dry-run flag = apply changes
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+            
+            _REEVALUATION_STATUS["last_result"] = {
+                "ok": result.returncode == 0,
+                "script": script_path,
+                "output": stdout.decode()[-8000:] if stdout else "",
+                "errors": stderr.decode()[-2000:] if stderr else "",
+                "return_code": result.returncode,
+                "completed_at": datetime.now().isoformat()
+            }
+        except Exception as e:
+            _REEVALUATION_STATUS["last_result"] = {
+                "ok": False,
+                "error": str(e),
+                "completed_at": datetime.now().isoformat()
+            }
+        finally:
+            _REEVALUATION_STATUS["running"] = False
+    
+    # Start in background
+    asyncio.create_task(run_reevaluation())
+    
+    return {
+        "ok": True,
+        "message": "Paper trade re-evaluation started in background",
+        "script": script_path,
+        "started_at": _REEVALUATION_STATUS["started_at"],
+        "check_status_at": "/paper-reevaluate-status"
+    }
+
+@APP.get("/paper-reevaluate-status")
+async def paper_reevaluate_status_check():
+    """Check status of paper trade re-evaluation"""
+    return {
+        "running": _REEVALUATION_STATUS["running"],
+        "started_at": _REEVALUATION_STATUS["started_at"],
+        "last_result": _REEVALUATION_STATUS["last_result"]
+    }
+
 @APP.get("/", include_in_schema=False)
 async def _root_index():
     """Single entrypoint: redirect root traffic to Cockpit V3."""
