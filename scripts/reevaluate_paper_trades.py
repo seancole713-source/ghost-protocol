@@ -40,6 +40,7 @@ def get_db_connection():
     
     try:
         import psycopg2
+        import psycopg2.extras
         from urllib.parse import urlparse
         
         result = urlparse(db_url)
@@ -48,9 +49,9 @@ def get_db_connection():
             user=result.username,
             password=result.password,
             host=result.hostname,
-            port=result.port
+            port=result.port,
+            cursor_factory=psycopg2.extras.RealDictCursor
         )
-        conn.row_factory = psycopg2.extras.RealDictCursor
         return conn
     except Exception as e:
         LOGGER.error(f"Failed to connect to PostgreSQL: {e}")
