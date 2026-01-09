@@ -8048,6 +8048,52 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             f"Signals: {signal_strength} ({', '.join(signals_fired[:3])}{'...' if len(signals_fired) > 3 else ''})"
         )
 
+        # =====================================================================
+        # ASSET PERFORMANCE FILTER (NEW: Jan 9, 2026)
+        # Apply historical win rate adjustments BEFORE final confidence
+        # =====================================================================
+        try:
+            from core.asset_performance_filter import get_performance_filter
+            
+            perf_filter = get_performance_filter()
+            
+            # Check if we should trade this symbol at all
+            should_trade_symbol, trade_reason = perf_filter.should_trade(symbol)
+            
+            if not should_trade_symbol:
+                # Symbol is blacklisted - force HOLD
+                LOGGER.warning(
+                    f"[{symbol}] ❌ BLACKLISTED: {trade_reason} - Forcing HOLD"
+                )
+                base_confidence = 0.0  # Zero confidence = don't trade
+                should_predict = False
+            else:
+                # Adjust confidence based on historical performance
+                original_confidence = base_confidence
+                base_confidence = perf_filter.get_confidence_adjustment(symbol, base_confidence)
+                
+                adjustment = base_confidence - original_confidence
+                if abs(adjustment) > 0.01:
+                    LOGGER.info(
+                        f"[{symbol}] 📊 Performance adjustment: "
+                        f"{original_confidence:.1%} → {base_confidence:.1%} "
+                        f"({adjustment:+.1%}) - {trade_reason}"
+                    )
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Performance filter failed (continuing without): {e}")
+
+        # =====================================================================
+        # CONFIDENCE THRESHOLD (NEW: Jan 9, 2026)
+        # Only trade predictions with sufficient confidence (70%+ recommended)
+        # =====================================================================
+        MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.70"))
+        
+        if base_confidence < MIN_CONFIDENCE_THRESHOLD:
+            LOGGER.warning(
+                f"[{symbol}] ⚠️ Low confidence: {base_confidence:.1%} < {MIN_CONFIDENCE_THRESHOLD:.1%} threshold - Forcing MONITOR"
+            )
+            should_predict = False  # Don't signal, just monitor
+
         # Degraded-data guardrail: if too few features are available, force MONITOR-only behavior.
         # This prevents low-signal, low-quality predictions from becoming Telegram signals.
         try:
