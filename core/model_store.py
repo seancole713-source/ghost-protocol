@@ -10,6 +10,13 @@ import pickle
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
+from urllib.parse import urlparse
+
+try:
+    import psycopg2
+    import psycopg2.extras
+except ImportError:
+    raise ImportError("psycopg2 is required for ModelStore. Install with: pip install psycopg2-binary")
 
 LOGGER = logging.getLogger(__name__)
 
@@ -38,10 +45,6 @@ class ModelStore:
     def _get_connection(self):
         """Get PostgreSQL connection."""
         try:
-            import psycopg2
-            import psycopg2.extras
-            from urllib.parse import urlparse
-            
             result = urlparse(self.db_url)
             conn = psycopg2.connect(
                 database=result.path[1:],
