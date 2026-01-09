@@ -9798,6 +9798,99 @@ async def api_accuracy_trending(hours: int = 24):
         }
 
 
+@APP.get("/api/v3/trading-controls")
+async def api_trading_controls():
+    """
+    Get current trading control settings (blacklist/whitelist).
+    
+    Shows which assets are blocked due to poor historical performance
+    and which are prioritized due to proven success.
+    
+    Returns:
+        {
+            "ok": true,
+            "blacklist_count": 13,
+            "whitelist_count": 17,
+            "min_confidence": 0.70,
+            "whitelist_only_mode": false,
+            "blacklist": ["SOL", "ETH", "BTC", ...],
+            "whitelist_symbols": ["CHZ", "ZEC", "T", ...],
+            "whitelist_detail": {
+                "CHZ": "100.0%",
+                "ZEC": "100.0%",
+                ...
+            }
+        }
+    """
+    try:
+        from core.trading_controls import get_trading_stats
+        
+        stats = get_trading_stats()
+        
+        return {
+            "ok": True,
+            **stats
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Trading controls fetch failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/can-trade/{symbol}")
+async def api_can_trade_symbol(symbol: str):
+    """
+    Check if a symbol can be traded based on historical performance.
+    
+    Evaluates blacklist/whitelist status and confidence thresholds
+    for a specific asset.
+    
+    Args:
+        symbol: Trading symbol (e.g., "BTC", "CHZ", "AAPL")
+    
+    Returns:
+        {
+            "ok": true,
+            "symbol": "BTC",
+            "can_trade": false,
+            "reason": "Blacklisted: 3% historical win rate",
+            "blacklisted": true,
+            "whitelisted": false,
+            "historical_win_rate": null,
+            "min_confidence_required": 0.70
+        }
+    """
+    try:
+        from core.trading_controls import should_trade, BLACKLIST, WHITELIST, MIN_CONFIDENCE
+        
+        symbol = symbol.upper()
+        
+        # Test with 70% confidence (the minimum threshold)
+        can_trade, reason = should_trade(symbol, MIN_CONFIDENCE)
+        
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "can_trade": can_trade,
+            "reason": reason,
+            "blacklisted": symbol in BLACKLIST,
+            "whitelisted": symbol in WHITELIST,
+            "historical_win_rate": WHITELIST.get(symbol),
+            "min_confidence_required": MIN_CONFIDENCE
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Can-trade check failed for {symbol}: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "symbol": symbol,
+            "error": str(e)
+        }
+
+
 @APP.get("/api/v3/accuracy/confidence_correlation")
 async def api_confidence_correlation():
     """

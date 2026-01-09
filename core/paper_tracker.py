@@ -176,6 +176,23 @@ class PaperTracker:
         Called when cascade reaches 6h final call.
         Supports both PostgreSQL (production) and SQLite (local).
         """
+        # =====================================================================
+        # TRADING CONTROLS: Check blacklist/whitelist BEFORE logging trade
+        # This prevents paper trades on assets with 0% historical win rate
+        # =====================================================================
+        try:
+            from core.trading_controls import should_trade
+            
+            can_trade, reason = should_trade(symbol, signal_confidence)
+            if not can_trade:
+                LOGGER.info(
+                    f"[{symbol}] ❌ Paper trade BLOCKED: {reason} "
+                    f"(direction={signal_direction}, confidence={signal_confidence:.1%})"
+                )
+                return None  # Don't log blacklisted trades
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Trading controls check failed: {e} - Proceeding with paper trade")
+        
         import uuid
         
         paper_trade_id = str(uuid.uuid4())
