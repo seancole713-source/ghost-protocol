@@ -4,6 +4,8 @@ PRODUCTION MODEL RETRAINING - DIRECT EXECUTION
 ===============================================
 Retrains ghost_xgboost_v2.pkl with scale_pos_weight to fix 70% DOWN bias.
 
+NEW: Stores trained model in PostgreSQL for persistence across Railway restarts.
+
 This script can be called via Railway API or directly:
     python3 scripts/retrain_production_model.py
 """
@@ -32,6 +34,14 @@ try:
 except ImportError:
     print("❌ xgboost/sklearn/numpy not installed")
     sys.exit(1)
+
+try:
+    from core.model_store import get_model_store
+    PERSIST_TO_DB = True
+    print("✅ ModelStore available - will persist to PostgreSQL")
+except ImportError:
+    PERSIST_TO_DB = False
+    print("⚠️  ModelStore not available - will save to filesystem only")
 
 print("=" * 80)
 print("🔧 PRODUCTION MODEL RETRAIN - ghost_xgboost_v2.pkl")
@@ -238,13 +248,48 @@ def save_model(model, feature_names):
         shutil.copy(MODEL_PATH, BACKUP_PATH)
         print(f"  Backup: {BACKUP_PATH.name}")
     
-    # Save new model
+    # Save new model to filesystem (for backward compatibility)
     with open(MODEL_PATH, 'wb') as f:
         pickle.dump(model, f)
-    print(f"  ✅ Saved: {MODEL_PATH}")
+    print(f"  ✅ Saved to filesystem: {MODEL_PATH}")
     
-    # Save metadata
-    metadata = {
+    # Save to PostgreSQL (for persistence across Railway restarts)
+    if PERSIST_TO_DB:
+        try:
+            store = get_model_store()
+            version = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            metadata = {
+                'trained_at': datetime.now().isoformat(),
+                'features': len(feature_names),
+                'samples': len(X),
+                'up_samples': int(up_count),
+                'down_samples': int(down_count),
+                'scale_pos_weight': float(scale_pos_weight),
+                'up_predictions_pct': float(up_pct),
+                'cv_accuracy': float(cv_scores.mean()),
+                'note': 'Retrained with aggressive scale_pos_weight to fix DOWN bias'
+            }
+            
+            success = store.save_model(
+                model=model,
+                model_name="ghost_xgboost_v2",
+                model_version=version,
+                metadata=metadata
+            )
+            
+            if success:
+                print(f"  ✅ Saved to PostgreSQL: ghost_xgboost_v2 v{version}")
+                print(f"     Model will persist across Railway restarts!")
+            else:
+                print(f"  ⚠️  PostgreSQL save failed - model only in filesystem")
+        
+        except Exception as e:
+            print(f"  ⚠️  PostgreSQL save error: {e}")
+            print(f"     Model saved to filesystem only")
+    
+    # Save metadata to filesystem
+    metadata_fs = {
         'trained_at': datetime.now().isoformat(),
         'features': len(feature_names),
         'note': 'Retrained with scale_pos_weight to fix DOWN bias'
@@ -252,7 +297,7 @@ def save_model(model, feature_names):
     
     metadata_path = MODEL_DIR / "training_results_v2.json"
     with open(metadata_path, 'w') as f:
-        json.dump(metadata, f, indent=2)
+        json.dump(metadata_fs, f, indent=2)
     print(f"  ✅ Metadata: {metadata_path.name}")
 
 

@@ -3989,6 +3989,46 @@ async def _on_startup():
         LOGGER.error(f"goals_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
     
+    # Load trained model from PostgreSQL (persists across Railway restarts)
+    try:
+        from core.model_store import get_model_store
+        from pathlib import Path
+        import pickle
+        
+        store = get_model_store()
+        
+        # Try to load from PostgreSQL first
+        model = store.load_model("ghost_xgboost_v2")
+        
+        if model:
+            # Save to filesystem for backward compatibility
+            model_dir = Path(__file__).parent / "models" / "trained"
+            model_dir.mkdir(parents=True, exist_ok=True)
+            model_path = model_dir / "ghost_xgboost_v2.pkl"
+            
+            with open(model_path, 'wb') as f:
+                pickle.dump(model, f)
+            
+            metadata = store.get_metadata("ghost_xgboost_v2")
+            version = metadata.get("version", "unknown") if metadata else "unknown"
+            
+            LOGGER.info(
+                f"[GHOST STARTUP] ✅ Model loaded from PostgreSQL v{version} "
+                f"(persisted to {model_path.name})"
+            )
+        else:
+            LOGGER.warning(
+                "[GHOST STARTUP] ⚠️  No model found in PostgreSQL "
+                "(will use filesystem model if available)"
+            )
+    except Exception as e:
+        LOGGER.error(
+            f"model_load_failed: {e}",
+            extra={"component": "startup"},
+            exc_info=False
+        )
+        # Non-critical - continue startup (will use filesystem model)
+    
     # Stage 1: Initialize Context Awareness Layer
     if STAGE1_ENABLED:
         try:
