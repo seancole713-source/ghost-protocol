@@ -289,16 +289,16 @@ class PaperTracker:
                     "time_remaining": str(target_time - now)
                 }
             
-            # Calculate outcome
+            # Calculate outcome - FIXED: Only evaluate at target time
+            # Stop losses make sense for live trading but NOT for prediction accuracy evaluation
+            # A prediction "BTC DOWN in 48h" should be evaluated AT 48 hours, not stopped early
             entry_price = trade["entry_price"]
             signal_direction = trade["signal_direction"]
-            stop_loss_pct = trade["stop_loss_pct"]
-            take_profit_pct = trade["take_profit_pct"]
             position_size = trade["position_size"]
             
             price_change_pct = (current_price - entry_price) / entry_price
             
-            # Determine actual direction
+            # Determine actual direction at target time
             if abs(price_change_pct) < 0.01:  # Within 1%
                 actual_direction = "FLAT"
             elif price_change_pct > 0:
@@ -306,50 +306,38 @@ class PaperTracker:
             else:
                 actual_direction = "DOWN"
             
-            # Calculate P&L based on signal direction
-            # Note: Signal direction can be "LONG"/"SHORT" or "UP"/"DOWN"
-            is_long = signal_direction in ("LONG", "UP")
-            is_short = signal_direction in ("SHORT", "DOWN")
+            # Simple win/loss evaluation based on prediction direction
+            # Signal direction can be "LONG"/"SHORT" or "UP"/"DOWN"
+            is_up_prediction = signal_direction in ("LONG", "UP")
+            is_down_prediction = signal_direction in ("SHORT", "DOWN")
             
-            if is_long:
-                # LONG/UP position - profit when price goes up
-                if price_change_pct <= -stop_loss_pct:
-                    outcome = "STOPPED"
-                    pnl_pct = -stop_loss_pct
-                elif price_change_pct >= take_profit_pct:
-                    outcome = "WIN"
-                    pnl_pct = take_profit_pct
-                elif price_change_pct > 0:
+            if is_up_prediction:
+                # UP prediction: WIN if price went up at target time
+                if price_change_pct > 0.01:  # Up more than 1%
                     outcome = "WIN"
                     pnl_pct = price_change_pct
-                elif price_change_pct < 0:
+                elif price_change_pct < -0.01:  # Down more than 1%
                     outcome = "LOSS"
                     pnl_pct = price_change_pct
                 else:
                     outcome = "BREAK_EVEN"
                     pnl_pct = 0.0
             
-            elif is_short:
-                # SHORT/DOWN position - profit when price goes down
-                if price_change_pct >= stop_loss_pct:
-                    outcome = "STOPPED"
-                    pnl_pct = -stop_loss_pct
-                elif price_change_pct <= -take_profit_pct:
+            elif is_down_prediction:
+                # DOWN prediction: WIN if price went down at target time
+                if price_change_pct < -0.01:  # Down more than 1%
                     outcome = "WIN"
-                    pnl_pct = take_profit_pct
-                elif price_change_pct < 0:
-                    outcome = "WIN"
-                    pnl_pct = -price_change_pct  # Negative change = profit on short
-                elif price_change_pct > 0:
+                    pnl_pct = abs(price_change_pct)  # Positive P&L for correct DOWN prediction
+                elif price_change_pct > 0.01:  # Up more than 1%
                     outcome = "LOSS"
-                    pnl_pct = -price_change_pct  # Positive change = loss on short
+                    pnl_pct = -abs(price_change_pct)  # Negative P&L for wrong DOWN prediction
                 else:
                     outcome = "BREAK_EVEN"
                     pnl_pct = 0.0
             
             else:
-                # Unknown direction - treat as directional based on prediction
-                LOGGER.warning(f"Unknown signal_direction: {signal_direction}, treating as FLAT")
+                # Unknown direction
+                LOGGER.warning(f"Unknown signal_direction: {signal_direction}, treating as BREAK_EVEN")
                 outcome = "BREAK_EVEN"
                 pnl_pct = 0.0
             
