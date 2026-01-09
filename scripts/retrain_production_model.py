@@ -238,7 +238,7 @@ def train_model(X, y, scale_pos_weight):
     return model, fold_scores
 
 
-def save_model(model, feature_names):
+def save_model(model, feature_names, train_stats):
     """Save model with backup"""
     print("\n💾 Saving model...")
     
@@ -262,12 +262,12 @@ def save_model(model, feature_names):
             metadata = {
                 'trained_at': datetime.now().isoformat(),
                 'features': len(feature_names),
-                'samples': len(X),
-                'up_samples': int(up_count),
-                'down_samples': int(down_count),
-                'scale_pos_weight': float(scale_pos_weight),
-                'up_predictions_pct': float(up_pct),
-                'cv_accuracy': float(cv_scores.mean()),
+                'samples': train_stats['samples'],
+                'up_samples': train_stats['up_count'],
+                'down_samples': train_stats['down_count'],
+                'scale_pos_weight': train_stats['scale_pos_weight'],
+                'up_predictions_pct': train_stats['up_pct'],
+                'cv_accuracy': train_stats['cv_accuracy'],
                 'note': 'Retrained with aggressive scale_pos_weight to fix DOWN bias'
             }
             
@@ -319,8 +319,24 @@ def main():
     # 3. Train
     model, fold_scores = train_model(X, y, scale_pos_weight)
     
-    # 4. Save
-    save_model(model, feature_names)
+    # Calculate UP predictions percentage from final model
+    y_pred = model.predict(X)
+    up_pct = (np.sum(y_pred == 1) / len(y_pred)) * 100
+    
+    # Calculate counts for metadata
+    up_count = int(np.sum(y == 1))
+    down_count = int(np.sum(y == 0))
+    
+    # 4. Save with training stats
+    train_stats = {
+        'samples': len(X),
+        'up_count': up_count,
+        'down_count': down_count,
+        'scale_pos_weight': float(scale_pos_weight),
+        'up_pct': float(up_pct),
+        'cv_accuracy': float(np.mean(fold_scores))
+    }
+    save_model(model, feature_names, train_stats)
     
     # 5. Summary
     avg_acc = np.mean(fold_scores)
