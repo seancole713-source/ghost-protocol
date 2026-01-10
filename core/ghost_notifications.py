@@ -1200,10 +1200,60 @@ class GhostNotificationSystem:
         return success
     
     def _register_picks_for_tracking(self, picks: List[Dict]):
-        """Register picks for 48-hour tracking (PostgreSQL or SQLite)"""
+        """
+        Register picks for 48-hour tracking (PostgreSQL or SQLite).
+        
+        CRITICAL: Also logs to paper_trades table for win rate tracking!
+        This connects Telegram alerts → paper trading database.
+        """
         now = get_central_time()
         expires = now + timedelta(hours=48)
         
+        # =====================================================================
+        # CRITICAL FIX (Jan 10, 2026): Log to paper_trades table
+        # Telegram TOP 10 alerts were NOT being tracked in paper trades DB
+        # This caused disconnect: Telegram ~60% win rate vs DB 16.7%
+        # =====================================================================
+        try:
+            from core.paper_tracker import get_paper_tracker
+            
+            paper_tracker = get_paper_tracker()
+            logged_count = 0
+            
+            for p in picks:
+                try:
+                    # Determine direction (BUY/SELL → UP/DOWN)
+                    action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
+                    direction = "UP" if action == "BUY" else "DOWN"
+                    
+                    # Log to paper trades with unique cascade ID
+                    paper_trade_id = paper_tracker.log_signal(
+                        cascade_id=f"top10_{p['symbol']}_{int(now.timestamp())}",
+                        symbol=p['symbol'],
+                        signal_direction=direction,
+                        signal_confidence=p['confidence'],
+                        entry_price=p['current'],
+                        entry_time=now.isoformat(),
+                        position_size=1000.0,  # $1k position size
+                        stop_loss_pct=0.05,    # 5% stop loss
+                        take_profit_pct=0.10   # 10% take profit
+                    )
+                    
+                    if paper_trade_id:
+                        logged_count += 1
+                        LOGGER.info(f"[PAPER-TRACK] ✅ Logged {p['symbol']} {direction} to paper_trades (ID: {paper_trade_id[:8]}...)")
+                    else:
+                        LOGGER.debug(f"[PAPER-TRACK] ⏭️ Skipped {p['symbol']} (blacklisted or low confidence)")
+                
+                except Exception as e:
+                    LOGGER.warning(f"[PAPER-TRACK] Failed to log {p.get('symbol', 'UNKNOWN')}: {e}")
+            
+            LOGGER.info(f"[PAPER-TRACK] ✅ Logged {logged_count}/{len(picks)} TOP 10 picks to paper_trades table")
+        
+        except Exception as e:
+            LOGGER.error(f"[PAPER-TRACK] Paper tracker integration failed: {e} - continuing with ghost_tracked_picks only")
+        
+        # Continue with original tracking system
         if self._use_postgres:
             try:
                 conn = self._get_postgres_conn()
