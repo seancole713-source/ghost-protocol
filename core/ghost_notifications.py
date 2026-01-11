@@ -1392,18 +1392,26 @@ class GhostNotificationSystem:
             
             pct_change = (current - entry) / entry
             
+            # Validate direction (must be "BUY" or "SELL")
+            if direction not in ("BUY", "SELL"):
+                LOGGER.error(f"[WATCHDOG] Invalid direction '{direction}' for {symbol} - skipping")
+                continue
+            
             # Determine if on track based on direction
             if direction == "BUY":
                 emoji = "🟢"
                 on_track = current >= entry * 0.98  # Allow 2% buffer
-                near_target = current >= target * 0.98
+                # CRITICAL FIX (Jan 11, 2026 - v2): EXACT target match only (no buffer)
+                # Bug: 2% buffer allowed false positives like META +0.4% triggering
+                near_target = current >= target  # Must ACTUALLY hit target
                 near_stop = current <= stop * 1.02
                 # OFF PATH = BUY but price dropped >2%
                 is_off_path = pct_change < -0.02
             else:  # SELL
                 emoji = "🔴"
                 on_track = current <= entry * 1.02  # Allow 2% buffer
-                near_target = current <= target * 1.02
+                # CRITICAL FIX (Jan 11, 2026 - v2): EXACT target match only (no buffer)
+                near_target = current <= target  # Must ACTUALLY hit target
                 near_stop = current >= stop * 0.98
                 # OFF PATH = SELL but price rose >2%
                 is_off_path = pct_change > 0.02
@@ -1412,7 +1420,9 @@ class GhostNotificationSystem:
             # CRITICAL FIX (Jan 11, 2026): Only trigger on moves in CORRECT direction
             # BUG: Was using abs(pct_change) which triggered on ANY 3% move
             # Example: BUY signal going DOWN 3% would incorrectly say "HIT TARGET"
+            # v2 FIX: Removed 2% buffer, added direction validation, added debug logging
             if near_target:
+                LOGGER.info(f"[WATCHDOG] 🎯 TARGET CHECK: {symbol} {direction} @ ${current:.2f} vs target ${target:.2f} (entry ${entry:.2f}, +{pct_change*100:.1f}%)")
                 alerts.append({
                     "symbol": symbol,
                     "type": "target_hit",
