@@ -1409,7 +1409,10 @@ class GhostNotificationSystem:
                 is_off_path = pct_change > 0.02
             
             # Check for target/stop hit (HIGHEST PRIORITY)
-            if near_target and abs(pct_change) >= 0.02:
+            # CRITICAL FIX (Jan 11, 2026): Only trigger on moves in CORRECT direction
+            # BUG: Was using abs(pct_change) which triggered on ANY 3% move
+            # Example: BUY signal going DOWN 3% would incorrectly say "HIT TARGET"
+            if near_target:
                 alerts.append({
                     "symbol": symbol,
                     "type": "target_hit",
