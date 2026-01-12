@@ -93,8 +93,10 @@ class V2VerificationSystem:
         cur = conn.cursor()
         
         cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column comparison
         
         # Query paper_trades for verified outcomes
+        # Note: created_at might be TEXT in some deployments, so use string comparison
         cur.execute("""
             SELECT 
                 symbol,
@@ -111,7 +113,7 @@ class V2VerificationSystem:
             AND entry_price > 0
             AND target_price > 0
             ORDER BY created_at DESC
-        """, (cutoff,))
+        """, (cutoff_str,))
         
         rows = cur.fetchall()
         cur.close()
@@ -157,6 +159,7 @@ class V2VerificationSystem:
         cur = conn.cursor()
         
         cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column
         
         cur.execute("""
             SELECT 
@@ -216,6 +219,8 @@ class V2VerificationSystem:
             
             cutoff = datetime.utcnow() - timedelta(days=days)
             midpoint = cutoff + timedelta(days=days // 2)
+            cutoff_str = cutoff.isoformat()
+            midpoint_str = midpoint.isoformat()
             
             # First half win rate
             cur.execute("""
@@ -227,7 +232,7 @@ class V2VerificationSystem:
                 AND created_at BETWEEN %s AND %s
                 AND outcome IS NOT NULL
                 AND outcome != 'PENDING'
-            """, (symbol, cutoff, midpoint))
+            """, (symbol, cutoff_str, midpoint_str))
             
             first_half = cur.fetchone()
             first_wr = (first_half[1] / first_half[0]) if first_half[0] > 0 else 0
@@ -242,7 +247,7 @@ class V2VerificationSystem:
                 AND created_at > %s
                 AND outcome IS NOT NULL
                 AND outcome != 'PENDING'
-            """, (symbol, midpoint))
+            """, (symbol, midpoint_str))
             
             second_half = cur.fetchone()
             second_wr = (second_half[1] / second_half[0]) if second_half[0] > 0 else 0
