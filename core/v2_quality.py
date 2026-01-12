@@ -193,10 +193,9 @@ class V2AssetQualitySystem:
                     return False, f"watchlist (needs {self.WATCHLIST_HIGH_CONFIDENCE*100:.0f}%+ confidence)"
         
         # Unknown asset (no historical data)
-        if confidence >= 0.75:
-            return True, "unknown asset (high confidence only)"
-        else:
-            return False, "unknown asset (needs 75%+ confidence)"
+        # V2 STRICT MODE: Only predict whitelisted symbols
+        # Reject all unknown symbols until we have performance data
+        return False, "not whitelisted (V2 strict mode: whitelist-only predictions)"
     
     def get_quality_filter_stats(self) -> Dict[str, any]:
         """Get current filter statistics"""
