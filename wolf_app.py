@@ -24873,6 +24873,185 @@ async def notifications_status():
         return {"ok": False, "error": str(e)}
 
 
+# ============================================================================
+# 🎯 GHOST PROTOCOL V2 - VERIFICATION & QUALITY ENDPOINTS
+# ============================================================================
+
+@APP.get("/api/v2/performance/dashboard")
+async def v2_performance_dashboard():
+    """
+    🎯 V2: Complete performance dashboard with verified metrics.
+    
+    Returns ground truth about Ghost's actual win rate, best/worst assets,
+    and recommendations for whitelist/blacklist.
+    
+    Example: GET /api/v2/performance/dashboard?days=14
+    """
+    try:
+        from core.v2_verification import get_verifier
+        
+        days = request.args.get('days', default=14, type=int)
+        
+        verifier = get_verifier()
+        
+        # Generate comprehensive report
+        report = verifier.generate_performance_report(days)
+        
+        # Format for API response
+        return {
+            "ok": True,
+            "period": report.period,
+            "days": days,
+            "overall": {
+                "total_predictions": report.total_predictions,
+                "wins": report.verified_wins,
+                "losses": report.verified_losses,
+                "win_rate": round(report.win_rate, 1),
+                "win_rate_display": f"{report.win_rate:.1f}%"
+            },
+            "by_asset_type": report.by_asset_type,
+            "top_performers": report.top_performers,
+            "bottom_performers": report.bottom_performers,
+            "top_10_details": [
+                {
+                    "symbol": p.symbol,
+                    "asset_type": p.asset_type,
+                    "win_rate": round(p.win_rate, 1),
+                    "total": p.total_predictions,
+                    "wins": p.wins,
+                    "trend": p.recent_performance
+                }
+                for p in report.by_symbol[:10]
+            ],
+            "bottom_10_details": [
+                {
+                    "symbol": p.symbol,
+                    "asset_type": p.asset_type,
+                    "win_rate": round(p.win_rate, 1),
+                    "total": p.total_predictions,
+                    "wins": p.wins,
+                    "trend": p.recent_performance
+                }
+                for p in report.by_symbol[-10:]
+            ]
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"[V2-API] Performance dashboard error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v2/quality/status")
+async def v2_quality_status():
+    """
+    🎯 V2: Get asset quality filter status (whitelist/blacklist).
+    
+    Shows which assets are approved for predictions and which are blocked.
+    """
+    try:
+        from core.v2_quality import get_quality_system
+        
+        quality = get_quality_system()
+        stats = quality.get_quality_filter_stats()
+        
+        return {
+            "ok": True,
+            **stats,
+            "description": {
+                "whitelist": f"Proven performers (WR >= {stats['config']['whitelist_wr_threshold']}), predict freely",
+                "watchlist": f"Cautious zone (WR 45-55%), require {stats['config']['watchlist_min_confidence']}+ confidence",
+                "blacklist": f"Poor performers (WR < {stats['config']['blacklist_wr_threshold']}), DO NOT predict"
+            }
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"[V2-API] Quality status error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/v2/quality/update")
+async def v2_quality_update():
+    """
+    🎯 V2: Update whitelist/blacklist from verified performance data.
+    
+    Should be run daily (can be automated via cron).
+    
+    Example: POST /api/v2/quality/update?days=30
+    """
+    try:
+        from core.v2_quality import get_quality_system
+        
+        days = request.args.get('days', default=30, type=int)
+        
+        quality = get_quality_system()
+        
+        # Capture before state
+        before = quality.get_quality_filter_stats()
+        
+        # Update from verification
+        quality.update_from_verification(days)
+        
+        # Capture after state
+        after = quality.get_quality_filter_stats()
+        
+        return {
+            "ok": True,
+            "message": f"Quality filters updated from last {days} days",
+            "before": {
+                "whitelist": before['whitelist_count'],
+                "blacklist": before['blacklist_count']
+            },
+            "after": {
+                "whitelist": after['whitelist_count'],
+                "blacklist": after['blacklist_count']
+            },
+            "changes": {
+                "whitelist_added": after['whitelist_count'] - before['whitelist_count'],
+                "blacklist_added": after['blacklist_count'] - before['blacklist_count']
+            }
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"[V2-API] Quality update error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v2/recommendations")
+async def v2_recommendations():
+    """
+    🎯 V2: Get whitelist/blacklist recommendations based on performance.
+    
+    Analyzes last 30 days and recommends which assets to keep vs drop.
+    """
+    try:
+        from core.v2_verification import get_verifier
+        
+        days = request.args.get('days', default=30, type=int)
+        
+        verifier = get_verifier()
+        rec = verifier.recommend_whitelist_blacklist(days)
+        
+        return {
+            "ok": True,
+            "period": f"last_{days}_days",
+            "whitelist": {
+                "count": len(rec['whitelist']),
+                "symbols": rec['whitelist'],
+                "criteria": rec['criteria']['whitelist']
+            },
+            "blacklist": {
+                "count": len(rec['blacklist']),
+                "symbols": rec['blacklist'],
+                "criteria": rec['criteria']['blacklist']
+            },
+            "action": "Use POST /api/v2/quality/update to apply these recommendations"
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"[V2-API] Recommendations error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 @APP.post("/alerts/notifications/retry-postgres")
 async def notifications_retry_postgres():
     """Retry PostgreSQL connection if currently using SQLite fallback"""
