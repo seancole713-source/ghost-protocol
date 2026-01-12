@@ -102,7 +102,7 @@ class V2VerificationSystem:
                 entry_price,
                 target_price,
                 outcome,
-                exit_price,
+                profit_loss_pct,
                 created_at
             FROM paper_trades
             WHERE created_at > %s
