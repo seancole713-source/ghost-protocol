@@ -818,6 +818,8 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         return await call_next(request)
     if request.url.path.startswith("/api/v3/"):  # All Cockpit V3 live endpoints (NO AUTH)
         return await call_next(request)
+    if request.url.path.startswith("/api/v2/"):  # Ghost Protocol V2 monitoring endpoints (NO AUTH)
+        return await call_next(request)
     if request.url.path.startswith("/api/xrp/"):  # XRP tracker for cockpit
         return await call_next(request)
     if request.url.path.startswith("/api/presale/"):  # Presale watch for cockpit
