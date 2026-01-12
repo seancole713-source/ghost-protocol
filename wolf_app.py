@@ -24880,7 +24880,7 @@ async def notifications_status():
 # ============================================================================
 
 @APP.get("/api/v2/performance/dashboard")
-async def v2_performance_dashboard():
+async def v2_performance_dashboard(days: int = 14):
     """
     🎯 V2: Complete performance dashboard with verified metrics.
     
@@ -24891,8 +24891,6 @@ async def v2_performance_dashboard():
     """
     try:
         from core.v2_verification import get_verifier
-        
-        days = request.args.get('days', default=14, type=int)
         
         verifier = get_verifier()
         
@@ -24972,7 +24970,7 @@ async def v2_quality_status():
 
 
 @APP.post("/api/v2/quality/update")
-async def v2_quality_update():
+async def v2_quality_update(days: int = 30):
     """
     🎯 V2: Update whitelist/blacklist from verified performance data.
     
@@ -24982,8 +24980,6 @@ async def v2_quality_update():
     """
     try:
         from core.v2_quality import get_quality_system
-        
-        days = request.args.get('days', default=30, type=int)
         
         quality = get_quality_system()
         
@@ -25019,7 +25015,7 @@ async def v2_quality_update():
 
 
 @APP.get("/api/v2/recommendations")
-async def v2_recommendations():
+async def v2_recommendations(days: int = 30):
     """
     🎯 V2: Get whitelist/blacklist recommendations based on performance.
     
@@ -25027,8 +25023,6 @@ async def v2_recommendations():
     """
     try:
         from core.v2_verification import get_verifier
-        
-        days = request.args.get('days', default=30, type=int)
         
         verifier = get_verifier()
         rec = verifier.recommend_whitelist_blacklist(days)
