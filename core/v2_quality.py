@@ -123,10 +123,12 @@ class V2AssetQualitySystem:
         new_blacklist = set()
         
         for perf in performances:
-            # Update metrics
+            # Update metrics (convert Decimal to float)
+            wr_decimal = float(perf.win_rate) / 100.0  # perf.win_rate is percentage (0-100)
+            
             self._metrics[perf.symbol] = AssetQualityMetrics(
                 symbol=perf.symbol,
-                win_rate=perf.win_rate / 100.0,  # Convert to decimal
+                win_rate=wr_decimal,  # Store as decimal (0.0-1.0)
                 total_predictions=perf.total_predictions,
                 recent_trend=perf.recent_performance,
                 avg_confidence=perf.avg_confidence,
@@ -134,11 +136,12 @@ class V2AssetQualitySystem:
                 status=""  # Will set below
             )
             
-            # Determine status
-            if perf.win_rate >= self.WHITELIST_WIN_RATE * 100 and perf.recent_performance != "declining":
+            # Determine status (compare percentage values)
+            wr_pct = float(perf.win_rate)  # win_rate is 0-100
+            if wr_pct >= self.WHITELIST_WIN_RATE * 100 and perf.recent_performance != "declining":
                 new_whitelist.add(perf.symbol)
                 self._metrics[perf.symbol].status = "whitelist"
-            elif perf.win_rate < self.BLACKLIST_WIN_RATE * 100:
+            elif wr_pct < self.BLACKLIST_WIN_RATE * 100:
                 new_blacklist.add(perf.symbol)
                 self._metrics[perf.symbol].status = "blacklist"
             else:
