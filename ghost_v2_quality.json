@@ -1,0 +1,40 @@
+{
+  "whitelist": [
+    "CHZ",
+    "EGLD",
+    "ICP",
+    "ILV",
+    "OCEAN",
+    "RLC",
+    "RNDR",
+    "T",
+    "TURBO",
+    "ZEC"
+  ],
+  "blacklist": [
+    "1INCH",
+    "ADA",
+    "ALGO",
+    "AVAX",
+    "BNB",
+    "BTC",
+    "DOT",
+    "ETC",
+    "ETH",
+    "LDO",
+    "LTC",
+    "PEPE",
+    "SNX",
+    "SOL",
+    "UNI",
+    "XRP"
+  ],
+  "metrics": {},
+  "last_updated": "2026-01-12T07:32:04.339155",
+  "config": {
+    "min_predictions": 20,
+    "whitelist_wr": 0.55,
+    "blacklist_wr": 0.45,
+    "note": "Initial whitelist manually set for proven 90%+ performers"
+  }
+}

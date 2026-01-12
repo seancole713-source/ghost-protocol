@@ -972,6 +972,12 @@ class GhostNotificationSystem:
         # Track stats for logging
         stablecoins_skipped = 0
         
+        # V2 QUALITY FILTER: Load whitelist/blacklist
+        from core.v2_quality import get_quality_system
+        v2_quality = get_quality_system()
+        v2_excluded = 0
+        v2_excluded_symbols = []
+        
         # LEARNING: Get symbol accuracy data from PostgreSQL
         accuracy_data = get_symbol_accuracy_from_postgres()
         learning_excluded = 0
@@ -980,6 +986,7 @@ class GhostNotificationSystem:
         boosted_symbols = []
         
         LOGGER.info(f"[TOP10] Phase 1: Filtering {len(latest_predictions)} predictions using cached prices...")
+        LOGGER.info(f"[V2-FILTER] Active whitelist: {len(v2_quality._whitelist)}, blacklist: {len(v2_quality._blacklist)}")
         
         for symbol, pred in latest_predictions.items():
             if not isinstance(pred, dict):
@@ -988,6 +995,14 @@ class GhostNotificationSystem:
             # CRITICAL: Skip stablecoins (USDC, DAI, USDT, etc.) - they don't move!
             if AssetClassifier.is_stablecoin(symbol):
                 stablecoins_skipped += 1
+                continue
+            
+            # V2 QUALITY FILTER: Check whitelist/blacklist BEFORE learning filter
+            confidence = pred.get("confidence", 0)
+            should_predict, v2_reason = v2_quality.should_predict(symbol, confidence)
+            if not should_predict:
+                v2_excluded += 1
+                v2_excluded_symbols.append(f"{symbol} ({v2_reason})")
                 continue
             
             # LEARNING: Check if symbol should be excluded due to low accuracy
@@ -1041,6 +1056,9 @@ class GhostNotificationSystem:
                 stock_candidates.append(candidate)
         
         # Log learning stats
+        if v2_excluded > 0:
+            LOGGER.info(f"[V2-FILTER] 🚫 EXCLUDED {v2_excluded} symbols via V2 quality filter")
+            LOGGER.debug(f"[V2-FILTER] Excluded: {', '.join(v2_excluded_symbols[:10])}")
         if learning_excluded > 0:
             LOGGER.info(f"[LEARNING] 🚫 EXCLUDED {learning_excluded} low-accuracy symbols")
         if learning_boosted > 0:
