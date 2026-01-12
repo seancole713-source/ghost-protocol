@@ -7687,6 +7687,36 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "error": "symbol required"
         }
     
+    # =========================================================================
+    # V2 QUALITY FILTER: Block non-whitelisted symbols at the SOURCE
+    # This prevents predictions from being generated for poor performers
+    # =========================================================================
+    try:
+        from core.v2_quality import get_quality_system
+        v2_quality = get_quality_system()
+        
+        # Check if we should predict this symbol (whitelist-only in V2 strict mode)
+        should_predict_v2, v2_reason = v2_quality.should_predict(symbol, 1.0)  # Use max confidence for check
+        
+        if not should_predict_v2:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            LOGGER.info(f"[V2-FILTER] 🚫 BLOCKED {symbol} - {v2_reason}")
+            return {
+                "ok": False,
+                "symbol": symbol,
+                "direction": "BLOCKED",
+                "confidence": 0.0,
+                "current_price": None,
+                "feature_count": 0,
+                "available_count": 0,
+                "duration_ms": duration_ms,
+                "error": f"V2 filter: {v2_reason}",
+                "v2_filtered": True
+            }
+    except Exception as e:
+        LOGGER.warning(f"[V2-FILTER] Filter check failed for {symbol}: {e}")
+        # Continue with prediction if filter fails (fail-open for safety)
+    
     # Wrap core logic in try/except for safety
     try:
         # Detect asset type (crypto vs stock)
