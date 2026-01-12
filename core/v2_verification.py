@@ -96,7 +96,7 @@ class V2VerificationSystem:
         cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column comparison
         
         # Query paper_trades for verified outcomes
-        # Note: created_at might be TEXT in some deployments, so use string comparison
+        # Note: created_at might be TEXT, so use CAST to ensure proper comparison
         cur.execute("""
             SELECT 
                 symbol,
@@ -107,7 +107,7 @@ class V2VerificationSystem:
                 profit_loss_pct,
                 created_at
             FROM paper_trades
-            WHERE created_at > %s
+            WHERE CAST(created_at AS TIMESTAMP) > CAST(%s AS TIMESTAMP)
             AND outcome IS NOT NULL
             AND outcome != 'PENDING'
             AND entry_price > 0
@@ -175,7 +175,7 @@ class V2VerificationSystem:
                 ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate,
                 AVG(signal_confidence) as avg_confidence
             FROM paper_trades
-            WHERE created_at > %s
+            WHERE CAST(created_at AS TIMESTAMP) > CAST(%s AS TIMESTAMP)
             AND outcome IS NOT NULL
             AND outcome != 'PENDING'
             GROUP BY symbol
@@ -229,7 +229,7 @@ class V2VerificationSystem:
                     SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
                 FROM paper_trades
                 WHERE symbol = %s
-                AND created_at BETWEEN %s AND %s
+                AND CAST(created_at AS TIMESTAMP) BETWEEN CAST(%s AS TIMESTAMP) AND CAST(%s AS TIMESTAMP)
                 AND outcome IS NOT NULL
                 AND outcome != 'PENDING'
             """, (symbol, cutoff_str, midpoint_str))
@@ -244,7 +244,7 @@ class V2VerificationSystem:
                     SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
                 FROM paper_trades
                 WHERE symbol = %s
-                AND created_at > %s
+                AND CAST(created_at AS TIMESTAMP) > CAST(%s AS TIMESTAMP)
                 AND outcome IS NOT NULL
                 AND outcome != 'PENDING'
             """, (symbol, midpoint_str))
