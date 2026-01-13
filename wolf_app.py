@@ -1630,7 +1630,7 @@ DEFAULT_CRYPTO_SYMBOLS = [
     "EGLD", "XTZ", "MINA", "KAS", "STX", "CORE", "CFX", "ASTR", "CANTO",
     
     # === LAYER 2s & SCALING ===
-    "ARB", "OP", "STRK", "MANTA", "METIS", "IMX", "LRC", "BOBA", "ZK", "SCROLL",
+    "ARB", "OP", "STRK", "MANTA", "METIS", "IMX", "BOBA", "ZK", "SCROLL",
     "LINEA", "BASE", "ZKSYNC", "POLYGON", "BLAST", "MODE",
     
     # === SOLANA ECOSYSTEM (Hot in 2024-2026) ===
@@ -1658,7 +1658,7 @@ DEFAULT_CRYPTO_SYMBOLS = [
     "PYR", "VOXEL", "HIGH", "GHST", "REVV", "TOWER", "NAKA",
     
     # === PRIVACY COINS ===
-    "DASH", "ZEC", "SCRT", "BEAM", "XVG", "ARRR", "FIRO", "ZEN", "PIVX", "GRIN",
+    "ZEC", "SCRT", "BEAM", "XVG", "ARRR", "FIRO", "ZEN", "PIVX", "GRIN",
     
     # === STORAGE & INFRASTRUCTURE ===
     "AR", "STORJ", "GRT", "ANKR", "POKT", "LPT", "AIOZ", "THETA", "TFUEL", "HNT",
@@ -4407,6 +4407,30 @@ async def _on_startup():
         loop.create_task(_warmup_cache_with_timeout())
     except Exception as e:
         LOGGER.error(f"cache_warmup_schedule_failed: {e}", extra={"component": "startup"}, exc_info=False)
+
+    # ========================================================================
+    # V2 CLEANUP: Remove non-whitelisted predictions from memory cache
+    # This prevents old DASH/LRC predictions from persisting across restarts
+    # ========================================================================
+    try:
+        from core.v2_quality import get_quality_system
+        v2_quality = get_quality_system()
+        
+        symbols_to_remove = []
+        for symbol in list(_LATEST_PREDICTIONS.keys()):
+            should_keep, reason = v2_quality.should_predict(symbol, 1.0)
+            if not should_keep:
+                symbols_to_remove.append(symbol)
+        
+        for symbol in symbols_to_remove:
+            del _LATEST_PREDICTIONS[symbol]
+        
+        if symbols_to_remove:
+            LOGGER.info(f"[V2-CLEANUP] 🧹 Removed {len(symbols_to_remove)} non-whitelisted predictions from cache: {symbols_to_remove}")
+        else:
+            LOGGER.info(f"[V2-CLEANUP] ✅ All cached predictions ({len(_LATEST_PREDICTIONS)}) are whitelisted")
+    except Exception as e:
+        LOGGER.error(f"v2_cleanup_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
     # ========================================================================
     # ACCOUNTABILITY SYSTEMS - Killswitch status + Outcome Reconciler
@@ -8520,6 +8544,17 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             action = "HOLD"
 
         from core.asset_classification import is_crypto_symbol as _is_crypto_symbol
+
+        # V2 FILTER: Only store whitelisted predictions in memory cache
+        # This prevents non-whitelisted predictions from appearing in TOP 10
+        from core.v2_quality import get_quality_system
+        v2_quality = get_quality_system()
+        should_store_v2, v2_reason = v2_quality.should_predict(symbol, confidence)
+        
+        if not should_store_v2:
+            LOGGER.info(f"[V2-FILTER] 🚫 BLOCKED {symbol} from _LATEST_PREDICTIONS - {v2_reason}")
+            # Don't store in cache, but still return success (prediction was made and saved to DB)
+            return result
 
         # BUG FIX (Jan 6, 2026): Use lock to prevent race conditions
         with _LATEST_PREDICTIONS_LOCK:
