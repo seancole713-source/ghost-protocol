@@ -548,6 +548,151 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             "feedparser_available": FEEDPARSER_AVAILABLE,
         }
     
+    def get_cached_analysis(self, symbol: str = None) -> Dict:
+        """
+        Get most recent news analysis from database (cached for predictions).
+        
+        This allows predictions to use news context WITHOUT triggering
+        expensive Claude API calls on every prediction.
+        
+        Args:
+            symbol: If provided, filter for symbol-specific sentiment
+        
+        Returns:
+            {
+                "ok": True/False,
+                "analysis_time": timestamp,
+                "symbol_sentiment": {
+                    "RNDR": {"sentiment_score": 0.6, "confidence": 0.8, "affected_by": [...]},
+                    ...
+                },
+                "major_events": [...],
+                "market_summary": "...",
+                "cache_age_minutes": 15
+            }
+        """
+        if not self.db_url or not POSTGRES_AVAILABLE:
+            return {"ok": False, "error": "Database not available"}
+        
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Get most recent analysis (should be < 30 minutes old)
+            cur.execute("""
+                SELECT 
+                    analysis_id,
+                    analysis_time,
+                    headlines_fetched,
+                    raw_response,
+                    events_found,
+                    summary,
+                    EXTRACT(EPOCH FROM (NOW() - analysis_time))/60 as age_minutes
+                FROM news_analysis 
+                ORDER BY analysis_time DESC 
+                LIMIT 1
+            """)
+            
+            row = cur.fetchone()
+            conn.close()
+            
+            if not row:
+                return {"ok": False, "error": "No cached analysis found"}
+            
+            # Check if cache is too old (> 60 minutes = stale)
+            age_minutes = float(row['age_minutes'])
+            if age_minutes > 60:
+                return {
+                    "ok": False,
+                    "error": f"Cache too old ({age_minutes:.0f} minutes)",
+                    "stale": True
+                }
+            
+            # Parse raw response (stored as JSON string)
+            try:
+                import json
+                raw_analysis = json.loads(row['raw_response']) if row['raw_response'] else {}
+            except:
+                raw_analysis = {}
+            
+            # Build symbol-specific sentiment map
+            symbol_sentiment = {}
+            major_events = raw_analysis.get("major_events", [])
+            
+            for event in major_events:
+                # Bullish symbols
+                for sym in event.get("bullish_symbols", []):
+                    if sym not in symbol_sentiment:
+                        symbol_sentiment[sym] = {
+                            "sentiment_score": 0.0,
+                            "confidence": 0.0,
+                            "affected_by": []
+                        }
+                    symbol_sentiment[sym]["sentiment_score"] += 0.3  # Bullish boost
+                    symbol_sentiment[sym]["affected_by"].append({
+                        "headline": event.get("headline"),
+                        "sentiment": "bullish",
+                        "type": event.get("event_type"),
+                        "severity": event.get("severity")
+                    })
+                
+                # Bearish symbols
+                for sym in event.get("bearish_symbols", []):
+                    if sym not in symbol_sentiment:
+                        symbol_sentiment[sym] = {
+                            "sentiment_score": 0.0,
+                            "confidence": 0.0,
+                            "affected_by": []
+                        }
+                    symbol_sentiment[sym]["sentiment_score"] -= 0.3  # Bearish penalty
+                    symbol_sentiment[sym]["affected_by"].append({
+                        "headline": event.get("headline"),
+                        "sentiment": "bearish",
+                        "type": event.get("event_type"),
+                        "severity": event.get("severity")
+                    })
+            
+            # Normalize sentiment scores (-1 to +1) and calculate confidence
+            for sym in symbol_sentiment:
+                score = symbol_sentiment[sym]["sentiment_score"]
+                affected_count = len(symbol_sentiment[sym]["affected_by"])
+                
+                # Clamp to -1/+1 range
+                score = max(-1.0, min(1.0, score))
+                symbol_sentiment[sym]["sentiment_score"] = round(score, 2)
+                
+                # Confidence based on event count and severity
+                confidence = min(0.9, 0.5 + (affected_count * 0.15))
+                symbol_sentiment[sym]["confidence"] = round(confidence, 2)
+            
+            result = {
+                "ok": True,
+                "analysis_time": row['analysis_time'].isoformat() if row['analysis_time'] else None,
+                "symbol_sentiment": symbol_sentiment,
+                "major_events": major_events,
+                "market_summary": raw_analysis.get("market_summary", ""),
+                "cache_age_minutes": round(age_minutes, 1),
+                "headlines_analyzed": row.get('headlines_fetched', 0),
+            }
+            
+            # If specific symbol requested, return just that
+            if symbol:
+                sym_data = symbol_sentiment.get(symbol.upper())
+                if sym_data:
+                    result["symbol"] = symbol.upper()
+                    result["sentiment"] = sym_data
+                else:
+                    # Symbol not mentioned in recent news
+                    result["symbol"] = symbol.upper()
+                    result["sentiment"] = None
+                    result["note"] = "Symbol not mentioned in recent news"
+            
+            return result
+            
+        except Exception as e:
+            LOGGER.error(f"Failed to get cached analysis: {e}")
+            return {"ok": False, "error": str(e)}
+    
     def get_last_analysis(self) -> Dict:
         """Get the most recent analysis from database"""
         if not self.db_url or not POSTGRES_AVAILABLE:

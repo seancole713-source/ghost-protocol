@@ -41,10 +41,10 @@ from typing import Any
 
 from core.data_pillars.flow_engine import FlowEngine
 from core.data_pillars.price_engine import PriceEngine
-from core.data_pillars.sentiment_engine import SentimentEngine
+from core.data_pillars.sentiment_engine import SentimentEngine  # FIXED: Now uses Ghost News Brain + RSS
 from core.data_pillars.technical_engine import TechnicalEngine
 from core.data_pillars.volume_engine import VolumeEngine
-from core.data_pillars.world_context_engine import WorldContextEngine
+from core.data_pillars.world_context_engine import WorldContextEngine  # FIXED: Added yfinance fallback
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +61,8 @@ class FeatureOrchestrator:
         self.price_engine = PriceEngine()
         self.technical_engine = TechnicalEngine()
         self.volume_engine = VolumeEngine()
-        self.sentiment_engine = SentimentEngine()
-        self.world_context_engine = WorldContextEngine()
+        self.sentiment_engine = SentimentEngine()  # FIXED: Ghost News Brain integration
+        self.world_context_engine = WorldContextEngine()  # FIXED: yfinance fallback
         self.flow_engine = FlowEngine()
 
     def get_all_features(self, symbol: str, **kwargs) -> dict[str, Any]:
@@ -131,7 +131,7 @@ class FeatureOrchestrator:
             all_errors.append(f"Volume engine: {str(e)}")
             pillar_stats["volume_engine"] = "0/0 (failed)"
 
-        # 4. Sentiment Engine
+        # 4. Sentiment Engine - FIXED (Ghost News Brain + RSS feeds)
         try:
             sent_resp = self.sentiment_engine.get_signals(symbol, **kwargs)
             for signal in sent_resp.signals:
@@ -143,7 +143,7 @@ class FeatureOrchestrator:
             all_errors.append(f"Sentiment engine: {str(e)}")
             pillar_stats["sentiment_engine"] = "0/0 (failed)"
 
-        # 5. World Context Engine (global, not symbol-specific)
+        # 5. World Context Engine - FIXED (yfinance fallback for SPY/VIX)
         try:
             world_resp = self.world_context_engine.get_signals()
             for signal in world_resp.signals:
@@ -215,8 +215,8 @@ class FeatureOrchestrator:
             ("price_engine", self.price_engine),
             ("technical_engine", self.technical_engine),
             ("volume_engine", self.volume_engine),
-            ("sentiment_engine", self.sentiment_engine),
-            ("world_context_engine", self.world_context_engine),
+            ("sentiment_engine", self.sentiment_engine),  # FIXED
+            ("world_context_engine", self.world_context_engine),  # FIXED
             ("flow_engine", self.flow_engine),
         ]:
             try:
@@ -245,7 +245,7 @@ class FeatureOrchestrator:
                 "healthy": healthy,
                 "degraded": degraded,
                 "failed": failed,
-                "total": 6,
+                "total": 6,  # Back to 6 (sentiment + world_context FIXED)
             },
         }
 

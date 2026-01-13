@@ -52,6 +52,28 @@ def get_world_context() -> dict[str, Any]:
                 prev = spy_decision.prev_close
                 change_pct = ((price - prev) / prev) * 100
                 result["spy"]["change_pct"] = round(change_pct, 2)
+        else:
+            # FALLBACK: Try yfinance directly
+            logger.info("SPY price_quorum returned NULL, trying yfinance fallback...")
+            import yfinance as yf
+            spy_ticker = yf.Ticker("SPY")
+            spy_data = spy_ticker.history(period="2d")
+            
+            if not spy_data.empty:
+                current_price = float(spy_data['Close'].iloc[-1])
+                prev_close = float(spy_data['Close'].iloc[-2]) if len(spy_data) >= 2 else current_price
+                
+                result["spy"]["price"] = round(current_price, 2)
+                result["spy"]["provider"] = "yfinance_fallback"
+                
+                if prev_close:
+                    change_pct = ((current_price - prev_close) / prev_close) * 100
+                    result["spy"]["change_pct"] = round(change_pct, 2)
+                
+                logger.info(f"✅ SPY yfinance fallback: ${current_price:.2f} ({change_pct:+.2f}%)")
+            else:
+                logger.error("❌ SPY yfinance fallback also failed - no data")
+                
     except Exception as e:
         logger.warning(f"Could not get SPY price: {e}")
     
@@ -83,6 +105,37 @@ def get_world_context() -> dict[str, Any]:
                 result["vix"]["status"] = "elevated"
             else:
                 result["vix"]["status"] = "high-fear"
+        else:
+            # FALLBACK: Try yfinance directly
+            logger.info("VIX price_quorum returned NULL, trying yfinance fallback...")
+            import yfinance as yf
+            vix_ticker = yf.Ticker("^VIX")
+            vix_data = vix_ticker.history(period="2d")
+            
+            if not vix_data.empty:
+                vix_level = float(vix_data['Close'].iloc[-1])
+                prev_close = float(vix_data['Close'].iloc[-2]) if len(vix_data) >= 2 else vix_level
+                
+                result["vix"]["level"] = round(vix_level, 2)
+                
+                if prev_close:
+                    change = vix_level - prev_close
+                    result["vix"]["change"] = round(change, 2)
+                
+                # Determine VIX status
+                if vix_level < 15:
+                    result["vix"]["status"] = "calm"
+                elif vix_level < 20:
+                    result["vix"]["status"] = "normal"
+                elif vix_level < 30:
+                    result["vix"]["status"] = "elevated"
+                else:
+                    result["vix"]["status"] = "high-fear"
+                
+                logger.info(f"✅ VIX yfinance fallback: {vix_level:.2f} ({result['vix']['status']})")
+            else:
+                logger.error("❌ VIX yfinance fallback also failed - no data")
+                
     except Exception as e:
         logger.error(f"Could not get VIX level: {e}")
     
