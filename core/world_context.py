@@ -53,39 +53,52 @@ def get_world_context() -> dict[str, Any]:
                 change_pct = ((price - prev) / prev) * 100
                 result["spy"]["change_pct"] = round(change_pct, 2)
         else:
-            # FALLBACK: Try yfinance directly with multiple symbol formats
-            logger.info("SPY price_quorum returned NULL, trying yfinance fallback...")
+            # FALLBACK: Try Polygon.io (more reliable than yfinance)
+            logger.info("SPY price_quorum returned NULL, trying Polygon.io fallback...")
             try:
-                import yfinance as yf
+                import os
+                import requests
                 
-                # Try SPY first (ETF), then ^GSPC (S&P 500 index) as backup
-                for symbol_attempt in ["SPY", "^GSPC"]:
+                polygon_key = os.getenv("POLYGON_API_KEY")
+                if polygon_key:
                     try:
-                        logger.info(f"Attempting yfinance with symbol: {symbol_attempt}")
-                        spy_ticker = yf.Ticker(symbol_attempt)
-                        spy_data = spy_ticker.history(period="2d")
+                        # Get last 2 days of SPY data from Polygon
+                        url = f"https://api.polygon.io/v2/aggs/ticker/SPY/range/1/day/2026-01-10/2026-01-14"
+                        headers = {"Authorization": f"Bearer {polygon_key}"}
                         
-                        if not spy_data.empty and len(spy_data) > 0:
-                            current_price = float(spy_data['Close'].iloc[-1])
-                            prev_close = float(spy_data['Close'].iloc[-2]) if len(spy_data) >= 2 else current_price
+                        resp = requests.get(url, headers=headers, timeout=3)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            results = data.get("results", [])
                             
-                            result["spy"]["price"] = round(current_price, 2)
-                            result["spy"]["provider"] = f"yfinance_{symbol_attempt}"
-                            
-                            if prev_close and prev_close > 0:
-                                change_pct = ((current_price - prev_close) / prev_close) * 100
-                                result["spy"]["change_pct"] = round(change_pct, 2)
-                                logger.info(f"✅ SPY ({symbol_attempt}): ${current_price:.2f} ({change_pct:+.2f}%)")
-                            else:
-                                logger.info(f"✅ SPY ({symbol_attempt}): ${current_price:.2f}")
-                            break  # Success, stop trying
-                    except Exception as symbol_err:
-                        logger.warning(f"yfinance {symbol_attempt} failed: {symbol_err}")
-                        continue
+                            if len(results) >= 1:
+                                current = results[-1]
+                                current_price = float(current.get("c", 0))  # Close price
+                                
+                                if len(results) >= 2:
+                                    prev = results[-2]
+                                    prev_close = float(prev.get("c", 0))
+                                else:
+                                    prev_close = current_price
+                                
+                                if current_price > 0:
+                                    result["spy"]["price"] = round(current_price, 2)
+                                    result["spy"]["provider"] = "polygon_fallback"
+                                    
+                                    if prev_close > 0:
+                                        change_pct = ((current_price - prev_close) / prev_close) * 100
+                                        result["spy"]["change_pct"] = round(change_pct, 2)
+                                        logger.info(f"✅ SPY (Polygon): ${current_price:.2f} ({change_pct:+.2f}%)")
+                                    else:
+                                        logger.info(f"✅ SPY (Polygon): ${current_price:.2f}")
+                        else:
+                            logger.warning(f"Polygon SPY request failed: {resp.status_code}")
+                    except Exception as poly_err:
+                        logger.error(f"❌ Polygon SPY fallback error: {poly_err}")
                 else:
-                    logger.error("❌ All SPY symbol attempts failed (SPY, ^GSPC)")
-            except Exception as yf_err:
-                logger.error(f"❌ SPY yfinance fallback error: {yf_err}")
+                    logger.warning("POLYGON_API_KEY not set, cannot use fallback")
+            except Exception as fallback_err:
+                logger.error(f"❌ SPY fallback error: {fallback_err}")
                 
     except Exception as e:
         logger.warning(f"Could not get SPY price: {e}")
@@ -119,44 +132,60 @@ def get_world_context() -> dict[str, Any]:
             else:
                 result["vix"]["status"] = "high-fear"
         else:
-            # FALLBACK: Try yfinance directly with VIX index symbol
-            logger.info("VIX price_quorum returned NULL, trying yfinance fallback...")
+            # FALLBACK: Try Polygon.io for VIX
+            logger.info("VIX price_quorum returned NULL, trying Polygon.io fallback...")
             try:
-                import yfinance as yf
+                import os
+                import requests
                 
-                # Try ^VIX (CBOE Volatility Index)
-                try:
-                    logger.info("Attempting yfinance with symbol: ^VIX")
-                    vix_ticker = yf.Ticker("^VIX")
-                    vix_data = vix_ticker.history(period="2d")
-                    
-                    if not vix_data.empty and len(vix_data) > 0:
-                        vix_level = float(vix_data['Close'].iloc[-1])
-                        prev_close = float(vix_data['Close'].iloc[-2]) if len(vix_data) >= 2 else vix_level
+                polygon_key = os.getenv("POLYGON_API_KEY")
+                if polygon_key:
+                    try:
+                        # VIX is tracked as I:VIX on Polygon
+                        url = f"https://api.polygon.io/v2/aggs/ticker/I:VIX/range/1/day/2026-01-10/2026-01-14"
+                        headers = {"Authorization": f"Bearer {polygon_key}"}
                         
-                        result["vix"]["level"] = round(vix_level, 2)
-                        
-                        if prev_close and prev_close > 0:
-                            change = vix_level - prev_close
-                            result["vix"]["change"] = round(change, 2)
-                        
-                        # Determine VIX status
-                        if vix_level < 15:
-                            result["vix"]["status"] = "calm"
-                        elif vix_level < 20:
-                            result["vix"]["status"] = "normal"
-                        elif vix_level < 30:
-                            result["vix"]["status"] = "elevated"
+                        resp = requests.get(url, headers=headers, timeout=3)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            results = data.get("results", [])
+                            
+                            if len(results) >= 1:
+                                current = results[-1]
+                                vix_level = float(current.get("c", 0))  # Close level
+                                
+                                if len(results) >= 2:
+                                    prev = results[-2]
+                                    prev_close = float(prev.get("c", 0))
+                                else:
+                                    prev_close = vix_level
+                                
+                                if vix_level > 0:
+                                    result["vix"]["level"] = round(vix_level, 2)
+                                    
+                                    if prev_close > 0:
+                                        change = vix_level - prev_close
+                                        result["vix"]["change"] = round(change, 2)
+                                    
+                                    # Determine VIX status
+                                    if vix_level < 15:
+                                        result["vix"]["status"] = "calm"
+                                    elif vix_level < 20:
+                                        result["vix"]["status"] = "normal"
+                                    elif vix_level < 30:
+                                        result["vix"]["status"] = "elevated"
+                                    else:
+                                        result["vix"]["status"] = "high-fear"
+                                    
+                                    logger.info(f"✅ VIX (Polygon): {vix_level:.2f} ({result['vix']['status']}, change: {result['vix'].get('change', 'N/A')})")
                         else:
-                            result["vix"]["status"] = "high-fear"
-                        
-                        logger.info(f"✅ VIX (^VIX): {vix_level:.2f} ({result['vix']['status']}, change: {result['vix'].get('change', 'N/A')})")
-                    else:
-                        logger.error("❌ VIX yfinance returned empty data")
-                except Exception as vix_err:
-                    logger.error(f"❌ VIX yfinance fallback error: {vix_err}")
-            except Exception as yf_err:
-                logger.error(f"❌ VIX yfinance import/setup error: {yf_err}")
+                            logger.warning(f"Polygon VIX request failed: {resp.status_code}")
+                    except Exception as poly_err:
+                        logger.error(f"❌ Polygon VIX fallback error: {poly_err}")
+                else:
+                    logger.warning("POLYGON_API_KEY not set, cannot use VIX fallback")
+            except Exception as fallback_err:
+                logger.error(f"❌ VIX fallback error: {fallback_err}")
                 
     except Exception as e:
         logger.error(f"Could not get VIX level: {e}")
