@@ -4681,6 +4681,78 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.error(f"signal_dispatcher_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # CRITICAL: News Brain Loop runs in ALL modes (not just worker mode)
+    # This ensures news analysis happens even in web-only deployments
+    # ═══════════════════════════════════════════════════════════════════════════════
+    try:
+        LOGGER.info("🔍 News Brain: ENTRY POINT REACHED")
+        LOGGER.info("🔍 News Brain: Checking NEWS_ANALYSIS_ENABLED...")
+        NEWS_ANALYSIS_ENABLED = os.getenv("NEWS_ANALYSIS_ENABLED", "1") == "1"
+        LOGGER.info(f"🔍 News Brain: NEWS_ANALYSIS_ENABLED = {NEWS_ANALYSIS_ENABLED}")
+        
+        if not NEWS_ANALYSIS_ENABLED:
+            LOGGER.info("ℹ️  Automatic News Analysis: DISABLED (set NEWS_ANALYSIS_ENABLED=1 to enable)")
+        else:
+            LOGGER.info("🔍 News Brain: Importing get_news_brain...")
+            from core.intelligence.ghost_news_brain import get_news_brain
+            LOGGER.info("✅ News Brain: Import successful")
+            
+            NEWS_ANALYSIS_INTERVAL_MINUTES = int(os.getenv("NEWS_ANALYSIS_INTERVAL_MINUTES", "30"))
+            LOGGER.info(f"🔍 News Brain: Interval set to {NEWS_ANALYSIS_INTERVAL_MINUTES} minutes")
+            
+            async def _news_analysis_loop():
+                """Automatic news analysis every 30 minutes"""
+                LOGGER.info(f"📰 News Analysis Loop: STARTING (every {NEWS_ANALYSIS_INTERVAL_MINUTES} min)")
+                
+                while True:
+                    try:
+                        LOGGER.info("📰 Running automatic news analysis...")
+                        brain = get_news_brain()
+                        result = await brain.analyze_news()
+                        
+                        major_events = result.get("major_events", [])
+                        predictions_at_risk = result.get("predictions_at_risk", [])
+                        
+                        LOGGER.info(
+                            f"📰 News analysis complete: {len(major_events)} events, "
+                            f"{len(predictions_at_risk)} predictions at risk"
+                        )
+                        
+                        # Send Telegram alert for high-severity events
+                        critical_events = [e for e in major_events if e.get("severity") in ["CRITICAL", "HIGH"]]
+                        if critical_events or predictions_at_risk:
+                            try:
+                                alert_msg = "🚨 *GHOST NEWS ALERT*\n\n"
+                                
+                                if critical_events:
+                                    alert_msg += f"*{len(critical_events)} Critical Events:*\n"
+                                    for event in critical_events[:3]:
+                                        alert_msg += f"• {event.get('headline', 'N/A')}\n"
+                                    alert_msg += "\n"
+                                
+                                if predictions_at_risk:
+                                    alert_msg += f"*{len(predictions_at_risk)} Predictions at Risk:*\n"
+                                    for pred in predictions_at_risk[:5]:
+                                        symbol = pred.get("symbol", "???")
+                                        risk = pred.get("risk_level", "UNKNOWN")
+                                        alert_msg += f"• {symbol} - {risk} risk\n"
+                                
+                                if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+                                    _tg_send_chat_message(TELEGRAM_CHAT_ID, alert_msg)
+                            except Exception as e:
+                                LOGGER.error(f"Failed to send news alert: {e}")
+                        
+                    except Exception as e:
+                        LOGGER.error(f"News analysis error: {e}", exc_info=True)
+                    
+                    await asyncio.sleep(NEWS_ANALYSIS_INTERVAL_MINUTES * 60)
+            
+            asyncio.create_task(_news_analysis_loop())
+            LOGGER.info(f"✅ Automatic News Analysis: STARTED (every {NEWS_ANALYSIS_INTERVAL_MINUTES} min)")
+    except Exception as e:
+        LOGGER.error(f"🚨 News Brain FAILED TO START: {e}", extra={"component": "startup"}, exc_info=True)
+    
     # CRITICAL: Check if this is WORKER mode or WEB mode
     WORKER_MODE = os.getenv("WORKER_MODE") == "1"
     
@@ -4904,72 +4976,7 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.error(f"full_market_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
-    # Start Automatic News Analysis (every 30 minutes)
-    try:
-        LOGGER.info("🔍 News Brain: Checking NEWS_ANALYSIS_ENABLED...")
-        NEWS_ANALYSIS_ENABLED = os.getenv("NEWS_ANALYSIS_ENABLED", "1") == "1"
-        LOGGER.info(f"🔍 News Brain: NEWS_ANALYSIS_ENABLED = {NEWS_ANALYSIS_ENABLED}")
-        
-        if not NEWS_ANALYSIS_ENABLED:
-            LOGGER.info("ℹ️  Automatic News Analysis: DISABLED (set NEWS_ANALYSIS_ENABLED=1 to enable)")
-        else:
-            LOGGER.info("🔍 News Brain: Importing get_news_brain...")
-            from core.intelligence.ghost_news_brain import get_news_brain
-            LOGGER.info("✅ News Brain: Import successful")
-            
-            NEWS_ANALYSIS_INTERVAL_MINUTES = int(os.getenv("NEWS_ANALYSIS_INTERVAL_MINUTES", "30"))
-            LOGGER.info(f"🔍 News Brain: Interval set to {NEWS_ANALYSIS_INTERVAL_MINUTES} minutes")
-            async def _news_analysis_loop():
-                """Automatic news analysis every 30 minutes"""
-                LOGGER.info(f"📰 News Analysis Loop: STARTING (every {NEWS_ANALYSIS_INTERVAL_MINUTES} min)")
-                
-                while True:
-                    try:
-                        LOGGER.info("📰 Running automatic news analysis...")
-                        brain = get_news_brain()
-                        result = await brain.analyze_news()
-                        
-                        major_events = result.get("major_events", [])
-                        predictions_at_risk = result.get("predictions_at_risk", [])
-                        
-                        LOGGER.info(
-                            f"📰 News analysis complete: {len(major_events)} events, "
-                            f"{len(predictions_at_risk)} predictions at risk"
-                        )
-                        
-                        # Send Telegram alert for high-severity events
-                        critical_events = [e for e in major_events if e.get("severity") in ["CRITICAL", "HIGH"]]
-                        if critical_events or predictions_at_risk:
-                            try:
-                                alert_msg = "🚨 *GHOST NEWS ALERT*\n\n"
-                                
-                                if critical_events:
-                                    alert_msg += f"*{len(critical_events)} Critical Events:*\n"
-                                    for event in critical_events[:3]:
-                                        alert_msg += f"• {event.get('headline', 'N/A')}\n"
-                                    alert_msg += "\n"
-                                
-                                if predictions_at_risk:
-                                    alert_msg += f"*{len(predictions_at_risk)} Predictions at Risk:*\n"
-                                    for pred in predictions_at_risk[:5]:
-                                        symbol = pred.get("symbol", "???")
-                                        risk = pred.get("risk_level", "UNKNOWN")
-                                        alert_msg += f"• {symbol} - {risk} risk\n"
-                                
-                                if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-                                    _tg_send_chat_message(TELEGRAM_CHAT_ID, alert_msg)
-                            except Exception as e:
-                                LOGGER.error(f"Failed to send news alert: {e}")
-                        
-                    except Exception as e:
-                        LOGGER.error(f"News analysis error: {e}", exc_info=True)
-                    
-                    await asyncio.sleep(NEWS_ANALYSIS_INTERVAL_MINUTES * 60)
-            
-            asyncio.create_task(_news_analysis_loop())
-            LOGGER.info(f"✅ Automatic News Analysis: STARTED (every {NEWS_ANALYSIS_INTERVAL_MINUTES} min)")
-    except Exception as e:
-        LOGGER.error(f"🚨 News Brain FAILED TO START: {e}", extra={"component": "startup"}, exc_info=True)
+    # NOTE: News Brain startup moved BEFORE WORKER_MODE check (runs in all modes)
     
     # ═══════════════════════════════════════════════════════════════════════════════
     # GHOST NOTIFICATION SYSTEM - ONE simple system for all alerts
