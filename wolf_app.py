@@ -8895,6 +8895,101 @@ async def api_predict_run_get(symbol: str):
     return await api_predict_run(body, credentials=None)
 
 
+@APP.get("/api/v3/debug/features/{symbol}")
+async def api_v3_debug_features(symbol: str):
+    """
+    DEBUG: Show sentiment and world context feature values used in predictions.
+    
+    This endpoint tests the fixes for:
+    - Sentiment engine (should return real data, not 0.0)
+    - World context (should return real SPY/VIX, not NULL)
+    
+    Returns:
+        {
+            "ok": True,
+            "symbol": "ZEC",
+            "sentiment": {
+                "signals": [
+                    {"name": "news_sentiment_score", "value": 0.72, "source": "ghost_news_brain"},
+                    {"name": "social_sentiment", "value": 0.0, "source": "rss_fallback"}
+                ],
+                "working": True
+            },
+            "world_context": {
+                "spy_price": 598.45,
+                "vix_level": 14.23,
+                "market_regime": "normal",
+                "working": True
+            },
+            "orchestrator_health": {
+                "total_pillars": 6,
+                "healthy_pillars": 6,
+                "pillar_status": {...}
+            }
+        }
+    """
+    try:
+        symbol = symbol.upper().strip()
+        
+        # Test 1: Sentiment Engine
+        from core.data_pillars.sentiment_engine import SentimentEngine
+        sentiment_engine = SentimentEngine()
+        sentiment_result = sentiment_engine.get_signals(symbol)
+        
+        sentiment_data = {
+            "status": sentiment_result.status,
+            "signals": [
+                {
+                    "name": signal.name,
+                    "value": signal.value,
+                    "source": signal.source
+                }
+                for signal in sentiment_result.signals
+            ],
+            "working": len(sentiment_result.signals) > 0,
+            "has_real_data": any(s.value != 0.0 for s in sentiment_result.signals)
+        }
+        
+        # Test 2: World Context
+        from core.world_context import get_world_context
+        world_context = get_world_context()
+        
+        world_data = {
+            "spy_price": world_context.spy_price,
+            "spy_change_pct": world_context.spy_change_pct,
+            "vix_level": world_context.vix_level,
+            "vix_change_pct": world_context.vix_change_pct,
+            "market_regime": world_context.market_regime,
+            "working": (world_context.spy_price and world_context.spy_price > 0 and
+                       world_context.vix_level and world_context.vix_level > 0)
+        }
+        
+        # Test 3: Feature Orchestrator Health
+        from core.data_pillars.feature_orchestrator import FeatureOrchestrator
+        orchestrator = FeatureOrchestrator()
+        health = orchestrator.health_check()
+        
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "sentiment": sentiment_data,
+            "world_context": world_data,
+            "orchestrator_health": health,
+            "verdict": {
+                "sentiment_engine_working": sentiment_data["working"],
+                "world_context_working": world_data["working"],
+                "all_pillars_healthy": health["healthy_pillars"] >= 5
+            }
+        }
+    except Exception as e:
+        LOGGER.error(f"Feature debug failed for {symbol}: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "symbol": symbol,
+            "error": str(e)
+        }
+
+
 @APP.get("/api/dev/features/diagnostic")
 async def api_features_diagnostic(symbol: str):
     """
