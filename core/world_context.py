@@ -150,9 +150,12 @@ def get_world_context() -> dict[str, Any]:
                             headers = {"Authorization": f"Bearer {polygon_key}"}
                             
                             resp = requests.get(url, headers=headers, timeout=3)
+                            logger.info(f"Polygon {vix_symbol} response: {resp.status_code}")
+                            
                             if resp.status_code == 200:
                                 data = resp.json()
                                 results = data.get("results", [])
+                                logger.info(f"Polygon {vix_symbol} results count: {len(results)}")
                                 
                                 if len(results) >= 1:
                                     current = results[-1]
@@ -183,17 +186,29 @@ def get_world_context() -> dict[str, Any]:
                                         
                                         logger.info(f"✅ VIX (Polygon {vix_symbol}): {vix_level:.2f} ({result['vix']['status']}, change: {result['vix'].get('change', 'N/A')})")
                                         break  # Success, stop trying other symbols
+                                else:
+                                    logger.warning(f"Polygon {vix_symbol}: No results in response")
                             else:
-                                logger.warning(f"Polygon {vix_symbol} request failed: {resp.status_code}")
+                                logger.warning(f"Polygon {vix_symbol} request failed: {resp.status_code} - {resp.text[:200]}")
                         except Exception as symbol_err:
                             logger.warning(f"Polygon {vix_symbol} failed: {symbol_err}")
                             continue
                     else:
-                        logger.error("❌ All VIX symbol attempts failed on Polygon")
+                        # ALL POLYGON ATTEMPTS FAILED - Use reasonable default
+                        logger.warning("❌ All VIX symbol attempts failed on Polygon, using default VIX=15.0")
+                        result["vix"]["level"] = 15.0
+                        result["vix"]["change"] = 0.0
+                        result["vix"]["status"] = "normal"
                 else:
-                    logger.warning("POLYGON_API_KEY not set, cannot use VIX fallback")
+                    logger.warning("POLYGON_API_KEY not set, using default VIX=15.0")
+                    result["vix"]["level"] = 15.0
+                    result["vix"]["change"] = 0.0
+                    result["vix"]["status"] = "normal"
             except Exception as fallback_err:
-                logger.error(f"❌ VIX fallback error: {fallback_err}")
+                logger.error(f"❌ VIX fallback error: {fallback_err}, using default VIX=15.0")
+                result["vix"]["level"] = 15.0
+                result["vix"]["change"] = 0.0
+                result["vix"]["status"] = "normal"
                 
     except Exception as e:
         logger.error(f"Could not get VIX level: {e}")
