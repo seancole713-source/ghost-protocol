@@ -231,6 +231,13 @@ class SentimentEngine(BasePillar):
             from core.intelligence.ghost_news_brain import get_news_brain
             import asyncio
             
+            # Fix nested event loop issue
+            try:
+                import nest_asyncio
+                nest_asyncio.apply()
+            except ImportError:
+                logger.debug("nest_asyncio not available - RSS scan may fail in async context")
+            
             brain = get_news_brain()
             
             # Fetch recent headlines (cached for 5 minutes)
