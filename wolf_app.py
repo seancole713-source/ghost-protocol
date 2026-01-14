@@ -8942,7 +8942,7 @@ async def api_v3_debug_features(symbol: str):
         sentiment_result = sentiment_engine.get_signals(symbol)
         
         sentiment_data = {
-            "status": sentiment_result.status,
+            "pillar_name": sentiment_result.pillar_name,
             "signals": [
                 {
                     "name": signal.name,
@@ -8951,6 +8951,7 @@ async def api_v3_debug_features(symbol: str):
                 }
                 for signal in sentiment_result.signals
             ],
+            "errors": sentiment_result.errors,
             "working": len(sentiment_result.signals) > 0,
             "has_real_data": any(s.value != 0.0 for s in sentiment_result.signals)
         }
@@ -8959,14 +8960,21 @@ async def api_v3_debug_features(symbol: str):
         from core.world_context import get_world_context
         world_context = get_world_context()
         
+        spy_data = world_context.get("spy", {})
+        vix_data = world_context.get("vix", {})
+        mood_data = world_context.get("market_mood", {})
+        
         world_data = {
-            "spy_price": world_context.spy_price,
-            "spy_change_pct": world_context.spy_change_pct,
-            "vix_level": world_context.vix_level,
-            "vix_change_pct": world_context.vix_change_pct,
-            "market_regime": world_context.market_regime,
-            "working": (world_context.spy_price and world_context.spy_price > 0 and
-                       world_context.vix_level and world_context.vix_level > 0)
+            "spy_price": spy_data.get("price"),
+            "spy_change_pct": spy_data.get("change_pct"),
+            "spy_provider": spy_data.get("provider"),
+            "vix_level": vix_data.get("level"),
+            "vix_change": vix_data.get("change"),
+            "vix_status": vix_data.get("status"),
+            "market_sentiment": mood_data.get("sentiment"),
+            "market_score": mood_data.get("score"),
+            "working": (spy_data.get("price") is not None and spy_data.get("price") > 0 and
+                       vix_data.get("level") is not None and vix_data.get("level") > 0)
         }
         
         # Test 3: Feature Orchestrator Health
