@@ -4906,12 +4906,19 @@ async def _post_startup_init():
     
     # Start Automatic News Analysis (every 30 minutes)
     try:
-        from core.intelligence.ghost_news_brain import get_news_brain
-        
+        LOGGER.info("🔍 News Brain: Checking NEWS_ANALYSIS_ENABLED...")
         NEWS_ANALYSIS_ENABLED = os.getenv("NEWS_ANALYSIS_ENABLED", "1") == "1"
-        NEWS_ANALYSIS_INTERVAL_MINUTES = int(os.getenv("NEWS_ANALYSIS_INTERVAL_MINUTES", "30"))
+        LOGGER.info(f"🔍 News Brain: NEWS_ANALYSIS_ENABLED = {NEWS_ANALYSIS_ENABLED}")
         
-        if NEWS_ANALYSIS_ENABLED:
+        if not NEWS_ANALYSIS_ENABLED:
+            LOGGER.info("ℹ️  Automatic News Analysis: DISABLED (set NEWS_ANALYSIS_ENABLED=1 to enable)")
+        else:
+            LOGGER.info("🔍 News Brain: Importing get_news_brain...")
+            from core.intelligence.ghost_news_brain import get_news_brain
+            LOGGER.info("✅ News Brain: Import successful")
+            
+            NEWS_ANALYSIS_INTERVAL_MINUTES = int(os.getenv("NEWS_ANALYSIS_INTERVAL_MINUTES", "30"))
+            LOGGER.info(f"🔍 News Brain: Interval set to {NEWS_ANALYSIS_INTERVAL_MINUTES} minutes")
             async def _news_analysis_loop():
                 """Automatic news analysis every 30 minutes"""
                 LOGGER.info(f"📰 News Analysis Loop: STARTING (every {NEWS_ANALYSIS_INTERVAL_MINUTES} min)")
@@ -4961,10 +4968,8 @@ async def _post_startup_init():
             
             asyncio.create_task(_news_analysis_loop())
             LOGGER.info(f"✅ Automatic News Analysis: STARTED (every {NEWS_ANALYSIS_INTERVAL_MINUTES} min)")
-        else:
-            LOGGER.info("ℹ️  Automatic News Analysis: DISABLED (set NEWS_ANALYSIS_ENABLED=1 to enable)")
     except Exception as e:
-        LOGGER.error(f"news_analysis_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        LOGGER.error(f"🚨 News Brain FAILED TO START: {e}", extra={"component": "startup"}, exc_info=True)
     
     # ═══════════════════════════════════════════════════════════════════════════════
     # GHOST NOTIFICATION SYSTEM - ONE simple system for all alerts
