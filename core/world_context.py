@@ -140,48 +140,56 @@ def get_world_context() -> dict[str, Any]:
                 
                 polygon_key = os.getenv("POLYGON_API_KEY")
                 if polygon_key:
-                    try:
-                        # VIX is tracked as I:VIX on Polygon
-                        url = f"https://api.polygon.io/v2/aggs/ticker/I:VIX/range/1/day/2026-01-10/2026-01-14"
-                        headers = {"Authorization": f"Bearer {polygon_key}"}
-                        
-                        resp = requests.get(url, headers=headers, timeout=3)
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            results = data.get("results", [])
+                    # Try multiple VIX ticker formats
+                    vix_symbols = ["I:VIX", "VIX", "^VIX"]
+                    
+                    for vix_symbol in vix_symbols:
+                        try:
+                            logger.info(f"Attempting Polygon VIX with symbol: {vix_symbol}")
+                            url = f"https://api.polygon.io/v2/aggs/ticker/{vix_symbol}/range/1/day/2026-01-10/2026-01-14"
+                            headers = {"Authorization": f"Bearer {polygon_key}"}
                             
-                            if len(results) >= 1:
-                                current = results[-1]
-                                vix_level = float(current.get("c", 0))  # Close level
+                            resp = requests.get(url, headers=headers, timeout=3)
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                results = data.get("results", [])
                                 
-                                if len(results) >= 2:
-                                    prev = results[-2]
-                                    prev_close = float(prev.get("c", 0))
-                                else:
-                                    prev_close = vix_level
-                                
-                                if vix_level > 0:
-                                    result["vix"]["level"] = round(vix_level, 2)
+                                if len(results) >= 1:
+                                    current = results[-1]
+                                    vix_level = float(current.get("c", 0))  # Close level
                                     
-                                    if prev_close > 0:
-                                        change = vix_level - prev_close
-                                        result["vix"]["change"] = round(change, 2)
-                                    
-                                    # Determine VIX status
-                                    if vix_level < 15:
-                                        result["vix"]["status"] = "calm"
-                                    elif vix_level < 20:
-                                        result["vix"]["status"] = "normal"
-                                    elif vix_level < 30:
-                                        result["vix"]["status"] = "elevated"
+                                    if len(results) >= 2:
+                                        prev = results[-2]
+                                        prev_close = float(prev.get("c", 0))
                                     else:
-                                        result["vix"]["status"] = "high-fear"
+                                        prev_close = vix_level
                                     
-                                    logger.info(f"✅ VIX (Polygon): {vix_level:.2f} ({result['vix']['status']}, change: {result['vix'].get('change', 'N/A')})")
-                        else:
-                            logger.warning(f"Polygon VIX request failed: {resp.status_code}")
-                    except Exception as poly_err:
-                        logger.error(f"❌ Polygon VIX fallback error: {poly_err}")
+                                    if vix_level > 0:
+                                        result["vix"]["level"] = round(vix_level, 2)
+                                        
+                                        if prev_close > 0:
+                                            change = vix_level - prev_close
+                                            result["vix"]["change"] = round(change, 2)
+                                        
+                                        # Determine VIX status
+                                        if vix_level < 15:
+                                            result["vix"]["status"] = "calm"
+                                        elif vix_level < 20:
+                                            result["vix"]["status"] = "normal"
+                                        elif vix_level < 30:
+                                            result["vix"]["status"] = "elevated"
+                                        else:
+                                            result["vix"]["status"] = "high-fear"
+                                        
+                                        logger.info(f"✅ VIX (Polygon {vix_symbol}): {vix_level:.2f} ({result['vix']['status']}, change: {result['vix'].get('change', 'N/A')})")
+                                        break  # Success, stop trying other symbols
+                            else:
+                                logger.warning(f"Polygon {vix_symbol} request failed: {resp.status_code}")
+                        except Exception as symbol_err:
+                            logger.warning(f"Polygon {vix_symbol} failed: {symbol_err}")
+                            continue
+                    else:
+                        logger.error("❌ All VIX symbol attempts failed on Polygon")
                 else:
                     logger.warning("POLYGON_API_KEY not set, cannot use VIX fallback")
             except Exception as fallback_err:
