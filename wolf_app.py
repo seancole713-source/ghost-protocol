@@ -8982,16 +8982,26 @@ async def api_v3_debug_features(symbol: str):
         orchestrator = FeatureOrchestrator()
         health = orchestrator.health_check()
         
+        # Extract summary
+        summary = health.get("summary", {})
+        healthy_count = summary.get("healthy", 0)
+        total_count = summary.get("total", 6)
+        
         return {
             "ok": True,
             "symbol": symbol,
             "sentiment": sentiment_data,
             "world_context": world_data,
-            "orchestrator_health": health,
+            "orchestrator_health": {
+                "ok": health.get("ok", False),
+                "healthy": healthy_count,
+                "total": total_count,
+                "pillars": health.get("pillars", {})
+            },
             "verdict": {
                 "sentiment_engine_working": sentiment_data["working"],
                 "world_context_working": world_data["working"],
-                "all_pillars_healthy": health["healthy_pillars"] >= 5
+                "all_pillars_healthy": healthy_count >= 5
             }
         }
     except Exception as e:
