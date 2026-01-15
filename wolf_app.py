@@ -4719,29 +4719,9 @@ async def _post_startup_init():
                             f"{len(predictions_at_risk)} predictions at risk"
                         )
                         
-                        # Send Telegram alert for high-severity events
-                        critical_events = [e for e in major_events if e.get("severity") in ["CRITICAL", "HIGH"]]
-                        if critical_events or predictions_at_risk:
-                            try:
-                                alert_msg = "🚨 *GHOST NEWS ALERT*\n\n"
-                                
-                                if critical_events:
-                                    alert_msg += f"*{len(critical_events)} Critical Events:*\n"
-                                    for event in critical_events[:3]:
-                                        alert_msg += f"• {event.get('headline', 'N/A')}\n"
-                                    alert_msg += "\n"
-                                
-                                if predictions_at_risk:
-                                    alert_msg += f"*{len(predictions_at_risk)} Predictions at Risk:*\n"
-                                    for pred in predictions_at_risk[:5]:
-                                        symbol = pred.get("symbol", "???")
-                                        risk = pred.get("risk_level", "UNKNOWN")
-                                        alert_msg += f"• {symbol} - {risk} risk\n"
-                                
-                                if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-                                    _tg_send_chat_message(TELEGRAM_CHAT_ID, alert_msg)
-                            except Exception as e:
-                                LOGGER.error(f"Failed to send news alert: {e}")
+                        # NOTE: Telegram alerts DISABLED - News Brain runs silently for internal use only
+                        # Ghost uses this data to improve predictions, but doesn't spam user with every analysis
+                        # User gets alerts only for: targets hit, stops hit, TOP 10 updates, and price path warnings
                         
                     except Exception as e:
                         LOGGER.error(f"News analysis error: {e}", exc_info=True)
