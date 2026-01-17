@@ -4705,9 +4705,11 @@ async def _post_startup_init():
                 """Automatic news analysis every 30 minutes"""
                 LOGGER.info(f"📰 News Analysis Loop: STARTING (every {NEWS_ANALYSIS_INTERVAL_MINUTES} min)")
                 
+                cycle_count = 0
                 while True:
                     try:
-                        LOGGER.info("📰 Running automatic news analysis...")
+                        cycle_count += 1
+                        LOGGER.info(f"📰 [CYCLE {cycle_count}] Running automatic news analysis...")
                         brain = get_news_brain()
                         result = await brain.analyze_news()
                         
@@ -4715,7 +4717,7 @@ async def _post_startup_init():
                         predictions_at_risk = result.get("predictions_at_risk", [])
                         
                         LOGGER.info(
-                            f"📰 News analysis complete: {len(major_events)} events, "
+                            f"📰 [CYCLE {cycle_count}] News analysis complete: {len(major_events)} events, "
                             f"{len(predictions_at_risk)} predictions at risk"
                         )
                         
