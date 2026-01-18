@@ -24905,6 +24905,8 @@ async def watchdog_check_updates(request: Request):
     - Sends ALERT if target or stop is hit
     - Sends UPDATE if any pick moved >3%
     - At 8 AM: Also sends TOP 10 if not sent today (auto-integration)
+    
+    ⚡ PERFORMANCE: Returns 200 OK immediately, processes in background to avoid cron timeout.
     """
     # Check cron secret for authentication
     cron_secret = os.getenv("CRON_SECRET", "")
@@ -24918,11 +24920,38 @@ async def watchdog_check_updates(request: Request):
         LOGGER.warning(f"[WATCHDOG] Invalid cron secret attempt from {request.client.host if request.client else 'unknown'}")
         return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
     
+    # ⚡ CRITICAL: Return 200 OK immediately to avoid cron timeout
+    # The actual check runs in background via asyncio.create_task()
+    LOGGER.info("[WATCHDOG] 🐺 Authenticated cron request - scheduling background check...")
+    
+    # Schedule background task
+    asyncio.create_task(_watchdog_background_check())
+    
+    # Return immediately (prevents cron-job.org 30s timeout)
+    return {
+        "ok": True,
+        "message": "Watchdog check scheduled in background",
+        "note": "Check logs for results - this endpoint returns immediately to avoid timeout"
+    }
+
+
+async def _watchdog_background_check():
+    """
+    Background task for watchdog checking.
+    Runs after the HTTP response is sent to avoid cron timeout.
+    """
     try:
+async def _watchdog_background_check():
+    """
+    Background task for watchdog checking.
+    Runs after the HTTP response is sent to avoid cron timeout.
+    """
+    try:
+        import asyncio
         from core.ghost_notifications import get_notification_system, get_central_time
         from core.asset_classifier import get_asset_type
         
-        LOGGER.info("[WATCHDOG] 🐺 Authenticated cron request - checking for updates...")
+        LOGGER.info("[WATCHDOG] 🔄 Starting background check...")
         
         # Setup telegram function
         def _send_telegram(msg: str) -> bool:
@@ -24954,7 +24983,7 @@ async def watchdog_check_updates(request: Request):
             except Exception as top10_err:
                 LOGGER.error(f"[WATCHDOG] TOP 10 auto-send failed: {top10_err}")
         
-        # Create price lookup function using _LATEST_PREDICTIONS + live refresh
+        # Create ASYNC price lookup function using _LATEST_PREDICTIONS + live refresh
         async def get_current_price(symbol: str) -> float:
             """Get current price, refreshing if stale"""
             # First check in-memory predictions
@@ -24983,44 +25012,55 @@ async def watchdog_check_updates(request: Request):
             
             return 0.0
         
-        # Sync wrapper for the price function
-        import asyncio
-        def get_price_sync(symbol: str) -> float:
+        # Async wrapper for the price function (proper async now)
+        async def get_price_async(symbol: str) -> float:
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # We're in an async context, create a new task
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(asyncio.run, get_current_price(symbol))
-                        return future.result(timeout=5)
-                else:
-                    return loop.run_until_complete(get_current_price(symbol))
+                return await get_current_price(symbol)
             except Exception as e:
                 LOGGER.warning(f"[WATCHDOG] Price lookup error for {symbol}: {e}")
                 return 0.0
         
-        # Run the check
+        # PARALLEL PRICE FETCHING: Fetch all prices concurrently
+        # Get list of symbols to check
+        status = notif.get_status()
+        active_symbols = [pick.get("symbol") for pick in status.get("tracked_picks", []) if pick.get("symbol")]
+        
+        if active_symbols:
+            LOGGER.info(f"[WATCHDOG] 💰 Fetching prices for {len(active_symbols)} symbols in parallel...")
+            # Fetch all prices concurrently (much faster than sequential)
+            price_tasks = [get_price_async(sym) for sym in active_symbols]
+            prices = await asyncio.gather(*price_tasks, return_exceptions=True)
+            
+            # Build price lookup dict
+            price_lookup = {}
+            for sym, price in zip(active_symbols, prices):
+                if isinstance(price, (int, float)) and price > 0:
+                    price_lookup[sym] = price
+                else:
+                    LOGGER.warning(f"[WATCHDOG] No valid price for {sym}")
+            
+            # Create sync wrapper that uses the pre-fetched prices
+            def get_price_sync(symbol: str) -> float:
+                return price_lookup.get(symbol, 0.0)
+        else:
+            LOGGER.info("[WATCHDOG] No active picks to check")
+            def get_price_sync(symbol: str) -> float:
+                return 0.0
+        
+        # Run the check with pre-fetched prices (fast now!)
         had_updates = notif.check_for_updates(get_price_sync)
         
-        # Get status for response
+        # Get final status
         status = notif.get_status()
         
-        return {
-            "ok": True,
-            "message": "Watchdog check complete",
-            "top10_sent_at_8am": top10_sent,
-            "sent_notifications": had_updates,
-            "active_picks": status.get("active_picks", 0),
-            "target_hits": status.get("target_hits", 0),
-            "stop_hits": status.get("stop_hits", 0),
-            "database": "postgres" if notif._use_postgres else "sqlite",
-            "persistent": notif._use_postgres,
-        }
+        LOGGER.info(
+            f"[WATCHDOG] ✅ Background check complete - "
+            f"Sent: {had_updates}, Active: {status.get('active_picks', 0)}, "
+            f"Targets: {status.get('target_hits', 0)}, Stops: {status.get('stop_hits', 0)}"
+        )
         
     except Exception as e:
-        LOGGER.error(f"[WATCHDOG] Error: {e}", exc_info=True)
-        return {"ok": False, "error": str(e)}
+        LOGGER.error(f"[WATCHDOG] Background check error: {e}", exc_info=True)
 
 
 @APP.get("/alerts/notifications/status")
