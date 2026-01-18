@@ -24941,12 +24941,6 @@ async def _watchdog_background_check():
     Runs after the HTTP response is sent to avoid cron timeout.
     """
     try:
-async def _watchdog_background_check():
-    """
-    Background task for watchdog checking.
-    Runs after the HTTP response is sent to avoid cron timeout.
-    """
-    try:
         import asyncio
         from core.ghost_notifications import get_notification_system, get_central_time
         from core.asset_classifier import get_asset_type
