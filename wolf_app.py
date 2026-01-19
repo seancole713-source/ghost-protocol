@@ -37824,7 +37824,7 @@ try:
                     MAX(created_at) as newest
                 FROM paper_trades
                 WHERE outcome = 'PENDING'
-                  AND created_at < %s
+                  AND created_at < %s::text
             """, (cutoff_str,))
             
             stats = cur.fetchone()
@@ -37872,7 +37872,7 @@ try:
                     checked_at = NOW(),
                     notes = 'Auto-expired: Pre-V2 filter trade'
                 WHERE outcome = 'PENDING'
-                  AND created_at < %s
+                  AND created_at < %s::text
             """, (cutoff_str,))
             
             expired_count = cur.rowcount
