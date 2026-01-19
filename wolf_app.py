@@ -37753,20 +37753,30 @@ try:
             }
 
     @APP.get("/api/v3/paper/stats")
-    async def api_v3_paper_get_stats(days: int = 30):
+    async def api_v3_paper_get_stats(days: int = 30, since: str = None):
         """
         Get paper trading statistics.
         
-        Example:
+        Args:
+            days: Number of days to look back (default: 30)
+            since: Optional date filter (e.g., "2026-01-14") to show stats from specific date
+                   Overrides 'days' parameter when provided
+        
+        Examples:
             GET /api/v3/paper/stats?days=30
+            GET /api/v3/paper/stats?since=2026-01-14  (V2 filter era only)
         """
         try:
             tracker = get_paper_tracker()
-            stats = tracker.get_stats(days=days)
+            stats = tracker.get_stats(days=days, since=since)
             
             return {
                 "ok": True,
-                "stats": stats
+                "stats": stats,
+                "filters": {
+                    "days": days,
+                    "since": since
+                }
             }
         
         except Exception as e:

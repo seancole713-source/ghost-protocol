@@ -494,9 +494,14 @@ class PaperTracker:
         finally:
             conn.close()
     
-    def get_stats(self, days: int = 30) -> dict:
+    def get_stats(self, days: int = 30, since: str = None) -> dict:
         """
         Calculate paper trading statistics.
+        
+        Args:
+            days: Number of days to look back (default: 30)
+            since: Optional date string (e.g., "2026-01-14") to filter from specific date.
+                   Overrides 'days' parameter when provided.
         
         Returns:
             {
@@ -518,7 +523,11 @@ class PaperTracker:
         conn = self._get_connection()
         
         try:
-            cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+            # Use 'since' parameter if provided, otherwise calculate from 'days'
+            if since:
+                cutoff = since
+            else:
+                cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
             
             # Overall stats
             cur = self._execute(conn, """
