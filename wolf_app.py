@@ -37815,15 +37815,17 @@ try:
                 return {"ok": False, "error": f"Invalid date format: {cutoff_date}. Use YYYY-MM-DD"}
             
             # Count trades to be expired
+            # created_at is TEXT column, so use string comparison (ISO format sorts correctly)
+            cutoff_str = cutoff.strftime("%Y-%m-%dT00:00:00")
             cur.execute("""
-                SELECT 
+                SELECT
                     COUNT(*) as count,
                     MIN(created_at) as oldest,
                     MAX(created_at) as newest
                 FROM paper_trades
                 WHERE outcome = 'PENDING'
                   AND created_at < %s
-            """, (cutoff,))
+            """, (cutoff_str,))
             
             stats = cur.fetchone()
             pending_count = stats['count']
@@ -37865,13 +37867,13 @@ try:
             
             cur.execute("""
                 UPDATE paper_trades
-                SET 
+                SET
                     outcome = 'EXPIRED',
                     checked_at = NOW(),
                     notes = 'Auto-expired: Pre-V2 filter trade'
                 WHERE outcome = 'PENDING'
                   AND created_at < %s
-            """, (cutoff,))
+            """, (cutoff_str,))
             
             expired_count = cur.rowcount
             conn.commit()
