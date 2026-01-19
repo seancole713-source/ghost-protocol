@@ -37777,6 +37777,132 @@ try:
                 "error": str(e)
             }
 
+    @APP.post("/api/v3/paper/admin/expire-old-pending")
+    async def api_v3_paper_admin_expire_old_pending(
+        cutoff_date: str = "2026-01-14",
+        dry_run: bool = False
+    ):
+        """
+        Mark old pending trades as EXPIRED to clean up stats.
+        
+        These are trades from before the V2 filter was deployed (Jan 14, 2026).
+        They pollute the database with 26K+ pending trades that will never resolve.
+        
+        Args:
+            cutoff_date: Expire trades created before this date (default: 2026-01-14)
+            dry_run: If True, just count without making changes
+        
+        Returns:
+            Count of expired trades and updated stats
+        """
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        from datetime import datetime
+        
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {"ok": False, "error": "DATABASE_URL not configured"}
+        
+        try:
+            conn = psycopg2.connect(db_url)
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Parse cutoff date
+            try:
+                cutoff = datetime.strptime(cutoff_date, "%Y-%m-%d")
+            except ValueError:
+                conn.close()
+                return {"ok": False, "error": f"Invalid date format: {cutoff_date}. Use YYYY-MM-DD"}
+            
+            # Count trades to be expired
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as count,
+                    MIN(created_at) as oldest,
+                    MAX(created_at) as newest
+                FROM paper_trades
+                WHERE outcome = 'PENDING'
+                  AND created_at < %s
+            """, (cutoff,))
+            
+            stats = cur.fetchone()
+            pending_count = stats['count']
+            oldest = stats['oldest']
+            newest = stats['newest']
+            
+            if pending_count == 0:
+                conn.close()
+                return {
+                    "ok": True,
+                    "message": "No pending trades found before cutoff date",
+                    "cutoff_date": cutoff_date,
+                    "expired_count": 0
+                }
+            
+            if dry_run:
+                # Just return counts without making changes
+                cur.execute("""
+                    SELECT outcome, COUNT(*) as count
+                    FROM paper_trades
+                    GROUP BY outcome
+                    ORDER BY count DESC
+                """)
+                outcome_counts = {row['outcome']: row['count'] for row in cur.fetchall()}
+                conn.close()
+                
+                return {
+                    "ok": True,
+                    "dry_run": True,
+                    "would_expire": pending_count,
+                    "oldest_trade": str(oldest) if oldest else None,
+                    "newest_trade": str(newest) if newest else None,
+                    "cutoff_date": cutoff_date,
+                    "current_outcome_counts": outcome_counts
+                }
+            
+            # Actually expire the trades
+            LOGGER.info(f"🧹 Expiring {pending_count:,} old pending trades before {cutoff_date}")
+            
+            cur.execute("""
+                UPDATE paper_trades
+                SET 
+                    outcome = 'EXPIRED',
+                    checked_at = NOW(),
+                    notes = 'Auto-expired: Pre-V2 filter trade'
+                WHERE outcome = 'PENDING'
+                  AND created_at < %s
+            """, (cutoff,))
+            
+            expired_count = cur.rowcount
+            conn.commit()
+            
+            # Get updated counts
+            cur.execute("""
+                SELECT outcome, COUNT(*) as count
+                FROM paper_trades
+                GROUP BY outcome
+                ORDER BY count DESC
+            """)
+            outcome_counts = {row['outcome']: row['count'] for row in cur.fetchall()}
+            
+            conn.close()
+            
+            LOGGER.info(f"✅ Expired {expired_count:,} old pending trades")
+            
+            return {
+                "ok": True,
+                "expired_count": expired_count,
+                "oldest_trade": str(oldest) if oldest else None,
+                "newest_trade": str(newest) if newest else None,
+                "cutoff_date": cutoff_date,
+                "outcome_counts": outcome_counts,
+                "message": f"Successfully expired {expired_count:,} old pending trades"
+            }
+            
+        except Exception as e:
+            LOGGER.error(f"Failed to expire old pending trades: {e}", exc_info=True)
+            return {"ok": False, "error": str(e)}
+
     LOGGER.info("✅ Paper Trading API endpoints registered (/api/v3/paper/*)")
 
 except Exception as e:
