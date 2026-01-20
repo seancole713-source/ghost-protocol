@@ -4265,10 +4265,11 @@ async def _on_startup():
                     if database_url:
                         conn = psycopg2.connect(database_url)
                         cur = conn.cursor()
+                        # Cast target_time to TIMESTAMP for comparison (stored as TEXT)
                         cur.execute("""
                             SELECT DISTINCT symbol FROM paper_trades 
                             WHERE outcome = 'PENDING' 
-                            AND target_time <= NOW()
+                            AND target_time::timestamp <= NOW()
                         """)
                         symbols = cur.fetchall()
                         cur.close()
