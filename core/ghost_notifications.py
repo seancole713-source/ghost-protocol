@@ -754,9 +754,9 @@ def format_alert_message(alerts: List[Dict]) -> str:
         
         lines.append("")
     
-    remaining = 10 - len(alerts)
-    if remaining > 0:
-        lines.append(f"Remaining {remaining} picks still tracking...")
+    # Don't assume 10 picks - active tracker knows the real count
+    # "Remaining X picks" message removed - confusing with V2 filter
+    # The active tracker sends its own progress updates
     
     return "\n".join(lines)
 
