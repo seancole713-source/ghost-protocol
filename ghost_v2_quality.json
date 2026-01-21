@@ -1,8 +1,6 @@
 {
   "whitelist": [
     "CHZ",
-    "ILV",
-    "RLC",
     "RNDR",
     "T",
     "TURBO",
@@ -20,22 +18,24 @@
     "ETC",
     "ETH",
     "ICP",
+    "ILV",
     "LDO",
     "LRC",
     "LTC",
     "OCEAN",
     "PEPE",
+    "RLC",
     "SNX",
     "SOL",
     "UNI",
     "XRP"
   ],
   "metrics": {},
-  "last_updated": "2026-01-20T12:00:00.000000",
+  "last_updated": "2026-01-21T14:50:00.000000",
   "config": {
     "min_predictions": 20,
     "whitelist_wr": 0.55,
     "blacklist_wr": 0.45,
-    "note": "Updated Jan 20: Removed EGLD (0% WR), ICP (20% WR), OCEAN (no data). Keeping 7 proven performers: CHZ (100%), TURBO (100%), RNDR (100%), ZEC (60%), ILV/RLC/T (monitoring)"
+    "note": "Updated Jan 21: Trimmed to 5 proven winners only. Removed ILV (0/4=0%), RLC (no data). Kept: CHZ (100%), RNDR (100%), T (100%), TURBO (100%), ZEC (60%)"
   }
 }
