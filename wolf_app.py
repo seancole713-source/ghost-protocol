@@ -4366,6 +4366,17 @@ async def _on_startup():
         LOGGER.error(f"learning_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
+    # 🎯 Start V2 Quality Auto-Updater (symbol whitelist/blacklist)
+    # Updates daily from PostgreSQL-verified performance data
+    try:
+        from core.v2_quality import get_quality_system
+        quality_system = get_quality_system()
+        quality_system.start_auto_update_scheduler(interval_hours=24)
+        LOGGER.info("[GHOST STARTUP] ✅ V2 Quality auto-scheduler started (daily whitelist updates)")
+    except Exception as e:
+        LOGGER.error(f"v2_quality_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # CRITICAL: Initialize prediction store tables EARLY to prevent "table not found" errors
     # Do NOT wait for full pool init - just ensure tables exist
     try:

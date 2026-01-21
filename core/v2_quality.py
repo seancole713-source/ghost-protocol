@@ -8,16 +8,25 @@ Phase 2: Find the Edge
 - Quality gates for predictions
 
 Only predict assets where we have demonstrated edge.
+
+PostgreSQL Persistence:
+- Whitelist/blacklist stored in PostgreSQL for Railway persistence
+- JSON file used as fallback for local dev
+- Auto-sync on save to both storage backends
 """
 
 import os
 import json
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional
 from dataclasses import dataclass, asdict
 
 LOGGER = logging.getLogger("ghost.v2_quality")
+
+# PostgreSQL support for production (matches paper_tracker.py pattern)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 @dataclass
@@ -56,13 +65,97 @@ class V2AssetQualitySystem:
         self.BLACKLIST_WIN_RATE = float(os.getenv("V2_BLACKLIST_WR", "0.45"))  # 45%
         self.WATCHLIST_HIGH_CONFIDENCE = float(os.getenv("V2_WATCHLIST_CONF", "0.80"))  # 80%
         
-        # Load existing config
+        # PostgreSQL support
+        self.use_postgres = bool(DATABASE_URL)
+        self._ensure_postgres_table()
+        
+        # Load existing config (PostgreSQL first, JSON fallback)
         self._load_config()
         
-        LOGGER.info(f"[V2-QUALITY] Initialized: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist")
+        # Auto-scheduler for daily updates (backup for cron)
+        self._scheduler_running = False
+        
+        LOGGER.info(f"[V2-QUALITY] Initialized: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist (postgres={self.use_postgres})")
+    
+    def _get_postgres_connection(self):
+        """Get PostgreSQL connection"""
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    
+    def _ensure_postgres_table(self):
+        """Create v2_quality_config table if not exists"""
+        if not self.use_postgres:
+            return
+        
+        try:
+            conn = self._get_postgres_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS v2_quality_config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+            conn.close()
+            LOGGER.info("[V2-QUALITY] PostgreSQL table ready")
+        except Exception as e:
+            LOGGER.warning(f"[V2-QUALITY] Failed to create PostgreSQL table: {e}")
+    
+    def _load_from_postgres(self) -> Optional[dict]:
+        """Load config from PostgreSQL"""
+        if not self.use_postgres:
+            return None
+        
+        try:
+            conn = self._get_postgres_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM v2_quality_config WHERE key = 'config'")
+            row = cur.fetchone()
+            conn.close()
+            
+            if row:
+                return json.loads(row[0])
+            return None
+        except Exception as e:
+            LOGGER.warning(f"[V2-QUALITY] Failed to load from PostgreSQL: {e}")
+            return None
+    
+    def _save_to_postgres(self, data: dict):
+        """Save config to PostgreSQL"""
+        if not self.use_postgres:
+            return
+        
+        try:
+            conn = self._get_postgres_connection()
+            cur = conn.cursor()
+            value_json = json.dumps(data)
+            cur.execute("""
+                INSERT INTO v2_quality_config (key, value, updated_at)
+                VALUES ('config', %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = %s, updated_at = NOW()
+            """, (value_json, value_json))
+            conn.commit()
+            conn.close()
+            LOGGER.info("[V2-QUALITY] Saved to PostgreSQL")
+        except Exception as e:
+            LOGGER.error(f"[V2-QUALITY] Failed to save to PostgreSQL: {e}")
     
     def _load_config(self):
-        """Load saved whitelist/blacklist from disk"""
+        """Load saved whitelist/blacklist - PostgreSQL first, JSON fallback"""
+        # Try PostgreSQL first (production)
+        pg_data = self._load_from_postgres()
+        if pg_data:
+            self._whitelist = set(pg_data.get('whitelist', []))
+            self._blacklist = set(pg_data.get('blacklist', []))
+            for symbol, metrics in pg_data.get('metrics', {}).items():
+                metrics['last_updated'] = datetime.fromisoformat(metrics['last_updated'])
+                self._metrics[symbol] = AssetQualityMetrics(**metrics)
+            LOGGER.info(f"[V2-QUALITY] Loaded from PostgreSQL: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist")
+            return
+        
+        # Fallback to JSON file
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r') as f:
@@ -80,7 +173,7 @@ class V2AssetQualitySystem:
             LOGGER.warning(f"[V2-QUALITY] Failed to load config: {e} - starting fresh")
     
     def _save_config(self):
-        """Save whitelist/blacklist to disk"""
+        """Save whitelist/blacklist to both PostgreSQL (primary) and JSON (backup)"""
         try:
             data = {
                 'whitelist': list(self._whitelist),
@@ -100,10 +193,14 @@ class V2AssetQualitySystem:
                 }
             }
             
+            # Save to PostgreSQL (primary - survives deploys)
+            self._save_to_postgres(data)
+            
+            # Also save to JSON (backup/local dev)
             with open(self.config_file, 'w') as f:
                 json.dump(data, f, indent=2)
             
-            LOGGER.info(f"[V2-QUALITY] Config saved")
+            LOGGER.info(f"[V2-QUALITY] Config saved to PostgreSQL and JSON")
         except Exception as e:
             LOGGER.error(f"[V2-QUALITY] Failed to save config: {e}")
     
@@ -223,6 +320,50 @@ class V2AssetQualitySystem:
     def get_all_metrics(self) -> Dict[str, AssetQualityMetrics]:
         """Get all asset metrics"""
         return self._metrics.copy()
+    
+    def start_auto_update_scheduler(self, interval_hours: int = 24):
+        """
+        Start background scheduler for automatic quality updates.
+        
+        Runs daily at startup + every interval_hours.
+        Use cron-job.org for more reliable scheduling via API endpoint.
+        
+        Args:
+            interval_hours: How often to update (default: 24 hours)
+        """
+        if self._scheduler_running:
+            LOGGER.info("[V2-QUALITY] Auto-scheduler already running")
+            return
+        
+        def _run_scheduler():
+            import time
+            
+            # Wait a bit on startup to let everything initialize
+            time.sleep(60)  # 1 minute after startup
+            
+            while self._scheduler_running:
+                try:
+                    LOGGER.info("[V2-QUALITY] 🔄 Running scheduled quality update...")
+                    self.update_from_verification(days=30)
+                    LOGGER.info("[V2-QUALITY] ✅ Scheduled quality update complete")
+                except Exception as e:
+                    LOGGER.error(f"[V2-QUALITY] ❌ Scheduled update failed: {e}")
+                
+                # Sleep for interval
+                for _ in range(interval_hours * 60):  # Check every minute for graceful shutdown
+                    if not self._scheduler_running:
+                        break
+                    time.sleep(60)
+        
+        self._scheduler_running = True
+        scheduler_thread = threading.Thread(target=_run_scheduler, daemon=True, name="V2QualityScheduler")
+        scheduler_thread.start()
+        LOGGER.info(f"[V2-QUALITY] 🚀 Auto-scheduler started (every {interval_hours}h)")
+    
+    def stop_auto_update_scheduler(self):
+        """Stop the background scheduler"""
+        self._scheduler_running = False
+        LOGGER.info("[V2-QUALITY] Auto-scheduler stopped")
 
 
 # ============================================================================
