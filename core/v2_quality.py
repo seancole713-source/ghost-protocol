@@ -172,12 +172,12 @@ class V2AssetQualitySystem:
         except Exception as e:
             LOGGER.warning(f"[V2-QUALITY] Failed to load config: {e} - starting fresh")
     
-    def _save_config(self):
+    def _save_config(self, pinned_whitelist: set = None):
         """Save whitelist/blacklist to both PostgreSQL (primary) and JSON (backup)"""
         try:
             data = {
-                'whitelist': list(self._whitelist),
-                'blacklist': list(self._blacklist),
+                'whitelist': sorted(list(self._whitelist)),
+                'blacklist': sorted(list(self._blacklist)),
                 'metrics': {
                     symbol: {
                         **asdict(metrics),
@@ -192,6 +192,10 @@ class V2AssetQualitySystem:
                     'blacklist_wr': self.BLACKLIST_WIN_RATE
                 }
             }
+            
+            # Preserve pinned_whitelist if provided (manual curation)
+            if pinned_whitelist:
+                data['pinned_whitelist'] = sorted(list(pinned_whitelist))
             
             # Save to PostgreSQL (primary - survives deploys)
             self._save_to_postgres(data)
@@ -208,15 +212,28 @@ class V2AssetQualitySystem:
         """
         Update whitelist/blacklist based on verified performance.
         Should be run daily (automated) or manually.
+        
+        IMPORTANT: Pinned symbols (manually curated) are NEVER removed from whitelist.
         """
         from core.v2_verification import get_verifier
         
         LOGGER.info(f"[V2-QUALITY] Updating quality metrics from last {days} days...")
         
+        # Load pinned whitelist from JSON (manual curation that survives auto-updates)
+        pinned_whitelist = set()
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r') as f:
+                    data = json.load(f)
+                    pinned_whitelist = set(data.get('pinned_whitelist', data.get('whitelist', [])))
+                    LOGGER.info(f"[V2-QUALITY] Preserving {len(pinned_whitelist)} pinned symbols: {sorted(pinned_whitelist)}")
+        except Exception as e:
+            LOGGER.warning(f"[V2-QUALITY] Could not load pinned whitelist: {e}")
+        
         verifier = get_verifier()
         performances = verifier.get_symbol_performance(days, self.MIN_PREDICTIONS_FOR_EVAL)
         
-        new_whitelist = set()
+        new_whitelist = set(pinned_whitelist)  # Start with pinned symbols
         new_blacklist = set()
         
         for perf in performances:
@@ -235,6 +252,12 @@ class V2AssetQualitySystem:
             
             # Determine status (compare percentage values)
             wr_pct = float(perf.win_rate)  # win_rate is 0-100
+            
+            # Skip pinned symbols - they stay whitelisted regardless of performance
+            if perf.symbol in pinned_whitelist:
+                self._metrics[perf.symbol].status = "whitelist (pinned)"
+                continue
+            
             if wr_pct >= self.WHITELIST_WIN_RATE * 100 and perf.recent_performance != "declining":
                 new_whitelist.add(perf.symbol)
                 self._metrics[perf.symbol].status = "whitelist"
@@ -252,12 +275,12 @@ class V2AssetQualitySystem:
         self._whitelist = new_whitelist
         self._blacklist = new_blacklist
         
-        # Save to disk
-        self._save_config()
+        # Save to disk (preserve pinned_whitelist)
+        self._save_config(pinned_whitelist)
         
         LOGGER.info(f"[V2-QUALITY] Update complete:")
-        LOGGER.info(f"  Whitelist: {old_whitelist} → {len(self._whitelist)} ({len(new_whitelist - set(list(self._whitelist)[:old_whitelist]))} added)")
-        LOGGER.info(f"  Blacklist: {old_blacklist} → {len(self._blacklist)} ({len(new_blacklist - set(list(self._blacklist)[:old_blacklist]))} added)")
+        LOGGER.info(f"  Whitelist: {old_whitelist} → {len(self._whitelist)} (includes {len(pinned_whitelist)} pinned)")
+        LOGGER.info(f"  Blacklist: {old_blacklist} → {len(self._blacklist)}")
     
     def should_predict(self, symbol: str, confidence: float) -> tuple[bool, str]:
         """
