@@ -138,12 +138,15 @@ def get_enhanced_context(hours: int = 24, min_relevance: float = 0.3) -> dict[st
     Returns:
         Dictionary with 'world_context' and 'market_mood' keys
     """
+    from core.context_engine import get_context_engine
+    
     result = {"world_context": {}, "market_mood": {}}
+    engine = get_context_engine()
 
     # Get world context
-    if _context_engine:
+    if engine:
         try:
-            result["world_context"] = _context_engine.get_recent_context(
+            result["world_context"] = engine.get_recent_context(
                 hours=hours, min_relevance=min_relevance
             )
         except Exception as e:
@@ -182,11 +185,14 @@ def get_symbol_context(symbol: str, hours: int = 24) -> dict[str, Any]:
     Returns:
         Symbol-specific context
     """
-    if not _context_engine:
+    from core.context_engine import get_context_engine
+    
+    engine = get_context_engine()
+    if not engine:
         return {"error": "Context engine not initialized"}
 
     try:
-        return _context_engine.get_symbol_context(symbol, hours)
+        return engine.get_symbol_context(symbol, hours)
     except Exception as e:
         LOGGER.error(f"Failed to get symbol context for {symbol}: {e}")
         return {"error": str(e)}
@@ -194,15 +200,20 @@ def get_symbol_context(symbol: str, hours: int = 24) -> dict[str, Any]:
 
 def get_context_stats() -> dict[str, Any]:
     """Get Stage 1 statistics."""
+    # Import from context_engine.py to get the actual running engine
+    from core.context_engine import get_context_engine
+    
+    engine = get_context_engine()
+    
     stats = {
-        "initialized": _context_engine is not None,
+        "initialized": engine is not None,
         "last_update": _last_update,
         "update_interval": _update_interval,
     }
 
-    if _context_engine:
+    if engine:
         try:
-            engine_stats = _context_engine.get_stats()
+            engine_stats = engine.get_stats()
             stats.update(engine_stats)
         except Exception as e:
             stats["error"] = str(e)
@@ -212,9 +223,12 @@ def get_context_stats() -> dict[str, Any]:
 
 def prune_old_data(keep_days: int = 7):
     """Prune old news articles."""
-    if _context_engine:
+    from core.context_engine import get_context_engine
+    
+    engine = get_context_engine()
+    if engine:
         try:
-            deleted = _context_engine.prune_old_articles(keep_days)
+            deleted = engine.prune_old_articles(keep_days)
             LOGGER.info(f"Pruned {deleted} old articles (kept last {keep_days} days)")
             return deleted
         except Exception as e:
