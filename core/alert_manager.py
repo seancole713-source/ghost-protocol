@@ -15,10 +15,22 @@ import time
 
 LOGGER = logging.getLogger(__name__)
 
+# =============================================================================
+# Alert Configuration (from environment)
+# =============================================================================
+# ALERT_CHANNEL: Preferred alert channel ("telegram", "slack", "webhook", "none")
+ALERT_CHANNEL = os.getenv("ALERT_CHANNEL", "telegram").lower()
+# ALERT_THROTTLE_S: Minimum seconds between repeated alerts of same type
+ALERT_THROTTLE_S = int(os.getenv("ALERT_THROTTLE_S", "60"))
+# ALERT_ENABLED: Master switch for alerts
+ALERT_ENABLED = os.getenv("ALERT_ENABLED", "1").lower() in ("1", "true", "yes")
+
 _LAST_SENT: dict[str, int] = {}
 
 
-def _throttle(key: str, min_interval_s: int) -> bool:
+def _throttle(key: str, min_interval_s: int = None) -> bool:
+    if min_interval_s is None:
+        min_interval_s = ALERT_THROTTLE_S
     now = int(time.time())
     last = _LAST_SENT.get(key, 0)
     if now - last < min_interval_s:
@@ -28,6 +40,28 @@ def _throttle(key: str, min_interval_s: int) -> bool:
 
 
 def _send_message(text: str) -> bool:
+    if not ALERT_ENABLED:
+        LOGGER.debug(f"Alerts disabled, skipping: {text[:50]}...")
+        return False
+        
+    if ALERT_CHANNEL == "none":
+        LOGGER.debug(f"Alert channel is 'none', skipping: {text[:50]}...")
+        return False
+    
+    # Route to appropriate channel
+    if ALERT_CHANNEL == "telegram":
+        return _send_telegram(text)
+    elif ALERT_CHANNEL == "slack":
+        return _send_slack(text)
+    elif ALERT_CHANNEL == "webhook":
+        return _send_webhook(text)
+    else:
+        # Default to telegram
+        return _send_telegram(text)
+
+
+def _send_telegram(text: str) -> bool:
+    """Send via Telegram"""
     try:
         from core.telegram_hunter import send_telegram_message
 
@@ -46,6 +80,18 @@ def _send_message(text: str) -> bool:
     except Exception:
         pass
 
+    return False
+
+
+def _send_slack(text: str) -> bool:
+    """Send via Slack (placeholder for future implementation)"""
+    LOGGER.warning("Slack alerts not yet implemented")
+    return False
+
+
+def _send_webhook(text: str) -> bool:
+    """Send via generic webhook (placeholder for future implementation)"""
+    LOGGER.warning("Webhook alerts not yet implemented")
     return False
 
 

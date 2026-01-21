@@ -4,9 +4,17 @@ Handles dynamic runtime settings with defaults
 """
 
 import logging
+import os
 from typing import Any
 
 LOGGER = logging.getLogger(__name__)
+
+# =============================================================================
+# Global HTTP/Request Configuration (from environment)
+# =============================================================================
+REQUESTS_DEFAULT_TIMEOUT_S = float(os.getenv("REQUESTS_DEFAULT_TIMEOUT_S", "10.0"))
+BROKER_TIMEOUT_S = float(os.getenv("BROKER_TIMEOUT_S", "10.0"))
+ALPACA_HTTP_TIMEOUT_S = float(os.getenv("ALPACA_HTTP_TIMEOUT_S", "8.0"))
 
 # Default configuration values
 _DEFAULT_CONFIG = {
@@ -16,6 +24,11 @@ _DEFAULT_CONFIG = {
     'news_ttl_s': 300,
     'yahoo_first': True,
     'price_max_deviation_open': 0.15,
+    
+    # HTTP timeout defaults (can be overridden at runtime)
+    'requests_timeout_s': REQUESTS_DEFAULT_TIMEOUT_S,
+    'broker_timeout_s': BROKER_TIMEOUT_S,
+    'alpaca_timeout_s': ALPACA_HTTP_TIMEOUT_S,
 
     # Data feeds
     'reuters_feeds_on': True,

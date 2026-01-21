@@ -31,6 +31,7 @@ Date: November 21, 2025
 
 import json
 import logging
+import os
 import pickle
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,14 @@ from typing import Any
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Training Configuration (from environment)
+# =============================================================================
+# Enable automatic model retraining on startup or on schedule
+RUN_RETRAIN = os.getenv("RUN_RETRAIN", "0").lower() in ("1", "true", "yes")
+RETRAIN_INTERVAL_HOURS = int(os.getenv("RETRAIN_INTERVAL_HOURS", "24"))
+RETRAIN_MIN_SAMPLES = int(os.getenv("RETRAIN_MIN_SAMPLES", "100"))
 
 # Model storage
 MODELS_DIR = Path(__file__).parent.parent / "models" / "production"

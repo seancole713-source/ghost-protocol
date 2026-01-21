@@ -36,6 +36,20 @@ import time
 
 LOGGER: logging.Logger | None = None
 
+# ============================================================================
+# CONFIGURATION FROM ENVIRONMENT
+# ============================================================================
+AGENT_POLICY = os.getenv("AGENT_POLICY", "hybrid")  # "hybrid", "conservative", "aggressive"
+AGENT_ROLE = os.getenv("AGENT_ROLE", "diag_orchestrator")  # Role for agent decisions
+AGENT_RUN_INTERVAL_SEC = int(os.getenv("AGENT_RUN_INTERVAL_SEC", "30"))
+
+AUTO_FIXER_ENABLED = os.getenv("AUTO_FIXER_ENABLED", "true").lower() == "true"
+AUTO_FIX_INTERVAL_SEC = int(os.getenv("AUTO_FIX_INTERVAL_SEC", "45"))
+AUTO_RESTART_COOLDOWN_SEC = int(os.getenv("AUTO_RESTART_COOLDOWN_SEC", "120"))
+
+MEMORY_TTL_DAYS = int(os.getenv("MEMORY_TTL_DAYS", "90"))
+USE_NEW_COCKPIT = os.getenv("USE_NEW_COCKPIT", "1") == "1"
+
 # Background task handles
 _TASKS = {}
 _START_TIME = 0

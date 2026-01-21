@@ -30,10 +30,25 @@ from typing import Any, Literal, Optional, Dict, Tuple, Callable
 
 LOGGER = logging.getLogger(__name__)
 
-# Configuration
+# =============================================================================
+# Price Feed Configuration (from environment)
+# =============================================================================
 PRICE_SOURCE_PRIMARY = os.getenv("PRICE_SOURCE_PRIMARY", "polygon")
 PRICE_SOURCE_SECONDARY = os.getenv("PRICE_SOURCE_SECONDARY", "yahoo")
 PRICE_FRESHNESS_THRESHOLD_S = float(os.getenv("PRICE_FRESHNESS_THRESHOLD_S", "300"))  # 5 minutes
+PRICE_CACHE_TTL = int(os.getenv("PRICE_CACHE_TTL", "30"))  # Cache TTL in seconds
+PRICE_REFRESH_ALLOW = os.getenv("PRICE_REFRESH_ALLOW", "1").lower() in ("1", "true", "yes")
+
+# Audit configuration
+AUDIT_BYPASS = os.getenv("AUDIT_BYPASS", "0").lower() in ("1", "true", "yes")
+AUDIT_TICK_MAX_AGE = int(os.getenv("AUDIT_TICK_MAX_AGE", "8"))  # Max age in minutes for tick data
+AUDIT_PRICE_MAX_AGE = int(os.getenv("AUDIT_PRICE_MAX_AGE", "30"))  # Max age in minutes for price
+AUDIT_CACHE_TTL = int(os.getenv("AUDIT_CACHE_TTL", "2"))  # Audit cache TTL in minutes
+TEST_SKIP_AUDIT = os.getenv("TEST_SKIP_AUDIT", "0").lower() in ("1", "true", "yes")
+
+# Seeded price fallback (for testing/debugging)
+ALLOW_SEEDED_PRICE = os.getenv("ALLOW_SEEDED_PRICE", "0").lower() in ("1", "true", "yes")
+SEEDED_PRICE_MAX_AGE_S = int(os.getenv("SEEDED_PRICE_MAX_AGE_S", "300"))  # 5 minutes
 
 # Provider performance tracking (in-memory cache)
 _PROVIDER_STATS = {

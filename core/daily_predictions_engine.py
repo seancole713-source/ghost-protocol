@@ -5,11 +5,13 @@ Uses actual Ghost prediction system + data pillars
 """
 
 import asyncio
+import fnmatch
 import logging
 import os
+import re
 import sys
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 # Add parent directory to path
@@ -17,6 +19,36 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 LOGGER = logging.getLogger(__name__)
 CHICAGO_TZ = ZoneInfo("America/Chicago")
+
+# =============================================================================
+# Prediction Controls (from environment)
+# =============================================================================
+# Master switch to enable/disable stock predictions
+PREDICT_STOCKS_ENABLED = os.getenv("PREDICT_STOCKS_ENABLED", "1").lower() in ("1", "true", "yes")
+
+# Comma-separated list of allowed stocks (supports wildcards)
+# e.g., "AAPL,MSFT,*" means AAPL, MSFT, and all others
+# e.g., "WOLF,AAPL" means only WOLF and AAPL
+PREDICT_STOCKS_ALLOW = os.getenv("PREDICT_STOCKS_ALLOW", "*")  # Default: allow all
+
+
+def _is_stock_allowed(symbol: str) -> bool:
+    """Check if a stock symbol is allowed for prediction based on PREDICT_STOCKS_ALLOW"""
+    if not PREDICT_STOCKS_ENABLED:
+        return False
+    
+    allow_list = [s.strip().upper() for s in PREDICT_STOCKS_ALLOW.split(",") if s.strip()]
+    symbol_upper = symbol.upper()
+    
+    for pattern in allow_list:
+        # Support wildcard matching
+        if pattern == "*":
+            return True
+        if fnmatch.fnmatch(symbol_upper, pattern):
+            return True
+    
+    return False
+
 
 # Configuration
 DAILY_PICKS_COUNT = int(os.getenv("DAILY_PICKS_COUNT", "5"))
@@ -95,6 +127,17 @@ async def _batch_predictions(symbols: list[str], asset_type: str) -> list[dict[s
     }
     """
     predictions = []
+    
+    # Filter symbols based on PREDICT_STOCKS_ENABLED and PREDICT_STOCKS_ALLOW
+    if asset_type == "stock":
+        allowed_symbols = [s for s in symbols if _is_stock_allowed(s)]
+        if len(allowed_symbols) < len(symbols):
+            LOGGER.info(f"📋 Filtered {len(symbols) - len(allowed_symbols)} stocks by PREDICT_STOCKS_ALLOW")
+        symbols = allowed_symbols
+    
+    if not symbols:
+        LOGGER.info(f"No {asset_type} symbols to predict (empty or all filtered)")
+        return []
     
     # Run predictions with concurrency limit (match Ghost's auto_prediction_loop: 2 concurrent)
     semaphore = asyncio.Semaphore(2)

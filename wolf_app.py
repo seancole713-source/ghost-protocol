@@ -730,6 +730,23 @@ def _parse_origins(val: str) -> list[str]:
     return parts or ["*"]
 
 
+# =============================================================================
+# TRUSTED_HOSTS Configuration (Host Header Validation)
+# =============================================================================
+# Parse comma-separated list of trusted hosts
+# Supports wildcards like "*.railway.app"
+TRUSTED_HOSTS_STR = os.getenv("TRUSTED_HOSTS", "").strip()
+TRUSTED_HOSTS = [h.strip() for h in TRUSTED_HOSTS_STR.split(",") if h.strip()] if TRUSTED_HOSTS_STR else []
+
+# Add TrustedHostMiddleware if TRUSTED_HOSTS is configured
+if TRUSTED_HOSTS:
+    try:
+        from starlette.middleware.trustedhost import TrustedHostMiddleware
+        APP.add_middleware(TrustedHostMiddleware, allowed_hosts=TRUSTED_HOSTS)
+        print(f"🔒 TRUSTED_HOSTS enabled: {TRUSTED_HOSTS}")
+    except ImportError:
+        print("⚠️  TrustedHostMiddleware not available (starlette version)")
+
 APP.add_middleware(
     CORSMiddleware,
     allow_origins=_parse_origins(os.getenv("ALLOWED_ORIGINS", "*")),

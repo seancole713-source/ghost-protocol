@@ -4,6 +4,7 @@ Crypto Prediction Engine
 """
 
 import logging
+import os
 import sqlite3
 import time
 import uuid
@@ -14,6 +15,11 @@ import numpy as np
 from .crypto_providers import CoinGeckoProvider, get_crypto_price_quorum
 
 LOGGER = logging.getLogger(__name__)
+
+# Configuration from environment
+CRYPTO_FORECAST_H = int(os.getenv("CRYPTO_FORECAST_H", "48"))
+CRYPTO_LOOKBACK_H = int(os.getenv("CRYPTO_LOOKBACK_H", "96"))
+CRYPTO_CACHE_TTL_S = int(os.getenv("CRYPTO_CACHE_TTL_S", "30"))
 
 
 class CryptoPredictionEngine:
@@ -30,7 +36,9 @@ class CryptoPredictionEngine:
     def __init__(self, db_path: str = "ai_memory.db"):
         self.db_path = db_path
         self.volatility_threshold = 0.05  # 5% daily moves normal in crypto
-        self.horizon_hours = 24  # 24h forecasts
+        self.horizon_hours = CRYPTO_FORECAST_H  # From env (default 48h)
+        self.lookback_hours = CRYPTO_LOOKBACK_H  # From env (default 96h)
+        self.cache_ttl = CRYPTO_CACHE_TTL_S  # From env (default 30s)
         self.step_minutes = 30  # 30-minute intervals
         self.coingecko = CoinGeckoProvider()
 

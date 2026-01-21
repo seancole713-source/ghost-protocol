@@ -24,6 +24,15 @@ SCAN_INTERVAL = int(os.getenv("MARKET_SCAN_INTERVAL", "300"))  # 5 minutes
 MAX_OPPORTUNITIES = int(os.getenv("MAX_OPPORTUNITIES", "20"))
 MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE", "0.70"))
 
+# Scanner scope configuration
+SCAN_EQUITY_SCOPE = os.getenv("SCAN_EQUITY_SCOPE", "all")  # "all", "sp500", "nasdaq100"
+SCAN_CRYPTO_SCOPE = os.getenv("SCAN_CRYPTO_SCOPE", "all")  # "all", "top100", "top500"
+SCAN_MAX_EQUITIES = int(os.getenv("SCAN_MAX_EQUITIES", "3000"))
+SCAN_MAX_CRYPTO = int(os.getenv("SCAN_MAX_CRYPTO", "3000"))
+SCAN_MIN_DOLLAR_VOL_24H = float(os.getenv("SCAN_MIN_DOLLAR_VOL_24H", "500000"))
+SCAN_MIN_PRICE_USD = float(os.getenv("SCAN_MIN_PRICE_USD", "1.00"))
+SCAN_INCLUDE_OTC = os.getenv("SCAN_INCLUDE_OTC", "0") == "1"
+
 # Polygon API
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY", "")
 POLYGON_BASE = "https://api.polygon.io"

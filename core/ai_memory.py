@@ -17,12 +17,23 @@ Date: 2025-10-03
 
 import json
 import logging
+import os
 import sqlite3
 import time
 from collections import defaultdict
 from typing import Any
 
 import numpy as np
+
+# =============================================================================
+# Vector Store Configuration (from environment)
+# =============================================================================
+# VECTOR_SOURCE: "openai", "chromadb", "faiss", or "none"
+VECTOR_SOURCE = os.getenv("VECTOR_SOURCE", "chromadb").lower()
+# VECTOR_STORE_ID: External vector store ID (e.g., OpenAI vector store ID)
+VECTOR_STORE_ID = os.getenv("VECTOR_STORE_ID", "")
+# MEMORY_TTL_DAYS: How long to keep memories before consolidation
+MEMORY_TTL_DAYS = int(os.getenv("MEMORY_TTL_DAYS", "90"))
 
 # Optional: ChromaDB for vector storage (fallback to FAISS if not available)
 try:
@@ -78,30 +89,35 @@ class AIMemory:
         - executed: BOOLEAN
     """
 
-    def __init__(self, db_path: str = "data/ai_memory.db", vector_store: str = "chromadb"):
+    def __init__(self, db_path: str = "data/ai_memory.db", vector_store: str = None):
         """
         Initialize AI Memory.
 
         Args:
             db_path: Path to SQLite database
-            vector_store: "chromadb", "faiss", or "none"
+            vector_store: "chromadb", "faiss", "openai", or "none" (defaults to VECTOR_SOURCE env)
         """
         self.db_path = db_path
-        self.vector_store_type = vector_store
+        # Use environment variable if not explicitly specified
+        self.vector_store_type = vector_store or VECTOR_SOURCE or "chromadb"
+        self.vector_store_id = VECTOR_STORE_ID  # External store ID (e.g., OpenAI)
 
         # Connect to SQLite
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._init_tables()
 
-        # Initialize vector store
+        # Initialize vector store based on configuration
         self.vector_store = None
-        if vector_store == "chromadb" and HAS_CHROMADB:
+        if self.vector_store_type == "openai" and VECTOR_STORE_ID:
+            LOGGER.info(f"Using OpenAI vector store: {VECTOR_STORE_ID}")
+            # OpenAI vector store is accessed via API, no local init needed
+        elif self.vector_store_type == "chromadb" and HAS_CHROMADB:
             self._init_chromadb()
-        elif vector_store == "faiss" and HAS_FAISS:
+        elif self.vector_store_type == "faiss" and HAS_FAISS:
             self._init_faiss()
         else:
-            LOGGER.warning(f"Vector store '{vector_store}' not available, using SQLite only")
+            LOGGER.warning(f"Vector store '{self.vector_store_type}' not available, using SQLite only")
 
         # In-memory cache for recent decisions (fast access)
         self.cache: list[dict] = []
@@ -109,7 +125,7 @@ class AIMemory:
         self._load_cache()
 
         LOGGER.info(
-            f"AIMemory initialized: db={db_path}, vector_store={vector_store}, cache_size={len(self.cache)}"
+            f"AIMemory initialized: db={db_path}, vector_store={self.vector_store_type}, cache_size={len(self.cache)}"
         )
 
     def _init_tables(self):
