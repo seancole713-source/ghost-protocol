@@ -56,17 +56,10 @@ class V2AssetQualitySystem:
         self.BLACKLIST_WIN_RATE = float(os.getenv("V2_BLACKLIST_WR", "0.45"))  # 45%
         self.WATCHLIST_HIGH_CONFIDENCE = float(os.getenv("V2_WATCHLIST_CONF", "0.80"))  # 80%
         
-        # V2 Strict Mode Control
-        # V2_ALLOW_UNKNOWN=true: Allow predictions on unknown symbols (learning mode)
-        # V2_ALLOW_UNKNOWN=false: Only predict whitelisted symbols (strict mode)
-        self.ALLOW_UNKNOWN = os.getenv("V2_ALLOW_UNKNOWN", "true").lower() in ("true", "1", "yes")
-        self.UNKNOWN_MIN_CONFIDENCE = float(os.getenv("V2_UNKNOWN_MIN_CONF", "0.70"))  # 70% for unknown
-        
         # Load existing config
         self._load_config()
         
-        mode = "LEARNING" if self.ALLOW_UNKNOWN else "STRICT"
-        LOGGER.info(f"[V2-QUALITY] Initialized ({mode} mode): {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist")
+        LOGGER.info(f"[V2-QUALITY] Initialized: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist")
     
     def _load_config(self):
         """Load saved whitelist/blacklist from disk"""
@@ -200,16 +193,9 @@ class V2AssetQualitySystem:
                     return False, f"watchlist (needs {self.WATCHLIST_HIGH_CONFIDENCE*100:.0f}%+ confidence)"
         
         # Unknown asset (no historical data)
-        # Check V2_ALLOW_UNKNOWN to determine if we should predict unknown symbols
-        if self.ALLOW_UNKNOWN:
-            # Learning mode: Allow predictions on unknown symbols with minimum confidence
-            if confidence >= self.UNKNOWN_MIN_CONFIDENCE:
-                return True, f"unknown (V2 learning mode: conf {confidence*100:.0f}% >= {self.UNKNOWN_MIN_CONFIDENCE*100:.0f}%)"
-            else:
-                return False, f"unknown (needs {self.UNKNOWN_MIN_CONFIDENCE*100:.0f}%+ confidence)"
-        else:
-            # V2 STRICT MODE: Only predict whitelisted symbols
-            return False, "not whitelisted (V2 strict mode: whitelist-only predictions)"
+        # V2 STRICT MODE: Only predict whitelisted symbols
+        # Reject all unknown symbols until we have performance data
+        return False, "not whitelisted (V2 strict mode: whitelist-only predictions)"
     
     def get_quality_filter_stats(self) -> Dict[str, any]:
         """Get current filter statistics"""
@@ -222,14 +208,11 @@ class V2AssetQualitySystem:
             "total_tracked": len(self._metrics),
             "whitelist": sorted(list(self._whitelist)),
             "blacklist": sorted(list(self._blacklist)),
-            "mode": "LEARNING" if self.ALLOW_UNKNOWN else "STRICT",
             "config": {
                 "min_predictions": self.MIN_PREDICTIONS_FOR_EVAL,
                 "whitelist_wr_threshold": f"{self.WHITELIST_WIN_RATE*100:.0f}%",
                 "blacklist_wr_threshold": f"{self.BLACKLIST_WIN_RATE*100:.0f}%",
-                "watchlist_min_confidence": f"{self.WATCHLIST_HIGH_CONFIDENCE*100:.0f}%",
-                "allow_unknown": self.ALLOW_UNKNOWN,
-                "unknown_min_confidence": f"{self.UNKNOWN_MIN_CONFIDENCE*100:.0f}%"
+                "watchlist_min_confidence": f"{self.WATCHLIST_HIGH_CONFIDENCE*100:.0f}%"
             }
         }
     
