@@ -9,6 +9,9 @@ Phase 1: Clean the Data
 - Verify true win rate
 - Identify winning vs losing assets
 - Create performance dashboard
+
+IMPORTANT: V2 was launched Jan 14, 2026. All performance queries
+should ONLY use data from this date forward to avoid pre-V2 garbage.
 """
 
 import os
@@ -19,6 +22,10 @@ import psycopg2
 from dataclasses import dataclass
 
 LOGGER = logging.getLogger("ghost.v2_verification")
+
+# V2 LAUNCH DATE - Only use data from this date forward!
+# Pre-V2 data has ~20% win rate (garbage predictions)
+V2_START_DATE = datetime(2026, 1, 14, 0, 0, 0)
 
 
 @dataclass
@@ -154,12 +161,20 @@ class V2VerificationSystem:
         
         Returns list of SymbolPerformance objects, sorted by win rate.
         Only includes symbols with at least min_predictions.
+        
+        IMPORTANT: Only uses V2-era data (since Jan 14, 2026) to avoid
+        polluting results with pre-V2 garbage predictions.
         """
         conn = self._get_conn()
         cur = conn.cursor()
         
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        # Use the LATER of (days ago) or V2_START_DATE
+        # This ensures we NEVER use pre-V2 garbage data
+        days_ago = datetime.utcnow() - timedelta(days=days)
+        cutoff = max(days_ago, V2_START_DATE)
         cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column
+        
+        LOGGER.info(f"[V2] Using cutoff {cutoff.isoformat()} (V2 floor: {V2_START_DATE.isoformat()})")
         
         cur.execute("""
             SELECT 
