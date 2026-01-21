@@ -296,7 +296,10 @@ class PaperTracker:
                 }
             
             # Target time reached?
-            target_time = datetime.fromisoformat(trade["target_time"])
+            # Parse target_time and strip timezone to compare with naive utcnow
+            target_time = datetime.fromisoformat(trade["target_time"].replace("Z", "+00:00"))
+            if target_time.tzinfo is not None:
+                target_time = target_time.replace(tzinfo=None)
             now = datetime.utcnow()
             
             if now < target_time:
@@ -429,7 +432,10 @@ class PaperTracker:
             now = datetime.utcnow()
             
             for trade in rows:
-                target_time = datetime.fromisoformat(trade["target_time"])
+                # Parse target_time and strip timezone to compare with naive utcnow
+                target_time = datetime.fromisoformat(trade["target_time"].replace("Z", "+00:00"))
+                if target_time.tzinfo is not None:
+                    target_time = target_time.replace(tzinfo=None)
                 
                 # Target time reached?
                 if now >= target_time:
