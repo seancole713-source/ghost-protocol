@@ -25215,6 +25215,47 @@ async def v2_quality_status():
         return {"ok": False, "error": str(e)}
 
 
+@APP.post("/api/v2/quality/reload")
+async def v2_quality_reload_from_json():
+    """
+    🔄 V2: Force reload whitelist/blacklist from JSON file.
+    
+    Use this to push manual JSON changes to PostgreSQL.
+    Bypasses the normal PostgreSQL-first loading.
+    """
+    try:
+        from core.v2_quality import get_quality_system
+        import json
+        
+        quality = get_quality_system()
+        
+        # Read directly from JSON
+        with open("ghost_v2_quality.json", 'r') as f:
+            data = json.load(f)
+        
+        # Update in-memory state
+        quality._whitelist = set(data.get('whitelist', []))
+        quality._blacklist = set(data.get('blacklist', []))
+        
+        # Get pinned whitelist
+        pinned = set(data.get('pinned_whitelist', data.get('whitelist', [])))
+        
+        # Save to PostgreSQL (this overwrites the old data)
+        quality._save_config(pinned)
+        
+        return {
+            "ok": True,
+            "message": "Reloaded from JSON and saved to PostgreSQL",
+            "whitelist": sorted(list(quality._whitelist)),
+            "blacklist_count": len(quality._blacklist),
+            "pinned_whitelist": sorted(list(pinned))
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"[V2-API] Quality reload error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 @APP.post("/api/v2/quality/update")
 async def v2_quality_update(days: int = 30):
     """
