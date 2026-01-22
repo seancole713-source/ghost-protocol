@@ -4502,9 +4502,26 @@ async def _on_startup():
             """Trigger stock + crypto predictions 30s after startup to ensure TOP 10 is ready"""
             await asyncio.sleep(30)  # Wait for app to fully initialize
             
-            TOP_STOCKS = ["AAPL", "MSFT", "NVDA", "TSLA", "GOOGL", "META", "AMD", "AMZN", "JPM", "GS"]
-            TOP_CRYPTO = ["BTC", "ETH", "SOL", "ADA", "XRP", "BNB", "LINK", "AVAX", "ATOM", "LTC"]
+            # CRITICAL FIX (Jan 22, 2026): Use V2 whitelist for startup predictions!
+            # Previously used hardcoded lists that didn't include whitelisted symbols
+            from core.v2_quality import get_quality_system
+            from core.asset_classifier import get_asset_type
             
+            v2_system = get_quality_system()
+            v2_whitelist = v2_system._whitelist or set()
+            
+            # Extract stocks and crypto from V2 whitelist
+            WHITELIST_STOCKS = [s for s in v2_whitelist if get_asset_type(s) != 'crypto']
+            WHITELIST_CRYPTO = [s for s in v2_whitelist if get_asset_type(s) == 'crypto']
+            
+            # Fallback defaults if whitelist is empty
+            DEFAULT_STOCKS = ["AAPL", "MSFT", "NVDA", "TSLA", "GOOGL", "META", "AMD", "AMZN", "JPM", "GS"]
+            DEFAULT_CRYPTO = ["BTC", "ETH", "SOL", "ADA", "XRP", "BNB", "LINK", "AVAX", "ATOM", "LTC"]
+            
+            TOP_STOCKS = WHITELIST_STOCKS if WHITELIST_STOCKS else DEFAULT_STOCKS
+            TOP_CRYPTO = WHITELIST_CRYPTO if WHITELIST_CRYPTO else DEFAULT_CRYPTO
+            
+            LOGGER.info(f"[STARTUP PREDS] V2 whitelist: {len(WHITELIST_STOCKS)} stocks, {len(WHITELIST_CRYPTO)} crypto")
             LOGGER.info(f"[STARTUP PREDS] Triggering predictions for {len(TOP_STOCKS)} stocks + {len(TOP_CRYPTO)} crypto...")
             
             import httpx
@@ -5159,6 +5176,25 @@ async def _post_startup_init():
                                 LOGGER.info(f"[TOP10-PREP] Total: {stock_count} fresh stock predictions for TOP 10")
                             except Exception as e:
                                 LOGGER.warning(f"[TOP10-PREP] Stock generation error: {e}")
+                            
+                            # Also scan V2 whitelisted CRYPTO (Jan 22, 2026)
+                            try:
+                                crypto_count = 0
+                                whitelist_crypto = [s for s in v2_whitelist if get_asset_type(s) == 'crypto']
+                                LOGGER.info(f"[TOP10-PREP] Scanning {len(whitelist_crypto)} V2 whitelisted crypto: {whitelist_crypto}")
+                                
+                                for crypto_symbol in whitelist_crypto:
+                                    try:
+                                        result = run_single_prediction(crypto_symbol)
+                                        if result.get("ok"):
+                                            crypto_count += 1
+                                            LOGGER.debug(f"[TOP10-PREP] ✅ V2 whitelist crypto: {crypto_symbol}")
+                                    except Exception as e:
+                                        LOGGER.debug(f"[TOP10-PREP] V2 whitelist crypto prediction failed for {crypto_symbol}: {e}")
+                                
+                                LOGGER.info(f"[TOP10-PREP] Generated {crypto_count} predictions from V2 whitelist crypto")
+                            except Exception as e:
+                                LOGGER.warning(f"[TOP10-PREP] Crypto generation error: {e}")
                             
                             LOGGER.info(f"[NOTIFICATIONS] Predictions available: {len(_LATEST_PREDICTIONS)} symbols")
                             
