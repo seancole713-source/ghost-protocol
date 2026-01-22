@@ -214,27 +214,30 @@ class V2AssetQualitySystem:
         Should be run daily (automated) or manually.
         
         IMPORTANT: Pinned symbols (manually curated) are NEVER removed from whitelist.
+        IMPORTANT: Manual blacklist entries are ALWAYS preserved.
         """
         from core.v2_verification import get_verifier
         
         LOGGER.info(f"[V2-QUALITY] Updating quality metrics from last {days} days...")
         
-        # Load pinned whitelist from JSON (manual curation that survives auto-updates)
+        # Load pinned whitelist AND manual blacklist from JSON (curated lists that survive auto-updates)
         pinned_whitelist = set()
+        pinned_blacklist = set()  # NEW: Manual blacklist entries to preserve
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r') as f:
                     data = json.load(f)
                     pinned_whitelist = set(data.get('pinned_whitelist', data.get('whitelist', [])))
-                    LOGGER.info(f"[V2-QUALITY] Preserving {len(pinned_whitelist)} pinned symbols: {sorted(pinned_whitelist)}")
+                    pinned_blacklist = set(data.get('blacklist', []))  # Preserve ALL JSON blacklist entries
+                    LOGGER.info(f"[V2-QUALITY] Preserving {len(pinned_whitelist)} pinned whitelist, {len(pinned_blacklist)} pinned blacklist")
         except Exception as e:
-            LOGGER.warning(f"[V2-QUALITY] Could not load pinned whitelist: {e}")
+            LOGGER.warning(f"[V2-QUALITY] Could not load pinned lists: {e}")
         
         verifier = get_verifier()
         performances = verifier.get_symbol_performance(days, self.MIN_PREDICTIONS_FOR_EVAL)
         
         new_whitelist = set(pinned_whitelist)  # Start with pinned symbols
-        new_blacklist = set()
+        new_blacklist = set(pinned_blacklist)  # NEW: Start with manual blacklist
         
         for perf in performances:
             # Update metrics (convert Decimal to float)
@@ -253,9 +256,14 @@ class V2AssetQualitySystem:
             # Determine status (compare percentage values)
             wr_pct = float(perf.win_rate)  # win_rate is 0-100
             
-            # Skip pinned symbols - they stay whitelisted regardless of performance
+            # Skip pinned whitelist symbols - they stay whitelisted regardless of performance
             if perf.symbol in pinned_whitelist:
                 self._metrics[perf.symbol].status = "whitelist (pinned)"
+                continue
+            
+            # Skip pinned blacklist symbols - they stay blacklisted regardless of performance
+            if perf.symbol in pinned_blacklist:
+                self._metrics[perf.symbol].status = "blacklist (pinned)"
                 continue
             
             if wr_pct >= self.WHITELIST_WIN_RATE * 100 and perf.recent_performance != "declining":
