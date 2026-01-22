@@ -2,16 +2,17 @@
   "whitelist": [
     "CHZ",
     "RNDR",
-    "T",
     "TURBO",
     "ZEC"
   ],
   "pinned_whitelist": [
     "CHZ",
     "RNDR",
-    "T",
     "TURBO",
     "ZEC"
+  ],
+  "quarantine": [
+    "T"
   ],
   "blacklist": [
     "1INCH",
@@ -34,15 +35,16 @@
     "RLC",
     "SNX",
     "SOL",
+    "T",
     "UNI",
     "XRP"
   ],
   "metrics": {},
-  "last_updated": "2026-01-21T14:50:00.000000",
+  "last_updated": "2026-01-22T05:00:00.000000",
   "config": {
     "min_predictions": 20,
     "whitelist_wr": 0.55,
     "blacklist_wr": 0.45,
-    "note": "Updated Jan 21: Trimmed to 5 proven winners only. PINNED - these symbols survive auto-updates."
+    "note": "Jan 22: REMOVED T - corrupt data due to stock/crypto price bug. Quarantined until verified with clean data. Whitelist now crypto-only: CHZ, RNDR, TURBO, ZEC"
   }
 }
