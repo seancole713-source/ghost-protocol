@@ -4298,11 +4298,22 @@ async def _on_startup():
                         LOGGER.info(f"[PAPER] Found {len(symbols)} symbols with due trades, fetching prices...")
                         
                         # Fetch current prices for symbols with due trades
+                        # CRITICAL FIX: Use correct price source for stocks vs crypto
+                        from core.asset_classifier import get_asset_type
+                        
                         for (symbol,) in symbols:
                             try:
-                                result = await get_crypto_price_quorum(symbol, use_cache=True)
-                                if result and result.get("price"):
-                                    price_data[symbol] = result["price"]
+                                asset_type = get_asset_type(symbol)
+                                if asset_type == 'crypto':
+                                    result = await get_crypto_price_quorum(symbol, use_cache=True)
+                                    if result and result.get("price"):
+                                        price_data[symbol] = result["price"]
+                                else:
+                                    # Use stock price provider for stocks
+                                    stock_result = turbo_stock_price(symbol, max_budget_s=2.0)
+                                    if stock_result and stock_result.get("ok") and stock_result.get("price"):
+                                        price_data[symbol] = stock_result["price"]
+                                        LOGGER.info(f"[PAPER] Stock price for {symbol}: ${stock_result['price']:.2f}")
                             except Exception as price_err:
                                 LOGGER.debug(f"[PAPER] Price fetch failed for {symbol}: {price_err}")
                         
@@ -37703,6 +37714,7 @@ try:
             
             # Get current prices for all tracked symbols
             from core.crypto.crypto_providers import get_crypto_price_quorum
+            from core.asset_classifier import get_asset_type
             price_data = {}
             
             # Get unique symbols from pending trades (PostgreSQL)
@@ -37724,12 +37736,19 @@ try:
                 """).fetchall()
                 conn.close()
             
-            # Fetch current prices
+            # Fetch current prices - FIXED: Use correct source for stocks vs crypto
             for (symbol,) in symbols:
                 try:
-                    result = await get_crypto_price_quorum(symbol, use_cache=True)
-                    if result and result.get("price"):
-                        price_data[symbol] = result["price"]
+                    asset_type = get_asset_type(symbol)
+                    if asset_type == 'crypto':
+                        result = await get_crypto_price_quorum(symbol, use_cache=True)
+                        if result and result.get("price"):
+                            price_data[symbol] = result["price"]
+                    else:
+                        # Use stock price provider for stocks
+                        stock_result = turbo_stock_price(symbol, max_budget_s=2.0)
+                        if stock_result and stock_result.get("ok") and stock_result.get("price"):
+                            price_data[symbol] = stock_result["price"]
                 except Exception as e:
                     LOGGER.warning(f"Could not get price for {symbol}: {e}")
             
