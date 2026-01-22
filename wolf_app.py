@@ -25315,11 +25315,31 @@ async def v2_quality_reload_from_json():
             "message": "Reloaded from JSON and saved to PostgreSQL",
             "whitelist": sorted(list(quality._whitelist)),
             "blacklist_count": len(quality._blacklist),
-            "pinned_whitelist": sorted(list(pinned))
+            "pinned_whitelist": sorted(list(pinned)),
+            "blacklist": sorted(list(quality._blacklist))  # Debug: show full blacklist
         }
     
     except Exception as e:
         LOGGER.error(f"[V2-API] Quality reload error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v2/quality/debug-json")
+async def v2_quality_debug_json():
+    """Debug: Read JSON file directly and show contents"""
+    try:
+        import json
+        with open("ghost_v2_quality.json", 'r') as f:
+            data = json.load(f)
+        
+        return {
+            "ok": True,
+            "whitelist_count": len(data.get('whitelist', [])),
+            "blacklist_count": len(data.get('blacklist', [])),
+            "blacklist_first_10": sorted(data.get('blacklist', []))[:10],
+            "has_icp_in_blacklist": "ICP" in data.get('blacklist', [])
+        }
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
