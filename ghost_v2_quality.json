@@ -3,25 +3,33 @@
     "ABCL",
     "ARCT",
     "BMBL",
+    "CHZ",
     "CVNA",
     "GME",
     "IQ",
     "ITRI",
+    "RNDR",
     "SOUN",
     "TGTX",
-    "XPO"
+    "TURBO",
+    "XPO",
+    "ZEC"
   ],
   "pinned_whitelist": [
     "ABCL",
     "ARCT",
     "BMBL",
+    "CHZ",
     "CVNA",
     "GME",
     "IQ",
     "ITRI",
+    "RNDR",
     "SOUN",
     "TGTX",
-    "XPO"
+    "TURBO",
+    "XPO",
+    "ZEC"
   ],
   "quarantine": [],
   "blacklist": [
@@ -31,7 +39,6 @@
     "AVAX",
     "BNB",
     "BTC",
-    "CHZ",
     "DOT",
     "EGLD",
     "ETC",
@@ -44,21 +51,18 @@
     "OCEAN",
     "PEPE",
     "RLC",
-    "RNDR",
     "SNX",
     "SOL",
     "T",
-    "TURBO",
     "UNI",
-    "XRP",
-    "ZEC"
+    "XRP"
   ],
   "metrics": {},
-  "last_updated": "2026-01-22T05:30:00.000000",
+  "last_updated": "2026-01-22T05:45:00.000000",
   "config": {
     "min_predictions": 20,
     "whitelist_wr": 0.55,
     "blacklist_wr": 0.45,
-    "note": "Jan 22: New stock-focused whitelist. IQ, ABCL, CVNA, GME, XPO, ARCT, ITRI, TGTX, BMBL, SOUN"
+    "note": "Jan 22: 14 symbols - KEPT winning crypto (CHZ, RNDR, TURBO, ZEC) + ADDED 10 new stocks (IQ, ABCL, CVNA, GME, XPO, ARCT, ITRI, TGTX, BMBL, SOUN)"
   }
 }
