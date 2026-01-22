@@ -1,17 +1,27 @@
 {
   "whitelist": [
-    "CHZ",
-    "RNDR",
-    "T",
-    "TURBO",
-    "ZEC"
+    "ABCL",
+    "ARCT",
+    "BMBL",
+    "CVNA",
+    "GME",
+    "IQ",
+    "ITRI",
+    "SOUN",
+    "TGTX",
+    "XPO"
   ],
   "pinned_whitelist": [
-    "CHZ",
-    "RNDR",
-    "T",
-    "TURBO",
-    "ZEC"
+    "ABCL",
+    "ARCT",
+    "BMBL",
+    "CVNA",
+    "GME",
+    "IQ",
+    "ITRI",
+    "SOUN",
+    "TGTX",
+    "XPO"
   ],
   "quarantine": [],
   "blacklist": [
@@ -21,6 +31,7 @@
     "AVAX",
     "BNB",
     "BTC",
+    "CHZ",
     "DOT",
     "EGLD",
     "ETC",
@@ -33,17 +44,21 @@
     "OCEAN",
     "PEPE",
     "RLC",
+    "RNDR",
     "SNX",
     "SOL",
+    "T",
+    "TURBO",
     "UNI",
-    "XRP"
+    "XRP",
+    "ZEC"
   ],
   "metrics": {},
-  "last_updated": "2026-01-22T05:15:00.000000",
+  "last_updated": "2026-01-22T05:30:00.000000",
   "config": {
     "min_predictions": 20,
     "whitelist_wr": 0.55,
     "blacklist_wr": 0.45,
-    "note": "Jan 22: T re-added after stock price bug fix. All new T predictions will use correct turbo_stock_price(). Old corrupt data will age out."
+    "note": "Jan 22: New stock-focused whitelist. IQ, ABCL, CVNA, GME, XPO, ARCT, ITRI, TGTX, BMBL, SOUN"
   }
 }
