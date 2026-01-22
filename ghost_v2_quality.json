@@ -2,18 +2,18 @@
   "whitelist": [
     "CHZ",
     "RNDR",
+    "T",
     "TURBO",
     "ZEC"
   ],
   "pinned_whitelist": [
     "CHZ",
     "RNDR",
+    "T",
     "TURBO",
     "ZEC"
   ],
-  "quarantine": [
-    "T"
-  ],
+  "quarantine": [],
   "blacklist": [
     "1INCH",
     "ADA",
@@ -35,16 +35,15 @@
     "RLC",
     "SNX",
     "SOL",
-    "T",
     "UNI",
     "XRP"
   ],
   "metrics": {},
-  "last_updated": "2026-01-22T05:00:00.000000",
+  "last_updated": "2026-01-22T05:15:00.000000",
   "config": {
     "min_predictions": 20,
     "whitelist_wr": 0.55,
     "blacklist_wr": 0.45,
-    "note": "Jan 22: REMOVED T - corrupt data due to stock/crypto price bug. Quarantined until verified with clean data. Whitelist now crypto-only: CHZ, RNDR, TURBO, ZEC"
+    "note": "Jan 22: T re-added after stock price bug fix. All new T predictions will use correct turbo_stock_price(). Old corrupt data will age out."
   }
 }
