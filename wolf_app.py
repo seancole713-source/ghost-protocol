@@ -8652,11 +8652,17 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         v2_quality = get_quality_system()
         should_store_v2, v2_reason = v2_quality.should_predict(symbol, confidence)
         
+        # DEBUG: Log should_predict decision
+        LOGGER.info(f"[V2-DEBUG] {symbol}: should_predict={should_store_v2}, reason='{v2_reason}', in_whitelist={symbol in v2_quality._whitelist}, whitelist_count={len(v2_quality._whitelist)}")
+        
         if not should_store_v2:
             LOGGER.info(f"[V2-FILTER] 🚫 BLOCKED {symbol} from _LATEST_PREDICTIONS - {v2_reason}")
             # Don't store in cache, but still return success (prediction was made and saved to DB)
             return result
 
+        # Store prediction in cache
+        LOGGER.info(f"[V2-FILTER] ✅ STORING {symbol} in _LATEST_PREDICTIONS (whitelisted)")
+        
         # BUG FIX (Jan 6, 2026): Use lock to prevent race conditions
         with _LATEST_PREDICTIONS_LOCK:
             _LATEST_PREDICTIONS[symbol] = {
@@ -25354,6 +25360,31 @@ async def v2_quality_debug_json():
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v2/quality/test-should-predict")
+async def v2_quality_test_should_predict(symbol: str = "CHZ", confidence: float = 0.85):
+    """Debug: Test should_predict function directly"""
+    try:
+        from core.v2_quality import get_quality_system
+        
+        quality = get_quality_system()
+        should, reason = quality.should_predict(symbol, confidence)
+        
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "confidence": confidence,
+            "should_predict": should,
+            "reason": reason,
+            "in_whitelist": symbol in quality._whitelist,
+            "in_blacklist": symbol in quality._blacklist,
+            "whitelist_count": len(quality._whitelist),
+            "blacklist_count": len(quality._blacklist),
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
 @APP.post("/api/v2/quality/update")
