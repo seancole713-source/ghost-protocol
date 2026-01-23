@@ -25553,6 +25553,46 @@ async def top10_reset():
         return {"ok": False, "error": str(e)}
 
 
+@APP.get("/alerts/learning/test-exclusion")
+async def test_learning_exclusion(symbol: str = "CHZ"):
+    """Debug: Test if a symbol would be excluded by the learning filter"""
+    try:
+        from core.ghost_notifications import (
+            should_exclude_symbol, 
+            get_symbol_accuracy_from_postgres,
+            HARDCODED_EXCLUSIONS,
+            _ENV_EXCLUSIONS
+        )
+        from core.v2_quality import get_quality_system
+        
+        # Get accuracy data
+        accuracy_data = get_symbol_accuracy_from_postgres()
+        
+        # Check should_exclude
+        should_exclude, reason = should_exclude_symbol(symbol.upper(), accuracy_data)
+        
+        # Check V2
+        v2 = get_quality_system()
+        v2_should_predict, v2_reason = v2.should_predict(symbol.upper(), 0.85)
+        
+        return {
+            "ok": True,
+            "symbol": symbol.upper(),
+            "learning_exclude": should_exclude,
+            "learning_reason": reason,
+            "in_hardcoded_exclusions": symbol.upper() in HARDCODED_EXCLUSIONS,
+            "in_env_exclusions": symbol.upper() in _ENV_EXCLUSIONS,
+            "v2_should_predict": v2_should_predict,
+            "v2_reason": v2_reason,
+            "v2_whitelisted": symbol.upper() in v2._whitelist,
+            "v2_blacklisted": symbol.upper() in v2._blacklist,
+            "accuracy_data": accuracy_data.get(symbol.upper(), "no_data"),
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/alerts/top10/debug")
 async def top10_debug():
     """Debug endpoint - see what predictions are available for TOP 10"""
