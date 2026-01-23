@@ -1013,7 +1013,7 @@ class GhostNotificationSystem:
                 continue
             
             confidence = pred.get("confidence", 0)
-            if confidence < 0.70:  # At least 70% to consider
+            if confidence < 0.50:  # At least 50% to consider (was 70%, too restrictive)
                 continue
             
             # LEARNING: Apply confidence boost for high-accuracy symbols

@@ -25318,6 +25318,19 @@ async def v2_quality_reload_from_json():
             "pinned_whitelist": sorted(list(pinned)),
             "blacklist": sorted(list(quality._blacklist))  # Debug: show full blacklist
         }
+        
+        # CRITICAL: Also purge blacklisted symbols from _LATEST_PREDICTIONS cache
+        symbols_purged = []
+        with _LATEST_PREDICTIONS_LOCK:
+            for symbol in list(_LATEST_PREDICTIONS.keys()):
+                if symbol in quality._blacklist:
+                    del _LATEST_PREDICTIONS[symbol]
+                    symbols_purged.append(symbol)
+        
+        if symbols_purged:
+            LOGGER.info(f"[V2-RELOAD] 🧹 Purged {len(symbols_purged)} blacklisted symbols from cache: {symbols_purged}")
+        
+        return result
     
     except Exception as e:
         LOGGER.error(f"[V2-API] Quality reload error: {e}")
