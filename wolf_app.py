@@ -17011,7 +17011,11 @@ async def fetch_price_live(
     if is_crypto:
         try:
             from core.crypto.crypto_providers import get_crypto_price_quorum
-            crypto_result = await get_crypto_price_quorum(sym, use_cache=not strict)
+            # Add 2s timeout to prevent blocking (api/price has 2.5s overall timeout)
+            crypto_result = await asyncio.wait_for(
+                get_crypto_price_quorum(sym, use_cache=not strict),
+                timeout=2.0
+            )
             if crypto_result and crypto_result.get("price"):
                 price = float(crypto_result["price"])
                 # Calculate prev_close from 24h change if available
@@ -32679,6 +32683,7 @@ def _build_price_response(payload: dict[str, Any]) -> dict[str, Any]:
         "age": payload.get("age"),
         "timestamp": int(time.time()),
         "change_pct": change_pct,
+        "change_24h_pct": payload.get("change_24h_pct"),  # Pass through 24h change for crypto
     }
 
     if sym == WOLF:
