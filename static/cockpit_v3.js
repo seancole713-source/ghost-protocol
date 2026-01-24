@@ -1779,8 +1779,9 @@ window.addEventListener('beforeunload', () => {
 
 async function updatePaperTrades() {
     try {
-        // Get stats
-        const statsRes = await fetch('/api/v3/paper/stats?days=30');
+        // Get stats - V2 filtered with since date for clean data
+        // V2 era started 2026-01-14, use that as default cutoff
+        const statsRes = await fetch('/api/v3/paper/stats?since=2026-01-14&v2_only=true');
         const statsData = await statsRes.json();
         
         if (statsData.ok && statsData.stats) {
@@ -1798,8 +1799,8 @@ async function updatePaperTrades() {
             pnlEl.className = 'stat-value ' + (pnl >= 0 ? 'positive' : 'negative');
         }
         
-        // Get recent trades
-        const tradesRes = await fetch('/api/v3/paper/trades?limit=20');
+        // Get recent trades - V2 filtered
+        const tradesRes = await fetch('/api/v3/paper/trades?limit=20&v2_only=true');
         const tradesData = await tradesRes.json();
         
         if (tradesData.ok && tradesData.trades) {

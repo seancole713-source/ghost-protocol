@@ -500,7 +500,7 @@ class PaperTracker:
         finally:
             conn.close()
     
-    def get_stats(self, days: int = 30, since: str = None) -> dict:
+    def get_stats(self, days: int = 30, since: str = None, v2_only: bool = True) -> dict:
         """
         Calculate paper trading statistics.
         
@@ -508,6 +508,8 @@ class PaperTracker:
             days: Number of days to look back (default: 30)
             since: Optional date string (e.g., "2026-01-14") to filter from specific date.
                    Overrides 'days' parameter when provided.
+            v2_only: If True (default), only include V2 whitelisted symbols.
+                     This filters out old data from blacklisted/non-whitelisted symbols.
         
         Returns:
             {
@@ -535,91 +537,116 @@ class PaperTracker:
             else:
                 cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
             
+            # Get V2 whitelist for filtering
+            v2_whitelist = set()
+            if v2_only:
+                try:
+                    from core.v2_quality import get_quality_system
+                    v2_system = get_quality_system()
+                    v2_whitelist = v2_system._whitelist or set()
+                    LOGGER.debug(f"[PAPER_STATS] V2 filter active: {len(v2_whitelist)} whitelisted symbols")
+                except Exception as e:
+                    LOGGER.warning(f"[PAPER_STATS] V2 whitelist unavailable, showing all: {e}")
+                    v2_only = False
+            
+            # Build symbol filter SQL clause
+            if v2_only and v2_whitelist:
+                # Create placeholders for IN clause
+                placeholders = ",".join(["?" for _ in v2_whitelist])
+                symbol_filter = f" AND symbol IN ({placeholders})"
+                symbol_params = list(v2_whitelist)
+            else:
+                symbol_filter = ""
+                symbol_params = []
+            
             # Overall stats
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ?
-            """, (cutoff,))
+                WHERE created_at >= ?{symbol_filter}
+            """, (cutoff, *symbol_params))
             total = self._fetchone(cur)["count"]
             
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome != 'PENDING'
-            """, (cutoff,))
+                WHERE created_at >= ? AND outcome != 'PENDING'{symbol_filter}
+            """, (cutoff, *symbol_params))
             resolved = self._fetchone(cur)["count"]
             
             pending = total - resolved
             
             # Outcome counts
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome = 'WIN'
-            """, (cutoff,))
+                WHERE created_at >= ? AND outcome = 'WIN'{symbol_filter}
+            """, (cutoff, *symbol_params))
             wins = self._fetchone(cur)["count"]
             
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED')
-            """, (cutoff,))
+                WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED'){symbol_filter}
+            """, (cutoff, *symbol_params))
             losses = self._fetchone(cur)["count"]
             
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome = 'STOPPED'
-            """, (cutoff,))
+                WHERE created_at >= ? AND outcome = 'STOPPED'{symbol_filter}
+            """, (cutoff, *symbol_params))
             stopped = self._fetchone(cur)["count"]
             
             win_rate = wins / resolved if resolved > 0 else 0.0
             
             # P&L stats
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT profit_loss FROM paper_trades
-                WHERE created_at >= ? AND profit_loss IS NOT NULL
-            """, (cutoff,))
+                WHERE created_at >= ? AND profit_loss IS NOT NULL{symbol_filter}
+            """, (cutoff, *symbol_params))
             pnl_rows = self._fetchall(cur)
             
             total_pnl = sum(row["profit_loss"] for row in pnl_rows)
             
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT profit_loss FROM paper_trades
-                WHERE created_at >= ? AND outcome = 'WIN'
-            """, (cutoff,))
+                WHERE created_at >= ? AND outcome = 'WIN'{symbol_filter}
+            """, (cutoff, *symbol_params))
             win_trades = self._fetchall(cur)
             
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT profit_loss FROM paper_trades
-                WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED')
-            """, (cutoff,))
+                WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED'){symbol_filter}
+            """, (cutoff, *symbol_params))
             loss_trades = self._fetchall(cur)
             
             avg_win = sum(t["profit_loss"] for t in win_trades) / len(win_trades) if win_trades else 0.0
             avg_loss = sum(t["profit_loss"] for t in loss_trades) / len(loss_trades) if loss_trades else 0.0
             
             # Best/worst trades
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT * FROM paper_trades
-                WHERE created_at >= ? AND profit_loss IS NOT NULL
+                WHERE created_at >= ? AND profit_loss IS NOT NULL{symbol_filter}
                 ORDER BY profit_loss DESC LIMIT 1
-            """, (cutoff,))
+            """, (cutoff, *symbol_params))
             best = self._fetchone(cur)
             
-            cur = self._execute(conn, """
+            cur = self._execute(conn, f"""
                 SELECT * FROM paper_trades
-                WHERE created_at >= ? AND profit_loss IS NOT NULL
+                WHERE created_at >= ? AND profit_loss IS NOT NULL{symbol_filter}
                 ORDER BY profit_loss ASC LIMIT 1
-            """, (cutoff,))
+            """, (cutoff, *symbol_params))
             worst = self._fetchone(cur)
             
-            # Accuracy by symbol
-            cur = self._execute(conn, """
-                SELECT DISTINCT symbol FROM paper_trades
-                WHERE created_at >= ?
-            """, (cutoff,))
-            symbols = self._fetchall(cur)
+            # Accuracy by symbol (only V2 whitelisted symbols)
+            if v2_only and v2_whitelist:
+                symbols_to_check = [{"symbol": s} for s in v2_whitelist]
+            else:
+                cur = self._execute(conn, f"""
+                    SELECT DISTINCT symbol FROM paper_trades
+                    WHERE created_at >= ?{symbol_filter}
+                """, (cutoff, *symbol_params))
+                symbols_to_check = self._fetchall(cur)
             
             accuracy_by_symbol = {}
             
-            for sym_row in symbols:
+            for sym_row in symbols_to_check:
                 symbol = sym_row["symbol"]
                 
                 cur = self._execute(conn, """
@@ -636,11 +663,13 @@ class PaperTracker:
                 
                 sym_win_rate = sym_wins / sym_resolved if sym_resolved > 0 else 0.0
                 
-                accuracy_by_symbol[symbol] = {
-                    "trades": sym_resolved,
-                    "wins": sym_wins,
-                    "win_rate": sym_win_rate
-                }
+                # Only include symbols with trades
+                if sym_resolved > 0 or not v2_only:
+                    accuracy_by_symbol[symbol] = {
+                        "trades": sym_resolved,
+                        "wins": sym_wins,
+                        "win_rate": sym_win_rate
+                    }
             
             return {
                 "total_trades": total,
@@ -650,12 +679,15 @@ class PaperTracker:
                 "losses": losses,
                 "stopped": stopped,
                 "win_rate": win_rate,
+                "win_rate_pct": round(win_rate * 100, 1),
                 "total_pnl": total_pnl,
                 "avg_win": avg_win,
                 "avg_loss": avg_loss,
                 "best_trade": best,
                 "worst_trade": worst,
-                "accuracy_by_symbol": accuracy_by_symbol
+                "accuracy_by_symbol": accuracy_by_symbol,
+                "v2_filtered": v2_only,
+                "v2_whitelist_count": len(v2_whitelist) if v2_only else 0
             }
         
         except Exception as e:
