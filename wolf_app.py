@@ -17017,25 +17017,26 @@ async def fetch_price_live(
     is_crypto = in_hunter or in_crypto or classified == "crypto"
     
     # DEBUG: Always log crypto classification for troubleshooting
-    LOGGER.info(f"[FIX5-CHECK] {sym}: is_crypto={is_crypto}, hunter={in_hunter}, crypto_set={in_crypto}, classified={classified}")
+    LOGGER.info(f"[FIX5-CHECK-v4] {sym}: is_crypto={is_crypto}, hunter={in_hunter}, crypto_set={in_crypto}, classified={classified}")
     
     if is_crypto:
-        # Use the crypto quorum directly - same code path as /api/crypto/price
+        # FIX5-v5: Use the crypto quorum directly - same code path as /api/crypto/price
         try:
             from core.crypto.crypto_providers import get_crypto_price_quorum
             crypto_result = await asyncio.wait_for(
                 get_crypto_price_quorum(sym, use_cache=not strict),
                 timeout=2.0
             )
+            LOGGER.info(f"[FIX5-v5] Quorum returned for {sym}: {crypto_result}")
             if crypto_result and crypto_result.get("price"):
                 price = float(crypto_result["price"])
                 change_24h = crypto_result.get("change_24h_pct", 0) or 0
                 prev_close = None
                 if change_24h != 0:
                     prev_close = round(price / (1 + change_24h / 100), 6)
-                provider_label = crypto_result.get("provider", "crypto")
+                provider_label = crypto_result.get("provider", "crypto-quorum")  # Mark as quorum
                 _cache_put_price(sym, price, prev_close, provider_label)
-                LOGGER.info(f"[FIX5] Crypto quorum OK: {sym}=${price:.4f}, 24h={change_24h:.2f}%")
+                LOGGER.info(f"[FIX5-v5] Crypto quorum OK: {sym}=${price:.4f}, 24h={change_24h:.2f}%")
                 return {
                     "symbol": sym,
                     "price": price,
@@ -17047,11 +17048,11 @@ async def fetch_price_live(
                     "change_24h_pct": change_24h,
                 }
             else:
-                LOGGER.warning(f"[FIX5] Crypto quorum empty for {sym}: {crypto_result}")
+                LOGGER.warning(f"[FIX5-v5] Crypto quorum empty for {sym}: {crypto_result}")
         except asyncio.TimeoutError:
-            LOGGER.warning(f"[FIX5] Crypto quorum timeout (2s) for {sym}")
+            LOGGER.warning(f"[FIX5-v5] Crypto quorum timeout (2s) for {sym}")
         except Exception as e:
-            LOGGER.error(f"[FIX5] Crypto quorum FAILED for {sym}: {type(e).__name__}: {e}", exc_info=True)
+            LOGGER.error(f"[FIX5-v5] Crypto quorum FAILED for {sym}: {type(e).__name__}: {e}", exc_info=True)
 
     provider_candidates = _get_provider_fetchers(sym)
     prev_candidate: float | None = None
