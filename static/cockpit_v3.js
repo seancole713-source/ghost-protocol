@@ -1262,16 +1262,17 @@ async function loadMarketWatchlist() {
             asset_type: item.type || 'stock'  // Add asset_type alias
         }));
         
-        // Apply filter (stocks/crypto/all)
+        // CRITICAL: Populate shared cache with ALL data FIRST (for Major Caps, XRP VIP, Forecast panels)
+        // This ensures crypto symbols like CHZ are available for forecast even when filtered to "stocks"
+        sharedWatchlistData = watchlistData;
+        
+        // Apply filter (stocks/crypto/all) for display only
         let filteredData = watchlistData;
         if (watchlistFilter === 'stocks') {
             filteredData = watchlistData.filter(item => item.type === 'stock');
         } else if (watchlistFilter === 'crypto') {
             filteredData = watchlistData.filter(item => item.type === 'crypto');
         }
-        
-        // CRITICAL: Populate shared cache for Major Caps and XRP VIP panels
-        sharedWatchlistData = filteredData;
         
         renderWatchlist(filteredData);
     } catch (error) {
@@ -1510,6 +1511,14 @@ function getSymbolIcon(symbol) {
 }
 
 function getSentimentClass(sentiment) {
+    // Handle string values from API (bullish/bearish/neutral)
+    if (typeof sentiment === 'string') {
+        const s = sentiment.toLowerCase();
+        if (s === 'bullish' || s === 'positive') return 'positive';
+        if (s === 'bearish' || s === 'negative') return 'negative';
+        return 'neutral';
+    }
+    // Handle numeric values (-1 to 1)
     if (sentiment > 0.3) return 'positive';
     if (sentiment < -0.3) return 'negative';
     return 'neutral';
@@ -1517,6 +1526,14 @@ function getSentimentClass(sentiment) {
 
 function formatSentiment(sentiment) {
     if (!sentiment) return 'Neutral';
+    // Handle string values from API (bullish/bearish/neutral)
+    if (typeof sentiment === 'string') {
+        const s = sentiment.toLowerCase();
+        if (s === 'bullish' || s === 'positive') return 'Bullish';
+        if (s === 'bearish' || s === 'negative') return 'Bearish';
+        return 'Neutral';
+    }
+    // Handle numeric values (-1 to 1)
     if (sentiment > 0.3) return 'Bullish';
     if (sentiment < -0.3) return 'Bearish';
     return 'Neutral';
