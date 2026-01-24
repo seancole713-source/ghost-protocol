@@ -17020,25 +17020,25 @@ async def fetch_price_live(
     LOGGER.info(f"[FIX5-CHECK-v4] {sym}: is_crypto={is_crypto}, hunter={in_hunter}, crypto_set={in_crypto}, classified={classified}")
     
     if is_crypto:
-        # FIX5-v7: Use the crypto quorum directly - same code path as /api/crypto/price
-        LOGGER.error(f"[FIX5-v7] ENTERING crypto quorum path for {sym}")
+        # FIX5-v9: Use the crypto quorum with CACHE (faster, still gets 24h change)
+        LOGGER.error(f"[FIX5-v9] ENTERING crypto quorum path for {sym}")
         try:
             from core.crypto.crypto_providers import get_crypto_price_quorum
-            LOGGER.error(f"[FIX5-v7] Import successful, calling quorum for {sym}")
+            LOGGER.error(f"[FIX5-v9] Calling quorum with use_cache=True for speed")
             crypto_result = await asyncio.wait_for(
-                get_crypto_price_quorum(sym, use_cache=not strict),
+                get_crypto_price_quorum(sym, use_cache=True),  # ALWAYS use cache for speed
                 timeout=2.0
             )
-            LOGGER.error(f"[FIX5-v7] Quorum returned for {sym}: {crypto_result}")
+            LOGGER.error(f"[FIX5-v9] Quorum returned for {sym}: {crypto_result}")
             if crypto_result and crypto_result.get("price"):
                 price = float(crypto_result["price"])
                 change_24h = crypto_result.get("change_24h_pct", 0) or 0
                 prev_close = None
                 if change_24h != 0:
                     prev_close = round(price / (1 + change_24h / 100), 6)
-                provider_label = "crypto-quorum-v7"  # EXPLICIT marker to verify this path runs
+                provider_label = "crypto-quorum-v9"  # EXPLICIT marker
                 _cache_put_price(sym, price, prev_close, provider_label)
-                LOGGER.error(f"[FIX5-v7] SUCCESS: {sym}=${price:.4f}, 24h={change_24h:.2f}%, returning crypto-quorum-v7")
+                LOGGER.error(f"[FIX5-v9] SUCCESS: {sym}=${price:.4f}, 24h={change_24h:.2f}%")
                 return {
                     "symbol": sym,
                     "price": price,
@@ -17050,12 +17050,12 @@ async def fetch_price_live(
                     "change_24h_pct": change_24h,
                 }
             else:
-                LOGGER.error(f"[FIX5-v7] Crypto quorum empty for {sym}: {crypto_result}")
+                LOGGER.error(f"[FIX5-v9] Crypto quorum empty for {sym}: {crypto_result}")
         except asyncio.TimeoutError:
-            LOGGER.error(f"[FIX5-v7] Crypto quorum timeout (2s) for {sym}")
+            LOGGER.error(f"[FIX5-v9] Crypto quorum timeout (2s) for {sym}")
         except Exception as e:
-            LOGGER.error(f"[FIX5-v7] Crypto quorum FAILED for {sym}: {type(e).__name__}: {e}", exc_info=True)
-        LOGGER.error(f"[FIX5-v7] FALLING THROUGH to provider_candidates for {sym}")
+            LOGGER.error(f"[FIX5-v9] Crypto quorum FAILED for {sym}: {type(e).__name__}: {e}", exc_info=True)
+        LOGGER.error(f"[FIX5-v9] FALLING THROUGH to provider_candidates for {sym}")
 
     provider_candidates = _get_provider_fetchers(sym)
     prev_candidate: float | None = None
@@ -31679,7 +31679,7 @@ async def debug_crypto_check(symbol: str):
         "classified": _classify_symbol_category(sym),
         "hunter_crypto_count": len(HUNTER_CRYPTO_SYMBOLS),
         "crypto_symbols_count": len(CRYPTO_SYMBOLS),
-        "version": "jan24-fix5-v8"
+        "version": "jan24-fix5-v9"
     }
     
     # Check if crypto path would be taken
@@ -31689,13 +31689,13 @@ async def debug_crypto_check(symbol: str):
     is_crypto = in_hunter or in_crypto or classified == "crypto"
     result["is_crypto_check"] = is_crypto
     
-    # Test the crypto quorum call directly
+    # Test the crypto quorum call directly WITH CACHE (fast path)
     if is_crypto:
         try:
             from core.crypto.crypto_providers import get_crypto_price_quorum
             import asyncio
             crypto_result = await asyncio.wait_for(
-                get_crypto_price_quorum(sym, use_cache=False),
+                get_crypto_price_quorum(sym, use_cache=True),  # USE CACHE for speed
                 timeout=2.0
             )
             result["quorum_success"] = True
