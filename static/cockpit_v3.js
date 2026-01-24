@@ -1029,24 +1029,34 @@ function renderAccuracyChart(accuracyData) {
     canvas.height = rect.height * dpr;
     ctx.scale(dpr, dpr);
     
+    // CRITICAL FIX: CSS variables don't work in canvas context - use actual color values
+    const COLORS = {
+        textPrimary: '#E8E6E3',
+        textSecondary: '#9CA3AF',
+        accentGreen: '#10B981',
+        accentYellow: '#F59E0B',
+        accentRed: '#EF4444',
+        accentOrange: '#F97316'
+    };
+    
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     if (!accuracyData) {
         // Show friendly "waiting for data" message
-        ctx.fillStyle = 'var(--text-secondary)';
-        ctx.font = '13px var(--font-mono)';
+        ctx.fillStyle = COLORS.textSecondary;
+        ctx.font = '13px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
         ctx.fillText('⏳ Waiting for predictions to mature...', rect.width / 2, rect.height / 2 - 10);
-        ctx.font = '11px var(--font-mono)';
+        ctx.font = '11px "JetBrains Mono", monospace';
         ctx.fillText('(Predictions need 48 hours to reconcile)', rect.width / 2, rect.height / 2 + 10);
         return;
     }
     
-    // Extract metrics
-    const dailyAcc = accuracyData.daily_accuracy_pct || 0;
-    const weeklyAcc = accuracyData.weekly_accuracy_pct || 0;
-    const monthlyAcc = accuracyData.monthly_accuracy_pct || 0;
+    // Extract metrics - use accuracy_pct as fallback for all timeframes
+    const dailyAcc = accuracyData.daily_accuracy_pct || accuracyData.accuracy_pct || 0;
+    const weeklyAcc = accuracyData.weekly_accuracy_pct || accuracyData.accuracy_pct || 0;
+    const monthlyAcc = accuracyData.monthly_accuracy_pct || accuracyData.accuracy_pct || 0;
     const status = accuracyData.accuracy_status || 'NO_DATA';
     const meetsThreshold = accuracyData.meets_70pct_threshold || false;
     
@@ -1063,7 +1073,7 @@ function renderAccuracyChart(accuracyData) {
     
     // Draw threshold label
     ctx.fillStyle = 'rgba(255, 193, 7, 0.6)';
-    ctx.font = '11px var(--font-mono)';
+    ctx.font = '11px "JetBrains Mono", monospace';
     ctx.textAlign = 'left';
     ctx.fillText('70% TARGET', 45, thresholdY - 5);
     
@@ -1082,42 +1092,42 @@ function renderAccuracyChart(accuracyData) {
         const barHeight = (bar.value / 100) * (rect.height - 80);
         const barY = rect.height - 40 - barHeight;
         
-        // Choose color based on value
-        let barColor = 'var(--accent-red)';  // <50%
-        if (bar.value >= 70) barColor = 'var(--accent-green)';  // >=70%
-        else if (bar.value >= 50) barColor = 'var(--accent-yellow)';  // 50-70%
+        // Choose color based on value - use actual color values
+        let barColor = COLORS.accentRed;  // <50%
+        if (bar.value >= 70) barColor = COLORS.accentGreen;  // >=70%
+        else if (bar.value >= 50) barColor = COLORS.accentYellow;  // 50-70%
         
         // Draw bar
         ctx.fillStyle = barColor;
         ctx.fillRect(bar.x, barY, barWidth, barHeight);
         
         // Draw value on top
-        ctx.fillStyle = 'var(--text-primary)';
-        ctx.font = 'bold 16px var(--font-mono)';
+        ctx.fillStyle = COLORS.textPrimary;
+        ctx.font = 'bold 16px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
         ctx.fillText(`${bar.value.toFixed(1)}%`, bar.x + barWidth / 2, barY - 10);
         
         // Draw label at bottom
-        ctx.fillStyle = 'var(--text-secondary)';
-        ctx.font = '12px var(--font-mono)';
+        ctx.fillStyle = COLORS.textSecondary;
+        ctx.font = '12px "JetBrains Mono", monospace';
         ctx.fillText(bar.label, bar.x + barWidth / 2, rect.height - 20);
     });
     
     // Draw status badge
-    ctx.font = 'bold 14px var(--font-mono)';
+    ctx.font = 'bold 14px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
     
     let statusText = status;
-    let statusColor = 'var(--accent-red)';
+    let statusColor = COLORS.accentRed;
     if (status === 'ACCURATE') {
         statusText = '✅ ACCURATE';
-        statusColor = 'var(--accent-green)';
+        statusColor = COLORS.accentGreen;
     } else if (status === 'BELOW_TARGET') {
         statusText = '⚠️ BELOW TARGET';
-        statusColor = 'var(--accent-yellow)';
+        statusColor = COLORS.accentYellow;
     } else {
         statusText = '❌ NO DATA';
-        statusColor = 'var(--text-secondary)';
+        statusColor = COLORS.textSecondary;
     }
     
     ctx.fillStyle = statusColor;
@@ -1128,8 +1138,8 @@ function renderAccuracyChart(accuracyData) {
     const correct = accuracyData.correct || 0;
     const wrong = accuracyData.wrong || 0;
     
-    ctx.font = '11px var(--font-mono)';
-    ctx.fillStyle = 'var(--text-secondary)';
+    ctx.font = '11px "JetBrains Mono", monospace';
+    ctx.fillStyle = COLORS.textSecondary;
     ctx.fillText(`${correct}W / ${wrong}L / ${totalPreds} Total`, rect.width / 2, 45);
 }
 
@@ -1853,7 +1863,7 @@ function renderPaperTrades(trades) {
     if (!trades || trades.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">��</div>
+                <div class="empty-state-icon">📊</div>
                 <div class="empty-state-text">No Paper Trades Yet</div>
                 <div class="empty-state-subtext">Ghost will auto-log signals at 6h final calls</div>
             </div>
@@ -1861,7 +1871,16 @@ function renderPaperTrades(trades) {
         return;
     }
     
-    container.innerHTML = trades.map(trade => {
+    // DEDUPLICATION: Filter out duplicate trades by symbol + signal time
+    const seen = new Set();
+    const uniqueTrades = trades.filter(trade => {
+        const key = `${trade.symbol}-${trade.signal_time || trade.entry_price}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    
+    container.innerHTML = uniqueTrades.map(trade => {
         const direction = trade.signal_direction?.toLowerCase() || 'long';
         const outcome = trade.outcome?.toLowerCase() || 'pending';
         const pnl = trade.profit_loss || 0;
