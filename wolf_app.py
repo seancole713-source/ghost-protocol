@@ -31657,7 +31657,7 @@ async def api_status():
 @APP.get("/api/health")
 async def api_health():
     """Simple health check endpoint for monitoring systems."""
-    return {"ok": True, "ts": int(time.time() * 1000)}
+    return {"ok": True, "ts": int(time.time() * 1000), "version": "jan24-fix5-v3"}
 
 
 @APP.get("/api/retrain-now")
