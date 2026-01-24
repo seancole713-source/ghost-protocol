@@ -31676,10 +31676,10 @@ async def debug_crypto_check(symbol: str):
         "classified": _classify_symbol_category(sym),
         "hunter_crypto_count": len(HUNTER_CRYPTO_SYMBOLS),
         "crypto_symbols_count": len(CRYPTO_SYMBOLS),
-        "version": "jan24-fix5-v4"
+        "version": "jan24-fix5-v6"
     }
     
-    # Test the crypto quorum call
+    # Test the crypto quorum call directly
     try:
         from core.crypto.crypto_providers import get_crypto_price_quorum
         import asyncio
@@ -31695,6 +31695,19 @@ async def debug_crypto_check(symbol: str):
     except Exception as e:
         result["quorum_success"] = False
         result["quorum_error"] = f"{type(e).__name__}: {str(e)}"
+    
+    # Also test fetch_price_live directly
+    try:
+        live_result = await fetch_price_live(sym, strict_live=True)
+        result["fetch_live_success"] = True
+        result["fetch_live_result"] = {
+            "provider": live_result.get("provider") if live_result else None,
+            "change_24h_pct": live_result.get("change_24h_pct") if live_result else None,
+            "price": live_result.get("price") if live_result else None
+        }
+    except Exception as e:
+        result["fetch_live_success"] = False
+        result["fetch_live_error"] = f"{type(e).__name__}: {str(e)}"
     
     return result
 
