@@ -38268,7 +38268,7 @@ try:
         days: int | None = None,
         outcome: str | None = None,
         limit: int = 50,
-        v2_only: bool = True
+        v2_only: str = "true"  # Accept string to avoid FastAPI bool parsing issues
     ):
         """
         Get paper trades with filters.
@@ -38278,13 +38278,16 @@ try:
             days: Filter by days (optional)
             outcome: Filter by outcome (optional)
             limit: Max trades to return (default: 50)
-            v2_only: If True (default), only show V2 whitelisted symbols
+            v2_only: If "true" (default), only show V2 whitelisted symbols
         
         Example:
             GET /api/v3/paper/trades?symbol=BTC&days=30&outcome=WIN
             GET /api/v3/paper/trades?v2_only=true&limit=20
         """
         try:
+            # Parse v2_only string to boolean
+            v2_only_bool = str(v2_only).lower() in ("true", "1", "yes")
+            
             tracker = get_paper_tracker()
             trades = tracker.get_trades(
                 symbol=symbol,
@@ -38294,7 +38297,7 @@ try:
             )
             
             # Apply V2 whitelist filter if requested
-            if v2_only and trades:
+            if v2_only_bool and trades:
                 try:
                     from core.v2_quality import get_quality_system
                     v2_system = get_quality_system()
@@ -38329,7 +38332,7 @@ try:
                 "ok": True,
                 "trades": trades,
                 "count": len(trades),
-                "v2_filtered": v2_only,
+                "v2_filtered": v2_only_bool,
                 "deduplicated": True
             }
         
@@ -38342,7 +38345,7 @@ try:
             }
 
     @APP.get("/api/v3/paper/stats")
-    async def api_v3_paper_get_stats(days: int = 30, since: str = None, v2_only: bool = True):
+    async def api_v3_paper_get_stats(days: int = 30, since: str = None, v2_only: str = "true"):
         """
         Get paper trading statistics.
         
@@ -38350,8 +38353,8 @@ try:
             days: Number of days to look back (default: 30)
             since: Optional date filter (e.g., "2026-01-14") to show stats from specific date
                    Overrides 'days' parameter when provided
-            v2_only: If True (default), only show V2 whitelisted symbols.
-                     Set to False to see all historical data.
+            v2_only: If "true" (default), only show V2 whitelisted symbols.
+                     Set to "false" to see all historical data.
         
         Examples:
             GET /api/v3/paper/stats?days=30              (V2 filtered, last 30 days)
@@ -38359,8 +38362,11 @@ try:
             GET /api/v3/paper/stats?v2_only=false       (All symbols, unfiltered)
         """
         try:
+            # Parse v2_only string to boolean
+            v2_only_bool = str(v2_only).lower() in ("true", "1", "yes")
+            
             tracker = get_paper_tracker()
-            stats = tracker.get_stats(days=days, since=since, v2_only=v2_only)
+            stats = tracker.get_stats(days=days, since=since, v2_only=v2_only_bool)
             
             return {
                 "ok": True,
@@ -38368,7 +38374,7 @@ try:
                 "filters": {
                     "days": days,
                     "since": since,
-                    "v2_only": v2_only
+                    "v2_only": v2_only_bool
                 }
             }
         
