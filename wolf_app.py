@@ -17037,8 +17037,14 @@ async def fetch_price_live(
                     "age": 0.0,
                     "change_24h_pct": change_24h,  # Include 24h change in response
                 }
+            else:
+                LOGGER.warning(f"Crypto quorum returned empty for {sym}, falling back")
+        except HTTPException as he:
+            LOGGER.warning(f"Crypto providers not available for {sym}: {he.detail}")
+        except TimeoutError:
+            LOGGER.warning(f"Crypto quorum timeout (2s) for {sym}, falling back")
         except Exception as e:
-            LOGGER.warning(f"Crypto quorum failed for {sym}: {e}, falling back to standard providers")
+            LOGGER.warning(f"Crypto quorum failed for {sym}: {type(e).__name__}: {e}, falling back")
 
     provider_candidates = _get_provider_fetchers(sym)
     prev_candidate: float | None = None
