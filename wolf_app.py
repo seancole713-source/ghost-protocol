@@ -13814,13 +13814,19 @@ async def api_v3_hunter_feed(limit: int = 10):
                     "price": pred.get("price_at_prediction")
                 })
             
+            # FIX 7: Add timestamp and data freshness indicators
+            oldest_pred_time = min((item.get("timestamp", 0) for item in feed_items), default=0)
+            data_age = int(time.time() - oldest_pred_time) if oldest_pred_time > 0 else None
+            
             return {
                 "ok": True,
                 "movers": feed_items,
                 "feed": feed_items,
                 "count": len(feed_items),
                 "timestamp": int(time.time()),
-                "source": "memory"
+                "source": "memory",
+                "generated_at": int(time.time()),
+                "data_age_seconds": data_age
             }
         
         # SLOW PATH: Query database if no in-memory predictions (DB query can be slow)
@@ -13889,13 +13895,19 @@ async def api_v3_hunter_feed(limit: int = 10):
                     "price": pred.get("price_at_prediction")
                 })
             
+            # FIX 7: Add timestamp and data freshness indicators
+            oldest_pred_time = min((item.get("timestamp", 0) for item in feed_items), default=0)
+            data_age = int(time.time() - oldest_pred_time) if oldest_pred_time > 0 else None
+            
             return {
                 "ok": True,
                 "movers": feed_items,
                 "feed": feed_items,
                 "count": len(feed_items),
                 "timestamp": int(time.time()),
-                "source": "database"
+                "source": "database",
+                "generated_at": int(time.time()),
+                "data_age_seconds": data_age
             }
         except Exception as db_error:
             LOGGER.error(f"Database fallback failed: {db_error}")
@@ -16992,6 +17004,36 @@ async def fetch_price_live(
 
     if strict:
         PRICE_CACHE.pop(sym, None)
+
+    # FIX (Jan 24, 2026): Special path for crypto to get 24h change data
+    # Standard provider fetchers don't return change_24h_pct, but get_crypto_price_quorum does
+    is_crypto = sym in HUNTER_CRYPTO_SYMBOLS or sym in CRYPTO_SYMBOLS or _classify_symbol_category(sym) == "crypto"
+    if is_crypto:
+        try:
+            from core.crypto.crypto_providers import get_crypto_price_quorum
+            crypto_result = await get_crypto_price_quorum(sym, use_cache=not strict)
+            if crypto_result and crypto_result.get("price"):
+                price = float(crypto_result["price"])
+                # Calculate prev_close from 24h change if available
+                change_24h = crypto_result.get("change_24h_pct", 0) or 0
+                prev_close = None
+                if change_24h != 0:
+                    # Reverse calculate: prev = current / (1 + change/100)
+                    prev_close = round(price / (1 + change_24h / 100), 6)
+                provider_label = crypto_result.get("provider", "crypto")
+                _cache_put_price(sym, price, prev_close, provider_label)
+                return {
+                    "symbol": sym,
+                    "price": price,
+                    "prev_close": prev_close,
+                    "provider": provider_label,
+                    "cached": False,
+                    "fresh": True,
+                    "age": 0.0,
+                    "change_24h_pct": change_24h,  # Include 24h change in response
+                }
+        except Exception as e:
+            LOGGER.warning(f"Crypto quorum failed for {sym}: {e}, falling back to standard providers")
 
     provider_candidates = _get_provider_fetchers(sym)
     prev_candidate: float | None = None
