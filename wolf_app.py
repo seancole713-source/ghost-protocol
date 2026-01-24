@@ -17012,30 +17012,26 @@ async def fetch_price_live(
     classified = _classify_symbol_category(sym)
     is_crypto = in_hunter or in_crypto or classified == "crypto"
     
-    # DEBUG: Log crypto classification (temporary)
-    if sym in ["CHZ", "TURBO", "RNDR", "ZEC"]:
-        LOGGER.info(f"[CRYPTO-DEBUG] fetch_price_live({sym}): is_crypto={is_crypto} (hunter={in_hunter}, crypto={in_crypto}, classified={classified})")
+    # DEBUG: Always log crypto classification for troubleshooting
+    LOGGER.info(f"[FIX5-CHECK] {sym}: is_crypto={is_crypto}, hunter={in_hunter}, crypto_set={in_crypto}, classified={classified}")
     
     if is_crypto:
+        # Use the crypto quorum directly - same code path as /api/crypto/price
         try:
-            # Import directly (same as working /api/crypto/price endpoint uses internally)
             from core.crypto.crypto_providers import get_crypto_price_quorum
-            # Add 2s timeout to prevent blocking (api/price has 2.5s overall timeout)
             crypto_result = await asyncio.wait_for(
                 get_crypto_price_quorum(sym, use_cache=not strict),
                 timeout=2.0
             )
             if crypto_result and crypto_result.get("price"):
                 price = float(crypto_result["price"])
-                # Calculate prev_close from 24h change if available
                 change_24h = crypto_result.get("change_24h_pct", 0) or 0
                 prev_close = None
                 if change_24h != 0:
-                    # Reverse calculate: prev = current / (1 + change/100)
                     prev_close = round(price / (1 + change_24h / 100), 6)
                 provider_label = crypto_result.get("provider", "crypto")
                 _cache_put_price(sym, price, prev_close, provider_label)
-                LOGGER.info(f"Crypto quorum success for {sym}: price={price}, 24h={change_24h}")
+                LOGGER.info(f"[FIX5] Crypto quorum OK: {sym}=${price:.4f}, 24h={change_24h:.2f}%")
                 return {
                     "symbol": sym,
                     "price": price,
@@ -17044,14 +17040,14 @@ async def fetch_price_live(
                     "cached": False,
                     "fresh": True,
                     "age": 0.0,
-                    "change_24h_pct": change_24h,  # Include 24h change in response
+                    "change_24h_pct": change_24h,
                 }
             else:
-                LOGGER.warning(f"Crypto quorum returned empty for {sym}: {crypto_result}")
+                LOGGER.warning(f"[FIX5] Crypto quorum empty for {sym}: {crypto_result}")
         except asyncio.TimeoutError:
-            LOGGER.warning(f"Crypto quorum timeout (2s) for {sym}, falling back")
+            LOGGER.warning(f"[FIX5] Crypto quorum timeout (2s) for {sym}")
         except Exception as e:
-            LOGGER.warning(f"Crypto quorum failed for {sym}: {type(e).__name__}: {e}")
+            LOGGER.error(f"[FIX5] Crypto quorum FAILED for {sym}: {type(e).__name__}: {e}", exc_info=True)
 
     provider_candidates = _get_provider_fetchers(sym)
     prev_candidate: float | None = None
