@@ -100,12 +100,13 @@ _session.mount("https://", _adapter)
 
 # Provider configuration from environment
 # In strict quorum mode we need >=2 providers; Binance.com is often 451-blocked.
-# Priority order (Dec 2025):
-#   1. Coinbase - Most reliable, no API key needed, never rate-limited
-#   2. Binance.US - Works in US (binance.com is 451-blocked)
-#   3. CryptoCompare - Good fallback, optional API key
-#   4. CoinGecko - LAST because free tier is heavily rate-limited (429)
-_DEFAULT_CRYPTO_QUORUM = ["coinbase", "binance", "cryptocompare", "coingecko"]
+# Priority order (Jan 2026):
+#   1. CoinGecko - FIRST because it returns 24h change data!
+#   2. Coinbase - Most reliable, no API key needed
+#   3. Binance.US - Works in US (binance.com is 451-blocked)
+#   4. CryptoCompare - Good fallback, optional API key
+# NOTE: CoinGecko is prioritized despite rate limits because we need 24h change
+_DEFAULT_CRYPTO_QUORUM = ["coingecko", "coinbase", "binance", "cryptocompare"]
 _CRYPTO_QUORUM_ORDER = None  # Lazy-loaded from env
 
 

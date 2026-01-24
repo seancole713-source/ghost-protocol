@@ -12177,12 +12177,31 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
     FIXED (Jan 24, 2026): Calculate change_pct from price/prev_close since 
     fetch_price_live doesn't return it. This fixes the uniform 9.44% bug!
     
+    FIXED (Jan 24, 2026): For crypto, fetch 24h change from CoinGecko since
+    Coinbase doesn't return it.
+    
     Returns:
         {"price": float, "change_pct": float|None} or exception
         change_pct is None when prev_close data is unavailable
     """
     try:
-        # Use Ghost's existing price infrastructure (Polygon/CoinGecko)
+        # Check if this is a crypto symbol
+        is_crypto = symbol.upper() in CRYPTO_SYMBOLS
+        
+        if is_crypto:
+            # For crypto, use get_crypto_price_quorum which returns 24h change
+            from core.crypto.crypto_providers import get_crypto_price_quorum
+            result = await get_crypto_price_quorum(symbol, use_cache=True)
+            
+            if result and result.get("price"):
+                return {
+                    "price": result["price"],
+                    "change_pct": result.get("change_24h_pct")  # CoinGecko returns this
+                }
+            else:
+                return {"price": None, "change_pct": None}
+        
+        # For stocks, use the regular price infrastructure
         result = await ensure_price_cached(
             symbol,
             strict_live=False,  # Allow cached prices for speed
@@ -12196,8 +12215,10 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
             # FIX: Calculate change_pct from price and prev_close
             # Return None if prev_close unavailable (not 0.0!)
             change_pct = None
-            if prev_close and prev_close > 0:
+            if prev_close and prev_close > 0 and prev_close != price:
                 change_pct = round(((price - prev_close) / prev_close) * 100, 2)
+            elif prev_close == price:
+                change_pct = 0.0  # Price unchanged from prev_close
             
             return {
                 "price": price,
@@ -17133,19 +17154,41 @@ def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
 
     try:
         t0 = time.perf_counter()
-        # Use previous close as baseline; price may fall back to same close when no real-time
-        url = f"https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/prev?adjusted=true&limit=1&apiKey={POLYGON_KEY}"
+        # FIX (Jan 24, 2026): Fetch last 2 trading days to get REAL prev_close
+        # The /prev endpoint returns only 1 bar, so we get the same value for both
+        # Use /aggs/ticker/{symbol}/range/1/day/{from}/{to} instead
+        from datetime import datetime, timedelta
+        
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=5)  # 5 days to ensure we get 2 trading days
+        
+        url = (
+            f"https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/range/1/day/"
+            f"{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}"
+            f"?adjusted=true&sort=asc&limit=10&apiKey={POLYGON_KEY}"
+        )
+        
         if _OTEL_TRACER is not None:
             with _OTEL_TRACER.start_as_current_span("provider.polygon.get"):  # type: ignore[attr-defined]
-                r = _http_get(url, timeout=2)
+                r = _http_get(url, timeout=3)
         else:
-            r = _http_get(url, timeout=2)
+            r = _http_get(url, timeout=3)
         r.raise_for_status()
         data = r.json() or {}
         results = data.get("results") or []
-        if results:
-            c = float(results[0].get("c") or 0)
-            if c > 0:
+        
+        if results and len(results) >= 1:
+            # Most recent day's close is the current price
+            current_close = float(results[-1].get("c") or 0)
+            
+            # Previous day's close (if we have 2+ bars)
+            if len(results) >= 2:
+                prev_close = float(results[-2].get("c") or 0)
+            else:
+                # Fallback: use same value (market hasn't had 2 days)
+                prev_close = current_close
+            
+            if current_close > 0:
                 # Success: reset backoff
                 _note_provider_success("polygon")
                 try:
@@ -17157,7 +17200,7 @@ def _fetch_price_polygon(symbol: str) -> tuple[float | None, float | None, str]:
                         _C_PROVIDER_FETCH.labels(provider="polygon", result="ok").inc()
                 except Exception:
                     pass
-                return c, c, "polygon"
+                return current_close, prev_close, "polygon"
     except Exception as e:
         # Detect rate limits
         status_code = None
