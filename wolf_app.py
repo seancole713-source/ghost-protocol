@@ -802,6 +802,10 @@ async def auth_fast_fail_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/price/"):
         return await call_next(request)
 
+    # Allow crypto-check debug endpoint (Fix 5 troubleshooting)
+    if request.url.path.startswith("/api/debug/crypto-check/"):
+        return await call_next(request)
+
     # Allow retrain trigger (one-time use, no auth)
     if request.url.path == "/retrain-trigger":
         return await call_next(request)
