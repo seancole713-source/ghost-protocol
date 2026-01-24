@@ -998,6 +998,7 @@ async function loadNews() {
 
 // Panel 4: Accuracy Chart
 async function loadAccuracyChart() {
+    console.log('[ACCURACY] loadAccuracyChart started');
     try {
         const response = await fetch('/api/v3/accuracy/summary');
         if (!response.ok) throw new Error('Failed to load accuracy data');
@@ -1019,7 +1020,12 @@ async function loadAccuracyChart() {
 }
 
 function renderAccuracyChart(accuracyData) {
+    console.log('[ACCURACY] renderAccuracyChart called with:', accuracyData);
     const canvas = document.getElementById('accuracy-chart');
+    if (!canvas) {
+        console.error('[ACCURACY] Canvas element not found!');
+        return;
+    }
     const ctx = canvas.getContext('2d');
     
     // Set canvas size
@@ -1871,10 +1877,11 @@ function renderPaperTrades(trades) {
         return;
     }
     
-    // DEDUPLICATION: Filter out duplicate trades by symbol + signal time
+    // DEDUPLICATION: Filter out duplicate trades by symbol + direction
+    // (Only one pending trade per symbol+direction makes sense)
     const seen = new Set();
     const uniqueTrades = trades.filter(trade => {
-        const key = `${trade.symbol}-${trade.signal_time || trade.entry_price}`;
+        const key = `${trade.symbol}-${trade.signal_direction}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
