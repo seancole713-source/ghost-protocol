@@ -182,6 +182,7 @@ async function loadCockpitStatus() {
         const response = await fetch('/api/v3/cockpit/status');
         if (response.ok) {
             const data = await response.json();
+            console.log('[STATUS] Cockpit status:', data);
             updateStatusIndicator(data.active);
             
             // Update system stats in health panel
@@ -1877,11 +1878,11 @@ function renderPaperTrades(trades) {
         return;
     }
     
-    // DEDUPLICATION: Filter out duplicate trades by symbol + direction
-    // (Only one pending trade per symbol+direction makes sense)
+    // DEDUPLICATION: Use unique backend ID (cascade_id or paper_trade_id)
+    // Fallback to symbol-direction-entry_price for legacy data
     const seen = new Set();
     const uniqueTrades = trades.filter(trade => {
-        const key = `${trade.symbol}-${trade.signal_direction}`;
+        const key = trade.cascade_id || trade.paper_trade_id || `${trade.symbol}-${trade.signal_direction}-${trade.entry_price}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;

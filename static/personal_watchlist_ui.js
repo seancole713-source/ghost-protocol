@@ -204,6 +204,12 @@ function renderWatchlistItem(item) {
         '<span style="background: #f39c12; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">CRYPTO</span>' : 
         '<span style="background: #3498db; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">STOCK</span>';
     
+    // Dynamic decimal formatting for small crypto prices (TURBO, etc.)
+    const priceDisplay = price > 0 ? 
+        (price < 0.01 ? `$${price.toFixed(6)}` : 
+         price < 1 ? `$${price.toFixed(4)}` : 
+         `$${price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`) : '--';
+    
     return `
         <div class="watchlist-row" style="gap: 15px;">
             <!-- Symbol Info -->
@@ -214,7 +220,7 @@ function renderWatchlistItem(item) {
                 </div>
                 <div style="font-size: 12px; color: var(--text-secondary);">
                     ${assetTypeBadge}
-                    ${price > 0 ? `$${price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '--'}
+                    ${priceDisplay}
                     <span style="margin-left: 8px;">24h: ${change24hDisplay}</span>
                 </div>
             </div>
