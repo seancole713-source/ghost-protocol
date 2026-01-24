@@ -2,7 +2,7 @@
 
 // State
 let currentTab = 'stocks';
-let currentForecastSymbol = 'BTC';  // Default to BTC (has active predictions)
+let currentForecastSymbol = 'CHZ';  // Default to CHZ (top V2 whitelist crypto at 85%)
 let updateInterval = null;
 let watchlistMode = 'personal';  // 'personal' or 'market'
 let watchlistFilter = 'all';     // 'all', 'stocks', 'crypto'
@@ -272,14 +272,18 @@ async function loadAllPanels() {
     console.log('✅ Fast panels loaded, slow panels loading in background');
 }
 
-// Panel 0: Latest BTC Prediction with CASCADE VIEW
+// Panel 0: Latest V2 Prediction (CHZ = top V2 symbol) with CASCADE VIEW
+// NOTE: BTC is V2 blacklisted - using CHZ (85% confidence) as default
 async function loadLatestBTCPrediction() {
+    // Use top V2 symbol instead of blacklisted BTC
+    const v2TopSymbol = 'CHZ';  // Top V2 crypto at 85% win rate
+    
     try {
         // Fetch both cascade data and momentum data
         const [cascadeResp, predResp, momentumResp] = await Promise.all([
-            fetch('/api/v3/cascade/list?symbol=BTC&active_only=true'),
-            fetch('/api/v3/predictions/latest?symbol=BTC'),
-            fetch('/api/v3/momentum/BTC')
+            fetch(`/api/v3/cascade/list?symbol=${v2TopSymbol}&active_only=true`),
+            fetch(`/api/v3/predictions/latest?symbol=${v2TopSymbol}`),
+            fetch(`/api/v3/momentum/${v2TopSymbol}`)
         ]);
         
         const cascadeData = cascadeResp.ok ? await cascadeResp.json() : null;
@@ -290,9 +294,9 @@ async function loadLatestBTCPrediction() {
         const latestPred = predData?.predictions?.[0] || null;
         const momentum = momentumData?.momentum || null;
         
-        console.log('[BTC] Cascade:', activeCascade);
-        console.log('[BTC] Momentum:', momentum);
-        console.log('[BTC] Prediction:', latestPred);
+        console.log(`[${v2TopSymbol}] Cascade:`, activeCascade);
+        console.log(`[${v2TopSymbol}] Momentum:`, momentum);
+        console.log(`[${v2TopSymbol}] Prediction:`, latestPred);
         
         if (activeCascade) {
             // Render CASCADE VIEW if active cascade exists
@@ -313,7 +317,7 @@ function renderBTCPrediction(prediction, momentum) {
     const container = document.getElementById('btc-prediction');
     
     if (!prediction) {
-        container.innerHTML = '<div class="pred-loading">⏳ No BTC prediction available yet</div>';
+        container.innerHTML = '<div class="pred-loading">⏳ Loading V2 predictions... (CHZ/RNDR/ZEC/TURBO)</div>';
         return;
     }
     
@@ -634,16 +638,17 @@ async function loadVIPCoins() {
             document.getElementById('vip-sniper-list').innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Sniper coins loading...</p>';
         }
         
-        // CRITICAL FIX: Major Caps now uses Watchlist data (VIP snapshot is broken)
-        // Pull BTC and ETH from the shared watchlist cache
-        const majorsFromWatchlist = sharedWatchlistData.filter(item => ['BTC', 'ETH'].includes(item.symbol));
+        // V2 FIX: Major Caps shows TOP V2 whitelisted crypto (CHZ, RNDR, ZEC, TURBO)
+        // BTC/ETH are V2 blacklisted - use whitelisted symbols instead
+        const v2CryptoSymbols = ['CHZ', 'RNDR', 'ZEC', 'TURBO'];
+        const majorsFromWatchlist = sharedWatchlistData.filter(item => v2CryptoSymbols.includes(item.symbol));
         
         if (majorsFromWatchlist.length > 0) {
-            console.log('[VIP] Major Caps pulled from Watchlist:', majorsFromWatchlist);
+            console.log('[VIP] V2 Crypto from Watchlist:', majorsFromWatchlist);
             renderMajorCaps(majorsFromWatchlist);
         } else {
-            console.warn('[VIP] No BTC/ETH found in Watchlist cache yet');
-            document.getElementById('vip-majors-list').innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Loading...</p>';
+            console.warn('[VIP] No V2 crypto found in Watchlist cache yet');
+            document.getElementById('vip-majors-list').innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Loading V2 crypto...</p>';
         }
         
     } catch (error) {
@@ -1177,7 +1182,11 @@ function renderWatchlist(data) {
     
     container.innerHTML = data.slice(0, 15).map(item => {
         // API returns: price, ghost_confidence, ghost_direction, change_pct, type
-        const priceDisplay = item.price ? `$${item.price.toFixed(2)}` : '--';
+        // Use more decimals for small crypto prices
+        const priceDisplay = item.price ? 
+            (item.price < 0.01 ? `$${item.price.toFixed(6)}` : 
+             item.price < 1 ? `$${item.price.toFixed(4)}` : 
+             `$${item.price.toFixed(2)}`) : '--';
         
         // Use change_pct (from API) instead of change_24h
         const changePct = item.change_pct ?? item.change ?? 0;
