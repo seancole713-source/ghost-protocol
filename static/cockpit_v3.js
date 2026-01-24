@@ -267,10 +267,13 @@ async function loadAllPanels() {
     loadWatchlistByMode().catch(e => console.error('Watchlist error:', e));
     loadForecast().catch(e => console.error('Forecast error:', e));
     
-    // Delay accuracy chart slightly to ensure canvas is laid out
-    setTimeout(() => {
-        loadAccuracyChart().catch(e => console.error('Accuracy error:', e));
-    }, 50);
+    // ROBUST FIX: Use double requestAnimationFrame to ensure canvas layout is complete
+    // This guarantees the browser has computed styles and layout before we measure
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            loadAccuracyChart().catch(e => console.error('Accuracy error:', e));
+        });
+    });
     
     // Slow panels - load in background (may take 10-30s on first load)
     setTimeout(() => {
@@ -1039,11 +1042,25 @@ function renderAccuracyChart(accuracyData) {
     }
     const ctx = canvas.getContext('2d');
     
-    // Set canvas size
+    // Get canvas bounding rect
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
+    
+    // ROBUST FIX: Validate dimensions - retry if too small (layout not ready)
+    if (rect.width < 10 || rect.height < 10) {
+        console.warn('[ACCURACY] Canvas rect too small:', rect.width, 'x', rect.height, '- retrying in 100ms');
+        setTimeout(() => renderAccuracyChart(accuracyData), 100);
+        return;
+    }
+    
+    console.log('[ACCURACY] Canvas dimensions:', rect.width, 'x', rect.height, 'dpr:', dpr);
+    
+    // Set canvas buffer size
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
+    
+    // CRITICAL: Reset transform before scaling (prevents cumulative scaling bug)
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
     
     // CRITICAL FIX: CSS variables don't work in canvas context - use actual color values
