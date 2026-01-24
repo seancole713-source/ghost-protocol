@@ -13092,22 +13092,27 @@ async def api_v3_health_metrics():
     Returns:
         - data_health: Provider uptime (test BTC availability)
         - ai_activity: Predictions per hour
-        - accuracy: Win rate from prediction store
+        - accuracy: Win rate from V2-filtered paper trades
         - cache_performance: Price cache hit rate
     """
     try:
-        # Data Health: Check if BTC provider is working
+        # V2 ERA: Start date for clean data
+        V2_START_DATE = "2026-01-14"
+        
+        # Data Health: Check if a V2 crypto provider is working (CHZ instead of blacklisted BTC)
         data_health = 50  # Default if provider unavailable
         try:
-            btc_data = await fetch_price_async("BTC", STATE)
-            if btc_data and btc_data.get("price", 0) > 0:
+            # Use CHZ (V2 whitelisted) instead of BTC (blacklisted)
+            chz_data = await fetch_price_async("CHZ", STATE)
+            if chz_data and chz_data.get("price", 0) > 0:
                 data_health = 95  # Provider working
+            else:
+                data_health = 30
         except Exception:
             data_health = 30  # Provider offline
         
         # AI Activity: Count recent predictions (predictions per hour)
         total_predictions = len(_LATEST_PREDICTIONS)
-        # Assume predictions span multiple hours, calculate rate
         # Simple heuristic: if we have 100+ predictions, activity is high
         if total_predictions >= 100:
             ai_activity = 90
@@ -13118,14 +13123,14 @@ async def api_v3_health_metrics():
         else:
             ai_activity = 30
         
-        # Accuracy: Calculate win rate from predictions
+        # Accuracy: Calculate from V2-filtered paper trades (not _PREDICTION_STORE)
         accuracy = 50  # Default
         try:
-            if _PREDICTION_STORE and len(_PREDICTION_STORE) > 0:
-                wins = sum(1 for p in _PREDICTION_STORE.values() if p.get("outcome") == "win")
-                total_resolved = sum(1 for p in _PREDICTION_STORE.values() if p.get("outcome") in ["win", "loss"])
-                if total_resolved > 0:
-                    accuracy = round((wins / total_resolved) * 100, 1)
+            from core.paper_tracker import get_paper_tracker
+            tracker = get_paper_tracker()
+            stats = tracker.get_stats(since=V2_START_DATE, v2_only=True)
+            if stats.get("resolved_trades", 0) > 0:
+                accuracy = round(stats.get("win_rate_pct", 50), 1)
         except Exception:
             pass
         
@@ -13143,6 +13148,7 @@ async def api_v3_health_metrics():
             "ai_activity": ai_activity,
             "accuracy": accuracy,
             "cache_performance": cache_stats,
+            "v2_start_date": V2_START_DATE,
             "timestamp": datetime.now(UTC).isoformat()
         }
     
