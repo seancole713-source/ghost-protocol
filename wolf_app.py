@@ -31679,25 +31679,50 @@ async def debug_crypto_check(symbol: str):
         "classified": _classify_symbol_category(sym),
         "hunter_crypto_count": len(HUNTER_CRYPTO_SYMBOLS),
         "crypto_symbols_count": len(CRYPTO_SYMBOLS),
-        "version": "jan24-fix5-v7"
+        "version": "jan24-fix5-v8"
     }
     
+    # Check if crypto path would be taken
+    in_hunter = sym in HUNTER_CRYPTO_SYMBOLS
+    in_crypto = sym in CRYPTO_SYMBOLS
+    classified = _classify_symbol_category(sym)
+    is_crypto = in_hunter or in_crypto or classified == "crypto"
+    result["is_crypto_check"] = is_crypto
+    
     # Test the crypto quorum call directly
-    try:
-        from core.crypto.crypto_providers import get_crypto_price_quorum
-        import asyncio
-        crypto_result = await asyncio.wait_for(
-            get_crypto_price_quorum(sym, use_cache=False),
-            timeout=2.0
-        )
-        result["quorum_success"] = True
-        result["quorum_result"] = crypto_result
-    except asyncio.TimeoutError:
+    if is_crypto:
+        try:
+            from core.crypto.crypto_providers import get_crypto_price_quorum
+            import asyncio
+            crypto_result = await asyncio.wait_for(
+                get_crypto_price_quorum(sym, use_cache=False),
+                timeout=2.0
+            )
+            result["quorum_success"] = True
+            result["quorum_result"] = {
+                "price": crypto_result.get("price"),
+                "provider": crypto_result.get("provider"),
+                "change_24h_pct": crypto_result.get("change_24h_pct")
+            }
+            
+            # Now manually construct what fetch_price_live SHOULD return
+            if crypto_result and crypto_result.get("price"):
+                price = float(crypto_result["price"])
+                change_24h = crypto_result.get("change_24h_pct", 0) or 0
+                result["what_should_return"] = {
+                    "price": price,
+                    "provider": "crypto-quorum-v8",
+                    "change_24h_pct": change_24h
+                }
+        except asyncio.TimeoutError:
+            result["quorum_success"] = False
+            result["quorum_error"] = "timeout (2s)"
+        except Exception as e:
+            result["quorum_success"] = False
+            result["quorum_error"] = f"{type(e).__name__}: {str(e)}"
+    else:
         result["quorum_success"] = False
-        result["quorum_error"] = "timeout (2s)"
-    except Exception as e:
-        result["quorum_success"] = False
-        result["quorum_error"] = f"{type(e).__name__}: {str(e)}"
+        result["quorum_error"] = "is_crypto was False"
     
     # Also test fetch_price_live directly
     try:
