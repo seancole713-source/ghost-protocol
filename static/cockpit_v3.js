@@ -189,15 +189,21 @@ async function loadCockpitStatus() {
             if (data.uptime_seconds !== undefined) {
                 const uptimeHours = (data.uptime_seconds / 3600).toFixed(1);
                 const uptimeEl = document.getElementById('system-uptime');
+                console.log('[STATUS] Updating uptime:', uptimeHours, 'h, element:', uptimeEl);
                 if (uptimeEl) {
                     uptimeEl.textContent = `${uptimeHours}h`;
+                } else {
+                    console.error('[STATUS] system-uptime element NOT FOUND');
                 }
             }
             
             if (data.predictions_today !== undefined) {
                 const countEl = document.getElementById('predictions-count');
+                console.log('[STATUS] Updating predictions:', data.predictions_today, 'element:', countEl);
                 if (countEl) {
                     countEl.textContent = data.predictions_today || 0;
+                } else {
+                    console.error('[STATUS] predictions-count element NOT FOUND');
                 }
             }
         }
@@ -260,7 +266,11 @@ async function loadAllPanels() {
     loadLatestBTCPrediction().catch(e => console.error('BTC prediction error:', e));
     loadWatchlistByMode().catch(e => console.error('Watchlist error:', e));
     loadForecast().catch(e => console.error('Forecast error:', e));
-    loadAccuracyChart().catch(e => console.error('Accuracy error:', e));
+    
+    // Delay accuracy chart slightly to ensure canvas is laid out
+    setTimeout(() => {
+        loadAccuracyChart().catch(e => console.error('Accuracy error:', e));
+    }, 50);
     
     // Slow panels - load in background (may take 10-30s on first load)
     setTimeout(() => {
