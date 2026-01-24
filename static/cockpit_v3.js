@@ -691,16 +691,23 @@ async function loadVIPCoins() {
 function renderXRPTracker(data) {
     const container = document.getElementById('xrp-tracker');
     
-    // Eye indicator color based on bullish_eye value
-    let eyeEmoji = '🟢';
-    let eyeLabel = 'BULLISH';
-    if (data.bullish_eye < 40) {
-        eyeEmoji = '🔴';
+    // FIX: Backend returns bullish_eye as emoji string ("🟢", "🟡", "🔴")
+    // Map emoji to label/color, use confidence for numeric display
+    let eyeEmoji = data.bullish_eye || '🟡';
+    let eyeLabel = 'NEUTRAL';
+    
+    // Determine label from emoji
+    if (eyeEmoji === '🟢') {
+        eyeLabel = 'BULLISH';
+    } else if (eyeEmoji === '🔴') {
         eyeLabel = 'BEARISH';
-    } else if (data.bullish_eye < 60) {
-        eyeEmoji = '🟡';
+    } else {
         eyeLabel = 'NEUTRAL';
+        eyeEmoji = '🟡';  // Default
     }
+    
+    // Use confidence * 100 for numeric eye score display
+    const eyeScore = Math.round((data.confidence || 0.5) * 100);
     
     const signalColor = data.signal === 'BUY' ? 'var(--accent-green)' : 
                         data.signal === 'SELL' ? 'var(--accent-red)' : 
@@ -722,7 +729,7 @@ function renderXRPTracker(data) {
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary);">
-                <span>Eye Score: ${data.bullish_eye || 0}/100</span>
+                <span>Eye Score: ${eyeScore}/100</span>
                 <span>24h: ${data.change_24h_pct ? (data.change_24h_pct >= 0 ? '+' : '') + data.change_24h_pct.toFixed(2) + '%' : '--'}</span>
             </div>
         </div>
@@ -958,6 +965,7 @@ function updateForecastCard(index, prediction, icon, timeframe, confidenceMultip
 
 // Panel 3: News Feed
 async function loadNews() {
+    console.log('[NEWS] ======= LOAD START =======');
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);  // 10s timeout
@@ -965,18 +973,21 @@ async function loadNews() {
         const response = await fetch('/api/v3/news/feed?limit=10', { signal: controller.signal });
         clearTimeout(timeoutId);
         
+        console.log('[NEWS] Response status:', response.status, response.ok);
         if (!response.ok) throw new Error('Failed to load news');
         
         const data = await response.json();
         const container = document.getElementById('news-list');
         
-        console.log('[NEWS] Loaded items:', data?.items?.length || 0);
+        console.log('[NEWS] Parsed data:', data ? 'OK' : 'NULL', 'items:', data?.items?.length || 0);
         
         if (!data || !data.items || data.items.length === 0) {
-            console.error('[NEWS] No items in response:', data);
+            console.error('[NEWS] No items in response:', JSON.stringify(data).slice(0, 200));
             container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No news available yet</p>';
             return;
         }
+        
+        console.log('[NEWS] Rendering', data.items.length, 'items');
         
         // Debug: Log first item's sentiment
         if (data.items[0]) {
@@ -1925,15 +1936,33 @@ function renderPaperTrades(trades) {
         return;
     }
     
-    // DEDUPLICATION: Use unique backend ID (cascade_id or paper_trade_id)
-    // Fallback to symbol-direction-entry_price for legacy data
+    // ROBUST DEDUPLICATION:
+    // 1. Primary: Use cascade_id (unique per prediction)
+    // 2. Fallback: symbol-direction-roundedEntry (for legacy data without cascade_id)
     const seen = new Set();
     const uniqueTrades = trades.filter(trade => {
-        const key = trade.cascade_id || trade.paper_trade_id || `${trade.symbol}-${trade.signal_direction}-${trade.entry_price}`;
+        // Primary key: cascade_id is unique
+        if (trade.cascade_id) {
+            if (seen.has(trade.cascade_id)) return false;
+            seen.add(trade.cascade_id);
+            return true;
+        }
+        // Fallback: paper_trade_id
+        if (trade.paper_trade_id) {
+            const key = `pid_${trade.paper_trade_id}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }
+        // Last resort: symbol + direction + entry rounded to 2 decimals
+        const roundedEntry = Math.round((trade.entry_price || 0) * 100) / 100;
+        const key = `${trade.symbol}-${trade.signal_direction}-${roundedEntry}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
     });
+    
+    console.log('[PAPER] Dedup:', trades.length, 'raw →', uniqueTrades.length, 'unique');
     
     container.innerHTML = uniqueTrades.map(trade => {
         const direction = trade.signal_direction?.toLowerCase() || 'long';
