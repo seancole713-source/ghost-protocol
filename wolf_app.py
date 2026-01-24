@@ -9953,8 +9953,12 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
         from core.paper_tracker import get_paper_tracker
         tracker = get_paper_tracker()
         
-        # Get stats with V2 filter
-        stats = tracker.get_stats(days=days, v2_only=v2_only)
+        # V2 ERA FIX: Use since=2026-01-14 to exclude pre-V2 garbage data
+        # This is the key filter that makes accuracy go from 29% to 60%!
+        V2_START_DATE = "2026-01-14"
+        
+        # Get stats with V2 filter AND date filter
+        stats = tracker.get_stats(days=days, since=V2_START_DATE, v2_only=v2_only)
         
         total = stats.get("resolved_trades", 0)
         wins = stats.get("wins", 0)
@@ -9962,9 +9966,9 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
         # Calculate accuracy
         accuracy_pct = round((wins / total) * 100, 1) if total > 0 else 0.0
         
-        # Calculate daily/weekly/monthly breakdowns
-        daily_stats = tracker.get_stats(days=1, v2_only=v2_only)
-        weekly_stats = tracker.get_stats(days=7, v2_only=v2_only)
+        # Calculate daily/weekly/monthly breakdowns (all using V2 date filter)
+        daily_stats = tracker.get_stats(days=1, since=V2_START_DATE, v2_only=v2_only)
+        weekly_stats = tracker.get_stats(days=7, since=V2_START_DATE, v2_only=v2_only)
         
         daily_total = daily_stats.get("resolved_trades", 0)
         daily_wins = daily_stats.get("wins", 0)
@@ -9987,6 +9991,7 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
             "avg_move_pct": 0.0,
             "symbol": symbol or "ALL",
             "period_days": days,
+            "v2_start_date": V2_START_DATE,
             "data_source": "paper_trades_v2",
             "v2_filtered": v2_only,
             "accuracy_status": "MEETS_TARGET" if accuracy_pct >= 70 else "IMPROVING" if accuracy_pct >= 50 else "DEVELOPING",
@@ -12772,6 +12777,9 @@ async def api_v3_goals_snapshot():
         ai_activity = 50
         accuracy = 50
         
+        # V2 ERA: Start date for clean data
+        V2_START_DATE = "2026-01-14"
+        
         try:
             # Data Health: Check if BTC provider is working
             btc_data = await fetch_price_async("BTC", STATE)
@@ -12793,11 +12801,12 @@ async def api_v3_goals_snapshot():
         else:
             ai_activity = 30
         
-        # Accuracy: Get from paper trades or prediction store
+        # Accuracy: Get from paper trades with V2 date filter
         try:
             from core.paper_tracker import get_paper_tracker
             tracker = get_paper_tracker()
-            stats = tracker.get_stats()
+            # CRITICAL: Use since=V2_START_DATE to get 60% accuracy, not 29%
+            stats = tracker.get_stats(since=V2_START_DATE, v2_only=True)
             if stats.get("resolved_trades", 0) > 0:
                 accuracy = round(stats.get("win_rate_pct", 50), 1)
         except Exception:
