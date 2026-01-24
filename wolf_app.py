@@ -17016,29 +17016,29 @@ async def fetch_price_live(
     classified = _classify_symbol_category(sym)
     is_crypto = in_hunter or in_crypto or classified == "crypto"
     
-    # DEBUG: Always log crypto classification for troubleshooting
-    LOGGER.info(f"[FIX5-CHECK-v4] {sym}: is_crypto={is_crypto}, hunter={in_hunter}, crypto_set={in_crypto}, classified={classified}")
+    # DEBUG: Log crypto classification for troubleshooting (only if not crypto to debug false negatives)
+    if not is_crypto and sym in ["CHZ", "TURBO", "RNDR", "ZEC"]:
+        LOGGER.warning(f"[FIX5] Unexpected: {sym} not classified as crypto: hunter={in_hunter}, crypto_set={in_crypto}, classified={classified}")
     
     if is_crypto:
-        # FIX5-v9: Use the crypto quorum with CACHE (faster, still gets 24h change)
-        LOGGER.error(f"[FIX5-v9] ENTERING crypto quorum path for {sym}")
+        # FIX5 (Jan 24, 2026): Use crypto quorum for 24h change data
+        # Standard provider fetchers (coinbase, etc.) don't return change_24h_pct
+        # Using use_cache=True for speed (prevents timeout on popular coins)
         try:
             from core.crypto.crypto_providers import get_crypto_price_quorum
-            LOGGER.error(f"[FIX5-v9] Calling quorum with use_cache=True for speed")
             crypto_result = await asyncio.wait_for(
-                get_crypto_price_quorum(sym, use_cache=True),  # ALWAYS use cache for speed
+                get_crypto_price_quorum(sym, use_cache=True),
                 timeout=2.0
             )
-            LOGGER.error(f"[FIX5-v9] Quorum returned for {sym}: {crypto_result}")
             if crypto_result and crypto_result.get("price"):
                 price = float(crypto_result["price"])
                 change_24h = crypto_result.get("change_24h_pct", 0) or 0
                 prev_close = None
                 if change_24h != 0:
                     prev_close = round(price / (1 + change_24h / 100), 6)
-                provider_label = "crypto-quorum-v9"  # EXPLICIT marker
+                provider_label = crypto_result.get("provider", "crypto-quorum")
                 _cache_put_price(sym, price, prev_close, provider_label)
-                LOGGER.error(f"[FIX5-v9] SUCCESS: {sym}=${price:.4f}, 24h={change_24h:.2f}%")
+                LOGGER.info(f"[FIX5] Crypto quorum OK: {sym}=${price:.4f}, 24h={change_24h:.2f}%")
                 return {
                     "symbol": sym,
                     "price": price,
@@ -17050,12 +17050,11 @@ async def fetch_price_live(
                     "change_24h_pct": change_24h,
                 }
             else:
-                LOGGER.error(f"[FIX5-v9] Crypto quorum empty for {sym}: {crypto_result}")
+                LOGGER.debug(f"[FIX5] Crypto quorum empty for {sym}")
         except asyncio.TimeoutError:
-            LOGGER.error(f"[FIX5-v9] Crypto quorum timeout (2s) for {sym}")
+            LOGGER.debug(f"[FIX5] Crypto quorum timeout for {sym}")
         except Exception as e:
-            LOGGER.error(f"[FIX5-v9] Crypto quorum FAILED for {sym}: {type(e).__name__}: {e}", exc_info=True)
-        LOGGER.error(f"[FIX5-v9] FALLING THROUGH to provider_candidates for {sym}")
+            LOGGER.warning(f"[FIX5] Crypto quorum failed for {sym}: {e}")
 
     provider_candidates = _get_provider_fetchers(sym)
     prev_candidate: float | None = None
@@ -31670,72 +31669,27 @@ async def api_health():
 
 @APP.get("/api/debug/crypto-check/{symbol}")
 async def debug_crypto_check(symbol: str):
-    """Debug endpoint to check crypto classification for Fix 5."""
+    """Debug endpoint for Fix 5 - Crypto 24h change verification."""
     sym = symbol.upper()
-    result = {
-        "symbol": sym,
-        "in_hunter_crypto": sym in HUNTER_CRYPTO_SYMBOLS,
-        "in_crypto_symbols": sym in CRYPTO_SYMBOLS,
-        "classified": _classify_symbol_category(sym),
-        "hunter_crypto_count": len(HUNTER_CRYPTO_SYMBOLS),
-        "crypto_symbols_count": len(CRYPTO_SYMBOLS),
-        "version": "jan24-fix5-v9"
-    }
-    
-    # Check if crypto path would be taken
     in_hunter = sym in HUNTER_CRYPTO_SYMBOLS
     in_crypto = sym in CRYPTO_SYMBOLS
     classified = _classify_symbol_category(sym)
     is_crypto = in_hunter or in_crypto or classified == "crypto"
-    result["is_crypto_check"] = is_crypto
     
-    # Test the crypto quorum call directly WITH CACHE (fast path)
-    if is_crypto:
-        try:
-            from core.crypto.crypto_providers import get_crypto_price_quorum
-            import asyncio
-            crypto_result = await asyncio.wait_for(
-                get_crypto_price_quorum(sym, use_cache=True),  # USE CACHE for speed
-                timeout=2.0
-            )
-            result["quorum_success"] = True
-            result["quorum_result"] = {
-                "price": crypto_result.get("price"),
-                "provider": crypto_result.get("provider"),
-                "change_24h_pct": crypto_result.get("change_24h_pct")
-            }
-            
-            # Now manually construct what fetch_price_live SHOULD return
-            if crypto_result and crypto_result.get("price"):
-                price = float(crypto_result["price"])
-                change_24h = crypto_result.get("change_24h_pct", 0) or 0
-                result["what_should_return"] = {
-                    "price": price,
-                    "provider": "crypto-quorum-v8",
-                    "change_24h_pct": change_24h
-                }
-        except asyncio.TimeoutError:
-            result["quorum_success"] = False
-            result["quorum_error"] = "timeout (2s)"
-        except Exception as e:
-            result["quorum_success"] = False
-            result["quorum_error"] = f"{type(e).__name__}: {str(e)}"
-    else:
-        result["quorum_success"] = False
-        result["quorum_error"] = "is_crypto was False"
+    result = {
+        "symbol": sym,
+        "is_crypto": is_crypto,
+        "classified": classified,
+    }
     
-    # Also test fetch_price_live directly
+    # Test the price endpoint
     try:
         live_result = await fetch_price_live(sym, strict_live=True)
-        result["fetch_live_success"] = True
-        result["fetch_live_result"] = {
-            "provider": live_result.get("provider") if live_result else None,
-            "change_24h_pct": live_result.get("change_24h_pct") if live_result else None,
-            "price": live_result.get("price") if live_result else None
-        }
+        result["price"] = live_result.get("price") if live_result else None
+        result["provider"] = live_result.get("provider") if live_result else None
+        result["change_24h_pct"] = live_result.get("change_24h_pct") if live_result else None
     except Exception as e:
-        result["fetch_live_success"] = False
-        result["fetch_live_error"] = f"{type(e).__name__}: {str(e)}"
+        result["error"] = str(e)
     
     return result
 
