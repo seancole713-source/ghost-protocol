@@ -12100,10 +12100,11 @@ async def api_v3_watchlist_enriched():
                 if isinstance(price_result, Exception):
                     LOGGER.debug(f"Price fetch failed for {symbol}: {price_result}")
                     price = None
-                    change_pct = 0.0
+                    change_pct = None  # Use None to indicate "unknown", not 0.0
                 else:
                     price = price_result.get("price")
-                    change_pct = price_result.get("change_pct", 0.0)
+                    # Check if change_pct was actually calculated (has prev_close data)
+                    change_pct = price_result.get("change_pct")  # Don't default to 0.0
                 
                 # Get latest prediction
                 pred = _LATEST_PREDICTIONS.get(symbol, {})
@@ -12119,13 +12120,15 @@ async def api_v3_watchlist_enriched():
                     direction_multiplier = 1 if ghost_direction == "UP" else -1 if ghost_direction == "DOWN" else 0
                     derived_change = (ghost_confidence_pct - 50) * 0.4 * direction_multiplier
 
-                final_change = change_pct or derived_change
+                # FIX: Use change_pct if we have actual price data (even if 0.0!)
+                # Only fall back to derived_change when change_pct is None (no prev_close data)
+                final_change = change_pct if change_pct is not None else derived_change
                 fallback_price = pred.get("price_at_prediction") or price
 
                 watchlist_data.append({
                     "symbol": symbol,
                     "price": price if price is not None else fallback_price,
-                    "change_pct": round(final_change, 2) if final_change else 0.0,
+                    "change_pct": round(final_change, 2) if final_change is not None else 0.0,
                     "ghost_confidence": ghost_confidence_pct,
                     "ghost_direction": ghost_direction,
                     "type": "crypto" if symbol in CRYPTO_SYMBOLS else "stock",
@@ -12163,7 +12166,8 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
     fetch_price_live doesn't return it. This fixes the uniform 9.44% bug!
     
     Returns:
-        {"price": float, "change_pct": float} or exception
+        {"price": float, "change_pct": float|None} or exception
+        change_pct is None when prev_close data is unavailable
     """
     try:
         # Use Ghost's existing price infrastructure (Polygon/CoinGecko)
@@ -12178,22 +12182,22 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
             prev_close = result.get("prev_close")
             
             # FIX: Calculate change_pct from price and prev_close
-            # This is the ACTUAL price change, not the derived prediction-based change
-            change_pct = 0.0
+            # Return None if prev_close unavailable (not 0.0!)
+            change_pct = None
             if prev_close and prev_close > 0:
-                change_pct = ((price - prev_close) / prev_close) * 100
+                change_pct = round(((price - prev_close) / prev_close) * 100, 2)
             
             return {
                 "price": price,
-                "change_pct": round(change_pct, 2)
+                "change_pct": change_pct  # None = no prev_close data
             }
         else:
             LOGGER.debug(f"No price available for {symbol}")
-            return {"price": None, "change_pct": 0.0}
+            return {"price": None, "change_pct": None}
     
     except Exception as e:
         LOGGER.debug(f"Price fetch failed for {symbol}: {e}")
-        return {"price": None, "change_pct": 0.0}
+        return {"price": None, "change_pct": None}
 
 
 # Alias for /api/v3/watchlist/user (compatibility with personal watchlist router)
