@@ -1129,6 +1129,9 @@ function renderAccuracyChart(accuracyData) {
     if (status === 'ACCURATE') {
         statusText = '✅ ACCURATE';
         statusColor = COLORS.accentGreen;
+    } else if (status === 'IMPROVING') {
+        statusText = '📈 IMPROVING';
+        statusColor = COLORS.accentYellow;
     } else if (status === 'BELOW_TARGET') {
         statusText = '⚠️ BELOW TARGET';
         statusColor = COLORS.accentYellow;
@@ -1140,10 +1143,10 @@ function renderAccuracyChart(accuracyData) {
     ctx.fillStyle = statusColor;
     ctx.fillText(statusText, rect.width / 2, 25);
     
-    // Draw prediction count
+    // Draw prediction count - use correct API field names
     const totalPreds = accuracyData.total_predictions || 0;
-    const correct = accuracyData.correct || 0;
-    const wrong = accuracyData.wrong || 0;
+    const correct = accuracyData.correct_predictions || accuracyData.correct || 0;
+    const wrong = totalPreds - correct;
     
     ctx.font = '11px "JetBrains Mono", monospace';
     ctx.fillStyle = COLORS.textSecondary;
