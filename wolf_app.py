@@ -12159,6 +12159,9 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
     FIXED: Replaced yfinance (which fails in production) with ensure_price_cached()
     which uses Polygon for stocks and CoinGecko for crypto.
     
+    FIXED (Jan 24, 2026): Calculate change_pct from price/prev_close since 
+    fetch_price_live doesn't return it. This fixes the uniform 9.44% bug!
+    
     Returns:
         {"price": float, "change_pct": float} or exception
     """
@@ -12171,9 +12174,18 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
         )
         
         if result and result.get("price"):
+            price = result["price"]
+            prev_close = result.get("prev_close")
+            
+            # FIX: Calculate change_pct from price and prev_close
+            # This is the ACTUAL price change, not the derived prediction-based change
+            change_pct = 0.0
+            if prev_close and prev_close > 0:
+                change_pct = ((price - prev_close) / prev_close) * 100
+            
             return {
-                "price": result["price"],
-                "change_pct": result.get("change_pct", 0.0)
+                "price": price,
+                "change_pct": round(change_pct, 2)
             }
         else:
             LOGGER.debug(f"No price available for {symbol}")
