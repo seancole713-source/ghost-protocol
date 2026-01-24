@@ -292,6 +292,10 @@ async function loadLatestBTCPrediction() {
     // Use top V2 symbol instead of blacklisted BTC
     const v2TopSymbol = 'CHZ';  // Top V2 crypto at 85% win rate
     
+    // BUG 6 FIX: Update title with actual symbol
+    const titleEl = document.getElementById('latest-pred-title');
+    if (titleEl) titleEl.textContent = `🎯 Latest ${v2TopSymbol} Prediction`;
+    
     try {
         // Fetch both cascade data and momentum data
         const [cascadeResp, predResp, momentumResp] = await Promise.all([
@@ -730,7 +734,7 @@ function renderXRPTracker(data) {
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary);">
                 <span>Eye Score: ${eyeScore}/100</span>
-                <span>24h: ${data.change_24h_pct ? (data.change_24h_pct >= 0 ? '+' : '') + data.change_24h_pct.toFixed(2) + '%' : '--'}</span>
+                <span>24h: ${(data.change_24h_pct ?? 0) >= 0 ? '+' : ''}${(data.change_24h_pct ?? 0).toFixed(2)}%</span>
             </div>
         </div>
     `;
@@ -900,11 +904,19 @@ function updateForecastCard6h(prediction) {
     // Card 2: Target Price (fetch from shared watchlist data)
     const card2 = cards[2];
     const watchlistSymbol = sharedWatchlistData.find(s => s.symbol === currentForecastSymbol);
+    
+    // BUG 7 FIX: Dynamic precision for sub-$1 assets
+    const formatForecastPrice = (price) => {
+        if (price < 0.01) return `$${price.toFixed(6)}`;
+        if (price < 1) return `$${price.toFixed(4)}`;
+        return `$${price.toFixed(2)}`;
+    };
+    
     if (watchlistSymbol && watchlistSymbol.price) {
         const currentPrice = watchlistSymbol.price;
         const targetPrice = currentPrice * (1 + (expectedMove / 100));
-        card2.querySelector('.current-value').textContent = `$${currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        card2.querySelector('.target-value').textContent = `$${targetPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        card2.querySelector('.current-value').textContent = formatForecastPrice(currentPrice);
+        card2.querySelector('.target-value').textContent = formatForecastPrice(targetPrice);
     } else {
         card2.querySelector('.current-value').textContent = '--';
         card2.querySelector('.target-value').textContent = '--';
@@ -1290,10 +1302,9 @@ function renderWatchlist(data) {
              `$${item.price.toFixed(2)}`) : '--';
         
         // Use change_pct (from API) instead of change_24h
+        // BUG 4 FIX: Treat null/undefined as 0.00%, not "--"
         const changePct = item.change_pct ?? item.change ?? 0;
-        const changeDisplay = changePct !== 0 ? 
-            `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : 
-            '--';
+        const changeDisplay = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`;
         
         const scoreDisplay = item.ghost_confidence && item.ghost_confidence > 0 ? 
             `${item.ghost_confidence.toFixed(0)}%` : 
@@ -1964,7 +1975,20 @@ function renderPaperTrades(trades) {
     
     console.log('[PAPER] Dedup:', trades.length, 'raw →', uniqueTrades.length, 'unique');
     
-    container.innerHTML = uniqueTrades.map(trade => {
+    // BUG 1 FIX: Group by symbol+direction, show only LATEST per group
+    // This prevents multiple entries for same symbol spamming the list
+    const latestByGroup = {};
+    uniqueTrades.forEach(trade => {
+        const groupKey = `${trade.symbol}-${trade.signal_direction}`;
+        const existing = latestByGroup[groupKey];
+        if (!existing || new Date(trade.signal_time) > new Date(existing.signal_time)) {
+            latestByGroup[groupKey] = trade;
+        }
+    });
+    const displayTrades = Object.values(latestByGroup);
+    console.log('[PAPER] Grouped:', uniqueTrades.length, 'unique →', displayTrades.length, 'display');
+    
+    container.innerHTML = displayTrades.map(trade => {
         const direction = trade.signal_direction?.toLowerCase() || 'long';
         const outcome = trade.outcome?.toLowerCase() || 'pending';
         const pnl = trade.profit_loss || 0;
