@@ -639,9 +639,25 @@ async function loadVIPCoins() {
         }
         
         // V2 FIX: Major Caps shows TOP V2 whitelisted crypto (CHZ, RNDR, ZEC, TURBO)
-        // BTC/ETH are V2 blacklisted - use whitelisted symbols instead
+        // RACE CONDITION FIX: If sharedWatchlistData empty, fetch directly
         const v2CryptoSymbols = ['CHZ', 'RNDR', 'ZEC', 'TURBO'];
-        const majorsFromWatchlist = sharedWatchlistData.filter(item => v2CryptoSymbols.includes(item.symbol));
+        let majorsFromWatchlist = sharedWatchlistData.filter(item => v2CryptoSymbols.includes(item.symbol));
+        
+        // If cache is empty, fetch watchlist directly (race condition workaround)
+        if (majorsFromWatchlist.length === 0) {
+            console.log('[VIP] Watchlist cache empty, fetching directly...');
+            try {
+                const watchlistRes = await fetch('/api/v3/watchlist/enriched');
+                if (watchlistRes.ok) {
+                    const watchlistData = await watchlistRes.json();
+                    const items = watchlistData.items || [];
+                    majorsFromWatchlist = items.filter(item => v2CryptoSymbols.includes(item.symbol));
+                    console.log('[VIP] Direct fetch got', majorsFromWatchlist.length, 'V2 crypto');
+                }
+            } catch (e) {
+                console.error('[VIP] Direct watchlist fetch failed:', e);
+            }
+        }
         
         if (majorsFromWatchlist.length > 0) {
             console.log('[VIP] V2 Crypto from Watchlist:', majorsFromWatchlist);
@@ -749,7 +765,17 @@ function renderMajorCaps(coins) {
     container.innerHTML = coins.map(coin => {
         // Watchlist format: {symbol, price, change_pct, ghost_confidence, ghost_direction, type}
         const isOffline = !coin.price || coin.price === 0;
-        const priceDisplay = isOffline ? '--' : `$${coin.price.toLocaleString()}`;
+        // FIX: Use dynamic decimals for small crypto prices (TURBO, CHZ)
+        let priceDisplay = '--';
+        if (!isOffline) {
+            if (coin.price < 0.01) {
+                priceDisplay = `$${coin.price.toFixed(6)}`;  // 6 decimals for tiny prices
+            } else if (coin.price < 1) {
+                priceDisplay = `$${coin.price.toFixed(4)}`;  // 4 decimals for sub-dollar
+            } else {
+                priceDisplay = `$${coin.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            }
+        }
         const changePct = coin.change_pct ?? 0;
         const changeClass = changePct >= 0 ? 'positive' : 'negative';
         const changeDisplay = isOffline ? '--' : 
