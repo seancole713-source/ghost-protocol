@@ -31660,6 +31660,21 @@ async def api_health():
     return {"ok": True, "ts": int(time.time() * 1000), "version": "jan24-fix5-v3"}
 
 
+@APP.get("/api/debug/crypto-check/{symbol}")
+async def debug_crypto_check(symbol: str):
+    """Debug endpoint to check crypto classification for Fix 5."""
+    sym = symbol.upper()
+    return {
+        "symbol": sym,
+        "in_hunter_crypto": sym in HUNTER_CRYPTO_SYMBOLS,
+        "in_crypto_symbols": sym in CRYPTO_SYMBOLS,
+        "classified": _classify_symbol_category(sym),
+        "hunter_crypto_count": len(HUNTER_CRYPTO_SYMBOLS),
+        "crypto_symbols_count": len(CRYPTO_SYMBOLS),
+        "version": "jan24-fix5-v3"
+    }
+
+
 @APP.get("/api/retrain-now")
 async def retrain_now():
     """Trigger model retraining via web request"""
