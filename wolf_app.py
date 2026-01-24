@@ -31668,15 +31668,34 @@ async def api_health():
 async def debug_crypto_check(symbol: str):
     """Debug endpoint to check crypto classification for Fix 5."""
     sym = symbol.upper()
-    return {
+    result = {
         "symbol": sym,
         "in_hunter_crypto": sym in HUNTER_CRYPTO_SYMBOLS,
         "in_crypto_symbols": sym in CRYPTO_SYMBOLS,
         "classified": _classify_symbol_category(sym),
         "hunter_crypto_count": len(HUNTER_CRYPTO_SYMBOLS),
         "crypto_symbols_count": len(CRYPTO_SYMBOLS),
-        "version": "jan24-fix5-v3"
+        "version": "jan24-fix5-v4"
     }
+    
+    # Test the crypto quorum call
+    try:
+        from core.crypto.crypto_providers import get_crypto_price_quorum
+        import asyncio
+        crypto_result = await asyncio.wait_for(
+            get_crypto_price_quorum(sym, use_cache=False),
+            timeout=2.0
+        )
+        result["quorum_success"] = True
+        result["quorum_result"] = crypto_result
+    except asyncio.TimeoutError:
+        result["quorum_success"] = False
+        result["quorum_error"] = "timeout (2s)"
+    except Exception as e:
+        result["quorum_success"] = False
+        result["quorum_error"] = f"{type(e).__name__}: {str(e)}"
+    
+    return result
 
 
 @APP.get("/api/retrain-now")
