@@ -1012,20 +1012,23 @@ async function loadNews() {
 
 // Panel 4: Accuracy Chart
 async function loadAccuracyChart() {
-    console.log('[ACCURACY] loadAccuracyChart started');
+    console.log('[ACCURACY] ======= LOAD START =======');
     try {
         const response = await fetch('/api/v3/accuracy/summary');
+        console.log('[ACCURACY] API response status:', response.status, response.ok);
         if (!response.ok) throw new Error('Failed to load accuracy data');
         
         const data = await response.json();
+        console.log('[ACCURACY] API payload:', JSON.stringify(data));
         
         // Handle API's {ok: false, error: "..."} format
         if (!data.ok) {
-            console.log('[ACCURACY] API returned no data:', data.error);
+            console.log('[ACCURACY] API returned ok=false:', data.error);
             renderAccuracyChart(null);
             return;
         }
         
+        console.log('[ACCURACY] Calling renderAccuracyChart with valid data');
         renderAccuracyChart(data);
     } catch (error) {
         console.error('[GHOST V3] Error loading accuracy chart:', error);
@@ -1034,13 +1037,22 @@ async function loadAccuracyChart() {
 }
 
 function renderAccuracyChart(accuracyData) {
-    console.log('[ACCURACY] renderAccuracyChart called with:', accuracyData);
+    console.log('[ACCURACY] ======= RENDER START =======');
+    console.log('[ACCURACY] accuracyData:', accuracyData ? JSON.stringify({ok: accuracyData.ok, accuracy_pct: accuracyData.accuracy_pct, correct: accuracyData.correct_predictions, total: accuracyData.total_predictions}) : 'NULL');
+    
     const canvas = document.getElementById('accuracy-chart');
+    console.log('[ACCURACY] Canvas element:', canvas ? 'FOUND' : 'MISSING');
     if (!canvas) {
         console.error('[ACCURACY] Canvas element not found!');
         return;
     }
+    
+    // Check if canvas is visible
+    const style = window.getComputedStyle(canvas);
+    console.log('[ACCURACY] Canvas CSS: display=' + style.display + ', visibility=' + style.visibility + ', opacity=' + style.opacity);
+    
     const ctx = canvas.getContext('2d');
+    console.log('[ACCURACY] Canvas 2D context:', ctx ? 'OK' : 'FAILED');
     
     // Get canvas bounding rect
     const dpr = window.devicePixelRatio || 1;
@@ -1053,7 +1065,7 @@ function renderAccuracyChart(accuracyData) {
         return;
     }
     
-    console.log('[ACCURACY] Canvas dimensions:', rect.width, 'x', rect.height, 'dpr:', dpr);
+    console.log('[ACCURACY] Canvas rect:', rect.width, 'x', rect.height, 'dpr:', dpr, 'buffer:', rect.width * dpr, 'x', rect.height * dpr);
     
     // Set canvas buffer size
     canvas.width = rect.width * dpr;
@@ -1147,6 +1159,8 @@ function renderAccuracyChart(accuracyData) {
         ctx.fillText(bar.label, bar.x + barWidth / 2, rect.height - 20);
     });
     
+    console.log('[ACCURACY] Drew', bars.length, 'bars with values:', bars.map(b => b.value.toFixed(1) + '%').join(', '));
+    
     // Draw status badge
     ctx.font = 'bold 14px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
@@ -1178,6 +1192,9 @@ function renderAccuracyChart(accuracyData) {
     ctx.font = '11px "JetBrains Mono", monospace';
     ctx.fillStyle = COLORS.textSecondary;
     ctx.fillText(`${correct}W / ${wrong}L / ${totalPreds} Total`, rect.width / 2, 45);
+    
+    console.log('[ACCURACY] ======= RENDER COMPLETE =======');
+    console.log('[ACCURACY] Final stats: status=' + statusText + ', ' + correct + 'W/' + wrong + 'L/' + totalPreds + ' total');
 }
 
 // Panel 5: Watchlist - Master loader
