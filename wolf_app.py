@@ -17007,7 +17007,15 @@ async def fetch_price_live(
 
     # FIX (Jan 24, 2026): Special path for crypto to get 24h change data
     # Standard provider fetchers don't return change_24h_pct, but get_crypto_price_quorum does
-    is_crypto = sym in HUNTER_CRYPTO_SYMBOLS or sym in CRYPTO_SYMBOLS or _classify_symbol_category(sym) == "crypto"
+    in_hunter = sym in HUNTER_CRYPTO_SYMBOLS
+    in_crypto = sym in CRYPTO_SYMBOLS
+    classified = _classify_symbol_category(sym)
+    is_crypto = in_hunter or in_crypto or classified == "crypto"
+    
+    # DEBUG: Log crypto classification (temporary)
+    if sym in ["CHZ", "TURBO", "RNDR", "ZEC"]:
+        LOGGER.info(f"[CRYPTO-DEBUG] fetch_price_live({sym}): is_crypto={is_crypto} (hunter={in_hunter}, crypto={in_crypto}, classified={classified})")
+    
     if is_crypto:
         try:
             # Import directly (same as working /api/crypto/price endpoint uses internally)
