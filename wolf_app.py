@@ -17010,11 +17010,11 @@ async def fetch_price_live(
     is_crypto = sym in HUNTER_CRYPTO_SYMBOLS or sym in CRYPTO_SYMBOLS or _classify_symbol_category(sym) == "crypto"
     if is_crypto:
         try:
-            # Use the same pattern as /api/crypto/price endpoint for consistency
-            providers = _get_crypto_providers()
+            # Import directly (same as working /api/crypto/price endpoint uses internally)
+            from core.crypto.crypto_providers import get_crypto_price_quorum
             # Add 2s timeout to prevent blocking (api/price has 2.5s overall timeout)
             crypto_result = await asyncio.wait_for(
-                providers.get_crypto_price_quorum(sym, use_cache=not strict),
+                get_crypto_price_quorum(sym, use_cache=not strict),
                 timeout=2.0
             )
             if crypto_result and crypto_result.get("price"):
@@ -17027,6 +17027,7 @@ async def fetch_price_live(
                     prev_close = round(price / (1 + change_24h / 100), 6)
                 provider_label = crypto_result.get("provider", "crypto")
                 _cache_put_price(sym, price, prev_close, provider_label)
+                LOGGER.info(f"Crypto quorum success for {sym}: price={price}, 24h={change_24h}")
                 return {
                     "symbol": sym,
                     "price": price,
@@ -17038,13 +17039,11 @@ async def fetch_price_live(
                     "change_24h_pct": change_24h,  # Include 24h change in response
                 }
             else:
-                LOGGER.warning(f"Crypto quorum returned empty for {sym}, falling back")
-        except HTTPException as he:
-            LOGGER.warning(f"Crypto providers not available for {sym}: {he.detail}")
-        except TimeoutError:
+                LOGGER.warning(f"Crypto quorum returned empty for {sym}: {crypto_result}")
+        except asyncio.TimeoutError:
             LOGGER.warning(f"Crypto quorum timeout (2s) for {sym}, falling back")
         except Exception as e:
-            LOGGER.warning(f"Crypto quorum failed for {sym}: {type(e).__name__}: {e}, falling back")
+            LOGGER.warning(f"Crypto quorum failed for {sym}: {type(e).__name__}: {e}")
 
     provider_candidates = _get_provider_fetchers(sym)
     prev_candidate: float | None = None
