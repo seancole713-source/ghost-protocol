@@ -17010,10 +17010,11 @@ async def fetch_price_live(
     is_crypto = sym in HUNTER_CRYPTO_SYMBOLS or sym in CRYPTO_SYMBOLS or _classify_symbol_category(sym) == "crypto"
     if is_crypto:
         try:
-            from core.crypto.crypto_providers import get_crypto_price_quorum
+            # Use the same pattern as /api/crypto/price endpoint for consistency
+            providers = _get_crypto_providers()
             # Add 2s timeout to prevent blocking (api/price has 2.5s overall timeout)
             crypto_result = await asyncio.wait_for(
-                get_crypto_price_quorum(sym, use_cache=not strict),
+                providers.get_crypto_price_quorum(sym, use_cache=not strict),
                 timeout=2.0
             )
             if crypto_result and crypto_result.get("price"):
