@@ -7,6 +7,7 @@ let updateInterval = null;
 let watchlistMode = 'personal';  // 'personal' or 'market'
 let watchlistFilter = 'all';     // 'all', 'stocks', 'crypto'
 let sharedWatchlistData = [];    // Shared cache for cross-panel data (Major Caps, XRP VIP)
+let isInitialized = false;       // BUG 5 FIX: Guard against double initialization
 
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => {
@@ -14,6 +15,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initializeApp() {
+    // BUG 5 FIX: Prevent duplicate intervals on LIVE/FIXED toggle
+    if (isInitialized) {
+        console.log('[INIT] Already initialized, restarting intervals only');
+        startIntervals();
+        return;
+    }
+    isInitialized = true;
+    
     setupEventListeners();
     updateSystemTime();
     
@@ -153,10 +162,33 @@ function handleModeChange(e) {
         document.getElementById('status-text').textContent = 'LIVE MODE';
         document.getElementById('status-text').style.color = 'var(--accent-green)';
         
-        // Restart all intervals
-        initializeApp();
+        // BUG 5 FIX: Only restart intervals, don't re-init event listeners
+        startIntervals();
         console.log('[MODE] All intervals resumed');
     }
+}
+
+// BUG 5 FIX: Separate function to start intervals (called by mode change)
+function startIntervals() {
+    // Clear any existing intervals first
+    if (window.updateInterval) clearInterval(window.updateInterval);
+    if (window.statusInterval) clearInterval(window.statusInterval);
+    if (window.topMoversInterval) clearInterval(window.topMoversInterval);
+    if (window.vipInterval) clearInterval(window.vipInterval);
+    if (window.watchlistInterval) clearInterval(window.watchlistInterval);
+    if (window.forecastInterval) clearInterval(window.forecastInterval);
+    if (window.healthInterval) clearInterval(window.healthInterval);
+    if (window.accuracyInterval) clearInterval(window.accuracyInterval);
+    
+    // Restart intervals
+    window.updateInterval = setInterval(updateSystemTime, 1000);
+    window.statusInterval = setInterval(() => loadCockpitStatus(), 10000);
+    window.topMoversInterval = setInterval(() => loadTopMovers(), 15000);
+    window.vipInterval = setInterval(() => loadVIPWatch(), 30000);
+    window.watchlistInterval = setInterval(() => loadWatchlistByMode(), 20000);
+    window.forecastInterval = setInterval(() => loadForecast(), 60000);
+    window.healthInterval = setInterval(() => loadHealthScore(), 30000);
+    window.accuracyInterval = setInterval(() => loadAccuracyChart(), 60000);
 }
 
 function updateStatusIndicator(isActive) {
@@ -342,7 +374,9 @@ function renderBTCPrediction(prediction, momentum) {
     const direction = prediction.direction || 'FLAT';
     const confidence = Math.round((prediction.confidence || 0) * 100);
     const expectedMove = (prediction.expected_move || 0).toFixed(2);
-    const horizonH = prediction.horizon_h || 6;
+    // BUG 1 FIX: Force 6h horizon for this panel (API returns 48h cascade horizon)
+    // The "6-Hour Horizon" panel should show 6h countdown, not full 48h cascade
+    const horizonH = 6;  // Fixed to 6h for this panel (ignore prediction.horizon_h which is 48)
     
     // Calculate time remaining
     const runAt = prediction.run_at || Date.now() / 1000;
@@ -801,9 +835,11 @@ function renderMajorCaps(coins) {
                 priceDisplay = `$${coin.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
             }
         }
-        const changePct = coin.change_pct ?? 0;
-        const changeClass = changePct >= 0 ? 'positive' : 'negative';
-        const changeDisplay = isOffline ? '--' : 
+        // BUG 3 FIX: Standardize null handling - show '--' for missing data, not +0.00%
+        const changePct = coin.change_pct;
+        const hasChange = changePct !== null && changePct !== undefined;
+        const changeClass = (changePct || 0) >= 0 ? 'positive' : 'negative';
+        const changeDisplay = (isOffline || !hasChange) ? '--' : 
             `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`;
         
         console.log(`[VIP] ${coin.symbol}: price=${priceDisplay}, change=${changeDisplay}, isOffline=${isOffline}`);
@@ -1303,9 +1339,10 @@ function renderWatchlist(data) {
              `$${item.price.toFixed(2)}`) : '--';
         
         // Use change_pct (from API) instead of change_24h
-        // BUG 4 FIX: Treat null/undefined as 0.00%, not "--"
-        const changePct = item.change_pct ?? item.change ?? 0;
-        const changeDisplay = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`;
+        // BUG 3 FIX: Standardize null handling - show '--' only for truly missing data
+        const changePct = item.change_pct ?? item.change;
+        const hasChange = changePct !== null && changePct !== undefined;
+        const changeDisplay = hasChange ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : '--';
         
         const scoreDisplay = item.ghost_confidence && item.ghost_confidence > 0 ? 
             `${item.ghost_confidence.toFixed(0)}%` : 
@@ -1317,7 +1354,7 @@ function renderWatchlist(data) {
         // Direction from ghost_direction field
         const direction = item.ghost_direction || 'FLAT';
         const directionEmoji = direction === 'UP' ? '↑' : direction === 'DOWN' ? '↓' : '→';
-        const changeClass = changePct >= 0 ? 'positive' : 'negative';
+        const changeClass = (changePct || 0) >= 0 ? 'positive' : 'negative';
         
         // Momentum indicator (if available)
         let momentumHTML = '';
