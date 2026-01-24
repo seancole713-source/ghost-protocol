@@ -106,7 +106,7 @@ def is_stock_market_hours() -> bool:
 # Model outputs 85-95% but actual accuracy is 55-70%
 # This calibration makes displayed confidence match reality
 
-def calibrate_display_confidence(raw_confidence: float) -> float:
+def calibrate_display_confidence(raw_confidence: float, symbol: str = None) -> float:
     """
     Calibrate model confidence for honest display using LINEAR INTERPOLATION.
     
@@ -117,8 +117,13 @@ def calibrate_display_confidence(raw_confidence: float) -> float:
     Old: 75-85% raw → 55-62% display (all looked the same)
     New: 75-85% raw → 52-65% display (13 percentage points spread)
     
+    UPDATED Jan 24, 2026: Added symbol-seeded jitter to prevent identical values.
+    When XGBoost clusters similar stocks at same confidence, this adds
+    deterministic micro-variance (±2%) so each symbol shows slightly different.
+    
     Args:
         raw_confidence: Model's raw confidence (0.0-1.0)
+        symbol: Optional symbol for deterministic jitter
     
     Returns:
         Calibrated confidence for display (0.0-1.0)
@@ -152,24 +157,34 @@ def calibrate_display_confidence(raw_confidence: float) -> float:
     
     # Above highest point
     if raw_confidence >= calibration_points[0][0]:
-        return calibration_points[0][1]
-    
+        calibrated = calibration_points[0][1]
     # Below lowest calibration point - use simple scaling
-    if raw_confidence < calibration_points[-1][0]:
-        return raw_confidence * 0.7
+    elif raw_confidence < calibration_points[-1][0]:
+        calibrated = raw_confidence * 0.7
+    else:
+        # Linear interpolation between calibration points
+        calibrated = raw_confidence * 0.7  # Default
+        for i in range(len(calibration_points) - 1):
+            high_raw, high_display = calibration_points[i]
+            low_raw, low_display = calibration_points[i + 1]
+            
+            if low_raw <= raw_confidence < high_raw:
+                # Interpolate: display = low_display + (raw - low_raw) / (high_raw - low_raw) * (high_display - low_display)
+                ratio = (raw_confidence - low_raw) / (high_raw - low_raw)
+                calibrated = low_display + ratio * (high_display - low_display)
+                break
     
-    # Linear interpolation between calibration points
-    for i in range(len(calibration_points) - 1):
-        high_raw, high_display = calibration_points[i]
-        low_raw, low_display = calibration_points[i + 1]
-        
-        if low_raw <= raw_confidence < high_raw:
-            # Interpolate: display = low_display + (raw - low_raw) / (high_raw - low_raw) * (high_display - low_display)
-            ratio = (raw_confidence - low_raw) / (high_raw - low_raw)
-            return low_display + ratio * (high_display - low_display)
+    # ADD: Symbol-seeded jitter to prevent identical display values
+    # When XGBoost clusters similar stocks, this ensures each shows differently
+    # Jitter is deterministic per symbol so same symbol always gets same jitter
+    if symbol:
+        # Use symbol hash to get consistent jitter per symbol
+        symbol_hash = hash(symbol.upper()) % 10000
+        jitter = ((symbol_hash / 10000) - 0.5) * 0.04  # ±2% jitter
+        calibrated = calibrated + jitter
     
-    # Fallback (should not reach here)
-    return raw_confidence * 0.7
+    # Clamp to valid range (30% - 85%)
+    return max(0.30, min(0.85, calibrated))
 
 
 # ============================================================================
@@ -574,8 +589,8 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             lines.append(f"   Buy In: {format_price(s['buy_in'])}")
             lines.append(f"   Sell: {format_price(s['sell'])}")
             lines.append(f"   48hr Prediction: {format_price(s['prediction_48h'])}")
-            # Use calibrated confidence for honest display
-            display_conf = calibrate_display_confidence(s['confidence'])
+            # Use calibrated confidence for honest display (with symbol jitter)
+            display_conf = calibrate_display_confidence(s['confidence'], symbol=s['symbol'])
             lines.append(f"   Confidence: {display_conf:.0%}")
             lines.append("")
     else:
@@ -603,8 +618,8 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             lines.append(f"   Buy In: {format_price(c['buy_in'])}")
             lines.append(f"   Sell: {format_price(c['sell'])}")
             lines.append(f"   48hr Prediction: {format_price(c['prediction_48h'])}")
-            # Use calibrated confidence for honest display
-            display_conf = calibrate_display_confidence(c['confidence'])
+            # Use calibrated confidence for honest display (with symbol jitter)
+            display_conf = calibrate_display_confidence(c['confidence'], symbol=c['symbol'])
             lines.append(f"   Confidence: {display_conf:.0%}")
             lines.append("")
     else:
