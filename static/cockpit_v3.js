@@ -421,7 +421,7 @@ function renderBTCPrediction(prediction, momentum) {
                 <span class="confidence-label">Confidence</span>
             </div>
             <div class="btc-pred-move">
-                <span class="move-value">${expectedMove > 0 ? '+' : ''}${expectedMove}%</span>
+                <span class="move-value">${direction === 'DOWN' ? '-' : expectedMove > 0 ? '+' : ''}${Math.abs(expectedMove)}%</span>
                 <span class="move-label">Expected Move</span>
             </div>
         </div>
