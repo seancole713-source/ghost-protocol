@@ -290,14 +290,21 @@ function switchTab(tabsContainer, tabType) {
 
 // Load All Panels
 async function loadAllPanels() {
-    // PERFORMANCE FIX: Load panels independently without blocking
-    // Don't wait for slow endpoints (hunter feed) to show fast data
+    // ═══════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Load watchlist FIRST - VIP, Forecast depend on sharedWatchlistData
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+        await loadWatchlistByMode();
+        console.log('[INIT] ✓ sharedWatchlistData ready:', sharedWatchlistData?.length || 0, 'items');
+    } catch (e) {
+        console.error('[INIT] ✗ Watchlist load failed:', e);
+    }
     
-    // Fast panels - load first (no await)
+    // NOW safe to load panels that depend on sharedWatchlistData
     loadCockpitSnapshot().catch(e => console.error('Snapshot error:', e));
     loadLatestBTCPrediction().catch(e => console.error('BTC prediction error:', e));
-    loadWatchlistByMode().catch(e => console.error('Watchlist error:', e));
     loadForecast().catch(e => console.error('Forecast error:', e));
+    loadVIPCoins().catch(e => console.error('VIP coins error:', e));
     
     // ROBUST FIX: Use double requestAnimationFrame to ensure canvas layout is complete
     // This guarantees the browser has computed styles and layout before we measure
@@ -310,12 +317,11 @@ async function loadAllPanels() {
     // Slow panels - load in background (may take 10-30s on first load)
     setTimeout(() => {
         loadTopMovers().catch(e => console.error('Top movers error:', e));
-        loadVIPCoins().catch(e => console.error('VIP coins error:', e));
         loadNews().catch(e => console.error('News error:', e));
         loadHealthScore().catch(e => console.error('Health score error:', e));
     }, 100);
     
-    console.log('✅ Fast panels loaded, slow panels loading in background');
+    console.log('✅ All panels loaded (watchlist first, then parallel)');
 }
 
 // Panel 0: Latest V2 Prediction (CHZ = top V2 symbol) with CASCADE VIEW
