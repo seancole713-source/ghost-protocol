@@ -833,7 +833,8 @@ function renderVIPSniperCoins(coins) {
 // Render Major Caps Reference (BTC, ETH)
 // UPDATED: Now accepts Watchlist data format (change_pct, no status field)
 function renderMajorCaps(coins) {
-    console.log('[MAJOR-CAPS] renderMajorCaps called');\n    console.log('[MAJOR-CAPS] coins:', coins?.length, coins);
+    console.log('[MAJOR-CAPS] renderMajorCaps called');
+    console.log('[MAJOR-CAPS] coins:', coins?.length, coins);
     const container = document.getElementById('vip-majors-list');
     console.log('[MAJOR-CAPS] Container found:', !!container);
     
