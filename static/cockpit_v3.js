@@ -1267,18 +1267,23 @@ function renderAccuracyChart(accuracyData) {
 
 // Panel 5: Watchlist - Master loader
 async function loadWatchlistByMode() {
-    if (watchlistMode === 'personal') {
-        // Use personal watchlist from personal_watchlist_ui.js
-        if (typeof loadPersonalWatchlist === 'function') {
-            await loadPersonalWatchlist();
-        } else {
-            console.error('[WATCHLIST] personal_watchlist_ui.js not loaded');
-            renderWatchlist([]);
-        }
-    } else {
-        // Use market watchlist (existing behavior)
-        await loadMarketWatchlist();
-    }
+    // NUCLEAR FIX: ALWAYS use market watchlist until personal API is stable
+    // Personal watchlist API causes cascade failures when it has issues
+    console.log('[WATCHLIST] Forcing market mode (personal disabled)');
+    await loadMarketWatchlist();
+    return;
+    
+    // DISABLED - Personal watchlist code below
+    // if (watchlistMode === 'personal') {
+    //     if (typeof loadPersonalWatchlist === 'function') {
+    //         await loadPersonalWatchlist();
+    //     } else {
+    //         console.error('[WATCHLIST] personal_watchlist_ui.js not loaded');
+    //         renderWatchlist([]);
+    //     }
+    // } else {
+    //     await loadMarketWatchlist();
+    // }
 }
 
 // Panel 5: Market Watchlist (existing default watchlist)
@@ -1537,7 +1542,7 @@ function refreshPanel(panel) {
         case 'forecast': loadForecast(); break;
         case 'news': loadNews(); break;
         case 'accuracy': loadAccuracyChart(); break;
-        case 'watchlist': loadPersonalWatchlist(); break;
+        case 'watchlist': loadMarketWatchlist(); break;  // FIXED: Use market (personal disabled)
         case 'health': loadHealthScore(); break;
     }
 }
