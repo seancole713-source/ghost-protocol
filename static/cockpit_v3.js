@@ -1610,87 +1610,33 @@ function getHealthClass(value) {
 
 // Goals Settings Modal Functions
 async function openGoalsModal() {
+    // IMMEDIATELY populate with defaults (sync) before any async calls
+    document.getElementById('goal-daily').value = 500;
+    document.getElementById('goal-weekly').value = 2500;
+    document.getElementById('goal-monthly').value = 10000;
+    document.getElementById('goal-yearly').value = 120000;
+    
+    // Show modal immediately with defaults
+    document.getElementById('goals-modal').classList.add('active');
+    console.log('[GOALS] Modal opened with defaults');
+    
+    // Then async update from API
     try {
-        console.log('[GOALS] Opening modal, fetching current goals...');
-        
-        // Fetch current goals
         const response = await fetch('/api/v3/goals/snapshot');
-        if (!response.ok) {
-            throw new Error(`API returned ${response.status}`);
+        if (response.ok) {
+            const data = await response.json();
+            const goals = data.goals || {};
+            
+            // Update with actual values if available
+            if (goals.daily) document.getElementById('goal-daily').value = goals.daily;
+            if (goals.weekly) document.getElementById('goal-weekly').value = goals.weekly;
+            if (goals.monthly) document.getElementById('goal-monthly').value = goals.monthly;
+            if (goals.yearly) document.getElementById('goal-yearly').value = goals.yearly;
+            
+            console.log('[GOALS] Updated from API:', goals);
         }
-        
-        const data = await response.json();
-        console.log('[GOALS] API response:', JSON.stringify(data, null, 2));
-        
-        // Populate input fields with current goals
-        // Extract goals - handle both nested and flat response formats
-        const goals = data.goals || data || {};
-        if (data.ok !== false) {  // Proceed unless explicitly failed
-            // API returns {daily: 500, weekly: 2500, ...}
-            const daily = goals.daily || 500;
-            const weekly = goals.weekly || 2500;
-            const monthly = goals.monthly || 10000;
-            const yearly = goals.yearly || 120000;
-            
-            console.log('[GOALS] Setting input values:', { daily, weekly, monthly, yearly });
-            
-            // Set values with verification
-            const dailyInput = document.getElementById('goal-daily');
-            const weeklyInput = document.getElementById('goal-weekly');
-            const monthlyInput = document.getElementById('goal-monthly');
-            const yearlyInput = document.getElementById('goal-yearly');
-            
-            if (dailyInput) {
-                dailyInput.value = daily;
-                console.log(`[GOALS] Set dailyInput.value = ${daily}, actual value = ${dailyInput.value}`);
-            }
-            if (weeklyInput) {
-                weeklyInput.value = weekly;
-                console.log(`[GOALS] Set weeklyInput.value = ${weekly}, actual value = ${weeklyInput.value}`);
-            }
-            if (monthlyInput) {
-                monthlyInput.value = monthly;
-                console.log(`[GOALS] Set monthlyInput.value = ${monthly}, actual value = ${monthlyInput.value}`);
-            }
-            if (yearlyInput) {
-                yearlyInput.value = yearly;
-                console.log(`[GOALS] Set yearlyInput.value = ${yearly}, actual value = ${yearlyInput.value}`);
-            }
-            
-            console.log('[GOALS] All input values after setting:', {
-                daily: dailyInput?.value,
-                weekly: weeklyInput?.value,
-                monthly: monthlyInput?.value,
-                yearly: yearlyInput?.value
-            });
-        } else {
-            console.warn('[GOALS] No goals data in response, inputs will be empty');
-            console.warn('[GOALS] Response structure:', data);
-        }
-        
-        // Show modal AFTER values are set
-        const modal = document.getElementById('goals-modal');
-        modal.classList.add('active');
-        console.log('[GOALS] Modal displayed with active class');
-        
-        // Verify values are still set after modal is shown
-        setTimeout(() => {
-            const dailyInput = document.getElementById('goal-daily');
-            const weeklyInput = document.getElementById('goal-weekly');
-            const monthlyInput = document.getElementById('goal-monthly');
-            const yearlyInput = document.getElementById('goal-yearly');
-            
-            console.log('[GOALS] Post-display verification (50ms later):', {
-                daily: dailyInput?.value,
-                weekly: weeklyInput?.value,
-                monthly: monthlyInput?.value,
-                yearly: yearlyInput?.value
-            });
-        }, 50);
     } catch (error) {
-        console.error('[GOALS] Error loading goals:', error);
-        // Show modal anyway with empty inputs
-        document.getElementById('goals-modal').classList.add('active');
+        console.error('[GOALS] API error (using defaults):', error);
     }
 }
 
