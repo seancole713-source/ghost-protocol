@@ -1631,13 +1631,30 @@ function getHealthClass(value) {
 
 // Goals Settings Modal Functions
 async function openGoalsModal() {
-    // IMMEDIATELY populate with defaults (sync) before any async calls
-    document.getElementById('goal-daily').value = 500;
-    document.getElementById('goal-weekly').value = 2500;
-    document.getElementById('goal-monthly').value = 10000;
-    document.getElementById('goal-yearly').value = 120000;
+    console.log('[GOALS] openGoalsModal() called');
     
-    // Show modal immediately with defaults
+    // Get input elements
+    const dailyInput = document.getElementById('goal-daily');
+    const weeklyInput = document.getElementById('goal-weekly');
+    const monthlyInput = document.getElementById('goal-monthly');
+    const yearlyInput = document.getElementById('goal-yearly');
+    
+    console.log('[GOALS] Inputs found:', !!dailyInput, !!weeklyInput, !!monthlyInput, !!yearlyInput);
+    
+    // Set defaults using both .value AND setAttribute for maximum compatibility
+    if (dailyInput) { dailyInput.value = 500; dailyInput.setAttribute('value', '500'); }
+    if (weeklyInput) { weeklyInput.value = 2500; weeklyInput.setAttribute('value', '2500'); }
+    if (monthlyInput) { monthlyInput.value = 10000; monthlyInput.setAttribute('value', '10000'); }
+    if (yearlyInput) { yearlyInput.value = 120000; yearlyInput.setAttribute('value', '120000'); }
+    
+    console.log('[GOALS] After setting defaults:', {
+        daily: dailyInput?.value,
+        weekly: weeklyInput?.value,
+        monthly: monthlyInput?.value,
+        yearly: yearlyInput?.value
+    });
+    
+    // Show modal
     document.getElementById('goals-modal').classList.add('active');
     console.log('[GOALS] Modal opened with defaults');
     
@@ -1646,15 +1663,21 @@ async function openGoalsModal() {
         const response = await fetch('/api/v3/goals/snapshot');
         if (response.ok) {
             const data = await response.json();
+            console.log('[GOALS] API response:', data);
             const goals = data.goals || {};
             
             // Update with actual values if available
-            if (goals.daily) document.getElementById('goal-daily').value = goals.daily;
-            if (goals.weekly) document.getElementById('goal-weekly').value = goals.weekly;
-            if (goals.monthly) document.getElementById('goal-monthly').value = goals.monthly;
-            if (goals.yearly) document.getElementById('goal-yearly').value = goals.yearly;
+            if (goals.daily && dailyInput) { dailyInput.value = goals.daily; }
+            if (goals.weekly && weeklyInput) { weeklyInput.value = goals.weekly; }
+            if (goals.monthly && monthlyInput) { monthlyInput.value = goals.monthly; }
+            if (goals.yearly && yearlyInput) { yearlyInput.value = goals.yearly; }
             
-            console.log('[GOALS] Updated from API:', goals);
+            console.log('[GOALS] After API update:', {
+                daily: dailyInput?.value,
+                weekly: weeklyInput?.value,
+                monthly: monthlyInput?.value,
+                yearly: yearlyInput?.value
+            });
         }
     } catch (error) {
         console.error('[GOALS] API error (using defaults):', error);
