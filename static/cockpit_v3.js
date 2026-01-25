@@ -4,7 +4,7 @@
 let currentTab = 'stocks';
 let currentForecastSymbol = 'CHZ';  // Default to CHZ (top V2 whitelist crypto at 85%)
 let updateInterval = null;
-let watchlistMode = 'personal';  // 'personal' or 'market'
+let watchlistMode = 'market';    // DEFAULT TO MARKET - personal watchlist API not ready
 let watchlistFilter = 'all';     // 'all', 'stocks', 'crypto'
 let sharedWatchlistData = [];    // Shared cache for cross-panel data (Major Caps, XRP VIP)
 let isInitialized = false;       // BUG 5 FIX: Guard against double initialization
@@ -293,18 +293,12 @@ async function loadAllPanels() {
     // ═══════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: ALWAYS load market watchlist for sharedWatchlistData
     // VIP, Forecast, Major Caps all depend on this shared cache
-    // Personal watchlist display is separate - doesn't populate the shared cache
+    // Personal watchlist is NOT loaded on init - user can switch to it manually
     // ═══════════════════════════════════════════════════════════════════════
     try {
-        // ALWAYS fetch market watchlist to populate sharedWatchlistData
+        // ALWAYS fetch market watchlist to populate sharedWatchlistData AND render
         await loadMarketWatchlist();
         console.log('[INIT] ✓ sharedWatchlistData ready:', sharedWatchlistData?.length || 0, 'items');
-        
-        // If user prefers personal watchlist, load that for DISPLAY only
-        // (sharedWatchlistData is already populated from market data above)
-        if (watchlistMode === 'personal' && typeof loadPersonalWatchlist === 'function') {
-            loadPersonalWatchlist().catch(e => console.error('Personal watchlist error:', e));
-        }
     } catch (e) {
         console.error('[INIT] ✗ Market watchlist load failed:', e);
     }
