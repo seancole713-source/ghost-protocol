@@ -49,11 +49,11 @@ async def get_xrp_status() -> dict[str, Any]:
     }
     
     try:
-        # Use turbo price for speed (single provider, no quorum)
-        from core.crypto.crypto_providers import get_crypto_price_turbo
+        # Use quorum price to get 24h change (CoinGecko returns change_24h_pct, Coinbase doesn't)
+        from core.crypto.crypto_providers import get_crypto_price_quorum
         
-        # Get XRP price from fastest provider
-        xrp_data = await get_crypto_price_turbo("XRP")
+        # Get XRP price with 24h change data
+        xrp_data = await get_crypto_price_quorum("XRP", use_cache=True)
         
         if xrp_data and xrp_data.get("price"):
             price = xrp_data["price"]

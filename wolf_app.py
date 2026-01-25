@@ -13181,28 +13181,39 @@ async def api_v3_health_metrics():
         # V2 ERA: Start date for clean data
         V2_START_DATE = "2026-01-14"
         
-        # Data Health: Check if a V2 crypto provider is working (CHZ instead of blacklisted BTC)
+        # Data Health: Check if crypto providers are working
         data_health = 50  # Default if provider unavailable
         try:
-            # BUG 4 FIX: Use turbo_crypto_price directly which is faster and more reliable
-            from core.crypto.crypto_providers import turbo_crypto_price
-            chz_data = await turbo_crypto_price("CHZ")
+            # Use quorum price which is more reliable and returns 24h change
+            from core.crypto.crypto_providers import get_crypto_price_quorum, get_cache_stats
+            
+            # Try to get price for a V2 whitelisted crypto
+            chz_data = await get_crypto_price_quorum("CHZ", use_cache=True)
+            
             if chz_data and chz_data.get("price", 0) > 0:
-                data_health = 95  # Provider working
+                # Check quorum quality
+                quorum_size = chz_data.get("quorum_size", 1)
+                if quorum_size >= 2:
+                    data_health = 95  # Strong quorum
+                else:
+                    data_health = 80  # Single provider working
             else:
-                # BUG 4 FIX: Check cache hit rate as secondary indicator
+                # Fallback: check cache stats
                 try:
-                    from core.crypto.crypto_providers import get_cache_stats
                     cache_stats = get_cache_stats()
                     hit_rate = cache_stats.get("hit_rate_pct", 0)
-                    if hit_rate > 30:
-                        data_health = 70  # Cache working even if live fetch failed
+                    cache_size = cache_stats.get("cache_size", 0)
+                    if cache_size > 0 and hit_rate > 30:
+                        data_health = 70  # Cache working
+                    elif cache_size > 0:
+                        data_health = 60  # Cache has data
                     else:
-                        data_health = 40
+                        data_health = 40  # No cache data
                 except Exception:
                     data_health = 40
-        except Exception:
-            data_health = 40  # Provider offline but not catastrophic
+        except Exception as e:
+            LOGGER.warning(f"Health check provider test failed: {e}")
+            data_health = 50  # Unknown state
         
         # AI Activity: Count recent predictions (predictions per hour)
         # BUG 4 FIX: Also check paper trades as activity indicator

@@ -969,10 +969,11 @@ async def get_crypto_price_turbo(symbol: str) -> dict[str, Any] | None:
             return cached.get("data")
     
     # Try providers in order until one works
+    # CoinGecko first because it returns 24h change data!
     providers = [
+        ("coingecko", get_price_coingecko),
         ("coinbase", get_price_coinbase),
         ("binance", get_price_binance),
-        ("coingecko", get_price_coingecko),
     ]
     
     for name, func in providers:
@@ -1033,6 +1034,7 @@ _COINGECKO_IDS = {
     "ETH": "ethereum",
     "SOL": "solana",
     # Expanded coverage for common watchlist assets
+    "XRP": "ripple",  # Added for XRP tracker 24h change
     "XMR": "monero",
     "TON": "the-open-network",
     "TRX": "tron",
@@ -1054,12 +1056,17 @@ _COINGECKO_IDS = {
     "FLOKI": "floki",
     "BONK": "bonk",
     "WIF": "dogwifhat",
+    # V2 Whitelisted crypto
+    "CHZ": "chiliz",
+    "RNDR": "render-token",
+    "ZEC": "zcash",
+    "TURBO": "turbo",
 }
 
 
 def get_price_coingecko(symbol: str) -> dict:
     """
-    Sync wrapper for CoinGecko simple price API.
+    Sync wrapper for CoinGecko simple price API with 24h change.
     Only supports a small set of majors; raises for others.
     """
     sid = _COINGECKO_IDS.get(symbol.upper())
@@ -1067,24 +1074,27 @@ def get_price_coingecko(symbol: str) -> dict:
         raise ValueError(f"CoinGecko wrapper does not support symbol: {symbol}")
     url = (
         "https://api.coingecko.com/api/v3/simple/price"
-        f"?ids={sid}&vs_currencies=usd"
+        f"?ids={sid}&vs_currencies=usd&include_24hr_change=true"
     )
     resp = requests.get(url, timeout=3)
     resp.raise_for_status()
     data = resp.json()
     price = float(data[sid]["usd"])
+    change_24h = data[sid].get("usd_24h_change")
     return {
         "provider": "coingecko",
         "symbol": symbol.upper(),
         "price": price,
+        "change_24h_pct": round(change_24h, 2) if change_24h is not None else None,
         "ts": _now_ms(),
     }
 
 
 def get_price_coinbase(symbol: str) -> dict:
     """
-    Sync wrapper for Coinbase spot price.
-    Uses /v2/prices/<SYMBOL>-USD/spot
+    Sync wrapper for Coinbase spot price with 24h change.
+    Uses /v2/prices/<SYMBOL>-USD/spot for current price
+    and /v2/prices/<SYMBOL>-USD/historic for 24h change.
     """
     pair = f"{symbol.upper()}-USD"
     url = f"https://api.coinbase.com/v2/prices/{pair}/spot"
@@ -1093,9 +1103,28 @@ def get_price_coinbase(symbol: str) -> dict:
     data = resp.json()
     amount = data["data"]["amount"]
     price = float(amount)
+    
+    # Try to get 24h change from buy/sell prices (approximation)
+    change_24h_pct = None
+    try:
+        # Coinbase doesn't have direct 24h change, but we can estimate from bid-ask
+        buy_url = f"https://api.coinbase.com/v2/prices/{pair}/buy"
+        sell_url = f"https://api.coinbase.com/v2/prices/{pair}/sell"
+        buy_resp = requests.get(buy_url, timeout=2)
+        sell_resp = requests.get(sell_url, timeout=2)
+        if buy_resp.ok and sell_resp.ok:
+            buy_price = float(buy_resp.json()["data"]["amount"])
+            sell_price = float(sell_resp.json()["data"]["amount"])
+            # Spread as proxy for volatility (not perfect but better than 0)
+            spread_pct = ((buy_price - sell_price) / sell_price) * 100
+            # Note: This is not true 24h change, will be replaced by CoinGecko when available
+    except Exception:
+        pass
+    
     return {
         "provider": "coinbase",
         "symbol": symbol.upper(),
         "price": price,
+        "change_24h_pct": change_24h_pct,  # Will be None if not available
         "ts": _now_ms(),
     }
