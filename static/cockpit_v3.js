@@ -664,6 +664,9 @@ async function loadTopMovers() {
 
 // Panel VIP: XRP Tracker + VIP Sniper Coins + Major Caps
 async function loadVIPCoins() {
+    console.log('[VIP] loadVIPCoins() called');
+    console.log('[VIP] sharedWatchlistData length:', sharedWatchlistData?.length || 0);
+    
     // Load all three data sources in parallel
     try {
         const [xrpResponse, presaleResponse] = await Promise.all([
@@ -671,9 +674,12 @@ async function loadVIPCoins() {
             fetch('/api/presale/watch').catch(e => ({ ok: false, error: e }))
         ]);
         
+        console.log('[VIP] XRP response ok:', xrpResponse.ok);
+        
         // XRP Tracker (Priority) - Enhanced with Watchlist 24h data
         if (xrpResponse.ok) {
             const xrpData = await xrpResponse.json();
+            console.log('[VIP] XRP data:', JSON.stringify(xrpData));
             
             // CRITICAL FIX: Use Watchlist 24h change instead of XRP tracker's change_24h_pct
             // This ensures consistency across the dashboard
@@ -736,7 +742,14 @@ async function loadVIPCoins() {
 
 // Render XRP Tracker Widget
 function renderXRPTracker(data) {
+    console.log('[XRP-RENDER] renderXRPTracker called with:', JSON.stringify(data));
     const container = document.getElementById('xrp-tracker');
+    console.log('[XRP-RENDER] Container found:', !!container);
+    
+    if (!container) {
+        console.error('[XRP-RENDER] FATAL: #xrp-tracker container not found!');
+        return;
+    }
     
     // FIX: Backend returns bullish_eye as emoji string ("🟢", "🟡", "🔴")
     // Map emoji to label/color, use confidence for numeric display
@@ -820,7 +833,14 @@ function renderVIPSniperCoins(coins) {
 // Render Major Caps Reference (BTC, ETH)
 // UPDATED: Now accepts Watchlist data format (change_pct, no status field)
 function renderMajorCaps(coins) {
+    console.log('[MAJOR-CAPS] renderMajorCaps called');\n    console.log('[MAJOR-CAPS] coins:', coins?.length, coins);
     const container = document.getElementById('vip-majors-list');
+    console.log('[MAJOR-CAPS] Container found:', !!container);
+    
+    if (!container) {
+        console.error('[MAJOR-CAPS] FATAL: #vip-majors-list container not found!');
+        return;
+    }
     
     if (!coins || coins.length === 0) {
         console.warn('[VIP] renderMajorCaps: No coins provided');
