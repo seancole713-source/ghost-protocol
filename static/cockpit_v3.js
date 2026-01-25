@@ -1458,10 +1458,11 @@ async function loadHealthScore() {
 }
 
 function calculateGrade(score) {
-    if (score >= 90) return 'A';
-    if (score >= 80) return 'B';
-    if (score >= 70) return 'C';
-    if (score >= 60) return 'D';
+    // Ghost Score grading thresholds (score 52 = C per spec)
+    if (score >= 80) return 'A';
+    if (score >= 60) return 'B';
+    if (score >= 40) return 'C';
+    if (score >= 20) return 'D';
     return 'F';
 }
 
@@ -1622,12 +1623,14 @@ async function openGoalsModal() {
         console.log('[GOALS] API response:', JSON.stringify(data, null, 2));
         
         // Populate input fields with current goals
-        if (data.ok && data.goals) {
+        // Extract goals - handle both nested and flat response formats
+        const goals = data.goals || data || {};
+        if (data.ok !== false) {  // Proceed unless explicitly failed
             // API returns {daily: 500, weekly: 2500, ...}
-            const daily = data.goals.daily || 500;
-            const weekly = data.goals.weekly || 2500;
-            const monthly = data.goals.monthly || 10000;
-            const yearly = data.goals.yearly || 120000;
+            const daily = goals.daily || 500;
+            const weekly = goals.weekly || 2500;
+            const monthly = goals.monthly || 10000;
+            const yearly = goals.yearly || 120000;
             
             console.log('[GOALS] Setting input values:', { daily, weekly, monthly, yearly });
             
