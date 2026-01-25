@@ -291,13 +291,22 @@ function switchTab(tabsContainer, tabType) {
 // Load All Panels
 async function loadAllPanels() {
     // ═══════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Load watchlist FIRST - VIP, Forecast depend on sharedWatchlistData
+    // CRITICAL FIX: ALWAYS load market watchlist for sharedWatchlistData
+    // VIP, Forecast, Major Caps all depend on this shared cache
+    // Personal watchlist display is separate - doesn't populate the shared cache
     // ═══════════════════════════════════════════════════════════════════════
     try {
-        await loadWatchlistByMode();
+        // ALWAYS fetch market watchlist to populate sharedWatchlistData
+        await loadMarketWatchlist();
         console.log('[INIT] ✓ sharedWatchlistData ready:', sharedWatchlistData?.length || 0, 'items');
+        
+        // If user prefers personal watchlist, load that for DISPLAY only
+        // (sharedWatchlistData is already populated from market data above)
+        if (watchlistMode === 'personal' && typeof loadPersonalWatchlist === 'function') {
+            loadPersonalWatchlist().catch(e => console.error('Personal watchlist error:', e));
+        }
     } catch (e) {
-        console.error('[INIT] ✗ Watchlist load failed:', e);
+        console.error('[INIT] ✗ Market watchlist load failed:', e);
     }
     
     // NOW safe to load panels that depend on sharedWatchlistData
