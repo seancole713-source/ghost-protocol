@@ -79,6 +79,7 @@ class BinanceOHLCVProvider:
         "PEPE": "PEPEUSDT",
         "FLOKI": "FLOKIUSDT",
         "BONK": "BONKUSDT",
+        "TURBO": "TURBOUSDT",  # Turbo meme coin
         
         # AI Coins
         "RNDR": "RNDRUSDT",
@@ -92,11 +93,15 @@ class BinanceOHLCVProvider:
         "SNX": "SNXUSDT",
         "CRV": "CRVUSDT",
         
-        # Gaming
+        # Gaming / Sports / Fan Tokens
         "IMX": "IMXUSDT",
         "SAND": "SANDUSDT",
         "MANA": "MANAUSDT",
         "AXS": "AXSUSDT",
+        "CHZ": "CHZUSDT",  # Chiliz fan token
+        
+        # Privacy Coins
+        "ZEC": "ZECUSDT",  # Zcash
     }
     
     # Interval mapping
@@ -270,6 +275,55 @@ class BinanceOHLCVProvider:
     def get_supported_symbols(self) -> List[str]:
         """Get list of supported Ghost symbols"""
         return sorted(self.SYMBOL_MAP.keys())
+
+
+# ============================================================================
+# CONVENIENCE FUNCTION (for external callers)
+# ============================================================================
+
+_provider_instance = None
+
+def get_binance_ohlcv(
+    symbol: str,
+    interval: str = "1d",
+    limit: int = 10
+) -> Optional[List[dict]]:
+    """
+    Convenience function to get Binance OHLCV data.
+    
+    Used by core/market_gates.py for BTC trend calculation.
+    
+    Args:
+        symbol: Ghost symbol (e.g., "BTC", "ETH")
+        interval: Timeframe ("1m", "5m", "1h", "1d")
+        limit: Number of bars (max 1000)
+    
+    Returns:
+        List of dicts with {timestamp, open, high, low, close, volume} or None
+    """
+    global _provider_instance
+    
+    if _provider_instance is None:
+        import os
+        _provider_instance = BinanceOHLCVProvider(api_key=os.getenv("BINANCE_API_KEY"))
+    
+    bars = _provider_instance.get_ohlcv(symbol, interval, limit)
+    
+    if not bars:
+        return None
+    
+    # Convert OHLCVBar dataclass instances to dicts for compatibility
+    return [
+        {
+            "timestamp": bar.timestamp,
+            "open": bar.open,
+            "high": bar.high,
+            "low": bar.low,
+            "close": bar.close,
+            "volume": bar.volume
+        }
+        for bar in bars
+    ]
 
 
 if __name__ == "__main__":
