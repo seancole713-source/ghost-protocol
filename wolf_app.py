@@ -8246,6 +8246,60 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             LOGGER.warning(f"[{symbol}] Performance filter failed (continuing without): {e}")
 
         # =====================================================================
+        # MARKET GATES (NEW: Jan 25, 2026)
+        # Filter BUY signals based on market conditions:
+        # - Regime Filter: SPY > 20MA (stocks), BTC 7d trend (crypto)
+        # - VIX Gate: Reduce confidence or block during high fear
+        # - Confirmation Counter: Require 3-4 signals to agree
+        # =====================================================================
+        try:
+            from core.market_gates import apply_market_gates
+            from core.asset_classification import is_crypto_symbol as _is_crypto_sym
+            
+            market_type = "crypto" if _is_crypto_sym(symbol) else "stock"
+            
+            # Build metrics dict for gates
+            gate_metrics = {
+                **features,  # RSI, MACD, etc.
+                "current_price": current_price,
+                "signal_count": signal_strength,
+                "signals_fired": signals_fired,
+            }
+            
+            # Apply market gates
+            gates_result = apply_market_gates(
+                direction=direction,
+                confidence=base_confidence,
+                metrics=gate_metrics,
+                market_type=market_type,
+                symbol=symbol
+            )
+            
+            # Update direction and confidence based on gates
+            original_direction = direction
+            original_confidence = base_confidence
+            
+            direction = gates_result.get("direction", direction)
+            base_confidence = gates_result.get("confidence", base_confidence)
+            
+            if gates_result.get("blocked"):
+                LOGGER.warning(
+                    f"[{symbol}] 🚫 MARKET GATES BLOCKED: {original_direction} → HOLD "
+                    f"(Reason: {gates_result.get('reason', 'unknown')})"
+                )
+            elif gates_result.get("reduced"):
+                LOGGER.info(
+                    f"[{symbol}] ⚠️ MARKET GATES REDUCED: {original_confidence:.1%} → {base_confidence:.1%} "
+                    f"(Reason: {gates_result.get('reason', 'unknown')})"
+                )
+            else:
+                LOGGER.info(
+                    f"[{symbol}] ✅ MARKET GATES PASSED: {direction} @ {base_confidence:.1%}"
+                )
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Market gates failed (continuing without): {e}")
+
+        # =====================================================================
         # CONFIDENCE THRESHOLD (NEW: Jan 9, 2026)
         # Only trade predictions with sufficient confidence (70%+ recommended)
         # =====================================================================

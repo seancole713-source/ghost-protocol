@@ -149,7 +149,7 @@ class RegimeFilter:
             }
         """
         try:
-            from core.crypto.providers.coingecko import CoinGeckoProvider
+            from core.crypto.crypto_providers import CoinGeckoProvider
             
             provider = CoinGeckoProvider()
             history = provider.get_historical("BTC", days=BTC_TREND_DAYS + 1)
