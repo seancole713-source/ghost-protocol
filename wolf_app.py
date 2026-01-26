@@ -8259,10 +8259,25 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             
             market_type = "crypto" if _is_crypto_sym(symbol) else "stock"
             
-            # Build metrics dict for gates
+            # Build metrics dict for gates - normalize to lowercase keys
+            # The confirmation counter expects: rsi_14, rsi, macd_histogram, bb_lower, bb_upper,
+            # momentum_7d, volume_trend, current_price
             gate_metrics = {
-                **features,  # RSI, MACD, etc.
+                # Normalize UPPERCASE feature keys to lowercase for confirmation counter
+                "rsi_14": features.get("RSI_14"),
+                "rsi": features.get("RSI_14"),  # alias
+                "macd_histogram": features.get("MACD_HISTOGRAM"),
+                "macd_histogram_prev": features.get("MACD_HISTOGRAM_PREV", features.get("MACD_HISTOGRAM", 0)),
+                "bb_lower": features.get("BB_LOWER"),
+                "bb_upper": features.get("BB_UPPER"),
+                "momentum_7d": features.get("MOMENTUM_7D", features.get("MOMENTUM", 0)),
+                "momentum": features.get("MOMENTUM", 0),
+                "volume_trend": features.get("VOLUME_TREND", features.get("VOLUME_SPIKE", 1.0)),
                 "current_price": current_price,
+                "price": current_price,
+                # Also include original features for any other gate logic
+                **{k.lower(): v for k, v in features.items()},
+                # Keep signal info
                 "signal_count": signal_strength,
                 "signals_fired": signals_fired,
             }
