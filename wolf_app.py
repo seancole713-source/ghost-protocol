@@ -21576,6 +21576,469 @@ async def api_gates_test(
         return {"error": str(e)}
 
 
+# ============================================================================
+# SYSTEM DASHBOARD ENDPOINT - One-stop status check
+# ============================================================================
+
+@APP.get("/api/system/health-check")
+async def api_system_health_check():
+    """
+    Comprehensive system health dashboard.
+    
+    Aggregates all critical system info in one response:
+    - Market gates status (regime, VIX, BTC trend)
+    - V2 quality whitelist/blacklist
+    - Accuracy metrics
+    - Pending trades count
+    - Last prediction timestamp
+    
+    Use this for monitoring dashboards or Slack/Discord alerts.
+    """
+    try:
+        from core.market_gates import RegimeFilter, VIXGate
+        from core.v2_quality import get_v2_quality_filter
+        from core.paper_tracker import get_paper_tracker
+        
+        result = {
+            "ok": True,
+            "timestamp": time.time(),
+            "gates": {},
+            "whitelist": [],
+            "accuracy": {},
+            "pending_trades": 0,
+            "last_prediction": None,
+            "alerts": []
+        }
+        
+        # 1. Market Gates
+        try:
+            rf = RegimeFilter()
+            vg = VIXGate()
+            
+            spy_regime = await rf.get_spy_regime()
+            btc_trend = await rf.get_btc_trend()
+            vix_level = await vg.get_current_vix()
+            
+            result["gates"] = {
+                "spy_regime": spy_regime.get("regime", "unknown"),
+                "spy_above_ma": spy_regime.get("above_20ma", True),
+                "btc_trend_7d": btc_trend.get("trend_7d_pct", 0),
+                "crypto_regime": btc_trend.get("crypto_regime", "unknown"),
+                "vix": vix_level,
+                "buy_allowed": {
+                    "stocks": spy_regime.get("regime") == "bull",
+                    "crypto": btc_trend.get("crypto_regime") == "bull"
+                }
+            }
+            
+            # Alert if crypto buys blocked
+            if btc_trend.get("crypto_regime") == "bear":
+                result["alerts"].append({
+                    "level": "warning",
+                    "message": f"Crypto BUYs blocked - BTC down {btc_trend.get('trend_7d_pct', 0):.1f}% (7d)"
+                })
+            
+            # Alert if VIX elevated
+            if vix_level > 25:
+                result["alerts"].append({
+                    "level": "warning" if vix_level < 30 else "critical",
+                    "message": f"VIX elevated at {vix_level:.1f} - BUY confidence reduced"
+                })
+                
+        except Exception as e:
+            LOGGER.error(f"Dashboard gates error: {e}")
+            result["gates"] = {"error": str(e)}
+        
+        # 2. V2 Quality Whitelist
+        try:
+            v2_filter = get_v2_quality_filter()
+            result["whitelist"] = sorted(v2_filter.whitelist)
+            result["blacklist_count"] = len(v2_filter.blacklist)
+        except Exception as e:
+            LOGGER.error(f"Dashboard whitelist error: {e}")
+        
+        # 3. Accuracy Metrics
+        try:
+            tracker = get_paper_tracker()
+            V2_START_DATE = "2026-01-14"
+            
+            # Overall stats (30 days, V2 only)
+            stats = tracker.get_stats(days=30, since=V2_START_DATE, v2_only=True)
+            total = stats.get("resolved_trades", 0)
+            wins = stats.get("wins", 0)
+            
+            # Daily stats
+            daily = tracker.get_stats(days=1, since=V2_START_DATE, v2_only=True)
+            daily_total = daily.get("resolved_trades", 0)
+            daily_wins = daily.get("wins", 0)
+            
+            result["accuracy"] = {
+                "overall_pct": round((wins / total) * 100, 1) if total > 0 else 0,
+                "daily_pct": round((daily_wins / daily_total) * 100, 1) if daily_total > 0 else 0,
+                "total_resolved": total,
+                "total_wins": wins,
+                "pending": stats.get("active_trades", 0)
+            }
+            
+            result["pending_trades"] = stats.get("active_trades", 0)
+            
+            # Alert if accuracy drops below 50%
+            if total >= 10 and (wins / total) < 0.5:
+                result["alerts"].append({
+                    "level": "warning",
+                    "message": f"Accuracy below 50% ({round((wins/total)*100, 1)}%)"
+                })
+                
+        except Exception as e:
+            LOGGER.error(f"Dashboard accuracy error: {e}")
+            result["accuracy"] = {"error": str(e)}
+        
+        # 4. Last Prediction
+        try:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            
+            db_url = os.getenv("DATABASE_URL")
+            if db_url:
+                conn = psycopg2.connect(db_url)
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute("""
+                    SELECT symbol, direction, confidence, created_at
+                    FROM ghost_predictions
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """)
+                row = cur.fetchone()
+                conn.close()
+                
+                if row:
+                    result["last_prediction"] = {
+                        "symbol": row["symbol"],
+                        "direction": row["direction"],
+                        "confidence": float(row["confidence"]) if row["confidence"] else 0,
+                        "timestamp": row["created_at"].isoformat() if row["created_at"] else None
+                    }
+        except Exception as e:
+            LOGGER.debug(f"Dashboard last_prediction error: {e}")
+        
+        return result
+        
+    except Exception as e:
+        LOGGER.error(f"system_health_check_error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# ALERTS SYSTEM - Slack/Discord Webhooks
+# ============================================================================
+
+async def send_alert(
+    message: str,
+    level: str = "info",
+    title: str = "Ghost Protocol Alert",
+    fields: dict = None
+):
+    """
+    Send alert to configured webhook (Slack or Discord).
+    
+    Args:
+        message: Alert message
+        level: "info", "warning", "critical"
+        title: Alert title
+        fields: Optional dict of extra data to include
+    
+    Environment Variables:
+        DISCORD_WEBHOOK_URL: Discord webhook URL
+        SLACK_WEBHOOK_URL: Slack webhook URL (takes precedence)
+        ALERTS_ENABLED: Set to "1" to enable (default: disabled)
+    """
+    import aiohttp
+    
+    # Check if alerts are enabled
+    if os.getenv("ALERTS_ENABLED", "0") != "1":
+        LOGGER.debug(f"Alert suppressed (ALERTS_ENABLED=0): {message}")
+        return False
+    
+    slack_url = os.getenv("SLACK_WEBHOOK_URL")
+    discord_url = os.getenv("DISCORD_WEBHOOK_URL")
+    
+    if not slack_url and not discord_url:
+        LOGGER.debug("No webhook URL configured for alerts")
+        return False
+    
+    # Color coding by level
+    colors = {
+        "info": "#36a64f",     # Green
+        "warning": "#ff9900",  # Orange
+        "critical": "#ff0000"  # Red
+    }
+    color = colors.get(level, "#808080")
+    
+    # Emoji by level
+    emojis = {
+        "info": "ℹ️",
+        "warning": "⚠️",
+        "critical": "🚨"
+    }
+    emoji = emojis.get(level, "📢")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            if slack_url:
+                # Slack format
+                payload = {
+                    "attachments": [{
+                        "color": color,
+                        "title": f"{emoji} {title}",
+                        "text": message,
+                        "ts": int(time.time())
+                    }]
+                }
+                if fields:
+                    payload["attachments"][0]["fields"] = [
+                        {"title": k, "value": str(v), "short": True}
+                        for k, v in fields.items()
+                    ]
+                
+                async with session.post(slack_url, json=payload) as resp:
+                    if resp.status == 200:
+                        LOGGER.info(f"Slack alert sent: {title}")
+                        return True
+                    else:
+                        LOGGER.error(f"Slack alert failed: {resp.status}")
+                        return False
+            
+            elif discord_url:
+                # Discord format
+                payload = {
+                    "embeds": [{
+                        "title": f"{emoji} {title}",
+                        "description": message,
+                        "color": int(color.replace("#", ""), 16),
+                        "timestamp": datetime.utcnow().isoformat()
+                    }]
+                }
+                if fields:
+                    payload["embeds"][0]["fields"] = [
+                        {"name": k, "value": str(v), "inline": True}
+                        for k, v in fields.items()
+                    ]
+                
+                async with session.post(discord_url, json=payload) as resp:
+                    if resp.status in (200, 204):
+                        LOGGER.info(f"Discord alert sent: {title}")
+                        return True
+                    else:
+                        LOGGER.error(f"Discord alert failed: {resp.status}")
+                        return False
+                        
+    except Exception as e:
+        LOGGER.error(f"Alert send failed: {e}")
+        return False
+
+
+@APP.post("/api/alerts/test")
+async def api_alerts_test(message: str = "Test alert from Ghost Protocol"):
+    """
+    Test the alert system by sending a test message.
+    
+    Configure via environment variables:
+    - ALERTS_ENABLED=1
+    - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+    - SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+    """
+    slack_url = os.getenv("SLACK_WEBHOOK_URL")
+    discord_url = os.getenv("DISCORD_WEBHOOK_URL")
+    alerts_enabled = os.getenv("ALERTS_ENABLED", "0")
+    
+    result = {
+        "alerts_enabled": alerts_enabled == "1",
+        "slack_configured": bool(slack_url),
+        "discord_configured": bool(discord_url),
+        "message": message
+    }
+    
+    if alerts_enabled != "1":
+        result["sent"] = False
+        result["reason"] = "ALERTS_ENABLED is not set to '1'"
+        return result
+    
+    if not slack_url and not discord_url:
+        result["sent"] = False
+        result["reason"] = "No webhook URL configured"
+        return result
+    
+    sent = await send_alert(
+        message=message,
+        level="info",
+        title="Test Alert",
+        fields={
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Environment": "Production" if os.getenv("RAILWAY_ENVIRONMENT") else "Development"
+        }
+    )
+    
+    result["sent"] = sent
+    return result
+
+
+@APP.get("/api/alerts/status")
+async def api_alerts_status():
+    """Check alert system configuration."""
+    return {
+        "alerts_enabled": os.getenv("ALERTS_ENABLED", "0") == "1",
+        "slack_configured": bool(os.getenv("SLACK_WEBHOOK_URL")),
+        "discord_configured": bool(os.getenv("DISCORD_WEBHOOK_URL")),
+        "help": "Set ALERTS_ENABLED=1 and DISCORD_WEBHOOK_URL or SLACK_WEBHOOK_URL in environment"
+    }
+
+
+# Track alert cooldowns to avoid spam
+_alert_cooldowns = {}
+
+
+@APP.post("/api/alerts/check")
+async def api_alerts_check():
+    """
+    Check system status and send alerts if thresholds are breached.
+    
+    Call this periodically (e.g., every 15 minutes) to auto-alert on:
+    - Accuracy dropping below 50%
+    - VIX entering panic mode (>30)
+    - Crypto BUYs blocked (BTC bear regime)
+    - High number of pending trades (>100)
+    
+    Uses cooldown to avoid spam (1 hour between same alert type).
+    """
+    alerts_sent = []
+    cooldown_seconds = 3600  # 1 hour cooldown per alert type
+    
+    try:
+        from core.market_gates import RegimeFilter, VIXGate
+        from core.paper_tracker import get_paper_tracker
+        
+        now = time.time()
+        
+        # 1. Check VIX
+        try:
+            vg = VIXGate()
+            vix = await vg.get_current_vix()
+            
+            if vix > 30:
+                alert_key = "vix_panic"
+                if now - _alert_cooldowns.get(alert_key, 0) > cooldown_seconds:
+                    sent = await send_alert(
+                        message=f"VIX at {vix:.1f} - PANIC MODE - All BUY signals blocked!",
+                        level="critical",
+                        title="🚨 VIX Panic Alert",
+                        fields={"VIX Level": f"{vix:.1f}", "Action": "BUYs Blocked"}
+                    )
+                    if sent:
+                        _alert_cooldowns[alert_key] = now
+                        alerts_sent.append("vix_panic")
+            elif vix > 25:
+                alert_key = "vix_fear"
+                if now - _alert_cooldowns.get(alert_key, 0) > cooldown_seconds:
+                    sent = await send_alert(
+                        message=f"VIX at {vix:.1f} - FEAR MODE - BUY confidence reduced 50%",
+                        level="warning",
+                        title="⚠️ VIX Fear Alert",
+                        fields={"VIX Level": f"{vix:.1f}", "Action": "Confidence Reduced"}
+                    )
+                    if sent:
+                        _alert_cooldowns[alert_key] = now
+                        alerts_sent.append("vix_fear")
+        except Exception as e:
+            LOGGER.error(f"Alert check VIX error: {e}")
+        
+        # 2. Check BTC Regime (Crypto BUYs blocked)
+        try:
+            rf = RegimeFilter()
+            btc = await rf.get_btc_trend()
+            
+            if btc.get("crypto_regime") == "bear":
+                alert_key = "btc_bear"
+                if now - _alert_cooldowns.get(alert_key, 0) > cooldown_seconds:
+                    trend = btc.get("trend_7d_pct", 0)
+                    sent = await send_alert(
+                        message=f"BTC down {trend:.1f}% over 7 days - Crypto BUY signals blocked",
+                        level="warning",
+                        title="⚠️ Crypto Bear Regime",
+                        fields={"BTC 7d Trend": f"{trend:.1f}%", "Action": "Crypto BUYs Blocked"}
+                    )
+                    if sent:
+                        _alert_cooldowns[alert_key] = now
+                        alerts_sent.append("btc_bear")
+        except Exception as e:
+            LOGGER.error(f"Alert check BTC error: {e}")
+        
+        # 3. Check Accuracy
+        try:
+            tracker = get_paper_tracker()
+            stats = tracker.get_stats(days=7, since="2026-01-14", v2_only=True)
+            total = stats.get("resolved_trades", 0)
+            wins = stats.get("wins", 0)
+            
+            if total >= 20:  # Need enough data
+                accuracy = (wins / total) * 100
+                if accuracy < 40:
+                    alert_key = "accuracy_critical"
+                    if now - _alert_cooldowns.get(alert_key, 0) > cooldown_seconds:
+                        sent = await send_alert(
+                            message=f"7-day accuracy dropped to {accuracy:.1f}% ({wins}/{total} wins)",
+                            level="critical",
+                            title="🚨 Accuracy Critical",
+                            fields={"Accuracy": f"{accuracy:.1f}%", "Wins/Total": f"{wins}/{total}"}
+                        )
+                        if sent:
+                            _alert_cooldowns[alert_key] = now
+                            alerts_sent.append("accuracy_critical")
+                elif accuracy < 50:
+                    alert_key = "accuracy_warning"
+                    if now - _alert_cooldowns.get(alert_key, 0) > cooldown_seconds:
+                        sent = await send_alert(
+                            message=f"7-day accuracy at {accuracy:.1f}% ({wins}/{total} wins)",
+                            level="warning",
+                            title="⚠️ Accuracy Warning",
+                            fields={"Accuracy": f"{accuracy:.1f}%", "Wins/Total": f"{wins}/{total}"}
+                        )
+                        if sent:
+                            _alert_cooldowns[alert_key] = now
+                            alerts_sent.append("accuracy_warning")
+        except Exception as e:
+            LOGGER.error(f"Alert check accuracy error: {e}")
+        
+        # 4. Check pending trades (sign of stale data)
+        try:
+            if stats.get("active_trades", 0) > 100:
+                alert_key = "pending_high"
+                if now - _alert_cooldowns.get(alert_key, 0) > cooldown_seconds:
+                    pending = stats.get("active_trades", 0)
+                    sent = await send_alert(
+                        message=f"{pending} pending trades - may indicate stale predictions",
+                        level="info",
+                        title="ℹ️ High Pending Trades",
+                        fields={"Pending": str(pending)}
+                    )
+                    if sent:
+                        _alert_cooldowns[alert_key] = now
+                        alerts_sent.append("pending_high")
+        except Exception as e:
+            LOGGER.error(f"Alert check pending error: {e}")
+        
+        return {
+            "ok": True,
+            "alerts_sent": alerts_sent,
+            "alerts_enabled": os.getenv("ALERTS_ENABLED", "0") == "1",
+            "cooldown_seconds": cooldown_seconds,
+            "timestamp": now
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Alert check failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 # Stage 1: Context Awareness API Endpoints
 @APP.get("/api/stage1/world")
 async def api_stage1_world_context(hours: int = 24, min_relevance: float = 0.3):
