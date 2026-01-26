@@ -594,7 +594,8 @@ async def apply_market_gates(
     direction: str,
     confidence: float,
     metrics: dict[str, Any],
-    asset_type: str = "crypto"
+    asset_type: str = "crypto",
+    symbol: str = "UNKNOWN"
 ) -> tuple[str, float, dict[str, Any]]:
     """
     Apply all market gates to a prediction.
@@ -606,6 +607,7 @@ async def apply_market_gates(
         confidence: Original confidence (0-1)
         metrics: Technical indicators dict
         asset_type: "stock" or "crypto"
+        symbol: Trading symbol for logging
     
     Returns:
         (final_direction, final_confidence, gate_info)
@@ -615,7 +617,8 @@ async def apply_market_gates(
         "vix_gate": {"applied": False},
         "confirmations": {"count": 0, "reasons": []},
         "original_confidence": confidence,
-        "gates_passed": True
+        "gates_passed": True,
+        "symbol": symbol
     }
     
     # Initialize gates
@@ -635,7 +638,15 @@ async def apply_market_gates(
         }
         
         if not allow_buy:
-            LOGGER.warning(f"🚫 REGIME FILTER: Blocking BUY - {regime_reason}")
+            # Explicit logging for blocked signals
+            if "SPY below" in regime_reason or "SPY" in regime_reason:
+                LOGGER.info(f"[REGIME-GATE] Blocked BUY for {symbol} - SPY below 20MA")
+            elif "BTC" in regime_reason:
+                LOGGER.info(f"[REGIME-GATE] Blocked BUY for {symbol} - BTC in downtrend")
+            else:
+                LOGGER.info(f"[REGIME-GATE] Blocked BUY for {symbol} - {regime_reason}")
+            
+            LOGGER.warning(f"🚫 REGIME FILTER: Blocking BUY for {symbol} - {regime_reason}")
             gate_info["gates_passed"] = False
             # Convert BUY to HOLD instead of completely blocking
             return "FLAT", 0.5, gate_info
@@ -645,21 +656,28 @@ async def apply_market_gates(
     # ========================================
     if direction == "UP":  # Only affects BUYs
         vix_multiplier, vix_reason = await vix_gate.get_buy_confidence_multiplier()
+        vix_level = vix_gate.last_vix or 20.0
+        
         gate_info["vix_gate"] = {
             "applied": True,
             "multiplier": vix_multiplier,
             "reason": vix_reason,
-            "vix_level": vix_gate.last_vix
+            "vix_level": vix_level
         }
         
         if vix_multiplier == 0:
-            LOGGER.warning(f"🚫 VIX GATE: Blocking BUY - {vix_reason}")
+            LOGGER.info(f"[VIX-GATE] Blocked BUY for {symbol} - VIX at {vix_level:.1f} (PANIC MODE)")
+            LOGGER.warning(f"🚫 VIX GATE: Blocking BUY for {symbol} - {vix_reason}")
             gate_info["gates_passed"] = False
             return "FLAT", 0.5, gate_info
         
-        # Apply confidence reduction
-        confidence = confidence * vix_multiplier
-        LOGGER.info(f"📊 VIX GATE: Confidence adjusted to {confidence:.0%} ({vix_reason})")
+        elif vix_multiplier < 1.0:
+            # Confidence reduced but not blocked
+            old_conf = confidence
+            confidence = confidence * vix_multiplier
+            LOGGER.info(f"[VIX-GATE] Reduced confidence for {symbol} - VIX at {vix_level:.1f} ({old_conf:.0%} → {confidence:.0%})")
+        
+        LOGGER.info(f"📊 VIX GATE: {symbol} confidence adjusted to {confidence:.0%} ({vix_reason})")
     
     # ========================================
     # GATE 3: Confirmation Counter
@@ -695,12 +713,19 @@ async def apply_market_gates(
         }
         
         if signal_quality == "SKIP":
-            LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} - skipping BUY signal")
+            LOGGER.info(f"[CONFIRM-GATE] Blocked BUY for {symbol} - Only {conf_count} confirmations (need {MIN_CONFIRMATIONS_LOW}+)")
+            LOGGER.info(f"[CONFIRM-GATE] {symbol} signals present: {', '.join(conf_reasons) if conf_reasons else 'none'}")
+            LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - skipping BUY signal")
             gate_info["gates_passed"] = False
             return "FLAT", 0.5, gate_info
         elif signal_quality == "LOW":
-            LOGGER.info(f"📊 CONFIRMATIONS: {conf_count} (LOW) - reducing confidence")
+            old_conf = confidence
             confidence = confidence * 0.8
+            LOGGER.info(f"[CONFIRM-GATE] Reduced confidence for {symbol} - {conf_count} confirmations (LOW quality)")
+            LOGGER.info(f"[CONFIRM-GATE] {symbol} signals: {', '.join(conf_reasons)} ({old_conf:.0%} → {confidence:.0%})")
+        else:
+            LOGGER.info(f"[CONFIRM-GATE] {symbol} passed with {conf_count} confirmations (HIGH quality)")
+            LOGGER.info(f"[CONFIRM-GATE] {symbol} signals: {', '.join(conf_reasons)}")
     
     elif direction == "DOWN":
         conf_count, conf_reasons = await confirmation_counter.count_sell_confirmations(
@@ -710,16 +735,23 @@ async def apply_market_gates(
             "count": conf_count,
             "reasons": conf_reasons
         }
+        LOGGER.info(f"[CONFIRM-GATE] {symbol} SELL has {conf_count} confirmations: {', '.join(conf_reasons)}")
     
     # ========================================
     # FINAL OUTPUT
     # ========================================
     gate_info["final_confidence"] = confidence
     
-    LOGGER.info(
-        f"✅ Market Gates Passed: {direction} @ {confidence:.0%} "
-        f"(Confirmations: {gate_info['confirmations']['count']})"
-    )
+    if gate_info["gates_passed"]:
+        LOGGER.info(
+            f"✅ [GATES-SUMMARY] {symbol} PASSED all gates: {direction} @ {confidence:.0%} "
+            f"(Confirmations: {gate_info['confirmations']['count']})"
+        )
+    else:
+        LOGGER.info(
+            f"🚫 [GATES-SUMMARY] {symbol} BLOCKED: {direction} → FLAT "
+            f"(Original conf: {gate_info['original_confidence']:.0%})"
+        )
     
     return direction, confidence, gate_info
 

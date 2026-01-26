@@ -218,9 +218,9 @@ class CryptoPredictionEngine:
             # Add current price to metrics for confirmation counter
             metrics_with_price = {**metrics, "current_price": current_price}
             
-            # Apply all gates
+            # Apply all gates - pass symbol for detailed logging
             gated_direction, gated_confidence, gate_info = asyncio.get_event_loop().run_until_complete(
-                apply_market_gates(direction, confidence, metrics_with_price, "crypto")
+                apply_market_gates(direction, confidence, metrics_with_price, "crypto", symbol)
             )
             
             # Log gate results
