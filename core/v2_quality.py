@@ -77,6 +77,21 @@ class V2AssetQualitySystem:
         
         LOGGER.info(f"[V2-QUALITY] Initialized: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist (postgres={self.use_postgres})")
     
+    @property
+    def whitelist(self) -> Set[str]:
+        """Public read-only access to whitelist"""
+        return self._whitelist
+    
+    @property
+    def blacklist(self) -> Set[str]:
+        """Public read-only access to blacklist"""
+        return self._blacklist
+    
+    @property
+    def metrics(self) -> Dict[str, AssetQualityMetrics]:
+        """Public read-only access to metrics"""
+        return self._metrics
+    
     def _get_postgres_connection(self):
         """Get PostgreSQL connection"""
         import psycopg2
