@@ -148,6 +148,7 @@ class RegimeFilter:
                 "crypto_regime": "bull"/"bear"
             }
         """
+        # Try CoinGecko first
         try:
             from core.crypto.crypto_providers import CoinGeckoProvider
             
@@ -173,12 +174,44 @@ class RegimeFilter:
                     "btc_price_7d_ago": price_7d_ago,
                     "crypto_regime": crypto_regime
                 }
-            
-            return {"crypto_regime": "unknown", "trend_7d_pct": 0}
+                
+            LOGGER.warning("CoinGecko returned insufficient BTC history, trying Binance...")
             
         except Exception as e:
-            LOGGER.error(f"BTC trend check failed: {e}")
-            return {"crypto_regime": "unknown", "error": str(e)}
+            LOGGER.warning(f"CoinGecko BTC trend failed: {e}, trying Binance...")
+        
+        # Fallback to Binance
+        try:
+            from core.providers.binance_ohlcv import get_binance_ohlcv
+            
+            # Get 7 days of daily candles
+            bars = get_binance_ohlcv("BTC", interval="1d", limit=BTC_TREND_DAYS + 1)
+            
+            if bars and len(bars) >= 2:
+                price_now = bars[-1]["close"]
+                price_7d_ago = bars[0]["close"]
+                trend_pct = ((price_now - price_7d_ago) / price_7d_ago) * 100
+                
+                crypto_regime = "bear" if trend_pct < BTC_TREND_THRESHOLD else "bull"
+                self._btc_7d_trend = trend_pct
+                
+                LOGGER.info(
+                    f"₿ BTC Trend (Binance): {trend_pct:+.1f}% over {BTC_TREND_DAYS}d "
+                    f"→ Crypto regime: {crypto_regime.upper()}"
+                )
+                
+                return {
+                    "trend_7d_pct": round(trend_pct, 2),
+                    "btc_price": price_now,
+                    "btc_price_7d_ago": price_7d_ago,
+                    "crypto_regime": crypto_regime,
+                    "source": "binance"
+                }
+                
+        except Exception as e:
+            LOGGER.error(f"Binance BTC trend also failed: {e}")
+        
+        return {"crypto_regime": "unknown", "trend_7d_pct": 0}
     
     async def should_allow_buy(self, asset_type: str = "stock") -> tuple[bool, str]:
         """
@@ -227,41 +260,65 @@ class VIXGate:
         self.cache_ttl = 300  # 5 minutes
     
     async def get_current_vix(self) -> float:
-        """Fetch current VIX level."""
+        """Fetch current VIX level with multiple fallbacks."""
         try:
             # Check cache
             if self.last_vix and (time.time() - self.last_check) < self.cache_ttl:
                 return self.last_vix
             
+            # Try 1: Use world_context VIX (which has its own fallbacks)
+            try:
+                from core.world_context import get_world_context
+                ctx = get_world_context()
+                if ctx and ctx.get("vix"):
+                    vix = ctx["vix"]
+                    if vix and vix > 0:
+                        self.last_vix = vix
+                        self.last_check = time.time()
+                        LOGGER.info(f"VIX from world_context: {vix:.1f}")
+                        return vix
+            except Exception as e:
+                LOGGER.debug(f"world_context VIX failed: {e}")
+            
+            # Try 2: Fear & Greed as VIX proxy (Extreme Fear=30+, Fear=25-30, etc.)
+            try:
+                from core.pattern_intelligence.fear_greed import get_fear_greed_index
+                fg = get_fear_greed_index()
+                if fg and fg.get("value"):
+                    fg_value = int(fg["value"])
+                    # Convert Fear & Greed (0-100) to VIX-like (10-40)
+                    # FG 0 (Extreme Fear) → VIX 35
+                    # FG 25 (Fear) → VIX 25
+                    # FG 50 (Neutral) → VIX 18
+                    # FG 75 (Greed) → VIX 14
+                    # FG 100 (Extreme Greed) → VIX 10
+                    vix_estimate = 35 - (fg_value * 0.25)
+                    self.last_vix = vix_estimate
+                    self.last_check = time.time()
+                    LOGGER.info(f"VIX estimated from Fear&Greed ({fg_value}): {vix_estimate:.1f}")
+                    return vix_estimate
+            except Exception as e:
+                LOGGER.debug(f"Fear&Greed VIX proxy failed: {e}")
+            
+            # Try 3: Direct Polygon VIX
             import aiohttp
             polygon_key = os.getenv("POLYGON_API_KEY")
             
             if polygon_key:
                 async with aiohttp.ClientSession() as session:
-                    # VIX is ^VIX or VIX on Polygon
                     url = f"https://api.polygon.io/v2/aggs/ticker/VIX/prev?adjusted=true&apiKey={polygon_key}"
                     
                     async with session.get(url, timeout=10) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             if data.get("results"):
-                                vix = data["results"][0].get("c", 20)  # close price
+                                vix = data["results"][0].get("c", 20)
                                 self.last_vix = vix
                                 self.last_check = time.time()
                                 return vix
             
-            # Fallback: Try yfinance
-            try:
-                import yfinance as yf
-                vix_data = yf.Ticker("^VIX")
-                vix = vix_data.info.get("regularMarketPrice", 20)
-                self.last_vix = vix
-                self.last_check = time.time()
-                return vix
-            except Exception:
-                pass
-            
             # Default to neutral
+            LOGGER.warning("All VIX sources failed, using default 20.0")
             return 20.0
             
         except Exception as e:
