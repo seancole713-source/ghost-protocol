@@ -21596,7 +21596,7 @@ async def api_system_health_check():
     """
     try:
         from core.market_gates import RegimeFilter, VIXGate
-        from core.v2_quality import get_v2_quality_filter
+        from core.v2_quality import get_quality_system
         from core.paper_tracker import get_paper_tracker
         
         result = {
@@ -21651,9 +21651,9 @@ async def api_system_health_check():
         
         # 2. V2 Quality Whitelist
         try:
-            v2_filter = get_v2_quality_filter()
-            result["whitelist"] = sorted(v2_filter.whitelist)
-            result["blacklist_count"] = len(v2_filter.blacklist)
+            v2_system = get_quality_system()
+            result["whitelist"] = sorted(v2_system.whitelist)
+            result["blacklist_count"] = len(v2_system.blacklist)
         except Exception as e:
             LOGGER.error(f"Dashboard whitelist error: {e}")
         
