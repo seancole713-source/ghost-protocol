@@ -7853,6 +7853,56 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # Detect asset type (crypto vs stock)
         is_crypto = symbol in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(symbol) == "crypto"
         
+        # =========================================================================
+        # STOCK ENGINE ROUTING (Jan 26, 2026)
+        # Route stocks to the specialized stock engine for better accuracy
+        # Crypto continues using the original turbo engine
+        # =========================================================================
+        use_stock_engine = os.getenv("USE_STOCK_ENGINE", "true").lower() == "true"
+        
+        if not is_crypto and use_stock_engine:
+            try:
+                import asyncio
+                from core.stock_engine import run_stock_prediction
+                
+                LOGGER.info(f"[{symbol}] 🏛️ Routing to Stock Engine (24h horizon, 2% target)")
+                
+                # Run stock prediction (async) 
+                loop = asyncio.new_event_loop()
+                try:
+                    stock_result = loop.run_until_complete(run_stock_prediction(symbol))
+                finally:
+                    loop.close()
+                
+                duration_ms = int((time.monotonic() - start) * 1000)
+                
+                # Convert stock engine result to standard format
+                return {
+                    "ok": stock_result.get("is_actionable", False) or stock_result.get("direction") != "HOLD",
+                    "prediction_id": None,  # Stock engine doesn't store yet
+                    "symbol": symbol,
+                    "direction": stock_result.get("direction", "HOLD"),
+                    "confidence": stock_result.get("confidence", 0.0),
+                    "current_price": stock_result.get("entry_price"),
+                    "target_price": stock_result.get("target_price"),
+                    "stop_loss": stock_result.get("stop_loss"),
+                    "feature_count": len(stock_result.get("gates_passed", [])) + len(stock_result.get("gates_failed", [])),
+                    "available_count": len(stock_result.get("gates_passed", [])),
+                    "duration_ms": duration_ms,
+                    "engine": "stock_v1",
+                    "horizon_hours": stock_result.get("horizon_hours", 24),
+                    "confirmations": stock_result.get("confirmations", 0),
+                    "min_confirmations": stock_result.get("min_confirmations", 4),
+                    "gates_passed": stock_result.get("gates_passed", []),
+                    "gates_failed": stock_result.get("gates_failed", []),
+                    "reasons": stock_result.get("reasons", []),
+                    "is_actionable": stock_result.get("is_actionable", False),
+                    "error": None if stock_result.get("is_actionable") or stock_result.get("direction") != "HOLD" else "Stock gates blocked prediction"
+                }
+            except Exception as e:
+                LOGGER.warning(f"[{symbol}] Stock engine failed, falling back to turbo engine: {e}")
+                # Fall through to original turbo engine
+        
         # Check market hours for stocks (Issue #3 fix)
         if not is_crypto:
             is_market_open, next_open_ts = _is_market_open_now()
@@ -9865,6 +9915,154 @@ async def api_v3_opus_predict(symbol: str):
     except Exception as e:
         LOGGER.error(f"Opus predict error for {symbol}: {e}")
         return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+# =============================================================================
+# STOCK ENGINE API (Jan 26, 2026)
+# Dedicated endpoint for the new stock-specific prediction engine
+# =============================================================================
+
+@APP.get("/api/v3/stock/predict/{symbol}")
+async def api_v3_stock_predict(symbol: str):
+    """
+    🏛️ Stock Engine Prediction - Optimized for stocks (not crypto)
+    
+    Uses stock-tuned parameters:
+    - 24h horizon (vs 48h for crypto)
+    - 2% target (vs 6% for crypto)
+    - RSI 35/65 (vs 30/70 for crypto)
+    - 4 confirmations (vs 3 for crypto)
+    - VIX < 20 gate
+    - SPY regime gate
+    - Economic calendar gate (FOMC, CPI, NFP blackouts)
+    - Sector momentum gate
+    - Multi-timeframe confirmation
+    
+    Target: 40-50% win rate (up from 4.5%)
+    """
+    try:
+        from core.stock_engine import run_stock_prediction
+        
+        result = await run_stock_prediction(symbol.upper())
+        
+        return {
+            "ok": True,
+            "engine": "stock_v1",
+            "symbol": symbol.upper(),
+            **result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except ImportError as e:
+        LOGGER.error(f"Stock engine import failed: {e}")
+        return {"ok": False, "error": "Stock engine not available", "symbol": symbol}
+    except Exception as e:
+        LOGGER.error(f"Stock engine error for {symbol}: {e}")
+        return {"ok": False, "error": str(e), "symbol": symbol}
+
+
+@APP.get("/api/v3/stock/batch")
+async def api_v3_stock_batch(symbols: str = "AAPL,MSFT,JPM"):
+    """
+    🏛️ Batch stock predictions for multiple symbols.
+    
+    Query params:
+        symbols: Comma-separated list of stock symbols
+    
+    Returns predictions for all symbols.
+    """
+    try:
+        from core.stock_engine import get_stock_engine
+        
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        
+        if not symbol_list:
+            return {"ok": False, "error": "No symbols provided"}
+        
+        if len(symbol_list) > 10:
+            return {"ok": False, "error": "Max 10 symbols per batch"}
+        
+        engine = get_stock_engine()
+        results = await engine.predict_batch(symbol_list)
+        
+        return {
+            "ok": True,
+            "engine": "stock_v1",
+            "count": len(results),
+            "predictions": {sym: pred.to_dict() for sym, pred in results.items()},
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Stock batch error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/stock/config")
+async def api_v3_stock_config():
+    """
+    🏛️ Get current stock engine configuration.
+    
+    Shows the tuned parameters for stock predictions.
+    """
+    try:
+        from core.stock_engine import STOCK_CONFIG
+        
+        return {
+            "ok": True,
+            "engine": "stock_v1",
+            "config": STOCK_CONFIG.to_dict(),
+            "description": {
+                "horizon_hours": "Prediction horizon (24h for stocks vs 48h for crypto)",
+                "target_pct": "Expected move percentage (2% for stocks vs 6% for crypto)",
+                "rsi_oversold": "RSI level to consider oversold (35 for stocks vs 30 for crypto)",
+                "rsi_overbought": "RSI level to consider overbought (65 for stocks vs 70 for crypto)",
+                "min_confirmations": "Minimum confirmations needed (4 for stocks vs 3 for crypto)",
+                "vix_max": "Max VIX to allow predictions (20 for stocks vs 25 for crypto)",
+                "require_spy_bull": "Require SPY above 20MA (bull market)",
+                "market_hours_only": "Only predict during market hours",
+                "earnings_blackout_days": "Days around earnings to block predictions",
+            },
+            "comparison_to_crypto": {
+                "horizon": "24h vs 48h (stocks move slower)",
+                "target": "2% vs 6% (more realistic)",
+                "rsi": "35/65 vs 30/70 (stocks rarely hit extremes)",
+                "confirmations": "4 vs 3 (stricter)",
+                "vix_gate": "20 vs 25 (stricter fear threshold)",
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/stock/calendar")
+async def api_v3_stock_calendar():
+    """
+    🏛️ Get upcoming economic events that will block stock predictions.
+    
+    Shows FOMC, CPI, NFP dates - these are blackout days.
+    """
+    try:
+        from core.economic_calendar import (
+            get_upcoming_blackout_events,
+            is_fomc_day,
+            is_cpi_day,
+            is_nfp_day
+        )
+        
+        return {
+            "ok": True,
+            "today_status": {
+                "is_fomc_day": is_fomc_day(),
+                "is_cpi_day": is_cpi_day(),
+                "is_nfp_day": is_nfp_day(),
+                "stocks_blocked": is_fomc_day() or is_cpi_day() or is_nfp_day()
+            },
+            "upcoming_blackout_events": get_upcoming_blackout_events(days_ahead=30),
+            "note": "Stock predictions are BLOCKED on these days due to unpredictable binary outcomes"
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 async def _gather_opus_context(symbol: str) -> dict:

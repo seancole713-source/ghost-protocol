@@ -15,18 +15,254 @@ Features:
 - Impact scoring (high/medium/low)
 - Pre-event warnings (alert 1 hour before)
 - Post-event analysis
+- FOMC/CPI/NFP BLACKOUT GATES (Critical for stock predictions)
 
 Author: Ghost AI
 Date: 2025-11-17
+Updated: 2026-01-26 - Added FOMC/CPI/NFP blackout gates for stock engine
 """
 
 import logging
 import os
 import time
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Tuple, Optional
 
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# 2026 BLACKOUT CALENDAR - Major Market-Moving Events
+# These events destroy technical predictions - BLOCK STOCKS on these days
+# ============================================================================
+
+# FOMC Meeting Dates 2026 (Federal Reserve)
+FOMC_DATES_2026 = [
+    "2026-01-27", "2026-01-28",  # January meeting
+    "2026-03-17", "2026-03-18",  # March meeting
+    "2026-04-28", "2026-04-29",  # April meeting
+    "2026-06-09", "2026-06-10",  # June meeting
+    "2026-07-28", "2026-07-29",  # July meeting
+    "2026-09-15", "2026-09-16",  # September meeting
+    "2026-11-03", "2026-11-04",  # November meeting
+    "2026-12-15", "2026-12-16",  # December meeting
+]
+
+# CPI Release Dates 2026 (8:30 AM ET releases)
+CPI_DATES_2026 = [
+    "2026-01-14", "2026-02-12", "2026-03-11", "2026-04-14",
+    "2026-05-13", "2026-06-10", "2026-07-15", "2026-08-12",
+    "2026-09-10", "2026-10-13", "2026-11-12", "2026-12-10",
+]
+
+# NFP (Non-Farm Payrolls) Dates 2026 - First Friday of month
+NFP_DATES_2026 = [
+    "2026-01-02", "2026-02-06", "2026-03-06", "2026-04-03",
+    "2026-05-01", "2026-06-05", "2026-07-02", "2026-08-07",
+    "2026-09-04", "2026-10-02", "2026-11-06", "2026-12-04",
+]
+
+# Parse dates into sets for O(1) lookup
+def _parse_dates_to_set(date_strings: list) -> set:
+    dates = set()
+    for ds in date_strings:
+        try:
+            dates.add(datetime.strptime(ds, "%Y-%m-%d").date())
+        except ValueError:
+            logger.warning(f"Invalid date format: {ds}")
+    return dates
+
+FOMC_DATES = _parse_dates_to_set(FOMC_DATES_2026)
+CPI_DATES = _parse_dates_to_set(CPI_DATES_2026)
+NFP_DATES = _parse_dates_to_set(NFP_DATES_2026)
+
+# Blackout config: days before/after to block
+BLACKOUT_CONFIG = {
+    "FOMC": {"before": 0, "after": 1},  # Block day of and day after
+    "CPI": {"before": 0, "after": 0},   # Block day of only
+    "NFP": {"before": 0, "after": 0},   # Block day of only
+    "EARNINGS": {"before": 7, "after": 1},  # ±7 days around earnings
+}
+
+
+def is_fomc_day(date: datetime = None) -> bool:
+    """Check if date is an FOMC meeting day"""
+    if date is None:
+        date = datetime.now(UTC)
+    check_date = date.date() if hasattr(date, 'date') else date
+    return check_date in FOMC_DATES
+
+
+def is_cpi_day(date: datetime = None) -> bool:
+    """Check if date is a CPI release day"""
+    if date is None:
+        date = datetime.now(UTC)
+    check_date = date.date() if hasattr(date, 'date') else date
+    return check_date in CPI_DATES
+
+
+def is_nfp_day(date: datetime = None) -> bool:
+    """Check if date is a Jobs Report (NFP) day"""
+    if date is None:
+        date = datetime.now(UTC)
+    check_date = date.date() if hasattr(date, 'date') else date
+    return check_date in NFP_DATES
+
+
+def is_fomc_blackout(date: datetime = None) -> Tuple[bool, str]:
+    """Check if we're in FOMC blackout period (day of + day after)"""
+    if date is None:
+        date = datetime.now(UTC)
+    check_date = date.date() if hasattr(date, 'date') else date
+    
+    config = BLACKOUT_CONFIG["FOMC"]
+    for fomc_date in FOMC_DATES:
+        start = fomc_date - timedelta(days=config["before"])
+        end = fomc_date + timedelta(days=config["after"])
+        if start <= check_date <= end:
+            return True, f"FOMC blackout ({fomc_date})"
+    return False, ""
+
+
+def is_cpi_blackout(date: datetime = None) -> Tuple[bool, str]:
+    """Check if we're in CPI blackout period"""
+    if date is None:
+        date = datetime.now(UTC)
+    check_date = date.date() if hasattr(date, 'date') else date
+    
+    for cpi_date in CPI_DATES:
+        if check_date == cpi_date:
+            return True, f"CPI release day ({cpi_date})"
+    return False, ""
+
+
+def is_nfp_blackout(date: datetime = None) -> Tuple[bool, str]:
+    """Check if we're in NFP (Jobs Report) blackout period"""
+    if date is None:
+        date = datetime.now(UTC)
+    check_date = date.date() if hasattr(date, 'date') else date
+    
+    for nfp_date in NFP_DATES:
+        if check_date == nfp_date:
+            return True, f"Jobs Report day ({nfp_date})"
+    return False, ""
+
+
+def get_earnings_blackout_for_symbol(symbol: str, date: datetime = None) -> Tuple[bool, str]:
+    """
+    Check if symbol is in earnings blackout period.
+    Returns (is_blocked, reason)
+    """
+    if date is None:
+        date = datetime.now(UTC)
+    
+    # Try to get next earnings date from API
+    earnings_cal = fetch_earnings_calendar(symbol=symbol, days_ahead=14)
+    if not earnings_cal.get("ok"):
+        return False, ""  # Can't determine - allow
+    
+    earnings = earnings_cal.get("earnings", [])
+    if not earnings:
+        return False, ""
+    
+    # Check if any earnings within blackout window
+    check_date = date.date() if hasattr(date, 'date') else date
+    config = BLACKOUT_CONFIG["EARNINGS"]
+    
+    for e in earnings:
+        try:
+            earnings_date = datetime.strptime(e.get("date", ""), "%Y-%m-%d").date()
+            start = earnings_date - timedelta(days=config["before"])
+            end = earnings_date + timedelta(days=config["after"])
+            if start <= check_date <= end:
+                days_until = (earnings_date - check_date).days
+                if days_until > 0:
+                    return True, f"Earnings in {days_until} days"
+                elif days_until == 0:
+                    return True, "Earnings TODAY"
+                else:
+                    return True, f"Earnings was {-days_until} days ago"
+        except (ValueError, TypeError):
+            continue
+    
+    return False, ""
+
+
+def economic_calendar_gate(symbol: str, date: datetime = None) -> Tuple[bool, str]:
+    """
+    Master economic event gate for STOCKS.
+    
+    Returns:
+        (allow_prediction: bool, block_reason: str)
+        
+    If allow_prediction is False, do NOT generate stock prediction.
+    These events create binary outcomes no TA can predict.
+    """
+    if date is None:
+        date = datetime.now(UTC)
+    
+    # Check FOMC - blocks ALL stocks
+    is_blocked, reason = is_fomc_blackout(date)
+    if is_blocked:
+        logger.info(f"🚫 [{symbol}] BLOCKED - {reason}")
+        return False, reason
+    
+    # Check CPI - blocks ALL stocks
+    is_blocked, reason = is_cpi_blackout(date)
+    if is_blocked:
+        logger.info(f"🚫 [{symbol}] BLOCKED - {reason}")
+        return False, reason
+    
+    # Check NFP - blocks ALL stocks
+    is_blocked, reason = is_nfp_blackout(date)
+    if is_blocked:
+        logger.info(f"🚫 [{symbol}] BLOCKED - {reason}")
+        return False, reason
+    
+    # Check earnings - symbol-specific
+    is_blocked, reason = get_earnings_blackout_for_symbol(symbol, date)
+    if is_blocked:
+        logger.info(f"🚫 [{symbol}] BLOCKED - {reason}")
+        return False, reason
+    
+    return True, ""
+
+
+def get_upcoming_blackout_events(days_ahead: int = 14) -> list:
+    """Get list of upcoming blackout events for dashboard display"""
+    today = datetime.now(UTC).date()
+    end_date = today + timedelta(days=days_ahead)
+    
+    events = []
+    
+    for fomc_date in FOMC_DATES:
+        if today <= fomc_date <= end_date:
+            events.append({
+                "type": "FOMC",
+                "date": fomc_date.isoformat(),
+                "impact": "HIGH",
+                "description": "Federal Reserve Meeting - STOCKS BLOCKED"
+            })
+    
+    for cpi_date in CPI_DATES:
+        if today <= cpi_date <= end_date:
+            events.append({
+                "type": "CPI",
+                "date": cpi_date.isoformat(),
+                "impact": "HIGH",
+                "description": "CPI Release - STOCKS BLOCKED"
+            })
+    
+    for nfp_date in NFP_DATES:
+        if today <= nfp_date <= end_date:
+            events.append({
+                "type": "NFP",
+                "date": nfp_date.isoformat(),
+                "impact": "HIGH",
+                "description": "Jobs Report - STOCKS BLOCKED"
+            })
+    
+    events.sort(key=lambda x: x["date"])
+    return events
 
 # Cache settings
 CALENDAR_CACHE: dict[str, dict[str, Any]] = {}
