@@ -209,6 +209,47 @@ class CryptoPredictionEngine:
         # 5. Determine direction and confidence + collect signals used
         direction, confidence, signals_used = self._analyze_direction_with_signals(metrics, history)
 
+        # 5.5 APPLY MARKET GATES (Regime Filter, VIX Gate, Confirmations)
+        # This is the key improvement - filter BUY signals based on market conditions
+        try:
+            from core.market_gates import apply_market_gates
+            import asyncio
+            
+            # Add current price to metrics for confirmation counter
+            metrics_with_price = {**metrics, "current_price": current_price}
+            
+            # Apply all gates
+            gated_direction, gated_confidence, gate_info = asyncio.get_event_loop().run_until_complete(
+                apply_market_gates(direction, confidence, metrics_with_price, "crypto")
+            )
+            
+            # Log gate results
+            if gate_info.get("gates_passed"):
+                LOGGER.info(
+                    f"✅ Market Gates PASSED for {symbol}: {direction} @ {confidence:.0%} "
+                    f"→ {gated_direction} @ {gated_confidence:.0%} "
+                    f"(Confirmations: {gate_info['confirmations']['count']})"
+                )
+                signals_used.append(f"GATES_PASSED_CONF_{gate_info['confirmations']['count']}")
+            else:
+                LOGGER.warning(
+                    f"🚫 Market Gates BLOCKED {symbol} {direction}: "
+                    f"{gate_info.get('regime_filter', {}).get('reason', '')} "
+                    f"{gate_info.get('vix_gate', {}).get('reason', '')}"
+                )
+                signals_used.append("GATES_BLOCKED")
+            
+            # Apply gated values
+            direction = gated_direction
+            confidence = gated_confidence
+            
+            # Store gate info in metrics for learning
+            metrics["_gate_info"] = gate_info
+            
+        except Exception as e:
+            LOGGER.warning(f"⚠️ Market gates not applied: {e}")
+            # Continue with original direction/confidence
+
         # 6. Store prediction to SQLite (local crypto db)
         prediction_id = str(uuid.uuid4())
         self._store_prediction(

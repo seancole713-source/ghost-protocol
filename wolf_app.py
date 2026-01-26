@@ -21274,6 +21274,201 @@ def _get_market_mood_fallback() -> dict:
             "status": "fallback"
         }
 
+
+# ── Market Gates API Endpoints (Quick Wins for Better Predictions) ───────────────────
+
+
+@APP.get("/api/gates/status")
+async def api_gates_status():
+    """
+    Get current status of all market gates.
+    
+    Returns config and current readings for:
+    - Regime Filter (SPY vs 20MA, BTC trend)
+    - VIX Gate (fear levels)
+    - Confirmation requirements
+    """
+    try:
+        from core.market_gates import get_market_gates_status, RegimeFilter, VIXGate
+        
+        status = get_market_gates_status()
+        
+        # Add live readings
+        rf = RegimeFilter()
+        vg = VIXGate()
+        
+        # Get live data
+        spy_regime = await rf.get_spy_regime()
+        btc_trend = await rf.get_btc_trend()
+        vix_level = await vg.get_current_vix()
+        vix_mult, vix_reason = await vg.get_buy_confidence_multiplier()
+        
+        status["live_readings"] = {
+            "spy": spy_regime,
+            "btc": btc_trend,
+            "vix": {
+                "level": vix_level,
+                "buy_multiplier": vix_mult,
+                "reason": vix_reason
+            },
+            "timestamp": time.time()
+        }
+        
+        return status
+        
+    except Exception as e:
+        LOGGER.error(f"gates_status_error: {e}")
+        return {"error": str(e)}
+
+
+@APP.get("/api/gates/regime")
+async def api_gates_regime():
+    """
+    Get current market regime (bull/bear).
+    
+    Checks:
+    - SPY position vs 20-day MA
+    - BTC 7-day trend
+    """
+    try:
+        from core.market_gates import RegimeFilter
+        
+        rf = RegimeFilter()
+        
+        spy_data = await rf.get_spy_regime()
+        btc_data = await rf.get_btc_trend()
+        
+        # Overall regime decision
+        stock_bullish = spy_data.get("regime") == "bull"
+        crypto_bullish = btc_data.get("crypto_regime") == "bull"
+        
+        overall = "bull" if stock_bullish and crypto_bullish else "bear" if not stock_bullish and not crypto_bullish else "mixed"
+        
+        return {
+            "overall_regime": overall,
+            "stock_regime": spy_data,
+            "crypto_regime": btc_data,
+            "buy_allowed": {
+                "stocks": stock_bullish,
+                "crypto": crypto_bullish
+            },
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"gates_regime_error: {e}")
+        return {"error": str(e)}
+
+
+@APP.get("/api/gates/vix")
+async def api_gates_vix():
+    """
+    Get current VIX level and its impact on BUY signals.
+    
+    Levels:
+    - < 20: Normal (full confidence)
+    - 20-25: Caution (75% confidence)
+    - 25-30: Fear (50% confidence)
+    - > 30: Panic (block BUYs)
+    """
+    try:
+        from core.market_gates import VIXGate
+        
+        vg = VIXGate()
+        vix = await vg.get_current_vix()
+        mult, reason = await vg.get_buy_confidence_multiplier()
+        
+        return {
+            "vix_level": vix,
+            "buy_multiplier": mult,
+            "status": reason,
+            "action": "block" if mult == 0 else "reduce" if mult < 1 else "allow",
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"gates_vix_error: {e}")
+        return {"error": str(e)}
+
+
+@APP.get("/api/gates/losers")
+async def api_gates_losers(limit: int = 50):
+    """
+    Analyze patterns in losing BUY trades.
+    
+    Returns:
+    - Worst performing symbols
+    - Time patterns
+    - Recommendations for improvement
+    """
+    try:
+        from core.market_gates import LoserAnalyzer
+        
+        analyzer = LoserAnalyzer()
+        analysis = analyzer.analyze_patterns()
+        
+        return {
+            "analysis": analysis,
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"gates_losers_error: {e}")
+        return {"error": str(e)}
+
+
+@APP.post("/api/gates/test")
+async def api_gates_test(
+    direction: str = "UP",
+    confidence: float = 0.75,
+    asset_type: str = "crypto"
+):
+    """
+    Test what would happen to a signal after applying all gates.
+    
+    Args:
+        direction: UP, DOWN, or FLAT
+        confidence: Original confidence (0-1)
+        asset_type: stock or crypto
+    
+    Returns:
+        What the final signal would be after gates
+    """
+    try:
+        from core.market_gates import apply_market_gates
+        
+        # Use sample metrics
+        test_metrics = {
+            "rsi": 45,
+            "momentum_7d": 0.03,
+            "macd_histogram": 0.1,
+            "current_price": 100
+        }
+        
+        gated_dir, gated_conf, gate_info = await apply_market_gates(
+            direction, confidence, test_metrics, asset_type
+        )
+        
+        return {
+            "input": {
+                "direction": direction,
+                "confidence": confidence,
+                "asset_type": asset_type
+            },
+            "output": {
+                "direction": gated_dir,
+                "confidence": gated_conf
+            },
+            "gate_info": gate_info,
+            "changed": gated_dir != direction or abs(gated_conf - confidence) > 0.01,
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"gates_test_error: {e}")
+        return {"error": str(e)}
+
+
 # Stage 1: Context Awareness API Endpoints
 @APP.get("/api/stage1/world")
 async def api_stage1_world_context(hours: int = 24, min_relevance: float = 0.3):
