@@ -8255,6 +8255,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         try:
             from core.market_gates import apply_market_gates
             from core.asset_classification import is_crypto_symbol as _is_crypto_sym
+            import asyncio
             
             market_type = "crypto" if _is_crypto_sym(symbol) else "stock"
             
@@ -8270,14 +8271,46 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             original_direction = direction
             original_confidence = base_confidence
             
-            # Apply market gates (async function returns tuple)
-            gated_direction, gated_confidence, gate_info = await apply_market_gates(
-                direction=direction,
-                confidence=base_confidence,
-                metrics=gate_metrics,
-                asset_type=market_type,
-                symbol=symbol
-            )
+            # Apply market gates (async function - run in event loop)
+            # Use run_until_complete for sync context
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Already in async context, use nest_asyncio or thread
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(
+                            asyncio.run,
+                            apply_market_gates(
+                                direction=direction,
+                                confidence=base_confidence,
+                                metrics=gate_metrics,
+                                asset_type=market_type,
+                                symbol=symbol
+                            )
+                        )
+                        gated_direction, gated_confidence, gate_info = future.result(timeout=5)
+                else:
+                    gated_direction, gated_confidence, gate_info = loop.run_until_complete(
+                        apply_market_gates(
+                            direction=direction,
+                            confidence=base_confidence,
+                            metrics=gate_metrics,
+                            asset_type=market_type,
+                            symbol=symbol
+                        )
+                    )
+            except RuntimeError:
+                # No event loop, create one
+                gated_direction, gated_confidence, gate_info = asyncio.run(
+                    apply_market_gates(
+                        direction=direction,
+                        confidence=base_confidence,
+                        metrics=gate_metrics,
+                        asset_type=market_type,
+                        symbol=symbol
+                    )
+                )
             
             # Update direction and confidence
             direction = gated_direction
