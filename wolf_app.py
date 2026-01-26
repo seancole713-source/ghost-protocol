@@ -25866,6 +25866,58 @@ async def v2_quality_reload_from_json():
         return {"ok": False, "error": str(e)}
 
 
+@APP.post("/api/v2/quality/reload-postgres")
+async def v2_quality_reload_from_postgres():
+    """
+    🔄 V2: Force reload whitelist/blacklist FROM PostgreSQL.
+    
+    Use this after directly updating PostgreSQL to apply changes without restart.
+    """
+    try:
+        from core.v2_quality import get_quality_system
+        
+        quality = get_quality_system()
+        
+        # Capture before state
+        before_wl = list(quality._whitelist)
+        before_bl = list(quality._blacklist)
+        
+        # Force reload from PostgreSQL
+        pg_data = quality._load_from_postgres()
+        
+        if pg_data:
+            quality._whitelist = set(pg_data.get('whitelist', []))
+            quality._blacklist = set(pg_data.get('blacklist', []))
+            quality._pinned_whitelist = set(pg_data.get('pinned_whitelist', []))
+            
+            LOGGER.info(
+                f"[V2-RELOAD] ✅ Reloaded from PostgreSQL: "
+                f"{len(before_wl)} → {len(quality._whitelist)} whitelist, "
+                f"{len(before_bl)} → {len(quality._blacklist)} blacklist"
+            )
+            
+            return {
+                "ok": True,
+                "message": "Reloaded from PostgreSQL",
+                "before": {
+                    "whitelist_count": len(before_wl),
+                    "blacklist_count": len(before_bl)
+                },
+                "after": {
+                    "whitelist": sorted(quality._whitelist),
+                    "blacklist": sorted(quality._blacklist),
+                    "pinned": sorted(quality._pinned_whitelist)
+                },
+                "note": pg_data.get('config', {}).get('note', 'none')
+            }
+        else:
+            return {"ok": False, "error": "No config found in PostgreSQL"}
+    
+    except Exception as e:
+        LOGGER.error(f"[V2-API] PostgreSQL reload error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/api/v2/quality/debug-json")
 async def v2_quality_debug_json():
     """Debug: Read JSON file directly and show contents"""
