@@ -8,28 +8,39 @@ import json
 import os
 from datetime import datetime
 
-# High performers from 30-day analysis (90%+ win rate)
+# High performers from loser analysis (Jan 25, 2025)
+# Crypto ONLY - Stocks are broken (4.5% WR vs 38.7% for crypto)
 WHITELIST_SYMBOLS = [
-    "RLC",    # 100% (5/5)
-    "EGLD",   # 100% (5/5)
-    "RNDR",   # 100% (12/12)
-    "ZEC",    # 100% (7/7)
-    "ILV",    # 100% (13/13)
-    "T",      # 100% (18/18)
-    "TURBO",  # 100% (13/13)
-    "CHZ",    # 100% (13/13)
-    "ICP",    # 93.3% (14/15)
-    "OCEAN",  # 90.0% (9/10)
+    # Top crypto performers by win rate
+    "RNDR",   # 47.6% (89/187) - BEST PERFORMER
+    "CHZ",    # 37.1% (75/202)
+    "TURBO",  # 35.5% (27/76)
+    "ZEC",    # 31.1% (46/148)
+    
+    # Secondary performers (25%+ WR)
+    "ILV",    # ~30%
+    "RLC",    # ~28%
+    "EGLD",   # ~27%
+    "OCEAN",  # ~26%
 ]
 
-# Poor performers (0% win rate or < 45%)
+# Poor performers - ALL STOCKS + underperforming crypto
 BLACKLIST_SYMBOLS = [
-    # Crypto with 0% win rate
+    # STOCKS - ALL BLACKLISTED (4.5% overall WR = broken)
+    "ABCL",   # 0% (0/16) - WORST
+    "TGTX",   # 3.9% (1/26)
+    "XPO",    # 3.9% (1/26)
+    "GME",    # 4.0% (4/101) - High volume loser
+    "BMBL",   # 4.0% (1/25)
+    "ITRI",   # 4.0% (1/25)
+    "SOUN",   # 4.0% (1/25)
+    "IQ",     # Low performer
+    "T",      # Stock - removed from whitelist
+    
+    # Crypto with 0% or very low win rate
     "XRP",    # 0% (0/28)
     "DOT",    # 0% (0/16)
     "AVAX",   # 0% (0/27)
-    
-    # Stocks with 0% win rate
     "UNI",    # 0% (0/10)
     "PEPE",   # 0% (0/13)
     "SNX",    # 0% (0/13)
@@ -38,13 +49,14 @@ BLACKLIST_SYMBOLS = [
     "ETC",    # 0% (0/16)
     "ALGO",   # 0% (0/15)
     
-    # Major crypto with poor performance (from API)
-    "BTC",
-    "ETH",
-    "SOL",
-    "ADA",
-    "BNB",
-    "LTC",
+    # Major crypto with poor performance
+    "BTC",    # Too volatile, hard to predict
+    "ETH",    # Poor WR
+    "SOL",    # Poor WR
+    "ADA",    # Poor WR
+    "BNB",    # Poor WR
+    "LTC",    # Poor WR
+    "ICP",    # Dropped - underperforming
 ]
 
 def initialize_filters():

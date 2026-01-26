@@ -8266,31 +8266,34 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 "signals_fired": signals_fired,
             }
             
-            # Apply market gates
-            gates_result = apply_market_gates(
-                direction=direction,
-                confidence=base_confidence,
-                metrics=gate_metrics,
-                market_type=market_type,
-                symbol=symbol
-            )
-            
-            # Update direction and confidence based on gates
+            # Store original values before gates
             original_direction = direction
             original_confidence = base_confidence
             
-            direction = gates_result.get("direction", direction)
-            base_confidence = gates_result.get("confidence", base_confidence)
+            # Apply market gates (async function returns tuple)
+            gated_direction, gated_confidence, gate_info = await apply_market_gates(
+                direction=direction,
+                confidence=base_confidence,
+                metrics=gate_metrics,
+                asset_type=market_type,
+                symbol=symbol
+            )
             
-            if gates_result.get("blocked"):
+            # Update direction and confidence
+            direction = gated_direction
+            base_confidence = gated_confidence
+            
+            # Log the gates result
+            if not gate_info.get("gates_passed", True):
                 LOGGER.warning(
-                    f"[{symbol}] 🚫 MARKET GATES BLOCKED: {original_direction} → HOLD "
-                    f"(Reason: {gates_result.get('reason', 'unknown')})"
+                    f"[{symbol}] 🚫 MARKET GATES BLOCKED: {original_direction} → {direction} "
+                    f"(Regime: {gate_info.get('regime_filter', {}).get('reason', 'N/A')})"
                 )
-            elif gates_result.get("reduced"):
+            elif gated_confidence < original_confidence:
+                vix_info = gate_info.get("vix_gate", {})
                 LOGGER.info(
-                    f"[{symbol}] ⚠️ MARKET GATES REDUCED: {original_confidence:.1%} → {base_confidence:.1%} "
-                    f"(Reason: {gates_result.get('reason', 'unknown')})"
+                    f"[{symbol}] ⚠️ MARKET GATES REDUCED: {original_confidence:.1%} → {gated_confidence:.1%} "
+                    f"(VIX: {vix_info.get('vix_level', 'N/A')}, multiplier: {vix_info.get('multiplier', 1.0):.2f})"
                 )
             else:
                 LOGGER.info(
