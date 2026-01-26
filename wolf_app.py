@@ -25955,6 +25955,169 @@ async def v2_quality_update(days: int = 30):
         return {"ok": False, "error": str(e)}
 
 
+@APP.post("/api/v2/quality/set-whitelist")
+async def v2_quality_set_whitelist(request: Request):
+    """
+    🎯 V2: Manually set whitelist/blacklist at runtime (no redeploy needed).
+    
+    POST body:
+    {
+        "whitelist": ["RNDR", "CHZ", "TURBO", "ZEC"],
+        "blacklist": ["GME", "ABCL", "BMBL"],  // optional
+        "note": "Crypto only - Jan 25 analysis"  // optional
+    }
+    
+    This updates both in-memory and persists to PostgreSQL.
+    """
+    try:
+        from core.v2_quality import get_quality_system
+        
+        body = await request.json()
+        new_whitelist = body.get("whitelist", [])
+        new_blacklist = body.get("blacklist", [])
+        note = body.get("note", "Manual update via API")
+        
+        if not new_whitelist:
+            return {"ok": False, "error": "whitelist is required"}
+        
+        quality = get_quality_system()
+        
+        # Capture before state
+        before_wl = list(quality._whitelist)
+        before_bl = list(quality._blacklist)
+        
+        # Update whitelist
+        quality._whitelist = set(s.upper() for s in new_whitelist)
+        quality._pinned_whitelist = set(s.upper() for s in new_whitelist)
+        
+        # Update blacklist if provided
+        if new_blacklist:
+            quality._blacklist = set(s.upper() for s in new_blacklist)
+        
+        # Persist to PostgreSQL
+        quality._save_to_json()
+        
+        # Also persist to PostgreSQL for durability
+        try:
+            quality._save_to_postgres()
+        except Exception as pg_err:
+            LOGGER.warning(f"[V2-API] PostgreSQL save failed (JSON saved): {pg_err}")
+        
+        LOGGER.info(
+            f"[V2-API] ✅ Whitelist manually updated: "
+            f"{len(before_wl)} → {len(quality._whitelist)} symbols. Note: {note}"
+        )
+        
+        return {
+            "ok": True,
+            "message": f"Whitelist updated: {note}",
+            "before": {
+                "whitelist": sorted(before_wl),
+                "blacklist": sorted(before_bl)
+            },
+            "after": {
+                "whitelist": sorted(quality._whitelist),
+                "blacklist": sorted(quality._blacklist)
+            },
+            "changes": {
+                "whitelist_added": list(quality._whitelist - set(before_wl)),
+                "whitelist_removed": list(set(before_wl) - quality._whitelist),
+                "blacklist_added": list(quality._blacklist - set(before_bl)) if new_blacklist else []
+            }
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"[V2-API] Set whitelist error: {e}")
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.post("/api/v2/quality/crypto-only")
+async def v2_quality_crypto_only():
+    """
+    🎯 V2: Quick action - Switch to crypto-only whitelist based on loser analysis.
+    
+    Sets whitelist to proven crypto performers:
+    - RNDR (47.6% WR), CHZ (37.1%), TURBO (35.5%), ZEC (31.1%)
+    - Plus secondary: EGLD, ILV, RLC, OCEAN
+    
+    Blacklists all losing stocks (4.5% WR = broken).
+    """
+    try:
+        from core.v2_quality import get_quality_system
+        
+        quality = get_quality_system()
+        
+        # Capture before
+        before_wl = list(quality._whitelist)
+        before_bl = list(quality._blacklist)
+        
+        # Crypto-only whitelist (proven performers from loser analysis)
+        crypto_whitelist = {
+            "RNDR",   # 47.6% (89/187) - BEST
+            "CHZ",    # 37.1% (75/202)
+            "TURBO",  # 35.5% (27/76)
+            "ZEC",    # 31.1% (46/148)
+            "EGLD",   # ~27%
+            "ILV",    # ~30%
+            "RLC",    # ~28%
+            "OCEAN",  # ~26%
+        }
+        
+        # Losing stocks to blacklist (4.5% overall WR = broken)
+        losing_stocks = {
+            "ABCL", "GME", "BMBL", "ITRI", "TGTX", "XPO", "SOUN",
+            "ARCT", "CVNA", "IQ", "T"
+        }
+        
+        # Bad crypto to blacklist
+        bad_crypto = {
+            "XRP", "DOT", "AVAX", "UNI", "PEPE", "SNX", "1INCH",
+            "LDO", "ETC", "ALGO", "BTC", "ETH", "SOL", "ADA", 
+            "BNB", "LTC", "ICP", "LRC"
+        }
+        
+        quality._whitelist = crypto_whitelist
+        quality._pinned_whitelist = {"RNDR", "CHZ", "TURBO", "ZEC"}
+        quality._blacklist = quality._blacklist | losing_stocks | bad_crypto
+        
+        # Persist
+        quality._save_to_json()
+        try:
+            quality._save_to_postgres()
+        except:
+            pass
+        
+        LOGGER.info(
+            f"[V2-API] 🎯 CRYPTO-ONLY MODE ACTIVATED: "
+            f"Whitelist: {len(crypto_whitelist)}, Blacklist: {len(quality._blacklist)}"
+        )
+        
+        return {
+            "ok": True,
+            "message": "🎯 CRYPTO-ONLY MODE ACTIVATED - Stocks removed, crypto performers only",
+            "analysis_source": "Jan 25, 2026 loser analysis",
+            "rationale": {
+                "stocks_wr": "4.5% (BROKEN)",
+                "crypto_wr": "38.7% (acceptable)"
+            },
+            "whitelist": sorted(crypto_whitelist),
+            "pinned": ["RNDR", "CHZ", "TURBO", "ZEC"],
+            "blacklist_added": sorted(losing_stocks | bad_crypto),
+            "before": {
+                "whitelist_count": len(before_wl),
+                "blacklist_count": len(before_bl)
+            },
+            "after": {
+                "whitelist_count": len(quality._whitelist),
+                "blacklist_count": len(quality._blacklist)
+            }
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"[V2-API] Crypto-only error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/api/v2/recommendations")
 async def v2_recommendations(days: int = 30):
     """
