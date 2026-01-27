@@ -257,6 +257,7 @@ MEME_COINS: Set[str] = {
     "WIF-USD",    # dogwifhat -70%
     "TRUMP35336-USD",  # TRUMP -83% from highs (!)
     "FARTCOIN-USD",    # Fartcoin
+    "TURBO-USD",       # Turbo - MEME COIN! (Added Jan 27, 2026)
 }
 
 # Layer 1 majors
@@ -269,6 +270,18 @@ LAYER1_MAJORS: Set[str] = {
     "DOT-USD",   # Polkadot $1.87 (-68%)
     "NEAR-USD",  # Near $1.47 (-67%)
     "SUI20947-USD",  # Sui $1.44 (-62%)
+}
+
+# AI/GPU Infrastructure Crypto - HIGH GROWTH POTENTIAL (Added Jan 27, 2026)
+# These tokens power AI infrastructure, GPU rendering, and compute markets
+AI_GPU_CRYPTO: Set[str] = {
+    "RNDR-USD",    # Render Network - GPU rendering for AI/3D ($7.50, strong performer)
+    "FET-USD",     # Fetch.ai - AI agents and autonomous economy
+    "AGIX-USD",    # SingularityNET - Decentralized AI marketplace
+    "TAO22974-USD", # Bittensor - Decentralized machine learning
+    "AKT-USD",     # Akash Network - Decentralized GPU compute
+    "OCEAN-USD",   # Ocean Protocol - Data marketplace for AI
+    "GLM-USD",     # Golem - Distributed computing power
 }
 
 # Crypto stocks (equities that move with crypto)
@@ -1129,32 +1142,56 @@ def calculate_intel_signal(
     
     crypto_commodities_adj = 0.0
     
-    # Check if this is a crypto symbol (ends in -USD)
-    is_crypto = symbol_upper.endswith("-USD") or symbol_upper in CRYPTO_STOCKS
+    # Normalize crypto symbols for matching (ZEC -> ZEC-USD, BTC -> BTC-USD)
+    # This fixes the format mismatch between predictor (ZEC) and sets (ZEC-USD)
+    crypto_symbol_for_match = symbol_upper
+    if not symbol_upper.endswith("-USD"):
+        crypto_symbol_for_match = f"{symbol_upper}-USD"
+    
+    # Check if this is a crypto symbol (ends in -USD or matches crypto sets)
+    is_crypto = (symbol_upper.endswith("-USD") or 
+                 symbol_upper in CRYPTO_STOCKS or
+                 crypto_symbol_for_match in PRIVACY_COINS or
+                 crypto_symbol_for_match in GAMING_CRYPTO or
+                 crypto_symbol_for_match in MEME_COINS or
+                 crypto_symbol_for_match in LAYER1_MAJORS or
+                 crypto_symbol_for_match in DEFI_MOMENTUM or
+                 crypto_symbol_for_match in AI_GPU_CRYPTO)
     
     if is_crypto:
-        # Privacy coins - CRUSHING IT
-        if symbol_upper in PRIVACY_COINS:
+        # Privacy coins - CRUSHING IT (ZEC +689%, XMR +106%)
+        if crypto_symbol_for_match in PRIVACY_COINS:
             if base_direction == "UP":
                 crypto_commodities_adj += 0.08
                 signals_used.append("PRIVACY_COIN_HOT")
                 LOGGER.info(f"[{symbol}] 🔐 PRIVACY COIN: +689% ZEC theme (+8%)")
         
+        # AI/GPU Infrastructure - RNDR, FET, TAO etc (HIGH GROWTH)
+        if crypto_symbol_for_match in AI_GPU_CRYPTO:
+            if base_direction == "UP":
+                crypto_commodities_adj += 0.07
+                signals_used.append("AI_GPU_CRYPTO_HOT")
+                LOGGER.info(f"[{symbol}] 🤖 AI/GPU CRYPTO: Infrastructure play (+7%)")
+            elif base_direction == "DOWN":
+                # AI is the future - don't short these hard
+                crypto_commodities_adj -= 0.02
+                signals_used.append("AI_GPU_DONT_SHORT")
+        
         # Gaming/Metaverse - AXS +34% today
-        if symbol_upper in GAMING_CRYPTO:
+        if crypto_symbol_for_match in GAMING_CRYPTO:
             if base_direction == "UP":
                 crypto_commodities_adj += 0.06
                 signals_used.append("GAMING_CRYPTO_HOT")
                 LOGGER.info(f"[{symbol}] 🎮 GAMING CRYPTO: AXS momentum (+6%)")
         
         # DeFi momentum
-        if symbol_upper in DEFI_MOMENTUM:
+        if crypto_symbol_for_match in DEFI_MOMENTUM:
             if base_direction == "UP":
                 crypto_commodities_adj += 0.05
                 signals_used.append("DEFI_MOMENTUM")
         
         # Meme coins - CRASHED, don't chase
-        if symbol_upper in MEME_COINS:
+        if crypto_symbol_for_match in MEME_COINS:
             if base_direction == "UP":
                 # Don't chase meme pumps
                 crypto_commodities_adj -= 0.05
@@ -1166,7 +1203,7 @@ def calculate_intel_signal(
                 signals_used.append("MEME_COIN_VOLATILE")
         
         # Layer 1 majors - more stable
-        if symbol_upper in LAYER1_MAJORS:
+        if crypto_symbol_for_match in LAYER1_MAJORS:
             # These are the "blue chips" of crypto
             crypto_commodities_adj += 0.02
             signals_used.append("LAYER1_MAJOR")
