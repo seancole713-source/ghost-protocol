@@ -349,6 +349,16 @@ except Exception as e:
     # Router is optional; crypto endpoints in main app still work
     print(f"[INIT] ⚠️  Crypto OHLCV router unavailable (optional): {e}")
 
+# ---------------------------------------------------------------------------
+# Mount Ghost Intel Router (8-layer intelligence system)
+# ---------------------------------------------------------------------------
+try:
+    from ghost_intel.routes import router as intel_router
+    APP.include_router(intel_router, tags=["intel"])
+    print("[INIT] ✅ Ghost Intel router mounted: /api/intel/*")
+except Exception as e:
+    print(f"[INIT] ⚠️  Ghost Intel router unavailable: {e}")
+
 """
 As a final safety net, if the OHLCV path isn't present after including the router,
 bind the router's handler directly so the route is visible immediately in app.routes.
@@ -804,6 +814,10 @@ async def auth_fast_fail_middleware(request: Request, call_next):
 
     # Allow crypto-check debug endpoint (Fix 5 troubleshooting)
     if request.url.path.startswith("/api/debug/crypto-check/"):
+        return await call_next(request)
+
+    # Allow Ghost Intel endpoints (institutional intelligence feeds - read-only)
+    if request.url.path.startswith("/api/intel/"):
         return await call_next(request)
 
     # Allow retrain trigger (one-time use, no auth)
