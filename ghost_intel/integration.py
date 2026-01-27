@@ -217,6 +217,98 @@ AI_QUANTUM_STOCKS: Set[str] = {
     "SMR",   # NuScale Power (nuclear AI power)
 }
 
+# =============================================================================
+# CRYPTO INTELLIGENCE (Jan 27, 2026)
+# =============================================================================
+
+# Privacy coins - Crushing it (+689% ZEC, +106% XMR)
+PRIVACY_COINS: Set[str] = {
+    "ZEC-USD",   # Zcash +689% 52wk (!)
+    "XMR-USD",   # Monero +106% 52wk
+    "DASH-USD",  # Dash +90% 52wk
+    "BDX-USD",   # Beldex
+}
+
+# Gaming/Metaverse tokens - AXS +34% today!
+GAMING_CRYPTO: Set[str] = {
+    "AXS-USD",   # Axie Infinity +34% TODAY
+    "SAND-USD",  # The Sandbox
+    "MANA-USD",  # Decentraland
+    "GALA-USD",  # Gala +307% 52wk
+    "IMX10603-USD",  # Immutable
+}
+
+# DeFi momentum tokens
+DEFI_MOMENTUM: Set[str] = {
+    "HYPE32196-USD",  # Hyperliquid +22% today
+    "AAVE-USD",       # Aave
+    "UNI7083-USD",    # Uniswap
+    "CRV-USD",        # Curve
+    "MORPHO34104-USD", # Morpho
+    "SYRUP-USD",      # Maple Finance +126%
+}
+
+# Meme coins - HIGH RISK
+MEME_COINS: Set[str] = {
+    "DOGE-USD",   # Dogecoin -62% from highs
+    "SHIB-USD",   # Shiba Inu -56%
+    "PEPE24478-USD",  # Pepe
+    "BONK-USD",   # Bonk -65%
+    "WIF-USD",    # dogwifhat -70%
+    "TRUMP35336-USD",  # TRUMP -83% from highs (!)
+    "FARTCOIN-USD",    # Fartcoin
+}
+
+# Layer 1 majors
+LAYER1_MAJORS: Set[str] = {
+    "BTC-USD",   # Bitcoin $88K (-14.5% from $126K high)
+    "ETH-USD",   # Ethereum $2,934 (-8.5%)
+    "SOL-USD",   # Solana $124 (-48%)
+    "AVAX-USD",  # Avalanche $11.75 (-64%)
+    "ADA-USD",   # Cardano $0.35 (-63%)
+    "DOT-USD",   # Polkadot $1.87 (-68%)
+    "NEAR-USD",  # Near $1.47 (-67%)
+    "SUI20947-USD",  # Sui $1.44 (-62%)
+}
+
+# Crypto stocks (equities that move with crypto)
+CRYPTO_STOCKS: Set[str] = {
+    "COIN",  # Coinbase
+    "MSTR",  # MicroStrategy/Strategy
+    "HOOD",  # Robinhood
+    "SQ",    # Block (Square)
+    "PYPL",  # PayPal
+}
+
+# =============================================================================
+# COMMODITIES FUTURES THRESHOLDS (Jan 27, 2026)
+# =============================================================================
+
+COMMODITIES_THRESHOLDS = {
+    # Gold - near all-time highs at $5,057
+    "gold_bullish": 5000,       # Above = strong gold, boost miners
+    "gold_extreme_bullish": 5200,  # New ATH territory
+    "gold_bearish": 4500,       # Below = gold weakness
+    
+    # Silver - volatile, $108 (down 6.24% today!)
+    "silver_bullish": 100,      # Above = silver momentum
+    "silver_extreme": 120,      # Parabolic zone
+    "silver_bearish": 80,       # Below = weakness
+    
+    # Oil - $60.29 (relatively low)
+    "oil_bullish": 70,          # Above = energy inflation
+    "oil_bearish": 55,          # Below = deflationary
+    "oil_crisis": 100,          # Above = energy crisis mode
+    
+    # Natural Gas - $3.69 (down 5.21%)
+    "natgas_bullish": 4.0,      # Above = utility inflation
+    "natgas_spike": 6.0,        # Crisis territory
+    
+    # Copper - $5.88 (economic indicator)
+    "copper_bullish": 5.5,      # Above = economic strength
+    "copper_bearish": 4.5,      # Below = slowdown signal
+}
+
 # Sector mapping for stocks
 STOCK_SECTORS = {
     # Technology / Storage / Memory
@@ -919,6 +1011,93 @@ def calculate_intel_signal(
         LOGGER.warning(f"[{symbol}] ⚠️ GOVT CONTRACT: Treasury/DOGE cancellation risk")
     
     confidence_adj += fallen_angels_adjustment
+    
+    # =========================================================================
+    # RULE 12: CRYPTO & COMMODITIES INTELLIGENCE (Jan 27, 2026)
+    # =========================================================================
+    # Crypto themes:
+    # - Privacy coins crushing (ZEC +689%, XMR +106%)
+    # - Gaming tokens hot (AXS +34% today)
+    # - Meme coins crashed (TRUMP -83%, DOGE -62%)
+    # Commodities:
+    # - Gold near ATH at $5,057
+    # - Silver volatile (down 6.24% today)
+    
+    crypto_commodities_adj = 0.0
+    
+    # Check if this is a crypto symbol (ends in -USD)
+    is_crypto = symbol_upper.endswith("-USD") or symbol_upper in CRYPTO_STOCKS
+    
+    if is_crypto:
+        # Privacy coins - CRUSHING IT
+        if symbol_upper in PRIVACY_COINS:
+            if base_direction == "UP":
+                crypto_commodities_adj += 0.08
+                signals_used.append("PRIVACY_COIN_HOT")
+                LOGGER.info(f"[{symbol}] 🔐 PRIVACY COIN: +689% ZEC theme (+8%)")
+        
+        # Gaming/Metaverse - AXS +34% today
+        if symbol_upper in GAMING_CRYPTO:
+            if base_direction == "UP":
+                crypto_commodities_adj += 0.06
+                signals_used.append("GAMING_CRYPTO_HOT")
+                LOGGER.info(f"[{symbol}] 🎮 GAMING CRYPTO: AXS momentum (+6%)")
+        
+        # DeFi momentum
+        if symbol_upper in DEFI_MOMENTUM:
+            if base_direction == "UP":
+                crypto_commodities_adj += 0.05
+                signals_used.append("DEFI_MOMENTUM")
+        
+        # Meme coins - CRASHED, don't chase
+        if symbol_upper in MEME_COINS:
+            if base_direction == "UP":
+                # Don't chase meme pumps
+                crypto_commodities_adj -= 0.05
+                signals_used.append("MEME_COIN_RISKY")
+                LOGGER.warning(f"[{symbol}] 🎰 MEME COIN: High risk, most down 60-80% (-5%)")
+            elif base_direction == "DOWN":
+                # Shorting memes is risky too - can pump randomly
+                crypto_commodities_adj -= 0.03
+                signals_used.append("MEME_COIN_VOLATILE")
+        
+        # Layer 1 majors - more stable
+        if symbol_upper in LAYER1_MAJORS:
+            # These are the "blue chips" of crypto
+            crypto_commodities_adj += 0.02
+            signals_used.append("LAYER1_MAJOR")
+    
+    # Crypto-correlated stocks
+    if symbol_upper in CRYPTO_STOCKS:
+        # Get BTC context if available
+        btc_price = intel_context.get("btc_price", 0)
+        if btc_price > 100000:
+            crypto_commodities_adj += 0.05
+            signals_used.append("BTC_ABOVE_100K")
+        elif btc_price < 70000:
+            crypto_commodities_adj -= 0.05
+            signals_used.append("BTC_WEAKNESS")
+    
+    # Gold/Silver correlation for miners
+    gold_price = intel_context.get("gold_price", 0)
+    silver_price = intel_context.get("silver_price", 0)
+    
+    if symbol_upper in GOLD_MINERS or symbol_upper in SILVER_MINERS:
+        if gold_price >= COMMODITIES_THRESHOLDS["gold_bullish"]:
+            crypto_commodities_adj += 0.04
+            signals_used.append(f"GOLD_ABOVE_{COMMODITIES_THRESHOLDS['gold_bullish']}")
+            LOGGER.info(f"[{symbol}] 🥇 Gold ${gold_price:.0f} - bullish for miners (+4%)")
+        
+        if gold_price >= COMMODITIES_THRESHOLDS["gold_extreme_bullish"]:
+            crypto_commodities_adj += 0.03  # Extra boost
+            signals_used.append("GOLD_ATH_TERRITORY")
+    
+    if symbol_upper in SILVER_MINERS:
+        if silver_price >= COMMODITIES_THRESHOLDS["silver_bullish"]:
+            crypto_commodities_adj += 0.03
+            signals_used.append(f"SILVER_ABOVE_{COMMODITIES_THRESHOLDS['silver_bullish']}")
+    
+    confidence_adj += crypto_commodities_adj
     
     # =========================================================================
     # RULE 9: TRADING DISCIPLINE (Professional Trader Principles)
