@@ -543,13 +543,82 @@ def determine_action(current_price: float, prediction_48h: float, confidence: fl
         return ("SELL", "🔴", "sell")
 
 
+def _calc_roi_100(current: float, target: float) -> str:
+    """Calculate ROI on $100 investment"""
+    if current <= 0:
+        return "$100.00"
+    gain_pct = (target - current) / current
+    final_value = 100 * (1 + gain_pct)
+    return f"${final_value:.2f}"
+
+
+def _get_buy_timing(asset_type: str) -> tuple:
+    """
+    Determine buy timing based on market hours.
+    Returns (buy_label, buy_datetime_str)
+    """
+    from datetime import datetime, timedelta
+    
+    ct = get_central_time()
+    
+    if asset_type == 'crypto':
+        # Crypto trades 24/7 - buy NOW
+        return ("🔥 BUY NOW", ct.strftime("%b %d %I:%M %p CT"))
+    
+    # Stock - check if market is open
+    try:
+        now_et = datetime.now(EASTERN_TZ)
+        hour = now_et.hour
+        minute = now_et.minute
+        weekday = now_et.weekday()
+        
+        # Market hours: 9:30 AM - 4:00 PM ET, Mon-Fri
+        is_market_open = (
+            weekday < 5 and  # Mon-Fri
+            ((hour == 9 and minute >= 30) or (hour > 9 and hour < 16))
+        )
+        
+        if is_market_open:
+            return ("🔥 BUY NOW", now_et.strftime("%b %d %I:%M %p ET"))
+        else:
+            # Calculate next market open
+            if weekday >= 4:  # Fri after close, Sat, Sun
+                days_until_monday = (7 - weekday) % 7
+                if days_until_monday == 0:
+                    days_until_monday = 7 if weekday == 4 and hour >= 16 else 0
+                next_open = now_et + timedelta(days=days_until_monday)
+            elif hour >= 16:  # After hours
+                next_open = now_et + timedelta(days=1)
+            else:  # Before market open same day
+                next_open = now_et
+            
+            next_open = next_open.replace(hour=9, minute=30, second=0, microsecond=0)
+            return ("📅 BUY AT OPEN", next_open.strftime("%b %d 9:30 AM ET"))
+    except:
+        return ("📅 BUY AT OPEN", "Next Market Open")
+
+
+def _get_sell_timing(hours: int = 48) -> str:
+    """Calculate sell timing based on horizon"""
+    from datetime import datetime, timedelta
+    ct = get_central_time()
+    sell_time = ct + timedelta(hours=hours)
+    return sell_time.strftime("%b %d %I:%M %p CT")
+
+
 def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: bool = None) -> str:
     """
-    Format the TOP 10 message in the EXACT format requested.
+    Format the TOP 10 message with ENHANCED details:
+    - 10 stocks + 10 crypto predictions
+    - Buy timing (NOW or Market Open with date/time)
+    - Sell timing (48hr window with date/time)
+    - Confidence %
+    - News indicator (✓ if AI/news influenced prediction)
+    - $100 ROI calculation
     
     Args:
-        stocks: List of top 5 stock predictions
-        crypto: List of top 5 crypto predictions  
+        stocks: List of top 10 stock predictions
+        crypto: List of top 10 crypto predictions  
         inverse_mode: If True, show "INVERSE GHOST" in title. If None, reads from INVERSE_GHOST env var.
     """
     # If not specified, read from env var (default OFF)
@@ -558,25 +627,24 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     
     ct = get_central_time()
     date_str = ct.strftime("%b %d, %Y")
+    time_str = ct.strftime("%I:%M %p CT").lstrip("0")
     
-    title = "🎯 INVERSE GHOST TOP 10" if inverse_mode else "🎯 GHOST TOP 10"
+    title = "🎯 INVERSE GHOST TOP 20" if inverse_mode else "🎯 GHOST TOP 20"
     
     lines = [
-        f"{title} — {date_str}",
+        f"{title}",
+        f"📅 {date_str} | ⏰ {time_str}",
         "",
+        "═══════════════════════════════════",
         "📈 STOCKS (10)",
-        "━━━━━━━━━━━━━━━━━━━━━",
+        "═══════════════════════════════════",
         ""
     ]
     
     if stocks:
         for i, s in enumerate(stocks[:10], 1):  # Show all 10 stocks
-            # Use the direction already calculated (which has inverse applied)
             direction = s.get('direction', 'DOWN')
             
-            # In INVERSE mode with INVERSE_GHOST=1, raw predictions are flipped
-            # So if direction is "DOWN", it means Ghost raw said UP (we inverted to DOWN = SELL)
-            # If direction is "UP", it means Ghost raw said DOWN (we inverted to UP = BUY)
             if direction == "UP":
                 action = "BUY"
                 emoji = "🟢"
@@ -584,26 +652,43 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
                 action = "SELL"
                 emoji = "🔴"
             
-            lines.append(f"{i}. {emoji} {s['symbol']} — {action}")
-            lines.append(f"   Current: {format_price(s['current'])}")
-            lines.append(f"   Buy In: {format_price(s['buy_in'])}")
-            lines.append(f"   Sell: {format_price(s['sell'])}")
-            lines.append(f"   48hr Prediction: {format_price(s['prediction_48h'])}")
-            # Use calibrated confidence for honest display (with symbol jitter)
+            # Get timing
+            buy_label, buy_time = _get_buy_timing('stock')
+            sell_time = _get_sell_timing(48)
+            
+            # Calculate $100 ROI
+            current = s.get('current', 0)
+            target = s.get('prediction_48h', current)
+            roi_100 = _calc_roi_100(current, target)
+            gain_pct = ((target - current) / current * 100) if current > 0 else 0
+            
+            # Confidence
             display_conf = calibrate_display_confidence(s['confidence'], symbol=s['symbol'])
-            lines.append(f"   Confidence: {display_conf:.0%}")
+            
+            # News indicator - check if news/AI influenced this
+            has_news = s.get('news_influenced', False) or s.get('ai_signal', False) or s.get('sentiment_score', 0) != 0
+            news_icon = " ✓📰" if has_news else ""
+            
+            lines.append(f"{i}. {emoji} {s['symbol']} — {action}{news_icon}")
+            lines.append(f"   💵 Entry: {format_price(current)}")
+            lines.append(f"   🎯 Target: {format_price(target)} ({gain_pct:+.1f}%)")
+            lines.append(f"   🛑 Stop: {format_price(s.get('stop', s.get('sell', current * 0.97)))}")
+            lines.append(f"   ⏰ {buy_label}: {buy_time}")
+            lines.append(f"   📤 Sell By: {sell_time}")
+            lines.append(f"   📊 Confidence: {display_conf:.0%}")
+            lines.append(f"   💰 $100 → {roi_100}")
             lines.append("")
     else:
         lines.append("   (No stock picks today)")
         lines.append("")
     
+    lines.append("═══════════════════════════════════")
     lines.append("📊 CRYPTO (10)")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("═══════════════════════════════════")
     lines.append("")
     
     if crypto:
         for i, c in enumerate(crypto[:10], 1):  # Show all 10 crypto
-            # Use the direction already calculated (which has inverse applied)
             direction = c.get('direction', 'DOWN')
             
             if direction == "UP":
@@ -613,25 +698,49 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
                 action = "SELL"
                 emoji = "🔴"
             
-            lines.append(f"{i}. {emoji} {c['symbol']} — {action}")
-            lines.append(f"   Current: {format_price(c['current'])}")
-            lines.append(f"   Buy In: {format_price(c['buy_in'])}")
-            lines.append(f"   Sell: {format_price(c['sell'])}")
-            lines.append(f"   48hr Prediction: {format_price(c['prediction_48h'])}")
-            # Use calibrated confidence for honest display (with symbol jitter)
+            # Crypto trades 24/7
+            buy_label, buy_time = _get_buy_timing('crypto')
+            sell_time = _get_sell_timing(48)
+            
+            # Calculate $100 ROI
+            current = c.get('current', 0)
+            target = c.get('prediction_48h', current)
+            roi_100 = _calc_roi_100(current, target)
+            gain_pct = ((target - current) / current * 100) if current > 0 else 0
+            
+            # Confidence
             display_conf = calibrate_display_confidence(c['confidence'], symbol=c['symbol'])
-            lines.append(f"   Confidence: {display_conf:.0%}")
+            
+            # News indicator
+            has_news = c.get('news_influenced', False) or c.get('ai_signal', False) or c.get('sentiment_score', 0) != 0
+            news_icon = " ✓📰" if has_news else ""
+            
+            lines.append(f"{i}. {emoji} {c['symbol']} — {action}{news_icon}")
+            lines.append(f"   💵 Entry: {format_price(current)}")
+            lines.append(f"   🎯 Target: {format_price(target)} ({gain_pct:+.1f}%)")
+            lines.append(f"   🛑 Stop: {format_price(c.get('stop', c.get('sell', current * 0.97)))}")
+            lines.append(f"   ⏰ {buy_label}: {buy_time}")
+            lines.append(f"   📤 Sell By: {sell_time}")
+            lines.append(f"   📊 Confidence: {display_conf:.0%}")
+            lines.append(f"   💰 $100 → {roi_100}")
             lines.append("")
     else:
         lines.append("   (No crypto picks today)")
         lines.append("")
     
+    lines.append("═══════════════════════════════════")
+    lines.append("📖 LEGEND")
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("🟢 = BUY (price going UP)")
+    lines.append("🔴 = SELL (price going DOWN)")
+    lines.append("✓📰 = AI/News influenced prediction")
+    lines.append("💰 = Your return on $100 investment")
+    lines.append("")
     lines.append("⏱️ 48hr Tracking Active")
     lines.append("📊 Updates on significant moves (>3%)")
     lines.append("🎯 Alerts when targets hit")
     lines.append("")
-    lines.append("Ghost is watching.")
+    lines.append("Ghost is watching. 👁️")
     
     return "\n".join(lines)
 
