@@ -23474,13 +23474,18 @@ async def alerts_predictions_send():
                 direction = pred.get("direction")
                 direction_emoji = "⬆️" if direction == "UP" else "⬇️"
                 conf = pred.get("confidence", 0) * 100
-                entry = pred.get("entry_price", 0)
-                target = pred.get("target_price", 0)
+                
+                # Try multiple field names for entry price
+                entry = pred.get("entry_price") or pred.get("price_at_prediction") or pred.get("price") or 0
+                target = pred.get("target_price") or pred.get("take_profit") or 0
                 
                 lines.append(f"<b>{sym}</b> {direction_emoji}")
                 lines.append(f"   Confidence: {conf:.0f}%")
-                lines.append(f"   Entry: ${entry:.2f}" if entry > 1 else f"   Entry: ${entry:.6f}")
-                lines.append(f"   Target: ${target:.2f}" if target > 1 else f"   Target: ${target:.6f}")
+                if entry > 0:
+                    lines.append(f"   Entry: ${entry:.2f}" if entry > 1 else f"   Entry: ${entry:.4f}")
+                    if target > 0:
+                        pct_change = ((target - entry) / entry) * 100
+                        lines.append(f"   Target: ${target:.2f} ({pct_change:+.1f}%)" if target > 1 else f"   Target: ${target:.4f} ({pct_change:+.1f}%)")
                 lines.append("")
                 crypto_count += 1
         
