@@ -365,14 +365,17 @@ class V2AssetQualitySystem:
             "whitelist_count": len(self._whitelist),
             "blacklist_count": len(self._blacklist),
             "watchlist_count": watchlist_count,
+            "trial_stocks_count": len(self._trial_stocks),
             "total_tracked": len(self._metrics),
             "whitelist": sorted(list(self._whitelist)),
             "blacklist": sorted(list(self._blacklist)),
+            "trial_stocks": sorted(list(self._trial_stocks)),
             "config": {
                 "min_predictions": self.MIN_PREDICTIONS_FOR_EVAL,
                 "whitelist_wr_threshold": f"{self.WHITELIST_WIN_RATE*100:.0f}%",
                 "blacklist_wr_threshold": f"{self.BLACKLIST_WIN_RATE*100:.0f}%",
-                "watchlist_min_confidence": f"{self.WATCHLIST_HIGH_CONFIDENCE*100:.0f}%"
+                "watchlist_min_confidence": f"{self.WATCHLIST_HIGH_CONFIDENCE*100:.0f}%",
+                "trial_stocks_confidence": f"{self.TRIAL_STOCKS_MIN_CONFIDENCE*100:.0f}%"
             }
         }
     
