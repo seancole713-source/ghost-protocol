@@ -6,6 +6,7 @@ It transforms raw intel data into actionable signals that affect:
 1. Direction bias (bullish/bearish tilt based on macro + positioning)
 2. Confidence adjustments (+/- based on event impact and market fragility)
 3. Entry timing gates (block trades during high-impact events)
+4. Trump Tariff Playbook (bond market triggers, timing patterns)
 
 Integration points in wolf_app.py:
 - After feature extraction (~line 8020)
@@ -13,11 +14,18 @@ Integration points in wolf_app.py:
 - As part of market gates (~line 8310)
 
 Target impact: 10-20% accuracy improvement from institutional timing
+
+TARIFF PLAYBOOK (Kobeissi Letter pattern):
+- 10Y > 4.50%: Trump warning zone, expect pause
+- 10Y > 4.60%: Pause imminent, BUY window approaching
+- Mon-Tue after tariff weekend: Block panic selling
+- Wed-Thu: Dip buying window opens
 """
 
 import os
 import time
 import logging
+from datetime import datetime, timezone
 from typing import Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 
@@ -39,6 +47,7 @@ class IntelSignal:
     market_context: Dict[str, Any]  # VIX, positioning, etc.
     event_count: int  # Number of relevant events
     max_event_score: float  # Highest impact event score
+    tariff_context: Optional[Dict[str, Any]] = None  # Tariff playbook data
 
 
 def _get_cached(key: str, ttl: float = _CACHE_TTL) -> Optional[Any]:
@@ -166,8 +175,84 @@ async def fetch_intel_context(symbol: str = None) -> Dict[str, Any]:
         except Exception as e:
             LOGGER.debug(f"Failed to fetch symbol impact for {symbol}: {e}")
     
+    # =========================================================================
+    # TARIFF PLAYBOOK DATA (Kobeissi Letter Pattern)
+    # =========================================================================
+    try:
+        # Get 10Y Treasury yield (Trump's warning signal)
+        treasury_10y = rates.get("us_10y", {}).get("price") if rates else None
+        if treasury_10y is None:
+            treasury_10y = rates.get("us_10y_fred", {}).get("price") if rates else None
+        context["treasury_10y"] = treasury_10y or 4.25  # Default neutral
+        
+        # Classify Treasury regime for tariff playbook
+        t10y = context["treasury_10y"]
+        if t10y > 4.60:
+            context["treasury_regime"] = "trump_pause_imminent"  # 10Y > 4.60% = Trump backs off
+        elif t10y > 4.50:
+            context["treasury_regime"] = "trump_warning"  # 10Y > 4.50% = warning zone
+        elif t10y > 4.30:
+            context["treasury_regime"] = "elevated"
+        else:
+            context["treasury_regime"] = "normal"
+        
+        # Day-of-week timing for tariff playbook
+        now = datetime.now(timezone.utc)
+        context["day_of_week"] = now.weekday()  # 0=Mon, 6=Sun
+        context["tariff_timing_window"] = _get_tariff_timing_window(now.weekday())
+        
+        # Check for tariff-related events in news
+        tariff_events = [
+            e for e in context.get("active_events", [])
+            if _is_tariff_event(e)
+        ]
+        context["active_tariff_events"] = len(tariff_events)
+        context["tariff_active"] = len(tariff_events) > 0
+        
+    except Exception as e:
+        LOGGER.debug(f"Tariff playbook data fetch failed: {e}")
+        context["treasury_10y"] = 4.25
+        context["treasury_regime"] = "normal"
+        context["tariff_timing_window"] = "neutral"
+        context["tariff_active"] = False
+    
     _set_cached(cache_key, context)
     return context
+
+
+def _get_tariff_timing_window(weekday: int) -> str:
+    """
+    Determine trading window based on Kobeissi Letter tariff playbook timing.
+    
+    The pattern after tariff weekend announcements:
+    - Mon-Tue: Panic selling (AVOID selling into panic)
+    - Wed: Dip buyers emerge (START accumulating)
+    - Thu-Fri: Relief rally builds (CONTINUE accumulating)
+    - Weekend: Watch for new announcements
+    """
+    if weekday in [0, 1]:  # Monday, Tuesday
+        return "panic_selling"  # Don't sell into panic
+    elif weekday == 2:  # Wednesday
+        return "dip_buying"  # Smart money starts buying
+    elif weekday in [3, 4]:  # Thursday, Friday
+        return "accumulation"  # Continue building positions
+    else:  # Saturday, Sunday
+        return "watch"  # Monitor for announcements
+
+
+def _is_tariff_event(event: Dict[str, Any]) -> bool:
+    """Check if an event is tariff-related."""
+    tariff_keywords = [
+        "tariff", "tariffs", "trade war", "import tax", "trade deal",
+        "greenland", "denmark", "eu tariff", "china tariff", "trump tariff",
+        "trade negotiation", "trade agreement", "customs duty"
+    ]
+    
+    headline = event.get("event", {}).get("headline", "").lower()
+    summary = event.get("event", {}).get("summary", "").lower()
+    
+    text = f"{headline} {summary}"
+    return any(kw in text for kw in tariff_keywords)
 
 
 def calculate_intel_signal(
@@ -197,6 +282,12 @@ def calculate_intel_signal(
        
     4. Macro Regime:
        - Recession warning (inverted yield curve): -10% confidence, bearish bias
+       
+    5. Trump Tariff Playbook (Kobeissi Letter Pattern):
+       - 10Y > 4.50%: Warning zone, expect pause (bullish signal)
+       - 10Y > 4.60%: Pause imminent, BUY window (+10% confidence)
+       - Mon-Tue during tariff event: Block SELL signals (panic trap)
+       - Wed-Thu during tariff event: +5% confidence (dip buying window)
     """
     signals_used = []
     confidence_adj = 0.0
@@ -328,10 +419,67 @@ def calculate_intel_signal(
                 signals_used.append(f"SYMBOL_CONFLICT_{symbol_score:.0f}")
     
     # =========================================================================
+    # RULE 7: TRUMP TARIFF PLAYBOOK (Kobeissi Letter Pattern)
+    # =========================================================================
+    # The pattern: Weekend announcement → Mon-Tue panic → Wed dip buying → Deal
+    # Key trigger: 10Y Treasury yield > 4.50% = Trump warning zone
+    #              10Y Treasury yield > 4.60% = Trump will pause (BUY signal)
+    
+    treasury_10y = intel_context.get("treasury_10y", 4.25)
+    treasury_regime = intel_context.get("treasury_regime", "normal")
+    tariff_active = intel_context.get("tariff_active", False)
+    tariff_timing = intel_context.get("tariff_timing_window", "neutral")
+    
+    # 10Y Treasury yield signal (bond market forces Trump's hand)
+    if treasury_regime == "trump_pause_imminent":
+        # 10Y > 4.60% - Trump historically backs off here
+        # This is a BULLISH signal - expect tariff pause
+        if base_direction == "UP":
+            confidence_adj += 0.10
+            direction_bias = "bullish"
+            signals_used.append(f"TARIFF_PAUSE_IMMINENT_10Y_{treasury_10y:.2f}")
+            LOGGER.info(f"[{symbol}] 🎯 TARIFF PLAYBOOK: 10Y at {treasury_10y:.2f}% - pause imminent, bullish bias")
+        elif base_direction == "DOWN":
+            # DOWN prediction during pause signal - reduce confidence
+            confidence_adj -= 0.08
+            signals_used.append(f"TARIFF_PAUSE_CONFLICT_10Y_{treasury_10y:.2f}")
+            
+    elif treasury_regime == "trump_warning":
+        # 10Y > 4.50% - warning zone, expect volatility
+        confidence_adj -= 0.03
+        signals_used.append(f"TARIFF_WARNING_10Y_{treasury_10y:.2f}")
+    
+    # Day-of-week timing during active tariff events
+    if tariff_active:
+        if tariff_timing == "panic_selling":
+            # Mon-Tue during tariff event - DON'T sell into panic
+            if base_direction == "DOWN":
+                # Block SELL signals on Mon-Tue (panic trap)
+                confidence_adj -= 0.10
+                signals_used.append("TARIFF_PANIC_TRAP_MON_TUE")
+                LOGGER.info(f"[{symbol}] 🚫 TARIFF PLAYBOOK: Mon-Tue panic trap - reducing DOWN confidence")
+            elif base_direction == "UP":
+                # BUY signals on Mon-Tue during tariff are risky but often right
+                signals_used.append("TARIFF_EARLY_BUYER")
+                
+        elif tariff_timing == "dip_buying":
+            # Wednesday - dip buyers emerge (smart money)
+            if base_direction == "UP":
+                confidence_adj += 0.05
+                signals_used.append("TARIFF_DIP_BUYING_WED")
+                LOGGER.info(f"[{symbol}] 🟢 TARIFF PLAYBOOK: Wednesday dip buying window")
+                
+        elif tariff_timing == "accumulation":
+            # Thu-Fri - relief rally builds
+            if base_direction == "UP":
+                confidence_adj += 0.03
+                signals_used.append("TARIFF_ACCUMULATION")
+    
+    # =========================================================================
     # FINALIZE SIGNAL
     # =========================================================================
-    # Cap confidence adjustment
-    confidence_adj = max(-0.15, min(0.15, confidence_adj))
+    # Cap confidence adjustment (increased to 0.20 for tariff playbook)
+    confidence_adj = max(-0.20, min(0.20, confidence_adj))
     
     return IntelSignal(
         direction_bias=direction_bias,
@@ -349,6 +497,13 @@ def calculate_intel_signal(
         },
         event_count=event_count,
         max_event_score=max_event_score,
+        tariff_context={
+            "treasury_10y": treasury_10y,
+            "treasury_regime": treasury_regime,
+            "tariff_active": tariff_active,
+            "tariff_timing": tariff_timing,
+            "day_of_week": intel_context.get("day_of_week", -1),
+        },
     )
 
 
