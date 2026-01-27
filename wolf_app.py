@@ -23382,7 +23382,7 @@ def api_telegram_test(payload: dict[str, Any] | None = None):
 
 @APP.get("/alerts/test")
 @APP.post("/alerts/test")
-async def alerts_test(credentials: HTTPAuthorizationCredentials | None = AUTH_DEP):
+async def alerts_test(credentials: HTTPAuthorizationCredentials | None = AUTH_DEP, message: str = None):
     # Skip auth for test endpoint (UI button should just work)
     if PROTECT_ALERTS_TEST:
         try:
@@ -23399,9 +23399,12 @@ async def alerts_test(credentials: HTTPAuthorizationCredentials | None = AUTH_DE
     if not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
         return {"ok": False, "reason": "alerts-disabled"}
 
-    # Send simple test message directly (not via queue)
+    # Send custom or default test message
     try:
-        test_msg = "🔔 Ghost Test Alert\n\n✅ UI → API → Telegram working!\n\nIf you see this, your alerts are configured correctly."
+        if message:
+            test_msg = message
+        else:
+            test_msg = "🔔 Ghost Test Alert\n\n✅ UI → API → Telegram working!\n\nIf you see this, your alerts are configured correctly."
         sent, deliveries = send_telegram_detailed(test_msg)
         if sent:
             return {"ok": True, "sent": True, "deliveries": deliveries}
