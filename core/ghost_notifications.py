@@ -667,7 +667,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             
             # News indicator - check if news/AI influenced this
             has_news = s.get('news_influenced', False) or s.get('ai_signal', False) or s.get('sentiment_score', 0) != 0
-            news_icon = " ✓📰" if has_news else ""
+            news_icon = " ✅" if has_news else ""
             
             lines.append(f"{i}. {emoji} {s['symbol']} — {action}{news_icon}")
             lines.append(f"   💵 Entry: {format_price(current)}")
@@ -713,7 +713,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             
             # News indicator
             has_news = c.get('news_influenced', False) or c.get('ai_signal', False) or c.get('sentiment_score', 0) != 0
-            news_icon = " ✓📰" if has_news else ""
+            news_icon = " ✅" if has_news else ""
             
             lines.append(f"{i}. {emoji} {c['symbol']} — {action}{news_icon}")
             lines.append(f"   💵 Entry: {format_price(current)}")
@@ -733,7 +733,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
     lines.append("🟢 = BUY (price going UP)")
     lines.append("🔴 = SELL (price going DOWN)")
-    lines.append("✓📰 = AI/News influenced prediction")
+    lines.append("✅ = News/AI influenced prediction")
     lines.append("💰 = Your return on $100 investment")
     lines.append("")
     lines.append("⏱️ 48hr Tracking Active")
