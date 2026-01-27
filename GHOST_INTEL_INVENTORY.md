@@ -1,5 +1,5 @@
 # 🔍 GHOST PROTOCOL - COMPLETE INVENTORY AUDIT
-**Date:** 2026-01-27  
+**Date:** 2026-01-27 (Updated with RULE 14)  
 **Purpose:** Full inventory before building Ghost Intel module
 
 ---
@@ -8,7 +8,7 @@
 
 | Category | Working ✅ | Broken ⚠️ | Missing 🔴 | Unused 📦 |
 |----------|-----------|-----------|------------|-----------|
-| Data Sources | 5 | 1 | 2 | 0 |
+| Data Sources | 6 | 1 | 1 | 0 |
 | News & Sentiment | 3 | 1 | 1 | 0 |
 | Macro Data | 4 | 0 | 2 | 0 |
 | Social Sentiment | 0 | 0 | 3 | 2 |
@@ -18,6 +18,44 @@
 | Key Person Tracking | 0 | 0 | 2 | 1 |
 | Event Classification | 2 | 0 | 1 | 0 |
 | Impact Scoring | 1 | 0 | 2 | 0 |
+| **Stock History** | 1 | 0 | 0 | 0 |
+
+---
+
+## 🆕 RULE 14: FULL STOCK HISTORY (NEW!)
+
+**File:** `ghost_intel/stock_history.py`  
+**Status:** ✅ WORKING  
+**Commit:** `3458bee`
+
+### What Ghost Now Sees:
+| Data Point | Source | Timeframe |
+|------------|--------|-----------|
+| Full price history | yfinance + Polygon | IPO to now |
+| 52-week high/low | Calculated | Rolling 1Y |
+| % from 52W high/low | Calculated | Real-time |
+| All-time high | yfinance | Full history |
+| RSI, MACD, SMAs | Calculated | 14d/20d/50d/200d |
+| Support/Resistance | Pivot points | 3-month |
+| Volume analysis | 10d & 90d avg | Rolling |
+| Earnings dates | yfinance calendar | Next scheduled |
+| P/E, Market Cap | yfinance fundamentals | Latest |
+| Sector/Industry | yfinance info | Static |
+| Beta, Dividend yield | yfinance info | Latest |
+
+### Intel Adjustments from History:
+| Signal | Direction | Adjustment |
+|--------|-----------|------------|
+| Near 52W high | UP | +4% |
+| Near 52W low | DOWN | -5% (don't short oversold) |
+| Oversold RSI + UP | UP | +5% |
+| Overbought RSI + DOWN | DOWN | +4% |
+| Trend confirmed | Same | +3% |
+| Counter-trend trade | Opposite | -4% |
+| Earnings < 3 days | Any | -8% HIGH RISK |
+| High volume breakout | UP at 52W high | +5% |
+| Expensive P/E | UP non-tech | -3% |
+| Value P/E | UP | +2% |
 
 ---
 
