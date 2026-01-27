@@ -10053,6 +10053,9 @@ async def api_v3_stock_batch(symbols: str = "AAPL,MSFT,JPM"):
             "predictions": {sym: pred.to_dict() for sym, pred in results.items()},
             "timestamp": datetime.now().isoformat()
         }
+    except Exception as e:
+        LOGGER.error(f"Stock batch error: {e}")
+        return {"ok": False, "error": str(e)}
 
 
 @APP.get("/api/v3/stock/debug/{symbol}")
@@ -10084,10 +10087,6 @@ async def api_v3_stock_debug(symbol: str):
         }
     except Exception as e:
         return {"ok": False, "symbol": symbol, "error": str(e)}
-        
-    except Exception as e:
-        LOGGER.error(f"Stock batch error: {e}")
-        return {"ok": False, "error": str(e)}
 
 
 @APP.get("/api/v3/stock/config")
