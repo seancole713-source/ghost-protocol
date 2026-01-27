@@ -194,11 +194,12 @@ class V2AssetQualitySystem:
             LOGGER.warning(f"[V2-QUALITY] Failed to load config: {e} - starting fresh")
     
     def _save_config(self, pinned_whitelist: set = None):
-        """Save whitelist/blacklist to both PostgreSQL (primary) and JSON (backup)"""
+        """Save whitelist/blacklist/trial_stocks to both PostgreSQL (primary) and JSON (backup)"""
         try:
             data = {
                 'whitelist': sorted(list(self._whitelist)),
                 'blacklist': sorted(list(self._blacklist)),
+                'trial_stocks': sorted(list(self._trial_stocks)),  # NEW: Save trial stocks
                 'metrics': {
                     symbol: {
                         **asdict(metrics),
@@ -210,7 +211,8 @@ class V2AssetQualitySystem:
                 'config': {
                     'min_predictions': self.MIN_PREDICTIONS_FOR_EVAL,
                     'whitelist_wr': self.WHITELIST_WIN_RATE,
-                    'blacklist_wr': self.BLACKLIST_WIN_RATE
+                    'blacklist_wr': self.BLACKLIST_WIN_RATE,
+                    'trial_stock_min_confidence': self._config.get('trial_stock_min_confidence', 0.70)
                 }
             }
             
@@ -225,7 +227,7 @@ class V2AssetQualitySystem:
             with open(self.config_file, 'w') as f:
                 json.dump(data, f, indent=2)
             
-            LOGGER.info(f"[V2-QUALITY] Config saved to PostgreSQL and JSON")
+            LOGGER.info(f"[V2-QUALITY] Config saved to PostgreSQL and JSON (trial_stocks={len(self._trial_stocks)})")
         except Exception as e:
             LOGGER.error(f"[V2-QUALITY] Failed to save config: {e}")
     

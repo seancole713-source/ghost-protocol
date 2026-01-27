@@ -26268,7 +26268,7 @@ async def v2_quality_status():
 @APP.post("/api/v2/quality/reload")
 async def v2_quality_reload_from_json():
     """
-    🔄 V2: Force reload whitelist/blacklist from JSON file.
+    🔄 V2: Force reload whitelist/blacklist/trial_stocks from JSON file.
     
     Use this to push manual JSON changes to PostgreSQL.
     Bypasses the normal PostgreSQL-first loading.
@@ -26286,21 +26286,14 @@ async def v2_quality_reload_from_json():
         # Update in-memory state
         quality._whitelist = set(data.get('whitelist', []))
         quality._blacklist = set(data.get('blacklist', []))
+        quality._trial_stocks = set(data.get('trial_stocks', []))  # NEW: Trial stocks
+        quality._config = data.get('config', {})  # NEW: Load config including trial_stock_min_confidence
         
         # Get pinned whitelist
         pinned = set(data.get('pinned_whitelist', data.get('whitelist', [])))
         
         # Save to PostgreSQL (this overwrites the old data)
         quality._save_config(pinned)
-        
-        return {
-            "ok": True,
-            "message": "Reloaded from JSON and saved to PostgreSQL",
-            "whitelist": sorted(list(quality._whitelist)),
-            "blacklist_count": len(quality._blacklist),
-            "pinned_whitelist": sorted(list(pinned)),
-            "blacklist": sorted(list(quality._blacklist))  # Debug: show full blacklist
-        }
         
         # CRITICAL: Also purge blacklisted symbols from _LATEST_PREDICTIONS cache
         symbols_purged = []
@@ -26312,8 +26305,17 @@ async def v2_quality_reload_from_json():
         
         if symbols_purged:
             LOGGER.info(f"[V2-RELOAD] 🧹 Purged {len(symbols_purged)} blacklisted symbols from cache: {symbols_purged}")
-        
-        return result
+
+        return {
+            "ok": True,
+            "message": "Reloaded from JSON and saved to PostgreSQL",
+            "whitelist": sorted(list(quality._whitelist)),
+            "blacklist_count": len(quality._blacklist),
+            "trial_stocks": sorted(list(quality._trial_stocks)),  # NEW
+            "pinned_whitelist": sorted(list(pinned)),
+            "blacklist": sorted(list(quality._blacklist)),
+            "symbols_purged_from_cache": symbols_purged
+        }
     
     except Exception as e:
         LOGGER.error(f"[V2-API] Quality reload error: {e}")
