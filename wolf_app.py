@@ -10053,6 +10053,37 @@ async def api_v3_stock_batch(symbols: str = "AAPL,MSFT,JPM"):
             "predictions": {sym: pred.to_dict() for sym, pred in results.items()},
             "timestamp": datetime.now().isoformat()
         }
+
+
+@APP.get("/api/v3/stock/debug/{symbol}")
+async def api_v3_stock_debug(symbol: str):
+    """
+    🔧 Debug stock data - check what yfinance returns for a symbol
+    """
+    try:
+        import yfinance as yf
+        
+        ticker = yf.Ticker(symbol.upper())
+        hist = ticker.history(period="5d")
+        
+        if hist.empty:
+            return {
+                "ok": False,
+                "symbol": symbol.upper(),
+                "error": "No history data from yfinance",
+                "ticker_info": str(ticker.info.get('shortName', 'Unknown'))[:50]
+            }
+        
+        return {
+            "ok": True,
+            "symbol": symbol.upper(),
+            "current_price": float(hist['Close'].iloc[-1]),
+            "rows": len(hist),
+            "date_range": f"{hist.index[0]} to {hist.index[-1]}",
+            "last_5_closes": [round(float(x), 2) for x in hist['Close'].tolist()[-5:]],
+        }
+    except Exception as e:
+        return {"ok": False, "symbol": symbol, "error": str(e)}
         
     except Exception as e:
         LOGGER.error(f"Stock batch error: {e}")
