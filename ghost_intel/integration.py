@@ -86,8 +86,78 @@ WINNERS_2025: Set[str] = {
 }
 
 # =============================================================================
-# YAHOO FINANCE MOST ACTIVE - HOT THEMES (Jan 2026)
+# YAHOO FINANCE MOST ACTIVE - HOT THEMES (Jan 27, 2026 Update)
 # =============================================================================
+
+# STORAGE/MEMORY MONSTER RUN - The hottest sector of 2025-2026
+STORAGE_MEMORY_STOCKS: Set[str] = {
+    "SNDK",  # Sandisk +1,216% (52wk!) - Cramer says "too much for me"
+    "WDC",   # Western Digital +397%
+    "MU",    # Micron +353% - $24B Singapore plant announced
+    "STX",   # Seagate +245%
+    "LITE",  # Lumentum +336% (optical)
+    "LRCX",  # Lam Research +193%
+}
+
+# CLOUD INFRASTRUCTURE SURGE - Today's big gainers
+CLOUD_INFRA_STOCKS: Set[str] = {
+    "ZM",    # Zoom +11% today (huge volume spike)
+    "DOCN",  # DigitalOcean +10%
+    "NET",   # Cloudflare +9%
+    "GDS",   # GDS Holdings +9% (China data centers)
+    "KC",    # Kingsoft Cloud +8%
+    "ANET",  # Arista Networks +5%
+    "CLS",   # Celestica +221%
+}
+
+# SPACE STOCKS - The final frontier
+SPACE_STOCKS: Set[str] = {
+    "ASTS",  # AST SpaceMobile +464%
+    "PL",    # Planet Labs +393%
+    "RKLB",  # Rocket Lab +207%
+    "LUNR",  # Intuitive Machines
+    "FLY",   # Firefly Aerospace (volatile)
+    "KRMN",  # Karman Holdings +260%
+    "VSAT",  # Viasat +323%
+}
+
+# GOLD MINERS - Riding the precious metals wave
+GOLD_MINERS: Set[str] = {
+    "NEM",   # Newmont +201%
+    "B",     # Barrick +220%
+    "GFI",   # Gold Fields +225%
+    "NG",    # NovaGold +224%
+    "KGC",   # Kinross +242%
+    "AU",    # AngloGold +277%
+    "IAG",   # IAMGOLD +249%
+    "EGO",   # Eldorado +205%
+    "BVN",   # Buenaventura +199%
+    "CGAU",  # Centerra +204%
+}
+
+# FALLEN ANGELS - Beaten down names with bounce potential
+FALLEN_ANGELS: Set[str] = {
+    "TTD",   # Trade Desk -70% (was $126 now $34)
+    "LULU",  # Lululemon -53%
+    "DUOL",  # Duolingo -56%
+    "HUBS",  # HubSpot -59%
+    "FISV",  # Fiserv -68%
+    "SRPT",  # Sarepta -82% (biotech crash)
+    "TEAM",  # Atlassian -52%
+    "NOW",   # ServiceNow -43%
+    "DECK",  # Deckers -54%
+    "MSTR",  # Strategy -51% (Bitcoin exposure)
+    "LCID",  # Lucid -60%
+}
+
+# GOVERNMENT CONTRACT RISK - Watch for contract cancellation news
+GOVT_CONTRACT_RISK: Set[str] = {
+    "BAH",   # Booz Allen -8% (Treasury cancelled $21M contracts)
+    "LMT",   # Lockheed (DOGE exposure)
+    "RTX",   # RTX (defense)
+    "NOC",   # Northrop
+    "GD",    # General Dynamics
+}
 
 # Silver miners - outperforming even gold (Silver +146% vs Gold +64% in 2025)
 SILVER_MINERS: Set[str] = {
@@ -95,9 +165,12 @@ SILVER_MINERS: Set[str] = {
     "HL",    # Hecla Mining +490%
     "CDE",   # Coeur Mining +316%
     "EXK",   # Endeavour Silver +291%
-    "PSLV",  # Sprott Physical Silver +225%
-    "USAS",  # Americas Gold & Silver +628%
+    "PSLV",  # Sprott Physical Silver +226%
+    "USAS",  # Americas Gold & Silver +629%
     "VZLA",  # Vizsla Silver +239%
+    "SVM",   # Silvercorp +328%
+    "HYMC",  # Hycroft Mining +2,256% (!)
+    "PAAS",  # Pan American Silver +194%
 }
 
 # Rare Earth & Critical Minerals - GREENLAND PLAY (ties to tariff playbook!)
@@ -146,33 +219,46 @@ AI_QUANTUM_STOCKS: Set[str] = {
 
 # Sector mapping for stocks
 STOCK_SECTORS = {
-    # Technology
+    # Technology / Storage / Memory
     "SNDK": "technology", "WDC": "technology", "STX": "technology", "MU": "technology",
     "LRCX": "technology", "AMD": "technology", "NVDA": "technology", "AVGO": "technology",
     "INTC": "technology", "PLTR": "technology", "APP": "technology", "APH": "technology",
-    "AAPL": "technology", "MSFT": "technology",
+    "AAPL": "technology", "MSFT": "technology", "LITE": "technology", "TSEM": "technology",
+    # Cloud Infrastructure
+    "ZM": "technology", "DOCN": "technology", "NET": "technology", "GDS": "technology",
+    "KC": "technology", "ANET": "technology", "CLS": "technology",
     # Communication Services
     "GOOGL": "communication_services", "GOOG": "communication_services",
     "META": "communication_services", "WBD": "communication_services",
     "NFLX": "communication_services", "DIS": "communication_services",
     # Financials
     "HOOD": "financials", "JPM": "financials", "BAC": "financials", "GS": "financials",
-    # Materials (Gold miners)
+    # Materials - Gold miners
     "NEM": "materials", "GDX": "materials", "GOLD": "materials", "AEM": "materials", "KGC": "materials",
-    "BTG": "materials", "NGD": "materials", "B": "materials",
-    # Silver miners
+    "BTG": "materials", "NGD": "materials", "B": "materials", "GFI": "materials", "NG": "materials",
+    "AU": "materials", "IAG": "materials", "EGO": "materials", "BVN": "materials", "CGAU": "materials",
+    # Materials - Silver miners
     "AG": "materials", "HL": "materials", "CDE": "materials", "EXK": "materials",
-    "PSLV": "materials", "USAS": "materials", "VZLA": "materials",
-    # Rare Earth
+    "PSLV": "materials", "USAS": "materials", "VZLA": "materials", "SVM": "materials",
+    "HYMC": "materials", "PAAS": "materials",
+    # Materials - Rare Earth
     "USAR": "materials", "MP": "materials", "TMC": "materials", "CRML": "materials",
-    # Uranium
-    "DNN": "energy", "UUUU": "energy", "CCJ": "energy", "UEC": "energy",
-    # Industrials
+    # Energy - Uranium
+    "DNN": "energy", "UUUU": "energy", "CCJ": "energy", "UEC": "energy", "LEU": "energy",
+    # Industrials / Defense
     "GE": "industrials", "RTX": "industrials", "BA": "industrials", "CAT": "industrials",
+    "BAH": "industrials", "LMT": "industrials", "NOC": "industrials", "GD": "industrials",
+    # Space
+    "ASTS": "technology", "PL": "technology", "RKLB": "technology", "LUNR": "technology",
+    "FLY": "industrials", "KRMN": "technology", "VSAT": "technology",
     # Bitcoin miners / AI infra
     "MARA": "technology", "RIOT": "technology", "CLSK": "technology", "WULF": "technology",
     "CIFR": "technology", "BMNR": "technology", "IREN": "technology", "APLD": "technology",
     "CRWV": "technology", "IONQ": "technology", "QBTS": "technology", "RGTI": "technology",
+    # Fallen Angels
+    "TTD": "technology", "LULU": "consumer_discretionary", "DUOL": "technology",
+    "HUBS": "technology", "FISV": "technology", "SRPT": "healthcare", "TEAM": "technology",
+    "NOW": "technology", "DECK": "consumer_discretionary", "MSTR": "technology", "LCID": "consumer_discretionary",
 }
 
 # Precious metals tickers (for correlation)
@@ -767,8 +853,72 @@ def calculate_intel_signal(
             signals_used.append("AI_QUANTUM_THEME")
             LOGGER.info(f"[{symbol}] 🤖 AI/QUANTUM: Institutional interest (+5%)")
     
+    # Storage/Memory monster run - the hottest sector
+    if symbol_upper in STORAGE_MEMORY_STOCKS:
+        if base_direction == "UP":
+            hot_theme_adjustment += 0.08  # Memory is ON FIRE
+            signals_used.append("STORAGE_MEMORY_MONSTER")
+            LOGGER.info(f"[{symbol}] 💾 STORAGE/MEMORY: Monster run sector (+8%)")
+    
+    # Cloud Infrastructure surge - institutional rotation
+    if symbol_upper in CLOUD_INFRA_STOCKS:
+        if base_direction == "UP":
+            hot_theme_adjustment += 0.06
+            signals_used.append("CLOUD_INFRA_SURGE")
+            LOGGER.info(f"[{symbol}] ☁️ CLOUD INFRA: Today's gainers (+6%)")
+    
+    # Space stocks - high beta momentum plays
+    if symbol_upper in SPACE_STOCKS:
+        if base_direction == "UP":
+            hot_theme_adjustment += 0.05
+            signals_used.append("SPACE_MOMENTUM")
+            LOGGER.info(f"[{symbol}] 🚀 SPACE: Momentum theme (+5%)")
+        elif base_direction == "DOWN":
+            # Space stocks are VOLATILE - down calls can be right
+            hot_theme_adjustment += 0.03
+            signals_used.append("SPACE_VOLATILE")
+    
+    # Gold miners - precious metals wave
+    if symbol_upper in GOLD_MINERS:
+        if base_direction == "UP":
+            hot_theme_adjustment += 0.06
+            signals_used.append("GOLD_MINER_WAVE")
+            LOGGER.info(f"[{symbol}] 🥇 GOLD MINER: Precious metals wave (+6%)")
+    
     winners_adjustment += hot_theme_adjustment
     confidence_adj += winners_adjustment
+    
+    # =========================================================================
+    # RULE 11: FALLEN ANGELS & GOVERNMENT RISK (Jan 27, 2026)
+    # =========================================================================
+    # Two key patterns:
+    # 1. Fallen Angels: Stocks down 50-80% from highs - potential bounce plays
+    # 2. Government Contract Risk: Treasury cancellations = sudden drops
+    
+    fallen_angels_adjustment = 0.0
+    
+    # FALLEN ANGELS - Extreme beaten-down names
+    # These have bounce potential but require careful entry timing
+    if symbol_upper in FALLEN_ANGELS:
+        if base_direction == "DOWN":
+            # Don't chase shorts on already-crushed names
+            fallen_angels_adjustment -= 0.06
+            signals_used.append("FALLEN_ANGEL_DONT_SHORT")
+            LOGGER.warning(f"[{symbol}] 📉 FALLEN ANGEL: Already down 50%+, don't pile on shorts")
+        elif base_direction == "UP":
+            # Bounce potential but risky - slight boost
+            fallen_angels_adjustment += 0.03
+            signals_used.append("FALLEN_ANGEL_BOUNCE_POTENTIAL")
+            LOGGER.info(f"[{symbol}] 📈 FALLEN ANGEL: Bounce potential on beaten name (+3%)")
+    
+    # GOVERNMENT CONTRACT RISK - Defense contractors exposed to DOGE/cancellations
+    if symbol_upper in GOVT_CONTRACT_RISK:
+        # News-driven volatility - reduce confidence on both sides
+        fallen_angels_adjustment -= 0.03
+        signals_used.append("GOVT_CONTRACT_RISK")
+        LOGGER.warning(f"[{symbol}] ⚠️ GOVT CONTRACT: Treasury/DOGE cancellation risk")
+    
+    confidence_adj += fallen_angels_adjustment
     
     # =========================================================================
     # RULE 9: TRADING DISCIPLINE (Professional Trader Principles)
