@@ -7,6 +7,7 @@ It transforms raw intel data into actionable signals that affect:
 2. Confidence adjustments (+/- based on event impact and market fragility)
 3. Entry timing gates (block trades during high-impact events)
 4. Trump Tariff Playbook (bond market triggers, timing patterns)
+5. 2025 Winners Playbook (sector leadership, momentum stocks)
 
 Integration points in wolf_app.py:
 - After feature extraction (~line 8020)
@@ -20,16 +21,81 @@ TARIFF PLAYBOOK (Kobeissi Letter pattern):
 - 10Y > 4.60%: Pause imminent, BUY window approaching
 - Mon-Tue after tariff weekend: Block panic selling
 - Wed-Thu: Dip buying window opens
+
+2025 WINNERS PLAYBOOK (Historical data):
+- Sector leaders: Tech (+24%), Comms (+33.6%)
+- Precious metals: Gold +64%, Silver +146% (inflation hedge)
+- Storage/Memory boom: SNDK +559%, WDC +261%, MU +178%
+- Semis strength: LRCX +138%, AMD +77%, NVDA +39%, AVGO +50%
+- Gold miners: NEM +138% (follows gold)
+- Tariff pattern: -19% H1 → recovery H2 (confirms Kobeissi playbook)
 """
 
 import os
 import time
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, Set
 from dataclasses import dataclass
 
 LOGGER = logging.getLogger("ghost.intel.integration")
+
+# =============================================================================
+# 2025 WINNERS DATA (Learned from historical performance)
+# =============================================================================
+
+# Sector performance 2025 - used for sector bias
+SECTOR_PERFORMANCE_2025 = {
+    "technology": 24.0,
+    "communication_services": 33.6,
+    "consumer_discretionary": 12.0,  # estimated
+    "financials": 8.0,  # estimated
+    "healthcare": 5.0,  # estimated
+    "industrials": 10.0,  # estimated
+    "materials": 15.0,  # estimated (gold miners helped)
+    "energy": -5.0,  # estimated (oil weakness)
+    "utilities": 3.0,  # estimated
+    "real_estate": 2.0,  # estimated
+    "consumer_staples": 4.0,  # estimated
+}
+
+# Top 2025 winners - momentum continuation bias
+WINNERS_2025: Set[str] = {
+    # Storage/Memory boom
+    "SNDK", "WDC", "STX", "MU",
+    # Semiconductors
+    "LRCX", "AMD", "NVDA", "AVGO", "INTC",
+    # Fintech/Tech
+    "HOOD", "PLTR", "APP", "APH",
+    # Gold miners (follows precious metals)
+    "NEM", "GDX", "GOLD", "AEM", "KGC",
+    # Big tech (still performing)
+    "GOOGL", "GOOG", "GE", "RTX",
+    # Media recovery
+    "WBD",
+}
+
+# Sector mapping for stocks
+STOCK_SECTORS = {
+    # Technology
+    "SNDK": "technology", "WDC": "technology", "STX": "technology", "MU": "technology",
+    "LRCX": "technology", "AMD": "technology", "NVDA": "technology", "AVGO": "technology",
+    "INTC": "technology", "PLTR": "technology", "APP": "technology", "APH": "technology",
+    "AAPL": "technology", "MSFT": "technology",
+    # Communication Services
+    "GOOGL": "communication_services", "GOOG": "communication_services",
+    "META": "communication_services", "WBD": "communication_services",
+    "NFLX": "communication_services", "DIS": "communication_services",
+    # Financials
+    "HOOD": "financials", "JPM": "financials", "BAC": "financials", "GS": "financials",
+    # Materials (Gold miners)
+    "NEM": "materials", "GDX": "materials", "GOLD": "materials", "AEM": "materials", "KGC": "materials",
+    # Industrials
+    "GE": "industrials", "RTX": "industrials", "BA": "industrials", "CAT": "industrials",
+}
+
+# Precious metals tickers (for correlation)
+PRECIOUS_METALS = {"GLD", "SLV", "IAU", "GOLD", "NEM", "GDX", "XAUUSD", "XAGUSD"}
 
 # Cache for intel data (avoid hammering APIs)
 _INTEL_CACHE: Dict[str, Tuple[float, Any]] = {}
@@ -48,6 +114,7 @@ class IntelSignal:
     event_count: int  # Number of relevant events
     max_event_score: float  # Highest impact event score
     tariff_context: Optional[Dict[str, Any]] = None  # Tariff playbook data
+    winners_context: Optional[Dict[str, Any]] = None  # 2025 winners data
 
 
 def _get_cached(key: str, ttl: float = _CACHE_TTL) -> Optional[Any]:
@@ -476,10 +543,68 @@ def calculate_intel_signal(
                 signals_used.append("TARIFF_ACCUMULATION")
     
     # =========================================================================
+    # RULE 8: 2025 WINNERS PLAYBOOK
+    # =========================================================================
+    # Historical data shows clear sector leadership and momentum persistence
+    # - Storage/Memory: SNDK +559%, WDC +261%, MU +178%
+    # - Semis: LRCX +138%, AMD +77%, NVDA +39%
+    # - Gold miners: NEM +138% (follows precious metals)
+    # - Sector leaders: Tech +24%, Comms +33.6%
+    
+    is_2025_winner = symbol.upper() in WINNERS_2025
+    stock_sector = STOCK_SECTORS.get(symbol.upper())
+    sector_performance = SECTOR_PERFORMANCE_2025.get(stock_sector, 0) if stock_sector else 0
+    is_precious_metal = symbol.upper() in PRECIOUS_METALS
+    
+    winners_adjustment = 0.0
+    
+    # 2025 winner momentum bias
+    if is_2025_winner:
+        if base_direction == "UP":
+            # Momentum continuation - winners tend to keep winning
+            winners_adjustment += 0.05
+            signals_used.append(f"2025_WINNER_{symbol.upper()}")
+            LOGGER.info(f"[{symbol}] 🏆 2025 WINNER: Momentum continuation bias (+5%)")
+        elif base_direction == "DOWN":
+            # Betting against winners is risky
+            winners_adjustment -= 0.03
+            signals_used.append(f"2025_WINNER_FADE_RISK")
+    
+    # Leading sector bias
+    if sector_performance >= 20:
+        # Top sector (Tech, Comms)
+        if base_direction == "UP":
+            winners_adjustment += 0.04
+            signals_used.append(f"SECTOR_LEADER_{stock_sector.upper()}")
+        elif base_direction == "DOWN":
+            winners_adjustment -= 0.02
+            signals_used.append(f"SECTOR_LEADER_FADE_RISK")
+    elif sector_performance <= 0:
+        # Lagging sector (Energy)
+        if base_direction == "DOWN":
+            winners_adjustment += 0.03
+            signals_used.append(f"SECTOR_LAGGARD_{stock_sector.upper()}")
+        elif base_direction == "UP":
+            winners_adjustment -= 0.02
+            signals_used.append(f"SECTOR_LAGGARD_LONG_RISK")
+    
+    # Precious metals correlation (Gold +64%, Silver +146% in 2025)
+    # If gold/silver, they tend to move together and trend strongly
+    if is_precious_metal:
+        # Precious metals showed extreme momentum in 2025
+        if base_direction == "UP":
+            winners_adjustment += 0.06
+            signals_used.append("PRECIOUS_METALS_MOMENTUM")
+            LOGGER.info(f"[{symbol}] 🥇 PRECIOUS METALS: Strong 2025 momentum (+6%)")
+        # Don't penalize DOWN - they can correct too
+    
+    confidence_adj += winners_adjustment
+    
+    # =========================================================================
     # FINALIZE SIGNAL
     # =========================================================================
-    # Cap confidence adjustment (increased to 0.20 for tariff playbook)
-    confidence_adj = max(-0.20, min(0.20, confidence_adj))
+    # Cap confidence adjustment (increased to 0.25 for combined playbooks)
+    confidence_adj = max(-0.25, min(0.25, confidence_adj))
     
     return IntelSignal(
         direction_bias=direction_bias,
@@ -503,6 +628,13 @@ def calculate_intel_signal(
             "tariff_active": tariff_active,
             "tariff_timing": tariff_timing,
             "day_of_week": intel_context.get("day_of_week", -1),
+        },
+        winners_context={
+            "is_2025_winner": is_2025_winner,
+            "sector": stock_sector,
+            "sector_performance": sector_performance,
+            "is_precious_metal": is_precious_metal,
+            "winners_adjustment": winners_adjustment,
         },
     )
 
