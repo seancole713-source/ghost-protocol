@@ -23382,7 +23382,7 @@ def api_telegram_test(payload: dict[str, Any] | None = None):
 
 @APP.get("/alerts/test")
 @APP.post("/alerts/test")
-async def alerts_test(credentials: HTTPAuthorizationCredentials | None = AUTH_DEP, message: str = None):
+async def alerts_test(credentials: HTTPAuthorizationCredentials | None = AUTH_DEP, message: str = None, send: bool = True):
     # Skip auth for test endpoint (UI button should just work)
     if PROTECT_ALERTS_TEST:
         try:
@@ -23405,6 +23405,10 @@ async def alerts_test(credentials: HTTPAuthorizationCredentials | None = AUTH_DE
             test_msg = message
         else:
             test_msg = "🔔 Ghost Test Alert\n\n✅ UI → API → Telegram working!\n\nIf you see this, your alerts are configured correctly."
+        
+        if not send:
+            return {"ok": True, "message": test_msg, "note": "Add ?send=true to actually send"}
+        
         sent, deliveries = send_telegram_detailed(test_msg)
         if sent:
             return {"ok": True, "sent": True, "deliveries": deliveries}
@@ -23419,6 +23423,90 @@ async def alerts_test(credentials: HTTPAuthorizationCredentials | None = AUTH_DE
     except Exception as e:
         LOGGER.error(f"Test alert failed: {e}", exc_info=True)
         return {"ok": False, "sent": False, "error": str(e)}
+
+
+@APP.post("/alerts/predictions/send")
+async def alerts_predictions_send():
+    """
+    🎯 Send current predictions as a formatted Telegram alert.
+    
+    Includes both stocks (trial mode) and crypto predictions.
+    No authentication required for testing.
+    """
+    try:
+        from datetime import datetime
+        
+        # Build prediction message from current state
+        lines = ["🎯 <b>GHOST AI TRADING SIGNALS</b>"]
+        lines.append(f"⏰ {datetime.now().strftime('%I:%M %p')} - Live Scan")
+        lines.append("")
+        
+        # Get stock prediction (NVDA)
+        try:
+            from core.stock_engine import get_stock_engine
+            engine = get_stock_engine()
+            nvda = await engine.predict("NVDA", bypass_calendar=True)
+            
+            lines.append("<b>📈 STOCK PREDICTIONS</b>")
+            lines.append("━━━━━━━━━━━━━━━━")
+            
+            direction_emoji = "⬆️" if nvda.direction == "UP" else ("⬇️" if nvda.direction == "DOWN" else "➡️")
+            lines.append(f"<b>NVDA</b> - NVIDIA {direction_emoji}")
+            lines.append(f"   Confidence: {nvda.confidence*100:.0f}%")
+            lines.append(f"   Entry: ${nvda.entry_price:.2f}")
+            lines.append(f"   Target: ${nvda.target_price:.2f}")
+            if nvda.reasons:
+                intel_reasons = [r for r in nvda.reasons if "Intel:" in r or "Ensemble" in r]
+                if intel_reasons:
+                    lines.append(f"   Intel: {', '.join(r.replace('Intel: ', '') for r in intel_reasons[:2])}")
+            lines.append("")
+        except Exception as e:
+            lines.append(f"<b>📈 STOCKS:</b> Error - {str(e)[:50]}")
+            lines.append("")
+        
+        # Get crypto predictions from cache
+        lines.append("<b>💎 CRYPTO PREDICTIONS</b>")
+        lines.append("━━━━━━━━━━━━━━━━")
+        
+        crypto_count = 0
+        for sym, pred in list(_LATEST_PREDICTIONS.items())[:5]:
+            if pred.get("direction") in ("UP", "DOWN") and pred.get("confidence", 0) >= 0.70:
+                direction = pred.get("direction")
+                direction_emoji = "⬆️" if direction == "UP" else "⬇️"
+                conf = pred.get("confidence", 0) * 100
+                entry = pred.get("entry_price", 0)
+                target = pred.get("target_price", 0)
+                
+                lines.append(f"<b>{sym}</b> {direction_emoji}")
+                lines.append(f"   Confidence: {conf:.0f}%")
+                lines.append(f"   Entry: ${entry:.2f}" if entry > 1 else f"   Entry: ${entry:.6f}")
+                lines.append(f"   Target: ${target:.2f}" if target > 1 else f"   Target: ${target:.6f}")
+                lines.append("")
+                crypto_count += 1
+        
+        if crypto_count == 0:
+            lines.append("   No high-confidence signals (>70%) right now")
+            lines.append("")
+        
+        # Footer
+        lines.append("━━━━━━━━━━━━━━━━")
+        lines.append("📊 <i>Ghost AI - V2 Quality Filtered</i>")
+        lines.append("🔧 <i>Stock Engine v1 + Intel + Ensemble</i>")
+        
+        message = "\n".join(lines)
+        
+        # Send via Telegram
+        sent, deliveries = send_telegram_detailed(message)
+        
+        return {
+            "ok": sent,
+            "message_preview": message[:500],
+            "deliveries": deliveries
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Prediction alert failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
 
 
 # ============================================================================
