@@ -26502,14 +26502,8 @@ async def v2_quality_set_whitelist(request: Request):
         if new_blacklist:
             quality._blacklist = set(s.upper() for s in new_blacklist)
         
-        # Persist to PostgreSQL
-        quality._save_to_json()
-        
-        # Also persist to PostgreSQL for durability
-        try:
-            quality._save_to_postgres()
-        except Exception as pg_err:
-            LOGGER.warning(f"[V2-API] PostgreSQL save failed (JSON saved): {pg_err}")
+        # Persist to JSON and PostgreSQL
+        quality._save_config(pinned_whitelist=quality._pinned_whitelist)
         
         LOGGER.info(
             f"[V2-API] ✅ Whitelist manually updated: "
