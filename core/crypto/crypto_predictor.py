@@ -250,6 +250,40 @@ class CryptoPredictionEngine:
             LOGGER.warning(f"⚠️ Market gates not applied: {e}")
             # Continue with original direction/confidence
 
+        # 5.6 GHOST INTEL INTEGRATION (NEW: Jan 27, 2026)
+        # Apply institutional intelligence adjustments
+        intel_metadata = {}
+        try:
+            import os
+            if os.getenv("GHOST_INTEL_ENABLED", "1") == "1":
+                from ghost_intel.integration import apply_intel_to_prediction
+                
+                pre_intel_direction = direction
+                pre_intel_confidence = confidence
+                
+                direction, confidence, intel_metadata = apply_intel_to_prediction(
+                    symbol=symbol,
+                    direction=direction,
+                    confidence=confidence
+                )
+                
+                if intel_metadata.get("intel_applied"):
+                    conf_adj = intel_metadata.get("confidence_adjustment", 0)
+                    if not intel_metadata.get("should_trade"):
+                        LOGGER.warning(
+                            f"🚫 INTEL BLOCKED {symbol}: {intel_metadata.get('block_reason', 'Unknown')}"
+                        )
+                        signals_used.append("INTEL_BLOCKED")
+                    elif abs(conf_adj) > 0.01:
+                        sources = intel_metadata.get("signal_sources", [])[:3]
+                        LOGGER.info(
+                            f"🔮 INTEL {symbol}: {pre_intel_confidence:.1%} → {confidence:.1%} "
+                            f"({conf_adj:+.1%}) | Sources: {', '.join(sources)}"
+                        )
+                        signals_used.append(f"INTEL_ADJ_{conf_adj:+.0%}")
+        except Exception as e:
+            LOGGER.warning(f"⚠️ Intel integration not applied: {e}")
+
         # 6. Store prediction to SQLite (local crypto db)
         prediction_id = str(uuid.uuid4())
         self._store_prediction(
