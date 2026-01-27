@@ -34,6 +34,11 @@ from ghost_intel.normalize import IntelEvent, normalize_event
 from ghost_intel.impact_model import ImpactScorer, ImpactScore
 from ghost_intel.positioning import PositioningAnalyzer
 from ghost_intel.taxonomy import EventTaxonomy, EventCategory
+from ghost_intel.integration import (
+    apply_intel_to_prediction,
+    get_intel_signal_for_prediction,
+    IntelSignal,
+)
 
 __all__ = [
     "IntelSources",
@@ -44,4 +49,7 @@ __all__ = [
     "PositioningAnalyzer",
     "EventTaxonomy",
     "EventCategory",
+    "apply_intel_to_prediction",
+    "get_intel_signal_for_prediction",
+    "IntelSignal",
 ]

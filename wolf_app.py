@@ -8415,6 +8415,47 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             LOGGER.warning(f"[{symbol}] Market gates failed (continuing without): {e}")
 
         # =====================================================================
+        # GHOST INTEL INTEGRATION (NEW: Jan 27, 2026)
+        # Wire institutional intelligence into prediction adjustments
+        # - VIX regime gates (block BUY during panic)
+        # - Put/Call positioning (contrarian signals)
+        # - Event impact (high-impact = block, medium = adjust)
+        # - Macro regime (yield curve inversion)
+        # =====================================================================
+        intel_metadata = {}
+        try:
+            if os.getenv("GHOST_INTEL_ENABLED", "1") == "1":
+                from ghost_intel.integration import apply_intel_to_prediction
+                
+                # Store original values
+                pre_intel_direction = direction
+                pre_intel_confidence = base_confidence
+                
+                # Apply Intel adjustments
+                direction, base_confidence, intel_metadata = apply_intel_to_prediction(
+                    symbol=symbol,
+                    direction=direction,
+                    confidence=base_confidence
+                )
+                
+                # Log if Intel made changes
+                if intel_metadata.get("intel_applied"):
+                    conf_adj = intel_metadata.get("confidence_adjustment", 0)
+                    if not intel_metadata.get("should_trade"):
+                        LOGGER.warning(
+                            f"[{symbol}] 🚫 INTEL BLOCKED: {intel_metadata.get('block_reason', 'Unknown')}"
+                        )
+                    elif abs(conf_adj) > 0.01:
+                        sources = intel_metadata.get("signal_sources", [])[:3]
+                        LOGGER.info(
+                            f"[{symbol}] 🔮 INTEL: {pre_intel_confidence:.1%} → {base_confidence:.1%} "
+                            f"({conf_adj:+.1%}) | VIX={intel_metadata.get('market_context', {}).get('vix', 'N/A')} "
+                            f"| Sources: {', '.join(sources)}"
+                        )
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Intel integration failed (continuing without): {e}")
+
+        # =====================================================================
         # CONFIDENCE THRESHOLD (NEW: Jan 9, 2026)
         # Only trade predictions with sufficient confidence (70%+ recommended)
         # =====================================================================
