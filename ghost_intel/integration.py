@@ -78,11 +78,70 @@ WINNERS_2025: Set[str] = {
     # Fintech/Tech
     "HOOD", "PLTR", "APP", "APH",
     # Gold miners (follows precious metals)
-    "NEM", "GDX", "GOLD", "AEM", "KGC",
+    "NEM", "GDX", "GOLD", "AEM", "KGC", "BTG", "NGD", "B",
     # Big tech (still performing)
     "GOOGL", "GOOG", "GE", "RTX",
     # Media recovery
     "WBD",
+}
+
+# =============================================================================
+# YAHOO FINANCE MOST ACTIVE - HOT THEMES (Jan 2026)
+# =============================================================================
+
+# Silver miners - outperforming even gold (Silver +146% vs Gold +64% in 2025)
+SILVER_MINERS: Set[str] = {
+    "AG",    # First Majestic +376%
+    "HL",    # Hecla Mining +490%
+    "CDE",   # Coeur Mining +316%
+    "EXK",   # Endeavour Silver +291%
+    "PSLV",  # Sprott Physical Silver +225%
+    "USAS",  # Americas Gold & Silver +628%
+    "VZLA",  # Vizsla Silver +239%
+}
+
+# Rare Earth & Critical Minerals - GREENLAND PLAY (ties to tariff playbook!)
+RARE_EARTH_MINERALS: Set[str] = {
+    "USAR",  # USA Rare Earth +97%
+    "MP",    # MP Materials +234%
+    "TMC",   # TMC Metals Company +509%
+    "CRML",  # Critical Metals +155%
+    "LAC",   # Lithium Americas
+    "ALB",   # Albemarle (lithium)
+}
+
+# Uranium plays - nuclear renaissance
+URANIUM_STOCKS: Set[str] = {
+    "DNN",   # Denison Mines +119%
+    "UUUU",  # Energy Fuels +383%
+    "CCJ",   # Cameco
+    "UEC",   # Uranium Energy Corp
+    "NXE",   # NexGen Energy
+    "LEU",   # Centrus Energy
+}
+
+# Bitcoin miners - crypto proxy plays
+BITCOIN_MINERS: Set[str] = {
+    "MARA",  # MARA Holdings
+    "RIOT",  # Riot Platforms +57%
+    "CLSK",  # CleanSpark +36%
+    "WULF",  # TeraWulf +204%
+    "CIFR",  # Cipher Mining +291%
+    "BMNR",  # Bitmine +271%
+    "IREN",  # IREN +462%
+    "APLD",  # Applied Digital +478%
+}
+
+# AI Infrastructure & Quantum Computing
+AI_QUANTUM_STOCKS: Set[str] = {
+    "CRWV",  # CoreWeave +132%
+    "IONQ",  # IonQ +21%
+    "QBTS",  # D-Wave Quantum +346%
+    "RGTI",  # Rigetti +79%
+    "SOUN",  # SoundHound AI
+    "BBAI",  # BigBear.ai +57%
+    "PATH",  # UiPath
+    "SMR",   # NuScale Power (nuclear AI power)
 }
 
 # Sector mapping for stocks
@@ -100,8 +159,20 @@ STOCK_SECTORS = {
     "HOOD": "financials", "JPM": "financials", "BAC": "financials", "GS": "financials",
     # Materials (Gold miners)
     "NEM": "materials", "GDX": "materials", "GOLD": "materials", "AEM": "materials", "KGC": "materials",
+    "BTG": "materials", "NGD": "materials", "B": "materials",
+    # Silver miners
+    "AG": "materials", "HL": "materials", "CDE": "materials", "EXK": "materials",
+    "PSLV": "materials", "USAS": "materials", "VZLA": "materials",
+    # Rare Earth
+    "USAR": "materials", "MP": "materials", "TMC": "materials", "CRML": "materials",
+    # Uranium
+    "DNN": "energy", "UUUU": "energy", "CCJ": "energy", "UEC": "energy",
     # Industrials
     "GE": "industrials", "RTX": "industrials", "BA": "industrials", "CAT": "industrials",
+    # Bitcoin miners / AI infra
+    "MARA": "technology", "RIOT": "technology", "CLSK": "technology", "WULF": "technology",
+    "CIFR": "technology", "BMNR": "technology", "IREN": "technology", "APLD": "technology",
+    "CRWV": "technology", "IONQ": "technology", "QBTS": "technology", "RGTI": "technology",
 }
 
 # Precious metals tickers (for correlation)
@@ -640,6 +711,63 @@ def calculate_intel_signal(
             LOGGER.info(f"[{symbol}] 🥇 PRECIOUS METALS: Strong 2025 momentum (+6%)")
         # Don't penalize DOWN - they can correct too
     
+    # =========================================================================
+    # RULE 10: HOT THEMES (Yahoo Finance Most Active - Jan 2026)
+    # =========================================================================
+    # These themes are showing extreme volume and 52-week gains
+    # High volume = institutional interest = momentum likely to continue
+    
+    symbol_upper = symbol.upper()
+    hot_theme_adjustment = 0.0
+    
+    # Silver miners - OUTPERFORMING gold miners (Silver +146% vs Gold +64%)
+    if symbol_upper in SILVER_MINERS:
+        if base_direction == "UP":
+            hot_theme_adjustment += 0.07  # Silver miners are on fire
+            signals_used.append("SILVER_MINER_HOT")
+            LOGGER.info(f"[{symbol}] 🥈 SILVER MINER: Outperforming gold (+7%)")
+        elif base_direction == "DOWN":
+            hot_theme_adjustment -= 0.04
+            signals_used.append("SILVER_MINER_FADE_RISK")
+    
+    # Rare Earth / Critical Minerals - GREENLAND PLAY
+    # This ties directly to Trump's Greenland tariff strategy!
+    if symbol_upper in RARE_EARTH_MINERALS:
+        if base_direction == "UP":
+            hot_theme_adjustment += 0.06
+            signals_used.append("RARE_EARTH_GREENLAND_PLAY")
+            LOGGER.info(f"[{symbol}] 🌍 RARE EARTH: Greenland/critical minerals theme (+6%)")
+        # Tariff resolution could hurt these - but also could explode higher
+        if tariff_active:
+            hot_theme_adjustment += 0.03  # Extra boost during tariff news
+            signals_used.append("RARE_EARTH_TARIFF_CATALYST")
+    
+    # Uranium stocks - Nuclear renaissance theme
+    if symbol_upper in URANIUM_STOCKS:
+        if base_direction == "UP":
+            hot_theme_adjustment += 0.05
+            signals_used.append("URANIUM_NUCLEAR_THEME")
+            LOGGER.info(f"[{symbol}] ☢️ URANIUM: Nuclear renaissance theme (+5%)")
+    
+    # Bitcoin miners - crypto proxy (moves with BTC)
+    if symbol_upper in BITCOIN_MINERS:
+        # These are extremely volatile - adjust confidence based on direction
+        if base_direction == "UP":
+            hot_theme_adjustment += 0.04
+            signals_used.append("BITCOIN_MINER_MOMENTUM")
+        elif base_direction == "DOWN":
+            # BTC miners can dump HARD
+            hot_theme_adjustment += 0.02  # DOWN predictions on miners can be right
+            signals_used.append("BITCOIN_MINER_VOLATILE")
+    
+    # AI/Quantum Computing - institutional money flooding in
+    if symbol_upper in AI_QUANTUM_STOCKS:
+        if base_direction == "UP":
+            hot_theme_adjustment += 0.05
+            signals_used.append("AI_QUANTUM_THEME")
+            LOGGER.info(f"[{symbol}] 🤖 AI/QUANTUM: Institutional interest (+5%)")
+    
+    winners_adjustment += hot_theme_adjustment
     confidence_adj += winners_adjustment
     
     # =========================================================================
