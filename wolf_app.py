@@ -9979,7 +9979,7 @@ async def api_v3_opus_predict(symbol: str):
 # =============================================================================
 
 @APP.get("/api/v3/stock/predict/{symbol}")
-async def api_v3_stock_predict(symbol: str):
+async def api_v3_stock_predict(symbol: str, bypass_calendar: bool = False):
     """
     🏛️ Stock Engine Prediction - Optimized for stocks (not crypto)
     
@@ -9994,18 +9994,23 @@ async def api_v3_stock_predict(symbol: str):
     - Sector momentum gate
     - Multi-timeframe confirmation
     
+    Query params:
+        bypass_calendar: Set to true to skip FOMC/CPI/NFP blackout (TESTING ONLY)
+    
     Target: 40-50% win rate (up from 4.5%)
     """
     try:
-        from core.stock_engine import run_stock_prediction
+        from core.stock_engine import get_stock_engine
         
-        result = await run_stock_prediction(symbol.upper())
+        engine = get_stock_engine()
+        result = await engine.predict(symbol.upper(), bypass_calendar=bypass_calendar)
         
         return {
             "ok": True,
             "engine": "stock_v1",
             "symbol": symbol.upper(),
-            **result,
+            "bypass_calendar": bypass_calendar,
+            **result.to_dict(),
             "timestamp": datetime.now().isoformat()
         }
         

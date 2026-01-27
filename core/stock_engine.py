@@ -433,43 +433,50 @@ class StockEngine:
         
         return confirmations, reasons
     
-    async def predict(self, symbol: str) -> StockPrediction:
+    async def predict(self, symbol: str, bypass_calendar: bool = False) -> StockPrediction:
         """
         Generate stock prediction using stock-tuned model.
         
         This is the main entry point for stock predictions.
+        
+        Args:
+            symbol: Stock ticker
+            bypass_calendar: If True, skip FOMC/CPI/NFP blackout gates (for testing only)
         """
         if not self._initialized:
             await self.initialize()
         
-        LOGGER.info(f"🏛️ Stock Engine predicting {symbol}...")
+        LOGGER.info(f"🏛️ Stock Engine predicting {symbol}{'[BYPASS CALENDAR]' if bypass_calendar else ''}...")
         
         gates_passed = []
         gates_failed = []
         all_reasons = []
         
         # Step 1: Economic Calendar Gate (FOMC, CPI, NFP, Earnings)
-        try:
-            from core.economic_calendar import economic_calendar_gate
-            allow, reason = economic_calendar_gate(symbol)
-            if not allow:
-                gates_failed.append(f"EconomicCalendar: {reason}")
-                return StockPrediction(
-                    symbol=symbol,
-                    direction="HOLD",
-                    confidence=0.0,
-                    entry_price=0,
-                    target_price=0,
-                    stop_loss=0,
-                    horizon_hours=self.config.horizon_hours,
-                    confirmations=0,
-                    gates_passed=gates_passed,
-                    gates_failed=gates_failed,
-                    reasons=[f"BLOCKED: {reason}"]
-                )
-            gates_passed.append("EconomicCalendar")
-        except ImportError:
-            LOGGER.warning("Economic calendar gate not available")
+        if not bypass_calendar:
+            try:
+                from core.economic_calendar import economic_calendar_gate
+                allow, reason = economic_calendar_gate(symbol)
+                if not allow:
+                    gates_failed.append(f"EconomicCalendar: {reason}")
+                    return StockPrediction(
+                        symbol=symbol,
+                        direction="HOLD",
+                        confidence=0.0,
+                        entry_price=0,
+                        target_price=0,
+                        stop_loss=0,
+                        horizon_hours=self.config.horizon_hours,
+                        confirmations=0,
+                        gates_passed=gates_passed,
+                        gates_failed=gates_failed,
+                        reasons=[f"BLOCKED: {reason}"]
+                    )
+                gates_passed.append("EconomicCalendar")
+            except ImportError:
+                LOGGER.warning("Economic calendar gate not available")
+        else:
+            gates_passed.append("EconomicCalendar (BYPASSED for testing)")
         
         # Step 2: Get VIX
         vix = await self._get_vix()
