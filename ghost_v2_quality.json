@@ -15,6 +15,18 @@
     "TURBO",
     "ZEC"
   ],
+  "trial_stocks": [
+    "SNDK",
+    "WDC",
+    "MU",
+    "LRCX",
+    "NEM",
+    "GDX",
+    "NVDA",
+    "AMD",
+    "AAPL",
+    "GOOGL"
+  ],
   "quarantine": [],
   "blacklist": [
     "1INCH",
@@ -48,11 +60,12 @@
     "XRP"
   ],
   "metrics": {},
-  "last_updated": "2026-01-25T12:00:00.000000",
+  "last_updated": "2026-01-27T12:00:00.000000",
   "config": {
     "min_predictions": 20,
     "whitelist_wr": 0.55,
     "blacklist_wr": 0.45,
-    "note": "Jan 25: CRYPTO ONLY - Loser analysis showed stocks=4.5% WR (broken), crypto=38.7% WR. Top performers: RNDR(47.6%), CHZ(37.1%), TURBO(35.5%), ZEC(31.1%)"
+    "trial_stock_min_confidence": 0.70,
+    "note": "Jan 27: Added 10 TRIAL STOCKS with Intel hot themes (Storage/Memory, Gold Miners, Tech Giants). These use 70% min confidence gate and full Intel rules. Stock Engine v2 now uses Ensemble + Intel."
   }
 }

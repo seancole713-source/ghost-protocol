@@ -57,7 +57,9 @@ class V2AssetQualitySystem:
         self.config_file = "ghost_v2_quality.json"
         self._whitelist: Set[str] = set()
         self._blacklist: Set[str] = set()
+        self._trial_stocks: Set[str] = set()  # Learning tier for stocks
         self._metrics: Dict[str, AssetQualityMetrics] = {}
+        self._config: Dict = {}  # Store full config for trial_stock_min_confidence etc
         
         # V2 Configuration
         self.MIN_PREDICTIONS_FOR_EVAL = int(os.getenv("V2_MIN_PREDICTIONS", "20"))
@@ -75,7 +77,7 @@ class V2AssetQualitySystem:
         # Auto-scheduler for daily updates (backup for cron)
         self._scheduler_running = False
         
-        LOGGER.info(f"[V2-QUALITY] Initialized: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist (postgres={self.use_postgres})")
+        LOGGER.info(f"[V2-QUALITY] Initialized: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist, {len(self._trial_stocks)} trial_stocks (postgres={self.use_postgres})")
     
     @property
     def whitelist(self) -> Set[str]:
@@ -164,10 +166,12 @@ class V2AssetQualitySystem:
         if pg_data:
             self._whitelist = set(pg_data.get('whitelist', []))
             self._blacklist = set(pg_data.get('blacklist', []))
+            self._trial_stocks = set(pg_data.get('trial_stocks', []))
+            self._config = pg_data.get('config', {})
             for symbol, metrics in pg_data.get('metrics', {}).items():
                 metrics['last_updated'] = datetime.fromisoformat(metrics['last_updated'])
                 self._metrics[symbol] = AssetQualityMetrics(**metrics)
-            LOGGER.info(f"[V2-QUALITY] Loaded from PostgreSQL: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist")
+            LOGGER.info(f"[V2-QUALITY] Loaded from PostgreSQL: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist, {len(self._trial_stocks)} trial_stocks")
             return
         
         # Fallback to JSON file
@@ -177,13 +181,15 @@ class V2AssetQualitySystem:
                     data = json.load(f)
                     self._whitelist = set(data.get('whitelist', []))
                     self._blacklist = set(data.get('blacklist', []))
+                    self._trial_stocks = set(data.get('trial_stocks', []))
+                    self._config = data.get('config', {})
                     
                     # Load metrics
                     for symbol, metrics in data.get('metrics', {}).items():
                         metrics['last_updated'] = datetime.fromisoformat(metrics['last_updated'])
                         self._metrics[symbol] = AssetQualityMetrics(**metrics)
                     
-                    LOGGER.info(f"[V2-QUALITY] Loaded config: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist")
+                    LOGGER.info(f"[V2-QUALITY] Loaded config: {len(self._whitelist)} whitelist, {len(self._blacklist)} blacklist, {len(self._trial_stocks)} trial_stocks")
         except Exception as e:
             LOGGER.warning(f"[V2-QUALITY] Failed to load config: {e} - starting fresh")
     
@@ -315,8 +321,9 @@ class V2AssetQualitySystem:
         Rules:
         1. Blacklist → NEVER predict
         2. Whitelist → Predict freely
-        3. Watchlist → Only if confidence >= 80%
-        4. Unknown → Predict cautiously (confidence >= 75%)
+        3. Trial Stocks → Only if confidence >= 70% (learning mode)
+        4. Watchlist → Only if confidence >= 80%
+        5. Unknown → Predict cautiously (confidence >= 75%)
         """
         # Check blacklist
         if symbol in self._blacklist:
@@ -325,6 +332,14 @@ class V2AssetQualitySystem:
         # Check whitelist
         if symbol in self._whitelist:
             return True, "whitelisted (proven performer)"
+        
+        # Check trial stocks (new learning tier for stocks)
+        if symbol in self._trial_stocks:
+            trial_min_conf = float(self._config.get("trial_stock_min_confidence", 0.70))
+            if confidence >= trial_min_conf:
+                return True, f"trial stock (learning mode, {confidence:.0%} >= {trial_min_conf:.0%})"
+            else:
+                return False, f"trial stock (needs {trial_min_conf:.0%}+ confidence, got {confidence:.0%})"
         
         # Watchlist (not whitelist, not blacklist, but we have data)
         if symbol in self._metrics:

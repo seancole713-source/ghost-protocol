@@ -7903,14 +7903,15 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     "feature_count": len(stock_result.get("gates_passed", [])) + len(stock_result.get("gates_failed", [])),
                     "available_count": len(stock_result.get("gates_passed", [])),
                     "duration_ms": duration_ms,
-                    "engine": "stock_v1",
+                    "engine": "stock_v2",  # Updated to v2 with Intel + Ensemble
                     "horizon_hours": stock_result.get("horizon_hours", 24),
                     "confirmations": stock_result.get("confirmations", 0),
-                    "min_confirmations": stock_result.get("min_confirmations", 4),
+                    "min_confirmations": stock_result.get("min_confirmations", 3),  # Updated from 4 to 3
                     "gates_passed": stock_result.get("gates_passed", []),
                     "gates_failed": stock_result.get("gates_failed", []),
                     "reasons": stock_result.get("reasons", []),
                     "is_actionable": stock_result.get("is_actionable", False),
+                    "intel_applied": True,  # Flag that Intel rules were applied
                     "error": None if stock_result.get("is_actionable") or stock_result.get("direction") != "HOLD" else "Stock gates blocked prediction"
                 }
             except Exception as e:

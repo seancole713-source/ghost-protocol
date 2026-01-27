@@ -54,15 +54,16 @@ class StockConfig:
     # Target move percentage (vs 6% for crypto)
     target_pct: float = 2.0
     
-    # RSI thresholds (tighter than crypto's 30/70)
-    rsi_oversold: float = 35.0
-    rsi_overbought: float = 65.0
+    # RSI thresholds (RELAXED from 35/65 to 40/60 for better signal generation)
+    # Stocks rarely hit 35/65 - we were getting too many HOLDs
+    rsi_oversold: float = 40.0
+    rsi_overbought: float = 60.0
     
-    # Confirmation requirements (stricter than crypto's 3)
-    min_confirmations: int = 4
+    # Confirmation requirements (reduced from 4 to 3 to allow more predictions)
+    min_confirmations: int = 3
     
-    # VIX threshold (stricter than crypto's 25)
-    vix_max: float = 20.0
+    # VIX threshold (relaxed from 20 to 22 - 20 was too strict)
+    vix_max: float = 22.0
     
     # SPY regime requirement
     require_spy_bull: bool = True
@@ -542,28 +543,86 @@ class StockEngine:
                 reasons=["Could not get current price"]
             )
         
-        # Step 6: Determine Direction based on indicators
+        # Step 6: Determine Direction using ENSEMBLE + Technical Indicators
         rsi = indicators.get("rsi_14", 50)
         macd = indicators.get("macd_histogram", 0)
+        price = indicators.get("current_price", 0)
         
-        if rsi < self.config.rsi_oversold and macd > 0:
-            direction = "UP"
-        elif rsi > self.config.rsi_overbought and macd < 0:
-            direction = "DOWN"
-        elif rsi < 45 and macd > 0 and spy_bullish:
-            direction = "UP"
-        elif rsi > 55 and macd < 0 and not spy_bullish:
-            direction = "DOWN"
-        else:
-            direction = "HOLD"
+        # PRIMARY: Use Ensemble Predictor (LSTM + XGBoost + Transformer)
+        # This was missing - stocks need the same ML power as crypto
+        direction = "HOLD"
+        ensemble_confidence = 0.5
+        try:
+            from core.ensemble_predictor import get_ensemble_predictor
+            from core.data_pillars.feature_orchestrator import get_feature_orchestrator
+            
+            # Get full feature set for ensemble
+            orchestrator = get_feature_orchestrator()
+            feature_data = orchestrator.get_all_features(symbol, period=90)
+            features = feature_data.get("features", {})
+            
+            ensemble = get_ensemble_predictor()
+            ensemble_result = ensemble.predict(features, method="confidence_weighted", symbol=symbol)
+            
+            if ensemble_result.confidence > 0.45:
+                direction = ensemble_result.direction
+                ensemble_confidence = ensemble_result.confidence
+                all_reasons.append(f"Ensemble: {direction} ({ensemble_confidence:.0%})")
+                LOGGER.info(f"🏛️ [{symbol}] Ensemble: {direction} ({ensemble_confidence:.0%})")
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Ensemble predictor failed: {e}")
         
-        # Step 7: Count Confirmations
+        # FALLBACK: Technical indicators if ensemble is uncertain
+        if direction == "HOLD" or ensemble_confidence < 0.55:
+            # Use more lenient RSI thresholds for stocks (40/60 instead of 35/65)
+            if rsi < 40 and macd > 0:
+                direction = "UP"
+                all_reasons.append(f"RSI oversold ({rsi:.0f}) + MACD bullish")
+            elif rsi > 60 and macd < 0:
+                direction = "DOWN"
+                all_reasons.append(f"RSI overbought ({rsi:.0f}) + MACD bearish")
+            elif rsi < 50 and macd > 0 and spy_bullish:
+                direction = "UP"
+                all_reasons.append("MACD bullish + SPY bull regime")
+            elif rsi > 50 and macd < 0 and not spy_bullish:
+                direction = "DOWN"
+                all_reasons.append("MACD bearish + SPY bear regime")
+        
+        # Step 7: Apply Ghost Intel Rules (CRITICAL FIX - was missing!)
+        intel_boost = 0.0
+        try:
+            from ghost_intel.integration import apply_intel_to_prediction
+            
+            # Apply Intel rules to stock prediction
+            intel_direction, intel_confidence, intel_meta = apply_intel_to_prediction(
+                symbol=symbol,
+                direction=direction,
+                confidence=ensemble_confidence
+            )
+            
+            if intel_meta.get("intel_applied"):
+                intel_boost = intel_meta.get("confidence_adjustment", 0)
+                signals = intel_meta.get("signal_sources", [])
+                
+                # Intel can override direction in strong cases
+                if intel_meta.get("direction_override") and intel_direction != direction:
+                    direction = intel_direction
+                    all_reasons.append(f"Intel override: {direction}")
+                
+                if signals:
+                    all_reasons.extend([f"Intel: {s}" for s in signals[:3]])
+                
+                LOGGER.info(f"🏛️ [{symbol}] Intel applied: boost={intel_boost:+.0%}, signals={signals[:3]}")
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Intel integration failed: {e}")
+        
+        # Step 8: Count Confirmations
         confirmations, confirmation_reasons = await self._count_confirmations(
             symbol, direction, indicators, vix or 20, spy_bullish
         )
         all_reasons.extend(confirmation_reasons)
         
-        # Step 8: Multi-Timeframe Check
+        # Step 9: Multi-Timeframe Check
         try:
             from core.stock_gates import StockConfirmationCounter
             # MTF adds to confirmations
@@ -572,11 +631,14 @@ class StockEngine:
         except ImportError:
             pass
         
-        # Step 9: Calculate Confidence
-        base_confidence = 0.5
+        # Step 10: Calculate Confidence (incorporating ensemble + Intel)
+        base_confidence = max(0.5, ensemble_confidence)  # Start from ensemble
         
         # Boost for confirmations
-        conf_boost = min(0.3, confirmations * 0.05)
+        conf_boost = min(0.25, confirmations * 0.04)
+        
+        # Intel boost (already calculated)
+        intel_adj = intel_boost
         
         # Boost/penalty for sector
         sector_adj = (sector_modifier - 1.0) * 0.1 if 'sector_modifier' in dir() else 0
@@ -584,7 +646,7 @@ class StockEngine:
         # Penalty for high VIX
         vix_penalty = max(0, (vix - 15) * 0.01) if vix else 0
         
-        confidence = base_confidence + conf_boost + sector_adj - vix_penalty
+        confidence = base_confidence + conf_boost + intel_adj + sector_adj - vix_penalty
         confidence = max(0.1, min(0.95, confidence))
         
         # Step 10: Calculate Entry/Exit

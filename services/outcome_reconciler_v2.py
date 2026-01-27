@@ -565,6 +565,35 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
             except Exception as e:
                 LOGGER.debug(f"CryptoCompare historical fetch failed for {symbol}: {e}")
         
+        # STOCK FALLBACK: Use yfinance for historical stock prices (critical fix!)
+        # This enables proper outcome evaluation for stocks
+        if symbol.upper() not in CRYPTO_SYMBOLS:
+            try:
+                import yfinance as yf
+                from datetime import datetime, timedelta
+                
+                dt = datetime.fromtimestamp(timestamp)
+                # Get 5-day range around target date
+                start_date = (dt - timedelta(days=2)).strftime("%Y-%m-%d")
+                end_date = (dt + timedelta(days=2)).strftime("%Y-%m-%d")
+                
+                ticker = yf.Ticker(symbol.upper())
+                hist = ticker.history(start=start_date, end=end_date)
+                
+                if not hist.empty:
+                    # Find closest trading day
+                    hist.index = hist.index.tz_localize(None)  # Remove timezone
+                    target_dt = datetime.fromtimestamp(timestamp)
+                    
+                    # Get the price from closest available day
+                    closest_idx = min(hist.index, key=lambda x: abs(x - target_dt))
+                    price = float(hist.loc[closest_idx, 'Close'])
+                    
+                    LOGGER.info(f"✅ yfinance historical price for {symbol} at {dt.date()}: ${price:.2f}")
+                    return price
+            except Exception as e:
+                LOGGER.debug(f"yfinance historical fetch failed for {symbol}: {e}")
+        
         # Last resort: if within 24h, use current price (acceptable approximation)
         if abs(now - timestamp) < 86400:
             price = get_symbol_price(symbol)
