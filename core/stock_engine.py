@@ -275,7 +275,7 @@ class StockEngine:
     async def _get_technical_indicators(self, symbol: str) -> Dict[str, Any]:
         """
         Get technical indicators for stock.
-        Uses existing wolf_app infrastructure.
+        Uses Polygon API with yfinance fallback.
         """
         self._load_wolf_app()
         
@@ -290,13 +290,46 @@ class StockEngine:
         }
         
         try:
-            import yfinance as yf
             import pandas as pd
+            import os
+            import httpx
+            from datetime import datetime, timedelta
             
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="30d")
+            hist = None
             
-            if hist.empty:
+            # Try Polygon first (more reliable than yfinance)
+            polygon_key = os.getenv("POLYGON_API_KEY")
+            if polygon_key:
+                try:
+                    end = datetime.now().strftime("%Y-%m-%d")
+                    start = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
+                    url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start}/{end}?adjusted=true&apiKey={polygon_key}"
+                    
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        resp = await client.get(url)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            if data.get("results"):
+                                results = data["results"]
+                                hist = pd.DataFrame(results)
+                                hist['Close'] = hist['c']
+                                hist['Volume'] = hist['v']
+                                LOGGER.info(f"[STOCK-ENGINE] Got {len(hist)} bars from Polygon for {symbol}")
+                except Exception as e:
+                    LOGGER.warning(f"[STOCK-ENGINE] Polygon failed for {symbol}: {e}")
+            
+            # Fallback to yfinance
+            if hist is None or hist.empty:
+                try:
+                    import yfinance as yf
+                    ticker = yf.Ticker(symbol)
+                    hist = ticker.history(period="30d")
+                    if not hist.empty:
+                        LOGGER.info(f"[STOCK-ENGINE] Got {len(hist)} bars from yfinance for {symbol}")
+                except Exception as e:
+                    LOGGER.warning(f"[STOCK-ENGINE] yfinance failed for {symbol}: {e}")
+            
+            if hist is None or hist.empty:
                 return indicators
             
             close = hist['Close']
