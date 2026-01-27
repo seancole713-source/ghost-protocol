@@ -635,6 +635,49 @@ async def fetch_intel_context(symbol: str = None) -> Dict[str, Any]:
         context["tariff_timing_window"] = "neutral"
         context["tariff_active"] = False
     
+    # =========================================================================
+    # RULE 14: FULL STOCK HISTORY (IPO to now)
+    # Provides: fundamentals, 52-week context, technicals, earnings
+    # =========================================================================
+    if symbol:
+        try:
+            from ghost_intel.stock_history import get_stock_context
+            
+            history_context = get_stock_context(symbol)
+            if history_context:
+                # Merge full history into context
+                context["stock_history"] = history_context
+                
+                # Surface key metrics at top level for easy access
+                context["pe_ratio"] = history_context.get("pe_ratio")
+                context["market_cap"] = history_context.get("market_cap")
+                context["sector"] = history_context.get("sector")
+                context["industry"] = history_context.get("industry")
+                context["pct_from_52w_high"] = history_context.get("pct_from_52w_high")
+                context["pct_from_52w_low"] = history_context.get("pct_from_52w_low")
+                context["all_time_high"] = history_context.get("all_time_high")
+                context["years_trading"] = history_context.get("years_trading")
+                context["days_to_earnings"] = history_context.get("days_to_earnings")
+                
+                # Flags for quick decisions
+                context["is_near_52w_high"] = history_context.get("is_near_52w_high", False)
+                context["is_near_52w_low"] = history_context.get("is_near_52w_low", False)
+                context["is_oversold"] = history_context.get("is_oversold", False)
+                context["is_overbought"] = history_context.get("is_overbought", False)
+                context["is_high_volume"] = history_context.get("is_high_volume", False)
+                
+                # Technical context
+                context["trend"] = history_context.get("trend")
+                context["support"] = history_context.get("support")
+                context["resistance"] = history_context.get("resistance")
+                context["above_sma_200"] = history_context.get("above_sma_200")
+                
+                LOGGER.info(f"📊 Stock history loaded for {symbol}: "
+                           f"52W Range: {context['pct_from_52w_low']:.1f}% to {context['pct_from_52w_high']:.1f}%")
+                
+        except Exception as e:
+            LOGGER.debug(f"Stock history fetch failed for {symbol}: {e}")
+    
     _set_cached(cache_key, context)
     return context
 
@@ -1358,6 +1401,124 @@ def calculate_intel_signal(
     
     confidence_adj += discipline_adjustment
     signals_used.extend(discipline_signals)
+    
+    # =========================================================================
+    # RULE 14: FULL STOCK HISTORY INTELLIGENCE (IPO to now)
+    # =========================================================================
+    # Use comprehensive historical data for better decisions:
+    # - 52-week positioning (near high = momentum, near low = bounce potential)
+    # - Fundamentals (P/E, growth) for valuation context
+    # - Technical trend confirmation
+    # - Earnings proximity risk
+    # - Historical volatility context
+    
+    history_adjustment = 0.0
+    history_signals = []
+    stock_history = intel_context.get("stock_history", {})
+    
+    if stock_history:
+        # 52-WEEK CONTEXT
+        is_near_52w_high = intel_context.get("is_near_52w_high", False)
+        is_near_52w_low = intel_context.get("is_near_52w_low", False)
+        pct_from_high = intel_context.get("pct_from_52w_high", 0)
+        pct_from_low = intel_context.get("pct_from_52w_low", 0)
+        
+        # Near 52-week high - momentum stocks tend to keep running
+        if is_near_52w_high and base_direction == "UP":
+            history_adjustment += 0.04
+            history_signals.append(f"NEAR_52W_HIGH_{pct_from_high:.1f}pct")
+            LOGGER.info(f"[{symbol}] 📈 Near 52-week high ({pct_from_high:.1f}%) - momentum bias (+4%)")
+        
+        # Near 52-week low - potential bounce but risky
+        if is_near_52w_low:
+            if base_direction == "UP":
+                # Bounce play - contrarian but needs catalyst
+                history_adjustment += 0.02
+                history_signals.append(f"NEAR_52W_LOW_BOUNCE_{pct_from_low:.1f}pct")
+            elif base_direction == "DOWN":
+                # Don't short at lows (oversold)
+                history_adjustment -= 0.05
+                history_signals.append("DONT_SHORT_AT_LOWS")
+                LOGGER.info(f"[{symbol}] ⚠️ Near 52-week low - don't short oversold (-5%)")
+        
+        # OVERBOUGHT/OVERSOLD FROM HISTORY
+        is_oversold = intel_context.get("is_oversold", False)
+        is_overbought = intel_context.get("is_overbought", False)
+        
+        if is_oversold and base_direction == "UP":
+            history_adjustment += 0.05
+            history_signals.append("HISTORICAL_OVERSOLD_BOUNCE")
+            LOGGER.info(f"[{symbol}] 🟢 Historically oversold - bounce setup (+5%)")
+        
+        if is_overbought and base_direction == "DOWN":
+            history_adjustment += 0.04
+            history_signals.append("HISTORICAL_OVERBOUGHT_FADE")
+            LOGGER.info(f"[{symbol}] 🔴 Historically overbought - fade setup (+4%)")
+        
+        # TREND CONFIRMATION
+        trend = intel_context.get("trend", "sideways")
+        above_200 = intel_context.get("above_sma_200", False)
+        
+        if trend == "uptrend" and base_direction == "UP" and above_200:
+            history_adjustment += 0.03
+            history_signals.append("TREND_CONFIRMED_UP")
+        elif trend == "downtrend" and base_direction == "DOWN" and not above_200:
+            history_adjustment += 0.03
+            history_signals.append("TREND_CONFIRMED_DOWN")
+        elif trend == "uptrend" and base_direction == "DOWN":
+            history_adjustment -= 0.04
+            history_signals.append("COUNTER_TREND_RISK")
+            LOGGER.info(f"[{symbol}] ⚠️ Shorting uptrend - counter-trend risk (-4%)")
+        
+        # EARNINGS PROXIMITY RISK
+        days_to_earnings = intel_context.get("days_to_earnings")
+        if days_to_earnings is not None:
+            if 0 < days_to_earnings <= 3:
+                # 3 days or less to earnings - very risky
+                history_adjustment -= 0.08
+                history_signals.append(f"EARNINGS_IMMINENT_{days_to_earnings}d")
+                LOGGER.warning(f"[{symbol}] 📅 Earnings in {days_to_earnings} days - HIGH RISK (-8%)")
+            elif days_to_earnings <= 7:
+                # 1 week to earnings - elevated risk
+                history_adjustment -= 0.04
+                history_signals.append(f"EARNINGS_WEEK_{days_to_earnings}d")
+        
+        # FUNDAMENTAL VALUATION (if available)
+        pe_ratio = intel_context.get("pe_ratio")
+        sector = intel_context.get("sector", "Unknown")
+        
+        if pe_ratio:
+            # Tech sectors can sustain higher P/E
+            tech_sectors = ["Technology", "Communication Services"]
+            if sector in tech_sectors:
+                if pe_ratio > 100:
+                    history_signals.append(f"HIGH_PE_{pe_ratio:.0f}")
+                    if base_direction == "UP":
+                        history_adjustment -= 0.02  # Slight headwind for very expensive stocks
+            else:
+                # Non-tech - more P/E sensitive
+                if pe_ratio > 50:
+                    history_signals.append(f"EXPENSIVE_PE_{pe_ratio:.0f}")
+                    if base_direction == "UP":
+                        history_adjustment -= 0.03
+                elif pe_ratio < 15 and pe_ratio > 0:
+                    history_signals.append(f"VALUE_PE_{pe_ratio:.0f}")
+                    if base_direction == "UP":
+                        history_adjustment += 0.02  # Value stocks can run
+        
+        # HIGH VOLUME BREAKOUT
+        is_high_volume = intel_context.get("is_high_volume", False)
+        if is_high_volume:
+            if base_direction == "UP" and is_near_52w_high:
+                history_adjustment += 0.05
+                history_signals.append("HIGH_VOLUME_BREAKOUT")
+                LOGGER.info(f"[{symbol}] 🔥 High volume + 52w high = breakout potential (+5%)")
+            elif base_direction == "DOWN" and is_near_52w_low:
+                history_adjustment += 0.03
+                history_signals.append("HIGH_VOLUME_BREAKDOWN")
+    
+    confidence_adj += history_adjustment
+    signals_used.extend(history_signals)
     
     # =========================================================================
     # FINALIZE SIGNAL
