@@ -281,6 +281,67 @@ CRYPTO_STOCKS: Set[str] = {
 }
 
 # =============================================================================
+# CURRENCY/FX INTELLIGENCE (Jan 27, 2026)
+# =============================================================================
+
+# Current FX levels (for reference)
+# USD/JPY: 154.47 (yen strengthening, intervention talk)
+# EUR/USD: 1.1875 (dollar weak)
+# USD/MXN: 17.32 (peso strong)
+# USD/INR: 91.79 (rupee at record low)
+# DXY: 4-month low (debasement trade!)
+
+FX_THRESHOLDS = {
+    # Dollar Index (DXY proxy via EUR/USD)
+    "eurusd_dollar_weak": 1.15,     # Above = weak dollar
+    "eurusd_dollar_very_weak": 1.20, # Above = very weak dollar (gold bullish!)
+    "eurusd_dollar_strong": 1.05,   # Below = strong dollar
+    
+    # Yen (USD/JPY) - intervention risk
+    "usdjpy_intervention_risk": 160,  # Above = BOJ may intervene
+    "usdjpy_yen_strong": 145,         # Below = yen strengthening (risk-off)
+    "usdjpy_yen_very_strong": 140,    # Below = major risk-off
+    
+    # Mexican Peso (USD/MXN) - EM strength indicator
+    "usdmxn_peso_strong": 18,         # Below = peso strength
+    "usdmxn_peso_weak": 20,           # Above = peso weakness/risk-off
+    
+    # Indian Rupee (USD/INR)
+    "usdinr_rupee_stress": 90,        # Above = rupee stress (EM risk)
+    "usdinr_rupee_crisis": 95,        # Above = crisis territory
+}
+
+# Stocks affected by FX moves
+DOLLAR_SENSITIVE_STOCKS: Set[str] = {
+    # Weak dollar beneficiaries (multinational earnings boost)
+    "AAPL", "MSFT", "GOOGL", "META", "AMZN",  # Big tech (overseas revenue)
+    "KO", "PEP", "PG", "JNJ", "MCD",          # Consumer multinationals
+    "CAT", "DE", "BA",                         # Industrials
+}
+
+YEN_SENSITIVE_STOCKS: Set[str] = {
+    # Japanese ADRs and yen-sensitive
+    "TM",    # Toyota
+    "HMC",   # Honda
+    "SONY",  # Sony
+    "NTT",   # NTT
+    "MUFG",  # Mitsubishi UFJ
+    "SMFG",  # Sumitomo Mitsui
+}
+
+EM_SENSITIVE_STOCKS: Set[str] = {
+    # Emerging market exposure
+    "EEM",   # EM ETF
+    "VWO",   # Vanguard EM
+    "IEMG",  # iShares EM
+    "IBN",   # ICICI Bank (India)
+    "HDB",   # HDFC Bank (India)
+    "BABA",  # Alibaba
+    "JD",    # JD.com
+    "PDD",   # PDD Holdings
+}
+
+# =============================================================================
 # COMMODITIES FUTURES THRESHOLDS (Jan 27, 2026)
 # =============================================================================
 
@@ -1098,6 +1159,81 @@ def calculate_intel_signal(
             signals_used.append(f"SILVER_ABOVE_{COMMODITIES_THRESHOLDS['silver_bullish']}")
     
     confidence_adj += crypto_commodities_adj
+    
+    # =========================================================================
+    # RULE 13: CURRENCY/FX INTELLIGENCE (Jan 27, 2026)
+    # =========================================================================
+    # Key FX signals:
+    # - Weak dollar (DXY 4-month low) = Gold bullish, multinationals benefit
+    # - Yen intervention talk = Risk-off signal
+    # - EM currency stress (INR at record low) = Risk indicator
+    # - "Debasement trade" = Investors fleeing bonds/currencies to gold
+    
+    fx_adjustment = 0.0
+    
+    # Get FX data from context
+    eurusd = intel_context.get("eurusd", 0)
+    usdjpy = intel_context.get("usdjpy", 0)
+    usdmxn = intel_context.get("usdmxn", 0)
+    usdinr = intel_context.get("usdinr", 0)
+    dxy_trend = intel_context.get("dxy_trend", "neutral")  # "weak", "strong", "neutral"
+    
+    # WEAK DOLLAR REGIME (Current state as of Jan 27)
+    if dxy_trend == "weak" or eurusd >= FX_THRESHOLDS["eurusd_dollar_weak"]:
+        # Weak dollar benefits multinationals and gold
+        if symbol_upper in DOLLAR_SENSITIVE_STOCKS:
+            if base_direction == "UP":
+                fx_adjustment += 0.04
+                signals_used.append("WEAK_DOLLAR_MULTINATIONAL_BOOST")
+                LOGGER.info(f"[{symbol}] 💵 WEAK DOLLAR: Multinational earnings boost (+4%)")
+        
+        # Weak dollar = very bullish for gold/miners
+        if symbol_upper in GOLD_MINERS or symbol_upper in SILVER_MINERS:
+            fx_adjustment += 0.03
+            signals_used.append("WEAK_DOLLAR_GOLD_BULLISH")
+            LOGGER.info(f"[{symbol}] 💵 WEAK DOLLAR: Debasement trade boosting precious metals (+3%)")
+    
+    # STRONG DOLLAR (opposite effect)
+    if dxy_trend == "strong" or (eurusd > 0 and eurusd <= FX_THRESHOLDS["eurusd_dollar_strong"]):
+        if symbol_upper in DOLLAR_SENSITIVE_STOCKS:
+            if base_direction == "UP":
+                fx_adjustment -= 0.03
+                signals_used.append("STRONG_DOLLAR_HEADWIND")
+        
+        if symbol_upper in GOLD_MINERS or symbol_upper in SILVER_MINERS:
+            fx_adjustment -= 0.03
+            signals_used.append("STRONG_DOLLAR_GOLD_BEARISH")
+    
+    # YEN SIGNALS (Risk-off indicator)
+    if usdjpy > 0:
+        if usdjpy <= FX_THRESHOLDS["usdjpy_yen_strong"]:
+            # Strong yen = risk-off, defensive positioning
+            if base_direction == "DOWN":
+                fx_adjustment += 0.03
+                signals_used.append("YEN_STRONG_RISK_OFF")
+                LOGGER.warning(f"[{symbol}] 🇯🇵 YEN STRONG: Risk-off signal, SELL confidence +3%")
+        
+        if usdjpy >= FX_THRESHOLDS["usdjpy_intervention_risk"]:
+            # BOJ intervention risk
+            if symbol_upper in YEN_SENSITIVE_STOCKS:
+                fx_adjustment -= 0.03
+                signals_used.append("YEN_INTERVENTION_RISK")
+                LOGGER.warning(f"[{symbol}] 🇯🇵 YEN: BOJ intervention risk")
+    
+    # EMERGING MARKET STRESS (INR at record low)
+    if usdinr >= FX_THRESHOLDS["usdinr_rupee_stress"]:
+        if symbol_upper in EM_SENSITIVE_STOCKS:
+            # EM stress = reduce confidence
+            fx_adjustment -= 0.04
+            signals_used.append("EM_CURRENCY_STRESS")
+            LOGGER.warning(f"[{symbol}] 🌍 EM STRESS: INR at record low, reduce confidence")
+    
+    if usdinr >= FX_THRESHOLDS["usdinr_rupee_crisis"]:
+        if symbol_upper in EM_SENSITIVE_STOCKS:
+            fx_adjustment -= 0.03  # Additional penalty
+            signals_used.append("EM_CURRENCY_CRISIS")
+    
+    confidence_adj += fx_adjustment
     
     # =========================================================================
     # RULE 9: TRADING DISCIPLINE (Professional Trader Principles)
