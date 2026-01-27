@@ -8,6 +8,7 @@ It transforms raw intel data into actionable signals that affect:
 3. Entry timing gates (block trades during high-impact events)
 4. Trump Tariff Playbook (bond market triggers, timing patterns)
 5. 2025 Winners Playbook (sector leadership, momentum stocks)
+6. Trading Discipline Rules (risk management, technical signals)
 
 Integration points in wolf_app.py:
 - After feature extraction (~line 8020)
@@ -29,6 +30,15 @@ TARIFF PLAYBOOK (Kobeissi Letter pattern):
 - Semis strength: LRCX +138%, AMD +77%, NVDA +39%, AVGO +50%
 - Gold miners: NEM +138% (follows gold)
 - Tariff pattern: -19% H1 → recovery H2 (confirms Kobeissi playbook)
+
+TRADING DISCIPLINE RULES (Professional trader principles):
+- Risk Management: 1-2% max risk per trade, enforce stop-losses
+- Reward/Risk: Require 2:1 ratio minimum (aim for $200 profit on $100 risk)
+- Volatility: Need price movement to profit (block flat/dead stocks)
+- Liquidity: High volume = clean entries/exits (penalize low volume)
+- RSI Signals: Overbought (>70) = fade risk, Oversold (<30) = bounce potential
+- VWAP: Price above VWAP = bullish, below = bearish
+- Patience: A+ setups only - better to miss than force bad trades
 """
 
 import os
@@ -97,6 +107,37 @@ STOCK_SECTORS = {
 # Precious metals tickers (for correlation)
 PRECIOUS_METALS = {"GLD", "SLV", "IAU", "GOLD", "NEM", "GDX", "XAUUSD", "XAGUSD"}
 
+# =============================================================================
+# TRADING DISCIPLINE RULES (Professional trader principles)
+# =============================================================================
+
+# Risk Management Thresholds
+TRADING_DISCIPLINE = {
+    # Reward/Risk ratio requirements
+    "min_reward_risk_ratio": 1.5,      # Minimum acceptable (prefer 2:1)
+    "ideal_reward_risk_ratio": 2.0,    # Target ratio for bonus confidence
+    "excellent_reward_risk_ratio": 3.0, # Excellent setup bonus
+    
+    # RSI (Relative Strength Index) thresholds
+    "rsi_overbought": 70,              # Above = potential reversal down
+    "rsi_oversold": 30,                # Below = potential bounce up
+    "rsi_extreme_overbought": 80,      # Very extended, high fade risk
+    "rsi_extreme_oversold": 20,        # Capitulation zone, bounce likely
+    
+    # Volume/Liquidity requirements
+    "min_relative_volume": 0.5,        # Below = dead stock, avoid
+    "high_relative_volume": 2.0,       # Above = institutional interest
+    "very_high_volume": 5.0,           # Unusual activity, pay attention
+    
+    # Volatility requirements (ATR-based)
+    "min_volatility_pct": 1.0,         # Need at least 1% daily range
+    "ideal_volatility_pct": 3.0,       # Sweet spot for day trading
+    "max_volatility_pct": 15.0,        # Too wild, reduce size
+    
+    # VWAP positioning
+    "vwap_buffer_pct": 0.5,            # Within 0.5% of VWAP = neutral
+}
+
 # Cache for intel data (avoid hammering APIs)
 _INTEL_CACHE: Dict[str, Tuple[float, Any]] = {}
 _CACHE_TTL = 60  # 1 minute cache for live feeds
@@ -115,6 +156,7 @@ class IntelSignal:
     max_event_score: float  # Highest impact event score
     tariff_context: Optional[Dict[str, Any]] = None  # Tariff playbook data
     winners_context: Optional[Dict[str, Any]] = None  # 2025 winners data
+    discipline_context: Optional[Dict[str, Any]] = None  # Trading discipline data
 
 
 def _get_cached(key: str, ttl: float = _CACHE_TTL) -> Optional[Any]:
@@ -601,10 +643,134 @@ def calculate_intel_signal(
     confidence_adj += winners_adjustment
     
     # =========================================================================
+    # RULE 9: TRADING DISCIPLINE (Professional Trader Principles)
+    # =========================================================================
+    # "Successful traders treat the market as a game of probabilities"
+    # Key principles:
+    # - Defense over offense (protect capital first)
+    # - 2:1 reward/risk minimum
+    # - RSI extremes signal reversals
+    # - Volume confirms moves
+    # - Patience: wait for A+ setups
+    
+    discipline_adjustment = 0.0
+    discipline_signals = []
+    
+    # Get trading metrics from intel_context (if available from prediction data)
+    reward_risk = intel_context.get("reward_risk_ratio", 0)
+    rsi = intel_context.get("rsi", 50)
+    relative_volume = intel_context.get("relative_volume", 1.0)
+    volatility_pct = intel_context.get("volatility_pct", 3.0)
+    vwap_position = intel_context.get("vwap_position", "neutral")  # "above", "below", "neutral"
+    
+    # Reward/Risk ratio evaluation
+    if reward_risk > 0:
+        if reward_risk >= TRADING_DISCIPLINE["excellent_reward_risk_ratio"]:
+            # 3:1 or better - excellent setup
+            discipline_adjustment += 0.08
+            discipline_signals.append(f"EXCELLENT_RR_{reward_risk:.1f}")
+            LOGGER.info(f"[{symbol}] 🎯 DISCIPLINE: Excellent R/R {reward_risk:.1f}:1 (+8%)")
+        elif reward_risk >= TRADING_DISCIPLINE["ideal_reward_risk_ratio"]:
+            # 2:1 - good setup
+            discipline_adjustment += 0.04
+            discipline_signals.append(f"GOOD_RR_{reward_risk:.1f}")
+        elif reward_risk < TRADING_DISCIPLINE["min_reward_risk_ratio"]:
+            # Below 1.5:1 - not worth the risk
+            discipline_adjustment -= 0.08
+            discipline_signals.append(f"POOR_RR_{reward_risk:.1f}")
+            LOGGER.warning(f"[{symbol}] ⚠️ DISCIPLINE: Poor R/R {reward_risk:.1f}:1 - reduce confidence")
+    
+    # RSI (Relative Strength Index) signals - contrarian at extremes
+    if rsi > 0:
+        if rsi >= TRADING_DISCIPLINE["rsi_extreme_overbought"]:
+            # RSI > 80 - extremely overbought
+            if base_direction == "UP":
+                discipline_adjustment -= 0.10
+                discipline_signals.append(f"RSI_EXTREME_OVERBOUGHT_{rsi:.0f}")
+                LOGGER.warning(f"[{symbol}] 🔴 RSI {rsi:.0f} - extreme overbought, fade risk on BUY")
+            elif base_direction == "DOWN":
+                discipline_adjustment += 0.05
+                discipline_signals.append(f"RSI_REVERSAL_SETUP_{rsi:.0f}")
+                
+        elif rsi >= TRADING_DISCIPLINE["rsi_overbought"]:
+            # RSI 70-80 - overbought
+            if base_direction == "UP":
+                discipline_adjustment -= 0.05
+                discipline_signals.append(f"RSI_OVERBOUGHT_{rsi:.0f}")
+                
+        elif rsi <= TRADING_DISCIPLINE["rsi_extreme_oversold"]:
+            # RSI < 20 - capitulation zone
+            if base_direction == "DOWN":
+                discipline_adjustment -= 0.10
+                discipline_signals.append(f"RSI_EXTREME_OVERSOLD_{rsi:.0f}")
+                LOGGER.warning(f"[{symbol}] 🟢 RSI {rsi:.0f} - capitulation zone, bounce likely")
+            elif base_direction == "UP":
+                discipline_adjustment += 0.05
+                discipline_signals.append(f"RSI_BOUNCE_SETUP_{rsi:.0f}")
+                
+        elif rsi <= TRADING_DISCIPLINE["rsi_oversold"]:
+            # RSI 20-30 - oversold
+            if base_direction == "UP":
+                discipline_adjustment += 0.03
+                discipline_signals.append(f"RSI_OVERSOLD_{rsi:.0f}")
+    
+    # Volume/Liquidity check - "High trading volume ensures clean entries/exits"
+    if relative_volume > 0:
+        if relative_volume < TRADING_DISCIPLINE["min_relative_volume"]:
+            # Dead stock - no interest
+            discipline_adjustment -= 0.08
+            discipline_signals.append(f"LOW_VOLUME_{relative_volume:.1f}x")
+            LOGGER.warning(f"[{symbol}] 💀 Low volume {relative_volume:.1f}x - dead stock")
+            
+        elif relative_volume >= TRADING_DISCIPLINE["very_high_volume"]:
+            # 5x+ volume - unusual activity, pay attention
+            discipline_adjustment += 0.05
+            discipline_signals.append(f"UNUSUAL_VOLUME_{relative_volume:.1f}x")
+            LOGGER.info(f"[{symbol}] 📊 Unusual volume {relative_volume:.1f}x - institutional interest")
+            
+        elif relative_volume >= TRADING_DISCIPLINE["high_relative_volume"]:
+            # 2x+ volume - good interest
+            discipline_adjustment += 0.03
+            discipline_signals.append(f"HIGH_VOLUME_{relative_volume:.1f}x")
+    
+    # Volatility check - "Need price movement to profit"
+    if volatility_pct > 0:
+        if volatility_pct < TRADING_DISCIPLINE["min_volatility_pct"]:
+            # Too flat - no opportunity
+            discipline_adjustment -= 0.05
+            discipline_signals.append(f"LOW_VOLATILITY_{volatility_pct:.1f}pct")
+            
+        elif volatility_pct > TRADING_DISCIPLINE["max_volatility_pct"]:
+            # Too wild - reduce confidence (higher risk)
+            discipline_adjustment -= 0.05
+            discipline_signals.append(f"HIGH_VOLATILITY_{volatility_pct:.1f}pct")
+    
+    # VWAP positioning - "Where big institutions are buying"
+    if vwap_position == "above" and base_direction == "UP":
+        # Price above VWAP + bullish = momentum confirmed
+        discipline_adjustment += 0.03
+        discipline_signals.append("ABOVE_VWAP_BULLISH")
+    elif vwap_position == "below" and base_direction == "DOWN":
+        # Price below VWAP + bearish = momentum confirmed
+        discipline_adjustment += 0.03
+        discipline_signals.append("BELOW_VWAP_BEARISH")
+    elif vwap_position == "above" and base_direction == "DOWN":
+        # Counter-trend trade - riskier
+        discipline_adjustment -= 0.02
+        discipline_signals.append("ABOVE_VWAP_COUNTER_TREND")
+    elif vwap_position == "below" and base_direction == "UP":
+        # Trying to catch falling knife
+        discipline_adjustment -= 0.02
+        discipline_signals.append("BELOW_VWAP_COUNTER_TREND")
+    
+    confidence_adj += discipline_adjustment
+    signals_used.extend(discipline_signals)
+    
+    # =========================================================================
     # FINALIZE SIGNAL
     # =========================================================================
-    # Cap confidence adjustment (increased to 0.25 for combined playbooks)
-    confidence_adj = max(-0.25, min(0.25, confidence_adj))
+    # Cap confidence adjustment (increased to 0.30 for all playbooks combined)
+    confidence_adj = max(-0.30, min(0.30, confidence_adj))
     
     return IntelSignal(
         direction_bias=direction_bias,
@@ -635,6 +801,15 @@ def calculate_intel_signal(
             "sector_performance": sector_performance,
             "is_precious_metal": is_precious_metal,
             "winners_adjustment": winners_adjustment,
+        },
+        discipline_context={
+            "reward_risk": reward_risk,
+            "rsi": rsi,
+            "relative_volume": relative_volume,
+            "volatility_pct": volatility_pct,
+            "vwap_position": vwap_position,
+            "discipline_adjustment": discipline_adjustment,
+            "discipline_signals": discipline_signals,
         },
     )
 
