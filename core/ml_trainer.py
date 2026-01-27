@@ -237,14 +237,6 @@ def _fetch_training_data(symbol: str | None, lookback_days: int) -> list[dict]:
     logger.error("DATABASE_URL not set or not PostgreSQL. Cannot fetch training data.")
     logger.error("Training requires PostgreSQL with ghost_prediction_outcomes table.")
     return []
-                })
-            
-            logger.info(f"Fetched {len(training_data)} training samples from SQLite (fallback)")
-
-    except Exception as e:
-        logger.error(f"Failed to fetch training data from SQLite: {e}")
-
-    return training_data
 
 
 def _prepare_training_data(training_data: list[dict]) -> tuple[np.ndarray, np.ndarray, list[str]]:

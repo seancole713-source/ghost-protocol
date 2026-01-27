@@ -722,12 +722,17 @@ class StockEngine:
         
         return prediction
     
-    async def predict_batch(self, symbols: List[str]) -> Dict[str, StockPrediction]:
-        """Predict multiple stocks in parallel"""
+    async def predict_batch(self, symbols: List[str], bypass_calendar: bool = False) -> Dict[str, StockPrediction]:
+        """Predict multiple stocks in parallel
+        
+        Args:
+            symbols: List of stock symbols to predict
+            bypass_calendar: If True, skip FOMC/CPI/NFP blackout checks (for testing)
+        """
         if not self._initialized:
             await self.initialize()
         
-        tasks = [self.predict(s) for s in symbols]
+        tasks = [self.predict(s, bypass_calendar=bypass_calendar) for s in symbols]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         predictions = {}

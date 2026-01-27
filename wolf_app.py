@@ -4401,7 +4401,26 @@ async def _on_startup():
     # Updates daily from PostgreSQL-verified performance data
     try:
         from core.v2_quality import get_quality_system
+        import json
         quality_system = get_quality_system()
+        
+        # FIX (Jan 27, 2026): If PostgreSQL is empty but JSON has data, sync JSON to PostgreSQL
+        # This fixes the issue where trial_stocks/whitelist don't persist after deploy
+        if not quality_system._whitelist and not quality_system._trial_stocks:
+            try:
+                if os.path.exists("ghost_v2_quality.json"):
+                    with open("ghost_v2_quality.json", 'r') as f:
+                        data = json.load(f)
+                    if data.get('whitelist') or data.get('trial_stocks'):
+                        quality_system._whitelist = set(data.get('whitelist', []))
+                        quality_system._blacklist = set(data.get('blacklist', []))
+                        quality_system._trial_stocks = set(data.get('trial_stocks', []))
+                        quality_system._config = data.get('config', {})
+                        quality_system._save_config()  # Sync to PostgreSQL
+                        LOGGER.info(f"[V2-STARTUP] ✅ Synced JSON to PostgreSQL: {len(quality_system._whitelist)} whitelist, {len(quality_system._trial_stocks)} trial_stocks")
+            except Exception as sync_err:
+                LOGGER.warning(f"[V2-STARTUP] JSON sync failed: {sync_err}")
+        
         quality_system.start_auto_update_scheduler(interval_hours=24)
         LOGGER.info("[GHOST STARTUP] ✅ V2 Quality auto-scheduler started (daily whitelist updates)")
     except Exception as e:
@@ -9871,7 +9890,7 @@ async def api_v3_opus_compare(symbols: str, question: str = None):
 
 
 @APP.get("/api/v3/opus/predict/{symbol}")
-async def api_v3_opus_predict(symbol: str):
+async def api_v3_opus_predict(symbol: str, bypass_calendar: bool = False):
     """
     🎯 Enhanced prediction with Claude AI reasoning.
     
@@ -9881,14 +9900,36 @@ async def api_v3_opus_predict(symbol: str):
     4. Returns enhanced prediction with Claude's reasoning
     
     This is Ghost's brain thinking like a professional trader!
+    
+    Args:
+        bypass_calendar: If true, skip FOMC/CPI/NFP blackout checks (for testing)
     """
     try:
-        # Get technical prediction
-        prediction_result = await run_single_prediction_async(symbol.upper())
-        if not prediction_result.get("ok"):
-            return {"ok": False, "error": "Technical prediction failed", "symbol": symbol}
+        symbol = symbol.upper().strip()
         
-        technical = prediction_result.get("prediction", {})
+        # FIX (Jan 27, 2026): Try stock engine directly with bypass_calendar
+        # This avoids V2 filter blocking and honors bypass_calendar param
+        from core.stock_engine import get_stock_engine
+        engine = get_stock_engine()
+        
+        try:
+            stock_pred = await engine.predict(symbol, bypass_calendar=bypass_calendar)
+            technical = {
+                "direction": stock_pred.direction,
+                "confidence": stock_pred.confidence,
+                "signals": stock_pred.reasons,
+                "entry_price": stock_pred.entry_price,
+                "target_price": stock_pred.target_price,
+            }
+            prediction_ok = stock_pred.direction != "HOLD"
+        except Exception as stock_err:
+            LOGGER.warning(f"Stock engine failed for {symbol}: {stock_err}, trying legacy")
+            # Fallback to original prediction
+            prediction_result = await run_single_prediction_async(symbol)
+            if not prediction_result.get("ok"):
+                return {"ok": False, "error": f"Technical prediction failed: {prediction_result.get('error', 'unknown')}", "symbol": symbol}
+            technical = prediction_result.get("prediction", prediction_result)
+            prediction_ok = True
         
         # Gather context for Claude
         context = await _gather_opus_context(symbol.upper())
@@ -10023,12 +10064,13 @@ async def api_v3_stock_predict(symbol: str, bypass_calendar: bool = False):
 
 
 @APP.get("/api/v3/stock/batch")
-async def api_v3_stock_batch(symbols: str = "AAPL,MSFT,JPM"):
+async def api_v3_stock_batch(symbols: str = "AAPL,MSFT,JPM", bypass_calendar: bool = False):
     """
     🏛️ Batch stock predictions for multiple symbols.
     
     Query params:
         symbols: Comma-separated list of stock symbols
+        bypass_calendar: Skip FOMC/CPI/NFP blackout checks (for testing)
     
     Returns predictions for all symbols.
     """
@@ -10044,7 +10086,7 @@ async def api_v3_stock_batch(symbols: str = "AAPL,MSFT,JPM"):
             return {"ok": False, "error": "Max 10 symbols per batch"}
         
         engine = get_stock_engine()
-        results = await engine.predict_batch(symbol_list)
+        results = await engine.predict_batch(symbol_list, bypass_calendar=bypass_calendar)
         
         return {
             "ok": True,
@@ -15057,14 +15099,20 @@ async def api_crypto_predict_get(
             points = c.fetchall()
             conn.close()
 
+            # Extract entry price from path[0] for convenience
+            entry_price = points[0][1] if points else 0
+            
             return {
                 "prediction_id": pred_id,
                 "symbol": symbol,
                 "forecast_h": h,
                 "trend": direction,
+                "direction": direction,  # Add direction alias
                 "confidence": confidence * 100 if confidence < 2 else confidence,
                 "volatility": volatility,
                 "run_at": run_at,
+                "entry_price": entry_price,  # Add entry_price at top level
+                "price_at_prediction": entry_price,  # Alias
                 "path": [
                     {"ts": p[0], "price": p[1], "low": p[2], "high": p[3], "confidence": p[4]}
                     for p in points
@@ -15074,6 +15122,15 @@ async def api_crypto_predict_get(
             conn.close()
             # No recent prediction - generate new one
             prediction = await engine.generate_prediction(symbol)
+            
+            # Ensure entry_price is in response
+            if isinstance(prediction, dict):
+                if "path" in prediction and prediction["path"] and "entry_price" not in prediction:
+                    prediction["entry_price"] = prediction["path"][0].get("price", 0)
+                    prediction["price_at_prediction"] = prediction["entry_price"]
+                if "direction" not in prediction and "trend" in prediction:
+                    prediction["direction"] = prediction["trend"]
+            
             return prediction
 
     except HTTPException:
