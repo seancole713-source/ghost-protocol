@@ -660,7 +660,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         for i, s in enumerate(stocks[:10], 1):  # Show all 10 stocks
             direction = s.get('direction', 'DOWN')
             
-            if direction == "UP":
+            if direction in ("UP", "BUY"):
                 action = "BUY"
                 emoji = "🟢"
             else:
@@ -719,7 +719,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         for i, c in enumerate(crypto[:10], 1):  # Show all 10 crypto
             direction = c.get('direction', 'DOWN')
             
-            if direction == "UP":
+            if direction in ("UP", "BUY"):
                 action = "BUY"
                 emoji = "🟢"
             else:
