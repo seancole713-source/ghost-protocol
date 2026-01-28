@@ -789,6 +789,47 @@ class MoneyGameEngine:
             "momentum": p.momentum,
             "is_elite": p.tier == PlayerTier.ELITE
         }
+    
+    def get_best_symbols_for_top10(self, asset_type: str, limit: int = 20) -> List[str]:
+        """
+        Get best symbols for TOP 10 selection based on Money Game data.
+        
+        Priority:
+        1. Elite players (proven money makers with 5+ trades)
+        2. Rising stars (profitable with some trades)  
+        3. Any tracked players sorted by profit (cold start)
+        
+        Returns list of symbols in priority order.
+        """
+        pool = self._stock_players if asset_type == "stock" else self._crypto_players
+        
+        if not pool:
+            return []
+        
+        # Priority 1: Elite (5+ trades, top performers)
+        elite_symbols = self._elite_stocks if asset_type == "stock" else self._elite_crypto
+        if elite_symbols:
+            LOGGER.info(f"[MONEY-GAME] Using {len(elite_symbols)} ELITE {asset_type}s")
+            return elite_symbols[:limit]
+        
+        # Priority 2: Anyone with trades, sorted by money_score
+        # Even 1-2 trades gives us SOME data vs none
+        all_players = sorted(
+            [p for p in pool.values() if p.total_trades >= 1],  # At least 1 trade
+            key=lambda p: (
+                p.total_trades >= 3,  # Prefer 3+ trades
+                p.money_score,        # Then by profit
+            ),
+            reverse=True
+        )
+        
+        if all_players:
+            LOGGER.info(f"[MONEY-GAME] Using {len(all_players)} ranked {asset_type}s (no elite yet)")
+            return [p.symbol for p in all_players[:limit]]
+        
+        # Priority 3: Cold start - just return all tracked symbols
+        LOGGER.info(f"[MONEY-GAME] Cold start - {len(pool)} {asset_type}s tracked but no trades yet")
+        return list(pool.keys())[:limit]
 
 
 # Singleton

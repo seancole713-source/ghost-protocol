@@ -1100,9 +1100,24 @@ class GhostNotificationSystem:
         # FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
         inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
         
-        # MONEY GAME MODE: Bypass V2 blacklist, use profit-based rankings instead
+        # MONEY GAME MODE: Use profit-based rankings instead of V2 blacklist
         # Set USE_MONEY_GAME=1 to use the new competition system
         use_money_game = os.getenv("USE_MONEY_GAME", "1") == "1"  # DEFAULT ON!
+        
+        # Get Money Game preferred symbols if enabled
+        money_game_stocks = []
+        money_game_crypto = []
+        if use_money_game:
+            try:
+                from core.money_game_engine import get_money_game
+                mg = get_money_game()
+                money_game_stocks = mg.get_best_symbols_for_top10("stock", limit=20)
+                money_game_crypto = mg.get_best_symbols_for_top10("crypto", limit=20)
+                LOGGER.info(f"[MONEY-GAME] Priority symbols: {len(money_game_stocks)} stocks, {len(money_game_crypto)} crypto")
+            except Exception as e:
+                LOGGER.error(f"[MONEY-GAME] Failed to get rankings: {e}")
+                money_game_stocks = []
+                money_game_crypto = []
         
         # Phase 1: Build candidate lists using CACHED prices (no API calls)
         stock_candidates = []
@@ -1210,9 +1225,27 @@ class GhostNotificationSystem:
         if learning_boosted > 0:
             LOGGER.info(f"[LEARNING] 🚀 BOOSTED {learning_boosted} high-accuracy symbols")
         
-        # Sort candidates by confidence
-        stock_candidates.sort(key=lambda x: x["confidence"], reverse=True)
-        crypto_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+        # MONEY GAME: Sort by profit ranking, not just confidence
+        if use_money_game and (money_game_stocks or money_game_crypto):
+            # Create priority lookup (lower index = higher priority)
+            stock_priority = {sym: i for i, sym in enumerate(money_game_stocks)}
+            crypto_priority = {sym: i for i, sym in enumerate(money_game_crypto)}
+            
+            # Sort by: Money Game priority first, then confidence as tiebreaker
+            # Symbols NOT in Money Game get priority 999 (go to end)
+            stock_candidates.sort(key=lambda x: (
+                stock_priority.get(x["symbol"], 999),
+                -x["confidence"]
+            ))
+            crypto_candidates.sort(key=lambda x: (
+                crypto_priority.get(x["symbol"], 999),
+                -x["confidence"]
+            ))
+            LOGGER.info(f"[MONEY-GAME] ✅ Sorted by PROFIT rankings, not just confidence")
+        else:
+            # Fallback: Sort candidates by confidence only
+            stock_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+            crypto_candidates.sort(key=lambda x: x["confidence"], reverse=True)
         
         # Phase 2: Only refresh prices for TOP 15 of each (5 final + buffer)
         TOP_N_TO_REFRESH = 15
