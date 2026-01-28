@@ -36,6 +36,9 @@ ALL_STOCKS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "AMD", "TSLA",
     "NFLX", "CRM", "ORCL", "ADBE", "INTC", "CSCO", "IBM",
     
+    # Storage & Hardware (STX = Seagate, NOT the crypto!)
+    "STX", "WDC", "NTAP", "PSTG",
+    
     # Semiconductors
     "AVGO", "QCOM", "TXN", "MU", "LRCX", "AMAT", "KLAC", "MRVL",
     "ON", "NXPI", "ADI", "MCHP",
@@ -92,7 +95,7 @@ ALL_CRYPTO = [
     "GODS", "PRIME", "YGG", "RON",
     
     # Infrastructure
-    "GRT", "ROSE", "AR", "STX", "KAVA", "INJ", "TIA", "PYTH",
+    "GRT", "ROSE", "AR", "KAVA", "INJ", "TIA", "PYTH",
     "JUP", "JTO", "BONK", "WIF",
     
     # Others
@@ -101,7 +104,10 @@ ALL_CRYPTO = [
     
     # Old Guard
     "ZEC", "DASH", "NEO", "WAVES", "QTUM", "ZIL", "ICX",
-    "RLC", "OMG", "BAT", "KNC", "ZRX"
+    "RLC", "OMG", "BAT", "KNC", "ZRX",
+    
+    # Renamed to avoid collision with Seagate (STX stock)
+    "STACKS"  # Stacks crypto (formerly STX)
 ]
 
 
@@ -218,7 +224,7 @@ class GhostScout:
             LOGGER.info(f"   🚀 Dynamic movers added: {self.dynamic_movers_added}")
     
     def _add_dynamic_movers(self):
-        """Add today's biggest gainers to the scout list"""
+        """Add today's biggest gainers to the scout list with BULLISH bias"""
         try:
             movers = fetch_daily_movers(min_gain_pct=5.0)  # 5%+ gainers
             for mover in movers[:20]:  # Max 20 dynamic adds
@@ -226,6 +232,9 @@ class GhostScout:
                 if symbol and symbol not in self.stocks:
                     self.stocks.append(symbol)
                     self.dynamic_movers_added.append(f"{symbol} (+{mover['change_pct']}%)")
+                    # Track that this is a BIG GAINER - should be BUY not SELL!
+                    self._bullish_movers = getattr(self, '_bullish_movers', set())
+                    self._bullish_movers.add(symbol)
             
             if self.dynamic_movers_added:
                 LOGGER.info(f"🚀 [SCOUT] Added {len(self.dynamic_movers_added)} dynamic movers to watchlist!")
@@ -489,7 +498,7 @@ class GhostScout:
             "IMX": "immutable-x", "AXS": "axie-infinity", "SAND": "the-sandbox",
             "MANA": "decentraland", "GALA": "gala", "ILV": "illuvium",
             "GRT": "the-graph", "FIL": "filecoin", "AR": "arweave",
-            "STX": "blockstack", "TIA": "celestia", "CHZ": "chiliz",
+            "STACKS": "blockstack", "TIA": "celestia", "CHZ": "chiliz",  # STACKS not STX (avoid collision)
             "EGLD": "elrond-erd-2", "ZEC": "zcash", "RLC": "iexec-rlc"
         }
         
@@ -578,6 +587,21 @@ class GhostScout:
         # Default to slight bullish bias (markets generally go up)
         direction = "BUY"
         confidence = 0.55
+        
+        # CRITICAL: Dynamic movers (up 5%+ today) should ALWAYS be BUY!
+        # They have proven momentum - ride the wave!
+        bullish_movers = getattr(self, '_bullish_movers', set())
+        if symbol in bullish_movers:
+            LOGGER.info(f"🚀 [SCOUT] {symbol} is a dynamic mover - forcing BUY direction!")
+            direction = "BUY"
+            confidence = 0.70  # Higher confidence for momentum plays
+            target = current_price * 1.05  # 5% continuation target
+            return {
+                "direction": direction,
+                "entry_price": current_price,
+                "target_price": target,
+                "confidence": confidence
+            }
         
         try:
             # Get some historical data to make a better prediction

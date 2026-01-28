@@ -543,11 +543,26 @@ def determine_action(current_price: float, prediction_48h: float, confidence: fl
         return ("SELL", "🔴", "sell")
 
 
-def _calc_roi_100(current: float, target: float) -> str:
-    """Calculate ROI on $100 investment"""
+def _calc_roi_100(current: float, target: float, direction: str = "BUY") -> str:
+    """
+    Calculate ROI on $100 investment.
+    
+    For BUY: You profit when price goes UP (target > current)
+    For SELL: You profit when price goes DOWN (target < current)
+    
+    CRITICAL FIX: SELL predictions now show PROFIT correctly!
+    If you SHORT a stock and it drops 5%, you MAKE 5%, not lose it!
+    """
     if current <= 0:
         return "$100.00"
+    
     gain_pct = (target - current) / current
+    
+    # For SELL/SHORT: You profit from price DROPS
+    # If price drops 5% (gain_pct = -0.05), you MAKE 5%
+    if direction == "SELL":
+        gain_pct = abs(gain_pct)  # SELL profits when price drops
+    
     final_value = 100 * (1 + gain_pct)
     return f"${final_value:.2f}"
 
@@ -660,10 +675,10 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             buy_label, buy_time = _get_buy_timing('stock')
             sell_time = _get_sell_timing(hold_hours)
             
-            # Calculate $100 ROI
+            # Calculate $100 ROI (SELL profits when price DROPS!)
             current = s.get('current', 0)
             target = s.get('prediction_48h', s.get('target_price', current))
-            roi_100 = _calc_roi_100(current, target)
+            roi_100 = _calc_roi_100(current, target, action)
             gain_pct = ((target - current) / current * 100) if current > 0 else 0
             
             # Confidence
@@ -718,10 +733,10 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             # Crypto trades 24/7
             buy_label, buy_time = _get_buy_timing('crypto')
             
-            # Calculate $100 ROI
+            # Calculate $100 ROI (SELL profits when price DROPS!)
             current = c.get('current', 0)
             target = c.get('prediction_48h', c.get('target_price', current))
-            roi_100 = _calc_roi_100(current, target)
+            roi_100 = _calc_roi_100(current, target, action)
             gain_pct = ((target - current) / current * 100) if current > 0 else 0
             
             # Confidence
