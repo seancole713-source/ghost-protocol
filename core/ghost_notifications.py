@@ -1374,7 +1374,8 @@ class GhostNotificationSystem:
         asset_class = candidate["asset_class"]
         
         # Calculate 48hr prediction price
-        if direction == "UP":
+        # FIXED: Accept both UP/BUY and DOWN/SELL directions
+        if direction in ("UP", "BUY"):
             move_pct = 0.05 if asset_class == "crypto" else 0.03
             prediction_48h = current_price * (1 + move_pct)
         else:
