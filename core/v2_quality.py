@@ -66,6 +66,7 @@ class V2AssetQualitySystem:
         self.WHITELIST_WIN_RATE = float(os.getenv("V2_WHITELIST_WR", "0.55"))  # 55%
         self.BLACKLIST_WIN_RATE = float(os.getenv("V2_BLACKLIST_WR", "0.45"))  # 45%
         self.WATCHLIST_HIGH_CONFIDENCE = float(os.getenv("V2_WATCHLIST_CONF", "0.80"))  # 80%
+        self.TRIAL_STOCKS_MIN_CONFIDENCE = float(os.getenv("V2_TRIAL_CONF", "0.70"))  # 70%
         
         # PostgreSQL support
         self.use_postgres = bool(DATABASE_URL)
