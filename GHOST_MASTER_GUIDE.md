@@ -1,6 +1,6 @@
 # 🎯 GHOST PROTOCOL - MASTER NAVIGATION GUIDE
 
-**Last Updated:** January 27, 2026  
+**Last Updated:** January 28, 2026  
 **Purpose:** OCD-level organized reference for navigating the Ghost codebase
 
 ---
@@ -9,12 +9,111 @@
 
 | Metric | Count |
 |--------|-------|
-| **wolf_app.py** | 40,269 lines |
-| **core/ modules** | 169 files |
+| **wolf_app.py** | 40,877 lines |
+| **core/ modules** | 172 files |
 | **services/** | 5 files |
 | **ghost_intel/** | 9 files |
 | **Root .py files** | 154 files |
 | **Documentation (.md)** | 555 files |
+
+---
+
+## 🎮 MONEY GAME ENGINE (NEW - Jan 28, 2026)
+
+### Philosophy
+```
+OLD SYSTEM: "Here are 10 stocks I always predict" (static list)
+NEW SYSTEM: "I'm watching 211 assets compete - only PROVEN money makers make TOP 10"
+
+SCORE = MONEY EARNED
+#1 = Best profit maker (not just most accurate!)
+LOSSES = BAD (2x penalty)
+```
+
+### Core Files
+| File | Purpose | Key Classes |
+|------|---------|-------------|
+| `core/money_game_engine.py` | Main ranking engine | `MoneyGameEngine`, `PlayerStats` |
+| `core/ghost_scout.py` | Asset scanning | `GhostScout`, `GameResolver` |
+| `core/smart_scout.py` | Batch pricing + cron | `SmartScout`, `MoneyGameCron` |
+
+### Database Tables (PostgreSQL)
+| Table | Purpose |
+|-------|---------|
+| `money_game_players` | Player stats (symbol, tier, money_score, rank) |
+| `money_game_trades` | Trade history (entry, exit, profit_pct) |
+
+### Money Score Formula
+```python
+MONEY_SCORE = (Total Profit) 
+            × (Consistency Bonus: 1.2x if avg > 1%)
+            × (Big Win Bonus: 1.5x for 5%+ trades)
+            - (Loss Penalty: 2x for losses)
+            × (Win Rate Factor: 0.5 to 1.0)
+            × (Volume Factor: caps at 1.5x for 30+ trades)
+```
+
+### Player Tiers
+| Tier | Criteria |
+|------|----------|
+| `ELITE` | TOP 10 by money_score |
+| `RISING_STAR` | money_score >= 5, not elite |
+| `BENCHED` | money_score < 5 |
+| `ROOKIE` | < 5 trades (building history) |
+
+### API Endpoints
+```
+GET  /api/money-game/status              → Full game status
+GET  /api/money-game/leaderboard/{type}  → Rankings (stock/crypto)
+GET  /api/money-game/rising-stars/{type} → Next big deals
+GET  /api/money-game/player/{SYMBOL}     → Player stats
+GET  /api/money-game/elite               → TOP 10 money makers
+GET  /api/money-game/elite-predictions   → Elite with details
+
+POST /api/money-game/scout-all           → Scout all 211 assets
+POST /api/money-game/smart-scout         → Batch pricing + rate limits
+POST /api/money-game/resolve-trades      → Count profits/losses
+POST /api/money-game/update-rankings     → Recalculate rankings
+POST /api/money-game/seed-players        → Initialize all players
+POST /api/money-game/daily-cycle         → Full automation
+POST /api/money-game/telegram-alert      → Send TOP 10 (secured)
+```
+
+### Daily Cron Schedule (cron-job.org)
+| Time (CT) | Endpoint | Purpose |
+|-----------|----------|---------|
+| 6:00 AM | `/api/money-game/daily-cycle` | All-in-one automation |
+| -OR- | | |
+| 6:00 AM | `/api/money-game/smart-scout` | Scout all assets |
+| 7:00 AM | `/api/money-game/resolve-trades` | Count money |
+| 7:30 AM | `/api/money-game/update-rankings` | Update leaderboard |
+| 8:00 AM | `/api/money-game/telegram-alert` | Send winners |
+
+### Quick Commands
+```bash
+# Check game status
+curl -s "https://ghost-protocol-production.up.railway.app/api/money-game/status" | python3 -m json.tool
+
+# See leaderboard
+curl -s "https://ghost-protocol-production.up.railway.app/api/money-game/leaderboard/stock" | python3 -m json.tool
+
+# Check specific player
+curl -s "https://ghost-protocol-production.up.railway.app/api/money-game/player/NVDA" | python3 -m json.tool
+
+# Run smart scout (with rate limiting)
+curl -s -X POST "https://ghost-protocol-production.up.railway.app/api/money-game/smart-scout"
+
+# Run full daily cycle
+curl -s -X POST "https://ghost-protocol-production.up.railway.app/api/money-game/daily-cycle"
+```
+
+### How Rankings Build
+```
+Day 1: Scout 211 assets → trades recorded
+Day 2: Resolve Day 1 → profit/loss calculated
+Day 3-5: More data accumulates
+Day 7+: TOP 10 elite emerges (5+ trades per asset minimum)
+```
 
 ---
 
@@ -100,6 +199,13 @@ The main 40K line file is organized into these sections:
 | `position_manager.py` | Position tracking | Open/close positions |
 | `risk_manager.py` | Risk limits | Stop loss, take profit |
 | `order_manager.py` | Order lifecycle | Order routing |
+
+### 🎮 MONEY GAME (Smart Ranking)
+| File | Purpose | Key Function |
+|------|---------|--------------|
+| `money_game_engine.py` | **Profit-based rankings** | `get_money_game()`, `update_rankings()` |
+| `ghost_scout.py` | Asset scanning | `run_scouting_cycle()`, `resolve_trades()` |
+| `smart_scout.py` | Batch pricing, cron | `SmartScout`, `MoneyGameCron` |
 
 ### 📊 ACCURACY & TRACKING
 | File | Purpose | Key Function |
@@ -357,7 +463,17 @@ await engine.predict(symbol, bypass_calendar=True)
 
 ---
 
-## ✅ TODAY'S FIXES (Jan 27, 2026)
+## ✅ TODAY'S FIXES (Jan 28, 2026)
+
+| Feature | What It Does | Files |
+|---------|--------------|-------|
+| Money Game Engine | Profit-based rankings | `core/money_game_engine.py` |
+| Ghost Scout | Find money makers | `core/ghost_scout.py` |
+| Smart Scout | Batch pricing + rate limits | `core/smart_scout.py` |
+| Daily Automation | Cron-ready endpoints | `wolf_app.py` |
+| Telegram Integration | Send TOP 10 money makers | `/api/money-game/telegram-alert` |
+
+### Previous Fixes (Jan 27, 2026)
 
 | Bug | Root Cause | Fix |
 |-----|------------|-----|
