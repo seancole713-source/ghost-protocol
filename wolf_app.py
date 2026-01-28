@@ -40324,3 +40324,213 @@ try:
 
 except Exception as e:
     LOGGER.error(f"⚠️ Guardian Oracle endpoints not loaded: {e}", exc_info=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🏆 V3 COMPETITION SYSTEM - FAIR RANKINGS, NO BLACKLIST
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    @APP.get("/api/v3/competition/status")
+    async def v3_competition_status():
+        """
+        🏆 V3: Get competition system status.
+        
+        Shows TOP 10 stocks and crypto, leaderboards, and pending contenders.
+        NO BLACKLIST - everyone competes fairly!
+        """
+        try:
+            from core.v3_competition import get_competition_system
+            
+            competition = get_competition_system()
+            status = competition.get_competition_status()
+            
+            return {
+                "ok": True,
+                "philosophy": "No blacklist - everyone competes fairly. Only the best make TOP 10.",
+                **status
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[V3-API] Competition status error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/v3/competition/leaderboard/{asset_type}")
+    async def v3_competition_leaderboard(asset_type: str, limit: int = 20):
+        """
+        🏆 V3: Get leaderboard for stocks or crypto.
+        
+        Args:
+            asset_type: "stock" or "crypto"
+            limit: Max entries to return (default 20)
+        """
+        try:
+            from core.v3_competition import get_competition_system
+            
+            if asset_type not in ["stock", "crypto"]:
+                return {"ok": False, "error": "asset_type must be 'stock' or 'crypto'"}
+            
+            competition = get_competition_system()
+            leaderboard = competition.get_leaderboard(asset_type, limit)
+            
+            return {
+                "ok": True,
+                "asset_type": asset_type,
+                "leaderboard": leaderboard,
+                "total": len(leaderboard)
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[V3-API] Leaderboard error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/v3/competition/contenders/{asset_type}")
+    async def v3_competition_contenders(asset_type: str, limit: int = 10):
+        """
+        🏆 V3: Get pending assets closest to breaking into TOP 10.
+        
+        These are the assets "fighting" to get promoted!
+        """
+        try:
+            from core.v3_competition import get_competition_system
+            
+            if asset_type not in ["stock", "crypto"]:
+                return {"ok": False, "error": "asset_type must be 'stock' or 'crypto'"}
+            
+            competition = get_competition_system()
+            contenders = competition.get_pending_contenders(asset_type, limit)
+            
+            return {
+                "ok": True,
+                "asset_type": asset_type,
+                "message": "These assets are fighting to get into TOP 10!",
+                "contenders": contenders,
+                "gap_explanation": "gap_to_top_10 = how many ranks away from TOP 10"
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[V3-API] Contenders error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/competition/update-rankings")
+    async def v3_competition_update_rankings():
+        """
+        🏆 V3: Recalculate all rankings based on performance.
+        
+        This is the MAIN competition logic!
+        - Promotes pending assets with better win rates
+        - Demotes TOP 10 assets with declining performance
+        
+        Run daily via cron or manually.
+        """
+        try:
+            from core.v3_competition import get_competition_system
+            
+            competition = get_competition_system()
+            changes = competition.update_rankings()
+            
+            return {
+                "ok": True,
+                "message": "Rankings updated!",
+                "changes": changes
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[V3-API] Update rankings error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/competition/run-shadow-cycle")
+    async def v3_competition_run_shadow():
+        """
+        🔮 V3: Run shadow predictions for ALL assets in the pool.
+        
+        Shadow predictions build competition data without sending alerts.
+        This allows pending assets to "prove themselves".
+        """
+        try:
+            from core.v3_shadow_predictor import run_shadow_predictions
+            
+            results = await run_shadow_predictions()
+            
+            return {
+                "ok": True,
+                "message": "Shadow prediction cycle complete",
+                **results
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[V3-API] Shadow cycle error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/competition/resolve-outcomes")
+    async def v3_competition_resolve_outcomes():
+        """
+        🎯 V3: Resolve shadow predictions and update competitor scores.
+        
+        Checks if 48h window has passed for pending predictions
+        and determines WIN/LOSS outcomes.
+        """
+        try:
+            from core.v3_shadow_resolver import resolve_shadow_outcomes
+            
+            results = await resolve_shadow_outcomes()
+            
+            return {
+                "ok": True,
+                "message": "Outcomes resolved",
+                **results
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[V3-API] Resolve outcomes error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/v3/competition/seed-pool")
+    async def v3_competition_seed_pool():
+        """
+        🌱 V3: Seed initial competition pool with default assets.
+        
+        Run once to bootstrap the competition system.
+        """
+        try:
+            from core.v3_competition import get_competition_system
+            from core.v3_shadow_predictor import DEFAULT_STOCKS, DEFAULT_CRYPTO
+            
+            competition = get_competition_system()
+            competition.seed_initial_pool(DEFAULT_STOCKS, DEFAULT_CRYPTO)
+            
+            return {
+                "ok": True,
+                "message": "Competition pool seeded!",
+                "stocks_added": len(DEFAULT_STOCKS),
+                "crypto_added": len(DEFAULT_CRYPTO)
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[V3-API] Seed pool error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/v3/competition/resolution-stats")
+    async def v3_competition_resolution_stats():
+        """
+        📊 V3: Get shadow prediction resolution statistics.
+        """
+        try:
+            from core.v3_shadow_resolver import get_shadow_resolver
+            
+            resolver = get_shadow_resolver()
+            stats = resolver.get_resolution_stats()
+            
+            return {
+                "ok": True,
+                **stats
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[V3-API] Resolution stats error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    LOGGER.info("✅ V3 Competition System endpoints registered (/api/v3/competition/*)")
+
+except Exception as e:
+    LOGGER.error(f"⚠️ V3 Competition System not loaded: {e}", exc_info=True)
