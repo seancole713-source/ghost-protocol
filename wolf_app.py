@@ -40534,3 +40534,266 @@ try:
 
 except Exception as e:
     LOGGER.error(f"⚠️ V3 Competition System not loaded: {e}", exc_info=True)
+
+
+# 🎮 MONEY GAME ENGINE - PROFIT-BASED RANKINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+# Think like a VIDEO GAME: SCORE = MONEY EARNED
+# GOAL: Find the next BULLISH MONEY MAKER
+# #1 = Best profit maker, #10 = Still good but less profit
+# LOSING MONEY = BAD (heavy penalty)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    @APP.get("/api/money-game/status")
+    async def money_game_status():
+        """
+        🎮 MONEY GAME: Full game status
+        
+        Shows the competition to find the best MONEY MAKERS.
+        #1 = Most profitable, rankings based on actual PROFIT potential.
+        """
+        try:
+            from core.money_game_engine import get_money_game
+            
+            game = get_money_game()
+            status = game.get_game_status()
+            
+            return {
+                "ok": True,
+                "philosophy": "Money is the score! Find the next bullish money maker!",
+                **status
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Status error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/money-game/leaderboard/{asset_type}")
+    async def money_game_leaderboard(asset_type: str, limit: int = 20):
+        """
+        🎮 MONEY GAME: Leaderboard ranked by PROFIT potential
+        
+        #1 = Best money maker (most profit)
+        Lower rank = Less profitable
+        
+        This is like a video game high score - MONEY = POINTS!
+        """
+        try:
+            from core.money_game_engine import get_money_game
+            
+            if asset_type not in ["stock", "crypto"]:
+                return {"ok": False, "error": "asset_type must be 'stock' or 'crypto'"}
+            
+            game = get_money_game()
+            leaderboard = game.get_leaderboard(asset_type, limit)
+            
+            return {
+                "ok": True,
+                "asset_type": asset_type,
+                "ranking_by": "money_score (profit potential)",
+                "leaderboard": leaderboard,
+                "total": len(leaderboard)
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Leaderboard error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/money-game/rising-stars/{asset_type}")
+    async def money_game_rising_stars(asset_type: str, limit: int = 5):
+        """
+        🌟 MONEY GAME: Rising stars - The NEXT BIG DEAL!
+        
+        These are assets fighting to get into TOP 10.
+        They're showing profit potential and could be promoted!
+        """
+        try:
+            from core.money_game_engine import get_money_game
+            
+            if asset_type not in ["stock", "crypto"]:
+                return {"ok": False, "error": "asset_type must be 'stock' or 'crypto'"}
+            
+            game = get_money_game()
+            stars = game.get_rising_stars(asset_type, limit)
+            
+            return {
+                "ok": True,
+                "asset_type": asset_type,
+                "message": "These are the NEXT BIG DEALS - fighting for TOP 10!",
+                "rising_stars": stars
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Rising stars error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/money-game/player/{symbol}")
+    async def money_game_player_stats(symbol: str):
+        """
+        🎮 MONEY GAME: Get detailed stats for a specific player (asset)
+        
+        Shows their full profile: profit history, rank, tier, momentum.
+        """
+        try:
+            from core.money_game_engine import get_money_game
+            
+            game = get_money_game()
+            stats = game.get_player_stats(symbol.upper())
+            
+            if not stats:
+                return {"ok": False, "error": f"Player {symbol} not found"}
+            
+            return {
+                "ok": True,
+                **stats
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Player stats error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/money-game/scout-all")
+    async def money_game_scout_all():
+        """
+        🔍 MONEY GAME: Run the scout - find ALL money makers!
+        
+        The scout evaluates EVERY asset and records predictions.
+        This builds the data to find who actually makes money.
+        
+        Run daily to continuously evaluate all assets.
+        """
+        try:
+            from core.ghost_scout import run_scouting_cycle
+            
+            results = run_scouting_cycle()
+            
+            return {
+                "ok": True,
+                "message": "Scout completed! All assets evaluated.",
+                **results
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Scout error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/money-game/resolve-trades")
+    async def money_game_resolve_trades(hours: int = 24):
+        """
+        🏆 MONEY GAME: Resolve trades and count the MONEY!
+        
+        After predictions are made, we wait 24-48h then check:
+        - Did they MAKE money?
+        - Did they LOSE money?
+        
+        Winners rise in rankings, losers fall.
+        
+        Args:
+            hours: Resolve trades older than X hours (default 24)
+        """
+        try:
+            from core.ghost_scout import resolve_trades
+            
+            results = resolve_trades(hours)
+            
+            return {
+                "ok": True,
+                "message": "Trades resolved! Money counted.",
+                **results
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Resolve error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/money-game/update-rankings")
+    async def money_game_update_rankings():
+        """
+        🏆 MONEY GAME: Recalculate rankings based on PROFIT
+        
+        This determines:
+        - Who's #1 (best money maker)
+        - Who gets promoted to TOP 10
+        - Who gets demoted (not making money)
+        
+        Run after resolving trades.
+        """
+        try:
+            from core.money_game_engine import get_money_game
+            
+            game = get_money_game()
+            changes = game.update_rankings()
+            
+            return {
+                "ok": True,
+                "message": "Rankings recalculated by PROFIT!",
+                "changes": changes
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Update rankings error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/money-game/seed-players")
+    async def money_game_seed_players():
+        """
+        🌱 MONEY GAME: Seed all players into the game
+        
+        Adds all stocks and crypto as competitors.
+        Run once to initialize the game.
+        """
+        try:
+            from core.money_game_engine import get_money_game
+            from core.ghost_scout import ALL_STOCKS, ALL_CRYPTO
+            
+            game = get_money_game()
+            
+            # Add all stocks
+            for symbol in ALL_STOCKS:
+                game.add_player(symbol, "stock")
+            
+            # Add all crypto
+            for symbol in ALL_CRYPTO:
+                game.add_player(symbol, "crypto")
+            
+            return {
+                "ok": True,
+                "message": "All players added to the game!",
+                "stocks": len(ALL_STOCKS),
+                "crypto": len(ALL_CRYPTO),
+                "total_players": len(ALL_STOCKS) + len(ALL_CRYPTO)
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Seed error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/money-game/elite")
+    async def money_game_get_elite():
+        """
+        👑 MONEY GAME: Get the ELITE (TOP 10 of each)
+        
+        These are the proven MONEY MAKERS.
+        Ghost sends predictions only for these elite assets.
+        """
+        try:
+            from core.money_game_engine import get_money_game
+            
+            game = get_money_game()
+            
+            return {
+                "ok": True,
+                "message": "These are the PROVEN money makers!",
+                "elite_stocks": game.get_elite_stocks(),
+                "elite_crypto": game.get_elite_crypto()
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Elite error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    LOGGER.info("✅ 🎮 Money Game Engine endpoints registered (/api/money-game/*)")
+
+except Exception as e:
+    LOGGER.error(f"⚠️ Money Game Engine not loaded: {e}", exc_info=True)
