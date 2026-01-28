@@ -1100,6 +1100,10 @@ class GhostNotificationSystem:
         # FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
         inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
         
+        # MONEY GAME MODE: Bypass V2 blacklist, use profit-based rankings instead
+        # Set USE_MONEY_GAME=1 to use the new competition system
+        use_money_game = os.getenv("USE_MONEY_GAME", "1") == "1"  # DEFAULT ON!
+        
         # Phase 1: Build candidate lists using CACHED prices (no API calls)
         stock_candidates = []
         crypto_candidates = []
@@ -1107,11 +1111,16 @@ class GhostNotificationSystem:
         # Track stats for logging
         stablecoins_skipped = 0
         
-        # V2 QUALITY FILTER: Load whitelist/blacklist
-        from core.v2_quality import get_quality_system
-        v2_quality = get_quality_system()
+        # V2 QUALITY FILTER: Only load if NOT using Money Game
         v2_excluded = 0
         v2_excluded_symbols = []
+        if not use_money_game:
+            from core.v2_quality import get_quality_system
+            v2_quality = get_quality_system()
+            LOGGER.info(f"[V2-FILTER] Active whitelist: {len(v2_quality._whitelist)}, blacklist: {len(v2_quality._blacklist)}")
+        else:
+            v2_quality = None
+            LOGGER.info(f"[MONEY-GAME] V2 blacklist BYPASSED - using profit-based competition!")
         
         # LEARNING: Get symbol accuracy data from PostgreSQL
         accuracy_data = get_symbol_accuracy_from_postgres()
@@ -1121,7 +1130,6 @@ class GhostNotificationSystem:
         boosted_symbols = []
         
         LOGGER.info(f"[TOP10] Phase 1: Filtering {len(latest_predictions)} predictions using cached prices...")
-        LOGGER.info(f"[V2-FILTER] Active whitelist: {len(v2_quality._whitelist)}, blacklist: {len(v2_quality._blacklist)}")
         
         for symbol, pred in latest_predictions.items():
             if not isinstance(pred, dict):
@@ -1132,13 +1140,14 @@ class GhostNotificationSystem:
                 stablecoins_skipped += 1
                 continue
             
-            # V2 QUALITY FILTER: Check whitelist/blacklist BEFORE learning filter
+            # V2 QUALITY FILTER: Only apply if NOT using Money Game
             confidence = pred.get("confidence", 0)
-            should_predict, v2_reason = v2_quality.should_predict(symbol, confidence)
-            if not should_predict:
-                v2_excluded += 1
-                v2_excluded_symbols.append(f"{symbol} ({v2_reason})")
-                continue
+            if v2_quality and not use_money_game:
+                should_predict, v2_reason = v2_quality.should_predict(symbol, confidence)
+                if not should_predict:
+                    v2_excluded += 1
+                    v2_excluded_symbols.append(f"{symbol} ({v2_reason})")
+                    continue
             
             # LEARNING: Check if symbol should be excluded due to low accuracy
             should_exclude, exclude_reason = should_exclude_symbol(symbol, accuracy_data)
@@ -1190,8 +1199,10 @@ class GhostNotificationSystem:
             else:
                 stock_candidates.append(candidate)
         
-        # Log learning stats
-        if v2_excluded > 0:
+        # Log stats
+        if use_money_game:
+            LOGGER.info(f"[MONEY-GAME] ✅ Blacklist BYPASSED - {len(stock_candidates)} stocks, {len(crypto_candidates)} crypto passed")
+        elif v2_excluded > 0:
             LOGGER.info(f"[V2-FILTER] 🚫 EXCLUDED {v2_excluded} symbols via V2 quality filter")
             LOGGER.debug(f"[V2-FILTER] Excluded: {', '.join(v2_excluded_symbols[:10])}")
         if learning_excluded > 0:
