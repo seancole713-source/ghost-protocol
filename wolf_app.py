@@ -40663,6 +40663,33 @@ try:
             LOGGER.error(f"[MONEY-GAME] Player stats error: {e}")
             return {"ok": False, "error": str(e)}
 
+    @APP.get("/api/money-game/daily-movers")
+    async def money_game_daily_movers(min_gain: float = 5.0):
+        """
+        🚀 MONEY GAME: Today's biggest gainers!
+        
+        Dynamic mover detection - catches stocks Ghost might miss.
+        Example: Nextpower +16%, Seagate +15% etc.
+        
+        Args:
+            min_gain: Minimum % gain to include (default 5%)
+        """
+        try:
+            from core.ghost_scout import fetch_daily_movers
+            
+            movers = fetch_daily_movers(min_gain_pct=min_gain)
+            
+            return {
+                "ok": True,
+                "message": f"Found {len(movers)} stocks up {min_gain}%+ today!",
+                "movers": movers,
+                "tip": "These dynamic movers are now being added to Ghost's watchlist automatically!"
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Daily movers error: {e}")
+            return {"ok": False, "error": str(e)}
+
     @APP.post("/api/money-game/scout-all")
     async def money_game_scout_all():
         """
@@ -40670,6 +40697,9 @@ try:
         
         The scout evaluates EVERY asset and records predictions.
         This builds the data to find who actually makes money.
+        
+        NEW: Now includes dynamic movers (10%+ daily gainers)!
+        NEW: News sentiment integration for ✅ indicator!
         
         Run daily to continuously evaluate all assets.
         """

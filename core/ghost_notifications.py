@@ -652,29 +652,42 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
                 action = "SELL"
                 emoji = "🔴"
             
-            # Get timing
+            # Get FLEXIBLE hold period (not just 48hr!)
+            hold_hours = s.get('hold_hours', 72)  # Stocks default 72h now
+            hold_reason = s.get('hold_reason', 'swing_trade')
+            
+            # Get timing based on hold period
             buy_label, buy_time = _get_buy_timing('stock')
-            sell_time = _get_sell_timing(48)
+            sell_time = _get_sell_timing(hold_hours)
             
             # Calculate $100 ROI
             current = s.get('current', 0)
-            target = s.get('prediction_48h', current)
+            target = s.get('prediction_48h', s.get('target_price', current))
             roi_100 = _calc_roi_100(current, target)
             gain_pct = ((target - current) / current * 100) if current > 0 else 0
             
             # Confidence
             display_conf = calibrate_display_confidence(s['confidence'], symbol=s['symbol'])
             
-            # News indicator - check if news/AI influenced this
-            has_news = s.get('news_influenced', False) or s.get('ai_signal', False) or s.get('sentiment_score', 0) != 0
-            news_icon = " ✅" if has_news else ""
+            # News indicator - ONLY show ✅ if news ACTUALLY influenced prediction
+            has_news = s.get('news_influenced', False)
+            sentiment = s.get('sentiment_score', 0)
+            news_icon = " ✅" if has_news and abs(sentiment) > 0.1 else ""
+            
+            # Hold period indicator
+            if hold_hours <= 24:
+                hold_label = "⚡"  # Quick trade
+            elif hold_hours <= 72:
+                hold_label = "📅"  # Swing
+            else:
+                hold_label = "📈"  # Position
             
             lines.append(f"{i}. {emoji} {s['symbol']} — {action}{news_icon}")
             lines.append(f"   💵 Entry: {format_price(current)}")
             lines.append(f"   🎯 Target: {format_price(target)} ({gain_pct:+.1f}%)")
             lines.append(f"   🛑 Stop: {format_price(s.get('stop', s.get('sell', current * 0.97)))}")
             lines.append(f"   ⏰ {buy_label}: {buy_time}")
-            lines.append(f"   📤 Sell By: {sell_time}")
+            lines.append(f"   {hold_label} Hold: {hold_hours}h ({hold_reason.replace('_', ' ')})")
             lines.append(f"   📊 Confidence: {display_conf:.0%}")
             lines.append(f"   💰 $100 → {roi_100}")
             lines.append("")
@@ -698,29 +711,41 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
                 action = "SELL"
                 emoji = "🔴"
             
+            # Get FLEXIBLE hold period for crypto (faster moves!)
+            hold_hours = c.get('hold_hours', 24)  # Crypto default 24h
+            hold_reason = c.get('hold_reason', 'momentum_trade')
+            
             # Crypto trades 24/7
             buy_label, buy_time = _get_buy_timing('crypto')
-            sell_time = _get_sell_timing(48)
             
             # Calculate $100 ROI
             current = c.get('current', 0)
-            target = c.get('prediction_48h', current)
+            target = c.get('prediction_48h', c.get('target_price', current))
             roi_100 = _calc_roi_100(current, target)
             gain_pct = ((target - current) / current * 100) if current > 0 else 0
             
             # Confidence
             display_conf = calibrate_display_confidence(c['confidence'], symbol=c['symbol'])
             
-            # News indicator
-            has_news = c.get('news_influenced', False) or c.get('ai_signal', False) or c.get('sentiment_score', 0) != 0
-            news_icon = " ✅" if has_news else ""
+            # News indicator - ONLY show ✅ if news ACTUALLY influenced
+            has_news = c.get('news_influenced', False)
+            sentiment = c.get('sentiment_score', 0)
+            news_icon = " ✅" if has_news and abs(sentiment) > 0.1 else ""
+            
+            # Hold period indicator
+            if hold_hours <= 24:
+                hold_label = "⚡"  # Quick trade
+            elif hold_hours <= 48:
+                hold_label = "📅"  # Swing
+            else:
+                hold_label = "📈"  # Position
             
             lines.append(f"{i}. {emoji} {c['symbol']} — {action}{news_icon}")
             lines.append(f"   💵 Entry: {format_price(current)}")
             lines.append(f"   🎯 Target: {format_price(target)} ({gain_pct:+.1f}%)")
             lines.append(f"   🛑 Stop: {format_price(c.get('stop', c.get('sell', current * 0.97)))}")
             lines.append(f"   ⏰ {buy_label}: {buy_time}")
-            lines.append(f"   📤 Sell By: {sell_time}")
+            lines.append(f"   {hold_label} Hold: {hold_hours}h ({hold_reason.replace('_', ' ')})")
             lines.append(f"   📊 Confidence: {display_conf:.0%}")
             lines.append(f"   💰 $100 → {roi_100}")
             lines.append("")
@@ -733,10 +758,12 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
     lines.append("🟢 = BUY (price going UP)")
     lines.append("🔴 = SELL (price going DOWN)")
-    lines.append("✅ = News/AI influenced prediction")
+    lines.append("✅ = News confirmed this prediction")
+    lines.append("⚡ = Momentum trade (24h or less)")
+    lines.append("📅 = Swing trade (2-3 days)")
+    lines.append("📈 = Position trade (4+ days)")
     lines.append("💰 = Your return on $100 investment")
     lines.append("")
-    lines.append("⏱️ 48hr Tracking Active")
     lines.append("📊 Updates on significant moves (>3%)")
     lines.append("🎯 Alerts when targets hit")
     lines.append("")
