@@ -15,6 +15,7 @@ get to be in Ghost's predictions.
 """
 
 import os
+import time
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -140,6 +141,14 @@ class GhostScout:
             "trades_recorded": []
         }
         
+        # Import _LATEST_PREDICTIONS to populate it alongside Money Game
+        # This allows TOP 10 to find these predictions
+        try:
+            import wolf_app
+            latest_predictions = wolf_app._LATEST_PREDICTIONS
+        except:
+            latest_predictions = {}
+        
         LOGGER.info("🔍 [SCOUT] Starting full scouting run...")
         
         # Scout all stocks
@@ -162,6 +171,20 @@ class GhostScout:
                             "symbol": symbol,
                             "direction": prediction["direction"]
                         })
+                        # ALSO populate _LATEST_PREDICTIONS for TOP 10
+                        if latest_predictions is not None:
+                            latest_predictions[symbol] = {
+                                "symbol": symbol,
+                                "direction": prediction["direction"],
+                                "confidence": prediction["confidence"],
+                                "price": prediction["entry_price"],
+                                "current_price": prediction["entry_price"],
+                                "entry_price": prediction["entry_price"],
+                                "target_price": prediction["target_price"],
+                                "asset_type": "stock",
+                                "run_at": time.time(),
+                                "source": "money_game_scout"
+                            }
             except Exception as e:
                 LOGGER.error(f"🔍 [SCOUT] Error scouting {symbol}: {e}")
         
@@ -185,12 +208,28 @@ class GhostScout:
                             "symbol": symbol,
                             "direction": prediction["direction"]
                         })
+                        # ALSO populate _LATEST_PREDICTIONS for TOP 10
+                        if latest_predictions is not None:
+                            latest_predictions[symbol] = {
+                                "symbol": symbol,
+                                "direction": prediction["direction"],
+                                "confidence": prediction["confidence"],
+                                "price": prediction["entry_price"],
+                                "current_price": prediction["entry_price"],
+                                "entry_price": prediction["entry_price"],
+                                "target_price": prediction["target_price"],
+                                "asset_type": "crypto",
+                                "run_at": time.time(),
+                                "source": "money_game_scout"
+                            }
             except Exception as e:
                 LOGGER.error(f"🔍 [SCOUT] Error scouting {symbol}: {e}")
         
         LOGGER.info(f"🔍 [SCOUT] Scouting complete!")
         LOGGER.info(f"   Stocks: {results['stocks_scouted']}")
         LOGGER.info(f"   Crypto: {results['crypto_scouted']}")
+        if latest_predictions:
+            LOGGER.info(f"   Predictions in memory: {len(latest_predictions)}")
         
         return results
     

@@ -4494,26 +4494,32 @@ async def _on_startup():
     # ========================================================================
     # V2 CLEANUP: Remove non-whitelisted predictions from memory cache
     # This prevents old DASH/LRC predictions from persisting across restarts
+    # ONLY runs when Money Game is OFF - Money Game uses its own rankings
     # ========================================================================
-    try:
-        from core.v2_quality import get_quality_system
-        v2_quality = get_quality_system()
-        
-        symbols_to_remove = []
-        for symbol in list(_LATEST_PREDICTIONS.keys()):
-            should_keep, reason = v2_quality.should_predict(symbol, 1.0)
-            if not should_keep:
-                symbols_to_remove.append(symbol)
-        
-        for symbol in symbols_to_remove:
-            del _LATEST_PREDICTIONS[symbol]
-        
-        if symbols_to_remove:
-            LOGGER.info(f"[V2-CLEANUP] 🧹 Removed {len(symbols_to_remove)} non-whitelisted predictions from cache: {symbols_to_remove}")
-        else:
-            LOGGER.info(f"[V2-CLEANUP] ✅ All cached predictions ({len(_LATEST_PREDICTIONS)}) are whitelisted")
-    except Exception as e:
-        LOGGER.error(f"v2_cleanup_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    use_money_game = os.getenv("USE_MONEY_GAME", "1") == "1"  # DEFAULT ON!
+    
+    if not use_money_game:
+        try:
+            from core.v2_quality import get_quality_system
+            v2_quality = get_quality_system()
+            
+            symbols_to_remove = []
+            for symbol in list(_LATEST_PREDICTIONS.keys()):
+                should_keep, reason = v2_quality.should_predict(symbol, 1.0)
+                if not should_keep:
+                    symbols_to_remove.append(symbol)
+            
+            for symbol in symbols_to_remove:
+                del _LATEST_PREDICTIONS[symbol]
+            
+            if symbols_to_remove:
+                LOGGER.info(f"[V2-CLEANUP] 🧹 Removed {len(symbols_to_remove)} non-whitelisted predictions from cache: {symbols_to_remove}")
+            else:
+                LOGGER.info(f"[V2-CLEANUP] ✅ All cached predictions ({len(_LATEST_PREDICTIONS)}) are whitelisted")
+        except Exception as e:
+            LOGGER.error(f"v2_cleanup_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    else:
+        LOGGER.info(f"[MONEY-GAME] ✅ V2 cleanup SKIPPED - Money Game mode uses profit rankings, not blacklists")
 
     # ========================================================================
     # ACCOUNTABILITY SYSTEMS - Killswitch status + Outcome Reconciler
