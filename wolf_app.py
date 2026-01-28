@@ -40797,6 +40797,201 @@ try:
             LOGGER.error(f"[MONEY-GAME] Elite error: {e}")
             return {"ok": False, "error": str(e)}
 
+    @APP.post("/api/money-game/smart-scout")
+    async def money_game_smart_scout():
+        """
+        🔍 MONEY GAME: Smart scout with rate limiting
+        
+        Uses batch price fetching and respects API rate limits.
+        Better for scouting all 211 assets reliably.
+        """
+        try:
+            from core.smart_scout import smart_scout_all
+            
+            results = smart_scout_all()
+            
+            return {
+                "ok": True,
+                "message": "Smart scout complete!",
+                **results
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Smart scout error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/money-game/daily-cycle")
+    async def money_game_daily_cycle():
+        """
+        ⏰ MONEY GAME: Run full daily cycle
+        
+        This runs:
+        1. Scout all assets
+        2. Resolve 24h old trades
+        3. Update rankings
+        4. Return elite for alerts
+        
+        Perfect for daily cron job.
+        """
+        try:
+            from core.smart_scout import run_daily_cycle
+            
+            results = run_daily_cycle()
+            
+            return {
+                "ok": True,
+                "message": "Daily cycle complete!",
+                **results
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Daily cycle error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/money-game/elite-predictions")
+    async def money_game_elite_predictions():
+        """
+        🎯 MONEY GAME: Get elite predictions for Telegram
+        
+        Returns the TOP 10 stocks and crypto with full details
+        for the 8 AM Telegram alert.
+        """
+        try:
+            from core.smart_scout import get_elite_predictions
+            
+            results = get_elite_predictions()
+            
+            return {
+                "ok": True,
+                **results
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Elite predictions error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/money-game/telegram-alert")
+    async def money_game_telegram_alert(request: Request):
+        """
+        📱 MONEY GAME: Send TOP 10 money makers to Telegram
+        
+        This sends the PROVEN money makers (from Money Game rankings)
+        instead of just the old whitelist system.
+        
+        Requires X-Cron-Secret header for security.
+        """
+        # Check cron secret
+        cron_secret = os.getenv("CRON_SECRET", "")
+        provided_secret = request.headers.get("X-Cron-Secret", "")
+        
+        if not cron_secret or provided_secret != cron_secret:
+            return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
+        
+        try:
+            from core.money_game_engine import get_money_game
+            from core.smart_scout import SmartScout
+            
+            game = get_money_game()
+            scout = SmartScout()
+            
+            # Get elite (TOP 10 money makers)
+            elite_stocks = game.get_elite_stocks()[:10]
+            elite_crypto = game.get_elite_crypto()[:10]
+            
+            # If no elite yet (still building data), use backup
+            if not elite_stocks and not elite_crypto:
+                LOGGER.warning("[MONEY-GAME] No elite yet - using default alert system")
+                return {"ok": False, "error": "No elite established yet - Money Game still building data"}
+            
+            # Get prices for elite
+            stock_prices = scout.get_stock_prices_batch(elite_stocks) if elite_stocks else {}
+            crypto_prices = scout.get_crypto_prices_batch(elite_crypto) if elite_crypto else {}
+            
+            # Build predictions list
+            stock_picks = []
+            for symbol in elite_stocks:
+                stats = game.get_player_stats(symbol)
+                price = stock_prices.get(symbol, 0)
+                if stats and price > 0:
+                    stock_picks.append({
+                        "symbol": symbol,
+                        "current": price,
+                        "prediction_48h": price * 1.03,  # 3% target
+                        "buy_in": price * 0.99,
+                        "sell": price * 1.02,
+                        "confidence": min(0.95, 0.70 + (stats.get("money_score", 0) / 100)),
+                        "direction": "UP",
+                        "asset_type": "stock",
+                        "money_score": stats.get("money_score", 0),
+                        "rank": stats.get("rank", 999)
+                    })
+            
+            crypto_picks = []
+            for symbol in elite_crypto:
+                stats = game.get_player_stats(symbol)
+                price = crypto_prices.get(symbol, 0)
+                if stats and price > 0:
+                    crypto_picks.append({
+                        "symbol": symbol,
+                        "current": price,
+                        "prediction_48h": price * 1.05,  # 5% target
+                        "buy_in": price * 0.99,
+                        "sell": price * 1.02,
+                        "confidence": min(0.95, 0.70 + (stats.get("money_score", 0) / 100)),
+                        "direction": "UP",
+                        "asset_type": "crypto",
+                        "money_score": stats.get("money_score", 0),
+                        "rank": stats.get("rank", 999)
+                    })
+            
+            # Sort by money_score
+            stock_picks.sort(key=lambda x: x.get("money_score", 0), reverse=True)
+            crypto_picks.sort(key=lambda x: x.get("money_score", 0), reverse=True)
+            
+            # Build message
+            msg_lines = [
+                "🎮 *GHOST MONEY GAME - TOP 10*",
+                "_Proven money makers ranked by profit_",
+                "",
+                "📈 *STOCKS (Elite Money Makers)*"
+            ]
+            
+            for i, p in enumerate(stock_picks[:10], 1):
+                msg_lines.append(f"  #{i} {p['symbol']}: ${p['current']:.2f} (Score: {p['money_score']:.1f})")
+            
+            if not stock_picks:
+                msg_lines.append("  _Building rankings..._")
+            
+            msg_lines.append("")
+            msg_lines.append("🪙 *CRYPTO (Elite Money Makers)*")
+            
+            for i, p in enumerate(crypto_picks[:10], 1):
+                price_str = f"${p['current']:.4f}" if p['current'] < 1 else f"${p['current']:.2f}"
+                msg_lines.append(f"  #{i} {p['symbol']}: {price_str} (Score: {p['money_score']:.1f})")
+            
+            if not crypto_picks:
+                msg_lines.append("  _Building rankings..._")
+            
+            msg_lines.append("")
+            msg_lines.append("💡 _Rankings based on actual profit history_")
+            msg_lines.append("🎯 _Higher score = better money maker_")
+            
+            message = "\n".join(msg_lines)
+            
+            # Send to Telegram
+            success = _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
+            
+            return {
+                "ok": success,
+                "message": "Money Game TOP 10 sent!" if success else "Failed to send",
+                "stocks_sent": len(stock_picks),
+                "crypto_sent": len(crypto_picks)
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Telegram alert error: {e}")
+            return {"ok": False, "error": str(e)}
+
     LOGGER.info("✅ 🎮 Money Game Engine endpoints registered (/api/money-game/*)")
 
 except Exception as e:
