@@ -41145,7 +41145,12 @@ try:
         """
         try:
             import psycopg2
+            import os
             from datetime import datetime
+            
+            db_url = os.getenv("DATABASE_URL")
+            if not db_url:
+                return {"ok": False, "error": "No DATABASE_URL"}
             
             # Manual TOP 10 seeds - Best performers
             STOCK_SEEDS = [
@@ -41174,7 +41179,7 @@ try:
                 ("INJ", 10.0, 4, 0.70),    # DeFi focused
             ]
             
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = psycopg2.connect(db_url)
             cur = conn.cursor()
             
             seeded_stocks = []
