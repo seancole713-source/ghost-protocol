@@ -41133,6 +41133,115 @@ try:
             LOGGER.error(f"[MONEY-GAME] Seed error: {e}")
             return {"ok": False, "error": str(e)}
 
+    @APP.post("/api/money-game/seed-top10")
+    async def money_game_seed_top10():
+        """
+        🎮 SEED TOP 10: Initialize with known performers
+        
+        Seeds the Money Game with manual TOP 10 so we can:
+        1. See immediate leaderboard results
+        2. Watch Ghost naturally promote/demote based on real performance
+        3. Confirm the system works when Ghost promotes a NEW symbol
+        """
+        try:
+            import psycopg2
+            from datetime import datetime
+            
+            # Manual TOP 10 seeds
+            STOCK_SEEDS = [
+                ("NVDA", 15.0, 5, 0.80),
+                ("META", 12.0, 5, 0.80),
+                ("PLTR", 10.0, 4, 0.75),
+                ("COIN", 8.0, 4, 0.75),
+                ("GOOGL", 7.0, 4, 0.75),
+                ("AMZN", 6.0, 4, 0.75),
+                ("AAPL", 5.0, 5, 0.60),
+                ("MSFT", 4.0, 5, 0.60),
+                ("AMD", 3.0, 4, 0.75),
+                ("TSLA", 2.0, 4, 0.50),
+            ]
+            
+            CRYPTO_SEEDS = [
+                ("BTC", 12.0, 5, 0.80),
+                ("ETH", 10.0, 5, 0.80),
+                ("SOL", 15.0, 4, 0.75),
+                ("XRP", 8.0, 4, 0.75),
+                ("RNDR", 20.0, 5, 0.80),  # Your best performer!
+                ("TURBO", 18.0, 4, 0.75),
+                ("ADA", 5.0, 4, 0.60),
+                ("DOGE", 6.0, 4, 0.60),
+                ("LINK", 7.0, 4, 0.70),
+                ("AVAX", 8.0, 4, 0.70),
+            ]
+            
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            
+            seeded_stocks = []
+            seeded_crypto = []
+            
+            for seeds, asset_type, result_list in [
+                (STOCK_SEEDS, "stock", seeded_stocks),
+                (CRYPTO_SEEDS, "crypto", seeded_crypto)
+            ]:
+                for rank, (symbol, profit, trades, win_rate) in enumerate(seeds, 1):
+                    wins = int(trades * win_rate)
+                    losses = trades - wins
+                    avg_profit = profit / trades
+                    money_score = profit * (1 + win_rate)
+                    
+                    cur.execute("""
+                        INSERT INTO money_game_players 
+                        (symbol, asset_type, tier, total_profit_pct, avg_profit_per_trade,
+                         best_trade_pct, worst_trade_pct, total_trades, wins, losses,
+                         win_rate, money_score, recent_profit_pct, momentum, rank, rank_change,
+                         last_trade, last_updated)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (symbol) DO UPDATE SET
+                            tier = EXCLUDED.tier,
+                            total_profit_pct = EXCLUDED.total_profit_pct,
+                            avg_profit_per_trade = EXCLUDED.avg_profit_per_trade,
+                            total_trades = EXCLUDED.total_trades,
+                            wins = EXCLUDED.wins,
+                            losses = EXCLUDED.losses,
+                            win_rate = EXCLUDED.win_rate,
+                            money_score = EXCLUDED.money_score,
+                            rank = EXCLUDED.rank,
+                            last_updated = NOW()
+                    """, (
+                        symbol, asset_type, "elite", profit, avg_profit,
+                        profit * 0.4, -profit * 0.1, trades, wins, losses,
+                        win_rate, money_score, profit * 0.3, "stable", rank, 0,
+                        datetime.utcnow(), datetime.utcnow()
+                    ))
+                    result_list.append({"rank": rank, "symbol": symbol, "profit": f"+{profit:.1f}%"})
+            
+            conn.commit()
+            conn.close()
+            
+            # Reload the game to pick up new data
+            from core.money_game_engine import get_money_game
+            game = get_money_game()
+            game._load_players()
+            game._rebuild_elite_lists()
+            
+            return {
+                "ok": True,
+                "message": "🎮 TOP 10 SEEDED! Watch for Ghost to promote new symbols!",
+                "stocks": seeded_stocks,
+                "crypto": seeded_crypto,
+                "next_steps": [
+                    "Ghost scouts new predictions daily",
+                    "After 24h, trades resolve and real profit counted",
+                    "If a NEW symbol beats the seeds, it gets PROMOTED!",
+                    "Watch for: A symbol you didn't seed making TOP 10"
+                ]
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Seed TOP 10 error: {e}")
+            return {"ok": False, "error": str(e)}
+
     @APP.get("/api/money-game/elite")
     async def money_game_get_elite():
         """
