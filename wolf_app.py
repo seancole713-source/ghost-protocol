@@ -41147,31 +41147,31 @@ try:
             import psycopg2
             from datetime import datetime
             
-            # Manual TOP 10 seeds
+            # Manual TOP 10 seeds - Best performers
             STOCK_SEEDS = [
-                ("NVDA", 15.0, 5, 0.80),
-                ("META", 12.0, 5, 0.80),
-                ("PLTR", 10.0, 4, 0.75),
-                ("COIN", 8.0, 4, 0.75),
-                ("GOOGL", 7.0, 4, 0.75),
-                ("AMZN", 6.0, 4, 0.75),
-                ("AAPL", 5.0, 5, 0.60),
-                ("MSFT", 4.0, 5, 0.60),
-                ("AMD", 3.0, 4, 0.75),
-                ("TSLA", 2.0, 4, 0.50),
+                ("NVDA", 15.0, 5, 0.80),   # AI king, GPU demand
+                ("META", 12.0, 5, 0.80),   # AI + ads recovery
+                ("PLTR", 10.0, 4, 0.75),   # AI/defense play
+                ("COIN", 8.0, 4, 0.75),    # Crypto proxy
+                ("GOOGL", 7.0, 4, 0.75),   # AI catch-up + search
+                ("AMZN", 6.0, 4, 0.75),    # AWS + retail
+                ("TSLA", 5.0, 4, 0.60),    # Volatile but predictable
+                ("AMD", 4.0, 4, 0.70),     # NVDA alternative
+                ("MSTR", 8.0, 4, 0.70),    # Bitcoin proxy (150k+ BTC)
+                ("HOOD", 6.0, 4, 0.65),    # Retail + crypto exposure
             ]
             
             CRYPTO_SEEDS = [
-                ("BTC", 12.0, 5, 0.80),
-                ("ETH", 10.0, 5, 0.80),
-                ("SOL", 15.0, 4, 0.75),
-                ("XRP", 8.0, 4, 0.75),
-                ("RNDR", 20.0, 5, 0.80),  # Your best performer!
-                ("TURBO", 18.0, 4, 0.75),
-                ("ADA", 5.0, 4, 0.60),
-                ("DOGE", 6.0, 4, 0.60),
-                ("LINK", 7.0, 4, 0.70),
-                ("AVAX", 8.0, 4, 0.70),
+                ("BTC", 12.0, 5, 0.80),    # King, institutional
+                ("ETH", 10.0, 5, 0.80),    # Smart contracts
+                ("SOL", 15.0, 4, 0.75),    # Fast L1, meme activity
+                ("RNDR", 20.0, 5, 0.81),   # 81% win rate! AI/GPU
+                ("TURBO", 18.0, 4, 0.79),  # 79% win rate! Meme momentum
+                ("XRP", 8.0, 4, 0.75),     # Payments, legal clarity
+                ("LINK", 7.0, 4, 0.70),    # Oracle, DeFi essential
+                ("AVAX", 8.0, 4, 0.70),    # L1, gaming/DeFi
+                ("SUI", 12.0, 4, 0.65),    # New L1, high volatility
+                ("INJ", 10.0, 4, 0.70),    # DeFi focused
             ]
             
             conn = psycopg2.connect(DATABASE_URL)
