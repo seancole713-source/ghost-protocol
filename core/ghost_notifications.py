@@ -1380,8 +1380,9 @@ class GhostNotificationSystem:
             symbol = candidate["symbol"]
             current_price = candidate["cached_price"]
             
-            # Try to refresh price if stale or missing (use cache=True for speed)
+            # Try to refresh price if stale or missing
             if current_price <= 0:
+                # Method 1: CoinGecko quorum
                 try:
                     from core.crypto.crypto_providers import get_crypto_price_quorum
                     import asyncio
@@ -1390,7 +1391,6 @@ class GhostNotificationSystem:
                     except RuntimeError:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
-                    # USE CACHE for speed - only need approximate price for TOP 10
                     fresh_price_data = loop.run_until_complete(
                         get_crypto_price_quorum(symbol, use_cache=True)
                     )
@@ -1398,7 +1398,33 @@ class GhostNotificationSystem:
                         current_price = fresh_price_data["price"]
                         prices_refreshed += 1
                 except Exception as e:
-                    LOGGER.debug(f"[TOP10] Crypto price refresh failed for {symbol}: {e}")
+                    LOGGER.debug(f"[TOP10] Crypto quorum failed for {symbol}: {e}")
+                
+                # Method 2: Direct CoinGecko fallback
+                if current_price <= 0:
+                    try:
+                        import requests
+                        # Symbol to CoinGecko ID mapping
+                        cg_map = {
+                            "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
+                            "XRP": "ripple", "ADA": "cardano", "DOGE": "dogecoin",
+                            "RNDR": "render-token", "ZEC": "zcash", "CHZ": "chiliz",
+                            "TURBO": "turbo", "ILV": "illuvium", "LINK": "chainlink",
+                            "AVAX": "avalanche-2", "DOT": "polkadot", "ATOM": "cosmos",
+                            "NEAR": "near", "ARB": "arbitrum", "OP": "optimism",
+                            "PEPE": "pepe", "SHIB": "shiba-inu", "BONK": "bonk",
+                        }
+                        cg_id = cg_map.get(symbol.upper(), symbol.lower())
+                        url = f"https://api.coingecko.com/api/v3/simple/price?ids={cg_id}&vs_currencies=usd"
+                        resp = requests.get(url, timeout=3)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            if cg_id in data:
+                                current_price = data[cg_id]["usd"]
+                                prices_refreshed += 1
+                                LOGGER.debug(f"[TOP10] CoinGecko fallback for {symbol}: ${current_price}")
+                    except Exception as e:
+                        LOGGER.debug(f"[TOP10] CoinGecko fallback failed for {symbol}: {e}")
             
             if current_price <= 0:
                 continue
