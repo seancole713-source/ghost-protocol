@@ -700,7 +700,14 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             lines.append(f"{i}. {emoji} {s['symbol']} — {action}{news_icon}")
             lines.append(f"   💵 Entry: {format_price(current)}")
             lines.append(f"   🎯 Target: {format_price(target)} ({gain_pct:+.1f}%)")
-            lines.append(f"   🛑 Stop: {format_price(s.get('stop', s.get('sell', current * 0.97)))}")
+            # FIXED: Stop based on direction, not hardcoded
+            if 'stop' in s:
+                stop_display = s['stop']
+            elif action == "BUY":
+                stop_display = current * 0.98  # BUY: stop below
+            else:
+                stop_display = current * 1.02  # SELL: stop above
+            lines.append(f"   🛑 Stop: {format_price(stop_display)}")
             lines.append(f"   ⏰ {buy_label}: {buy_time}")
             lines.append(f"   {hold_label} Hold: {hold_hours}h ({hold_reason.replace('_', ' ')})")
             lines.append(f"   📊 Confidence: {display_conf:.0%}")
@@ -758,7 +765,14 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             lines.append(f"{i}. {emoji} {c['symbol']} — {action}{news_icon}")
             lines.append(f"   💵 Entry: {format_price(current)}")
             lines.append(f"   🎯 Target: {format_price(target)} ({gain_pct:+.1f}%)")
-            lines.append(f"   🛑 Stop: {format_price(c.get('stop', c.get('sell', current * 0.97)))}")
+            # FIXED: Stop based on direction, not hardcoded
+            if 'stop' in c:
+                stop_display = c['stop']
+            elif action == "BUY":
+                stop_display = current * 0.98  # BUY: stop below
+            else:
+                stop_display = current * 1.02  # SELL: stop above
+            lines.append(f"   🛑 Stop: {format_price(stop_display)}")
             lines.append(f"   ⏰ {buy_label}: {buy_time}")
             lines.append(f"   {hold_label} Hold: {hold_hours}h ({hold_reason.replace('_', ' ')})")
             lines.append(f"   📊 Confidence: {display_conf:.0%}")
@@ -1386,12 +1400,21 @@ class GhostNotificationSystem:
         buy_in = current_price * 0.99  # 1% below current
         sell_at = current_price * 1.02  # 2% above current
         
+        # CRITICAL FIX: Stop price depends on direction!
+        # BUY: Stop BELOW entry (exit if price drops)
+        # SELL: Stop ABOVE entry (exit if price rises)
+        if direction in ("UP", "BUY"):
+            stop_price = current_price * 0.98  # 2% below for BUY
+        else:
+            stop_price = current_price * 1.02  # 2% above for SELL
+        
         return {
             "symbol": symbol,
             "current": current_price,
             "prediction_48h": prediction_48h,
             "buy_in": buy_in,
             "sell": sell_at,
+            "stop": stop_price,  # PROPER stop based on direction!
             "confidence": confidence,
             "direction": direction,
             "asset_type": asset_class,  # CRITICAL for tracking!

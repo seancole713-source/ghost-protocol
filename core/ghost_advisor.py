@@ -156,25 +156,37 @@ class GhostAdvisor:
         This is called when the TOP 10 is sent.
         """
         symbol = prediction.get("symbol", "")
+        entry_price = prediction.get("current", prediction.get("entry_price", 0))
+        direction = prediction.get("direction", "BUY")
+        
+        # Get stop price - FIXED: Calculate proper stop if not provided
+        stop_price = prediction.get("stop")
+        if not stop_price:
+            # BUY: stop BELOW entry (exit if price drops)
+            # SELL: stop ABOVE entry (exit if price rises)
+            if direction in ("UP", "BUY"):
+                stop_price = entry_price * 0.98  # 2% below for BUY
+            else:
+                stop_price = entry_price * 1.02  # 2% above for SELL
         
         pos = Position(
             symbol=symbol,
             asset_type=prediction.get("asset_type", "stock"),
-            direction=prediction.get("direction", "BUY"),
-            entry_price=prediction.get("current", prediction.get("entry_price", 0)),
+            direction=direction,
+            entry_price=entry_price,
             target_price=prediction.get("prediction_48h", prediction.get("target_price", 0)),
-            stop_price=prediction.get("stop", prediction.get("sell", 0)),
+            stop_price=stop_price,
             confidence=prediction.get("confidence", 0.5),
             hold_hours=prediction.get("hold_hours", 48),
             opened_at=datetime.utcnow(),
             expires_at=datetime.utcnow() + timedelta(hours=prediction.get("hold_hours", 48)),
-            current_price=prediction.get("current", prediction.get("entry_price", 0)),
-            peak_price=prediction.get("current", prediction.get("entry_price", 0)),
-            worst_price=prediction.get("current", prediction.get("entry_price", 0)),
+            current_price=entry_price,
+            peak_price=entry_price,
+            worst_price=entry_price,
         )
         
         self._positions[symbol] = pos
-        LOGGER.info(f"📈 [ADVISOR] Opened position: {symbol} {pos.direction} @ ${pos.entry_price:.2f}")
+        LOGGER.info(f"📈 [ADVISOR] Opened position: {symbol} {pos.direction} @ ${pos.entry_price:.2f}, stop ${pos.stop_price:.2f}")
         return pos
     
     def update_price(self, symbol: str, new_price: float) -> Optional[Tuple[AlertType, Position]]:
