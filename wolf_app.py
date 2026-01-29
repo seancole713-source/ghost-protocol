@@ -7862,34 +7862,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         }
     
     # =========================================================================
-    # V2 QUALITY FILTER: Block non-whitelisted symbols at the SOURCE
-    # This prevents predictions from being generated for poor performers
+    # MONEY GAME: No more V2 whitelist filter - all symbols compete!
+    # Predictions are made for ALL symbols, rankings determine TOP 10
     # =========================================================================
-    try:
-        from core.v2_quality import get_quality_system
-        v2_quality = get_quality_system()
-        
-        # Check if we should predict this symbol (whitelist-only in V2 strict mode)
-        should_predict_v2, v2_reason = v2_quality.should_predict(symbol, 1.0)  # Use max confidence for check
-        
-        if not should_predict_v2:
-            duration_ms = int((time.monotonic() - start) * 1000)
-            LOGGER.info(f"[V2-FILTER] 🚫 BLOCKED {symbol} - {v2_reason}")
-            return {
-                "ok": False,
-                "symbol": symbol,
-                "direction": "BLOCKED",
-                "confidence": 0.0,
-                "current_price": None,
-                "feature_count": 0,
-                "available_count": 0,
-                "duration_ms": duration_ms,
-                "error": f"V2 filter: {v2_reason}",
-                "v2_filtered": True
-            }
-    except Exception as e:
-        LOGGER.warning(f"[V2-FILTER] Filter check failed for {symbol}: {e}")
-        # Continue with prediction if filter fails (fail-open for safety)
     
     # Wrap core logic in try/except for safety
     try:
@@ -8892,22 +8867,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
 
         from core.asset_classification import is_crypto_symbol as _is_crypto_symbol
 
-        # V2 FILTER: Only store whitelisted predictions in memory cache
-        # This prevents non-whitelisted predictions from appearing in TOP 10
-        from core.v2_quality import get_quality_system
-        v2_quality = get_quality_system()
-        should_store_v2, v2_reason = v2_quality.should_predict(symbol, confidence)
-        
-        # DEBUG: Log should_predict decision
-        LOGGER.info(f"[V2-DEBUG] {symbol}: should_predict={should_store_v2}, reason='{v2_reason}', in_whitelist={symbol in v2_quality._whitelist}, whitelist_count={len(v2_quality._whitelist)}")
-        
-        if not should_store_v2:
-            LOGGER.info(f"[V2-FILTER] 🚫 BLOCKED {symbol} from _LATEST_PREDICTIONS - {v2_reason}")
-            # Don't store in cache, but still return success (prediction was made and saved to DB)
-            return result
-
-        # Store prediction in cache
-        LOGGER.info(f"[V2-FILTER] ✅ STORING {symbol} in _LATEST_PREDICTIONS (whitelisted)")
+        # MONEY GAME: Store ALL predictions - rankings determine TOP 10
+        LOGGER.info(f"[MONEY-GAME] ✅ STORING {symbol} in _LATEST_PREDICTIONS (all symbols compete!)")
         
         # BUG FIX (Jan 6, 2026): Use lock to prevent race conditions
         with _LATEST_PREDICTIONS_LOCK:
