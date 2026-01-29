@@ -1312,6 +1312,35 @@ class GhostNotificationSystem:
         crypto = []
         prices_refreshed = 0
         
+        # Helper: Get stock price with Yahoo Finance fallback
+        def get_stock_price_with_fallback(symbol: str) -> float:
+            """Try turbo provider, fall back to Yahoo Finance"""
+            # Try turbo first
+            try:
+                from core.providers.turbo_provider import get_turbo_provider
+                turbo = get_turbo_provider()
+                fresh = turbo.turbo_stock_price(symbol, max_budget_s=1.5)
+                if fresh.get("ok") and fresh.get("price", 0) > 0:
+                    return fresh["price"]
+            except Exception as e:
+                LOGGER.debug(f"[TOP10] Turbo stock price failed for {symbol}: {e}")
+            
+            # Fallback: Yahoo Finance (works pre-market!)
+            try:
+                import requests
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+                headers = {"User-Agent": "Mozilla/5.0"}
+                resp = requests.get(url, headers=headers, timeout=3)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+                    LOGGER.debug(f"[TOP10] Yahoo fallback price for {symbol}: ${price}")
+                    return float(price)
+            except Exception as e:
+                LOGGER.debug(f"[TOP10] Yahoo price failed for {symbol}: {e}")
+            
+            return 0
+        
         # Process top stock candidates
         for candidate in stock_candidates[:TOP_N_TO_REFRESH]:
             symbol = candidate["symbol"]
@@ -1319,17 +1348,12 @@ class GhostNotificationSystem:
             
             # Try to refresh price if stale or missing
             if current_price <= 0:
-                try:
-                    from core.providers.turbo_provider import get_turbo_provider
-                    turbo = get_turbo_provider()
-                    fresh_price_data = turbo.turbo_stock_price(symbol, max_budget_s=1.5)
-                    if fresh_price_data.get("ok") and fresh_price_data.get("price", 0) > 0:
-                        current_price = fresh_price_data["price"]
-                        prices_refreshed += 1
-                except Exception as e:
-                    LOGGER.debug(f"[TOP10] Stock price refresh failed for {symbol}: {e}")
+                current_price = get_stock_price_with_fallback(symbol)
+                if current_price > 0:
+                    prices_refreshed += 1
             
             if current_price <= 0:
+                LOGGER.warning(f"[TOP10] Skipping {symbol} - no price available")
                 continue
             
             # Build final pick

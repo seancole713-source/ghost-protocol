@@ -32121,14 +32121,17 @@ async def test_top10_endpoint():
 
 @APP.get("/debug/force-top10")
 @APP.post("/debug/force-top10")
-async def force_top10_endpoint():
+async def force_top10_endpoint(force: bool = True):
     """
     FORCE REAL TOP 10 NOTIFICATION
     
     Manually trigger the REAL TOP 10 using actual _LATEST_PREDICTIONS data.
     This is what the 8 AM scheduler calls - use this to test the real flow.
     
-    Usage: GET or POST /debug/force-top10
+    Usage: GET or POST /debug/force-top10?force=true
+    
+    Args:
+        force: If True (default), bypasses "already sent today" check
     """
     from datetime import datetime
     import os
@@ -32136,6 +32139,7 @@ async def force_top10_endpoint():
     result = {
         "timestamp": datetime.now().isoformat(),
         "action": "force_top10",
+        "force_mode": force,
         "predictions_available": False,
         "prediction_count": 0,
         "top10_sent": False,
@@ -32156,6 +32160,11 @@ async def force_top10_endpoint():
         # Get the notification system
         from core.ghost_notifications import get_notification_system
         notification_system = get_notification_system()
+        
+        # FORCE MODE: Reset last_top10_date to allow resend
+        if force:
+            notification_system._last_top10_date = None
+            result["bypassed_date_check"] = True
         
         # Ensure Telegram function is set
         if not notification_system.send_telegram:
