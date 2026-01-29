@@ -258,17 +258,58 @@ class CoinGeckoProvider:
         "ILV": "illuvium",
         "STACKS": "blockstack",  # Stacks blockchain (renamed from STX to avoid collision)
     }
+    
+    # SINGLETON: Preserve rate limit and circuit breaker state across calls
+    _instance = None
+    _last_call = 0
+    _consecutive_429s = 0
+    _circuit_open = False
+    _circuit_open_until = 0.0
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
-        self.last_call = 0
-        # PERFORMANCE FIX: Increased from 2.0s to 5.0s to prevent 429 spam
-        # Ultra-conservative rate: 12 calls/min instead of 30 calls/min
-        self.min_interval = 5.0  # 12 calls/min = 5.0s between calls
+        # Use class-level state (preserved across instances)
+        pass
+    
+    @property
+    def last_call(self):
+        return CoinGeckoProvider._last_call
+    
+    @last_call.setter
+    def last_call(self, value):
+        CoinGeckoProvider._last_call = value
+    
+    @property
+    def consecutive_429s(self):
+        return CoinGeckoProvider._consecutive_429s
+    
+    @consecutive_429s.setter
+    def consecutive_429s(self, value):
+        CoinGeckoProvider._consecutive_429s = value
+    
+    @property
+    def circuit_open(self):
+        return CoinGeckoProvider._circuit_open
+    
+    @circuit_open.setter
+    def circuit_open(self, value):
+        CoinGeckoProvider._circuit_open = value
+    
+    @property
+    def circuit_open_until(self):
+        return CoinGeckoProvider._circuit_open_until
+    
+    @circuit_open_until.setter
+    def circuit_open_until(self, value):
+        CoinGeckoProvider._circuit_open_until = value
         
-        # Circuit breaker: skip CoinGecko if too many 429s
-        self.consecutive_429s = 0
-        self.circuit_open = False
-        self.circuit_open_until = 0.0
+    # PERFORMANCE FIX: Increased from 2.0s to 5.0s to prevent 429 spam
+    # Ultra-conservative rate: 12 calls/min instead of 30 calls/min
+    min_interval = 5.0  # 12 calls/min = 5.0s between calls
 
     def _rate_limit(self):
         """Enforce rate limiting (5s minimum between calls) + circuit breaker"""
@@ -437,7 +478,8 @@ class CoinGeckoProvider:
                 "include_last_updated_at": "true",
             }
             
-            response = _session.get(url, params=params, timeout=10)
+            LOGGER.info(f"CoinGecko batch: requesting {len(coin_ids)} coins...")
+            response = _session.get(url, params=params, timeout=5)  # Reduced from 10 to 5s
             response.raise_for_status()
             
             # Reset 429 counter on success
