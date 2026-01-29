@@ -1200,10 +1200,22 @@ class GhostNotificationSystem:
         excluded_symbols = []
         boosted_symbols = []
         
+        # SYMBOL COLLISION BLACKLIST - symbols that exist as both stock and crypto
+        # These cause wrong prices and confusion
+        COLLISION_BLACKLIST = {
+            "STX",      # Seagate (stock) vs Stacks (crypto) - use STACKS for crypto
+            "DASH",     # DoorDash (stock) vs Dash (crypto) - use DASHCOIN for crypto
+        }
+        
         LOGGER.info(f"[TOP10] Phase 1: Filtering {len(latest_predictions)} predictions using cached prices...")
         
         for symbol, pred in latest_predictions.items():
             if not isinstance(pred, dict):
+                continue
+            
+            # CRITICAL: Skip symbols with stock/crypto collision
+            if symbol in COLLISION_BLACKLIST:
+                LOGGER.info(f"[TOP10] Skipping {symbol} - symbol collision blacklist")
                 continue
             
             # CRITICAL: Skip stablecoins (USDC, DAI, USDT, etc.) - they don't move!
