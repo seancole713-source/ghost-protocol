@@ -12513,6 +12513,34 @@ async def api_v3_watchlist_enriched():
     Used by cockpit watchlist panel.
     OPTIMIZED (Jan 29, 2026): Batch crypto fetching reduces 2min → <2s
     """
+    # Wrap entire endpoint in timeout to prevent hanging
+    try:
+        return await asyncio.wait_for(
+            _api_v3_watchlist_enriched_core(),
+            timeout=15.0  # 15s max
+        )
+    except asyncio.TimeoutError:
+        LOGGER.error("Watchlist enriched TIMEOUT after 15s")
+        return {
+            "ok": False,
+            "items": [],
+            "watchlist": [],
+            "count": 0,
+            "error": "Timeout: request took >15s"
+        }
+    except Exception as e:
+        LOGGER.error(f"Watchlist enriched error: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "items": [],
+            "watchlist": [],
+            "count": 0,
+            "error": str(e)[:200]
+        }
+
+
+async def _api_v3_watchlist_enriched_core():
+    """Core watchlist logic - wrapped with timeout in main endpoint."""
     try:
         watchlist_data = []
         
@@ -12543,21 +12571,35 @@ async def api_v3_watchlist_enriched():
         stock_symbols = [s for s in symbols_to_check if s.upper() not in CRYPTO_SYMBOLS]
         
         # Batch fetch ALL crypto prices in ONE call (huge performance win!)
+        # Apply 10s timeout to prevent hanging
         crypto_prices = {}
         if crypto_symbols:
             try:
                 from core.crypto.crypto_providers import get_crypto_prices_batch
-                crypto_prices = await get_crypto_prices_batch(crypto_symbols, use_cache=True)
+                crypto_prices = await asyncio.wait_for(
+                    get_crypto_prices_batch(crypto_symbols, use_cache=True),
+                    timeout=10.0
+                )
                 LOGGER.info(f"Watchlist batch crypto: {len(crypto_prices)}/{len(crypto_symbols)} prices")
+            except asyncio.TimeoutError:
+                LOGGER.warning(f"Crypto batch TIMEOUT after 10s for {len(crypto_symbols)} symbols")
             except Exception as e:
                 LOGGER.warning(f"Crypto batch failed, falling back: {e}")
         
-        # Fetch stock prices in parallel (existing behavior)
+        # Fetch stock prices in parallel (existing behavior) with timeout
         stock_price_tasks = [_fetch_symbol_price(s) for s in stock_symbols]
-        stock_results = await asyncio.gather(*stock_price_tasks, return_exceptions=True)
+        try:
+            stock_results = await asyncio.wait_for(
+                asyncio.gather(*stock_price_tasks, return_exceptions=True),
+                timeout=5.0
+            )
+        except asyncio.TimeoutError:
+            LOGGER.warning(f"Stock price fetch TIMEOUT after 5s for {len(stock_symbols)} symbols")
+            stock_results = [None] * len(stock_symbols)
+        
         stock_prices = {}
-        for sym, result in zip(stock_symbols, stock_results, strict=True):
-            if not isinstance(result, Exception):
+        for sym, result in zip(stock_symbols, stock_results, strict=False):
+            if result and not isinstance(result, Exception):
                 stock_prices[sym.upper()] = result
         
         # Merge prices
