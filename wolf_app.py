@@ -32340,6 +32340,86 @@ async def advisor_get_stats():
         return {"ok": False, "error": str(e)}
 
 
+@APP.post("/debug/advisor/test-alert")
+async def advisor_test_alert():
+    """
+    Send a test advisor alert to Telegram.
+    This verifies the alert system is working.
+    """
+    try:
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+        if not chat_id:
+            return {"ok": False, "error": "TELEGRAM_CHAT_ID not set"}
+        
+        test_msg = """🧪 GHOST ADVISOR TEST
+
+━━━━━━━━━━━━━━━━━━━━━
+✅ Alert system WORKING!
+
+This confirms:
+• Telegram connection ✓
+• Message formatting ✓
+• Advisor ready to send alerts
+
+Ghost is watching your positions.
+━━━━━━━━━━━━━━━━━━━━━"""
+        
+        success = _tg_send_chat_message(chat_id, test_msg)
+        return {"ok": success, "message": "Test alert sent" if success else "Failed to send"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/debug/advisor/simulate-target-hit")
+async def advisor_simulate_target_hit(symbol: str = None):
+    """
+    Simulate a target hit to test the alert flow.
+    If no symbol given, uses first open position.
+    """
+    try:
+        from core.ghost_advisor import get_advisor, format_advisor_alert, AlertType
+        
+        advisor = get_advisor()
+        positions = advisor.get_open_positions()
+        
+        if not positions:
+            return {"ok": False, "error": "No open positions"}
+        
+        # Find position
+        if symbol:
+            pos = advisor.get_position(symbol)
+            if not pos:
+                return {"ok": False, "error": f"Position {symbol} not found"}
+        else:
+            pos = positions[0]
+        
+        # Format what the alert would look like
+        # Simulate price at target
+        original_price = pos.current_price
+        pos.current_price = pos.target_price
+        
+        alert_msg = format_advisor_alert(AlertType.TARGET_HIT, pos)
+        
+        # Reset price
+        pos.current_price = original_price
+        
+        # Send to telegram
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+        if not chat_id:
+            return {"ok": False, "error": "TELEGRAM_CHAT_ID not set", "preview": alert_msg}
+        
+        success = _tg_send_chat_message(chat_id, f"[SIMULATION]\n{alert_msg}")
+        
+        return {
+            "ok": success,
+            "symbol": pos.symbol,
+            "message": "Simulated target hit alert sent" if success else "Failed to send",
+            "alert_preview": alert_msg[:500]
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/debug/notification-status")
 async def notification_status_endpoint():
     """
