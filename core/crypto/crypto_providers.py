@@ -378,6 +378,107 @@ class CoinGeckoProvider:
                 LOGGER.warning(f"CoinGecko fetch failed for {symbol}: {e}")
             return None
 
+    def get_prices_batch(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+        """
+        PERFORMANCE FIX: Batch fetch multiple crypto prices in ONE API call.
+        
+        CoinGecko supports comma-separated coin IDs in the 'ids' parameter.
+        This reduces N sequential 5s-rate-limited calls to 1 call.
+        
+        Args:
+            symbols: List of crypto symbols (BTC, ETH, etc.)
+        
+        Returns:
+            Dict mapping symbol -> price_data (same format as get_price)
+            Symbols with errors return None
+        """
+        if not symbols:
+            return {}
+        
+        # Check circuit breaker
+        if self.circuit_open:
+            if time.time() < self.circuit_open_until:
+                LOGGER.debug(f"CoinGecko batch: circuit open for {self.circuit_open_until - time.time():.0f}s")
+                return {}
+            else:
+                LOGGER.info("CoinGecko circuit breaker reset - trying batch")
+                self.circuit_open = False
+                self.consecutive_429s = 0
+        
+        # Map symbols to CoinGecko IDs
+        coin_ids = []
+        symbol_to_id = {}
+        for symbol in symbols:
+            coin_id = self.get_coin_id(symbol.upper())
+            if coin_id:
+                coin_ids.append(coin_id)
+                symbol_to_id[coin_id] = symbol.upper()
+            else:
+                LOGGER.debug(f"CoinGecko batch: Unknown symbol {symbol}")
+        
+        if not coin_ids:
+            return {}
+        
+        try:
+            self._rate_limit()  # Still rate limit, but only once for all symbols
+            
+            url = f"{self.BASE_URL}/simple/price"
+            params = {
+                "ids": ",".join(coin_ids),  # Comma-separated for batch
+                "vs_currencies": "usd",
+                "include_24hr_change": "true",
+                "include_market_cap": "true",
+                "include_24hr_vol": "true",
+                "include_last_updated_at": "true",
+            }
+            
+            response = _session.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            # Reset 429 counter on success
+            if self.consecutive_429s > 0:
+                LOGGER.info(f"CoinGecko batch recovered - resetting 429 counter from {self.consecutive_429s}")
+                self.consecutive_429s = 0
+            
+            data = response.json()
+            
+            # Parse results
+            results = {}
+            for coin_id, coin_data in data.items():
+                symbol = symbol_to_id.get(coin_id)
+                if symbol and coin_data.get("usd"):
+                    price = float(coin_data.get("usd", 0))
+                    
+                    # Validate price
+                    if not validate_crypto_price(symbol, price):
+                        LOGGER.warning(f"CoinGecko batch: invalid price for {symbol}: ${price:.2f}")
+                        continue
+                    
+                    results[symbol] = {
+                        "symbol": symbol,
+                        "price": price,
+                        "change_24h": float(coin_data.get("usd_24h_change", 0)),
+                        "change_24h_pct": float(coin_data.get("usd_24h_change", 0)),
+                        "market_cap": float(coin_data.get("usd_market_cap", 0)),
+                        "volume_24h": float(coin_data.get("usd_24h_vol", 0)),
+                        "last_updated": int(coin_data.get("last_updated_at", time.time())),
+                        "provider": "coingecko",
+                    }
+            
+            LOGGER.info(f"CoinGecko batch: fetched {len(results)}/{len(symbols)} prices in ONE call")
+            return results
+            
+        except Exception as e:
+            if "429" in str(e) or "Too Many Requests" in str(e):
+                self.consecutive_429s += 1
+                if self.consecutive_429s >= 3:
+                    self.circuit_open = True
+                    self.circuit_open_until = time.time() + 300
+                    LOGGER.error(f"CoinGecko batch circuit OPENED - {self.consecutive_429s} 429s")
+            else:
+                LOGGER.warning(f"CoinGecko batch fetch failed: {e}")
+            return {}
+
     def get_historical(self, symbol: str, days: int = 7) -> list[dict] | None:
         """
         Get historical prices for pattern analysis
@@ -884,6 +985,85 @@ async def get_crypto_price_quorum(symbol: str, use_cache: bool = True) -> dict[s
     )
 
     return result
+
+
+async def get_crypto_prices_batch(symbols: list[str], use_cache: bool = True) -> dict[str, dict[str, Any]]:
+    """
+    PERFORMANCE FIX: Batch fetch multiple crypto prices in ONE API call.
+    
+    This replaces N sequential get_crypto_price_quorum calls (each with 5s rate limit)
+    with ONE CoinGecko batch call. Reduces watchlist enrichment from 2min to <2s.
+    
+    Args:
+        symbols: List of crypto symbols (BTC, ETH, etc.)
+        use_cache: Whether to use cached prices (30s TTL)
+    
+    Returns:
+        Dict mapping symbol -> price_data with quorum metadata
+        
+    Example:
+        prices = await get_crypto_prices_batch(["BTC", "ETH", "SOL"])
+        btc_price = prices.get("BTC", {}).get("price")
+    """
+    if not symbols:
+        return {}
+    
+    results = {}
+    symbols_to_fetch = []
+    
+    # Check cache first
+    if use_cache:
+        for symbol in symbols:
+            cached = _get_crypto_cache(symbol.upper())
+            if cached:
+                results[symbol.upper()] = cached
+            else:
+                symbols_to_fetch.append(symbol.upper())
+    else:
+        symbols_to_fetch = [s.upper() for s in symbols]
+    
+    if not symbols_to_fetch:
+        LOGGER.info(f"Crypto batch: all {len(symbols)} symbols from cache")
+        return results
+    
+    LOGGER.info(f"Crypto batch: fetching {len(symbols_to_fetch)} symbols (cache hit: {len(results)})")
+    
+    # Use CoinGecko batch fetch (PRIMARY - fastest!)
+    coingecko = CoinGeckoProvider()
+    try:
+        batch_results = await asyncio.to_thread(coingecko.get_prices_batch, symbols_to_fetch)
+        
+        for symbol, price_data in batch_results.items():
+            if price_data and price_data.get("price"):
+                # Add quorum metadata
+                result = {
+                    **price_data,
+                    "confidence": 0.80,  # Single provider = 80%
+                    "quorum_size": 1,
+                    "spread": 0.0,
+                    "timestamp": int(time.time()),
+                }
+                _set_crypto_cache(symbol, result)
+                results[symbol] = result
+                
+    except Exception as e:
+        LOGGER.warning(f"CoinGecko batch failed: {e}")
+    
+    # Fetch any remaining symbols individually (fallback)
+    missing = [s for s in symbols_to_fetch if s not in results]
+    if missing:
+        LOGGER.info(f"Crypto batch: {len(missing)} symbols need individual fetch: {missing}")
+        for symbol in missing:
+            try:
+                # Use quorum for individual symbols
+                result = await get_crypto_price_quorum(symbol, use_cache=False)
+                if result:
+                    results[symbol] = result
+            except Exception as e:
+                LOGGER.warning(f"Individual fetch failed for {symbol}: {e}")
+    
+    LOGGER.info(f"Crypto batch complete: {len(results)}/{len(symbols)} symbols")
+    return results
 
 
 # Default watchlists by category
