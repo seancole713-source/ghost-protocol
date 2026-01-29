@@ -26332,6 +26332,29 @@ async def _watchdog_background_check():
         # Run the check with pre-fetched prices (fast now!)
         had_updates = notif.check_for_updates(get_price_sync)
         
+        # 🎯 ADVISOR CHECK: Check all advisor-tracked positions too
+        advisor_alerts = 0
+        try:
+            from core.ghost_advisor import get_advisor, format_advisor_alert
+            advisor = get_advisor()
+            open_positions = advisor.get_open_positions()
+            
+            for pos in open_positions:
+                new_price = price_lookup.get(pos.symbol, 0) or await get_price_async(pos.symbol)
+                if new_price > 0:
+                    result = advisor.update_price(pos.symbol, new_price)
+                    if result:
+                        alert_type, updated_pos = result
+                        message = format_advisor_alert(alert_type, updated_pos)
+                        _send_telegram(message)
+                        advisor_alerts += 1
+                        LOGGER.info(f"[ADVISOR] 📤 Sent {alert_type.value} alert for {pos.symbol}")
+            
+            if advisor_alerts > 0:
+                LOGGER.info(f"[ADVISOR] 🎯 Sent {advisor_alerts} advisor alerts")
+        except Exception as advisor_err:
+            LOGGER.error(f"[ADVISOR] Check error: {advisor_err}")
+        
         # Get final status
         status = notif.get_status()
         
@@ -32155,6 +32178,19 @@ async def force_top10_endpoint():
         else:
             result["errors"].append("send_top10() returned False - check logs for details")
             result["overall_status"] = "⚠️ send_top10 failed - check server logs"
+        
+        # 🎯 REGISTER POSITIONS WITH ADVISOR for tracking!
+        try:
+            from core.ghost_advisor import register_top10_positions, get_advisor
+            from core.ghost_notifications import get_notification_system
+            notif = get_notification_system()
+            stocks, crypto = notif.get_top10_predictions(_LATEST_PREDICTIONS)
+            registered = register_top10_positions(stocks, crypto)
+            result["advisor_positions_registered"] = registered
+            LOGGER.info(f"[ADVISOR] ✅ Registered {registered} positions for tracking")
+        except Exception as advisor_err:
+            LOGGER.error(f"[ADVISOR] Failed to register positions: {advisor_err}")
+            result["advisor_error"] = str(advisor_err)
             
     except Exception as e:
         result["errors"].append(f"Exception: {str(e)}")
@@ -32162,6 +32198,146 @@ async def force_top10_endpoint():
         LOGGER.error(f"[FORCE-TOP10] Error: {e}", exc_info=True)
     
     return result
+
+
+# ============================================================================
+# 🎯 GHOST ADVISOR ENDPOINTS - ACTIVE POSITION TRACKING
+# ============================================================================
+
+@APP.get("/api/advisor/positions")
+async def advisor_get_positions():
+    """
+    Get all tracked positions with current status.
+    
+    Returns open positions, P&L, target progress, etc.
+    """
+    try:
+        from core.ghost_advisor import get_advisor
+        advisor = get_advisor()
+        
+        positions = []
+        for pos in advisor.get_open_positions():
+            positions.append({
+                "symbol": pos.symbol,
+                "direction": pos.direction,
+                "asset_type": pos.asset_type,
+                "entry_price": pos.entry_price,
+                "current_price": pos.current_price,
+                "target_price": pos.target_price,
+                "stop_price": pos.stop_price,
+                "pnl_pct": round(pos.pnl_pct, 2),
+                "target_progress": round(pos.target_progress_pct, 0),
+                "hours_remaining": round(pos.hours_remaining, 1),
+                "status": pos.status.value,
+            })
+        
+        stats = advisor.get_stats()
+        
+        return {
+            "ok": True,
+            "positions": positions,
+            "open_count": len(positions),
+            "stats": stats
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.post("/api/advisor/check-prices")
+async def advisor_check_prices():
+    """
+    Check all open positions and send alerts if needed.
+    
+    This is what should run every 5-15 minutes!
+    Call this manually to test, or let the cron handle it.
+    """
+    try:
+        from core.ghost_advisor import get_advisor, check_all_positions, format_advisor_alert
+        from core.asset_classifier import get_asset_type
+        
+        advisor = get_advisor()
+        open_positions = advisor.get_open_positions()
+        
+        if not open_positions:
+            return {"ok": True, "message": "No open positions to check", "checked": 0}
+        
+        # Price fetch function
+        async def get_price(symbol: str, asset_type: str) -> float:
+            try:
+                if asset_type == "crypto":
+                    from core.crypto.crypto_providers import get_crypto_price_quorum
+                    result = await get_crypto_price_quorum(symbol, use_cache=False)
+                    return result.get("price", 0) if result else 0
+                else:
+                    from core.providers.turbo_provider import get_turbo_provider
+                    turbo = get_turbo_provider()
+                    result = turbo.turbo_stock_price(symbol, max_budget_s=2.0)
+                    return result.get("price", 0) if result.get("ok") else 0
+            except:
+                return 0
+        
+        # Telegram send function
+        def send_telegram(msg: str) -> bool:
+            try:
+                chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+                if chat_id:
+                    return _tg_send_chat_message(chat_id, msg)
+                return False
+            except:
+                return False
+        
+        # Check each position
+        alerts_sent = 0
+        updates = []
+        
+        for pos in open_positions:
+            new_price = await get_price(pos.symbol, pos.asset_type)
+            if not new_price:
+                continue
+            
+            result = advisor.update_price(pos.symbol, new_price)
+            
+            if result:
+                alert_type, updated_pos = result
+                message = format_advisor_alert(alert_type, updated_pos)
+                success = send_telegram(message)
+                
+                if success:
+                    alerts_sent += 1
+                    updates.append({
+                        "symbol": pos.symbol,
+                        "alert_type": alert_type.value,
+                        "sent": True
+                    })
+            else:
+                updates.append({
+                    "symbol": pos.symbol,
+                    "price": new_price,
+                    "pnl": round(pos.pnl_pct, 2),
+                    "no_alert_needed": True
+                })
+        
+        return {
+            "ok": True,
+            "checked": len(open_positions),
+            "alerts_sent": alerts_sent,
+            "updates": updates
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"[ADVISOR] Check prices error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/advisor/stats")
+async def advisor_get_stats():
+    """Get advisor performance statistics"""
+    try:
+        from core.ghost_advisor import get_advisor
+        advisor = get_advisor()
+        return {"ok": True, **advisor.get_stats()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @APP.get("/debug/notification-status")
