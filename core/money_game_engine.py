@@ -89,7 +89,7 @@ class MoneyGameEngine:
     def __init__(self):
         # Game settings
         self.TOP_N = int(os.getenv("MONEY_GAME_TOP_N", "10"))
-        self.MIN_TRADES = int(os.getenv("MONEY_GAME_MIN_TRADES", "5"))
+        self.MIN_TRADES = int(os.getenv("MONEY_GAME_MIN_TRADES", "3"))  # 3 trades to qualify
         self.LOSS_PENALTY = float(os.getenv("MONEY_GAME_LOSS_PENALTY", "2.0"))  # Losses hurt 2x
         self.BIG_WIN_BONUS = float(os.getenv("MONEY_GAME_BIG_WIN_BONUS", "1.5"))  # +5% gets bonus
         self.BIG_WIN_THRESHOLD = float(os.getenv("MONEY_GAME_BIG_WIN_PCT", "5.0"))  # 5%+
