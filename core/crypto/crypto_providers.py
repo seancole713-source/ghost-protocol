@@ -254,6 +254,9 @@ class CoinGeckoProvider:
         "SKL": "skale",
         "CELO": "celo",
         "ANKR": "ankr",
+        # Gaming/Metaverse tokens (Jan 29, 2026)
+        "ILV": "illuvium",
+        "STACKS": "blockstack",  # Stacks blockchain (renamed from STX to avoid collision)
     }
 
     def __init__(self):
@@ -1050,17 +1053,28 @@ async def get_crypto_prices_batch(symbols: list[str], use_cache: bool = True) ->
         LOGGER.warning(f"CoinGecko batch failed: {e}")
     
     # Fetch any remaining symbols individually (fallback)
+    # PERFORMANCE FIX: Limit fallback to 2 symbols max to prevent long delays
     missing = [s for s in symbols_to_fetch if s not in results]
     if missing:
         LOGGER.info(f"Crypto batch: {len(missing)} symbols need individual fetch: {missing}")
-        for symbol in missing:
+        # Only try individual fetch for first 2 missing symbols (prevent 5+ x 5s delays)
+        for symbol in missing[:2]:
             try:
-                # Use quorum for individual symbols
-                result = await get_crypto_price_quorum(symbol, use_cache=False)
+                # Use quorum for individual symbols (with short timeout)
+                result = await asyncio.wait_for(
+                    get_crypto_price_quorum(symbol, use_cache=False),
+                    timeout=8.0  # 8s max per symbol
+                )
                 if result:
                     results[symbol] = result
+            except asyncio.TimeoutError:
+                LOGGER.warning(f"Individual fetch timed out for {symbol}")
             except Exception as e:
                 LOGGER.warning(f"Individual fetch failed for {symbol}: {e}")
+        
+        # Log skipped symbols
+        if len(missing) > 2:
+            LOGGER.warning(f"Crypto batch: skipped {len(missing) - 2} symbols to prevent delay: {missing[2:]}")
     
     LOGGER.info(f"Crypto batch complete: {len(results)}/{len(symbols)} symbols")
     return results
