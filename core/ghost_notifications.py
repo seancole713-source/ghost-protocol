@@ -401,7 +401,6 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     Check if symbol should be excluded based on historical accuracy.
     
     PRIORITY ORDER:
-    -1. V2 WHITELIST - HIGHEST PRIORITY - Whitelisted symbols BYPASS all exclusions
     0. GHOST_EXCLUDE_SYMBOLS env var - Railway config exclusions
     1. HARDCODED_EXCLUSIONS - Always excluded (known bad symbols in code)
     2. Learning data - Excluded if <40% accuracy after 10+ predictions (if LEARNING_EXCLUDE_ENABLED)
@@ -415,15 +414,7 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     """
     symbol_upper = symbol.upper()
     
-    # PRIORITY -1: V2 WHITELIST BYPASS - Whitelisted symbols are NEVER excluded by learning filter
-    # This allows us to manually whitelist symbols that have improved or have special value
-    try:
-        from core.v2_quality import get_quality_system
-        v2_quality = get_quality_system()
-        if symbol_upper in v2_quality._whitelist:
-            return False, "v2_whitelisted_bypass"
-    except Exception as e:
-        LOGGER.warning(f"[LEARNING] V2 whitelist check failed: {e}")
+    # MONEY GAME: No more V2 whitelist bypass - all symbols compete on merit!
     
     # PRIORITY 0: Check environment variable exclusions FIRST (Railway config)
     if symbol_upper in _ENV_EXCLUSIONS:

@@ -500,7 +500,7 @@ class PaperTracker:
         finally:
             conn.close()
     
-    def get_stats(self, days: int = 30, since: str = None, v2_only: bool = True) -> dict:
+    def get_stats(self, days: int = 30, since: str = None, v2_only: bool = False) -> dict:
         """
         Calculate paper trading statistics.
         
@@ -508,8 +508,7 @@ class PaperTracker:
             days: Number of days to look back (default: 30)
             since: Optional date string (e.g., "2026-01-14") to filter from specific date.
                    Overrides 'days' parameter when provided.
-            v2_only: If True (default), only include V2 whitelisted symbols.
-                     This filters out old data from blacklisted/non-whitelisted symbols.
+            v2_only: DEPRECATED - ignored. All symbols compete in Money Game now.
         
         Returns:
             {
@@ -537,27 +536,10 @@ class PaperTracker:
             else:
                 cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
             
-            # Get V2 whitelist for filtering
-            v2_whitelist = set()
-            if v2_only:
-                try:
-                    from core.v2_quality import get_quality_system
-                    v2_system = get_quality_system()
-                    v2_whitelist = v2_system._whitelist or set()
-                    LOGGER.debug(f"[PAPER_STATS] V2 filter active: {len(v2_whitelist)} whitelisted symbols")
-                except Exception as e:
-                    LOGGER.warning(f"[PAPER_STATS] V2 whitelist unavailable, showing all: {e}")
-                    v2_only = False
-            
-            # Build symbol filter SQL clause
-            if v2_only and v2_whitelist:
-                # Create placeholders for IN clause
-                placeholders = ",".join(["?" for _ in v2_whitelist])
-                symbol_filter = f" AND symbol IN ({placeholders})"
-                symbol_params = list(v2_whitelist)
-            else:
-                symbol_filter = ""
-                symbol_params = []
+            # MONEY GAME: No more V2 whitelist filtering - all symbols compete!
+            # Removed Jan 29, 2026 - the Money Game system handles ranking
+            symbol_filter = ""
+            symbol_params = []
             
             # Overall stats
             cur = self._execute(conn, f"""
@@ -634,15 +616,12 @@ class PaperTracker:
             """, (cutoff, *symbol_params))
             worst = self._fetchone(cur)
             
-            # Accuracy by symbol (only V2 whitelisted symbols)
-            if v2_only and v2_whitelist:
-                symbols_to_check = [{"symbol": s} for s in v2_whitelist]
-            else:
-                cur = self._execute(conn, f"""
-                    SELECT DISTINCT symbol FROM paper_trades
-                    WHERE created_at >= ?{symbol_filter}
-                """, (cutoff, *symbol_params))
-                symbols_to_check = self._fetchall(cur)
+            # Accuracy by symbol - ALL symbols that have trades (Money Game)
+            cur = self._execute(conn, f"""
+                SELECT DISTINCT symbol FROM paper_trades
+                WHERE created_at >= ?{symbol_filter}
+            """, (cutoff, *symbol_params))
+            symbols_to_check = self._fetchall(cur)
             
             accuracy_by_symbol = {}
             
@@ -663,8 +642,8 @@ class PaperTracker:
                 
                 sym_win_rate = sym_wins / sym_resolved if sym_resolved > 0 else 0.0
                 
-                # Only include symbols with trades
-                if sym_resolved > 0 or not v2_only:
+                # Include all symbols with trades
+                if sym_resolved > 0:
                     accuracy_by_symbol[symbol] = {
                         "trades": sym_resolved,
                         "wins": sym_wins,
@@ -686,8 +665,7 @@ class PaperTracker:
                 "best_trade": best,
                 "worst_trade": worst,
                 "accuracy_by_symbol": accuracy_by_symbol,
-                "v2_filtered": v2_only,
-                "v2_whitelist_count": len(v2_whitelist) if v2_only else 0
+                "money_game_mode": True  # Using Money Game, not V2 whitelist
             }
         
         except Exception as e:

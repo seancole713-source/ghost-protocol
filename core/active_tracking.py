@@ -256,15 +256,8 @@ class ActiveTrackingSystem:
             conn.commit()
     
     def _load_active_from_db(self):
-        """Load active picks from database into memory (V2 filtered)"""
-        # V2 FILTER: Only load whitelisted symbols
-        try:
-            from core.v2_quality import get_quality_system
-            v2_quality = get_quality_system()
-            v2_whitelist = v2_quality._whitelist
-        except:
-            v2_whitelist = set()  # Fallback to no filter if system unavailable
-            LOGGER.warning("[ACTIVE TRACKING] V2 quality system unavailable, loading all picks")
+        """Load active picks from database into memory (MONEY GAME - all symbols compete)"""
+        # MONEY GAME: No more V2 whitelist filtering - all symbols compete!
         
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -275,23 +268,14 @@ class ActiveTrackingSystem:
             """).fetchall()
             
             loaded = 0
-            filtered_out = 0
             
             for row in rows:
                 symbol = row['symbol']
-                
-                # V2 FILTER: Skip non-whitelisted symbols
-                if v2_whitelist and symbol not in v2_whitelist:
-                    filtered_out += 1
-                    LOGGER.debug(f"[V2-FILTER] 🚫 Skipped loading {symbol} - not whitelisted")
-                    continue
-                
                 pick = self._row_to_pick(row)
                 self._active_picks[symbol] = pick
                 loaded += 1
             
-            if filtered_out > 0:
-                LOGGER.info(f"[V2-FILTER] Loaded {loaded} active picks, filtered out {filtered_out} non-whitelisted symbols")
+            LOGGER.info(f"[MONEY GAME] Loaded {loaded} active picks - all symbols compete!")
     
     def _row_to_pick(self, row) -> ActivePick:
         """Convert database row to ActivePick object"""
