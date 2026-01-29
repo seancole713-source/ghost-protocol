@@ -103,7 +103,8 @@ ALL_CRYPTO = [
     "DYDX", "MASK", "ENS", "CHZ", "AUDIO", "SUPER",
     
     # Old Guard
-    "ZEC", "DASH", "NEO", "WAVES", "QTUM", "ZIL", "ICX",
+    # NOTE: DASH renamed to DASHCOIN to avoid collision with DoorDash (DASH stock)
+    "ZEC", "DASHCOIN", "NEO", "WAVES", "QTUM", "ZIL", "ICX",
     "RLC", "OMG", "BAT", "KNC", "ZRX",
     
     # Renamed to avoid collision with Seagate (STX stock)

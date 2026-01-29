@@ -234,6 +234,7 @@ class CoinGeckoProvider:
         "QTUM": "qtum",
         "ZEC": "zcash",
         "DASH": "dash",
+        "DASHCOIN": "dash",  # Alias to avoid collision with DoorDash (DASH stock)
         # BUG FIX (Jan 6, 2026): Added missing symbols that fail on Binance US
         "DYDX": "dydx",
         "RPL": "rocket-pool",
