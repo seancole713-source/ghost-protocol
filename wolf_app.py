@@ -32204,7 +32204,7 @@ async def force_top10_endpoint():
 # 🎯 GHOST ADVISOR ENDPOINTS - ACTIVE POSITION TRACKING
 # ============================================================================
 
-@APP.get("/api/advisor/positions")
+@APP.get("/debug/advisor/positions")
 async def advisor_get_positions():
     """
     Get all tracked positions with current status.
@@ -32243,7 +32243,7 @@ async def advisor_get_positions():
         return {"ok": False, "error": str(e)}
 
 
-@APP.post("/api/advisor/check-prices")
+@APP.post("/debug/advisor/check-prices")
 async def advisor_check_prices():
     """
     Check all open positions and send alerts if needed.
@@ -32329,7 +32329,7 @@ async def advisor_check_prices():
         return {"ok": False, "error": str(e)}
 
 
-@APP.get("/api/advisor/stats")
+@APP.get("/debug/advisor/stats")
 async def advisor_get_stats():
     """Get advisor performance statistics"""
     try:
