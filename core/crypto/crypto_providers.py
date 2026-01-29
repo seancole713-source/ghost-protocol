@@ -423,7 +423,9 @@ class CoinGeckoProvider:
             return {}
         
         try:
-            self._rate_limit()  # Still rate limit, but only once for all symbols
+            # NOTE: No rate limiting for batch - we make ONE call for all symbols
+            # The rate limiter is for individual calls to prevent N rapid requests
+            # Batch already optimizes this to 1 request, so skip the sleep
             
             url = f"{self.BASE_URL}/simple/price"
             params = {
