@@ -428,45 +428,99 @@ class GhostScout:
         """
         Calculate optimal hold period based on asset characteristics.
         
-        NOT just 48 hours anymore! This considers:
+        ENHANCED: Returns 1-7 days based on:
         - Asset volatility (crypto = shorter, stocks = longer)
-        - News catalyst (hot news = shorter)
+        - News catalyst (hot news = 1-2 days max)
         - Confidence level (high confidence = can wait longer)
-        - Trend strength
+        - RSI momentum exhaustion (overbought/oversold = shorter)
+        - Trend strength from prediction data
         
-        Returns hours to hold.
+        Returns hours to hold (24-168h = 1-7 days).
         """
-        base_hours = 48  # Default
+        # Base hold in DAYS (1-7 scale)
+        base_days = 3  # Default 3-day swing
         
-        # Crypto is more volatile - shorter hold
+        # Asset type adjustment
         if asset_type == "crypto":
-            base_hours = 24  # Crypto moves faster
+            base_days = 2  # Crypto: faster moves, 1-3 day range
         else:
-            base_hours = 72  # Stocks need more time for moves
+            base_days = 4  # Stocks: slower, 2-5 day range typical
         
-        # News catalyst - shorter hold (ride the news wave)
+        # News catalyst - shorter hold (ride the wave, don't overstay)
         if prediction.get("news_influenced"):
-            base_hours = min(base_hours, 24)  # News trades are quick
+            base_days = min(base_days, 2)  # News plays = 1-2 days max
         
-        # High confidence - can hold longer
+        # Confidence adjustment
         conf = prediction.get("confidence", 0.5)
-        if conf >= 0.8:
-            base_hours = int(base_hours * 1.5)  # Strong signal, wait for bigger move
-        elif conf < 0.6:
-            base_hours = int(base_hours * 0.75)  # Weak signal, don't wait too long
+        if conf >= 0.85:
+            base_days += 1  # Very strong signal = can hold longer for bigger target
+        elif conf >= 0.7:
+            pass  # Normal confidence = keep base
+        elif conf >= 0.5:
+            base_days = max(1, base_days - 1)  # Weak signal = shorter hold
+        else:
+            base_days = 1  # Very weak = quick scalp only
         
-        return max(12, min(168, base_hours))  # Clamp between 12h and 1 week
+        # RSI-based momentum exhaustion (from prediction if available)
+        rsi = prediction.get("rsi", 50)
+        direction = prediction.get("direction", "UP")
+        
+        if direction == "UP" and rsi > 75:
+            # Overbought on bullish = momentum exhausting, take profits soon
+            base_days = max(1, base_days - 1)
+        elif direction == "DOWN" and rsi < 25:
+            # Oversold on bearish = bounce coming, don't overstay short
+            base_days = max(1, base_days - 1)
+        
+        # Volatility adjustment (if price change % is extreme)
+        price_change = abs(prediction.get("price_change_pct", 0))
+        if price_change > 10:
+            # Big move already happened - shorter hold to lock in gains
+            base_days = max(1, base_days - 1)
+        elif price_change < 2:
+            # Slow mover - needs more time to develop
+            base_days = min(7, base_days + 1)
+        
+        # Clamp to 1-7 days
+        final_days = max(1, min(7, base_days))
+        
+        # Store the day estimate for downstream use
+        prediction["hold_days"] = final_days
+        prediction["hold_estimate"] = self._format_hold_estimate(final_days)
+        
+        # Return hours for backward compatibility (existing code expects hours)
+        return final_days * 24
+    
+    def _format_hold_estimate(self, days: int) -> str:
+        """Format hold estimate like '2-3 days' or '5-7 days'"""
+        if days == 1:
+            return "1-2 days"
+        elif days == 2:
+            return "2-3 days"
+        elif days == 3:
+            return "3-4 days"
+        elif days == 4:
+            return "4-5 days"
+        elif days == 5:
+            return "5-6 days"
+        elif days == 6:
+            return "5-7 days"
+        else:  # 7
+            return "6-7 days"
     
     def _get_hold_reason(self, hours: int) -> str:
-        """Get human-readable hold reason"""
-        if hours <= 24:
-            return "momentum_trade"
-        elif hours <= 48:
-            return "swing_trade"
-        elif hours <= 72:
-            return "position_trade"
+        """Get human-readable hold reason based on days"""
+        days = hours // 24
+        if days <= 1:
+            return "day_trade"  # 1 day
+        elif days <= 2:
+            return "momentum_trade"  # 1-2 days
+        elif days <= 3:
+            return "swing_trade"  # 2-3 days
+        elif days <= 5:
+            return "position_trade"  # 4-5 days
         else:
-            return "trend_trade"
+            return "trend_trade"  # 6-7 days
     
     def _get_current_price(self, symbol: str, asset_type: str) -> Optional[float]:
         """Get current price for a symbol"""
