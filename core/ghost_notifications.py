@@ -614,14 +614,21 @@ def _get_sell_timing(hours: int = 48) -> str:
 
 def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: bool = None) -> str:
     """
-    Format the TOP 10 message in COMPACT format (under 4096 chars for Telegram).
-    Shows 10 stocks + 10 crypto with essential info only.
+    Format the TOP 10 message with SMART predictions:
+    - SPECIFIC buy date/time (not just "now")
+    - SPECIFIC sell date/time based on ML-calculated hold period (1-7 days)
+    - News influence indicator ✅
+    
+    Example output:
+    🟢 NVDA BUY Mon 2/3 9:30AM → $205.60 SELL Thu 2/6 [59%] ✅
     
     Args:
         stocks: List of top 10 stock predictions
         crypto: List of top 10 crypto predictions  
         inverse_mode: If True, show "INVERSE GHOST" in title.
     """
+    from datetime import datetime, timedelta
+    
     # If not specified, read from env var (default OFF)
     if inverse_mode is None:
         inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
@@ -640,7 +647,41 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         "━━━━━━━━━━━━━━"
     ]
     
-    # COMPACT: One line per stock
+    # Helper to calculate BUY and SELL dates
+    def get_trade_dates(asset_type: str, hold_days: int) -> tuple:
+        """Calculate specific BUY and SELL dates based on asset type and hold period"""
+        now = datetime.now(EASTERN_TZ)
+        
+        if asset_type == "stock":
+            # Stocks: BUY at next market open (9:30 AM ET)
+            # If it's before 9:30 AM on a weekday, buy today at open
+            # Otherwise, buy next trading day at open
+            if now.weekday() < 5 and now.hour < 9 or (now.hour == 9 and now.minute < 30):
+                buy_date = now
+            else:
+                # Next trading day
+                buy_date = now + timedelta(days=1)
+                while buy_date.weekday() >= 5:  # Skip weekends
+                    buy_date += timedelta(days=1)
+            
+            buy_time_str = buy_date.strftime("%a %m/%d") + " 9:30AM"
+            
+            # SELL after hold_days (at market open)
+            sell_date = buy_date + timedelta(days=hold_days)
+            while sell_date.weekday() >= 5:  # Skip weekends
+                sell_date += timedelta(days=1)
+            sell_time_str = sell_date.strftime("%a %m/%d") + " Open"
+        else:
+            # Crypto: Trades 24/7, can execute NOW
+            buy_time_str = "NOW"
+            
+            # SELL after hold_days
+            sell_date = now + timedelta(days=hold_days)
+            sell_time_str = sell_date.strftime("%a %m/%d %I%p").replace(" 0", " ")
+        
+        return buy_time_str, sell_time_str
+    
+    # STOCKS
     if stocks:
         for s in stocks[:10]:
             direction = s.get('direction', 'DOWN')
@@ -653,8 +694,17 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             
             display_conf = calibrate_display_confidence(s['confidence'], symbol=s['symbol'])
             
-            # Compact format: Symbol | Action | Entry → Target | Confidence
-            lines.append(f"{emoji} {s['symbol']} {action} {format_price(current)} → {format_price(target)} ({gain_pct:+.1f}%) [{display_conf:.0%}]")
+            # Get intelligent hold period (1-7 days)
+            hold_days = s.get('hold_days', 3)
+            
+            # Calculate specific buy/sell dates
+            buy_time, sell_time = get_trade_dates("stock", hold_days)
+            
+            # News influence indicator
+            news_check = " ✅" if s.get('news_influenced', False) else ""
+            
+            # Format: 🟢 NVDA BUY Mon 2/3 9:30AM → $205.60 SELL Thu 2/6 [59%] ✅
+            lines.append(f"{emoji} {s['symbol']} {action} {buy_time} → {format_price(target)} ({gain_pct:+.1f}%) {sell_time} [{display_conf:.0%}]{news_check}")
     else:
         lines.append("   No stock picks today")
     
@@ -662,7 +712,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     lines.append("📊 CRYPTO")
     lines.append("━━━━━━━━━━━━━━")
     
-    # COMPACT: One line per crypto
+    # CRYPTO
     if crypto:
         for c in crypto[:10]:
             direction = c.get('direction', 'DOWN')
@@ -675,14 +725,24 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             
             display_conf = calibrate_display_confidence(c['confidence'], symbol=c['symbol'])
             
-            # Compact format
-            lines.append(f"{emoji} {c['symbol']} {action} {format_price(current)} → {format_price(target)} ({gain_pct:+.1f}%) [{display_conf:.0%}]")
+            # Get intelligent hold period (1-7 days)
+            hold_days = c.get('hold_days', 2)
+            
+            # Calculate specific buy/sell dates
+            buy_time, sell_time = get_trade_dates("crypto", hold_days)
+            
+            # News influence indicator
+            news_check = " ✅" if c.get('news_influenced', False) else ""
+            
+            # Format: 🟢 BTC BUY NOW → $88,700 SELL Wed 2/5 [64%] ✅
+            lines.append(f"{emoji} {c['symbol']} {action} {buy_time} → {format_price(target)} ({gain_pct:+.1f}%) {sell_time} [{display_conf:.0%}]{news_check}")
     else:
         lines.append("   No crypto picks today")
     
     lines.append("")
     lines.append("━━━━━━━━━━━━━━")
-    lines.append("🟢=BUY 🔴=SELL [%]=Confidence")
+    lines.append("🟢=BUY 🔴=SELL ✅=News")
+    lines.append("[%]=Confidence | Hold=1-7 days")
     lines.append("Ghost is watching 👁️")
     
     return "\n".join(lines)

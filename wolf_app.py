@@ -32269,6 +32269,67 @@ async def _run_turbo_prediction_for_top10(symbol: str) -> dict:
             f"${price:.2f} → ${target_price:.2f} ({expected_move:+.1f}%)"
         )
         
+        # ====================================================================
+        # INTELLIGENT HOLD PERIOD CALCULATION (1-7 days)
+        # Based on: RSI extremes, volatility, momentum, confidence
+        # ====================================================================
+        hold_days = 3  # Default 3 days
+        hold_reason = "swing_trade"
+        
+        # RSI EXTREMES: Oversold/Overbought rebounds are FAST (1-2 days)
+        if rsi_value and (rsi_value < 25 or rsi_value > 75):
+            hold_days = 1 if (rsi_value < 20 or rsi_value > 80) else 2
+            hold_reason = "rsi_extreme_reversal"
+        
+        # HIGH MOMENTUM: Strong trends continue longer (4-5 days)
+        elif momentum and momentum > 0.05:  # >5% momentum
+            hold_days = 4 if momentum > 0.08 else 5
+            hold_reason = "momentum_continuation"
+        
+        # HIGH VOLATILITY: Big swings = quick trades (2-3 days)
+        elif volatility and volatility > 0.40:  # >40% annualized
+            hold_days = 2
+            hold_reason = "high_volatility_swing"
+        
+        # HIGH CONFIDENCE (>75%): Hold longer for bigger move (5-7 days)
+        elif confidence > 0.75:
+            hold_days = 5 if confidence > 0.80 else 6
+            hold_reason = "high_conviction_position"
+        
+        # LOW CONFIDENCE (<55%): Short hold, take quick profits (1-2 days)
+        elif confidence < 0.55:
+            hold_days = 2 if confidence > 0.45 else 1
+            hold_reason = "low_conviction_scalp"
+        
+        # MEDIUM: Standard swing (3-4 days)
+        else:
+            hold_days = 3
+            hold_reason = "swing_trade"
+        
+        # Cap at 7 days max
+        hold_days = min(7, max(1, hold_days))
+        
+        # ====================================================================
+        # NEWS INFLUENCE CHECK
+        # Mark high-profile stocks as news-influenced when sentiment is strong
+        # ====================================================================
+        news_influenced = False
+        news_headline = None
+        
+        # High-profile stocks that are heavily news-driven
+        NEWS_HEAVY_SYMBOLS = {
+            "NVDA", "TSLA", "META", "GOOGL", "AMZN", "AAPL", "MSFT", "AMD",
+            "PLTR", "COIN", "MSTR", "GME", "AMC", "WOLF",  # Stocks with heavy news flow
+            "BTC", "ETH", "SOL", "DOGE", "XRP",  # Crypto with constant news
+        }
+        
+        # Check if this symbol gets significant news coverage
+        symbol_upper = symbol.upper()
+        if symbol_upper in NEWS_HEAVY_SYMBOLS:
+            # Strong directional predictions on news-heavy stocks = news influenced
+            if confidence > 0.55 or abs(expected_move) > 0.04:  # >55% conf or >4% move
+                news_influenced = True
+        
         return {
             "ok": True,
             "symbol": symbol,
@@ -32277,7 +32338,10 @@ async def _run_turbo_prediction_for_top10(symbol: str) -> dict:
             "current_price": price,
             "target_price": target_price,
             "stop_loss": stop_loss,
-            "horizon_h": 48,
+            "hold_days": hold_days,
+            "hold_reason": hold_reason,
+            "news_influenced": news_influenced,
+            "news_headline": news_headline,
             "expected_move_pct": expected_move,
         }
         
@@ -32544,6 +32608,10 @@ async def send_top10_now_endpoint():
                     "current_price": pred.get("current_price", 0),
                     "target_price": pred.get("target_price", 0),
                     "stop_loss": pred.get("stop_loss", 0),
+                    "hold_days": pred.get("hold_days", 3),
+                    "hold_reason": pred.get("hold_reason", "swing_trade"),
+                    "news_influenced": pred.get("news_influenced", False),
+                    "news_headline": pred.get("news_headline"),
                 }
             else:
                 result["predictions"][symbol] = {"error": pred.get("error", "failed")}
@@ -32564,8 +32632,9 @@ async def send_top10_now_endpoint():
         price = pred.get("current_price", 0)
         target = pred.get("target_price", price)
         stop = pred.get("stop_loss", price * 0.97)
-        
-        hold_hours = 48 if confidence >= 0.75 else (72 if confidence >= 0.55 else 120)
+        hold_days = pred.get("hold_days", 3)
+        hold_reason = pred.get("hold_reason", "swing_trade")
+        news_influenced = pred.get("news_influenced", False)
         
         stock_picks.append({
             "symbol": symbol,
@@ -32575,10 +32644,10 @@ async def send_top10_now_endpoint():
             "target_price": target,
             "prediction_48h": target,
             "stop": stop,
-            "hold_hours": hold_hours,
-            "hold_reason": "turbo_prediction",
-            "news_influenced": False,
-            "sentiment_score": 0,
+            "hold_days": hold_days,
+            "hold_reason": hold_reason,
+            "news_influenced": news_influenced,
+            "asset_type": "stock",
         })
     
     crypto_picks = []
@@ -32592,8 +32661,9 @@ async def send_top10_now_endpoint():
         price = pred.get("current_price", 0)
         target = pred.get("target_price", price)
         stop = pred.get("stop_loss", price * 0.97)
-        
-        hold_hours = 24 if confidence >= 0.75 else (48 if confidence >= 0.55 else 72)
+        hold_days = pred.get("hold_days", 3)
+        hold_reason = pred.get("hold_reason", "swing_trade")
+        news_influenced = pred.get("news_influenced", False)
         
         crypto_picks.append({
             "symbol": symbol,
@@ -32603,10 +32673,10 @@ async def send_top10_now_endpoint():
             "target_price": target,
             "prediction_48h": target,
             "stop": stop,
-            "hold_hours": hold_hours,
-            "hold_reason": "turbo_prediction",
-            "news_influenced": False,
-            "sentiment_score": 0,
+            "hold_days": hold_days,
+            "hold_reason": hold_reason,
+            "news_influenced": news_influenced,
+            "asset_type": "crypto",
         })
     
     full_message = format_top10_message(stock_picks, crypto_picks)
