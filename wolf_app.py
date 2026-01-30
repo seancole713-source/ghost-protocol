@@ -32371,106 +32371,89 @@ async def money_game_top10_endpoint():
             result["predictions"][symbol] = {"direction": "FLAT", "confidence": 0, "error": str(e)}
             LOGGER.warning(f"[MONEY-GAME-TOP10] Prediction failed for {symbol}: {e}")
     
-    # Step 3: Build the message
+    # Step 3: Build the message using the CORRECT formatter
     result["step"] = "building_message"
-    now = datetime.now()
-    central_time = now.strftime("%I:%M %p CT")
-    date_str = now.strftime("%b %d, %Y")
     
-    lines = [
-        f"🎯 GHOST TOP 20",
-        f"📅 {date_str} | ⏰ {central_time}",
-        "",
-        "═══════════════════════════════════════",
-        "📈 STOCKS (10)",
-        "═══════════════════════════════════════",
-        "",
-    ]
+    # Convert predictions to format expected by format_top10_message
+    from core.ghost_notifications import format_top10_message
     
-    # Stock predictions
-    for i, symbol in enumerate(result["top10_stocks"][:10], 1):
+    stock_picks = []
+    for symbol in result["top10_stocks"][:10]:
         pred = result["predictions"].get(symbol, {})
+        if pred.get("error"):
+            continue
+        
         direction = pred.get("direction", "FLAT")
-        confidence = pred.get("confidence", 0) * 100
+        confidence = pred.get("confidence", 0.5)
         price = pred.get("current_price", 0)
-        target = pred.get("target_price", price * 1.05)
-        stop = pred.get("stop_loss", price * 0.96)
+        target = pred.get("target_price", price)
+        stop = pred.get("stop_loss", price * 0.97)
         
-        # Calculate target %
-        target_pct = ((target / price) - 1) * 100 if price > 0 else 5
-        
-        # Direction emoji
-        if direction == "UP":
-            emoji = "🟢"
-            action = "BUY"
-        elif direction == "DOWN":
-            emoji = "🔴"
-            action = "SELL"
+        # Calculate hold hours based on confidence
+        # High confidence = shorter hold, Low confidence = longer hold
+        if confidence >= 0.75:
+            hold_hours = 48  # 2 days
+            hold_reason = "high_conviction"
+        elif confidence >= 0.55:
+            hold_hours = 72  # 3 days
+            hold_reason = "swing_trade"
         else:
-            emoji = "⚪"
-            action = "HOLD"
+            hold_hours = 120  # 5 days
+            hold_reason = "position_trade"
         
-        lines.append(f"{i}. {emoji} {symbol} — {action}")
-        lines.append(f"   💵 Entry: ${price:,.2f}" if price > 0 else f"   💵 Entry: N/A")
-        lines.append(f"   🎯 Target: ${target:,.2f} ({target_pct:+.1f}%)" if target > 0 else "   🎯 Target: N/A")
-        lines.append(f"   🛑 Stop: ${stop:,.2f}" if stop > 0 else "   🛑 Stop: N/A")
-        lines.append(f"   📊 Confidence: {confidence:.0f}%")
-        lines.append("")
+        stock_picks.append({
+            "symbol": symbol,
+            "direction": "UP" if direction == "UP" else "DOWN",
+            "confidence": confidence,
+            "current": price,
+            "target_price": target,
+            "prediction_48h": target,
+            "stop": stop,
+            "hold_hours": hold_hours,
+            "hold_reason": hold_reason,
+            "news_influenced": False,  # TODO: integrate news check
+            "sentiment_score": 0,
+        })
     
-    lines.extend([
-        "═══════════════════════════════════════",
-        "📊 CRYPTO (10)",
-        "═══════════════════════════════════════",
-        "",
-    ])
-    
-    # Crypto predictions
-    for i, symbol in enumerate(result["top10_crypto"][:10], 1):
+    crypto_picks = []
+    for symbol in result["top10_crypto"][:10]:
         pred = result["predictions"].get(symbol, {})
+        if pred.get("error"):
+            continue
+        
         direction = pred.get("direction", "FLAT")
-        confidence = pred.get("confidence", 0) * 100
+        confidence = pred.get("confidence", 0.5)
         price = pred.get("current_price", 0)
-        target = pred.get("target_price", price * 1.05)
-        stop = pred.get("stop_loss", price * 0.96)
+        target = pred.get("target_price", price)
+        stop = pred.get("stop_loss", price * 0.97)
         
-        # Calculate target %
-        target_pct = ((target / price) - 1) * 100 if price > 0 else 5
-        
-        # Direction emoji
-        if direction == "UP":
-            emoji = "🟢"
-            action = "BUY"
-        elif direction == "DOWN":
-            emoji = "🔴"
-            action = "SELL"
+        # Crypto moves faster - shorter hold periods
+        if confidence >= 0.75:
+            hold_hours = 24  # 1 day
+            hold_reason = "momentum_trade"
+        elif confidence >= 0.55:
+            hold_hours = 48  # 2 days
+            hold_reason = "swing_trade"
         else:
-            emoji = "⚪"
-            action = "HOLD"
+            hold_hours = 72  # 3 days
+            hold_reason = "position_trade"
         
-        lines.append(f"{i}. {emoji} {symbol} — {action}")
-        if price >= 1:
-            lines.append(f"   💵 Entry: ${price:,.2f}")
-            lines.append(f"   🎯 Target: ${target:,.2f} ({target_pct:+.1f}%)")
-            lines.append(f"   🛑 Stop: ${stop:,.2f}")
-        else:
-            lines.append(f"   💵 Entry: ${price:.6f}")
-            lines.append(f"   🎯 Target: ${target:.6f} ({target_pct:+.1f}%)")
-            lines.append(f"   🛑 Stop: ${stop:.6f}")
-        lines.append(f"   📊 Confidence: {confidence:.0f}%")
-        lines.append("")
+        crypto_picks.append({
+            "symbol": symbol,
+            "direction": "UP" if direction == "UP" else "DOWN",
+            "confidence": confidence,
+            "current": price,
+            "target_price": target,
+            "prediction_48h": target,
+            "stop": stop,
+            "hold_hours": hold_hours,
+            "hold_reason": hold_reason,
+            "news_influenced": False,  # TODO: integrate news check
+            "sentiment_score": 0,
+        })
     
-    lines.extend([
-        "═══════════════════════════════════════",
-        "📖 LEGEND",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "🟢 = BUY (price going UP)",
-        "🔴 = SELL (price going DOWN)",
-        "⚪ = HOLD (wait for clearer signal)",
-        "",
-        "Ghost is watching. 👁️",
-    ])
-    
-    full_message = "\n".join(lines)
+    # Use the proper formatter
+    full_message = format_top10_message(stock_picks, crypto_picks)
     result["message_preview"] = full_message[:500] + "..."
     
     # Step 4: Send to Telegram
