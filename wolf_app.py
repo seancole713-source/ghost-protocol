@@ -32325,6 +32325,7 @@ async def _run_turbo_prediction_for_top10(symbol: str) -> dict:
             "news_influenced": news_influenced,
             "news_headline": news_headline,
             "expected_move_pct": expected_move,
+            "volatility": volatility,  # 20-day volatility for entry zone calculation
         }
         
     except Exception as e:
@@ -32439,23 +32440,17 @@ async def money_game_top10_endpoint():
         if pred.get("error"):
             continue
         
+        # Pull ALL data from prediction - no recalculation, mirror exactly
         direction = pred.get("direction", "FLAT")
         confidence = pred.get("confidence", 0.5)
         price = pred.get("current_price", 0)
         target = pred.get("target_price", price)
         stop = pred.get("stop_loss", price * 0.97)
-        
-        # Calculate hold hours based on confidence
-        # High confidence = shorter hold, Low confidence = longer hold
-        if confidence >= 0.75:
-            hold_hours = 48  # 2 days
-            hold_reason = "high_conviction"
-        elif confidence >= 0.55:
-            hold_hours = 72  # 3 days
-            hold_reason = "swing_trade"
-        else:
-            hold_hours = 120  # 5 days
-            hold_reason = "position_trade"
+        hold_days = pred.get("hold_days", 3)  # From prediction engine
+        hold_reason = pred.get("hold_reason", "swing_trade")
+        news_influenced = pred.get("news_influenced", False)
+        expected_move = pred.get("expected_move_pct", 0.03)
+        volatility = pred.get("volatility", 0.02)
         
         stock_picks.append({
             "symbol": symbol,
@@ -32465,9 +32460,11 @@ async def money_game_top10_endpoint():
             "target_price": target,
             "prediction_48h": target,
             "stop": stop,
-            "hold_hours": hold_hours,
+            "hold_days": hold_days,  # REAL from prediction
             "hold_reason": hold_reason,
-            "news_influenced": False,  # TODO: integrate news check
+            "news_influenced": news_influenced,  # REAL from prediction
+            "expected_move_pct": expected_move,  # REAL from prediction
+            "volatility": volatility,  # REAL from prediction
             "sentiment_score": 0,
         })
     
@@ -32477,22 +32474,17 @@ async def money_game_top10_endpoint():
         if pred.get("error"):
             continue
         
+        # Pull ALL data from prediction - no recalculation, mirror exactly
         direction = pred.get("direction", "FLAT")
         confidence = pred.get("confidence", 0.5)
         price = pred.get("current_price", 0)
         target = pred.get("target_price", price)
         stop = pred.get("stop_loss", price * 0.97)
-        
-        # Crypto moves faster - shorter hold periods
-        if confidence >= 0.75:
-            hold_hours = 24  # 1 day
-            hold_reason = "momentum_trade"
-        elif confidence >= 0.55:
-            hold_hours = 48  # 2 days
-            hold_reason = "swing_trade"
-        else:
-            hold_hours = 72  # 3 days
-            hold_reason = "position_trade"
+        hold_days = pred.get("hold_days", 2)  # From prediction engine
+        hold_reason = pred.get("hold_reason", "swing_trade")
+        news_influenced = pred.get("news_influenced", False)
+        expected_move = pred.get("expected_move_pct", 0.03)
+        volatility = pred.get("volatility", 0.02)
         
         crypto_picks.append({
             "symbol": symbol,
@@ -32502,9 +32494,11 @@ async def money_game_top10_endpoint():
             "target_price": target,
             "prediction_48h": target,
             "stop": stop,
-            "hold_hours": hold_hours,
+            "hold_days": hold_days,  # REAL from prediction
             "hold_reason": hold_reason,
-            "news_influenced": False,  # TODO: integrate news check
+            "news_influenced": news_influenced,  # REAL from prediction
+            "expected_move_pct": expected_move,  # REAL from prediction
+            "volatility": volatility,  # REAL from prediction
             "sentiment_score": 0,
         })
     
@@ -32612,6 +32606,7 @@ async def send_top10_now_endpoint():
         if pred.get("error"):
             continue
         
+        # Pull ALL data from prediction - mirror exactly
         direction = pred.get("direction", "FLAT")
         confidence = pred.get("confidence", 0.5)
         price = pred.get("current_price", 0)
@@ -32620,6 +32615,8 @@ async def send_top10_now_endpoint():
         hold_days = pred.get("hold_days", 3)
         hold_reason = pred.get("hold_reason", "swing_trade")
         news_influenced = pred.get("news_influenced", False)
+        expected_move = pred.get("expected_move_pct", 0.03)
+        volatility = pred.get("volatility", 0.02)
         
         stock_picks.append({
             "symbol": symbol,
@@ -32632,6 +32629,8 @@ async def send_top10_now_endpoint():
             "hold_days": hold_days,
             "hold_reason": hold_reason,
             "news_influenced": news_influenced,
+            "expected_move_pct": expected_move,
+            "volatility": volatility,
             "asset_type": "stock",
         })
     
@@ -32641,6 +32640,7 @@ async def send_top10_now_endpoint():
         if pred.get("error"):
             continue
         
+        # Pull ALL data from prediction - mirror exactly
         direction = pred.get("direction", "FLAT")
         confidence = pred.get("confidence", 0.5)
         price = pred.get("current_price", 0)
@@ -32649,6 +32649,8 @@ async def send_top10_now_endpoint():
         hold_days = pred.get("hold_days", 3)
         hold_reason = pred.get("hold_reason", "swing_trade")
         news_influenced = pred.get("news_influenced", False)
+        expected_move = pred.get("expected_move_pct", 0.03)
+        volatility = pred.get("volatility", 0.02)
         
         crypto_picks.append({
             "symbol": symbol,
@@ -32661,6 +32663,8 @@ async def send_top10_now_endpoint():
             "hold_days": hold_days,
             "hold_reason": hold_reason,
             "news_influenced": news_influenced,
+            "expected_move_pct": expected_move,
+            "volatility": volatility,
             "asset_type": "crypto",
         })
     

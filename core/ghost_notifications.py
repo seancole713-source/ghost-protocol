@@ -693,8 +693,18 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         hold_days = item.get('hold_days', 3)
         news = item.get('news_influenced', False)
         
+        # Entry Zone: Use REAL volatility data (daily vol / 2 = intraday range)
+        # If no volatility data, estimate from expected_move
+        volatility = item.get('volatility', 0.02)  # 20-day annualized vol (default 2%)
+        expected_move = item.get('expected_move_pct', 0.03)  # Expected move %
+        
+        # Daily volatility = annualized / sqrt(252) ≈ annualized / 16
+        # Entry zone = half of daily vol (reasonable fill range)
+        daily_vol = volatility / 16 if volatility > 0.01 else abs(expected_move) / 3
+        entry_range_pct = max(0.005, min(0.03, daily_vol / 2))  # Clamp 0.5% - 3%
+        
         gain_pct = ((target - current) / current * 100) if current > 0 else 0
-        entry_high = current * 1.01  # Entry zone: current to +1%
+        entry_high = current * (1 + entry_range_pct)  # Entry zone: current to +vol-based %
         rr = calculate_rr(current, target, stop, direction)
         risk = get_risk_level(conf)
         hold_reason = get_hold_reason(conf, hold_days)
@@ -1424,7 +1434,12 @@ class GhostNotificationSystem:
         return stocks[:5], crypto[:5]
     
     def _build_pick(self, candidate: Dict, current_price: float) -> Dict:
-        """Build a pick dict from candidate and current price."""
+        """
+        Build a pick dict from candidate and current price.
+        
+        IMPORTANT: Preserve ALL prediction data from the source.
+        Telegram message must mirror EXACTLY what the backend calculated.
+        """
         from core.asset_classifier import get_asset_type
         
         symbol = candidate["symbol"]
@@ -1432,37 +1447,72 @@ class GhostNotificationSystem:
         confidence = candidate["confidence"]
         asset_class = candidate["asset_class"]
         
-        # Calculate 48hr prediction price
-        # FIXED: Accept both UP/BUY and DOWN/SELL directions
-        if direction in ("UP", "BUY"):
-            move_pct = 0.05 if asset_class == "crypto" else 0.03
-            prediction_48h = current_price * (1 + move_pct)
-        else:
-            move_pct = 0.05 if asset_class == "crypto" else 0.03
-            prediction_48h = current_price * (1 - move_pct)
+        # Get original prediction data for complete values
+        pred = candidate.get("pred", {})
         
-        # Calculate buy-in and sell prices
+        # PRESERVE prediction data if available (from turbo/ensemble predictor)
+        # Check both candidate and original pred dict
+        target_price = (
+            candidate.get("target_price") or 
+            pred.get("target_price") or 
+            candidate.get("prediction_48h") or 
+            pred.get("prediction_48h")
+        )
+        if not target_price or target_price <= 0:
+            # Fallback: Calculate from confidence
+            if direction in ("UP", "BUY"):
+                move_pct = 0.05 if asset_class == "crypto" else 0.03
+                target_price = current_price * (1 + move_pct)
+            else:
+                move_pct = 0.05 if asset_class == "crypto" else 0.03
+                target_price = current_price * (1 - move_pct)
+        
+        # PRESERVE stop from prediction if available
+        stop_price = (
+            candidate.get("stop_loss") or
+            pred.get("stop_loss") or
+            candidate.get("stop") or
+            pred.get("stop")
+        )
+        if not stop_price or stop_price <= 0:
+            # Fallback: Calculate stop based on direction
+            if direction in ("UP", "BUY"):
+                stop_price = current_price * 0.98  # 2% below for BUY
+            else:
+                stop_price = current_price * 1.02  # 2% above for SELL
+        
+        # PRESERVE hold_days from prediction if available
+        hold_days = candidate.get("hold_days") or pred.get("hold_days") or 3
+        hold_reason = candidate.get("hold_reason") or pred.get("hold_reason") or "swing_trade"
+        
+        # PRESERVE expected_move and volatility for Entry Zone
+        expected_move = candidate.get("expected_move_pct") or pred.get("expected_move_pct") or 0.03
+        volatility = candidate.get("volatility") or pred.get("volatility") or 0.02
+        
+        # PRESERVE news_influenced from prediction
+        news_influenced = candidate.get("news_influenced") or pred.get("news_influenced") or False
+        
+        # Legacy fields (keep for backward compatibility)
         buy_in = current_price * 0.99  # 1% below current
         sell_at = current_price * 1.02  # 2% above current
-        
-        # CRITICAL FIX: Stop price depends on direction!
-        # BUY: Stop BELOW entry (exit if price drops)
-        # SELL: Stop ABOVE entry (exit if price rises)
-        if direction in ("UP", "BUY"):
-            stop_price = current_price * 0.98  # 2% below for BUY
-        else:
-            stop_price = current_price * 1.02  # 2% above for SELL
         
         return {
             "symbol": symbol,
             "current": current_price,
-            "prediction_48h": prediction_48h,
+            "prediction_48h": target_price,
+            "target_price": target_price,
             "buy_in": buy_in,
             "sell": sell_at,
-            "stop": stop_price,  # PROPER stop based on direction!
+            "stop": stop_price,
+            "stop_loss": stop_price,  # Alias
             "confidence": confidence,
             "direction": direction,
-            "asset_type": asset_class,  # CRITICAL for tracking!
+            "asset_type": asset_class,
+            "hold_days": hold_days,
+            "hold_reason": hold_reason,
+            "expected_move_pct": expected_move,
+            "volatility": volatility,
+            "news_influenced": news_influenced,
             "learning_boosted": candidate.get("learning_boosted", False),
         }
     
