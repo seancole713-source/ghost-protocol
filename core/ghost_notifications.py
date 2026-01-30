@@ -1231,7 +1231,10 @@ class GhostNotificationSystem:
                 continue
             
             confidence = pred.get("confidence", 0)
-            if confidence < 0.50:  # At least 50% to consider (was 70%, too restrictive)
+            
+            # MONEY GAME: Always include TOP 10 symbols regardless of confidence
+            is_money_game_elite = symbol in money_game_stocks or symbol in money_game_crypto
+            if not is_money_game_elite and confidence < 0.50:  # Only filter non-elite symbols
                 continue
             
             # LEARNING: Apply confidence boost for high-accuracy symbols
