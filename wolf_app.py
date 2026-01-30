@@ -32321,31 +32321,41 @@ async def money_game_top10_endpoint():
         "errors": [],
     }
     
-    # Step 1: Get Money Game TOP 10
-    # Fallback symbols if Money Game has no data
+    # Step 1: Use RELIABLE fallback symbols (Money Game often empty)
+    # These are high-quality, liquid symbols with good ML signal
     FALLBACK_STOCKS = ["NVDA", "META", "PLTR", "COIN", "MSTR", "GOOGL", "AMZN", "HOOD", "TSLA", "AMD"]
     FALLBACK_CRYPTO = ["RNDR", "TURBO", "SOL", "BTC", "SUI", "ETH", "INJ", "XRP", "AVAX", "LINK"]
     
+    # START with fallback symbols (guaranteed)
+    result["top10_stocks"] = FALLBACK_STOCKS.copy()
+    result["top10_crypto"] = FALLBACK_CRYPTO.copy()
+    
     try:
+        # Try to get Money Game symbols (may be better ranked)
         from core.money_game_engine import get_money_game
         mg = get_money_game()
-        result["top10_stocks"] = mg.get_best_symbols_for_top10("stock", limit=10)
-        result["top10_crypto"] = mg.get_best_symbols_for_top10("crypto", limit=10)
+        mg_stocks = mg.get_best_symbols_for_top10("stock", limit=10)
+        mg_crypto = mg.get_best_symbols_for_top10("crypto", limit=10)
         
-        # If Money Game returns empty, use fallback
-        if not result["top10_stocks"]:
-            LOGGER.warning("[MONEY-GAME-TOP10] Money Game returned empty stocks, using fallback")
-            result["top10_stocks"] = FALLBACK_STOCKS
-        if not result["top10_crypto"]:
-            LOGGER.warning("[MONEY-GAME-TOP10] Money Game returned empty crypto, using fallback")
-            result["top10_crypto"] = FALLBACK_CRYPTO
+        # Only use Money Game if it returned REAL data
+        if mg_stocks and len(mg_stocks) >= 5:
+            result["top10_stocks"] = mg_stocks[:10]
+            LOGGER.info(f"[MONEY-GAME-TOP10] Using Money Game stocks: {mg_stocks}")
+        else:
+            LOGGER.warning("[MONEY-GAME-TOP10] Money Game stocks empty, using FALLBACK")
             
-        LOGGER.info(f"[MONEY-GAME-TOP10] Stocks: {result['top10_stocks']}")
-        LOGGER.info(f"[MONEY-GAME-TOP10] Crypto: {result['top10_crypto']}")
+        if mg_crypto and len(mg_crypto) >= 5:
+            result["top10_crypto"] = mg_crypto[:10]
+            LOGGER.info(f"[MONEY-GAME-TOP10] Using Money Game crypto: {mg_crypto}")
+        else:
+            LOGGER.warning("[MONEY-GAME-TOP10] Money Game crypto empty, using FALLBACK")
+            
     except Exception as e:
-        result["errors"].append(f"Money Game error: {e}")
-        result["top10_stocks"] = FALLBACK_STOCKS
-        result["top10_crypto"] = FALLBACK_CRYPTO
+        result["errors"].append(f"Money Game error (using fallback): {e}")
+        LOGGER.warning(f"[MONEY-GAME-TOP10] Money Game exception, using FALLBACK: {e}")
+    
+    LOGGER.info(f"[MONEY-GAME-TOP10] Final stocks: {result['top10_stocks']}")
+    LOGGER.info(f"[MONEY-GAME-TOP10] Final crypto: {result['top10_crypto']}")
     
     # Step 2: Run REAL predictions for each symbol
     result["step"] = "running_predictions"
@@ -32487,6 +32497,152 @@ async def money_game_top10_endpoint():
     
     result["step"] = "complete"
     result["overall_status"] = "✅ SUCCESS" if result["telegram_sent"] else "❌ FAILED"
+    
+    return result
+
+
+@APP.get("/debug/send-top10-now")
+@APP.post("/debug/send-top10-now")
+async def send_top10_now_endpoint():
+    """
+    🚀 SEND TOP 10 NOW - FAST, RELIABLE
+    
+    Simple endpoint that:
+    1. Uses hardcoded QUALITY symbols (no Money Game dependency)
+    2. Runs REAL ML predictions for each
+    3. Sends formatted message to Telegram
+    
+    This is the RELIABLE way to test TOP 10 notifications!
+    """
+    import aiohttp
+    import os
+    from datetime import datetime
+    
+    # Hardcoded HIGH-QUALITY symbols - liquid, well-known, good ML signal
+    STOCKS = ["NVDA", "META", "PLTR", "COIN", "MSTR", "GOOGL", "AMZN", "HOOD", "TSLA", "AMD"]
+    CRYPTO = ["RNDR", "TURBO", "SOL", "BTC", "SUI", "ETH", "INJ", "XRP", "AVAX", "LINK"]
+    
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "stocks": STOCKS,
+        "crypto": CRYPTO,
+        "predictions": {},
+        "telegram_sent": False,
+        "errors": [],
+    }
+    
+    # Run predictions for all symbols
+    all_symbols = STOCKS + CRYPTO
+    
+    for symbol in all_symbols:
+        try:
+            pred = await _run_turbo_prediction_for_top10(symbol)
+            if pred and pred.get("ok"):
+                result["predictions"][symbol] = {
+                    "direction": pred.get("direction", "FLAT"),
+                    "confidence": pred.get("confidence", 0.5),
+                    "current_price": pred.get("current_price", 0),
+                    "target_price": pred.get("target_price", 0),
+                    "stop_loss": pred.get("stop_loss", 0),
+                }
+            else:
+                result["predictions"][symbol] = {"error": pred.get("error", "failed")}
+        except Exception as e:
+            result["predictions"][symbol] = {"error": str(e)}
+    
+    # Build formatted message
+    from core.ghost_notifications import format_top10_message
+    
+    stock_picks = []
+    for symbol in STOCKS:
+        pred = result["predictions"].get(symbol, {})
+        if pred.get("error"):
+            continue
+        
+        direction = pred.get("direction", "FLAT")
+        confidence = pred.get("confidence", 0.5)
+        price = pred.get("current_price", 0)
+        target = pred.get("target_price", price)
+        stop = pred.get("stop_loss", price * 0.97)
+        
+        hold_hours = 48 if confidence >= 0.75 else (72 if confidence >= 0.55 else 120)
+        
+        stock_picks.append({
+            "symbol": symbol,
+            "direction": "UP" if direction == "UP" else "DOWN",
+            "confidence": confidence,
+            "current": price,
+            "target_price": target,
+            "prediction_48h": target,
+            "stop": stop,
+            "hold_hours": hold_hours,
+            "hold_reason": "turbo_prediction",
+            "news_influenced": False,
+            "sentiment_score": 0,
+        })
+    
+    crypto_picks = []
+    for symbol in CRYPTO:
+        pred = result["predictions"].get(symbol, {})
+        if pred.get("error"):
+            continue
+        
+        direction = pred.get("direction", "FLAT")
+        confidence = pred.get("confidence", 0.5)
+        price = pred.get("current_price", 0)
+        target = pred.get("target_price", price)
+        stop = pred.get("stop_loss", price * 0.97)
+        
+        hold_hours = 24 if confidence >= 0.75 else (48 if confidence >= 0.55 else 72)
+        
+        crypto_picks.append({
+            "symbol": symbol,
+            "direction": "UP" if direction == "UP" else "DOWN",
+            "confidence": confidence,
+            "current": price,
+            "target_price": target,
+            "prediction_48h": target,
+            "stop": stop,
+            "hold_hours": hold_hours,
+            "hold_reason": "turbo_prediction",
+            "news_influenced": False,
+            "sentiment_score": 0,
+        })
+    
+    full_message = format_top10_message(stock_picks, crypto_picks)
+    result["message_preview"] = full_message[:300] + "..."
+    result["stock_picks_count"] = len(stock_picks)
+    result["crypto_picks_count"] = len(crypto_picks)
+    
+    # Send to Telegram
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    
+    if bot_token and chat_id:
+        try:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": full_message,
+                "disable_web_page_preview": True,
+            }
+            
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+                async with session.post(url, json=payload) as resp:
+                    resp_data = await resp.json()
+                    
+                    if resp.status == 200 and resp_data.get("ok"):
+                        result["telegram_sent"] = True
+                        result["message_id"] = resp_data.get("result", {}).get("message_id")
+                        LOGGER.info(f"[SEND-TOP10-NOW] ✅ Sent to Telegram!")
+                    else:
+                        result["errors"].append(f"Telegram error: {resp_data.get('description')}")
+        except Exception as e:
+            result["errors"].append(f"Telegram exception: {e}")
+    else:
+        result["errors"].append("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
+    
+    result["status"] = "✅ SUCCESS" if result["telegram_sent"] else "❌ FAILED"
     
     return result
 
