@@ -32530,6 +32530,11 @@ async def money_game_top10_endpoint():
     return result
 
 
+# Track last TOP10 send time to prevent accidental duplicates
+_LAST_TOP10_SEND_TIME = 0
+_TOP10_COOLDOWN_SECONDS = 60  # Minimum 60 seconds between sends
+
+
 @APP.get("/debug/send-top10-now")
 @APP.post("/debug/send-top10-now")
 async def send_top10_now_endpoint():
@@ -32539,13 +32544,26 @@ async def send_top10_now_endpoint():
     Simple endpoint that:
     1. Uses hardcoded QUALITY symbols (no Money Game dependency)
     2. Runs REAL ML predictions for each
-    3. Sends formatted message to Telegram
+    3. Sends ONE combined message to Telegram (stocks + crypto)
     
-    This is the RELIABLE way to test TOP 10 notifications!
+    Has 60-second cooldown to prevent accidental duplicate sends.
     """
     import aiohttp
     import os
     from datetime import datetime
+    
+    global _LAST_TOP10_SEND_TIME
+    
+    # Check cooldown to prevent duplicate sends
+    now = time.time()
+    seconds_since_last = now - _LAST_TOP10_SEND_TIME
+    if seconds_since_last < _TOP10_COOLDOWN_SECONDS:
+        return {
+            "ok": False,
+            "error": f"Cooldown active. Wait {int(_TOP10_COOLDOWN_SECONDS - seconds_since_last)} more seconds.",
+            "telegram_sent": False,
+            "cooldown_remaining": int(_TOP10_COOLDOWN_SECONDS - seconds_since_last),
+        }
     
     # Hardcoded HIGH-QUALITY symbols - liquid, well-known, good ML signal
     STOCKS = ["NVDA", "META", "PLTR", "COIN", "MSTR", "GOOGL", "AMZN", "HOOD", "TSLA", "AMD"]
@@ -32700,6 +32718,10 @@ async def send_top10_now_endpoint():
             result["errors"].append(f"Telegram exception: {e}")
     else:
         result["errors"].append("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
+    
+    # Update cooldown on successful send
+    if result["telegram_sent"]:
+        _LAST_TOP10_SEND_TIME = time.time()
     
     result["status"] = "✅ SUCCESS" if result["telegram_sent"] else "❌ FAILED"
     
