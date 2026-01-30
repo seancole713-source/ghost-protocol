@@ -361,21 +361,23 @@ class XGBoostModel:
         self._load_trained_model()
         
     def _load_trained_model(self):
-        """Load the trained XGBoost model from disk (prefer v3-hourly)"""
+        """Load the trained XGBoost model from disk (prefer v2 for now - v3 needs pipeline update)"""
         try:
             import pickle
             from pathlib import Path
             
-            # Try v3-hourly first (75% accuracy, hourly data)
+            # NOTE: v3-hourly (75% accuracy) requires different feature extraction pipeline
+            # Using v2 for now until pipeline is updated to extract hourly features
             model_path_v3 = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v3_hourly.pkl"
             model_path_v2 = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v2.pkl"
             model_path_v1 = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v1.pkl"
             
-            # Prefer v3 (best accuracy, hourly data, 75.1% test, 77.5% CV)
-            if model_path_v3.exists():
-                model_path = model_path_v3
-            elif model_path_v2.exists():
+            # Use v2 for now (pipeline produces v2-compatible features)
+            # TODO: Update pipeline to extract hourly features for v3
+            if model_path_v2.exists():
                 model_path = model_path_v2
+            elif model_path_v3.exists():
+                model_path = model_path_v3  # Fallback to v3 if no v2
             else:
                 model_path = model_path_v1
             
