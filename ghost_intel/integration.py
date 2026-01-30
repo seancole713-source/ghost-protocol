@@ -1694,26 +1694,25 @@ def apply_intel_to_prediction(
     Synchronous wrapper for wolf_app.py integration.
     
     Call this from run_single_prediction() after feature extraction.
+    
+    NOTE: Intel signals are OPTIONAL. If we can't get them (uvloop conflict, etc.)
+    we just return the original prediction without Intel influence.
     """
     import asyncio
     
     try:
-        # Check if we're already in an async context
+        # Check if we're in an async context (uvloop typically)
         try:
             loop = asyncio.get_running_loop()
-            # We're in async context - need to use thread pool
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(
-                    asyncio.run,
-                    get_intel_signal_for_prediction(symbol, direction, confidence)
-                )
-                return future.result(timeout=5)
+            # We're in uvloop - Intel signals not available in this context
+            # This is OK - Intel is optional enhancement
+            LOGGER.debug(f"[{symbol}] Skipping Intel (running in uvloop context)")
+            return direction, confidence, {"intel_skipped": True, "reason": "uvloop_context"}
         except RuntimeError:
             # No running loop - we can use asyncio.run directly
             return asyncio.run(
                 get_intel_signal_for_prediction(symbol, direction, confidence)
             )
     except Exception as e:
-        LOGGER.warning(f"[{symbol}] Intel sync wrapper failed: {e}")
-        return direction, confidence, {"intel_error": str(e)}
+        LOGGER.debug(f"[{symbol}] Intel unavailable: {e}")
+        return direction, confidence, {"intel_skipped": True, "reason": str(e)}

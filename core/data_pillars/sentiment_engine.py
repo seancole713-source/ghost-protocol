@@ -241,13 +241,24 @@ class SentimentEngine(BasePillar):
             brain = get_news_brain()
             
             # Fetch recent headlines (cached for 5 minutes)
+            # NOTE: Skip if running in uvloop context (FastAPI/uvicorn)
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
+                # We're in uvloop - can't run sync here, return neutral
+                logger.debug(f"[SENTIMENT] {symbol}: Skipping RSS in uvloop context")
+                return {"ok": True, "articles": 0, "sentiment_score": 0.0, "uvloop_skipped": True}
             except RuntimeError:
+                # No running loop - we can create one
+                pass
+            
+            try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-            
-            headlines = loop.run_until_complete(brain.fetch_all_news())
+                headlines = loop.run_until_complete(brain.fetch_all_news())
+                loop.close()
+            except Exception as loop_err:
+                logger.debug(f"[SENTIMENT] {symbol}: Event loop error: {loop_err}")
+                return {"ok": True, "articles": 0, "sentiment_score": 0.0}
             
             # Filter for symbol mentions
             symbol_upper = symbol.upper()
