@@ -744,8 +744,8 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         
         return "\n".join(lines)
     
-    # ===== MESSAGE 1: STOCKS =====
-    stock_lines = [
+    # ===== BUILD SINGLE MESSAGE =====
+    all_lines = [
         "🎯 GHOST TOP 10 — TRADE PLAN",
         f"📅 {date_str} | ⏰ 8:00 AM CT",
         "",
@@ -757,34 +757,32 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     
     # Take top 5 stocks
     for idx, s in enumerate(stocks[:5], 1):
-        stock_lines.append(format_pick(s, idx, is_stock=True))
-        stock_lines.append("")
+        all_lines.append(format_pick(s, idx, is_stock=True))
+        all_lines.append("")
     
     if not stocks:
-        stock_lines.append("(No stock picks today)")
-        stock_lines.append("")
+        all_lines.append("(No stock picks today)")
+        all_lines.append("")
     
-    stock_msg = "\n".join(stock_lines)
-    
-    # ===== MESSAGE 2: CRYPTO =====
-    crypto_lines = [
+    # Add crypto section
+    all_lines.extend([
         "━━━━━━━━━━━━━━━━━━━━━━",
         "🪙 CRYPTO",
         "━━━━━━━━━━━━━━━━━━━━━━",
         ""
-    ]
+    ])
     
     # Take top 5 crypto
     for idx, c in enumerate(crypto[:5], 1):
-        crypto_lines.append(format_pick(c, idx, is_stock=False))
-        crypto_lines.append("")
+        all_lines.append(format_pick(c, idx, is_stock=False))
+        all_lines.append("")
     
     if not crypto:
-        crypto_lines.append("(No crypto picks today)")
-        crypto_lines.append("")
+        all_lines.append("(No crypto picks today)")
+        all_lines.append("")
     
     # Add legend at end
-    crypto_lines.extend([
+    all_lines.extend([
         "━━━━━━━━━━━━━━━━━━━━━━",
         "📖 LEGEND",
         "━━━━━━━━━━━━━━━━━━━━━━",
@@ -794,10 +792,10 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         "Ghost is watching 👁️"
     ])
     
-    crypto_msg = "\n".join(crypto_lines)
+    full_msg = "\n".join(all_lines)
     
-    # Return as list of 2 messages
-    return [stock_msg, crypto_msg]
+    # Return as list with single message (keeps API compatible)
+    return [full_msg]
 
 
 def format_update_message(picks: List[Dict]) -> str:
