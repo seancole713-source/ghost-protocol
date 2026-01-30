@@ -32271,63 +32271,54 @@ async def _run_turbo_prediction_for_top10(symbol: str) -> dict:
         
         # ====================================================================
         # INTELLIGENT HOLD PERIOD CALCULATION (1-7 days)
-        # Based on: RSI extremes, volatility, momentum, confidence
+        # Uses confidence + expected move to determine hold
+        # Higher confidence + bigger move = longer hold
         # ====================================================================
-        hold_days = 3  # Default 3 days
-        hold_reason = "swing_trade"
         
-        # RSI EXTREMES: Oversold/Overbought rebounds are FAST (1-2 days)
-        if rsi_value and (rsi_value < 25 or rsi_value > 75):
-            hold_days = 1 if (rsi_value < 20 or rsi_value > 80) else 2
-            hold_reason = "rsi_extreme_reversal"
-        
-        # HIGH MOMENTUM: Strong trends continue longer (4-5 days)
-        elif momentum and momentum > 0.05:  # >5% momentum
-            hold_days = 4 if momentum > 0.08 else 5
-            hold_reason = "momentum_continuation"
-        
-        # HIGH VOLATILITY: Big swings = quick trades (2-3 days)
-        elif volatility and volatility > 0.40:  # >40% annualized
-            hold_days = 2
-            hold_reason = "high_volatility_swing"
-        
-        # HIGH CONFIDENCE (>75%): Hold longer for bigger move (5-7 days)
-        elif confidence > 0.75:
-            hold_days = 5 if confidence > 0.80 else 6
-            hold_reason = "high_conviction_position"
-        
-        # LOW CONFIDENCE (<55%): Short hold, take quick profits (1-2 days)
-        elif confidence < 0.55:
-            hold_days = 2 if confidence > 0.45 else 1
-            hold_reason = "low_conviction_scalp"
-        
-        # MEDIUM: Standard swing (3-4 days)
+        # Base hold on CONFIDENCE (main driver)
+        if confidence >= 0.80:
+            hold_days = 7  # Very high confidence = full week
+        elif confidence >= 0.70:
+            hold_days = 5  # High confidence = 5 days
+        elif confidence >= 0.60:
+            hold_days = 4  # Good confidence = 4 days
+        elif confidence >= 0.50:
+            hold_days = 3  # Medium confidence = 3 days
+        elif confidence >= 0.40:
+            hold_days = 2  # Low confidence = 2 days
         else:
-            hold_days = 3
-            hold_reason = "swing_trade"
+            hold_days = 1  # Very low = 1 day scalp
         
-        # Cap at 7 days max
-        hold_days = min(7, max(1, hold_days))
+        # Adjust based on expected move size
+        if abs(expected_move) > 0.08:  # >8% expected move
+            hold_days = min(7, hold_days + 2)  # Add 2 days for big moves
+        elif abs(expected_move) > 0.05:  # >5% expected move
+            hold_days = min(7, hold_days + 1)  # Add 1 day
+        elif abs(expected_move) < 0.03:  # <3% small move
+            hold_days = max(1, hold_days - 1)  # Shorter hold for small moves
+        
+        # RSI extreme = quick reversal expected (cap at 2 days)
+        if rsi_value and (rsi_value < 25 or rsi_value > 75):
+            hold_days = min(2, hold_days)
+        
+        hold_reason = f"{hold_days}d_hold"
         
         # ====================================================================
         # NEWS INFLUENCE CHECK
-        # Mark high-profile stocks as news-influenced when sentiment is strong
+        # Only mark as news-influenced for TOP tier symbols with HIGH confidence
+        # Should be RARE - only 2-3 per message max
         # ====================================================================
         news_influenced = False
         news_headline = None
         
-        # High-profile stocks that are heavily news-driven
-        NEWS_HEAVY_SYMBOLS = {
-            "NVDA", "TSLA", "META", "GOOGL", "AMZN", "AAPL", "MSFT", "AMD",
-            "PLTR", "COIN", "MSTR", "GME", "AMC", "WOLF",  # Stocks with heavy news flow
-            "BTC", "ETH", "SOL", "DOGE", "XRP",  # Crypto with constant news
-        }
+        # Only the BIGGEST news-driven symbols
+        TOP_NEWS_SYMBOLS = {"NVDA", "TSLA", "BTC", "ETH"}
         
-        # Check if this symbol gets significant news coverage
+        # News check = top symbol + high confidence + big move
         symbol_upper = symbol.upper()
-        if symbol_upper in NEWS_HEAVY_SYMBOLS:
-            # Strong directional predictions on news-heavy stocks = news influenced
-            if confidence > 0.55 or abs(expected_move) > 0.04:  # >55% conf or >4% move
+        if symbol_upper in TOP_NEWS_SYMBOLS:
+            # Only if BOTH high confidence AND big expected move
+            if confidence > 0.70 and abs(expected_move) > 0.05:  # >70% conf AND >5% move
                 news_influenced = True
         
         return {
