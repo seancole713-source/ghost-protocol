@@ -99,14 +99,13 @@ _session.mount("http://", _adapter)
 _session.mount("https://", _adapter)
 
 # Provider configuration from environment
-# In strict quorum mode we need >=2 providers; Binance.com is often 451-blocked.
-# Priority order (Jan 2026):
-#   1. CoinGecko - FIRST because it returns 24h change data!
+# PRIORITY ORDER (Jan 30, 2026 - CoinGecko rate limit fix):
+#   1. Binance - Fast, reliable, no rate limit issues
 #   2. Coinbase - Most reliable, no API key needed
-#   3. Binance.US - Works in US (binance.com is 451-blocked)
-#   4. CryptoCompare - Good fallback, optional API key
-# NOTE: CoinGecko is prioritized despite rate limits because we need 24h change
-_DEFAULT_CRYPTO_QUORUM = ["coingecko", "coinbase", "binance", "cryptocompare"]
+#   3. CryptoCompare - Good fallback
+#   4. CoinGecko - LAST due to aggressive rate limiting (50 calls/min free tier)
+# NOTE: CoinGecko moved to LAST position to reduce 429 errors
+_DEFAULT_CRYPTO_QUORUM = ["binance", "coinbase", "cryptocompare", "coingecko"]
 _CRYPTO_QUORUM_ORDER = None  # Lazy-loaded from env
 
 
@@ -398,26 +397,10 @@ class CoinGeckoProvider:
             # Track 429 errors and open circuit breaker
             if "429" in str(e) or "Too Many Requests" in str(e):
                 self.consecutive_429s += 1
-                if self.consecutive_429s >= 3:
-                    self.circuit_open = True
-                    self.circuit_open_until = time.time() + 300  # 5 minutes
-                    LOGGER.error(f"CoinGecko circuit breaker OPENED - {self.consecutive_429s} consecutive 429s - disabled for 5min")
-                else:
-                    LOGGER.warning(f"CoinGecko 429 #{self.consecutive_429s} for {symbol} - circuit opens at 3")
-            else:
-                LOGGER.warning(f"CoinGecko fetch failed for {symbol}: {e}")
-            return None
-
-        except Exception as e:
-            # Track 429 errors and open circuit breaker
-            if "429" in str(e) or "Too Many Requests" in str(e):
-                self.consecutive_429s += 1
-                if self.consecutive_429s >= 3:
-                    self.circuit_open = True
-                    self.circuit_open_until = time.time() + 300  # 5 minutes
-                    LOGGER.error(f"CoinGecko circuit breaker OPENED - {self.consecutive_429s} consecutive 429s - disabled for 5min")
-                else:
-                    LOGGER.warning(f"CoinGecko 429 #{self.consecutive_429s} for {symbol} - circuit opens at 3")
+                # Open immediately on first 429, stay closed for 30 minutes
+                self.circuit_open = True
+                self.circuit_open_until = time.time() + 1800  # 30 minutes (was 5min)
+                LOGGER.error(f"CoinGecko circuit breaker OPENED - 429 rate limit - disabled for 30min")
             else:
                 LOGGER.warning(f"CoinGecko fetch failed for {symbol}: {e}")
             return None
@@ -518,10 +501,10 @@ class CoinGeckoProvider:
         except Exception as e:
             if "429" in str(e) or "Too Many Requests" in str(e):
                 self.consecutive_429s += 1
-                if self.consecutive_429s >= 3:
-                    self.circuit_open = True
-                    self.circuit_open_until = time.time() + 300
-                    LOGGER.error(f"CoinGecko batch circuit OPENED - {self.consecutive_429s} 429s")
+                # Open immediately, stay closed 30 minutes
+                self.circuit_open = True
+                self.circuit_open_until = time.time() + 1800  # 30 minutes
+                LOGGER.error(f"CoinGecko batch circuit OPENED - 429 rate limit - disabled for 30min")
             else:
                 LOGGER.warning(f"CoinGecko batch fetch failed: {e}")
             return {}
@@ -728,8 +711,8 @@ class BinanceProvider:
         self.consecutive_failures += 1
         if self.consecutive_failures >= 3:
             self.circuit_open = True
-            self.circuit_open_until = time.time() + 300  # 5 minutes
-            LOGGER.error(f"Binance circuit breaker OPENED - {self.consecutive_failures} consecutive failures - disabled for 5min")
+            self.circuit_open_until = time.time() + 1800  # 30 minutes
+            LOGGER.error(f"Binance circuit breaker OPENED - {self.consecutive_failures} consecutive failures - disabled for 30min")
         else:
             LOGGER.warning(f"Binance failure #{self.consecutive_failures} for {symbol} - circuit opens at 3")
         
@@ -795,12 +778,11 @@ class CoinbaseProvider:
             self.consecutive_failures += 1
             if self.consecutive_failures >= 3:
                 self.circuit_open = True
-                self.circuit_open_until = time.time() + 300  # 5 minutes
-                LOGGER.error(f"Coinbase circuit breaker OPENED - {self.consecutive_failures} consecutive failures - disabled for 5min")
+                self.circuit_open_until = time.time() + 1800  # 30 minutes
+                LOGGER.error(f"Coinbase circuit breaker OPENED - {self.consecutive_failures} consecutive failures - disabled for 30min")
             else:
                 LOGGER.warning(f"Coinbase failure #{self.consecutive_failures} for {symbol} - circuit opens at 3: {e}")
             
-            return None
             return None
 
 
