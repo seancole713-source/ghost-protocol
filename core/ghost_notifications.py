@@ -703,7 +703,15 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         daily_vol = volatility / 16 if volatility > 0.01 else abs(expected_move) / 3
         entry_range_pct = max(0.005, min(0.03, daily_vol / 2))  # Clamp 0.5% - 3%
         
-        gain_pct = ((target - current) / current * 100) if current > 0 else 0
+        # Calculate gain percentage
+        # For BUY: positive when target > current
+        # For SELL (short): we PROFIT when price drops, so show positive % for drop
+        if is_buy:
+            gain_pct = ((target - current) / current * 100) if current > 0 else 0
+        else:
+            # SHORT: profit = entry - exit, show as positive %
+            gain_pct = ((current - target) / current * 100) if current > 0 else 0
+        
         entry_high = current * (1 + entry_range_pct)  # Entry zone: current to +vol-based %
         rr = calculate_rr(current, target, stop, direction)
         risk = get_risk_level(conf)
@@ -722,8 +730,9 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
             lines.append(f"• BUY (CT): {day_name} {ct.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
             lines.append(f"• SELL (CT): {exit_date} @ Open | Target: {format_price(target)} ({gain_pct:+.1f}%)")
         else:
+            # SHORT: sell high, buy back low - show positive profit %
             lines.append(f"• SELL (CT): {day_name} {ct.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
-            lines.append(f"• BUY-BACK (CT): {exit_date} @ Open | Target: {format_price(target)} ({gain_pct:+.1f}%)")
+            lines.append(f"• BUY-BACK (CT): {exit_date} @ Open | Target: {format_price(target)} (+{gain_pct:.1f}%)")
         
         lines.append(f"• STOP LOSS: {format_price(stop)}")
         lines.append(f"• Hold: {hold_days} day{'s' if hold_days > 1 else ''} ({hold_reason})")

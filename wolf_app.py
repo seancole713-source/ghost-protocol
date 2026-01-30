@@ -32594,6 +32594,12 @@ async def send_top10_now_endpoint():
         
         # Pull ALL data from prediction - mirror exactly
         direction = pred.get("direction", "FLAT")
+        
+        # Skip FLAT signals - no conviction = no trade
+        if direction == "FLAT":
+            LOGGER.info(f"[TOP10] Skipping {symbol}: FLAT signal (no conviction)")
+            continue
+        
         confidence = pred.get("confidence", 0.5)
         price = pred.get("current_price", 0)
         target = pred.get("target_price", price)
@@ -32606,7 +32612,7 @@ async def send_top10_now_endpoint():
         
         stock_picks.append({
             "symbol": symbol,
-            "direction": "UP" if direction == "UP" else "DOWN",
+            "direction": direction,  # Keep actual direction (UP or DOWN)
             "confidence": confidence,
             "current": price,
             "target_price": target,
@@ -32628,6 +32634,12 @@ async def send_top10_now_endpoint():
         
         # Pull ALL data from prediction - mirror exactly
         direction = pred.get("direction", "FLAT")
+        
+        # Skip FLAT signals - no conviction = no trade
+        if direction == "FLAT":
+            LOGGER.info(f"[TOP10] Skipping {symbol}: FLAT signal (no conviction)")
+            continue
+        
         confidence = pred.get("confidence", 0.5)
         price = pred.get("current_price", 0)
         target = pred.get("target_price", price)
@@ -32640,7 +32652,7 @@ async def send_top10_now_endpoint():
         
         crypto_picks.append({
             "symbol": symbol,
-            "direction": "UP" if direction == "UP" else "DOWN",
+            "direction": direction,  # Keep actual direction (UP or DOWN)
             "confidence": confidence,
             "current": price,
             "target_price": target,
