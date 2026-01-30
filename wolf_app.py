@@ -32174,7 +32174,7 @@ async def _run_turbo_prediction_for_top10(symbol: str) -> dict:
         
         orchestrator = get_feature_orchestrator()
         feature_data = orchestrator.get_all_features(symbol, period=90)
-        features = feature_data.get("features", {})
+        features = feature_data.get("features", {}) or {}
         
         # Determine direction using RSI + MACD (same logic as turbo engine)
         direction = "FLAT"
@@ -32197,14 +32197,21 @@ async def _run_turbo_prediction_for_top10(symbol: str) -> dict:
         from core.ensemble_predictor import get_ensemble_predictor
         
         ensemble = get_ensemble_predictor()
-        ensemble_pred = ensemble.predict(features, method="confidence_weighted", symbol=symbol)
+        try:
+            ensemble_pred = ensemble.predict(features, method="confidence_weighted", symbol=symbol)
+            ensemble_conf = ensemble_pred.confidence if ensemble_pred and ensemble_pred.confidence else 0.5
+            ensemble_dir = ensemble_pred.direction if ensemble_pred else "FLAT"
+        except Exception as e:
+            LOGGER.warning(f"[TURBO-TOP10] Ensemble failed for {symbol}: {e}")
+            ensemble_conf = 0.5
+            ensemble_dir = "FLAT"
         
         # Use ensemble direction if moderate confidence
-        if ensemble_pred.confidence > 0.45:
-            direction = ensemble_pred.direction
+        if ensemble_conf > 0.45:
+            direction = ensemble_dir
         
         # Calculate confidence from ensemble (40-85% range, realistic)
-        base_confidence = ensemble_pred.confidence
+        base_confidence = ensemble_conf  # Use the safe variable
         
         # Boost confidence based on signal alignment
         signal_count = 0
@@ -32219,15 +32226,31 @@ async def _run_turbo_prediction_for_top10(symbol: str) -> dict:
         confidence = min(0.85, base_confidence + signal_count * 0.05)
         confidence = max(0.40, confidence)  # Floor at 40%
         
-        # Calculate expected move based on volatility
-        volatility = features.get("VOLATILITY_20D", 0.02)
-        momentum = features.get("MOMENTUM_7D", features.get("MOMENTUM", 0))
+        # Calculate expected move based on volatility and signal strength
+        volatility = features.get("VOLATILITY_20D", 0.02) or 0.02
+        momentum = abs(features.get("MOMENTUM_7D", features.get("MOMENTUM", 0)) or 0)
+        rsi_value = features.get("RSI_14") or 50
         
-        # Expected move: 3-8% based on volatility and momentum
-        base_move = 4.0 + (volatility * 50)  # Higher vol = bigger moves
-        if abs(momentum) > 5:
-            base_move += 1.0  # Strong momentum = bigger expected move
-        expected_move = min(8.0, max(3.0, base_move))
+        # Base expected move: 3.5% baseline with confidence adjustments
+        # Low confidence (40-55%) → smaller moves (3-4%)
+        # Medium confidence (55-70%) → medium moves (4-5.5%)
+        # High confidence (70-85%) → larger moves (5.5-7%)
+        if confidence < 0.55:
+            base_move = 3.0 + (confidence - 0.40) * 6.7  # 40%→3%, 55%→4%
+        elif confidence < 0.70:
+            base_move = 4.0 + (confidence - 0.55) * 10   # 55%→4%, 70%→5.5%
+        else:
+            base_move = 5.5 + (confidence - 0.70) * 10   # 70%→5.5%, 85%→7%
+        
+        # Volatility adjustment: only add for high-vol assets (+0.5% max)
+        if volatility and volatility > 0.30:  # >30% annualized vol
+            base_move += 0.5
+        
+        # RSI extremes: small boost (+0.3%)
+        if rsi_value and (rsi_value < 25 or rsi_value > 75):
+            base_move += 0.3
+        
+        expected_move = min(7.0, max(3.0, base_move))  # Clamp to 3-7%
         
         # Calculate target and stop
         if direction == "UP":
@@ -32298,18 +32321,30 @@ async def money_game_top10_endpoint():
     }
     
     # Step 1: Get Money Game TOP 10
+    # Fallback symbols if Money Game has no data
+    FALLBACK_STOCKS = ["NVDA", "META", "PLTR", "COIN", "MSTR", "GOOGL", "AMZN", "HOOD", "TSLA", "AMD"]
+    FALLBACK_CRYPTO = ["RNDR", "TURBO", "SOL", "BTC", "SUI", "ETH", "INJ", "XRP", "AVAX", "LINK"]
+    
     try:
         from core.money_game_engine import get_money_game
         mg = get_money_game()
         result["top10_stocks"] = mg.get_best_symbols_for_top10("stock", limit=10)
         result["top10_crypto"] = mg.get_best_symbols_for_top10("crypto", limit=10)
+        
+        # If Money Game returns empty, use fallback
+        if not result["top10_stocks"]:
+            LOGGER.warning("[MONEY-GAME-TOP10] Money Game returned empty stocks, using fallback")
+            result["top10_stocks"] = FALLBACK_STOCKS
+        if not result["top10_crypto"]:
+            LOGGER.warning("[MONEY-GAME-TOP10] Money Game returned empty crypto, using fallback")
+            result["top10_crypto"] = FALLBACK_CRYPTO
+            
         LOGGER.info(f"[MONEY-GAME-TOP10] Stocks: {result['top10_stocks']}")
         LOGGER.info(f"[MONEY-GAME-TOP10] Crypto: {result['top10_crypto']}")
     except Exception as e:
         result["errors"].append(f"Money Game error: {e}")
-        # Fallback to seeded values
-        result["top10_stocks"] = ["NVDA", "META", "PLTR", "COIN", "MSTR", "GOOGL", "AMZN", "HOOD", "TSLA", "AMD"]
-        result["top10_crypto"] = ["RNDR", "TURBO", "SOL", "BTC", "SUI", "ETH", "INJ", "XRP", "AVAX", "LINK"]
+        result["top10_stocks"] = FALLBACK_STOCKS
+        result["top10_crypto"] = FALLBACK_CRYPTO
     
     # Step 2: Run REAL predictions for each symbol
     result["step"] = "running_predictions"
