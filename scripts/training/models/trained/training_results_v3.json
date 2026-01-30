@@ -1,0 +1,74 @@
+{
+  "ok": true,
+  "version": "v3-hourly",
+  "models": {
+    "xgboost": {
+      "ok": true,
+      "model_path": "/workspaces/ghost-protocol/scripts/training/models/trained/ghost_xgboost_v3_hourly.pkl",
+      "train_accuracy": 0.9947,
+      "test_accuracy": 0.7506,
+      "cv_score": 0.7747,
+      "cv_std": 0.0695,
+      "top_features": [
+        [
+          "fear_greed_value",
+          0.07538347691297531
+        ],
+        [
+          "EXTREME_FEAR",
+          0.04515497013926506
+        ],
+        [
+          "MOMENTUM_48H",
+          0.03845725208520889
+        ],
+        [
+          "BB_UPPER",
+          0.03578466176986694
+        ],
+        [
+          "NEAR_48H_HIGH",
+          0.035253047943115234
+        ],
+        [
+          "BTC_MOMENTUM_24H",
+          0.03499962389469147
+        ],
+        [
+          "SMA_CROSS_24_48",
+          0.031144101172685623
+        ],
+        [
+          "fear_greed_numeric",
+          0.02969362586736679
+        ],
+        [
+          "OBV_SMA",
+          0.02854735404253006
+        ],
+        [
+          "BTC_RSI",
+          0.027562156319618225
+        ],
+        [
+          "SMA_12",
+          0.026745783165097237
+        ],
+        [
+          "MACD_LINE",
+          0.025781285017728806
+        ],
+        [
+          "SMA_168",
+          0.024110635742545128
+        ],
+        [
+          "BTC_CORRELATION",
+          0.02390671893954277
+        ],
+        [
+          "BTC_MACD_BULLISH",
+          0.023888323456048965
+        ]
+      ],
+      "passed_validation": 

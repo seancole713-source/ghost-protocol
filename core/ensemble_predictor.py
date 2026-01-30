@@ -361,16 +361,23 @@ class XGBoostModel:
         self._load_trained_model()
         
     def _load_trained_model(self):
-        """Load the trained XGBoost model from disk (prefer v2)"""
+        """Load the trained XGBoost model from disk (prefer v3-hourly)"""
         try:
             import pickle
             from pathlib import Path
             
-            # Try v2 first (enhanced with BTC correlation, Fear/Greed)
+            # Try v3-hourly first (75% accuracy, hourly data)
+            model_path_v3 = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v3_hourly.pkl"
             model_path_v2 = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v2.pkl"
             model_path_v1 = Path(__file__).parent.parent / "models" / "trained" / "ghost_xgboost_v1.pkl"
             
-            model_path = model_path_v2 if model_path_v2.exists() else model_path_v1
+            # Prefer v3 (best accuracy, hourly data, 75.1% test, 77.5% CV)
+            if model_path_v3.exists():
+                model_path = model_path_v3
+            elif model_path_v2.exists():
+                model_path = model_path_v2
+            else:
+                model_path = model_path_v1
             
             if model_path.exists():
                 with open(model_path, "rb") as f:
@@ -379,7 +386,14 @@ class XGBoostModel:
                 self.model = model_data["model"]
                 self.feature_names = model_data["feature_names"]
                 self._loaded = True
-                self.model_version = "v2" if "v2" in str(model_path) else "v1"
+                
+                # Detect version from path
+                if "v3" in str(model_path):
+                    self.model_version = "v3-hourly"
+                elif "v2" in str(model_path):
+                    self.model_version = "v2"
+                else:
+                    self.model_version = "v1"
                 
                 accuracy = model_data.get('test_accuracy', 0)
                 cv_score = model_data.get('cv_score', 0)

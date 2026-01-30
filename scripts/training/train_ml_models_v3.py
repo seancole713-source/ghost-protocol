@@ -424,6 +424,13 @@ def train_xgboost_model_v3(X: np.ndarray, y: np.ndarray, feature_names: list[str
     logger.info("🤖 TRAINING XGBOOST MODEL v3 (HOURLY DATA)")
     logger.info("=" * 60)
     
+    # CRITICAL: Clean inf/nan values before training
+    logger.info("🧹 Cleaning inf/nan values from training data...")
+    X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
+    
+    # Clip extreme values to prevent overflow
+    X = np.clip(X, -1e6, 1e6)
+    
     # Time-series split (CRITICAL: no data leakage!)
     split_idx = int(len(X) * 0.8)
     X_train, X_test = X[:split_idx], X[split_idx:]
