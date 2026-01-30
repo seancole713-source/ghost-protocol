@@ -706,7 +706,8 @@ class EnsemblePredictor:
         
         # =====================================================================
         # MARKET REGIME ADJUSTMENT
-        # Use Fear & Greed to adjust XGBoost predictions in extreme conditions
+        # Use Fear & Greed for SMALL adjustments in extreme conditions
+        # ADDITIVE instead of multiplicative to preserve natural variation
         # =====================================================================
         try:
             fng = get_fear_greed_index()
@@ -716,27 +717,27 @@ class EnsemblePredictor:
             if xgb_pred.direction == "DOWN" and fng < 25:
                 logger.warning(
                     f"[REGIME] XGBoost says DOWN but Fear&Greed={fng} (EXTREME FEAR). "
-                    f"Reducing confidence - don't short during panic."
+                    f"Small reduction - don't short during panic."
                 )
                 xgb_pred = ModelPrediction(
                     model_name=xgb_pred.model_name,
                     direction=xgb_pred.direction,
-                    confidence=xgb_pred.confidence * 0.7,  # Reduce confidence
-                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.7,
+                    confidence=max(0.35, xgb_pred.confidence - 0.08),  # -8% additive
+                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.9,
                     weight=xgb_pred.weight
                 )
                 predictions = [xgb_pred]
             
-            # Extreme Fear + UP signal: Boost confidence (contrarian buy)
+            # Extreme Fear + UP signal: Small boost (contrarian buy)
             elif xgb_pred.direction == "UP" and fng < 30:
                 logger.info(
                     f"[REGIME] XGBoost says UP in Fear&Greed={fng} (FEAR). "
-                    f"Boosting confidence - contrarian buy signal."
+                    f"Small boost - contrarian buy signal."
                 )
                 xgb_pred = ModelPrediction(
                     model_name=xgb_pred.model_name,
                     direction=xgb_pred.direction,
-                    confidence=min(0.80, xgb_pred.confidence * 1.15),
+                    confidence=min(0.90, xgb_pred.confidence + 0.05),  # +5% additive
                     predicted_change_pct=xgb_pred.predicted_change_pct,
                     weight=xgb_pred.weight
                 )
@@ -746,13 +747,13 @@ class EnsemblePredictor:
             elif xgb_pred.direction == "UP" and fng > 75:
                 logger.warning(
                     f"[REGIME] XGBoost says UP but Fear&Greed={fng} (GREED). "
-                    f"Reducing confidence - market may be overheated."
+                    f"Small reduction - market may be overheated."
                 )
                 xgb_pred = ModelPrediction(
                     model_name=xgb_pred.model_name,
                     direction=xgb_pred.direction,
-                    confidence=xgb_pred.confidence * 0.8,
-                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.8,
+                    confidence=max(0.35, xgb_pred.confidence - 0.05),  # -5% additive
+                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.9,
                     weight=xgb_pred.weight
                 )
                 predictions = [xgb_pred]
@@ -761,9 +762,11 @@ class EnsemblePredictor:
             logger.error(f"[REGIME] Error getting Fear&Greed: {e}")
         
         # Build ensemble result (now just XGBoost)
+        # PRESERVE XGBoost's raw confidence - don't cap it artificially
+        # The model's actual probability distributions are valuable signal
         ensemble_result = EnsemblePrediction(
             direction=xgb_pred.direction,
-            confidence=min(xgb_pred.confidence, 0.75),  # Cap at 75%
+            confidence=xgb_pred.confidence,  # REMOVED 75% CAP - use real ML confidence
             predicted_change_pct=xgb_pred.predicted_change_pct,
             individual_predictions=predictions,
             model_weights={"XGBoost": 1.0},
@@ -772,8 +775,8 @@ class EnsemblePredictor:
         
         # =====================================================================
         # FEAR & GREED INTEGRATION
-        # Boost confidence when Fear & Greed aligns with prediction direction
-        # IMPORTANT: Don't boost FLAT predictions - they should stay conservative
+        # ADDITIVE adjustments to preserve XGBoost's natural variation
+        # Small nudges (+/-5%) instead of multiplicative compression
         # =====================================================================
         try:
             fng_signal, fng_modifier = get_fear_greed_signal()
@@ -784,11 +787,13 @@ class EnsemblePredictor:
                 logger.debug(f"[FEAR&GREED] Skipping boost for FLAT prediction")
             elif fng_signal != "NEUTRAL":
                 if fng_signal == ensemble_result.direction:
-                    # Fear & Greed AGREES with prediction - boost confidence
-                    boosted = min(0.85, ensemble_result.confidence * (1 + fng_modifier))  # Cap at 85%, not 95%
+                    # Fear & Greed AGREES with prediction - small additive boost
+                    # Use smaller boost (3-8%) to preserve variation
+                    additive_boost = min(fng_modifier, 0.08)  # Cap at 8%
+                    boosted = min(0.90, ensemble_result.confidence + additive_boost)  # Cap final at 90%
                     logger.info(
                         f"[FEAR&GREED] {fng_signal} aligns with {ensemble_result.direction}, "
-                        f"confidence {original_confidence:.1%} -> {boosted:.1%}"
+                        f"confidence {original_confidence:.1%} -> {boosted:.1%} (+{additive_boost:.1%})"
                     )
                     ensemble_result = EnsemblePrediction(
                         direction=ensemble_result.direction,
@@ -800,11 +805,12 @@ class EnsemblePredictor:
                     )
                 elif (fng_signal == "UP" and ensemble_result.direction == "DOWN") or \
                      (fng_signal == "DOWN" and ensemble_result.direction == "UP"):
-                    # Fear & Greed DISAGREES - reduce confidence slightly
-                    reduced = max(0.35, ensemble_result.confidence * (1 - fng_modifier / 2))
+                    # Fear & Greed DISAGREES - small additive reduction
+                    additive_reduction = min(fng_modifier / 2, 0.05)  # Cap at 5%
+                    reduced = max(0.35, ensemble_result.confidence - additive_reduction)
                     logger.info(
                         f"[FEAR&GREED] {fng_signal} conflicts with {ensemble_result.direction}, "
-                        f"confidence {original_confidence:.1%} -> {reduced:.1%}"
+                        f"confidence {original_confidence:.1%} -> {reduced:.1%} (-{additive_reduction:.1%})"
                     )
                     ensemble_result = EnsemblePrediction(
                         direction=ensemble_result.direction,
@@ -819,18 +825,21 @@ class EnsemblePredictor:
         
         # =====================================================================
         # BTC CORRELATION INTEGRATION
-        # Boost/reduce confidence for crypto based on BTC trend alignment
-        # IMPORTANT: Don't boost FLAT predictions
+        # ADDITIVE adjustments for crypto based on BTC trend alignment
+        # Small nudges (+/-5%) to preserve natural variation
         # =====================================================================
         if symbol and ensemble_result.direction != "FLAT":  # Skip FLAT
             try:
                 btc_multiplier = get_btc_correlation_boost(symbol, ensemble_result.direction)
                 if btc_multiplier != 1.0:
                     original_conf = ensemble_result.confidence
-                    new_conf = min(0.85, max(0.35, ensemble_result.confidence * btc_multiplier))  # Cap at 85%
+                    # Convert multiplier to additive: 1.10 -> +5%, 0.90 -> -5%
+                    additive_adjust = (btc_multiplier - 1.0) * 0.5  # Halve the effect
+                    additive_adjust = max(-0.05, min(0.05, additive_adjust))  # Cap at +/-5%
+                    new_conf = min(0.90, max(0.35, ensemble_result.confidence + additive_adjust))
                     logger.info(
                         f"[BTC_CORR] {symbol}: confidence {original_conf:.1%} -> {new_conf:.1%} "
-                        f"(multiplier: {btc_multiplier:.2f})"
+                        f"(adjust: {additive_adjust:+.1%})"
                     )
                     ensemble_result = EnsemblePrediction(
                         direction=ensemble_result.direction,
