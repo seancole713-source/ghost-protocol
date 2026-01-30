@@ -8355,38 +8355,13 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             original_direction = direction
             original_confidence = base_confidence
             
-            # Apply market gates (async function - run in event loop)
-            # Use run_until_complete for sync context
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Already in async context, use nest_asyncio or thread
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as pool:
-                        future = pool.submit(
-                            asyncio.run,
-                            apply_market_gates(
-                                direction=direction,
-                                confidence=base_confidence,
-                                metrics=gate_metrics,
-                                asset_type=market_type,
-                                symbol=symbol
-                            )
-                        )
-                        gated_direction, gated_confidence, gate_info = future.result(timeout=5)
-                else:
-                    gated_direction, gated_confidence, gate_info = loop.run_until_complete(
-                        apply_market_gates(
-                            direction=direction,
-                            confidence=base_confidence,
-                            metrics=gate_metrics,
-                            asset_type=market_type,
-                            symbol=symbol
-                        )
-                    )
-            except RuntimeError:
-                # No event loop, create one
-                gated_direction, gated_confidence, gate_info = asyncio.run(
+            # Apply market gates (async function)
+            # Use thread to run async code from sync context safely
+            import concurrent.futures
+            
+            def _run_market_gates():
+                """Run async market gates in a new event loop."""
+                return asyncio.run(
                     apply_market_gates(
                         direction=direction,
                         confidence=base_confidence,
@@ -8395,6 +8370,18 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         symbol=symbol
                     )
                 )
+            
+            try:
+                # Check if we're in an async context
+                try:
+                    loop = asyncio.get_running_loop()
+                    # We're in async context - use thread to avoid nested loop
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        future = pool.submit(_run_market_gates)
+                        gated_direction, gated_confidence, gate_info = future.result(timeout=5)
+                except RuntimeError:
+                    # No running loop - safe to use asyncio.run directly
+                    gated_direction, gated_confidence, gate_info = _run_market_gates()
             
             # Update direction and confidence
             direction = gated_direction

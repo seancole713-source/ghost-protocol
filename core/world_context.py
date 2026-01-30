@@ -9,6 +9,16 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Cache for VIX to prevent spamming Polygon API (which returns 403 for index data)
+_VIX_CACHE = {
+    "level": 15.0,  # Default calm market
+    "change": 0.0,
+    "status": "normal",
+    "last_fetch": 0,
+    "polygon_403": False,  # Track if Polygon returned 403 (plan doesn't include VIX)
+}
+_VIX_CACHE_TTL = 300  # 5 minutes
+
 
 def get_world_context() -> dict[str, Any]:
     """
@@ -103,115 +113,144 @@ def get_world_context() -> dict[str, Any]:
     except Exception as e:
         logger.warning(f"Could not get SPY price: {e}")
     
-    # Get VIX level
-    try:
-        from core.price_quorum import get_price_quorum
-        from core.providers.stock_providers import get_stock_providers
-        
-        quorum = get_price_quorum()
-        providers = get_stock_providers("VIX")
-        vix_decision = quorum.get_price("VIX", providers, is_market_open=True)
-        
-        if vix_decision and vix_decision.price:
-            vix_level = vix_decision.price
-            result["vix"]["level"] = round(vix_level, 2)
+    # Get VIX level (with caching to prevent API spam)
+    global _VIX_CACHE
+    
+    now = time.time()
+    cache_age = now - _VIX_CACHE["last_fetch"]
+    
+    # Use cached VIX if fresh OR if Polygon returned 403 (plan doesn't include VIX)
+    if cache_age < _VIX_CACHE_TTL or _VIX_CACHE["polygon_403"]:
+        result["vix"]["level"] = _VIX_CACHE["level"]
+        result["vix"]["change"] = _VIX_CACHE["change"]
+        result["vix"]["status"] = _VIX_CACHE["status"]
+        if _VIX_CACHE["polygon_403"]:
+            logger.debug("VIX: Using cached default (Polygon plan doesn't include index data)")
+    else:
+        # Try to fetch fresh VIX
+        try:
+            from core.price_quorum import get_price_quorum
+            from core.providers.stock_providers import get_stock_providers
             
-            # Calculate VIX change if prev_close available
-            if vix_decision.prev_close:
-                prev = vix_decision.prev_close
-                change = vix_level - prev
-                result["vix"]["change"] = round(change, 2)
+            quorum = get_price_quorum()
+            providers = get_stock_providers("VIX")
+            vix_decision = quorum.get_price("VIX", providers, is_market_open=True)
             
-            # Determine VIX status
-            if vix_level < 15:
-                result["vix"]["status"] = "calm"
-            elif vix_level < 20:
-                result["vix"]["status"] = "normal"
-            elif vix_level < 30:
-                result["vix"]["status"] = "elevated"
-            else:
-                result["vix"]["status"] = "high-fear"
-        else:
-            # FALLBACK: Try Polygon.io for VIX
-            logger.info("VIX price_quorum returned NULL, trying Polygon.io fallback...")
-            try:
-                import os
-                import requests
+            if vix_decision and vix_decision.price:
+                vix_level = vix_decision.price
+                result["vix"]["level"] = round(vix_level, 2)
                 
-                polygon_key = os.getenv("POLYGON_API_KEY")
-                if polygon_key:
-                    # Try multiple VIX ticker formats
-                    vix_symbols = ["I:VIX", "VIX", "^VIX"]
-                    
-                    for vix_symbol in vix_symbols:
-                        try:
-                            logger.info(f"Attempting Polygon VIX with symbol: {vix_symbol}")
-                            url = f"https://api.polygon.io/v2/aggs/ticker/{vix_symbol}/range/1/day/2026-01-10/2026-01-14"
-                            headers = {"Authorization": f"Bearer {polygon_key}"}
-                            
-                            resp = requests.get(url, headers=headers, timeout=3)
-                            logger.info(f"Polygon {vix_symbol} response: {resp.status_code}")
-                            
-                            if resp.status_code == 200:
-                                data = resp.json()
-                                results = data.get("results", [])
-                                logger.info(f"Polygon {vix_symbol} results count: {len(results)}")
+                # Calculate VIX change if prev_close available
+                if vix_decision.prev_close:
+                    prev = vix_decision.prev_close
+                    change = vix_level - prev
+                    result["vix"]["change"] = round(change, 2)
+                
+                # Determine VIX status
+                if vix_level < 15:
+                    result["vix"]["status"] = "calm"
+                elif vix_level < 20:
+                    result["vix"]["status"] = "normal"
+                elif vix_level < 30:
+                    result["vix"]["status"] = "elevated"
+                else:
+                    result["vix"]["status"] = "high-fear"
+                
+                # Update cache
+                _VIX_CACHE["level"] = result["vix"]["level"]
+                _VIX_CACHE["change"] = result["vix"]["change"]
+                _VIX_CACHE["status"] = result["vix"]["status"]
+                _VIX_CACHE["last_fetch"] = now
+            else:
+                # FALLBACK: Try Polygon.io for VIX (but skip if we know it returns 403)
+                if not _VIX_CACHE["polygon_403"]:
+                    logger.info("VIX price_quorum returned NULL, trying Polygon.io fallback...")
+                    try:
+                        import os
+                        import requests
+                        
+                        polygon_key = os.getenv("POLYGON_API_KEY")
+                        if polygon_key:
+                            # Try I:VIX first (index format)
+                            vix_symbol = "I:VIX"
+                            try:
+                                url = f"https://api.polygon.io/v2/aggs/ticker/{vix_symbol}/range/1/day/2026-01-10/2026-01-14"
+                                headers = {"Authorization": f"Bearer {polygon_key}"}
                                 
-                                if len(results) >= 1:
-                                    current = results[-1]
-                                    vix_level = float(current.get("c", 0))  # Close level
+                                resp = requests.get(url, headers=headers, timeout=3)
+                                
+                                if resp.status_code == 403:
+                                    # Plan doesn't include index data - cache this permanently
+                                    logger.warning("Polygon VIX: 403 - Plan doesn't include index data. Using default VIX=15.0 (will not retry)")
+                                    _VIX_CACHE["polygon_403"] = True
+                                    _VIX_CACHE["level"] = 15.0
+                                    _VIX_CACHE["change"] = 0.0
+                                    _VIX_CACHE["status"] = "normal"
+                                    _VIX_CACHE["last_fetch"] = now
+                                    result["vix"]["level"] = 15.0
+                                    result["vix"]["change"] = 0.0
+                                    result["vix"]["status"] = "normal"
+                                elif resp.status_code == 200:
+                                    data = resp.json()
+                                    results = data.get("results", [])
                                     
-                                    if len(results) >= 2:
-                                        prev = results[-2]
-                                        prev_close = float(prev.get("c", 0))
-                                    else:
-                                        prev_close = vix_level
-                                    
-                                    if vix_level > 0:
-                                        result["vix"]["level"] = round(vix_level, 2)
+                                    if len(results) >= 1:
+                                        current = results[-1]
+                                        vix_level = float(current.get("c", 0))
                                         
-                                        if prev_close > 0:
-                                            change = vix_level - prev_close
-                                            result["vix"]["change"] = round(change, 2)
-                                        
-                                        # Determine VIX status
-                                        if vix_level < 15:
-                                            result["vix"]["status"] = "calm"
-                                        elif vix_level < 20:
-                                            result["vix"]["status"] = "normal"
-                                        elif vix_level < 30:
-                                            result["vix"]["status"] = "elevated"
-                                        else:
-                                            result["vix"]["status"] = "high-fear"
-                                        
-                                        logger.info(f"✅ VIX (Polygon {vix_symbol}): {vix_level:.2f} ({result['vix']['status']}, change: {result['vix'].get('change', 'N/A')})")
-                                        break  # Success, stop trying other symbols
+                                        if vix_level > 0:
+                                            result["vix"]["level"] = round(vix_level, 2)
+                                            
+                                            if len(results) >= 2:
+                                                prev = results[-2]
+                                                prev_close = float(prev.get("c", 0))
+                                                if prev_close > 0:
+                                                    change = vix_level - prev_close
+                                                    result["vix"]["change"] = round(change, 2)
+                                            
+                                            # Determine VIX status
+                                            if vix_level < 15:
+                                                result["vix"]["status"] = "calm"
+                                            elif vix_level < 20:
+                                                result["vix"]["status"] = "normal"
+                                            elif vix_level < 30:
+                                                result["vix"]["status"] = "elevated"
+                                            else:
+                                                result["vix"]["status"] = "high-fear"
+                                            
+                                            logger.info(f"✅ VIX (Polygon): {vix_level:.2f} ({result['vix']['status']})")
+                                            
+                                            # Update cache
+                                            _VIX_CACHE["level"] = result["vix"]["level"]
+                                            _VIX_CACHE["change"] = result["vix"]["change"]
+                                            _VIX_CACHE["status"] = result["vix"]["status"]
+                                            _VIX_CACHE["last_fetch"] = now
                                 else:
-                                    logger.warning(f"Polygon {vix_symbol}: No results in response")
-                            else:
-                                logger.warning(f"Polygon {vix_symbol} request failed: {resp.status_code} - {resp.text[:200]}")
-                        except Exception as symbol_err:
-                            logger.warning(f"Polygon {vix_symbol} failed: {symbol_err}")
-                            continue
-                    else:
-                        # ALL POLYGON ATTEMPTS FAILED - Use reasonable default
-                        logger.warning("❌ All VIX symbol attempts failed on Polygon, using default VIX=15.0")
+                                    logger.warning(f"Polygon VIX request failed: {resp.status_code}")
+                                    # Use default
+                                    result["vix"]["level"] = 15.0
+                                    result["vix"]["status"] = "normal"
+                            except Exception as poly_err:
+                                logger.warning(f"Polygon VIX error: {poly_err}")
+                                result["vix"]["level"] = 15.0
+                                result["vix"]["status"] = "normal"
+                        else:
+                            # No Polygon key, use default
+                            result["vix"]["level"] = 15.0
+                            result["vix"]["status"] = "normal"
+                    except Exception as fallback_err:
+                        logger.error(f"VIX fallback error: {fallback_err}")
                         result["vix"]["level"] = 15.0
-                        result["vix"]["change"] = 0.0
                         result["vix"]["status"] = "normal"
                 else:
-                    logger.warning("POLYGON_API_KEY not set, using default VIX=15.0")
-                    result["vix"]["level"] = 15.0
-                    result["vix"]["change"] = 0.0
-                    result["vix"]["status"] = "normal"
-            except Exception as fallback_err:
-                logger.error(f"❌ VIX fallback error: {fallback_err}, using default VIX=15.0")
-                result["vix"]["level"] = 15.0
-                result["vix"]["change"] = 0.0
-                result["vix"]["status"] = "normal"
-                
-    except Exception as e:
-        logger.error(f"Could not get VIX level: {e}")
+                    # Polygon 403 cached - use default
+                    result["vix"]["level"] = _VIX_CACHE["level"]
+                    result["vix"]["change"] = _VIX_CACHE["change"]
+                    result["vix"]["status"] = _VIX_CACHE["status"]
+        except Exception as e:
+            logger.warning(f"Could not get VIX: {e}")
+            result["vix"]["level"] = 15.0
+            result["vix"]["status"] = "normal"
     
     # Calculate market mood based on SPY and VIX
     try:
