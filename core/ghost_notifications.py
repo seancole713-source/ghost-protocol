@@ -614,18 +614,13 @@ def _get_sell_timing(hours: int = 48) -> str:
 
 def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: bool = None) -> str:
     """
-    Format the TOP 10 message with ENHANCED details:
-    - 10 stocks + 10 crypto predictions
-    - Buy timing (NOW or Market Open with date/time)
-    - Sell timing (48hr window with date/time)
-    - Confidence %
-    - News indicator (✓ if AI/news influenced prediction)
-    - $100 ROI calculation
+    Format the TOP 10 message in COMPACT format (under 4096 chars for Telegram).
+    Shows 10 stocks + 10 crypto with essential info only.
     
     Args:
         stocks: List of top 10 stock predictions
         crypto: List of top 10 crypto predictions  
-        inverse_mode: If True, show "INVERSE GHOST" in title. If None, reads from INVERSE_GHOST env var.
+        inverse_mode: If True, show "INVERSE GHOST" in title.
     """
     # If not specified, read from env var (default OFF)
     if inverse_mode is None:
@@ -639,155 +634,56 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     
     lines = [
         f"{title}",
-        f"📅 {date_str} | ⏰ {time_str}",
+        f"📅 {date_str} | {time_str}",
         "",
-        "═══════════════════════════════════",
-        "📈 STOCKS (10)",
-        "═══════════════════════════════════",
-        ""
+        "📈 STOCKS",
+        "━━━━━━━━━━━━━━"
     ]
     
+    # COMPACT: One line per stock
     if stocks:
-        for i, s in enumerate(stocks[:10], 1):  # Show all 10 stocks
+        for s in stocks[:10]:
             direction = s.get('direction', 'DOWN')
+            emoji = "🟢" if direction in ("UP", "BUY") else "🔴"
+            action = "BUY" if direction in ("UP", "BUY") else "SELL"
             
-            if direction in ("UP", "BUY"):
-                action = "BUY"
-                emoji = "🟢"
-            else:
-                action = "SELL"
-                emoji = "🔴"
-            
-            # Get FLEXIBLE hold period (not just 48hr!)
-            hold_hours = s.get('hold_hours', 72)  # Stocks default 72h now
-            hold_reason = s.get('hold_reason', 'swing_trade')
-            
-            # Get timing based on hold period
-            buy_label, buy_time = _get_buy_timing('stock')
-            sell_time = _get_sell_timing(hold_hours)
-            
-            # Calculate $100 ROI (SELL profits when price DROPS!)
             current = s.get('current', 0)
             target = s.get('prediction_48h', s.get('target_price', current))
-            roi_100 = _calc_roi_100(current, target, action)
             gain_pct = ((target - current) / current * 100) if current > 0 else 0
             
-            # Confidence
             display_conf = calibrate_display_confidence(s['confidence'], symbol=s['symbol'])
             
-            # News indicator - ONLY show ✅ if news ACTUALLY influenced prediction
-            has_news = s.get('news_influenced', False)
-            sentiment = s.get('sentiment_score', 0)
-            news_icon = " ✅" if has_news and abs(sentiment) > 0.1 else ""
-            
-            # Hold period indicator
-            if hold_hours <= 24:
-                hold_label = "⚡"  # Quick trade
-            elif hold_hours <= 72:
-                hold_label = "📅"  # Swing
-            else:
-                hold_label = "📈"  # Position
-            
-            lines.append(f"{i}. {emoji} {s['symbol']} — {action}{news_icon}")
-            lines.append(f"   💵 Entry: {format_price(current)}")
-            lines.append(f"   🎯 Target: {format_price(target)} ({gain_pct:+.1f}%)")
-            # FIXED: Stop based on direction, not hardcoded
-            if 'stop' in s:
-                stop_display = s['stop']
-            elif action == "BUY":
-                stop_display = current * 0.98  # BUY: stop below
-            else:
-                stop_display = current * 1.02  # SELL: stop above
-            lines.append(f"   🛑 Stop: {format_price(stop_display)}")
-            lines.append(f"   ⏰ {buy_label}: {buy_time}")
-            lines.append(f"   {hold_label} Hold: {hold_hours}h ({hold_reason.replace('_', ' ')})")
-            lines.append(f"   📊 Confidence: {display_conf:.0%}")
-            lines.append(f"   💰 $100 → {roi_100}")
-            lines.append("")
+            # Compact format: Symbol | Action | Entry → Target | Confidence
+            lines.append(f"{emoji} {s['symbol']} {action} {format_price(current)} → {format_price(target)} ({gain_pct:+.1f}%) [{display_conf:.0%}]")
     else:
-        lines.append("   (No stock picks today)")
-        lines.append("")
+        lines.append("   No stock picks today")
     
-    lines.append("═══════════════════════════════════")
-    lines.append("📊 CRYPTO (10)")
-    lines.append("═══════════════════════════════════")
     lines.append("")
+    lines.append("📊 CRYPTO")
+    lines.append("━━━━━━━━━━━━━━")
     
+    # COMPACT: One line per crypto
     if crypto:
-        for i, c in enumerate(crypto[:10], 1):  # Show all 10 crypto
+        for c in crypto[:10]:
             direction = c.get('direction', 'DOWN')
+            emoji = "🟢" if direction in ("UP", "BUY") else "🔴"
+            action = "BUY" if direction in ("UP", "BUY") else "SELL"
             
-            if direction in ("UP", "BUY"):
-                action = "BUY"
-                emoji = "🟢"
-            else:
-                action = "SELL"
-                emoji = "🔴"
-            
-            # Get FLEXIBLE hold period for crypto (faster moves!)
-            hold_hours = c.get('hold_hours', 24)  # Crypto default 24h
-            hold_reason = c.get('hold_reason', 'momentum_trade')
-            
-            # Crypto trades 24/7
-            buy_label, buy_time = _get_buy_timing('crypto')
-            
-            # Calculate $100 ROI (SELL profits when price DROPS!)
             current = c.get('current', 0)
             target = c.get('prediction_48h', c.get('target_price', current))
-            roi_100 = _calc_roi_100(current, target, action)
             gain_pct = ((target - current) / current * 100) if current > 0 else 0
             
-            # Confidence
             display_conf = calibrate_display_confidence(c['confidence'], symbol=c['symbol'])
             
-            # News indicator - ONLY show ✅ if news ACTUALLY influenced
-            has_news = c.get('news_influenced', False)
-            sentiment = c.get('sentiment_score', 0)
-            news_icon = " ✅" if has_news and abs(sentiment) > 0.1 else ""
-            
-            # Hold period indicator
-            if hold_hours <= 24:
-                hold_label = "⚡"  # Quick trade
-            elif hold_hours <= 48:
-                hold_label = "📅"  # Swing
-            else:
-                hold_label = "📈"  # Position
-            
-            lines.append(f"{i}. {emoji} {c['symbol']} — {action}{news_icon}")
-            lines.append(f"   💵 Entry: {format_price(current)}")
-            lines.append(f"   🎯 Target: {format_price(target)} ({gain_pct:+.1f}%)")
-            # FIXED: Stop based on direction, not hardcoded
-            if 'stop' in c:
-                stop_display = c['stop']
-            elif action == "BUY":
-                stop_display = current * 0.98  # BUY: stop below
-            else:
-                stop_display = current * 1.02  # SELL: stop above
-            lines.append(f"   🛑 Stop: {format_price(stop_display)}")
-            lines.append(f"   ⏰ {buy_label}: {buy_time}")
-            lines.append(f"   {hold_label} Hold: {hold_hours}h ({hold_reason.replace('_', ' ')})")
-            lines.append(f"   📊 Confidence: {display_conf:.0%}")
-            lines.append(f"   💰 $100 → {roi_100}")
-            lines.append("")
+            # Compact format
+            lines.append(f"{emoji} {c['symbol']} {action} {format_price(current)} → {format_price(target)} ({gain_pct:+.1f}%) [{display_conf:.0%}]")
     else:
-        lines.append("   (No crypto picks today)")
-        lines.append("")
+        lines.append("   No crypto picks today")
     
-    lines.append("═══════════════════════════════════")
-    lines.append("📖 LEGEND")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("🟢 = BUY (price going UP)")
-    lines.append("🔴 = SELL (price going DOWN)")
-    lines.append("✅ = News confirmed this prediction")
-    lines.append("⚡ = Momentum trade (24h or less)")
-    lines.append("📅 = Swing trade (2-3 days)")
-    lines.append("📈 = Position trade (4+ days)")
-    lines.append("💰 = Your return on $100 investment")
     lines.append("")
-    lines.append("📊 Updates on significant moves (>3%)")
-    lines.append("🎯 Alerts when targets hit")
-    lines.append("")
-    lines.append("Ghost is watching. 👁️")
+    lines.append("━━━━━━━━━━━━━━")
+    lines.append("🟢=BUY 🔴=SELL [%]=Confidence")
+    lines.append("Ghost is watching 👁️")
     
     return "\n".join(lines)
 
