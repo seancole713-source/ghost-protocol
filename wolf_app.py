@@ -25929,8 +25929,8 @@ async def top10_preview():
             for c in crypto
         ]
         
-        # Generate the actual message (inverse_mode reads from INVERSE_GHOST env var)
-        message = format_top10_message(stocks, crypto)
+        # Generate the actual messages (returns list of 2: stocks + crypto)
+        messages = format_top10_message(stocks, crypto)
         
         return {
             "ok": True,
@@ -25938,7 +25938,7 @@ async def top10_preview():
             "crypto_count": len(crypto),
             "stocks_with_directions": stocks_debug,
             "crypto_with_directions": crypto_debug,
-            "message_preview": message,
+            "message_preview": messages,  # Now returns list
         }
     except Exception as e:
         import traceback
@@ -32508,11 +32508,11 @@ async def money_game_top10_endpoint():
             "sentiment_score": 0,
         })
     
-    # Use the proper formatter
-    full_message = format_top10_message(stock_picks, crypto_picks)
-    result["message_preview"] = full_message[:500] + "..."
+    # Use the proper formatter (returns list of 2 messages: stocks + crypto)
+    messages = format_top10_message(stock_picks, crypto_picks)
+    result["message_preview"] = str(messages[0][:300] + "..." if messages else "")
     
-    # Step 4: Send to Telegram
+    # Step 4: Send to Telegram (send both messages)
     result["step"] = "sending_telegram"
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
@@ -32520,22 +32520,25 @@ async def money_game_top10_endpoint():
     if bot_token and chat_id:
         try:
             url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            payload = {
-                "chat_id": chat_id,
-                "text": full_message,
-                "disable_web_page_preview": True,
-            }
             
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-                async with session.post(url, json=payload) as resp:
-                    resp_data = await resp.json()
-                    
-                    if resp.status == 200 and resp_data.get("ok"):
-                        result["telegram_sent"] = True
-                        result["message_id"] = resp_data.get("result", {}).get("message_id")
-                        LOGGER.info(f"[MONEY-GAME-TOP10] ✅ Sent to Telegram: message_id={result['message_id']}")
-                    else:
-                        result["errors"].append(f"Telegram error: {resp_data.get('description')}")
+                for msg in messages:
+                    payload = {
+                        "chat_id": chat_id,
+                        "text": msg,
+                        "disable_web_page_preview": True,
+                    }
+                    async with session.post(url, json=payload) as resp:
+                        resp_data = await resp.json()
+                        
+                        if resp.status == 200 and resp_data.get("ok"):
+                            result["telegram_sent"] = True
+                            result["message_id"] = resp_data.get("result", {}).get("message_id")
+                            LOGGER.info(f"[MONEY-GAME-TOP10] ✅ Sent to Telegram: message_id={result['message_id']}")
+                        else:
+                            result["errors"].append(f"Telegram error: {resp_data.get('description')}")
+        except Exception as e:
+            result["errors"].append(f"Telegram exception: {e}")
         except Exception as e:
             result["errors"].append(f"Telegram exception: {e}")
     else:
@@ -32661,34 +32664,36 @@ async def send_top10_now_endpoint():
             "asset_type": "crypto",
         })
     
-    full_message = format_top10_message(stock_picks, crypto_picks)
-    result["message_preview"] = full_message[:300] + "..."
+    # Format returns list of 2 messages (stocks + crypto)
+    messages = format_top10_message(stock_picks, crypto_picks)
+    result["message_preview"] = str(messages[0][:300] + "..." if messages else "")
     result["stock_picks_count"] = len(stock_picks)
     result["crypto_picks_count"] = len(crypto_picks)
     
-    # Send to Telegram
+    # Send to Telegram (send both messages)
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     
     if bot_token and chat_id:
         try:
             url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            payload = {
-                "chat_id": chat_id,
-                "text": full_message,
-                "disable_web_page_preview": True,
-            }
             
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-                async with session.post(url, json=payload) as resp:
-                    resp_data = await resp.json()
-                    
-                    if resp.status == 200 and resp_data.get("ok"):
-                        result["telegram_sent"] = True
-                        result["message_id"] = resp_data.get("result", {}).get("message_id")
-                        LOGGER.info(f"[SEND-TOP10-NOW] ✅ Sent to Telegram!")
-                    else:
-                        result["errors"].append(f"Telegram error: {resp_data.get('description')}")
+                for msg in messages:
+                    payload = {
+                        "chat_id": chat_id,
+                        "text": msg,
+                        "disable_web_page_preview": True,
+                    }
+                    async with session.post(url, json=payload) as resp:
+                        resp_data = await resp.json()
+                        
+                        if resp.status == 200 and resp_data.get("ok"):
+                            result["telegram_sent"] = True
+                            result["message_id"] = resp_data.get("result", {}).get("message_id")
+                            LOGGER.info(f"[SEND-TOP10-NOW] ✅ Sent to Telegram!")
+                        else:
+                            result["errors"].append(f"Telegram error: {resp_data.get('description')}")
         except Exception as e:
             result["errors"].append(f"Telegram exception: {e}")
     else:

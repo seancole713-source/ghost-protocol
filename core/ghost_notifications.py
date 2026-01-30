@@ -612,14 +612,21 @@ def _get_sell_timing(hours: int = 48) -> str:
     return sell_time.strftime("%b %d %I:%M %p CT")
 
 
-def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: bool = None) -> str:
+def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: bool = None) -> List[str]:
     """
-    Format TOP 10 message - CLEAN and SIMPLE.
+    Format TOP 10 message (5 stocks + 5 crypto) - DETAILED TRADE PLAN format.
     
-    Format per line:
-    NVDA → $205 | +7% | 5d | 56%
+    Returns LIST of messages (stocks msg, crypto msg) to fit Telegram 4096 char limit.
     
-    Grouped by BUY and SELL for clarity.
+    Format per pick:
+    1) 🟢 NVDA — BUY ✅
+    • BUY (CT): Fri Jan 30 @ 9:30 AM | Entry Zone: $192.51 – $194.00
+    • SELL (CT): Mon Feb 02 @ Open | Target: $205.60 (+6.8%)
+    • STOP LOSS: $185.77
+    • Hold: 7 days (swing trade)
+    • Confidence: 56% | Risk: Moderate | R/R: ~2.4 : 1
+    💰 $100 → $106.80
+    ✅ News influence confirmed
     """
     from datetime import datetime, timedelta
     
@@ -627,67 +634,151 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
     
     ct = get_central_time()
-    date_str = ct.strftime("%b %d")
+    date_str = ct.strftime("%b %d, %Y")
+    time_str = ct.strftime("%I:%M %p CT").lstrip("0")
+    day_name = ct.strftime("%a")  # Fri, Mon, etc.
     
-    title = "👻 GHOST PICKS" if not inverse_mode else "👻 INVERSE GHOST"
+    def get_hold_reason(conf: float, hold_days: int) -> str:
+        """Get intelligent hold reason based on confidence and days"""
+        if hold_days == 1:
+            if conf < 0.35:
+                return "low conviction scalp"
+            else:
+                return "RSI extreme"
+        elif hold_days == 2:
+            return "volatility swing"
+        elif hold_days <= 4:
+            return "swing trade"
+        else:
+            return "position trade"
     
-    lines = [
-        title,
-        f"📅 {date_str}",
+    def get_risk_level(conf: float) -> str:
+        """Get risk level based on confidence"""
+        if conf >= 0.60:
+            return "Low"
+        elif conf >= 0.40:
+            return "Moderate"
+        else:
+            return "High"
+    
+    def calculate_rr(entry: float, target: float, stop: float, direction: str) -> float:
+        """Calculate risk/reward ratio"""
+        if direction in ('UP', 'BUY'):
+            reward = abs(target - entry)
+            risk = abs(entry - stop)
+        else:
+            reward = abs(entry - target)
+            risk = abs(stop - entry)
+        return reward / risk if risk > 0 else 1.0
+    
+    def get_exit_date(hold_days: int, is_stock: bool) -> str:
+        """Get exit date string"""
+        exit_dt = ct + timedelta(days=hold_days)
+        # Stocks: if exit lands on weekend, push to Monday
+        if is_stock and exit_dt.weekday() >= 5:  # Saturday=5, Sunday=6
+            days_to_monday = 7 - exit_dt.weekday()
+            exit_dt = exit_dt + timedelta(days=days_to_monday)
+        return exit_dt.strftime("%a %b %d")
+    
+    def format_pick(item, idx: int, is_stock: bool) -> str:
+        """Format a single pick in detailed format"""
+        symbol = item['symbol']
+        direction = item.get('direction', 'UP')
+        is_buy = direction in ('UP', 'BUY')
+        
+        current = item.get('current', 0)
+        target = item.get('prediction_48h', item.get('target_price', current))
+        stop = item.get('stop', current * 0.97 if is_buy else current * 1.03)
+        conf = calibrate_display_confidence(item['confidence'], symbol=symbol)
+        hold_days = item.get('hold_days', 3)
+        news = item.get('news_influenced', False)
+        
+        gain_pct = ((target - current) / current * 100) if current > 0 else 0
+        entry_high = current * 1.01  # Entry zone: current to +1%
+        rr = calculate_rr(current, target, stop, direction)
+        risk = get_risk_level(conf)
+        hold_reason = get_hold_reason(conf, hold_days)
+        exit_date = get_exit_date(hold_days, is_stock)
+        return_val = 100 + abs(gain_pct)
+        
+        emoji = "🟢" if is_buy else "🔴"
+        action = "BUY" if is_buy else "SELL"
+        news_check = " ✅" if news else ""
+        
+        lines = []
+        lines.append(f"{idx}) {emoji} {symbol} — {action}{news_check}")
+        
+        if is_buy:
+            lines.append(f"• BUY (CT): {day_name} {ct.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
+            lines.append(f"• SELL (CT): {exit_date} @ Open | Target: {format_price(target)} ({gain_pct:+.1f}%)")
+        else:
+            lines.append(f"• SELL (CT): {day_name} {ct.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
+            lines.append(f"• BUY-BACK (CT): {exit_date} @ Open | Target: {format_price(target)} ({gain_pct:+.1f}%)")
+        
+        lines.append(f"• STOP LOSS: {format_price(stop)}")
+        lines.append(f"• Hold: {hold_days} day{'s' if hold_days > 1 else ''} ({hold_reason})")
+        lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1")
+        lines.append(f"💰 $100 → ${return_val:.2f}")
+        
+        if news:
+            lines.append("✅ News influence confirmed")
+        
+        return "\n".join(lines)
+    
+    # ===== MESSAGE 1: STOCKS =====
+    stock_lines = [
+        "🎯 GHOST TOP 10 — TRADE PLAN",
+        f"📅 {date_str} | ⏰ 8:00 AM CT",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "📈 STOCKS",
+        "━━━━━━━━━━━━━━━━━━━━━━",
         ""
     ]
     
-    # Separate stocks into BUY and SELL
-    stock_buys = [s for s in stocks[:10] if s.get('direction') in ('UP', 'BUY')]
-    stock_sells = [s for s in stocks[:10] if s.get('direction') not in ('UP', 'BUY')]
+    # Take top 5 stocks
+    for idx, s in enumerate(stocks[:5], 1):
+        stock_lines.append(format_pick(s, idx, is_stock=True))
+        stock_lines.append("")
     
-    crypto_buys = [c for c in crypto[:10] if c.get('direction') in ('UP', 'BUY')]
-    crypto_sells = [c for c in crypto[:10] if c.get('direction') not in ('UP', 'BUY')]
+    if not stocks:
+        stock_lines.append("(No stock picks today)")
+        stock_lines.append("")
     
-    def format_line(item, asset_type):
-        """Format single prediction line: NVDA → $205 | +7% | 5d | 56%"""
-        symbol = item['symbol']
-        current = item.get('current', 0)
-        target = item.get('prediction_48h', item.get('target_price', current))
-        gain_pct = ((target - current) / current * 100) if current > 0 else 0
-        hold_days = item.get('hold_days', 3)
-        conf = calibrate_display_confidence(item['confidence'], symbol=symbol)
-        news = " ✅" if item.get('news_influenced', False) else ""
-        
-        return f"{symbol} → {format_price(target)} | {gain_pct:+.0f}% | {hold_days}d | {conf:.0%}{news}"
+    stock_msg = "\n".join(stock_lines)
     
-    # STOCKS - BUY
-    if stock_buys:
-        lines.append("━━ 📈 BUY STOCKS ━━")
-        for s in stock_buys[:5]:  # Top 5 buys
-            lines.append(format_line(s, "stock"))
+    # ===== MESSAGE 2: CRYPTO =====
+    crypto_lines = [
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "🪙 CRYPTO",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        ""
+    ]
     
-    # STOCKS - SELL
-    if stock_sells:
-        lines.append("")
-        lines.append("━━ 📉 SELL STOCKS ━━")
-        for s in stock_sells[:5]:  # Top 5 sells
-            lines.append(format_line(s, "stock"))
+    # Take top 5 crypto
+    for idx, c in enumerate(crypto[:5], 1):
+        crypto_lines.append(format_pick(c, idx, is_stock=False))
+        crypto_lines.append("")
     
-    # CRYPTO - BUY
-    if crypto_buys:
-        lines.append("")
-        lines.append("━━ 📈 BUY CRYPTO ━━")
-        for c in crypto_buys[:5]:  # Top 5 buys
-            lines.append(format_line(c, "crypto"))
+    if not crypto:
+        crypto_lines.append("(No crypto picks today)")
+        crypto_lines.append("")
     
-    # CRYPTO - SELL  
-    if crypto_sells:
-        lines.append("")
-        lines.append("━━ 📉 SELL CRYPTO ━━")
-        for c in crypto_sells[:5]:  # Top 5 sells
-            lines.append(format_line(c, "crypto"))
+    # Add legend at end
+    crypto_lines.extend([
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "📖 LEGEND",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "🟢 BUY | 🔴 SELL",
+        "✅ = News-feed influenced",
+        "💰 = Return on $100 position",
+        "Ghost is watching 👁️"
+    ])
     
-    lines.append("")
-    lines.append("Target | Gain | Hold | Conf")
-    lines.append("✅ = News driven")
+    crypto_msg = "\n".join(crypto_lines)
     
-    return "\n".join(lines)
+    # Return as list of 2 messages
+    return [stock_msg, crypto_msg]
 
 
 def format_update_message(picks: List[Dict]) -> str:
@@ -1399,11 +1490,15 @@ class GhostNotificationSystem:
         
         # FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
         inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
-        message = format_top10_message(stocks, crypto, inverse_mode)
+        messages = format_top10_message(stocks, crypto, inverse_mode)
         
         LOGGER.info(f"[NOTIFICATIONS] Sending TOP 10 ({len(stocks)} stocks, {len(crypto)} crypto)")
         
-        success = self.send_telegram(message)
+        # Send each message (format returns list of 2 messages: stocks + crypto)
+        success = True
+        for msg in messages:
+            if not self.send_telegram(msg):
+                success = False
         
         if success:
             self._last_top10_date = today
