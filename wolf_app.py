@@ -8371,17 +8371,16 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     )
                 )
             
+            # Check if we're in an async context
             try:
-                # Check if we're in an async context
-                try:
-                    loop = asyncio.get_running_loop()
-                    # We're in async context - use thread to avoid nested loop
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                        future = pool.submit(_run_market_gates)
-                        gated_direction, gated_confidence, gate_info = future.result(timeout=5)
-                except RuntimeError:
-                    # No running loop - safe to use asyncio.run directly
-                    gated_direction, gated_confidence, gate_info = _run_market_gates()
+                loop = asyncio.get_running_loop()
+                # We're in async context - use thread to avoid nested loop
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(_run_market_gates)
+                    gated_direction, gated_confidence, gate_info = future.result(timeout=5)
+            except RuntimeError:
+                # No running loop - safe to use asyncio.run directly
+                gated_direction, gated_confidence, gate_info = _run_market_gates()
             
             # Update direction and confidence
             direction = gated_direction
