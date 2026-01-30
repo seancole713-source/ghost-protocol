@@ -32139,6 +32139,137 @@ async def test_top10_endpoint():
     return result
 
 
+async def _run_turbo_prediction_for_top10(symbol: str) -> dict:
+    """
+    Run TURBO prediction for TOP 10 display - bypassing stock_engine AND market gates.
+    
+    This gives RAW ML predictions without regime filtering, for display purposes.
+    The 8 AM scheduled message should show REAL predictions, not gated ones.
+    """
+    import asyncio
+    
+    try:
+        symbol = symbol.upper().strip()
+        is_crypto = symbol in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(symbol) == "crypto"
+        
+        # Get price first
+        if is_crypto:
+            price_result = turbo_crypto_price(symbol, max_budget_s=3.0)
+        else:
+            price_result = turbo_stock_price(symbol, max_budget_s=3.0)
+        
+        if not price_result.get("ok") or not price_result.get("price"):
+            return {
+                "ok": False,
+                "symbol": symbol,
+                "direction": "FLAT",
+                "confidence": 0,
+                "error": f"Price fetch failed: {price_result.get('error', 'unknown')}"
+            }
+        
+        price = float(price_result["price"])
+        
+        # Extract features using the orchestrator (same as main turbo engine)
+        from core.data_pillars.feature_orchestrator import get_feature_orchestrator
+        
+        orchestrator = get_feature_orchestrator()
+        feature_data = orchestrator.get_all_features(symbol, period=90)
+        features = feature_data.get("features", {})
+        
+        # Determine direction using RSI + MACD (same logic as turbo engine)
+        direction = "FLAT"
+        rsi = features.get("RSI_14")
+        macd_hist = features.get("MACD_HISTOGRAM")
+        
+        if rsi is not None:
+            if rsi > 70:
+                direction = "DOWN"  # Overbought
+            elif rsi < 30:
+                direction = "UP"  # Oversold
+        
+        if direction == "FLAT" and macd_hist is not None:
+            if macd_hist > 0:
+                direction = "UP"
+            elif macd_hist < 0:
+                direction = "DOWN"
+        
+        # Get ensemble prediction for confidence (same as turbo engine)
+        from core.ensemble_predictor import get_ensemble_predictor
+        
+        ensemble = get_ensemble_predictor()
+        ensemble_pred = ensemble.predict(features, method="confidence_weighted", symbol=symbol)
+        
+        # Use ensemble direction if moderate confidence
+        if ensemble_pred.confidence > 0.45:
+            direction = ensemble_pred.direction
+        
+        # Calculate confidence from ensemble (40-85% range, realistic)
+        base_confidence = ensemble_pred.confidence
+        
+        # Boost confidence based on signal alignment
+        signal_count = 0
+        if rsi is not None:
+            if (direction == "UP" and rsi < 40) or (direction == "DOWN" and rsi > 60):
+                signal_count += 1
+        if macd_hist is not None:
+            if (direction == "UP" and macd_hist > 0) or (direction == "DOWN" and macd_hist < 0):
+                signal_count += 1
+        
+        # More signals = higher confidence (but cap at 85%)
+        confidence = min(0.85, base_confidence + signal_count * 0.05)
+        confidence = max(0.40, confidence)  # Floor at 40%
+        
+        # Calculate expected move based on volatility
+        volatility = features.get("VOLATILITY_20D", 0.02)
+        momentum = features.get("MOMENTUM_7D", features.get("MOMENTUM", 0))
+        
+        # Expected move: 3-8% based on volatility and momentum
+        base_move = 4.0 + (volatility * 50)  # Higher vol = bigger moves
+        if abs(momentum) > 5:
+            base_move += 1.0  # Strong momentum = bigger expected move
+        expected_move = min(8.0, max(3.0, base_move))
+        
+        # Calculate target and stop
+        if direction == "UP":
+            target_price = price * (1 + expected_move / 100)
+            stop_loss = price * (1 - expected_move / 200)
+        elif direction == "DOWN":
+            target_price = price * (1 - expected_move / 100)
+            stop_loss = price * (1 + expected_move / 200)
+        else:
+            target_price = price
+            stop_loss = price * 0.98
+        
+        LOGGER.info(
+            f"[TURBO-TOP10] {symbol}: {direction} @ {confidence:.1%}, "
+            f"${price:.2f} → ${target_price:.2f} ({expected_move:+.1f}%)"
+        )
+        
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "direction": direction,
+            "confidence": confidence,
+            "current_price": price,
+            "target_price": target_price,
+            "stop_loss": stop_loss,
+            "horizon_h": 48,
+            "expected_move_pct": expected_move,
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"[TURBO-TOP10] Prediction failed for {symbol}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "ok": False,
+            "symbol": symbol,
+            "direction": "FLAT",
+            "confidence": 0,
+            "error": str(e)
+        }
+
+
 @APP.get("/debug/money-game-top10")
 @APP.post("/debug/money-game-top10")
 async def money_game_top10_endpoint():
@@ -32186,7 +32317,9 @@ async def money_game_top10_endpoint():
     
     for symbol in all_symbols:
         try:
-            pred_result = await run_single_prediction_async(symbol)
+            # BYPASS stock_engine - use the REAL turbo prediction engine
+            # This matches what /api/predictions/run returns
+            pred_result = await _run_turbo_prediction_for_top10(symbol)
             if pred_result and pred_result.get("ok"):
                 result["predictions"][symbol] = {
                     "direction": pred_result.get("direction", "FLAT"),
@@ -32197,7 +32330,7 @@ async def money_game_top10_endpoint():
                     "horizon_h": pred_result.get("horizon_h", 48),
                 }
             else:
-                result["predictions"][symbol] = {"direction": "FLAT", "confidence": 0, "error": "prediction_failed"}
+                result["predictions"][symbol] = {"direction": "FLAT", "confidence": 0, "error": pred_result.get("error", "prediction_failed")}
         except Exception as e:
             result["predictions"][symbol] = {"direction": "FLAT", "confidence": 0, "error": str(e)}
             LOGGER.warning(f"[MONEY-GAME-TOP10] Prediction failed for {symbol}: {e}")
