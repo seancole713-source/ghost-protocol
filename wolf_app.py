@@ -32139,6 +32139,206 @@ async def test_top10_endpoint():
     return result
 
 
+@APP.get("/debug/money-game-top10")
+@APP.post("/debug/money-game-top10")
+async def money_game_top10_endpoint():
+    """
+    🎯 MONEY GAME TOP 10 - FULL REAL PREDICTIONS
+    
+    This endpoint:
+    1. Gets the Money Game TOP 10 stocks & crypto
+    2. Runs REAL predictions for each symbol
+    3. Sends a properly formatted Telegram message
+    
+    This is what the 8 AM message SHOULD look like!
+    """
+    import aiohttp
+    import os
+    from datetime import datetime
+    
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "step": "init",
+        "top10_stocks": [],
+        "top10_crypto": [],
+        "predictions": {},
+        "telegram_sent": False,
+        "errors": [],
+    }
+    
+    # Step 1: Get Money Game TOP 10
+    try:
+        from core.money_game_engine import get_money_game
+        mg = get_money_game()
+        result["top10_stocks"] = mg.get_best_symbols_for_top10("stock", limit=10)
+        result["top10_crypto"] = mg.get_best_symbols_for_top10("crypto", limit=10)
+        LOGGER.info(f"[MONEY-GAME-TOP10] Stocks: {result['top10_stocks']}")
+        LOGGER.info(f"[MONEY-GAME-TOP10] Crypto: {result['top10_crypto']}")
+    except Exception as e:
+        result["errors"].append(f"Money Game error: {e}")
+        # Fallback to seeded values
+        result["top10_stocks"] = ["NVDA", "META", "PLTR", "COIN", "MSTR", "GOOGL", "AMZN", "HOOD", "TSLA", "AMD"]
+        result["top10_crypto"] = ["RNDR", "TURBO", "SOL", "BTC", "SUI", "ETH", "INJ", "XRP", "AVAX", "LINK"]
+    
+    # Step 2: Run REAL predictions for each symbol
+    result["step"] = "running_predictions"
+    all_symbols = result["top10_stocks"] + result["top10_crypto"]
+    
+    for symbol in all_symbols:
+        try:
+            pred_result = await run_single_prediction_async(symbol)
+            if pred_result and pred_result.get("ok"):
+                result["predictions"][symbol] = {
+                    "direction": pred_result.get("direction", "FLAT"),
+                    "confidence": pred_result.get("confidence", 0),
+                    "current_price": pred_result.get("current_price", 0),
+                    "target_price": pred_result.get("target_price", 0),
+                    "stop_loss": pred_result.get("stop_loss", 0),
+                    "horizon_h": pred_result.get("horizon_h", 48),
+                }
+            else:
+                result["predictions"][symbol] = {"direction": "FLAT", "confidence": 0, "error": "prediction_failed"}
+        except Exception as e:
+            result["predictions"][symbol] = {"direction": "FLAT", "confidence": 0, "error": str(e)}
+            LOGGER.warning(f"[MONEY-GAME-TOP10] Prediction failed for {symbol}: {e}")
+    
+    # Step 3: Build the message
+    result["step"] = "building_message"
+    now = datetime.now()
+    central_time = now.strftime("%I:%M %p CT")
+    date_str = now.strftime("%b %d, %Y")
+    
+    lines = [
+        f"🎯 GHOST TOP 20",
+        f"📅 {date_str} | ⏰ {central_time}",
+        "",
+        "═══════════════════════════════════════",
+        "📈 STOCKS (10)",
+        "═══════════════════════════════════════",
+        "",
+    ]
+    
+    # Stock predictions
+    for i, symbol in enumerate(result["top10_stocks"][:10], 1):
+        pred = result["predictions"].get(symbol, {})
+        direction = pred.get("direction", "FLAT")
+        confidence = pred.get("confidence", 0) * 100
+        price = pred.get("current_price", 0)
+        target = pred.get("target_price", price * 1.05)
+        stop = pred.get("stop_loss", price * 0.96)
+        
+        # Calculate target %
+        target_pct = ((target / price) - 1) * 100 if price > 0 else 5
+        
+        # Direction emoji
+        if direction == "UP":
+            emoji = "🟢"
+            action = "BUY"
+        elif direction == "DOWN":
+            emoji = "🔴"
+            action = "SELL"
+        else:
+            emoji = "⚪"
+            action = "HOLD"
+        
+        lines.append(f"{i}. {emoji} {symbol} — {action}")
+        lines.append(f"   💵 Entry: ${price:,.2f}" if price > 0 else f"   💵 Entry: N/A")
+        lines.append(f"   🎯 Target: ${target:,.2f} ({target_pct:+.1f}%)" if target > 0 else "   🎯 Target: N/A")
+        lines.append(f"   🛑 Stop: ${stop:,.2f}" if stop > 0 else "   🛑 Stop: N/A")
+        lines.append(f"   📊 Confidence: {confidence:.0f}%")
+        lines.append("")
+    
+    lines.extend([
+        "═══════════════════════════════════════",
+        "📊 CRYPTO (10)",
+        "═══════════════════════════════════════",
+        "",
+    ])
+    
+    # Crypto predictions
+    for i, symbol in enumerate(result["top10_crypto"][:10], 1):
+        pred = result["predictions"].get(symbol, {})
+        direction = pred.get("direction", "FLAT")
+        confidence = pred.get("confidence", 0) * 100
+        price = pred.get("current_price", 0)
+        target = pred.get("target_price", price * 1.05)
+        stop = pred.get("stop_loss", price * 0.96)
+        
+        # Calculate target %
+        target_pct = ((target / price) - 1) * 100 if price > 0 else 5
+        
+        # Direction emoji
+        if direction == "UP":
+            emoji = "🟢"
+            action = "BUY"
+        elif direction == "DOWN":
+            emoji = "🔴"
+            action = "SELL"
+        else:
+            emoji = "⚪"
+            action = "HOLD"
+        
+        lines.append(f"{i}. {emoji} {symbol} — {action}")
+        if price >= 1:
+            lines.append(f"   💵 Entry: ${price:,.2f}")
+            lines.append(f"   🎯 Target: ${target:,.2f} ({target_pct:+.1f}%)")
+            lines.append(f"   🛑 Stop: ${stop:,.2f}")
+        else:
+            lines.append(f"   💵 Entry: ${price:.6f}")
+            lines.append(f"   🎯 Target: ${target:.6f} ({target_pct:+.1f}%)")
+            lines.append(f"   🛑 Stop: ${stop:.6f}")
+        lines.append(f"   📊 Confidence: {confidence:.0f}%")
+        lines.append("")
+    
+    lines.extend([
+        "═══════════════════════════════════════",
+        "📖 LEGEND",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "🟢 = BUY (price going UP)",
+        "🔴 = SELL (price going DOWN)",
+        "⚪ = HOLD (wait for clearer signal)",
+        "",
+        "Ghost is watching. 👁️",
+    ])
+    
+    full_message = "\n".join(lines)
+    result["message_preview"] = full_message[:500] + "..."
+    
+    # Step 4: Send to Telegram
+    result["step"] = "sending_telegram"
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    
+    if bot_token and chat_id:
+        try:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": full_message,
+                "disable_web_page_preview": True,
+            }
+            
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                async with session.post(url, json=payload) as resp:
+                    resp_data = await resp.json()
+                    
+                    if resp.status == 200 and resp_data.get("ok"):
+                        result["telegram_sent"] = True
+                        result["message_id"] = resp_data.get("result", {}).get("message_id")
+                        LOGGER.info(f"[MONEY-GAME-TOP10] ✅ Sent to Telegram: message_id={result['message_id']}")
+                    else:
+                        result["errors"].append(f"Telegram error: {resp_data.get('description')}")
+        except Exception as e:
+            result["errors"].append(f"Telegram exception: {e}")
+    else:
+        result["errors"].append("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
+    
+    result["step"] = "complete"
+    result["overall_status"] = "✅ SUCCESS" if result["telegram_sent"] else "❌ FAILED"
+    
+    return result
+
+
 @APP.get("/debug/force-top10")
 @APP.post("/debug/force-top10")
 async def force_top10_endpoint(force: bool = True):
