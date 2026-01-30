@@ -764,6 +764,11 @@ def calculate_intel_signal(
        - Mon-Tue during tariff event: Block SELL signals (panic trap)
        - Wed-Thu during tariff event: +5% confidence (dip buying window)
     """
+    # NULL SAFETY: Ensure base_direction is never None
+    if base_direction is None:
+        base_direction = "FLAT"
+    base_direction = str(base_direction).upper()  # Normalize to uppercase
+    
     signals_used = []
     confidence_adj = 0.0
     direction_bias = "neutral"
@@ -1621,6 +1626,11 @@ async def get_intel_signal_for_prediction(
     Returns:
         (adjusted_direction, adjusted_confidence, intel_metadata)
     """
+    # NULL SAFETY: Normalize inputs
+    if direction is None:
+        direction = "FLAT"
+    direction = str(direction).upper()
+    
     # Check if Intel is enabled
     if os.getenv("GHOST_INTEL_ENABLED", "1") != "1":
         return direction, confidence, {"intel_enabled": False}
