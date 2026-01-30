@@ -32260,8 +32260,9 @@ async def _run_turbo_prediction_for_top10(symbol: str) -> dict:
             target_price = price * (1 - expected_move / 100)
             stop_loss = price * (1 + expected_move / 200)
         else:
-            target_price = price
-            stop_loss = price * 0.98
+            # FLAT: small upside target (+3% default) since market bias is generally up
+            target_price = price * 1.03
+            stop_loss = price * 0.97
         
         LOGGER.info(
             f"[TURBO-TOP10] {symbol}: {direction} @ {confidence:.1%}, "
