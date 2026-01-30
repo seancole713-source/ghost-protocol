@@ -64,6 +64,8 @@ class AssetClassifier:
         # Meme coins
         'PEPE', 'SHIB', 'BONK', 'WIF', 'FLOKI', 'MEME',
         'TURBO', 'SAMO', 'ELON', 'LADYS', 'WOJAK', 'CHAD',
+        'NEIRO', 'TOSHI', 'POPCAT', 'PNUT', 'MOODENG', 'GIGA',  # Missing meme coins!
+        'SPX',  # SPX6900 meme coin
         # DeFi tokens - IMPORTANT: These are CRYPTO, not stocks!
         'MKR', 'SNX', 'CRV', 'COMP', 'YFI', 'SUSHI', '1INCH',
         'LDO', 'AAVE', 'UNI', 'CAKE', 'JOE', 'GMX', 'DYDX',
@@ -73,6 +75,13 @@ class AssetClassifier:
         'RPL',   # Rocket Pool
         'LQTY',  # Liquity
         'VELO',  # Velodrome
+        'CLV',   # Clover Finance - DeFi
+        'ORCA',  # Orca DEX - Solana DeFi
+        'SRM',   # Serum DEX
+        'HNT',   # Helium
+        'IOTX',  # IoTeX
+        'GLM',   # Golem
+        'VOXEL', # Voxies gaming token
         # Gaming/Metaverse
         'LRC', 'ENJ', 'SAND', 'MANA', 'AXS', 'GALA', 'ILV',
         'IMX', 'MAGIC', 'PRIME', 'BEAM', 'PIXEL', 'PORTAL',
