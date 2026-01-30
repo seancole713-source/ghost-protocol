@@ -5130,7 +5130,7 @@ async def _post_startup_init():
                     import pytz
                     central_tz = pytz.timezone("America/Chicago")
                 
-                TOP_10_HOUR = 8  # 8 AM Central (entire hour window: 8:00-8:59)
+                TOP_10_HOUR = 99  # DISABLED - Use /debug/send-top10-now instead
                 UPDATE_HOURS = [12, 16, 20]  # 12 PM, 4 PM, 8 PM Central
                 
                 now_central = datetime.now(central_tz)
@@ -23683,7 +23683,7 @@ async def notification_loop_force_start():
             """Simplified notification loop for debugging"""
             nonlocal notification_system
             
-            TOP_10_HOUR = 8
+            TOP_10_HOUR = 99  # DISABLED - Use /debug/send-top10-now instead
             _NOTIFICATION_LOOP_STATUS["running"] = True
             _NOTIFICATION_LOOP_STATUS["started_at"] = datetime.now(central_tz).isoformat()
             LOGGER.info("[NOTIFICATION LOOP V2] Starting...")
@@ -26123,20 +26123,16 @@ async def top10_send_now(request: Request):
         except Exception as db_err:
             LOGGER.warning(f"[TOP10] DB check failed: {db_err} - proceeding without dedup check")
         
-        LOGGER.info("[TOP10] ✅ Not sent today - sending TOP 10...")
+        LOGGER.info("[TOP10] ✅ Not sent today - REDIRECTING TO CLEAN ENDPOINT...")
         
-        # Get notification system
-        def _send_telegram(msg: str) -> bool:
-            return _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
-        
-        notif = get_notification_system()
-        notif.set_telegram_func(_send_telegram)
-        
-        # DON'T force reset - let the system's daily check work
-        # Only reset if we verified it hasn't been sent today via DB
-        notif._last_top10_date = ""  # Reset since we verified via DB
-        
-        success = notif.send_top10(_LATEST_PREDICTIONS)
+        # Jan 30, 2026: Use the CLEAN hardcoded symbols endpoint instead of _LATEST_PREDICTIONS
+        # This prevents wrong symbols from Money Game from appearing
+        try:
+            clean_result = await send_top10_now_endpoint()  # Our clean /debug/send-top10-now
+            success = clean_result.get("telegram_sent", False)
+        except Exception as clean_err:
+            LOGGER.error(f"[TOP10] Clean endpoint failed: {clean_err}")
+            success = False
         
         # Log to database
         if success:
@@ -26178,18 +26174,11 @@ async def top10_force_send(request: Request):
         return {"ok": False, "error": "Requires X-Cron-Secret AND X-Force-Send: true"}
     
     try:
-        from core.ghost_notifications import get_notification_system
-        
         LOGGER.warning("[TOP10] ⚠️ FORCE SEND - bypassing daily limit!")
         
-        def _send_telegram(msg: str) -> bool:
-            return _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
-        
-        notif = get_notification_system()
-        notif.set_telegram_func(_send_telegram)
-        notif._last_top10_date = ""  # Force reset
-        
-        success = notif.send_top10(_LATEST_PREDICTIONS)
+        # Jan 30, 2026: Use CLEAN hardcoded symbols endpoint
+        clean_result = await send_top10_now_endpoint()
+        success = clean_result.get("telegram_sent", False)
         
         return {
             "ok": success,
@@ -26267,23 +26256,25 @@ async def _watchdog_background_check():
             LOGGER.info("[WATCHDOG] 🔄 Retrying PostgreSQL connection...")
             notif.retry_postgres_connection()
         
-        # AUTO-TOP10: At 8 AM, send TOP 10 if not already sent today
-        now_central = get_central_time()
-        current_hour = now_central.hour
-        current_date = now_central.strftime("%Y-%m-%d")
-        top10_sent = False
+        # AUTO-TOP10: DISABLED - Use /debug/send-top10-now instead
+        # This was causing duplicate messages with wrong symbols from _LATEST_PREDICTIONS
+        # now_central = get_central_time()
+        # current_hour = now_central.hour
+        # current_date = now_central.strftime("%Y-%m-%d")
+        top10_sent = False  # Keep this var, other code may reference it
         
-        status = notif.get_status()
-        if current_hour == 8 and status.get("last_top10_date") != current_date:
-            LOGGER.info("[WATCHDOG] 🌅 8 AM detected - auto-sending TOP 10...")
-            try:
-                stocks, crypto = notif.get_top10_predictions(_LATEST_PREDICTIONS)
-                if stocks or crypto:
-                    top10_sent = notif.send_top10_message(stocks, crypto, _LATEST_PREDICTIONS)
-                    if top10_sent:
-                        LOGGER.info("[WATCHDOG] ✅ TOP 10 sent successfully via Watchdog at 8 AM")
-            except Exception as top10_err:
-                LOGGER.error(f"[WATCHDOG] TOP 10 auto-send failed: {top10_err}")
+        # DISABLED 8 AM AUTO-SEND - was sending old Money Game symbols
+        # status = notif.get_status()
+        # if current_hour == 8 and status.get("last_top10_date") != current_date:
+        #     LOGGER.info("[WATCHDOG] 🌅 8 AM detected - auto-sending TOP 10...")
+        #     try:
+        #         stocks, crypto = notif.get_top10_predictions(_LATEST_PREDICTIONS)
+        #         if stocks or crypto:
+        #             top10_sent = notif.send_top10_message(stocks, crypto, _LATEST_PREDICTIONS)
+        #             if top10_sent:
+        #                 LOGGER.info("[WATCHDOG] ✅ TOP 10 sent successfully via Watchdog at 8 AM")
+        #     except Exception as top10_err:
+        #         LOGGER.error(f"[WATCHDOG] TOP 10 auto-send failed: {top10_err}")
         
         # Create ASYNC price lookup function using _LATEST_PREDICTIONS + live refresh
         async def get_current_price(symbol: str) -> float:
@@ -32712,88 +32703,29 @@ async def send_top10_now_endpoint():
 @APP.post("/debug/force-top10")
 async def force_top10_endpoint(force: bool = True):
     """
-    FORCE REAL TOP 10 NOTIFICATION
+    FORCE REAL TOP 10 NOTIFICATION - REDIRECTS TO CLEAN ENDPOINT
     
-    Manually trigger the REAL TOP 10 using actual _LATEST_PREDICTIONS data.
-    This is what the 8 AM scheduler calls - use this to test the real flow.
+    Jan 30, 2026: Now uses hardcoded quality symbols to prevent wrong symbols.
     
     Usage: GET or POST /debug/force-top10?force=true
-    
-    Args:
-        force: If True (default), bypasses "already sent today" check
     """
     from datetime import datetime
-    import os
     
     result = {
         "timestamp": datetime.now().isoformat(),
-        "action": "force_top10",
+        "action": "force_top10_via_clean_endpoint",
         "force_mode": force,
-        "predictions_available": False,
-        "prediction_count": 0,
-        "top10_sent": False,
-        "errors": [],
     }
     
     try:
-        # Check if we have predictions
-        if not _LATEST_PREDICTIONS:
-            result["errors"].append("_LATEST_PREDICTIONS is empty - no predictions generated yet")
-            result["overall_status"] = "❌ No predictions available"
-            return result
-        
-        result["predictions_available"] = True
-        result["prediction_count"] = len(_LATEST_PREDICTIONS)
-        result["sample_symbols"] = list(_LATEST_PREDICTIONS.keys())[:10]
-        
-        # Get the notification system
-        from core.ghost_notifications import get_notification_system
-        notification_system = get_notification_system()
-        
-        # FORCE MODE: Reset last_top10_date to allow resend
-        if force:
-            notification_system._last_top10_date = None
-            result["bypassed_date_check"] = True
-        
-        # Ensure Telegram function is set
-        if not notification_system.send_telegram:
-            def _send_telegram(message: str) -> bool:
-                try:
-                    return _tg_send_chat_message(os.environ.get("TELEGRAM_CHAT_ID", ""), message)
-                except Exception as e:
-                    LOGGER.error(f"Telegram send failed: {e}")
-                    return False
-            notification_system.set_telegram_func(_send_telegram)
-        
-        # Call the real send_top10 function
-        success = notification_system.send_top10(_LATEST_PREDICTIONS)
-        
-        result["top10_sent"] = success
-        
-        if success:
-            result["overall_status"] = "✅ REAL TOP 10 sent from _LATEST_PREDICTIONS!"
-            LOGGER.info("[FORCE-TOP10] ✅ Successfully sent TOP 10 notification")
-        else:
-            result["errors"].append("send_top10() returned False - check logs for details")
-            result["overall_status"] = "⚠️ send_top10 failed - check server logs"
-        
-        # 🎯 REGISTER POSITIONS WITH ADVISOR for tracking!
-        try:
-            from core.ghost_advisor import register_top10_positions, get_advisor
-            from core.ghost_notifications import get_notification_system
-            notif = get_notification_system()
-            stocks, crypto = notif.get_top10_predictions(_LATEST_PREDICTIONS)
-            registered = register_top10_positions(stocks, crypto)
-            result["advisor_positions_registered"] = registered
-            LOGGER.info(f"[ADVISOR] ✅ Registered {registered} positions for tracking")
-        except Exception as advisor_err:
-            LOGGER.error(f"[ADVISOR] Failed to register positions: {advisor_err}")
-            result["advisor_error"] = str(advisor_err)
-            
+        # Use the CLEAN hardcoded symbols endpoint
+        clean_result = await send_top10_now_endpoint()
+        result["telegram_sent"] = clean_result.get("telegram_sent", False)
+        result["predictions"] = clean_result.get("predictions", {})
+        result["overall_status"] = "✅ Sent via clean endpoint!" if result["telegram_sent"] else "❌ Failed"
     except Exception as e:
-        result["errors"].append(f"Exception: {str(e)}")
-        result["overall_status"] = f"❌ Error: {str(e)}"
-        LOGGER.error(f"[FORCE-TOP10] Error: {e}", exc_info=True)
+        result["error"] = str(e)
+        result["overall_status"] = f"❌ Error: {e}"
     
     return result
 
