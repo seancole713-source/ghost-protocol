@@ -636,7 +636,26 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     ct = get_central_time()
     date_str = ct.strftime("%b %d, %Y")
     time_str = ct.strftime("%I:%M %p CT").lstrip("0")
-    day_name = ct.strftime("%a")  # Fri, Mon, etc.
+    
+    # === TRADING DAY CHECK ===
+    # Stocks can only be bought Mon-Fri. If today is weekend, show next trading day.
+    def get_next_trading_day(dt: datetime) -> datetime:
+        """Get next trading day (Mon-Fri). If already a weekday, returns same day."""
+        while dt.weekday() >= 5:  # 5=Sat, 6=Sun
+            dt = dt + timedelta(days=1)
+        return dt
+    
+    def is_trading_day(dt: datetime) -> bool:
+        """Check if date is a weekday (Mon-Fri)"""
+        return dt.weekday() < 5
+    
+    # For stocks: use next trading day
+    stock_entry_date = get_next_trading_day(ct)
+    stock_day_name = stock_entry_date.strftime("%a")
+    is_weekend_for_stocks = not is_trading_day(ct)
+    
+    # For crypto: 24/7, use today
+    crypto_day_name = ct.strftime("%a")
     
     def get_hold_reason(conf: float, hold_days: int) -> str:
         """Get intelligent hold reason based on confidence and days"""
@@ -723,15 +742,33 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         action = "BUY" if is_buy else "SELL"
         news_check = " ✅" if news else ""
         
+        # Use correct day name based on asset type
+        # Stocks: must use trading day (Mon-Fri)
+        # Crypto: can trade 24/7
+        entry_day_name = stock_day_name if is_stock else crypto_day_name
+        entry_date = stock_entry_date if is_stock else ct
+        
         lines = []
         lines.append(f"{idx}) {emoji} {symbol} — {action}{news_check}")
         
+        # Add weekend warning for stocks
+        if is_stock and is_weekend_for_stocks:
+            lines.append(f"⚠️ MARKET CLOSED (Weekend) - Execute Monday")
+        
         if is_buy:
-            lines.append(f"• BUY (CT): {day_name} {ct.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
+            if is_stock:
+                lines.append(f"• BUY (CT): {entry_day_name} {entry_date.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
+            else:
+                # Crypto - 24/7
+                lines.append(f"• BUY NOW (24/7): Entry Zone: {format_price(current)} – {format_price(entry_high)}")
             lines.append(f"• SELL (CT): {exit_date} @ Open | Target: {format_price(target)} ({gain_pct:+.1f}%)")
         else:
             # SHORT: sell high, buy back low - show positive profit %
-            lines.append(f"• SELL (CT): {day_name} {ct.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
+            if is_stock:
+                lines.append(f"• SELL (CT): {entry_day_name} {entry_date.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
+            else:
+                # Crypto - 24/7
+                lines.append(f"• SELL NOW (24/7): Entry Zone: {format_price(current)} – {format_price(entry_high)}")
             lines.append(f"• BUY-BACK (CT): {exit_date} @ Open | Target: {format_price(target)} (+{gain_pct:.1f}%)")
         
         lines.append(f"• STOP LOSS: {format_price(stop)}")
@@ -748,12 +785,24 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     all_lines = [
         "🎯 GHOST TOP 10 — TRADE PLAN",
         f"📅 {date_str} | ⏰ 8:00 AM CT",
+    ]
+    
+    # Add weekend warning banner if today is weekend (stocks only)
+    if is_weekend_for_stocks:
+        all_lines.extend([
+            "",
+            "⚠️ **WEEKEND — STOCK MARKETS CLOSED**",
+            f"📆 Next trading day: {stock_day_name} {stock_entry_date.strftime('%b %d')}",
+            "🪙 Crypto trades 24/7 — execute anytime",
+        ])
+    
+    all_lines.extend([
         "",
         "━━━━━━━━━━━━━━━━━━━━━━",
         "📈 STOCKS",
         "━━━━━━━━━━━━━━━━━━━━━━",
         ""
-    ]
+    ])
     
     # Take top 5 stocks
     for idx, s in enumerate(stocks[:5], 1):
