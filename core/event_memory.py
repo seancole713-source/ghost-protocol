@@ -31,45 +31,230 @@ LOGGER = logging.getLogger(__name__)
 # ============================================================================
 
 class EventType(Enum):
-    # Social/Influencer
-    ELON_TWEET = "elon_tweet"
-    CELEBRITY_MENTION = "celebrity_mention"
-    VIRAL_SOCIAL = "viral_social"
+    # =========================================================================
+    # A. COMPANY-SPECIFIC (STOCKS)
+    # =========================================================================
+    EARNINGS_BEAT = "earnings_beat"
+    EARNINGS_MISS = "earnings_miss"
+    REVENUE_GROWTH = "revenue_growth"
+    REVENUE_DECLINE = "revenue_decline"
+    GUIDANCE_RAISED = "guidance_raised"
+    GUIDANCE_LOWERED = "guidance_lowered"
+    PROFIT_MARGIN_UP = "profit_margin_up"
+    PROFIT_MARGIN_DOWN = "profit_margin_down"
+    MAJOR_CONTRACT_WON = "major_contract_won"
+    MAJOR_CONTRACT_LOST = "major_contract_lost"
+    MERGER_ANNOUNCED = "merger_announced"
+    ACQUISITION_ANNOUNCED = "acquisition_announced"
+    STOCK_BUYBACK = "stock_buyback"
+    DIVIDEND_INCREASE = "dividend_increase"
+    DIVIDEND_CUT = "dividend_cut"
+    INSIDER_BUYING = "insider_buying"
+    INSIDER_SELLING = "insider_selling"
+    CEO_CHANGE = "ceo_change"
+    CFO_CHANGE = "cfo_change"
+    EXECUTIVE_SCANDAL = "executive_scandal"
+    CORPORATE_FRAUD = "corporate_fraud"
+    ACCOUNTING_RESTATEMENT = "accounting_restatement"
+    LAWSUIT_FILED = "lawsuit_filed"
+    LAWSUIT_SETTLED = "lawsuit_settled"
+    REGULATORY_FINE = "regulatory_fine"
+    PRODUCT_LAUNCH = "product_launch"
+    PRODUCT_FAILURE = "product_failure"
+    PRODUCT_RECALL = "product_recall"
+    PATENT_APPROVED = "patent_approved"
+    PATENT_EXPIRED = "patent_expired"
+    RD_BREAKTHROUGH = "rd_breakthrough"
+    SUPPLY_CHAIN_ISSUE = "supply_chain_issue"
+    FACTORY_SHUTDOWN = "factory_shutdown"
+    FACTORY_EXPANSION = "factory_expansion"
+    CREDIT_UPGRADE = "credit_upgrade"
+    CREDIT_DOWNGRADE = "credit_downgrade"
+    ANALYST_UPGRADE = "analyst_upgrade"
+    ANALYST_DOWNGRADE = "analyst_downgrade"
+    STOCK_SPLIT = "stock_split"
+    REVERSE_SPLIT = "reverse_split"
+    SPINOFF = "spinoff"
+    BANKRUPTCY = "bankruptcy"
     
-    # Regulatory/Government
+    # =========================================================================
+    # B. SECTOR & INDUSTRY
+    # =========================================================================
+    SECTOR_ROTATION = "sector_rotation"
+    COMPETITOR_EARNINGS_SPILLOVER = "competitor_earnings_spillover"
+    INDUSTRY_REGULATION = "industry_regulation"
+    TARIFF_CHANGE = "tariff_change"
+    TECH_DISRUPTION = "tech_disruption"
+    LABOR_STRIKE = "labor_strike"
+    LABOR_SHORTAGE = "labor_shortage"
+    INDUSTRY_CONSOLIDATION = "industry_consolidation"
+    MARKET_SHARE_SHIFT = "market_share_shift"
+    
+    # =========================================================================
+    # C. MACRO & ECONOMIC
+    # =========================================================================
+    FED_RATE_HIKE = "fed_rate_hike"
+    FED_RATE_CUT = "fed_rate_cut"
     FED_RATE_DECISION = "fed_rate_decision"
-    SEC_ACTION = "sec_action"
-    COUNTRY_BAN = "country_ban"
-    REGULATION_NEWS = "regulation_news"
+    FED_QE_ANNOUNCED = "fed_qe_announced"
+    FED_QT_ANNOUNCED = "fed_qt_announced"
+    INFLATION_HIGH = "inflation_high"
+    INFLATION_LOW = "inflation_low"
+    CPI_RELEASE = "cpi_release"
+    JOBS_REPORT_STRONG = "jobs_report_strong"
+    JOBS_REPORT_WEAK = "jobs_report_weak"
+    UNEMPLOYMENT_UP = "unemployment_up"
+    UNEMPLOYMENT_DOWN = "unemployment_down"
+    GDP_GROWTH = "gdp_growth"
+    GDP_CONTRACTION = "gdp_contraction"
+    YIELD_CURVE_INVERSION = "yield_curve_inversion"
+    BOND_VOLATILITY = "bond_volatility"
+    DOLLAR_STRENGTH = "dollar_strength"
+    DOLLAR_WEAKNESS = "dollar_weakness"
+    CONSUMER_SPENDING_UP = "consumer_spending_up"
+    CONSUMER_SPENDING_DOWN = "consumer_spending_down"
+    CONSUMER_CONFIDENCE_UP = "consumer_confidence_up"
+    CONSUMER_CONFIDENCE_DOWN = "consumer_confidence_down"
+    HOUSING_DATA_STRONG = "housing_data_strong"
+    HOUSING_DATA_WEAK = "housing_data_weak"
+    RETAIL_SALES_UP = "retail_sales_up"
+    RETAIL_SALES_DOWN = "retail_sales_down"
+    PMI_EXPANSION = "pmi_expansion"
+    PMI_CONTRACTION = "pmi_contraction"
+    RECESSION_FEAR = "recession_fear"
+    RECESSION_CONFIRMED = "recession_confirmed"
+    BANKING_CRISIS = "banking_crisis"
+    DEBT_CEILING_CRISIS = "debt_ceiling_crisis"
     
-    # Exchange/Security
-    EXCHANGE_HACK = "exchange_hack"
-    EXCHANGE_LISTING = "exchange_listing"
-    EXCHANGE_DELISTING = "exchange_delisting"
-    EXCHANGE_OUTAGE = "exchange_outage"
+    # =========================================================================
+    # D. GEOPOLITICAL & SENTIMENT
+    # =========================================================================
+    WAR_CONFLICT = "war_conflict"
+    WAR_ESCALATION = "war_escalation"
+    WAR_DEESCALATION = "war_deescalation"
+    SANCTIONS_IMPOSED = "sanctions_imposed"
+    TRADE_WAR = "trade_war"
+    TRADE_DEAL = "trade_deal"
+    OIL_PRICE_SPIKE = "oil_price_spike"
+    OIL_PRICE_CRASH = "oil_price_crash"
+    ELECTION_RESULT = "election_result"
+    POLITICAL_CHANGE = "political_change"
+    GOVERNMENT_STIMULUS = "government_stimulus"
+    GOVERNMENT_AUSTERITY = "government_austerity"
+    PANDEMIC_OUTBREAK = "pandemic_outbreak"
+    PANDEMIC_RECOVERY = "pandemic_recovery"
+    NATURAL_DISASTER = "natural_disaster"
+    HEDGE_FUND_REBALANCE = "hedge_fund_rebalance"
+    INSTITUTIONAL_FLOWS = "institutional_flows"
+    ALGO_TRADING_GLITCH = "algo_trading_glitch"
+    FLASH_CRASH = "flash_crash"
+    SHORT_SQUEEZE = "short_squeeze"
     
-    # Whale/Large Movements
+    # =========================================================================
+    # E. COMMODITY & CURRENCY
+    # =========================================================================
+    GOLD_PRICE_UP = "gold_price_up"
+    GOLD_PRICE_DOWN = "gold_price_down"
+    COPPER_PRICE_UP = "copper_price_up"
+    COPPER_PRICE_DOWN = "copper_price_down"
+    COMMODITY_SURGE = "commodity_surge"
+    COMMODITY_CRASH = "commodity_crash"
+    CURRENCY_CRISIS = "currency_crisis"
+    FOREX_VOLATILITY = "forex_volatility"
+    
+    # =========================================================================
+    # F. CRYPTO-SPECIFIC - BITCOIN & MARKET STRUCTURE
+    # =========================================================================
+    BTC_PRICE_SURGE = "btc_price_surge"
+    BTC_PRICE_CRASH = "btc_price_crash"
+    HALVING = "halving"
+    BTC_DOMINANCE_UP = "btc_dominance_up"
+    BTC_DOMINANCE_DOWN = "btc_dominance_down"
     WHALE_BUY = "whale_buy"
     WHALE_SELL = "whale_sell"
-    LARGE_TRANSFER = "large_transfer"
+    MINER_CAPITULATION = "miner_capitulation"
+    MINER_ACCUMULATION = "miner_accumulation"
+    HASH_RATE_UP = "hash_rate_up"
+    HASH_RATE_DOWN = "hash_rate_down"
+    NETWORK_CONGESTION = "network_congestion"
+    TX_FEES_SPIKE = "tx_fees_spike"
+    ETF_INFLOW = "etf_inflow"
+    ETF_OUTFLOW = "etf_outflow"
+    EXCHANGE_RESERVE_UP = "exchange_reserve_up"
+    EXCHANGE_RESERVE_DOWN = "exchange_reserve_down"
+    STABLECOIN_SUPPLY_UP = "stablecoin_supply_up"
+    STABLECOIN_SUPPLY_DOWN = "stablecoin_supply_down"
     
-    # Project/Company
-    CEO_NEWS = "ceo_news"
-    PARTNERSHIP = "partnership"
-    PRODUCT_LAUNCH = "product_launch"
-    EARNINGS_REPORT = "earnings_report"
+    # =========================================================================
+    # G. CRYPTO-SPECIFIC - REGULATION & NEWS
+    # =========================================================================
+    SEC_ACTION = "sec_action"
+    SEC_APPROVAL = "sec_approval"
+    ETF_APPROVED = "etf_approved"
+    ETF_REJECTED = "etf_rejected"
+    COUNTRY_BAN = "country_ban"
+    COUNTRY_ADOPTION = "country_adoption"
+    CRYPTO_TAX_CHANGE = "crypto_tax_change"
+    AML_KYC_CRACKDOWN = "aml_kyc_crackdown"
+    COURT_RULING_POSITIVE = "court_ruling_positive"
+    COURT_RULING_NEGATIVE = "court_ruling_negative"
+    STABLECOIN_REGULATION = "stablecoin_regulation"
+    CBDC_ANNOUNCEMENT = "cbdc_announcement"
+    INSTITUTIONAL_ADOPTION = "institutional_adoption"
+    CORPORATE_ADOPTION = "corporate_adoption"
     
-    # Macro/Geopolitical
-    WAR_CONFLICT = "war_conflict"
-    ECONOMIC_DATA = "economic_data"
-    MARKET_CRASH = "market_crash"
+    # =========================================================================
+    # H. CRYPTO-SPECIFIC - PROJECT/ALTCOIN
+    # =========================================================================
+    MAINNET_LAUNCH = "mainnet_launch"
+    NETWORK_UPGRADE = "network_upgrade"
+    HARD_FORK = "hard_fork"
+    TOKEN_BURN = "token_burn"
+    TOKEN_UNLOCK = "token_unlock"
+    VESTING_RELEASE = "vesting_release"
+    PARTNERSHIP_ANNOUNCED = "partnership_announced"
+    TVL_SURGE = "tvl_surge"
+    TVL_DECLINE = "tvl_decline"
+    EXCHANGE_HACK = "exchange_hack"
+    PROTOCOL_EXPLOIT = "protocol_exploit"
+    SMART_CONTRACT_BUG = "smart_contract_bug"
+    BRIDGE_HACK = "bridge_hack"
+    FLASH_LOAN_ATTACK = "flash_loan_attack"
+    ORACLE_FAILURE = "oracle_failure"
+    DAO_VOTE = "dao_vote"
+    DEV_ACTIVITY_UP = "dev_activity_up"
+    DEV_ACTIVITY_DOWN = "dev_activity_down"
+    ROADMAP_DELAY = "roadmap_delay"
+    ROADMAP_ACCELERATION = "roadmap_acceleration"
+    EXCHANGE_LISTING = "exchange_listing"
+    EXCHANGE_DELISTING = "exchange_delisting"
+    AIRDROP_ANNOUNCED = "airdrop_announced"
+    RUG_PULL = "rug_pull"
     
-    # Technical
-    HALVING = "halving"
-    FORK = "fork"
-    UPGRADE = "upgrade"
+    # =========================================================================
+    # I. SOCIAL & SENTIMENT
+    # =========================================================================
+    ELON_TWEET = "elon_tweet"
+    CELEBRITY_MENTION = "celebrity_mention"
+    INFLUENCER_HYPE = "influencer_hype"
+    INFLUENCER_FUD = "influencer_fud"
+    VIRAL_SOCIAL = "viral_social"
+    MEME_TREND = "meme_trend"
+    PUMP_AND_DUMP = "pump_and_dump"
+    FUD_WAVE = "fud_wave"
+    NARRATIVE_SHIFT = "narrative_shift"
+    FEAR_GREED_EXTREME = "fear_greed_extreme"
     
-    # Unknown
+    # =========================================================================
+    # J. SEASONAL & CYCLICAL
+    # =========================================================================
+    HOLIDAY_SHOPPING = "holiday_shopping"
+    EARNINGS_SEASON = "earnings_season"
+    TAX_SEASON = "tax_season"
+    QUARTER_END_REBALANCE = "quarter_end_rebalance"
+    YEAR_END_POSITIONING = "year_end_positioning"
+    
+    # Unknown fallback
     UNKNOWN = "unknown"
 
 
@@ -222,27 +407,415 @@ class EventMemory:
         # Ghost will refine these as it observes more events
         
         self.patterns = {
-            # Elon Musk tweets - well documented pattern
-            EventType.ELON_TWEET.value: EventPattern(
-                event_type=EventType.ELON_TWEET.value,
-                keywords=["elon", "musk", "tesla", "doge", "dogecoin"],
-                affected_symbols=["DOGE", "SHIB", "TSLA", "BTC"],
-                immediate_reaction=15.0,  # +15% in first hours
-                peak_reaction=30.0,  # Can go +30%
-                recovery_time_hours=24,  # Usually dumps back within 24h
-                typical_direction="pump_then_dump",
-                times_observed=50,  # Many documented cases
-                last_observed="2025-01-01",
-                accuracy=0.85,  # Very reliable pattern
-                notes="Elon tweets cause immediate pump, followed by dump within 24h. Don't chase the pump."
+            # =================================================================
+            # A. COMPANY-SPECIFIC (STOCKS)
+            # =================================================================
+            
+            EventType.EARNINGS_BEAT.value: EventPattern(
+                event_type=EventType.EARNINGS_BEAT.value,
+                keywords=["earnings beat", "eps beat", "beat estimates", "exceeded expectations"],
+                affected_symbols=[],
+                immediate_reaction=5.0,
+                peak_reaction=10.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=500,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Earnings beats typically pump 5-10%. Watch for 'sell the news' if already priced in."
             ),
             
-            # Fed rate decisions
+            EventType.EARNINGS_MISS.value: EventPattern(
+                event_type=EventType.EARNINGS_MISS.value,
+                keywords=["earnings miss", "eps miss", "missed estimates", "below expectations"],
+                affected_symbols=[],
+                immediate_reaction=-8.0,
+                peak_reaction=-15.0,
+                recovery_time_hours=48,
+                typical_direction="dump",
+                times_observed=500,
+                last_observed="2026-01-01",
+                accuracy=0.80,
+                notes="Earnings misses dump hard. Gap down at open. Wait for dust to settle."
+            ),
+            
+            EventType.GUIDANCE_RAISED.value: EventPattern(
+                event_type=EventType.GUIDANCE_RAISED.value,
+                keywords=["raised guidance", "increased outlook", "raised forecast", "upward revision"],
+                affected_symbols=[],
+                immediate_reaction=7.0,
+                peak_reaction=12.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=200,
+                last_observed="2026-01-01",
+                accuracy=0.78,
+                notes="Raised guidance is very bullish. Shows management confidence."
+            ),
+            
+            EventType.GUIDANCE_LOWERED.value: EventPattern(
+                event_type=EventType.GUIDANCE_LOWERED.value,
+                keywords=["lowered guidance", "cut outlook", "reduced forecast", "downward revision"],
+                affected_symbols=[],
+                immediate_reaction=-10.0,
+                peak_reaction=-20.0,
+                recovery_time_hours=72,
+                typical_direction="dump",
+                times_observed=200,
+                last_observed="2026-01-01",
+                accuracy=0.85,
+                notes="Lowered guidance is a red flag. Usually indicates deeper problems."
+            ),
+            
+            EventType.MERGER_ANNOUNCED.value: EventPattern(
+                event_type=EventType.MERGER_ANNOUNCED.value,
+                keywords=["merger", "merge with", "combination", "merger agreement"],
+                affected_symbols=[],
+                immediate_reaction=15.0,
+                peak_reaction=25.0,
+                recovery_time_hours=0,
+                typical_direction="target_pumps",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.85,
+                notes="Target company pumps to acquisition price. Acquirer may dip short term."
+            ),
+            
+            EventType.ACQUISITION_ANNOUNCED.value: EventPattern(
+                event_type=EventType.ACQUISITION_ANNOUNCED.value,
+                keywords=["acquired", "acquisition", "buyout", "takeover", "tender offer"],
+                affected_symbols=[],
+                immediate_reaction=20.0,
+                peak_reaction=30.0,
+                recovery_time_hours=0,
+                typical_direction="target_pumps",
+                times_observed=150,
+                last_observed="2026-01-01",
+                accuracy=0.90,
+                notes="Acquisition targets gap up to offer price. Usually 20-40% premium."
+            ),
+            
+            EventType.STOCK_BUYBACK.value: EventPattern(
+                event_type=EventType.STOCK_BUYBACK.value,
+                keywords=["buyback", "share repurchase", "stock repurchase"],
+                affected_symbols=[],
+                immediate_reaction=3.0,
+                peak_reaction=8.0,
+                recovery_time_hours=0,
+                typical_direction="gradual_pump",
+                times_observed=300,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Buybacks are long-term bullish. Shows company believes stock is undervalued."
+            ),
+            
+            EventType.DIVIDEND_INCREASE.value: EventPattern(
+                event_type=EventType.DIVIDEND_INCREASE.value,
+                keywords=["dividend increase", "raised dividend", "dividend hike"],
+                affected_symbols=[],
+                immediate_reaction=2.0,
+                peak_reaction=5.0,
+                recovery_time_hours=0,
+                typical_direction="mild_pump",
+                times_observed=200,
+                last_observed="2026-01-01",
+                accuracy=0.65,
+                notes="Dividend increases signal financial health. Attracts income investors."
+            ),
+            
+            EventType.DIVIDEND_CUT.value: EventPattern(
+                event_type=EventType.DIVIDEND_CUT.value,
+                keywords=["dividend cut", "suspended dividend", "eliminated dividend"],
+                affected_symbols=[],
+                immediate_reaction=-12.0,
+                peak_reaction=-20.0,
+                recovery_time_hours=168,
+                typical_direction="dump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.85,
+                notes="Dividend cuts signal financial distress. Major red flag."
+            ),
+            
+            EventType.INSIDER_BUYING.value: EventPattern(
+                event_type=EventType.INSIDER_BUYING.value,
+                keywords=["insider buying", "ceo bought", "director purchased", "insider purchase"],
+                affected_symbols=[],
+                immediate_reaction=3.0,
+                peak_reaction=8.0,
+                recovery_time_hours=0,
+                typical_direction="gradual_pump",
+                times_observed=150,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Insiders know the company best. Buying is bullish signal."
+            ),
+            
+            EventType.INSIDER_SELLING.value: EventPattern(
+                event_type=EventType.INSIDER_SELLING.value,
+                keywords=["insider selling", "ceo sold", "director sold", "insider sale"],
+                affected_symbols=[],
+                immediate_reaction=-2.0,
+                peak_reaction=-5.0,
+                recovery_time_hours=24,
+                typical_direction="mild_dump",
+                times_observed=200,
+                last_observed="2026-01-01",
+                accuracy=0.55,
+                notes="Insider selling is often planned/diversification. Not always bearish."
+            ),
+            
+            EventType.CEO_CHANGE.value: EventPattern(
+                event_type=EventType.CEO_CHANGE.value,
+                keywords=["ceo resigned", "ceo appointed", "new ceo", "ceo steps down"],
+                affected_symbols=[],
+                immediate_reaction=-5.0,
+                peak_reaction=-10.0,
+                recovery_time_hours=72,
+                typical_direction="volatile",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.60,
+                notes="CEO changes create uncertainty. Market usually dips initially."
+            ),
+            
+            EventType.EXECUTIVE_SCANDAL.value: EventPattern(
+                event_type=EventType.EXECUTIVE_SCANDAL.value,
+                keywords=["scandal", "misconduct", "investigation", "fraud allegation"],
+                affected_symbols=[],
+                immediate_reaction=-15.0,
+                peak_reaction=-30.0,
+                recovery_time_hours=168,
+                typical_direction="dump",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.85,
+                notes="Scandals destroy trust. Stay away until dust settles."
+            ),
+            
+            EventType.CORPORATE_FRAUD.value: EventPattern(
+                event_type=EventType.CORPORATE_FRAUD.value,
+                keywords=["fraud", "accounting fraud", "sec investigation", "financial fraud"],
+                affected_symbols=[],
+                immediate_reaction=-25.0,
+                peak_reaction=-50.0,
+                recovery_time_hours=720,
+                typical_direction="dump_hard",
+                times_observed=30,
+                last_observed="2026-01-01",
+                accuracy=0.95,
+                notes="Fraud = potential delisting. Avoid completely. Think Enron, Wirecard."
+            ),
+            
+            EventType.LAWSUIT_FILED.value: EventPattern(
+                event_type=EventType.LAWSUIT_FILED.value,
+                keywords=["lawsuit filed", "sued", "legal action", "class action"],
+                affected_symbols=[],
+                immediate_reaction=-5.0,
+                peak_reaction=-10.0,
+                recovery_time_hours=48,
+                typical_direction="mild_dump",
+                times_observed=200,
+                last_observed="2026-01-01",
+                accuracy=0.65,
+                notes="Lawsuits create uncertainty. Impact depends on merit and size."
+            ),
+            
+            EventType.LAWSUIT_SETTLED.value: EventPattern(
+                event_type=EventType.LAWSUIT_SETTLED.value,
+                keywords=["settlement", "lawsuit settled", "legal settlement", "agreed to pay"],
+                affected_symbols=[],
+                immediate_reaction=3.0,
+                peak_reaction=5.0,
+                recovery_time_hours=0,
+                typical_direction="relief_pump",
+                times_observed=150,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Settlements remove uncertainty. Usually positive once amount known."
+            ),
+            
+            EventType.PRODUCT_LAUNCH.value: EventPattern(
+                event_type=EventType.PRODUCT_LAUNCH.value,
+                keywords=["product launch", "new product", "release", "unveiled", "announced"],
+                affected_symbols=[],
+                immediate_reaction=5.0,
+                peak_reaction=10.0,
+                recovery_time_hours=48,
+                typical_direction="pump_then_fade",
+                times_observed=300,
+                last_observed="2026-01-01",
+                accuracy=0.65,
+                notes="Product launches often 'sell the news'. Pump before, fade after."
+            ),
+            
+            EventType.PRODUCT_RECALL.value: EventPattern(
+                event_type=EventType.PRODUCT_RECALL.value,
+                keywords=["recall", "product recall", "safety recall", "defect"],
+                affected_symbols=[],
+                immediate_reaction=-8.0,
+                peak_reaction=-15.0,
+                recovery_time_hours=72,
+                typical_direction="dump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.80,
+                notes="Recalls hurt brand and cost money. Short term bearish."
+            ),
+            
+            EventType.PATENT_APPROVED.value: EventPattern(
+                event_type=EventType.PATENT_APPROVED.value,
+                keywords=["patent approved", "patent granted", "fda approval", "regulatory approval"],
+                affected_symbols=[],
+                immediate_reaction=10.0,
+                peak_reaction=25.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=150,
+                last_observed="2026-01-01",
+                accuracy=0.80,
+                notes="Patent/FDA approvals are major catalysts. Especially for biotech."
+            ),
+            
+            EventType.BANKRUPTCY.value: EventPattern(
+                event_type=EventType.BANKRUPTCY.value,
+                keywords=["bankruptcy", "chapter 11", "chapter 7", "filed for bankruptcy"],
+                affected_symbols=[],
+                immediate_reaction=-50.0,
+                peak_reaction=-90.0,
+                recovery_time_hours=0,
+                typical_direction="dump_to_zero",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.95,
+                notes="Bankruptcy usually means equity is worthless. Avoid."
+            ),
+            
+            EventType.ANALYST_UPGRADE.value: EventPattern(
+                event_type=EventType.ANALYST_UPGRADE.value,
+                keywords=["upgraded", "upgrade", "raised price target", "buy rating"],
+                affected_symbols=[],
+                immediate_reaction=3.0,
+                peak_reaction=6.0,
+                recovery_time_hours=24,
+                typical_direction="mild_pump",
+                times_observed=500,
+                last_observed="2026-01-01",
+                accuracy=0.60,
+                notes="Analyst upgrades have modest impact. Often lagging indicators."
+            ),
+            
+            EventType.ANALYST_DOWNGRADE.value: EventPattern(
+                event_type=EventType.ANALYST_DOWNGRADE.value,
+                keywords=["downgraded", "downgrade", "lowered price target", "sell rating"],
+                affected_symbols=[],
+                immediate_reaction=-4.0,
+                peak_reaction=-8.0,
+                recovery_time_hours=24,
+                typical_direction="mild_dump",
+                times_observed=500,
+                last_observed="2026-01-01",
+                accuracy=0.60,
+                notes="Analyst downgrades have modest impact. Often lagging indicators."
+            ),
+            
+            EventType.STOCK_SPLIT.value: EventPattern(
+                event_type=EventType.STOCK_SPLIT.value,
+                keywords=["stock split", "share split", "split announced"],
+                affected_symbols=[],
+                immediate_reaction=5.0,
+                peak_reaction=10.0,
+                recovery_time_hours=168,
+                typical_direction="pump_into_split",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Splits are psychologically bullish. Usually pump into effective date."
+            ),
+            
+            # =================================================================
+            # B. SECTOR & INDUSTRY
+            # =================================================================
+            
+            EventType.SECTOR_ROTATION.value: EventPattern(
+                event_type=EventType.SECTOR_ROTATION.value,
+                keywords=["sector rotation", "rotating into", "rotating out of", "flows into"],
+                affected_symbols=[],
+                immediate_reaction=5.0,
+                peak_reaction=15.0,
+                recovery_time_hours=168,
+                typical_direction="beneficiary_pumps",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Money flows from one sector to another. Follow the flows."
+            ),
+            
+            EventType.TARIFF_CHANGE.value: EventPattern(
+                event_type=EventType.TARIFF_CHANGE.value,
+                keywords=["tariff", "tariffs", "trade war", "import duty"],
+                affected_symbols=[],
+                immediate_reaction=-5.0,
+                peak_reaction=-10.0,
+                recovery_time_hours=72,
+                typical_direction="affected_dumps",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Tariffs hurt importers and exporters. Create uncertainty."
+            ),
+            
+            EventType.LABOR_STRIKE.value: EventPattern(
+                event_type=EventType.LABOR_STRIKE.value,
+                keywords=["strike", "labor strike", "union strike", "walkout"],
+                affected_symbols=[],
+                immediate_reaction=-5.0,
+                peak_reaction=-10.0,
+                recovery_time_hours=168,
+                typical_direction="dump",
+                times_observed=30,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Strikes disrupt production and cost money. Short term bearish."
+            ),
+            
+            # =================================================================
+            # C. MACRO & ECONOMIC
+            # =================================================================
+            
+            EventType.FED_RATE_HIKE.value: EventPattern(
+                event_type=EventType.FED_RATE_HIKE.value,
+                keywords=["rate hike", "raised rates", "rate increase", "hawkish fed"],
+                affected_symbols=["SPY", "QQQ", "BTC", "ETH"],
+                immediate_reaction=-3.0,
+                peak_reaction=-8.0,
+                recovery_time_hours=72,
+                typical_direction="risk_off",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Rate hikes are bearish for growth stocks and crypto. Risk-off."
+            ),
+            
+            EventType.FED_RATE_CUT.value: EventPattern(
+                event_type=EventType.FED_RATE_CUT.value,
+                keywords=["rate cut", "lowered rates", "rate decrease", "dovish fed"],
+                affected_symbols=["SPY", "QQQ", "BTC", "ETH"],
+                immediate_reaction=5.0,
+                peak_reaction=10.0,
+                recovery_time_hours=0,
+                typical_direction="risk_on",
+                times_observed=30,
+                last_observed="2026-01-01",
+                accuracy=0.80,
+                notes="Rate cuts are bullish. Cheap money flows into risk assets."
+            ),
+            
             EventType.FED_RATE_DECISION.value: EventPattern(
                 event_type=EventType.FED_RATE_DECISION.value,
                 keywords=["fed", "federal reserve", "rate", "fomc", "powell", "interest rate"],
                 affected_symbols=["BTC", "ETH", "SPY", "QQQ"],
-                immediate_reaction=-5.0,  # Usually drops on rate hikes
+                immediate_reaction=-5.0,
                 peak_reaction=-10.0,
                 recovery_time_hours=72,
                 typical_direction="dump_on_hike",
@@ -252,26 +825,400 @@ class EventMemory:
                 notes="Rate hikes = risk-off = crypto dumps. Rate cuts = pump."
             ),
             
-            # Exchange hacks
-            EventType.EXCHANGE_HACK.value: EventPattern(
-                event_type=EventType.EXCHANGE_HACK.value,
-                keywords=["hack", "exploit", "stolen", "breach", "drained"],
-                affected_symbols=["BTC", "ETH"],  # Whole market affected
-                immediate_reaction=-15.0,  # Flash crash
-                peak_reaction=-25.0,
-                recovery_time_hours=48,  # Usually recovers
-                typical_direction="flash_crash_recovery",
-                times_observed=20,
-                last_observed="2025-01-01",
-                accuracy=0.80,
-                notes="Hacks cause panic selling, but market usually recovers. Buy the dip opportunity."
+            EventType.INFLATION_HIGH.value: EventPattern(
+                event_type=EventType.INFLATION_HIGH.value,
+                keywords=["inflation high", "cpi higher", "inflation rose", "hot inflation"],
+                affected_symbols=["SPY", "QQQ", "BTC", "GOLD"],
+                immediate_reaction=-3.0,
+                peak_reaction=-7.0,
+                recovery_time_hours=48,
+                typical_direction="dump",
+                times_observed=30,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="High inflation = more rate hikes expected. Bearish for risk assets."
             ),
             
-            # Whale dumps
+            EventType.INFLATION_LOW.value: EventPattern(
+                event_type=EventType.INFLATION_LOW.value,
+                keywords=["inflation low", "cpi lower", "inflation fell", "cool inflation"],
+                affected_symbols=["SPY", "QQQ", "BTC"],
+                immediate_reaction=3.0,
+                peak_reaction=7.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=20,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Low inflation = dovish Fed expected. Bullish for risk assets."
+            ),
+            
+            EventType.JOBS_REPORT_STRONG.value: EventPattern(
+                event_type=EventType.JOBS_REPORT_STRONG.value,
+                keywords=["jobs beat", "nfp strong", "unemployment fell", "payrolls strong"],
+                affected_symbols=["SPY", "QQQ"],
+                immediate_reaction=2.0,
+                peak_reaction=5.0,
+                recovery_time_hours=24,
+                typical_direction="mixed",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.55,
+                notes="Strong jobs = good economy but also = hawkish Fed. Mixed signal."
+            ),
+            
+            EventType.JOBS_REPORT_WEAK.value: EventPattern(
+                event_type=EventType.JOBS_REPORT_WEAK.value,
+                keywords=["jobs miss", "nfp weak", "unemployment rose", "payrolls weak"],
+                affected_symbols=["SPY", "QQQ"],
+                immediate_reaction=-2.0,
+                peak_reaction=-5.0,
+                recovery_time_hours=24,
+                typical_direction="mixed",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.55,
+                notes="Weak jobs = bad economy but also = dovish Fed. Mixed signal."
+            ),
+            
+            EventType.GDP_GROWTH.value: EventPattern(
+                event_type=EventType.GDP_GROWTH.value,
+                keywords=["gdp growth", "gdp beat", "economy grew", "gdp higher"],
+                affected_symbols=["SPY", "QQQ"],
+                immediate_reaction=2.0,
+                peak_reaction=5.0,
+                recovery_time_hours=0,
+                typical_direction="mild_pump",
+                times_observed=30,
+                last_observed="2026-01-01",
+                accuracy=0.65,
+                notes="GDP growth is bullish for equities. Shows healthy economy."
+            ),
+            
+            EventType.GDP_CONTRACTION.value: EventPattern(
+                event_type=EventType.GDP_CONTRACTION.value,
+                keywords=["gdp contraction", "gdp miss", "economy shrank", "negative gdp"],
+                affected_symbols=["SPY", "QQQ"],
+                immediate_reaction=-3.0,
+                peak_reaction=-8.0,
+                recovery_time_hours=72,
+                typical_direction="dump",
+                times_observed=20,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="GDP contraction raises recession fears. Bearish."
+            ),
+            
+            EventType.RECESSION_FEAR.value: EventPattern(
+                event_type=EventType.RECESSION_FEAR.value,
+                keywords=["recession", "recession fears", "economic slowdown", "hard landing"],
+                affected_symbols=["SPY", "QQQ", "BTC"],
+                immediate_reaction=-5.0,
+                peak_reaction=-15.0,
+                recovery_time_hours=168,
+                typical_direction="risk_off",
+                times_observed=30,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Recession fears cause flight to safety. Risk assets dump."
+            ),
+            
+            EventType.BANKING_CRISIS.value: EventPattern(
+                event_type=EventType.BANKING_CRISIS.value,
+                keywords=["bank failure", "bank run", "banking crisis", "bank collapse"],
+                affected_symbols=["BTC", "GOLD", "XLF"],
+                immediate_reaction=-10.0,
+                peak_reaction=-20.0,
+                recovery_time_hours=168,
+                typical_direction="risk_off_btc_pump",
+                times_observed=10,
+                last_observed="2023-03-01",
+                accuracy=0.80,
+                notes="Banking crises paradoxically can pump BTC as safe haven. SVB effect."
+            ),
+            
+            # =================================================================
+            # D. GEOPOLITICAL & SENTIMENT
+            # =================================================================
+            
+            EventType.WAR_CONFLICT.value: EventPattern(
+                event_type=EventType.WAR_CONFLICT.value,
+                keywords=["war", "invasion", "attack", "military", "conflict", "missile"],
+                affected_symbols=["BTC", "GOLD", "OIL"],
+                immediate_reaction=-10.0,
+                peak_reaction=-20.0,
+                recovery_time_hours=168,
+                typical_direction="risk_off",
+                times_observed=10,
+                last_observed="2024-01-01",
+                accuracy=0.75,
+                notes="War = uncertainty = risk-off. But crypto can be safe haven long term."
+            ),
+            
+            EventType.WAR_ESCALATION.value: EventPattern(
+                event_type=EventType.WAR_ESCALATION.value,
+                keywords=["escalation", "troops deployed", "bombing", "nuclear"],
+                affected_symbols=["BTC", "GOLD", "OIL", "SPY"],
+                immediate_reaction=-8.0,
+                peak_reaction=-15.0,
+                recovery_time_hours=72,
+                typical_direction="risk_off",
+                times_observed=20,
+                last_observed="2024-01-01",
+                accuracy=0.80,
+                notes="Escalation increases uncertainty. Risk assets dump."
+            ),
+            
+            EventType.WAR_DEESCALATION.value: EventPattern(
+                event_type=EventType.WAR_DEESCALATION.value,
+                keywords=["ceasefire", "peace talks", "de-escalation", "truce"],
+                affected_symbols=["SPY", "QQQ"],
+                immediate_reaction=5.0,
+                peak_reaction=10.0,
+                recovery_time_hours=0,
+                typical_direction="relief_rally",
+                times_observed=15,
+                last_observed="2024-01-01",
+                accuracy=0.75,
+                notes="Peace = certainty = risk-on. Markets rally on de-escalation."
+            ),
+            
+            EventType.OIL_PRICE_SPIKE.value: EventPattern(
+                event_type=EventType.OIL_PRICE_SPIKE.value,
+                keywords=["oil spike", "oil surge", "crude jumped", "opec cut"],
+                affected_symbols=["XLE", "XOM", "CVX", "OIL"],
+                immediate_reaction=-2.0,
+                peak_reaction=-5.0,
+                recovery_time_hours=48,
+                typical_direction="energy_up_market_down",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Oil spikes hurt consumers and most businesses. Energy stocks benefit."
+            ),
+            
+            EventType.ELECTION_RESULT.value: EventPattern(
+                event_type=EventType.ELECTION_RESULT.value,
+                keywords=["election", "elected", "won election", "election result"],
+                affected_symbols=["SPY", "QQQ"],
+                immediate_reaction=3.0,
+                peak_reaction=10.0,
+                recovery_time_hours=48,
+                typical_direction="volatile_then_up",
+                times_observed=20,
+                last_observed="2024-11-01",
+                accuracy=0.70,
+                notes="Elections create volatility. Markets usually rally once uncertainty removed."
+            ),
+            
+            EventType.GOVERNMENT_STIMULUS.value: EventPattern(
+                event_type=EventType.GOVERNMENT_STIMULUS.value,
+                keywords=["stimulus", "stimulus package", "relief bill", "government spending"],
+                affected_symbols=["SPY", "QQQ", "BTC"],
+                immediate_reaction=5.0,
+                peak_reaction=10.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=20,
+                last_observed="2021-01-01",
+                accuracy=0.85,
+                notes="Free money = asset inflation. Very bullish for risk assets."
+            ),
+            
+            EventType.PANDEMIC_OUTBREAK.value: EventPattern(
+                event_type=EventType.PANDEMIC_OUTBREAK.value,
+                keywords=["pandemic", "outbreak", "virus", "covid", "health emergency"],
+                affected_symbols=["SPY", "QQQ", "XLV"],
+                immediate_reaction=-15.0,
+                peak_reaction=-35.0,
+                recovery_time_hours=720,
+                typical_direction="crash_then_v_recovery",
+                times_observed=5,
+                last_observed="2020-03-01",
+                accuracy=0.90,
+                notes="Pandemics crash markets hard. But stimulus follows. Buy the crash."
+            ),
+            
+            EventType.NATURAL_DISASTER.value: EventPattern(
+                event_type=EventType.NATURAL_DISASTER.value,
+                keywords=["hurricane", "earthquake", "tsunami", "wildfire", "flood"],
+                affected_symbols=[],
+                immediate_reaction=-3.0,
+                peak_reaction=-8.0,
+                recovery_time_hours=72,
+                typical_direction="localized_impact",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.65,
+                notes="Disasters have localized impact. Affects specific companies/regions."
+            ),
+            
+            EventType.SHORT_SQUEEZE.value: EventPattern(
+                event_type=EventType.SHORT_SQUEEZE.value,
+                keywords=["short squeeze", "squeeze", "shorts covering", "gme", "meme stock"],
+                affected_symbols=[],
+                immediate_reaction=50.0,
+                peak_reaction=200.0,
+                recovery_time_hours=72,
+                typical_direction="violent_pump_then_crash",
+                times_observed=20,
+                last_observed="2024-01-01",
+                accuracy=0.85,
+                notes="Squeezes are violent. Don't chase. They always crash back."
+            ),
+            
+            EventType.FLASH_CRASH.value: EventPattern(
+                event_type=EventType.FLASH_CRASH.value,
+                keywords=["flash crash", "circuit breaker", "halted", "plunge"],
+                affected_symbols=[],
+                immediate_reaction=-15.0,
+                peak_reaction=-25.0,
+                recovery_time_hours=4,
+                typical_direction="crash_then_recovery",
+                times_observed=15,
+                last_observed="2024-01-01",
+                accuracy=0.80,
+                notes="Flash crashes are buy opportunities. Usually recover same day."
+            ),
+            
+            # =================================================================
+            # E. COMMODITY & CURRENCY
+            # =================================================================
+            
+            EventType.GOLD_PRICE_UP.value: EventPattern(
+                event_type=EventType.GOLD_PRICE_UP.value,
+                keywords=["gold up", "gold rally", "gold surge", "gold breakout"],
+                affected_symbols=["GOLD", "GLD", "GDX", "BTC"],
+                immediate_reaction=2.0,
+                peak_reaction=5.0,
+                recovery_time_hours=0,
+                typical_direction="safe_haven_bid",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.65,
+                notes="Gold up = risk-off sentiment. BTC sometimes follows as digital gold."
+            ),
+            
+            EventType.DOLLAR_STRENGTH.value: EventPattern(
+                event_type=EventType.DOLLAR_STRENGTH.value,
+                keywords=["dollar strong", "dxy up", "dollar rally", "usd strength"],
+                affected_symbols=["BTC", "ETH", "GOLD"],
+                immediate_reaction=-3.0,
+                peak_reaction=-7.0,
+                recovery_time_hours=72,
+                typical_direction="inverse_to_risk",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Strong dollar is bearish for BTC and commodities. Inverse correlation."
+            ),
+            
+            EventType.DOLLAR_WEAKNESS.value: EventPattern(
+                event_type=EventType.DOLLAR_WEAKNESS.value,
+                keywords=["dollar weak", "dxy down", "dollar fell", "usd weakness"],
+                affected_symbols=["BTC", "ETH", "GOLD"],
+                immediate_reaction=3.0,
+                peak_reaction=7.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Weak dollar is bullish for BTC and commodities. Inverse correlation."
+            ),
+            
+            # =================================================================
+            # F. CRYPTO-SPECIFIC - BITCOIN & MARKET STRUCTURE
+            # =================================================================
+            
+            EventType.BTC_PRICE_SURGE.value: EventPattern(
+                event_type=EventType.BTC_PRICE_SURGE.value,
+                keywords=["bitcoin surge", "btc pump", "bitcoin rally", "bitcoin breakout"],
+                affected_symbols=["ETH", "SOL", "ALTS"],
+                immediate_reaction=10.0,
+                peak_reaction=20.0,
+                recovery_time_hours=48,
+                typical_direction="alts_follow",
+                times_observed=200,
+                last_observed="2026-01-01",
+                accuracy=0.80,
+                notes="BTC pumps = altcoins pump harder. Risk-on across crypto."
+            ),
+            
+            EventType.BTC_PRICE_CRASH.value: EventPattern(
+                event_type=EventType.BTC_PRICE_CRASH.value,
+                keywords=["bitcoin crash", "btc dump", "bitcoin plunge", "bitcoin fell"],
+                affected_symbols=["ETH", "SOL", "ALTS"],
+                immediate_reaction=-15.0,
+                peak_reaction=-30.0,
+                recovery_time_hours=72,
+                typical_direction="alts_follow_harder",
+                times_observed=200,
+                last_observed="2026-01-01",
+                accuracy=0.85,
+                notes="BTC crashes = altcoins crash harder. Risk-off across crypto."
+            ),
+            
+            EventType.HALVING.value: EventPattern(
+                event_type=EventType.HALVING.value,
+                keywords=["halving", "halvening", "block reward", "supply reduction"],
+                affected_symbols=["BTC", "ETH", "altcoins"],
+                immediate_reaction=5.0,
+                peak_reaction=100.0,
+                recovery_time_hours=0,
+                typical_direction="long_term_pump",
+                times_observed=4,
+                last_observed="2024-04-01",
+                accuracy=1.0,
+                notes="Every halving has led to new ATH within 12-18 months. HODL."
+            ),
+            
+            EventType.BTC_DOMINANCE_UP.value: EventPattern(
+                event_type=EventType.BTC_DOMINANCE_UP.value,
+                keywords=["btc dominance up", "dominance rising", "btc.d up"],
+                affected_symbols=["ETH", "SOL", "ALTS"],
+                immediate_reaction=-5.0,
+                peak_reaction=-15.0,
+                recovery_time_hours=168,
+                typical_direction="alts_underperform",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Rising BTC dominance = money flowing from alts to BTC. Alts dump."
+            ),
+            
+            EventType.BTC_DOMINANCE_DOWN.value: EventPattern(
+                event_type=EventType.BTC_DOMINANCE_DOWN.value,
+                keywords=["btc dominance down", "dominance falling", "altseason"],
+                affected_symbols=["ETH", "SOL", "ALTS"],
+                immediate_reaction=10.0,
+                peak_reaction=30.0,
+                recovery_time_hours=0,
+                typical_direction="altseason",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Falling BTC dominance = altseason. Alts outperform."
+            ),
+            
+            EventType.WHALE_BUY.value: EventPattern(
+                event_type=EventType.WHALE_BUY.value,
+                keywords=["whale bought", "large purchase", "whale accumulation", "whale buying"],
+                affected_symbols=[],
+                immediate_reaction=5.0,
+                peak_reaction=10.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Whale buys are bullish signal. Smart money accumulating."
+            ),
+            
             EventType.WHALE_SELL.value: EventPattern(
                 event_type=EventType.WHALE_SELL.value,
-                keywords=["whale", "large transfer", "moved to exchange", "dump"],
-                affected_symbols=[],  # Depends on which whale
+                keywords=["whale", "large transfer", "moved to exchange", "dump", "whale sell"],
+                affected_symbols=[],
                 immediate_reaction=-8.0,
                 peak_reaction=-15.0,
                 recovery_time_hours=12,
@@ -282,12 +1229,257 @@ class EventMemory:
                 notes="Whale sells trigger stop losses and cascade selling. Usually oversold."
             ),
             
-            # Exchange listings
+            EventType.MINER_CAPITULATION.value: EventPattern(
+                event_type=EventType.MINER_CAPITULATION.value,
+                keywords=["miner capitulation", "miners selling", "hash rate drop"],
+                affected_symbols=["BTC"],
+                immediate_reaction=-10.0,
+                peak_reaction=-20.0,
+                recovery_time_hours=168,
+                typical_direction="bottom_signal",
+                times_observed=10,
+                last_observed="2022-12-01",
+                accuracy=0.80,
+                notes="Miner capitulation often marks bottoms. They sell at lows."
+            ),
+            
+            EventType.ETF_INFLOW.value: EventPattern(
+                event_type=EventType.ETF_INFLOW.value,
+                keywords=["etf inflow", "bitcoin etf", "institutional buying", "gbtc inflow"],
+                affected_symbols=["BTC"],
+                immediate_reaction=3.0,
+                peak_reaction=8.0,
+                recovery_time_hours=0,
+                typical_direction="gradual_pump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="ETF inflows are bullish. Institutional demand."
+            ),
+            
+            EventType.ETF_OUTFLOW.value: EventPattern(
+                event_type=EventType.ETF_OUTFLOW.value,
+                keywords=["etf outflow", "etf redemption", "institutional selling"],
+                affected_symbols=["BTC"],
+                immediate_reaction=-3.0,
+                peak_reaction=-8.0,
+                recovery_time_hours=48,
+                typical_direction="gradual_dump",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="ETF outflows are bearish. Institutional selling."
+            ),
+            
+            # =================================================================
+            # G. CRYPTO-SPECIFIC - REGULATION & NEWS
+            # =================================================================
+            
+            EventType.SEC_ACTION.value: EventPattern(
+                event_type=EventType.SEC_ACTION.value,
+                keywords=["sec", "sec lawsuit", "sec investigation", "securities violation"],
+                affected_symbols=[],
+                immediate_reaction=-15.0,
+                peak_reaction=-30.0,
+                recovery_time_hours=168,
+                typical_direction="dump",
+                times_observed=30,
+                last_observed="2026-01-01",
+                accuracy=0.85,
+                notes="SEC actions are very bearish. Regulatory risk is real."
+            ),
+            
+            EventType.SEC_APPROVAL.value: EventPattern(
+                event_type=EventType.SEC_APPROVAL.value,
+                keywords=["sec approved", "sec approval", "regulatory approval"],
+                affected_symbols=[],
+                immediate_reaction=10.0,
+                peak_reaction=25.0,
+                recovery_time_hours=48,
+                typical_direction="pump_then_fade",
+                times_observed=20,
+                last_observed="2024-01-01",
+                accuracy=0.80,
+                notes="SEC approvals are major catalysts. Buy rumor sell news often applies."
+            ),
+            
+            EventType.ETF_APPROVED.value: EventPattern(
+                event_type=EventType.ETF_APPROVED.value,
+                keywords=["etf approved", "spot etf", "bitcoin etf approved"],
+                affected_symbols=["BTC", "ETH"],
+                immediate_reaction=10.0,
+                peak_reaction=30.0,
+                recovery_time_hours=72,
+                typical_direction="pump_then_consolidate",
+                times_observed=5,
+                last_observed="2024-01-10",
+                accuracy=0.80,
+                notes="ETF approvals are major. BTC ETF Jan 2024 was huge catalyst."
+            ),
+            
+            EventType.ETF_REJECTED.value: EventPattern(
+                event_type=EventType.ETF_REJECTED.value,
+                keywords=["etf rejected", "etf denied", "sec rejected"],
+                affected_symbols=["BTC"],
+                immediate_reaction=-8.0,
+                peak_reaction=-15.0,
+                recovery_time_hours=48,
+                typical_direction="dump",
+                times_observed=20,
+                last_observed="2023-01-01",
+                accuracy=0.80,
+                notes="ETF rejections disappoint. But market usually recovers."
+            ),
+            
+            EventType.COUNTRY_BAN.value: EventPattern(
+                event_type=EventType.COUNTRY_BAN.value,
+                keywords=["ban", "banned crypto", "prohibited", "illegal"],
+                affected_symbols=["BTC", "ETH"],
+                immediate_reaction=-10.0,
+                peak_reaction=-20.0,
+                recovery_time_hours=72,
+                typical_direction="dump_then_recovery",
+                times_observed=30,
+                last_observed="2021-09-01",
+                accuracy=0.75,
+                notes="Country bans cause panic. But crypto is global. Usually recovers."
+            ),
+            
+            EventType.COUNTRY_ADOPTION.value: EventPattern(
+                event_type=EventType.COUNTRY_ADOPTION.value,
+                keywords=["adopted bitcoin", "legal tender", "country adoption"],
+                affected_symbols=["BTC"],
+                immediate_reaction=8.0,
+                peak_reaction=15.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=5,
+                last_observed="2021-09-01",
+                accuracy=0.80,
+                notes="Country adoption is bullish. El Salvador was first."
+            ),
+            
+            EventType.INSTITUTIONAL_ADOPTION.value: EventPattern(
+                event_type=EventType.INSTITUTIONAL_ADOPTION.value,
+                keywords=["blackrock", "fidelity", "institutional", "pension fund", "hedge fund"],
+                affected_symbols=["BTC", "ETH"],
+                immediate_reaction=5.0,
+                peak_reaction=12.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Institutional adoption = legitimacy. Very bullish long term."
+            ),
+            
+            # =================================================================
+            # H. CRYPTO-SPECIFIC - PROJECT/ALTCOIN
+            # =================================================================
+            
+            EventType.MAINNET_LAUNCH.value: EventPattern(
+                event_type=EventType.MAINNET_LAUNCH.value,
+                keywords=["mainnet launch", "mainnet live", "launched mainnet"],
+                affected_symbols=[],
+                immediate_reaction=10.0,
+                peak_reaction=25.0,
+                recovery_time_hours=72,
+                typical_direction="pump_then_dump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Mainnet launches are buy rumor sell news. Pump into launch, dump after."
+            ),
+            
+            EventType.NETWORK_UPGRADE.value: EventPattern(
+                event_type=EventType.NETWORK_UPGRADE.value,
+                keywords=["upgrade", "network upgrade", "hard fork", "v2 launch"],
+                affected_symbols=[],
+                immediate_reaction=5.0,
+                peak_reaction=15.0,
+                recovery_time_hours=48,
+                typical_direction="pump_into_event",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Upgrades pump into event. Sell the news often applies."
+            ),
+            
+            EventType.TOKEN_BURN.value: EventPattern(
+                event_type=EventType.TOKEN_BURN.value,
+                keywords=["token burn", "burned", "supply reduction", "deflationary"],
+                affected_symbols=[],
+                immediate_reaction=5.0,
+                peak_reaction=15.0,
+                recovery_time_hours=0,
+                typical_direction="pump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Burns reduce supply. Basic economics = bullish."
+            ),
+            
+            EventType.TOKEN_UNLOCK.value: EventPattern(
+                event_type=EventType.TOKEN_UNLOCK.value,
+                keywords=["token unlock", "vesting", "unlock event", "tokens released"],
+                affected_symbols=[],
+                immediate_reaction=-5.0,
+                peak_reaction=-15.0,
+                recovery_time_hours=72,
+                typical_direction="dump",
+                times_observed=200,
+                last_observed="2026-01-01",
+                accuracy=0.80,
+                notes="Unlocks increase supply. Insiders often dump. Bearish."
+            ),
+            
+            EventType.EXCHANGE_HACK.value: EventPattern(
+                event_type=EventType.EXCHANGE_HACK.value,
+                keywords=["hack", "exploit", "stolen", "breach", "drained"],
+                affected_symbols=["BTC", "ETH"],
+                immediate_reaction=-15.0,
+                peak_reaction=-25.0,
+                recovery_time_hours=48,
+                typical_direction="flash_crash_recovery",
+                times_observed=20,
+                last_observed="2025-01-01",
+                accuracy=0.80,
+                notes="Hacks cause panic selling, but market usually recovers. Buy the dip opportunity."
+            ),
+            
+            EventType.PROTOCOL_EXPLOIT.value: EventPattern(
+                event_type=EventType.PROTOCOL_EXPLOIT.value,
+                keywords=["exploit", "vulnerability", "defi hack", "protocol drained"],
+                affected_symbols=[],
+                immediate_reaction=-30.0,
+                peak_reaction=-60.0,
+                recovery_time_hours=168,
+                typical_direction="dump_hard",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.90,
+                notes="Protocol exploits destroy trust. Affected token often never recovers."
+            ),
+            
+            EventType.BRIDGE_HACK.value: EventPattern(
+                event_type=EventType.BRIDGE_HACK.value,
+                keywords=["bridge hack", "bridge exploit", "cross-chain hack"],
+                affected_symbols=[],
+                immediate_reaction=-20.0,
+                peak_reaction=-40.0,
+                recovery_time_hours=168,
+                typical_direction="dump",
+                times_observed=20,
+                last_observed="2026-01-01",
+                accuracy=0.85,
+                notes="Bridge hacks are devastating. Ronin, Wormhole, etc. Major red flag."
+            ),
+            
             EventType.EXCHANGE_LISTING.value: EventPattern(
                 event_type=EventType.EXCHANGE_LISTING.value,
                 keywords=["listed on", "listing", "binance listing", "coinbase listing"],
                 affected_symbols=[],
-                immediate_reaction=25.0,  # Big pump on listing
+                immediate_reaction=25.0,
                 peak_reaction=50.0,
                 recovery_time_hours=48,
                 typical_direction="pump_then_dump",
@@ -297,34 +1489,208 @@ class EventMemory:
                 notes="Buy the rumor, sell the news. Listings pump hard then dump."
             ),
             
-            # War/Conflict
-            EventType.WAR_CONFLICT.value: EventPattern(
-                event_type=EventType.WAR_CONFLICT.value,
-                keywords=["war", "invasion", "attack", "military", "conflict", "missile"],
-                affected_symbols=["BTC", "GOLD", "OIL"],
-                immediate_reaction=-10.0,
-                peak_reaction=-20.0,
-                recovery_time_hours=168,  # Week to stabilize
-                typical_direction="risk_off",
-                times_observed=10,
-                last_observed="2024-01-01",
-                accuracy=0.75,
-                notes="War = uncertainty = risk-off. But crypto can be safe haven long term."
+            EventType.EXCHANGE_DELISTING.value: EventPattern(
+                event_type=EventType.EXCHANGE_DELISTING.value,
+                keywords=["delisted", "delisting", "removed from", "trading suspended"],
+                affected_symbols=[],
+                immediate_reaction=-25.0,
+                peak_reaction=-50.0,
+                recovery_time_hours=168,
+                typical_direction="dump_hard",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.90,
+                notes="Delistings are death sentences. Liquidity disappears. Avoid."
             ),
             
-            # Bitcoin halving
-            EventType.HALVING.value: EventPattern(
-                event_type=EventType.HALVING.value,
-                keywords=["halving", "halvening", "block reward"],
-                affected_symbols=["BTC", "ETH", "altcoins"],
-                immediate_reaction=5.0,
-                peak_reaction=100.0,  # Historically 2-10x over months
-                recovery_time_hours=0,  # Not a dump pattern
-                typical_direction="long_term_pump",
-                times_observed=4,
-                last_observed="2024-04-01",
-                accuracy=1.0,  # 4/4 halvings led to bull runs
-                notes="Every halving has led to new ATH within 12-18 months. HODL."
+            EventType.AIRDROP_ANNOUNCED.value: EventPattern(
+                event_type=EventType.AIRDROP_ANNOUNCED.value,
+                keywords=["airdrop", "token distribution", "free tokens", "airdrop announced"],
+                affected_symbols=[],
+                immediate_reaction=10.0,
+                peak_reaction=30.0,
+                recovery_time_hours=72,
+                typical_direction="pump_then_dump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Airdrops pump anticipation. Often dump after distribution."
+            ),
+            
+            EventType.RUG_PULL.value: EventPattern(
+                event_type=EventType.RUG_PULL.value,
+                keywords=["rug pull", "rugged", "scam", "exit scam", "team disappeared"],
+                affected_symbols=[],
+                immediate_reaction=-90.0,
+                peak_reaction=-99.0,
+                recovery_time_hours=0,
+                typical_direction="death",
+                times_observed=500,
+                last_observed="2026-01-01",
+                accuracy=0.99,
+                notes="Rug pulls = total loss. No recovery. DYOR always."
+            ),
+            
+            # =================================================================
+            # I. SOCIAL & SENTIMENT
+            # =================================================================
+            
+            EventType.ELON_TWEET.value: EventPattern(
+                event_type=EventType.ELON_TWEET.value,
+                keywords=["elon", "musk", "tesla", "doge", "dogecoin"],
+                affected_symbols=["DOGE", "SHIB", "TSLA", "BTC"],
+                immediate_reaction=15.0,
+                peak_reaction=30.0,
+                recovery_time_hours=24,
+                typical_direction="pump_then_dump",
+                times_observed=50,
+                last_observed="2025-01-01",
+                accuracy=0.85,
+                notes="Elon tweets cause immediate pump, followed by dump within 24h. Don't chase the pump."
+            ),
+            
+            EventType.CELEBRITY_MENTION.value: EventPattern(
+                event_type=EventType.CELEBRITY_MENTION.value,
+                keywords=["celebrity", "endorsed", "promoted", "famous"],
+                affected_symbols=[],
+                immediate_reaction=10.0,
+                peak_reaction=30.0,
+                recovery_time_hours=24,
+                typical_direction="pump_then_dump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.80,
+                notes="Celebrity mentions pump short term. Usually dump after. Don't chase."
+            ),
+            
+            EventType.INFLUENCER_HYPE.value: EventPattern(
+                event_type=EventType.INFLUENCER_HYPE.value,
+                keywords=["influencer", "youtuber", "crypto twitter", "ct", "shilled"],
+                affected_symbols=[],
+                immediate_reaction=8.0,
+                peak_reaction=20.0,
+                recovery_time_hours=24,
+                typical_direction="pump_then_dump",
+                times_observed=200,
+                last_observed="2026-01-01",
+                accuracy=0.75,
+                notes="Influencer pumps are exit liquidity for them. Be careful."
+            ),
+            
+            EventType.VIRAL_SOCIAL.value: EventPattern(
+                event_type=EventType.VIRAL_SOCIAL.value,
+                keywords=["viral", "trending", "meme", "tiktok"],
+                affected_symbols=[],
+                immediate_reaction=20.0,
+                peak_reaction=50.0,
+                recovery_time_hours=48,
+                typical_direction="pump_then_dump",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.80,
+                notes="Viral social pumps are fast and dump fast. Pure speculation."
+            ),
+            
+            EventType.MEME_TREND.value: EventPattern(
+                event_type=EventType.MEME_TREND.value,
+                keywords=["meme coin", "memecoin", "pepe", "doge", "shib", "meme season"],
+                affected_symbols=["DOGE", "SHIB", "PEPE", "FLOKI", "BONK"],
+                immediate_reaction=30.0,
+                peak_reaction=100.0,
+                recovery_time_hours=72,
+                typical_direction="pump_then_crash",
+                times_observed=50,
+                last_observed="2026-01-01",
+                accuracy=0.85,
+                notes="Meme seasons are violent. Quick gains, quicker losses. Gamble only."
+            ),
+            
+            EventType.FUD_WAVE.value: EventPattern(
+                event_type=EventType.FUD_WAVE.value,
+                keywords=["fud", "fear", "uncertainty", "doubt", "panic"],
+                affected_symbols=[],
+                immediate_reaction=-10.0,
+                peak_reaction=-20.0,
+                recovery_time_hours=72,
+                typical_direction="dump_then_recovery",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="FUD waves cause panic selling. Often best time to buy if fundamentals intact."
+            ),
+            
+            EventType.NARRATIVE_SHIFT.value: EventPattern(
+                event_type=EventType.NARRATIVE_SHIFT.value,
+                keywords=["narrative", "ai coins", "rwa", "depin", "new meta"],
+                affected_symbols=[],
+                immediate_reaction=15.0,
+                peak_reaction=50.0,
+                recovery_time_hours=168,
+                typical_direction="new_sector_pumps",
+                times_observed=30,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Narrative shifts move whole sectors. AI, RWA, DePIN have all had cycles."
+            ),
+            
+            EventType.FEAR_GREED_EXTREME.value: EventPattern(
+                event_type=EventType.FEAR_GREED_EXTREME.value,
+                keywords=["extreme fear", "extreme greed", "fear index", "greed index"],
+                affected_symbols=["BTC", "ETH"],
+                immediate_reaction=0.0,
+                peak_reaction=0.0,
+                recovery_time_hours=168,
+                typical_direction="contrarian_signal",
+                times_observed=100,
+                last_observed="2026-01-01",
+                accuracy=0.70,
+                notes="Extreme fear = buy. Extreme greed = sell. Contrarian indicator."
+            ),
+            
+            # =================================================================
+            # J. SEASONAL & CYCLICAL
+            # =================================================================
+            
+            EventType.HOLIDAY_SHOPPING.value: EventPattern(
+                event_type=EventType.HOLIDAY_SHOPPING.value,
+                keywords=["black friday", "cyber monday", "holiday sales", "christmas sales"],
+                affected_symbols=["AMZN", "WMT", "TGT", "SHOP"],
+                immediate_reaction=2.0,
+                peak_reaction=5.0,
+                recovery_time_hours=168,
+                typical_direction="retail_pump",
+                times_observed=20,
+                last_observed="2025-12-01",
+                accuracy=0.65,
+                notes="Holiday season pumps retailers. Watch for sales data surprises."
+            ),
+            
+            EventType.EARNINGS_SEASON.value: EventPattern(
+                event_type=EventType.EARNINGS_SEASON.value,
+                keywords=["earnings season", "reporting season", "q1 earnings", "q2 earnings"],
+                affected_symbols=["SPY", "QQQ"],
+                immediate_reaction=0.0,
+                peak_reaction=5.0,
+                recovery_time_hours=336,
+                typical_direction="volatile",
+                times_observed=40,
+                last_observed="2026-01-01",
+                accuracy=0.60,
+                notes="Earnings season = high volatility. Individual stocks swing big."
+            ),
+            
+            EventType.TAX_SEASON.value: EventPattern(
+                event_type=EventType.TAX_SEASON.value,
+                keywords=["tax season", "tax selling", "tax loss", "april taxes"],
+                affected_symbols=["BTC", "ETH", "SPY"],
+                immediate_reaction=-3.0,
+                peak_reaction=-8.0,
+                recovery_time_hours=168,
+                typical_direction="mild_dump",
+                times_observed=10,
+                last_observed="2025-04-01",
+                accuracy=0.65,
+                notes="Tax season can cause selling pressure. People need cash for taxes."
             ),
         }
         
