@@ -341,7 +341,7 @@ class EnsembleForecaster:
         # Map to 0-1 range (low CV = high confidence)
         confidence = 1.0 / (1.0 + cv * 10)
 
-        return float(min(0.99, max(0.50, confidence)))
+        return float(min(0.85, max(0.50, confidence)))  # HARD CAP 85%
 
     def _record_forecast(
         self,

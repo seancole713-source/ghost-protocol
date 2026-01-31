@@ -6,6 +6,11 @@ data/last_good_cockpit.json
 GHOST_STATUS_REPORT.json
 *.log
 
+# Environment files - NEVER commit secrets
+.env
+.env.*
+*.env
+
 # Ignore local DBs
 /data/*.db
 

@@ -35,6 +35,9 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, field
 
+# Pattern tracking for accuracy measurement
+from core.pattern_tracker import record_pattern_detection
+
 # Internal imports - lazy loaded to avoid circular imports
 _wolf_app_loaded = False
 
@@ -720,6 +723,19 @@ class StockEngine:
         )
         
         LOGGER.info(f"🏛️ {symbol} → {direction} ({confidence:.0%}) | {confirmations} confirmations")
+        
+        # Record pattern for accuracy tracking (only actionable predictions)
+        if direction in ("UP", "DOWN") and confidence >= 0.6:
+            try:
+                record_pattern_detection(
+                    pattern_type=f"stock_{direction.lower()}",
+                    symbol=symbol,
+                    direction=direction,
+                    entry_price=entry_price,
+                    confidence=confidence
+                )
+            except Exception as e:
+                LOGGER.warning(f"[PATTERN_TRACKER] Failed to record: {e}")
         
         return prediction
     
