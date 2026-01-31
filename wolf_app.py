@@ -3693,7 +3693,7 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                 # Nudge confidence towards aggregate confidence (blend 80/20 if numeric)
                 rc = agg.get("confidence") if isinstance(agg, dict) else None
                 if isinstance(rc, (int, float)):
-                    confidence = max(0.3, min(0.95, 0.8 * confidence + 0.2 * (float(rc) / 100.0)))
+                    confidence = max(0.3, min(0.85, 0.8 * confidence + 0.2 * (float(rc) / 100.0)))  # HARD CAP 85%
         except Exception:
             pass
 
@@ -8747,6 +8747,17 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # - Market context
         # This is THE CRITICAL component that enables 60%+ confidence for trading
         confidence = float(base_confidence)
+        
+        # =====================================================================
+        # HARD CAP: NEVER claim more than 85% confidence (Jan 31, 2026)
+        # Real trading systems rarely exceed this. Our 52% win rate doesn't
+        # justify 90%+ confidence claims.
+        # =====================================================================
+        HARD_CONFIDENCE_CAP = 0.85
+        if confidence > HARD_CONFIDENCE_CAP:
+            LOGGER.info(f"[{symbol}] Confidence capped: {confidence:.1%} → {HARD_CONFIDENCE_CAP:.0%}")
+            confidence = HARD_CONFIDENCE_CAP
+        
         confidence_metadata = {
             "method": "signal_based_calibration_v3",
             "signal_strength": signal_strength,
@@ -9900,7 +9911,7 @@ async def api_v3_opus_predict(symbol: str, bypass_calendar: bool = False):
         # Calculate adjusted confidence
         original_confidence = technical.get("confidence", 0.5)
         opus_adjustment = opus_analysis.get("confidence_adjustment", 0) / 100
-        adjusted_confidence = max(0.1, min(0.95, original_confidence + opus_adjustment))
+        adjusted_confidence = max(0.1, min(0.85, original_confidence + opus_adjustment))
         
         # Check for signal conflict
         signal_conflict = False
@@ -33633,6 +33644,141 @@ async def api_health():
     return {"ok": True, "ts": int(time.time() * 1000), "version": "jan24-fix5-v3"}
 
 
+@APP.get("/api/stability/status")
+async def api_stability_status():
+    """
+    STABILITY MODE - System health and accuracy tracking.
+    
+    This endpoint provides the metrics needed during the 2-week stability period:
+    - Intel status (is it actually running?)
+    - VIX value (is it real or fake 15.0?)
+    - Confidence stats (are we staying under 85%?)
+    - Pattern accuracy (are we hitting 60%+ win rate?)
+    
+    Use this for daily monitoring during the stability period.
+    """
+    from core.pattern_tracker import get_pattern_accuracy
+    from core.world_context import get_real_vix
+    
+    result = {
+        "timestamp": int(time.time()),
+        "stability_period": {
+            "started": "2025-01-31",
+            "target_end": "2025-02-14",
+            "days_remaining": max(0, 14 - (datetime.utcnow() - datetime(2025, 1, 31)).days),
+        },
+        "checks": {},
+        "overall_status": "healthy",  # Will be set based on checks
+    }
+    
+    issues = []
+    
+    # Check 1: Intel status
+    try:
+        intel_config = os.environ.get("GHOST_INTEL_ENABLED", "true")
+        intel_status = "enabled" if intel_config.lower() == "true" else "disabled"
+        result["checks"]["intel"] = {
+            "status": intel_status,
+            "ok": intel_status == "enabled",
+        }
+        if intel_status != "enabled":
+            issues.append("Intel disabled")
+    except Exception as e:
+        result["checks"]["intel"] = {"status": "error", "error": str(e), "ok": False}
+        issues.append(f"Intel check failed: {e}")
+    
+    # Check 2: VIX value (should NOT be 15.0 fake)
+    try:
+        vix_value, vix_source = get_real_vix()  # Sync function, returns tuple
+        is_fake = vix_source == "default" or abs(vix_value - 15.0) < 0.01
+        result["checks"]["vix"] = {
+            "value": vix_value,
+            "source": vix_source,
+            "is_fake": is_fake,
+            "ok": not is_fake,
+        }
+        if is_fake:
+            issues.append("VIX returning fake/default value")
+    except Exception as e:
+        result["checks"]["vix"] = {"value": None, "error": str(e), "ok": False}
+        issues.append(f"VIX check failed: {e}")
+    
+    # Check 3: Confidence distribution (should be <= 85%)
+    try:
+        # Get recent predictions to check confidence distribution
+        conn = None
+        try:
+            import psycopg2
+            db_url = os.environ.get("DATABASE_URL")
+            if db_url:
+                conn = psycopg2.connect(db_url)
+        except:
+            pass
+        
+        if conn:
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT 
+                        MAX(confidence) as max_conf,
+                        AVG(confidence) as avg_conf,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN confidence > 0.85 THEN 1 ELSE 0 END) as over_85
+                    FROM predictions
+                    WHERE timestamp > NOW() - INTERVAL '24 hours'
+                """)
+                row = cur.fetchone()
+                if row and row[2] > 0:
+                    max_conf = float(row[0]) if row[0] else 0
+                    avg_conf = float(row[1]) if row[1] else 0
+                    over_85_count = int(row[3]) if row[3] else 0
+                    result["checks"]["confidence"] = {
+                        "max_24h": round(max_conf, 3),
+                        "avg_24h": round(avg_conf, 3),
+                        "predictions_24h": row[2],
+                        "over_85_percent": over_85_count,
+                        "ok": max_conf <= 0.85,
+                    }
+                    if max_conf > 0.85:
+                        issues.append(f"Confidence exceeded 85%: {max_conf:.1%}")
+                else:
+                    result["checks"]["confidence"] = {"predictions_24h": 0, "ok": True}
+            finally:
+                conn.close()
+        else:
+            result["checks"]["confidence"] = {"status": "no_database", "ok": True}
+    except Exception as e:
+        result["checks"]["confidence"] = {"error": str(e), "ok": False}
+        issues.append(f"Confidence check failed: {e}")
+    
+    # Check 4: Pattern accuracy (target: 60%+)
+    try:
+        accuracy = get_pattern_accuracy()
+        overall = accuracy.get("overall", {})
+        win_rate = overall.get("accuracy", 0)
+        detections = overall.get("detections", 0)
+        
+        result["checks"]["pattern_accuracy"] = {
+            "win_rate": win_rate,
+            "detections_tracked": detections,
+            "target": 60.0,
+            "ok": win_rate >= 60.0 or detections < 10,  # Need 10+ samples
+            "note": "Need 10+ detections for meaningful accuracy" if detections < 10 else None,
+        }
+        if detections >= 10 and win_rate < 60:
+            issues.append(f"Win rate below target: {win_rate:.1f}% < 60%")
+    except Exception as e:
+        result["checks"]["pattern_accuracy"] = {"error": str(e), "ok": False}
+        issues.append(f"Accuracy check failed: {e}")
+    
+    # Set overall status
+    if issues:
+        result["overall_status"] = "issues_found"
+        result["issues"] = issues
+    
+    return result
+
+
 @APP.get("/api/debug/crypto-check/{symbol}")
 async def debug_crypto_check(symbol: str):
     """Debug endpoint for Fix 5 - Crypto 24h change verification."""
@@ -36716,6 +36862,58 @@ async def api_algo_get_patterns(symbol: str | None = None, hours: int = 24):
 
     except Exception as e:
         LOGGER.error(f"Get algo patterns failed: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@APP.get("/api/patterns/accuracy")
+async def api_get_pattern_accuracy():
+    """
+    Get REAL pattern detection accuracy based on Ghost's own tracked outcomes.
+    
+    This is the TRUTH about pattern performance - not claimed stats,
+    but actual results from patterns Ghost detected and tracked.
+    
+    Returns:
+        Pattern accuracy by type and overall stats
+    """
+    from core.pattern_tracker import get_pattern_accuracy, get_recent_detections
+    
+    try:
+        accuracy = get_pattern_accuracy()
+        recent = get_recent_detections(limit=10)
+        
+        return {
+            "accuracy_by_pattern": accuracy,
+            "recent_detections": recent,
+            "timestamp": int(time.time()),
+            "note": "This is TRACKED accuracy, not claimed accuracy. Target: 60%+"
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Get pattern accuracy failed: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
+@APP.post("/api/patterns/reconcile")
+async def api_reconcile_patterns():
+    """
+    Manually trigger pattern outcome reconciliation.
+    
+    Checks patterns detected 24-48h ago and updates their outcomes
+    based on actual price movements.
+    """
+    from core.pattern_tracker import reconcile_pattern_outcomes
+    
+    try:
+        result = await reconcile_pattern_outcomes()
+        return {
+            "reconciled": result.get("reconciled", 0),
+            "pending": result.get("pending", 0),
+            "timestamp": int(time.time()),
+        }
+    
+    except Exception as e:
+        LOGGER.error(f"Pattern reconciliation failed: {e}", exc_info=True)
         return {"error": str(e)}, 500
 
 
@@ -42099,7 +42297,7 @@ try:
                         "prediction_48h": price * 1.03,  # 3% target
                         "buy_in": price * 0.99,
                         "sell": price * 1.02,
-                        "confidence": min(0.95, 0.70 + (stats.get("money_score", 0) / 100)),
+                        "confidence": min(0.85, 0.70 + (stats.get("money_score", 0) / 100)),
                         "direction": "UP",
                         "asset_type": "stock",
                         "money_score": stats.get("money_score", 0),
@@ -42117,7 +42315,7 @@ try:
                         "prediction_48h": price * 1.05,  # 5% target
                         "buy_in": price * 0.99,
                         "sell": price * 1.02,
-                        "confidence": min(0.95, 0.70 + (stats.get("money_score", 0) / 100)),
+                        "confidence": min(0.85, 0.70 + (stats.get("money_score", 0) / 100)),
                         "direction": "UP",
                         "asset_type": "crypto",
                         "money_score": stats.get("money_score", 0),

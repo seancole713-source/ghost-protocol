@@ -1626,6 +1626,8 @@ async def get_intel_signal_for_prediction(
     Returns:
         (adjusted_direction, adjusted_confidence, intel_metadata)
     """
+    LOGGER.info(f"[{symbol}] 📡 INTEL ENTRY: dir={direction}, conf={confidence:.1%}")
+    
     # NULL SAFETY: Normalize inputs
     if direction is None:
         direction = "FLAT"
@@ -1642,9 +1644,9 @@ async def get_intel_signal_for_prediction(
         # Calculate signal
         signal = calculate_intel_signal(symbol, direction, confidence, context)
         
-        # Apply adjustments
+        # Apply adjustments (HARD CAP at 85% - Jan 31, 2026)
         adjusted_confidence = confidence + signal.confidence_adjustment
-        adjusted_confidence = max(0.0, min(0.95, adjusted_confidence))
+        adjusted_confidence = max(0.0, min(0.85, adjusted_confidence))  # HARD CAP 85%
         
         adjusted_direction = direction
         
@@ -1694,25 +1696,34 @@ def apply_intel_to_prediction(
     Synchronous wrapper for wolf_app.py integration.
     
     Call this from run_single_prediction() after feature extraction.
-    
-    NOTE: Intel signals are OPTIONAL. If we can't get them (uvloop conflict, etc.)
-    we just return the original prediction without Intel influence.
+    Uses ThreadPoolExecutor to safely run async code from uvloop context.
     """
     import asyncio
+    import concurrent.futures
+    
+    def _run_intel_async():
+        """Run async Intel in a new event loop (in separate thread)."""
+        return asyncio.run(
+            get_intel_signal_for_prediction(symbol, direction, confidence)
+        )
     
     try:
         # Check if we're in an async context (uvloop typically)
         try:
             loop = asyncio.get_running_loop()
-            # We're in uvloop - Intel signals not available in this context
-            # This is OK - Intel is optional enhancement
-            LOGGER.debug(f"[{symbol}] Skipping Intel (running in uvloop context)")
-            return direction, confidence, {"intel_skipped": True, "reason": "uvloop_context"}
+            # We're in uvloop - use thread to avoid nested loop issues
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_run_intel_async)
+                result = future.result(timeout=10)  # 10 second timeout
+                return result
         except RuntimeError:
-            # No running loop - we can use asyncio.run directly
+            # No running loop - safe to use asyncio.run directly
             return asyncio.run(
                 get_intel_signal_for_prediction(symbol, direction, confidence)
             )
+    except concurrent.futures.TimeoutError:
+        LOGGER.warning(f"[{symbol}] Intel timeout (10s) - skipping")
+        return direction, confidence, {"intel_skipped": True, "reason": "timeout"}
     except Exception as e:
-        LOGGER.debug(f"[{symbol}] Intel unavailable: {e}")
+        LOGGER.warning(f"[{symbol}] Intel unavailable: {e}")
         return direction, confidence, {"intel_skipped": True, "reason": str(e)}

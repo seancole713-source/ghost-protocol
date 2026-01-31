@@ -126,7 +126,7 @@ class ModelAgreement:
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0.5
         
         # Apply adjustment
-        final_confidence = min(0.95, max(0.4, avg_confidence + agreement["confidence_adjustment"]))
+        final_confidence = min(0.85, max(0.4, avg_confidence + agreement["confidence_adjustment"]))
         
         return {
             "direction": agreement["consensus_direction"],

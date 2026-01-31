@@ -111,7 +111,7 @@ def apply_research_adjustment(
     adjusted = base_confidence + adjustment
     
     # Clamp to valid range
-    adjusted = max(0.35, min(0.95, adjusted))
+    adjusted = max(0.35, min(0.85, adjusted))
     
     # Build reason string
     reasons = []

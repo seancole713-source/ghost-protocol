@@ -687,7 +687,8 @@ class StockEngine:
         vix_penalty = max(0, (vix - 15) * 0.01) if vix else 0
         
         confidence = base_confidence + conf_boost + intel_adj + sector_adj - vix_penalty
-        confidence = max(0.1, min(0.95, confidence))
+        # HARD CAP at 85% - we only have 52% win rate, no justification for higher
+        confidence = max(0.1, min(0.85, confidence))
         
         # Step 10: Calculate Entry/Exit
         if direction == "UP":

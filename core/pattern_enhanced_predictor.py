@@ -190,7 +190,7 @@ class PatternEnhancedPredictor:
                         )
                         # Optionally adjust confidence based on GPT-4 insight
                         if gpt4_result.get('confidence_adjustment'):
-                            combined['confidence'] = max(0.4, min(0.95, 
+                            combined['confidence'] = max(0.4, min(0.85, 
                                 combined['confidence'] + gpt4_result['confidence_adjustment']
                             ))
                     

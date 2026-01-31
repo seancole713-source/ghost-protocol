@@ -171,7 +171,7 @@ class VolumeAnalyzer:
         
         # CLIMAX: Extreme volume (2x+ avg) = Exhaustion/reversal imminent
         if volume_ratio > 2.0:
-            strength = min(0.95, 0.7 + (volume_ratio - 2.0) * 0.3)
+            strength = min(0.85, 0.7 + (volume_ratio - 2.0) * 0.3)
             return "climax", strength
         
         # Moderate patterns

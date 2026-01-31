@@ -412,7 +412,7 @@ class GhostScout:
                     if (prediction["direction"] == "BUY" and sentiment > 0) or \
                        (prediction["direction"] == "SELL" and sentiment < 0):
                         # News confirms direction - boost confidence!
-                        prediction["confidence"] = min(0.95, prediction["confidence"] * 1.15)
+                        prediction["confidence"] = min(0.85, prediction["confidence"] * 1.15)
                         LOGGER.info(f"📰 [NEWS] {symbol}: News confirms {prediction['direction']} (sentiment: {sentiment:.2f})")
             
             # Calculate smart hold period based on volatility and momentum

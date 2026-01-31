@@ -753,7 +753,7 @@ class EnsemblePredictor:
                 xgb_pred = ModelPrediction(
                     model_name=xgb_pred.model_name,
                     direction=xgb_pred.direction,
-                    confidence=min(0.90, xgb_pred.confidence + 0.05),  # +5% additive
+                    confidence=min(0.85, xgb_pred.confidence + 0.03),  # +3% additive, cap at 85%
                     predicted_change_pct=xgb_pred.predicted_change_pct,
                     weight=xgb_pred.weight
                 )
@@ -806,7 +806,7 @@ class EnsemblePredictor:
                     # Fear & Greed AGREES with prediction - small additive boost
                     # Use smaller boost (3-8%) to preserve variation
                     additive_boost = min(fng_modifier, 0.08)  # Cap at 8%
-                    boosted = min(0.90, ensemble_result.confidence + additive_boost)  # Cap final at 90%
+                    boosted = min(0.85, ensemble_result.confidence + additive_boost)  # Cap final at 85%
                     logger.info(
                         f"[FEAR&GREED] {fng_signal} aligns with {ensemble_result.direction}, "
                         f"confidence {original_confidence:.1%} -> {boosted:.1%} (+{additive_boost:.1%})"
@@ -852,7 +852,7 @@ class EnsemblePredictor:
                     # Convert multiplier to additive: 1.10 -> +5%, 0.90 -> -5%
                     additive_adjust = (btc_multiplier - 1.0) * 0.5  # Halve the effect
                     additive_adjust = max(-0.05, min(0.05, additive_adjust))  # Cap at +/-5%
-                    new_conf = min(0.90, max(0.35, ensemble_result.confidence + additive_adjust))
+                    new_conf = min(0.85, max(0.35, ensemble_result.confidence + additive_adjust))
                     logger.info(
                         f"[BTC_CORR] {symbol}: confidence {original_conf:.1%} -> {new_conf:.1%} "
                         f"(adjust: {additive_adjust:+.1%})"
