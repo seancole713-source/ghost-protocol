@@ -1197,6 +1197,16 @@ class GhostNotificationSystem:
         excluded_symbols = []
         boosted_symbols = []
         
+        # EVENT MEMORY: Load learned event patterns
+        try:
+            from core.event_memory import check_for_event_impact
+            event_memory_active = True
+            event_adjusted = 0
+            LOGGER.info("[EVENT_MEMORY] 🧠 Event memory active - checking for recent events")
+        except Exception as e:
+            event_memory_active = False
+            LOGGER.warning(f"[EVENT_MEMORY] Not available: {e}")
+        
         # SYMBOL COLLISION BLACKLIST - symbols that exist as both stock and crypto
         # These cause wrong prices and confusion
         COLLISION_BLACKLIST = {
@@ -1267,6 +1277,20 @@ class GhostNotificationSystem:
             # Direction is ALREADY inverted in _LATEST_PREDICTIONS when INVERSE_GHOST=1
             direction = pred.get("direction", "DOWN")
             
+            # EVENT MEMORY: Check if recent events should adjust prediction
+            event_warning = None
+            if event_memory_active:
+                try:
+                    event_check = check_for_event_impact(symbol, direction)
+                    if event_check.get("should_adjust"):
+                        event_warning = event_check.get("reason")
+                        event_adjusted += 1
+                        # Reduce confidence when events conflict with prediction
+                        confidence = confidence * 0.7  # 30% confidence reduction
+                        LOGGER.info(f"[EVENT_MEMORY] ⚠️ {symbol}: {event_warning}")
+                except Exception as e:
+                    LOGGER.debug(f"[EVENT_MEMORY] Check failed for {symbol}: {e}")
+            
             candidate = {
                 "symbol": symbol,
                 "cached_price": cached_price,
@@ -1274,6 +1298,7 @@ class GhostNotificationSystem:
                 "direction": direction,
                 "asset_class": asset_class,
                 "learning_boosted": boost_multiplier > 1.0,
+                "event_warning": event_warning,
                 "pred": pred,  # Keep original for later
             }
             
@@ -1292,6 +1317,8 @@ class GhostNotificationSystem:
             LOGGER.info(f"[LEARNING] 🚫 EXCLUDED {learning_excluded} low-accuracy symbols")
         if learning_boosted > 0:
             LOGGER.info(f"[LEARNING] 🚀 BOOSTED {learning_boosted} high-accuracy symbols")
+        if event_memory_active and event_adjusted > 0:
+            LOGGER.info(f"[EVENT_MEMORY] ⚠️ ADJUSTED {event_adjusted} predictions due to recent events")
         
         # MONEY GAME: Sort by profit ranking, not just confidence
         if use_money_game and (money_game_stocks or money_game_crypto):

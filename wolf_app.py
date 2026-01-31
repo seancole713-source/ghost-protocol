@@ -40425,6 +40425,125 @@ try:
             LOGGER.error(f"Failed to get focused symbols: {e}")
             return {"ok": False, "error": str(e)}
 
+    # =========================================================================
+    # EVENT MEMORY API - Ghost learns from market events
+    # =========================================================================
+    
+    @APP.get("/api/v3/events/patterns")
+    async def api_v3_events_patterns():
+        """
+        Get all event patterns Ghost has learned.
+        
+        These are patterns like:
+        - "Elon tweets → DOGE pumps then dumps"
+        - "Fed raises rates → Crypto drops"
+        - "Exchange hack → Flash crash then recovery"
+        """
+        try:
+            from core.event_memory import get_event_memory
+            memory = get_event_memory()
+            
+            patterns = []
+            for event_type, pattern in memory.patterns.items():
+                patterns.append({
+                    "event_type": event_type,
+                    "keywords": pattern.keywords,
+                    "affected_symbols": pattern.affected_symbols,
+                    "expected_reaction": {
+                        "immediate": f"{pattern.immediate_reaction:+.1f}%",
+                        "peak": f"{pattern.peak_reaction:+.1f}%",
+                        "recovery_hours": pattern.recovery_time_hours,
+                        "direction": pattern.typical_direction
+                    },
+                    "confidence": {
+                        "times_observed": pattern.times_observed,
+                        "accuracy": f"{pattern.accuracy:.0%}"
+                    },
+                    "notes": pattern.notes
+                })
+            
+            return {
+                "ok": True,
+                "patterns_count": len(patterns),
+                "patterns": patterns,
+                "description": "Event patterns Ghost has learned from market history"
+            }
+        except Exception as e:
+            LOGGER.error(f"Failed to get event patterns: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    @APP.post("/api/v3/events/record")
+    async def api_v3_events_record(
+        event_type: str,
+        trigger: str,
+        symbol: str,
+        price: float
+    ):
+        """
+        Record a market event for Ghost to learn from.
+        
+        Example:
+            event_type: "elon_tweet"
+            trigger: "Elon posted DOGE meme on X"
+            symbol: "DOGE"
+            price: 0.08
+        
+        Ghost will track what happens to the price over the next 48 hours
+        and update its learned patterns accordingly.
+        """
+        try:
+            from core.event_memory import record_market_event, EventType
+            
+            # Validate event type
+            valid_types = [e.value for e in EventType]
+            if event_type not in valid_types:
+                return {
+                    "ok": False,
+                    "error": f"Invalid event_type. Valid options: {valid_types}"
+                }
+            
+            event_id = record_market_event(event_type, trigger, symbol, price)
+            
+            return {
+                "ok": True,
+                "event_id": event_id,
+                "message": f"Event recorded. Ghost will track {symbol} price for 48 hours.",
+                "next_steps": [
+                    "Ghost will check price at 1h, 4h, 24h, 48h",
+                    "Pattern will be updated based on actual reaction",
+                    "Future predictions will account for similar events"
+                ]
+            }
+        except Exception as e:
+            LOGGER.error(f"Failed to record event: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    @APP.get("/api/v3/events/check/{symbol}")
+    async def api_v3_events_check(symbol: str, direction: str = "LONG"):
+        """
+        Check if any recent events should affect prediction for a symbol.
+        
+        Returns warnings if Ghost's learned patterns suggest the prediction
+        might be wrong due to recent market events.
+        """
+        try:
+            from core.event_memory import check_for_event_impact
+            
+            result = check_for_event_impact(symbol, direction)
+            
+            return {
+                "ok": True,
+                "symbol": symbol,
+                "proposed_direction": direction,
+                "should_adjust": result.get("should_adjust", False),
+                "reason": result.get("reason"),
+                "recommendation": result.get("recommendation"),
+                "related_event": result.get("event")
+            }
+        except Exception as e:
+            LOGGER.error(f"Failed to check event impact: {e}")
+            return {"ok": False, "error": str(e)}
+
     @APP.post("/api/v3/paper/admin/expire-old-pending")
     async def api_v3_paper_admin_expire_old_pending(
         cutoff_date: str = "2026-01-14",
