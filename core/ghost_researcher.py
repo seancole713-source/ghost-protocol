@@ -79,14 +79,15 @@ class GhostResearcher:
         
         # Get AI model from env (same as wolf_app)
         self.ai_model = os.environ.get("AGENT_MODEL", os.environ.get("AI_MODEL", "gpt-4o-mini")).strip()
+        self.claude_model = os.environ.get("CLAUDE_MODEL", "claude-3-haiku-20240307").strip()
         
-        # Choose AI provider - prefer OpenAI (usually has credits)
-        if self.openai_key:
-            self.ai_provider = "openai"
-            LOGGER.info(f"[RESEARCHER] Using {self.ai_model} for research")
-        elif self.anthropic_key:
+        # Choose AI provider - prefer Claude (faster, smarter)
+        if self.anthropic_key:
             self.ai_provider = "anthropic"
-            LOGGER.info("[RESEARCHER] Using Claude for research")
+            LOGGER.info(f"[RESEARCHER] Using Claude ({self.claude_model}) for research")
+        elif self.openai_key:
+            self.ai_provider = "openai"
+            LOGGER.info(f"[RESEARCHER] Using OpenAI ({self.ai_model}) as fallback")
         else:
             self.ai_provider = None
             LOGGER.warning("[RESEARCHER] No AI API key - research limited")
@@ -464,7 +465,7 @@ Respond in JSON format:
                     "anthropic-version": "2023-06-01"
                 }
                 payload = {
-                    "model": "claude-3-5-sonnet-20241022",
+                    "model": self.claude_model,  # Use claude-3-haiku by default
                     "max_tokens": 2000,
                     "messages": [{"role": "user", "content": prompt}]
                 }
