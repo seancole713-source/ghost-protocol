@@ -637,22 +637,86 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     date_str = ct.strftime("%b %d, %Y")
     time_str = ct.strftime("%I:%M %p CT").lstrip("0")
     
+    # === US MARKET HOLIDAYS (NYSE/NASDAQ) ===
+    # These are fixed for 2025-2027. For dynamic holidays, use pandas_market_calendars.
+    US_MARKET_HOLIDAYS = {
+        # 2025
+        (2025, 1, 1),   # New Year's Day
+        (2025, 1, 20),  # MLK Day
+        (2025, 2, 17),  # Presidents Day
+        (2025, 4, 18),  # Good Friday
+        (2025, 5, 26),  # Memorial Day
+        (2025, 6, 19),  # Juneteenth
+        (2025, 7, 4),   # Independence Day
+        (2025, 9, 1),   # Labor Day
+        (2025, 11, 27), # Thanksgiving
+        (2025, 12, 25), # Christmas
+        # 2026
+        (2026, 1, 1),   # New Year's Day
+        (2026, 1, 19),  # MLK Day
+        (2026, 2, 16),  # Presidents Day
+        (2026, 4, 3),   # Good Friday
+        (2026, 5, 25),  # Memorial Day
+        (2026, 6, 19),  # Juneteenth
+        (2026, 7, 3),   # Independence Day (observed)
+        (2026, 9, 7),   # Labor Day
+        (2026, 11, 26), # Thanksgiving
+        (2026, 12, 25), # Christmas
+        # 2027
+        (2027, 1, 1),   # New Year's Day
+        (2027, 1, 18),  # MLK Day
+        (2027, 2, 15),  # Presidents Day
+        (2027, 3, 26),  # Good Friday
+        (2027, 5, 31),  # Memorial Day
+        (2027, 6, 18),  # Juneteenth (observed)
+        (2027, 7, 5),   # Independence Day (observed)
+        (2027, 9, 6),   # Labor Day
+        (2027, 11, 25), # Thanksgiving
+        (2027, 12, 24), # Christmas (observed)
+    }
+    
+    def is_us_holiday(dt: datetime) -> bool:
+        """Check if date is a US market holiday"""
+        return (dt.year, dt.month, dt.day) in US_MARKET_HOLIDAYS
+    
+    def get_holiday_name(dt: datetime) -> str:
+        """Get the name of the holiday for a date"""
+        holiday_names = {
+            (1, 1): "New Year's Day", (1, 18): "MLK Day", (1, 19): "MLK Day", (1, 20): "MLK Day",
+            (2, 15): "Presidents Day", (2, 16): "Presidents Day", (2, 17): "Presidents Day",
+            (3, 26): "Good Friday", (4, 3): "Good Friday", (4, 18): "Good Friday",
+            (5, 25): "Memorial Day", (5, 26): "Memorial Day", (5, 31): "Memorial Day",
+            (6, 18): "Juneteenth", (6, 19): "Juneteenth",
+            (7, 3): "Independence Day", (7, 4): "Independence Day", (7, 5): "Independence Day",
+            (9, 1): "Labor Day", (9, 6): "Labor Day", (9, 7): "Labor Day",
+            (11, 25): "Thanksgiving", (11, 26): "Thanksgiving", (11, 27): "Thanksgiving",
+            (12, 24): "Christmas", (12, 25): "Christmas",
+        }
+        return holiday_names.get((dt.month, dt.day), "Market Holiday")
+    
     # === TRADING DAY CHECK ===
-    # Stocks can only be bought Mon-Fri. If today is weekend, show next trading day.
+    # Stocks can only be bought Mon-Fri, excluding holidays
+    def is_trading_day(dt: datetime) -> bool:
+        """Check if date is a trading day (weekday + not a holiday)"""
+        if dt.weekday() >= 5:  # Weekend
+            return False
+        if is_us_holiday(dt):  # Holiday
+            return False
+        return True
+    
     def get_next_trading_day(dt: datetime) -> datetime:
-        """Get next trading day (Mon-Fri). If already a weekday, returns same day."""
-        while dt.weekday() >= 5:  # 5=Sat, 6=Sun
+        """Get next trading day. Skips weekends AND holidays."""
+        while not is_trading_day(dt):
             dt = dt + timedelta(days=1)
         return dt
-    
-    def is_trading_day(dt: datetime) -> bool:
-        """Check if date is a weekday (Mon-Fri)"""
-        return dt.weekday() < 5
     
     # For stocks: use next trading day
     stock_entry_date = get_next_trading_day(ct)
     stock_day_name = stock_entry_date.strftime("%a")
-    is_weekend_for_stocks = not is_trading_day(ct)
+    is_market_closed = not is_trading_day(ct)
+    is_weekend = ct.weekday() >= 5
+    is_holiday = is_us_holiday(ct) and not is_weekend
+    holiday_name = get_holiday_name(ct) if is_holiday else None
     
     # For crypto: 24/7, use today
     crypto_day_name = ct.strftime("%a")
@@ -751,9 +815,12 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         lines = []
         lines.append(f"{idx}) {emoji} {symbol} — {action}{news_check}")
         
-        # Add weekend warning for stocks
-        if is_stock and is_weekend_for_stocks:
-            lines.append(f"⚠️ MARKET CLOSED (Weekend) - Execute Monday")
+        # Add warning if market closed (weekend or holiday) for stocks
+        if is_stock and is_market_closed:
+            if is_holiday:
+                lines.append(f"⚠️ MARKET CLOSED ({holiday_name}) - Execute {entry_day_name}")
+            else:
+                lines.append(f"⚠️ MARKET CLOSED (Weekend) - Execute {entry_day_name}")
         
         if is_buy:
             if is_stock:
@@ -787,14 +854,22 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         f"📅 {date_str} | ⏰ 8:00 AM CT",
     ]
     
-    # Add weekend warning banner if today is weekend (stocks only)
-    if is_weekend_for_stocks:
-        all_lines.extend([
-            "",
-            "⚠️ **WEEKEND — STOCK MARKETS CLOSED**",
-            f"📆 Next trading day: {stock_day_name} {stock_entry_date.strftime('%b %d')}",
-            "🪙 Crypto trades 24/7 — execute anytime",
-        ])
+    # Add market closed warning banner (weekend or holiday)
+    if is_market_closed:
+        if is_holiday:
+            all_lines.extend([
+                "",
+                f"⚠️ **{holiday_name.upper()} — STOCK MARKETS CLOSED**",
+                f"📆 Next trading day: {stock_day_name} {stock_entry_date.strftime('%b %d')}",
+                "🪙 Crypto trades 24/7 — execute anytime",
+            ])
+        else:  # Weekend
+            all_lines.extend([
+                "",
+                "⚠️ **WEEKEND — STOCK MARKETS CLOSED**",
+                f"📆 Next trading day: {stock_day_name} {stock_entry_date.strftime('%b %d')}",
+                "🪙 Crypto trades 24/7 — execute anytime",
+            ])
     
     all_lines.extend([
         "",
