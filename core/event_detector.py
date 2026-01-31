@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from core.event_memory import EventMemory, EventType
+from core.pattern_tracker import record_pattern_detection
 
 LOGGER = logging.getLogger(__name__)
 
@@ -658,14 +659,39 @@ class EventDetector:
                 # Get first affected symbol or use "MARKET"
                 symbols = event.get("affected_symbols", [])
                 symbol = symbols[0] if symbols else "MARKET"
+                event_type_str = event.get("event_type", "unknown")
                 
                 self.event_memory.record_event(
-                    event_type=EventType(event.get("event_type")) if event.get("event_type") in [e.value for e in EventType] else EventType.UNKNOWN,
+                    event_type=EventType(event_type_str) if event_type_str in [e.value for e in EventType] else EventType.UNKNOWN,
                     trigger=event.get("title", "Unknown event"),
                     symbol=symbol,
                     price_at_event=0.0,  # Will be filled by price lookup
                     source=event.get("source", "detector")
                 )
+                
+                # PATTERN TRACKING: Record this event for accuracy measurement
+                # This is the KEY wiring - connects Event Detector to Pattern Tracker
+                confidence = event.get("confidence", 0.7)
+                direction = event.get("direction", "UP")  # Most events imply UP initially
+                
+                # Infer direction from event type
+                if event_type_str in ["whale_sell", "earnings_miss", "fed_rate_hike", "btc_price_crash"]:
+                    direction = "DOWN"
+                elif event_type_str in ["whale_buy", "earnings_beat", "fed_rate_cut", "btc_price_surge", "elon_tweet"]:
+                    direction = "UP"
+                
+                try:
+                    record_pattern_detection(
+                        pattern_type=event_type_str.upper(),  # e.g., "ELON_TWEET", "FED_RATE_CUT"
+                        symbol=symbol,
+                        direction=direction,
+                        entry_price=event.get("price_at_event", 0.0),
+                        confidence=confidence
+                    )
+                    LOGGER.info(f"[PATTERN_TRACKER] Recorded event: {event_type_str} for {symbol}")
+                except Exception as pe:
+                    LOGGER.debug(f"[PATTERN_TRACKER] Could not record pattern: {pe}")
+                    
             except Exception as e:
                 LOGGER.warning(f"[EVENT_DETECTOR] Could not record event: {e}")
         
