@@ -212,59 +212,121 @@ class GhostPatternTrader:
         # Default: don't trade unknown patterns
         return None
     
-    def get_elon_tweet_trade(self, symbol: str = "DOGE") -> PatternTrade:
+    def get_elon_tweet_trade(self, symbol: str = "DOGE", event_time: datetime = None) -> PatternTrade:
         """
         Specific handler for Elon tweets - THE SMART PLAY.
         
-        When Elon tweets about DOGE:
-        1. BUY IMMEDIATELY (within 5 minutes)
-        2. Set sell order at +25% (leave some on table)
-        3. Hard stop at +20% if it starts dropping
-        4. Max hold time: 4 hours
-        
-        Expected: Catch 20-25% of the 30% pump, exit before dump.
+        Adjusts recommendation based on how old the tweet is:
+        - < 15 min: BUY NOW (optimal entry)
+        - 15 min - 2 hours: BUY (still early, pump building)
+        - 2-4 hours: HOLD/WATCH (near peak, risky entry)
+        - > 4 hours: TOO LATE (dump likely starting)
         """
+        from datetime import datetime, timezone
+        
+        # Calculate how old the event is
+        now = datetime.now(timezone.utc) if event_time and event_time.tzinfo else datetime.now()
+        if event_time:
+            hours_old = (now - event_time).total_seconds() / 3600
+        else:
+            hours_old = 0  # Assume just happened if no timestamp
+        
+        # Adjust recommendation based on timing
+        if hours_old < 0.25:  # < 15 minutes
+            action = TradeAction.BUY_NOW
+            reasoning = """
+🟢 OPTIMAL ENTRY WINDOW - BUY NOW!
+
+Tweet is < 15 minutes old. You're EARLY.
+
+1. BUY IMMEDIATELY
+   - Retail FOMO hasn't kicked in yet
+   - Best entry price
+   - Maximum profit potential
+
+2. SET EXIT at +20-25%
+   - Peak usually in 4-6 hours
+   - Don't get greedy
+
+3. STOP LOSS at -5%
+
+Expected: +20-25% profit. THIS IS THE SMART PLAY.
+"""
+        elif hours_old < 2:  # 15 min - 2 hours
+            action = TradeAction.BUY_NOW
+            reasoning = f"""
+🟡 STILL EARLY - Tweet is {hours_old:.1f} hours old
+
+Pump is building but you can still catch gains.
+
+1. BUY NOW (smaller position)
+   - Some pump already happened
+   - Retail FOMO in progress
+   - Still room to run
+
+2. SET EXIT at +10-15% (lower target)
+   - Don't expect full 30%
+   - Take profits quickly
+
+3. TIGHTER STOP at -3%
+
+Expected: +10-15% profit. Still a good play.
+"""
+        elif hours_old < 4:  # 2-4 hours
+            action = TradeAction.HOLD
+            reasoning = f"""
+🟠 NEAR PEAK - Tweet is {hours_old:.1f} hours old
+
+RISKY ENTRY. Pump may be near peak.
+
+1. DO NOT BUY (or very small position)
+   - You missed optimal entry
+   - Risk/reward is poor
+   - Dump could start any moment
+
+2. IF YOU BUY: Exit at +5% max
+   - Scalp only
+   - Very tight stop
+
+3. BETTER PLAY: Wait for dump, buy the dip
+
+Expected: High risk of catching the dump.
+"""
+        else:  # > 4 hours
+            action = TradeAction.AVOID
+            reasoning = f"""
+🔴 TOO LATE - Tweet is {hours_old:.1f} hours old
+
+ENTRY WINDOW CLOSED. Dump is likely starting.
+
+1. DO NOT BUY
+   - Peak has passed
+   - Dump is in progress or imminent
+   - You'll be exit liquidity for early buyers
+
+2. IF YOU WANT IN: Wait for -20% dump
+   - Buy the capitulation
+   - New entry for next cycle
+
+MISSED THIS ONE. Wait for next tweet.
+"""
+        
+        # Adjust expected gain based on timing
+        expected_gain = max(30 - (hours_old * 8), 5)  # Decreases 8% per hour
+        
         return PatternTrade(
             event_type="elon_tweet",
             symbol=symbol,
-            action=TradeAction.BUY_NOW,
-            confidence=0.85,
-            expected_gain_pct=30.0,  # Full pattern
-            expected_peak_hours=4.0,  # Peak usually in 4-6 hours
-            entry_window_minutes=5,   # GET IN FAST
-            exit_target_hours=3.0,    # Exit BEFORE peak (safer)
-            stop_loss_pct=5.0,        # Stop loss
+            action=action,
+            confidence=max(0.85 - (hours_old * 0.15), 0.3),  # Confidence drops with time
+            expected_gain_pct=expected_gain,
+            expected_peak_hours=max(4.0 - hours_old, 0.5),
+            entry_window_minutes=5 if hours_old < 0.25 else 0,
+            exit_target_hours=max(3.0 - hours_old, 0.5),
+            stop_loss_pct=5.0 if hours_old < 2 else 3.0,
             pattern_accuracy=0.85,
             times_observed=50,
-            reasoning="""
-🚀 ELON TWEET DETECTED - SMART PLAY:
-
-1. BUY NOW (within 5 minutes)
-   - Price will pump 15-30%
-   - Retail FOMO takes 30-60 min to kick in
-   - Early entry = best gains
-
-2. SET EXIT at +20-25%
-   - Don't get greedy for full 30%
-   - Leave profit on the table
-   - Peak is usually 4-6 hours
-
-3. HARD STOP at 3-4 hours
-   - Even if still pumping, EXIT
-   - Dump always comes
-   - Don't be exit liquidity
-
-4. STOP LOSS at -5%
-   - If it dumps immediately (rare), cut losses
-   - Happens ~15% of the time
-
-Expected outcome:
-- Win: +20-25% (85% of the time)
-- Loss: -5% (15% of the time)
-- Expected value: +17% per trade
-
-THIS IS THE SMART PLAY.
-"""
+            reasoning=reasoning
         )
     
     def get_fed_rate_cut_trade(self, symbols: List[str] = None) -> List[PatternTrade]:
