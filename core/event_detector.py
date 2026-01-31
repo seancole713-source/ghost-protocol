@@ -56,7 +56,7 @@ DATA_SOURCES = {
         name="Alpha Vantage",
         source_type="api",
         url="https://www.alphavantage.co/query",
-        api_key_env="ALPHA_VANTAGE_API_KEY",
+        api_key_env="ALPHAVANTAGE_API_KEY",  # You have this!
         refresh_interval_seconds=300,  # 5 min (rate limited)
         priority=1
     ),
@@ -95,7 +95,7 @@ DATA_SOURCES = {
         name="CryptoPanic",
         source_type="api",
         url="https://cryptopanic.com/api/v1",
-        api_key_env="CRYPTOPANIC_API_KEY",
+        api_key_env="CRYPTOPANIC_API_KEY",  # You have this!
         refresh_interval_seconds=30,
         priority=1
     ),
@@ -119,6 +119,15 @@ DATA_SOURCES = {
         api_key_env="GLASSNODE_API_KEY",
         refresh_interval_seconds=300,
         priority=2
+    ),
+    
+    "santiment": DataSource(
+        name="Santiment",
+        source_type="api",
+        url="https://api.santiment.net/graphql",
+        api_key_env="SANTIMENT_API_KEY",  # You have this!
+        refresh_interval_seconds=300,
+        priority=1
     ),
     
     # =========================================================================
@@ -158,7 +167,7 @@ DATA_SOURCES = {
         name="FRED (Federal Reserve)",
         source_type="api",
         url="https://api.stlouisfed.org/fred",
-        api_key_env="FRED_API_KEY",
+        api_key_env="FRED_API_KEY",  # You have this!
         refresh_interval_seconds=3600,  # Hourly (data changes slowly)
         priority=1
     ),
@@ -645,12 +654,20 @@ class EventDetector:
         
         # Record in event memory for learning
         for event in unique_events:
-            self.event_memory.record_event(
-                event_type=event.get("event_type"),
-                affected_symbols=event.get("affected_symbols", []),
-                source=event.get("source"),
-                details=event.get("title")
-            )
+            try:
+                # Get first affected symbol or use "MARKET"
+                symbols = event.get("affected_symbols", [])
+                symbol = symbols[0] if symbols else "MARKET"
+                
+                self.event_memory.record_event(
+                    event_type=EventType(event.get("event_type")) if event.get("event_type") in [e.value for e in EventType] else EventType.UNKNOWN,
+                    trigger=event.get("title", "Unknown event"),
+                    symbol=symbol,
+                    price_at_event=0.0,  # Will be filled by price lookup
+                    source=event.get("source", "detector")
+                )
+            except Exception as e:
+                LOGGER.warning(f"[EVENT_DETECTOR] Could not record event: {e}")
         
         LOGGER.info(f"[EVENT_DETECTOR] Detected {len(unique_events)} new events")
         return unique_events
