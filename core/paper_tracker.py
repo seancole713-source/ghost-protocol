@@ -198,13 +198,28 @@ class PaperTracker:
         paper_trade_id = str(uuid.uuid4())
         signal_time = datetime.utcnow().isoformat()
         
-        # Calculate target time (48h from entry)
+        # =====================================================================
+        # TRUST LADDER: Get dynamic prediction window based on symbol trust level
+        # Level 1 (default): 48hr | Level 2: 120hr | Level 3: 168hr
+        # =====================================================================
+        try:
+            from core.trust_ladder import get_symbol_prediction_window
+            trust_config = get_symbol_prediction_window(symbol)
+            prediction_hours = trust_config["prediction_hours"]
+            trust_level = trust_config["trust_level"]
+            LOGGER.info(f"[{symbol}] Trust Level {trust_level}: {prediction_hours}hr prediction window")
+        except Exception as e:
+            LOGGER.debug(f"[{symbol}] Trust ladder unavailable: {e} - using default 48hr")
+            prediction_hours = 48
+            trust_level = 1
+        
+        # Calculate target time based on trust level
         try:
             entry_dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
         except ValueError:
             # Handle timezone-naive format
             entry_dt = datetime.fromisoformat(entry_time.replace('Z', ''))
-        target_dt = entry_dt + timedelta(hours=48)
+        target_dt = entry_dt + timedelta(hours=prediction_hours)
         target_time = target_dt.isoformat()
         
         params = (
@@ -391,13 +406,38 @@ class PaperTracker:
                 f"(${pnl:+,.2f}, {pnl_pct:+.2%})"
             )
             
+            # =====================================================================
+            # TRUST LADDER: Record outcome for promotion/demotion
+            # WIN = move up ladder (longer prediction windows)
+            # LOSS = move down ladder (back to 48hr)
+            # =====================================================================
+            trust_result = None
+            try:
+                from core.trust_ladder import record_prediction_outcome
+                is_win = outcome == "WIN"
+                trust_result = record_prediction_outcome(trade['symbol'], is_win)
+                
+                if trust_result.get("promoted"):
+                    LOGGER.info(
+                        f"🚀 {trade['symbol']} PROMOTED to Level {trust_result['new_level']} "
+                        f"({trust_result['consecutive_wins']} consecutive wins)"
+                    )
+                elif trust_result.get("demoted"):
+                    LOGGER.info(
+                        f"📉 {trade['symbol']} DEMOTED to Level 1 "
+                        f"({trust_result['consecutive_losses']} consecutive losses)"
+                    )
+            except Exception as e:
+                LOGGER.debug(f"Trust ladder update failed: {e}")
+            
             return {
                 "resolved": True,
                 "outcome": outcome,
                 "profit_loss": pnl,
                 "profit_loss_pct": pnl_pct,
                 "actual_direction": actual_direction,
-                "target_price": current_price
+                "target_price": current_price,
+                "trust_update": trust_result
             }
         
         except Exception as e:

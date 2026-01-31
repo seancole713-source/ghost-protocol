@@ -40329,6 +40329,102 @@ try:
                 "error": str(e)
             }
 
+    # =========================================================================
+    # TRUST LADDER ENDPOINTS - Progressive accuracy system
+    # Symbols earn trust through accurate predictions and get longer windows
+    # =========================================================================
+    
+    @APP.get("/api/v3/trust/leaderboard")
+    async def api_v3_trust_leaderboard(limit: int = 20):
+        """
+        Get trust ladder leaderboard - symbols ranked by trust level and accuracy.
+        
+        Trust Levels:
+        - Level 1 (Standard): 48hr predictions
+        - Level 2 (Extended): 120hr predictions (5 days)
+        - Level 3 (Focused): 168hr predictions (7 days) + priority in TOP 10
+        
+        Symbols move up with consecutive wins, down with consecutive losses.
+        """
+        try:
+            from core.trust_ladder import get_trust_ladder
+            ladder = get_trust_ladder()
+            leaderboard = ladder.get_leaderboard(limit=limit)
+            
+            return {
+                "ok": True,
+                "leaderboard": leaderboard,
+                "trust_levels": {
+                    1: {"name": "Standard", "window": "48hr", "boost": "1.0x"},
+                    2: {"name": "Extended", "window": "120hr (5 days)", "boost": "1.1x"},
+                    3: {"name": "Focused", "window": "168hr (7 days)", "boost": "1.2x"}
+                }
+            }
+        except Exception as e:
+            LOGGER.error(f"Failed to get trust leaderboard: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    @APP.get("/api/v3/trust/symbol/{symbol}")
+    async def api_v3_trust_symbol(symbol: str):
+        """
+        Get trust data for a specific symbol.
+        
+        Returns trust level, prediction window, confidence boost, and stats.
+        """
+        try:
+            from core.trust_ladder import get_trust_ladder
+            ladder = get_trust_ladder()
+            config = ladder.get_prediction_window(symbol.upper())
+            trust = ladder.get_trust(symbol.upper())
+            
+            return {
+                "ok": True,
+                "symbol": symbol.upper(),
+                "trust_level": config["trust_level"],
+                "level_name": config["level_name"],
+                "prediction_hours": config["prediction_hours"],
+                "checkpoints": config["checkpoints"],
+                "confidence_boost": config["confidence_boost"],
+                "is_focused": config["is_focused"],
+                "stats": {
+                    "consecutive_wins": trust.consecutive_wins,
+                    "consecutive_losses": trust.consecutive_losses,
+                    "total_predictions": trust.total_predictions,
+                    "total_wins": trust.total_wins,
+                    "accuracy_pct": trust.accuracy_pct
+                }
+            }
+        except Exception as e:
+            LOGGER.error(f"Failed to get trust for {symbol}: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    @APP.get("/api/v3/trust/focused")
+    async def api_v3_trust_focused():
+        """
+        Get all symbols at Level 3 (Focused).
+        
+        These are Ghost's highest-trust investments that have proven accuracy.
+        They get priority in TOP 10 and 168hr (7 day) prediction windows.
+        """
+        try:
+            from core.trust_ladder import get_trust_ladder
+            ladder = get_trust_ladder()
+            focused = ladder.get_focused_symbols()
+            
+            return {
+                "ok": True,
+                "focused_count": len(focused),
+                "focused_symbols": focused,
+                "benefits": [
+                    "168hr (7 day) prediction window",
+                    "1.2x confidence boost",
+                    "Priority in TOP 10 selection"
+                ]
+            }
+        except Exception as e:
+            LOGGER.error(f"Failed to get focused symbols: {e}")
+            return {"ok": False, "error": str(e)}
+
     @APP.post("/api/v3/paper/admin/expire-old-pending")
     async def api_v3_paper_admin_expire_old_pending(
         cutoff_date: str = "2026-01-14",
