@@ -71,15 +71,19 @@ class GhostResearcher:
     """
     
     def __init__(self):
+        # Use same key pattern as wolf_app.py
         self.anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-        self.openai_key = os.environ.get("OPENAI_API_KEY")
+        self.openai_key = (os.environ.get("OPENAI_AGENT_API_KEY") or os.environ.get("OPENAI_API_KEY", "")).strip()
         self.polygon_key = os.environ.get("POLYGON_API_KEY")
         self.alphavantage_key = os.environ.get("ALPHAVANTAGE_API_KEY")
+        
+        # Get AI model from env (same as wolf_app)
+        self.ai_model = os.environ.get("AGENT_MODEL", os.environ.get("AI_MODEL", "gpt-4o-mini")).strip()
         
         # Choose AI provider - prefer OpenAI (usually has credits)
         if self.openai_key:
             self.ai_provider = "openai"
-            LOGGER.info("[RESEARCHER] Using GPT for research")
+            LOGGER.info(f"[RESEARCHER] Using {self.ai_model} for research")
         elif self.anthropic_key:
             self.ai_provider = "anthropic"
             LOGGER.info("[RESEARCHER] Using Claude for research")
@@ -225,10 +229,10 @@ class GhostResearcher:
         return info
     
     async def _get_recent_news(self, session: aiohttp.ClientSession, symbol: str, asset_type: str) -> List[Dict]:
-        """Get recent news about the symbol"""
+        """Get recent news about the symbol from multiple sources"""
         news = []
         
-        # Try Polygon news for stocks
+        # Try Polygon news for stocks (has sentiment built in)
         if asset_type == "stock" and self.polygon_key:
             try:
                 url = f"https://api.polygon.io/v2/reference/news?ticker={symbol}&limit=10&apiKey={self.polygon_key}"
@@ -245,6 +249,28 @@ class GhostResearcher:
                             })
             except Exception as e:
                 LOGGER.warning(f"[RESEARCHER] Polygon news error: {e}")
+        
+        # Also check Alpha Vantage news (you have this key!)
+        if asset_type == "stock" and self.alphavantage_key and len(news) < 5:
+            try:
+                url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={symbol}&apikey={self.alphavantage_key}&limit=10"
+                async with session.get(url, timeout=10) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        for article in data.get("feed", [])[:10]:
+                            # Alpha Vantage provides sentiment scores!
+                            sentiment_score = float(article.get("overall_sentiment_score", 0))
+                            sentiment = "bullish" if sentiment_score > 0.15 else "bearish" if sentiment_score < -0.15 else "neutral"
+                            news.append({
+                                "title": article.get("title", ""),
+                                "source": article.get("source", ""),
+                                "date": article.get("time_published", ""),
+                                "url": article.get("url", ""),
+                                "sentiment": sentiment,
+                                "sentiment_score": sentiment_score
+                            })
+            except Exception as e:
+                LOGGER.warning(f"[RESEARCHER] Alpha Vantage news error: {e}")
         
         # Try CryptoPanic for crypto
         cryptopanic_key = os.environ.get("CRYPTOPANIC_API_KEY")
@@ -264,6 +290,51 @@ class GhostResearcher:
                             })
             except Exception as e:
                 LOGGER.warning(f"[RESEARCHER] CryptoPanic news error: {e}")
+        
+        # Add Santiment social data for crypto (you have this key!)
+        santiment_key = os.environ.get("SANTIMENT_API_KEY")
+        if asset_type == "crypto" and santiment_key:
+            try:
+                # Santiment GraphQL query for social volume
+                query = '''
+                {
+                    getMetric(metric: "social_volume_total") {
+                        timeseriesData(
+                            slug: "%s"
+                            from: "utc_now-7d"
+                            to: "utc_now"
+                            interval: "1d"
+                        ) {
+                            datetime
+                            value
+                        }
+                    }
+                }
+                ''' % symbol.lower()
+                
+                headers = {"Authorization": f"Apikey {santiment_key}"}
+                async with session.post(
+                    "https://api.santiment.net/graphql",
+                    json={"query": query},
+                    headers=headers,
+                    timeout=10
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        social_data = data.get("data", {}).get("getMetric", {}).get("timeseriesData", [])
+                        if social_data:
+                            recent_volume = social_data[-1].get("value", 0) if social_data else 0
+                            avg_volume = sum(d.get("value", 0) for d in social_data) / len(social_data) if social_data else 0
+                            if recent_volume > avg_volume * 1.5:
+                                news.append({
+                                    "title": f"🔥 {symbol} social volume spike: {recent_volume:.0f} (avg: {avg_volume:.0f})",
+                                    "source": "Santiment",
+                                    "date": datetime.now().isoformat(),
+                                    "url": "",
+                                    "sentiment": "bullish"  # High social = attention = potential pump
+                                })
+            except Exception as e:
+                LOGGER.warning(f"[RESEARCHER] Santiment error: {e}")
         
         return news
     
@@ -428,19 +499,20 @@ Respond in JSON format:
         """Call OpenAI API for analysis"""
         try:
             async with aiohttp.ClientSession() as session:
+                base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
                 headers = {
                     "Authorization": f"Bearer {self.openai_key}",
                     "Content-Type": "application/json"
                 }
                 payload = {
-                    "model": "gpt-4o-mini",
+                    "model": self.ai_model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 2000,
                     "response_format": {"type": "json_object"}
                 }
                 
                 async with session.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    f"{base_url}/chat/completions",
                     headers=headers,
                     json=payload,
                     timeout=60
