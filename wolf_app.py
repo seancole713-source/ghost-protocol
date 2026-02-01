@@ -24328,8 +24328,8 @@ async def debug_checkpoint_status():
             WHERE outcome = 'PENDING'
             AND checkpoint_times IS NOT NULL
             AND checkpoint_times != '[]'
-            ORDER BY entry_time DESC
-            LIMIT 5
+            ORDER BY trust_level DESC, entry_time DESC
+            LIMIT 10
         """)
         pending_with_checkpoints = []
         for row in cursor.fetchall():
