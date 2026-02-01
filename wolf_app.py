@@ -24498,14 +24498,9 @@ async def debug_create_test_trade(symbol: str, direction: str = "UP", confidence
         from datetime import datetime
         import uuid
         
-        # Get current price for the symbol
-        from core.price_fetcher import get_current_price
-        current_price = get_current_price(symbol)
-        
-        if not current_price:
-            # Use a fallback price for testing
-            fallback_prices = {"BTC": 78000, "ETH": 2400, "SOL": 105, "SUI": 1.12}
-            current_price = fallback_prices.get(symbol, 100)
+        # Get current price for the symbol (use fallback for testing)
+        fallback_prices = {"BTC": 78000, "ETH": 2400, "SOL": 105, "SUI": 1.12, "NVDA": 192, "META": 718}
+        current_price = fallback_prices.get(symbol, 100)
         
         paper_tracker = get_paper_tracker()
         
