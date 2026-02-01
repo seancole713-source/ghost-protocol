@@ -24471,6 +24471,95 @@ async def debug_promote_symbol(symbol: str, level: int = 2):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/create-test-trade")
+async def debug_create_test_trade(symbol: str, direction: str = "UP", confidence: float = 0.75):
+    """
+    TEST ENDPOINT: Create a paper trade to test multi-checkpoint system.
+    
+    This bypasses the normal prediction flow and creates a trade directly.
+    The trade will use the symbol's current trust level for checkpoint calculation.
+    
+    Args:
+        symbol: Symbol to create trade for (e.g., BTC, ETH)
+        direction: UP or DOWN
+        confidence: Confidence level (0.0 to 1.0)
+    """
+    symbol = symbol.upper()
+    direction = direction.upper()
+    
+    if direction not in ["UP", "DOWN"]:
+        return {"error": f"Invalid direction {direction}. Must be UP or DOWN"}
+    
+    if confidence < 0 or confidence > 1:
+        return {"error": f"Invalid confidence {confidence}. Must be 0.0 to 1.0"}
+    
+    try:
+        from core.paper_tracker import get_paper_tracker
+        from datetime import datetime
+        import uuid
+        
+        # Get current price for the symbol
+        from core.price_fetcher import get_current_price
+        current_price = get_current_price(symbol)
+        
+        if not current_price:
+            # Use a fallback price for testing
+            fallback_prices = {"BTC": 78000, "ETH": 2400, "SOL": 105, "SUI": 1.12}
+            current_price = fallback_prices.get(symbol, 100)
+        
+        paper_tracker = get_paper_tracker()
+        
+        paper_trade_id = paper_tracker.log_signal(
+            cascade_id=f"test_{uuid.uuid4().hex[:8]}",
+            symbol=symbol,
+            signal_direction=direction,
+            signal_confidence=confidence,
+            entry_price=current_price,
+            entry_time=datetime.utcnow().isoformat(),
+            position_size=1000.0,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.10
+        )
+        
+        # Fetch the created trade to show checkpoint details
+        import psycopg2
+        database_url = os.getenv("DATABASE_URL")
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT paper_trade_id, symbol, trust_level, entry_time, target_time,
+                   checkpoint_times, checkpoint_results, checkpoint_evaluated
+            FROM paper_trades
+            WHERE paper_trade_id = %s
+        """, (paper_trade_id,))
+        
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if row:
+            return {
+                "ok": True,
+                "paper_trade_id": row[0],
+                "symbol": row[1],
+                "trust_level": row[2],
+                "entry_time": str(row[3]),
+                "target_time": str(row[4]),
+                "checkpoint_times": row[5],
+                "checkpoint_results": row[6],
+                "checkpoint_evaluated": row[7],
+                "checkpoint_count": len(row[5]) if row[5] else 0,
+                "message": f"✅ Test trade created for {symbol} at Trust Level {row[2]}"
+            }
+        else:
+            return {"ok": False, "error": "Trade created but could not fetch details"}
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/db-clean")
 async def debug_db_clean(
     mode: str = "preview",
