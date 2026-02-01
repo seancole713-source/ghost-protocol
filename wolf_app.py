@@ -24288,7 +24288,7 @@ async def debug_db_audit():
 
 
 @APP.get("/debug/checkpoint-status")
-async def debug_checkpoint_status(secret: str = ""):
+async def debug_checkpoint_status():
     """
     Debug endpoint to verify multi-checkpoint Trust Ladder is working.
     
@@ -24297,9 +24297,6 @@ async def debug_checkpoint_status(secret: str = ""):
     - Sample pending trades with checkpoint data
     - Recent checkpoint evaluations from logs
     """
-    if secret != os.getenv("CRON_SECRET", ""):
-        return {"error": "Invalid secret - provide ?secret=<CRON_SECRET>"}
-    
     try:
         import psycopg2
         
