@@ -24287,6 +24287,116 @@ async def debug_db_audit():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/checkpoint-status")
+async def debug_checkpoint_status(secret: str = ""):
+    """
+    Debug endpoint to verify multi-checkpoint Trust Ladder is working.
+    
+    Shows:
+    - Checkpoint columns exist in paper_trades table
+    - Sample pending trades with checkpoint data
+    - Recent checkpoint evaluations from logs
+    """
+    if secret != os.getenv("CRON_SECRET", ""):
+        return {"error": "Invalid secret - provide ?secret=<CRON_SECRET>"}
+    
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # 1. Check if checkpoint columns exist
+        cursor.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'paper_trades'
+            AND column_name IN ('trust_level', 'checkpoint_times', 'checkpoint_results', 'checkpoint_evaluated', 'checkpoint_prices')
+            ORDER BY column_name
+        """)
+        columns = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        expected_columns = ['trust_level', 'checkpoint_times', 'checkpoint_results', 'checkpoint_evaluated', 'checkpoint_prices']
+        missing_columns = [c for c in expected_columns if c not in columns]
+        
+        # 2. Get pending trades with checkpoint data
+        cursor.execute("""
+            SELECT symbol, trust_level, entry_time, target_time, 
+                   checkpoint_times, checkpoint_results, checkpoint_evaluated
+            FROM paper_trades
+            WHERE outcome = 'PENDING'
+            AND checkpoint_times IS NOT NULL
+            AND checkpoint_times != '[]'
+            ORDER BY entry_time DESC
+            LIMIT 5
+        """)
+        pending_with_checkpoints = []
+        for row in cursor.fetchall():
+            pending_with_checkpoints.append({
+                "symbol": row[0],
+                "trust_level": row[1],
+                "entry_time": row[2].isoformat() if row[2] else None,
+                "target_time": row[3].isoformat() if row[3] else None,
+                "checkpoint_times": row[4],
+                "checkpoint_results": row[5],
+                "checkpoint_evaluated": row[6]
+            })
+        
+        # 3. Get trades with evaluated checkpoints
+        cursor.execute("""
+            SELECT symbol, trust_level, checkpoint_results, checkpoint_evaluated, outcome
+            FROM paper_trades
+            WHERE checkpoint_evaluated IS NOT NULL
+            AND checkpoint_evaluated != '[]'
+            AND checkpoint_evaluated::text LIKE '%true%'
+            ORDER BY entry_time DESC
+            LIMIT 5
+        """)
+        evaluated_checkpoints = []
+        for row in cursor.fetchall():
+            evaluated_checkpoints.append({
+                "symbol": row[0],
+                "trust_level": row[1],
+                "checkpoint_results": row[2],
+                "checkpoint_evaluated": row[3],
+                "final_outcome": row[4]
+            })
+        
+        # 4. Count trades by trust level
+        cursor.execute("""
+            SELECT trust_level, COUNT(*) as count
+            FROM paper_trades
+            WHERE trust_level IS NOT NULL
+            GROUP BY trust_level
+            ORDER BY trust_level
+        """)
+        trades_by_level = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            "ok": True,
+            "checkpoint_system": "READY" if not missing_columns else "INCOMPLETE",
+            "columns_found": columns,
+            "missing_columns": missing_columns,
+            "pending_trades_with_checkpoints": len(pending_with_checkpoints),
+            "pending_samples": pending_with_checkpoints,
+            "evaluated_checkpoints_count": len(evaluated_checkpoints),
+            "evaluated_samples": evaluated_checkpoints,
+            "trades_by_trust_level": trades_by_level,
+            "message": "Multi-checkpoint system is operational" if not missing_columns else f"Missing columns: {missing_columns}"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/db-clean")
 async def debug_db_clean(
     mode: str = "preview",
