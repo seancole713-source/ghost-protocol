@@ -983,8 +983,8 @@ def calculate_intel_signal(
             winners_adjustment -= 0.03
             signals_used.append(f"2025_WINNER_FADE_RISK")
     
-    # Leading sector bias
-    if sector_performance >= 20:
+    # Leading sector bias (only if stock_sector is defined)
+    if stock_sector and sector_performance >= 20:
         # Top sector (Tech, Comms)
         if base_direction == "UP":
             winners_adjustment += 0.04
@@ -992,7 +992,7 @@ def calculate_intel_signal(
         elif base_direction == "DOWN":
             winners_adjustment -= 0.02
             signals_used.append(f"SECTOR_LEADER_FADE_RISK")
-    elif sector_performance <= 0:
+    elif stock_sector and sector_performance <= 0:
         # Lagging sector (Energy)
         if base_direction == "DOWN":
             winners_adjustment += 0.03
