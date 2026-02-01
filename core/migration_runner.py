@@ -183,6 +183,80 @@ def ensure_personal_watchlist_table() -> bool:
         return False
 
 
+def ensure_checkpoint_columns() -> bool:
+    """
+    Ensure paper_trades table has checkpoint columns for multi-checkpoint Trust Ladder.
+    
+    Columns added:
+    - trust_level: INTEGER - The trust level when trade was logged
+    - checkpoint_times: JSONB - Array of checkpoint timestamps
+    - checkpoint_results: JSONB - Array of WIN/LOSS results per checkpoint
+    - checkpoint_evaluated: JSONB - Array of booleans for evaluated status
+    - checkpoint_prices: JSONB - Array of prices at each checkpoint
+    
+    Returns:
+        True if columns exist or were created successfully
+    """
+    try:
+        from core.db_engine import get_db_connection, IS_POSTGRES
+        
+        if not IS_POSTGRES:
+            return True  # SQLite handles this in paper_tracker.py
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if checkpoint_times column exists (indicates migration already done)
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'paper_trades'
+                    AND column_name = 'checkpoint_times'
+                ) as exists
+            """)
+            result = cursor.fetchone()
+            if isinstance(result, dict):
+                column_exists = result.get('exists', False)
+            else:
+                column_exists = result[0] if result else False
+            
+            if column_exists:
+                LOGGER.info("[MIGRATION] ✅ paper_trades checkpoint columns exist")
+                return True
+            
+            # Add all checkpoint columns
+            LOGGER.info("[MIGRATION] Adding checkpoint columns to paper_trades...")
+            
+            columns_to_add = [
+                ("trust_level", "INTEGER DEFAULT 1"),
+                ("checkpoint_times", "JSONB DEFAULT '[]'"),
+                ("checkpoint_results", "JSONB DEFAULT '[]'"),
+                ("checkpoint_evaluated", "JSONB DEFAULT '[]'"),
+                ("checkpoint_prices", "JSONB DEFAULT '[]'"),
+            ]
+            
+            for col_name, col_def in columns_to_add:
+                try:
+                    cursor.execute(f"""
+                        ALTER TABLE paper_trades 
+                        ADD COLUMN IF NOT EXISTS {col_name} {col_def}
+                    """)
+                    LOGGER.info(f"[MIGRATION] ✅ Added {col_name} column")
+                except Exception as e:
+                    if "already exists" in str(e).lower():
+                        LOGGER.info(f"[MIGRATION] ⏭️  {col_name} already exists")
+                    else:
+                        LOGGER.warning(f"[MIGRATION] ⚠️  {col_name}: {e}")
+            
+            conn.commit()
+            LOGGER.info("[MIGRATION] ✅ paper_trades checkpoint columns ready")
+            return True
+                
+    except Exception as e:
+        LOGGER.error(f"[MIGRATION] ❌ Checkpoint columns migration failed: {e}", exc_info=True)
+        return False
+
+
 if __name__ == "__main__":
     # Standalone execution
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")

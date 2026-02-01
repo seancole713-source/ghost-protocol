@@ -3956,7 +3956,7 @@ async def _on_startup():
     # Run database migrations (personal watchlist, etc.)
     # NOTE: Wrapped in try/except, non-blocking, has 5s timeout on PostgreSQL connection
     try:
-        from core.migration_runner import run_migrations, ensure_personal_watchlist_table
+        from core.migration_runner import run_migrations, ensure_personal_watchlist_table, ensure_checkpoint_columns
         success, messages = run_migrations()
         for msg in messages:
             LOGGER.info(msg)
@@ -3970,6 +3970,12 @@ async def _on_startup():
             LOGGER.info("[GHOST STARTUP] ✅ Personal watchlist table ready")
         else:
             LOGGER.warning("[GHOST STARTUP] ⚠️  Personal watchlist table could not be verified")
+        
+        # Ensure checkpoint columns exist for Trust Ladder multi-checkpoint system
+        if ensure_checkpoint_columns():
+            LOGGER.info("[GHOST STARTUP] ✅ Paper trades checkpoint columns ready")
+        else:
+            LOGGER.warning("[GHOST STARTUP] ⚠️  Paper trades checkpoint columns could not be verified")
     except Exception as e:
         LOGGER.error(f"migrations_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
