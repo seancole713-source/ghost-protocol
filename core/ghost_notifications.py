@@ -755,8 +755,11 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         return reward / risk if risk > 0 else 1.0
     
     def get_exit_date(hold_days: int, is_stock: bool) -> str:
-        """Get exit date string"""
-        exit_dt = ct + timedelta(days=hold_days)
+        """Get exit date string - calculated from ACTUAL entry date"""
+        # For stocks, entry is stock_entry_date (next trading day if weekend)
+        # For crypto, entry is now (ct)
+        base_date = stock_entry_date if is_stock else ct
+        exit_dt = base_date + timedelta(days=hold_days)
         # Stocks: if exit lands on weekend, push to Monday
         if is_stock and exit_dt.weekday() >= 5:  # Saturday=5, Sunday=6
             days_to_monday = 7 - exit_dt.weekday()
@@ -825,18 +828,20 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         if is_buy:
             if is_stock:
                 lines.append(f"• BUY (CT): {entry_day_name} {entry_date.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
+                lines.append(f"• SELL (CT): {exit_date} @ Open | Target: {format_price(target)} ({gain_pct:+.1f}%)")
             else:
-                # Crypto - 24/7
+                # Crypto - 24/7 (no "Open" for crypto)
                 lines.append(f"• BUY NOW (24/7): Entry Zone: {format_price(current)} – {format_price(entry_high)}")
-            lines.append(f"• SELL (CT): {exit_date} @ Open | Target: {format_price(target)} ({gain_pct:+.1f}%)")
+                lines.append(f"• SELL: {exit_date} | Target: {format_price(target)} ({gain_pct:+.1f}%)")
         else:
             # SHORT: sell high, buy back low - show positive profit %
             if is_stock:
                 lines.append(f"• SELL (CT): {entry_day_name} {entry_date.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
+                lines.append(f"• BUY-BACK (CT): {exit_date} @ Open | Target: {format_price(target)} (+{gain_pct:.1f}%)")
             else:
-                # Crypto - 24/7
+                # Crypto - 24/7 (no "Open" for crypto)
                 lines.append(f"• SELL NOW (24/7): Entry Zone: {format_price(current)} – {format_price(entry_high)}")
-            lines.append(f"• BUY-BACK (CT): {exit_date} @ Open | Target: {format_price(target)} (+{gain_pct:.1f}%)")
+                lines.append(f"• BUY-BACK: {exit_date} | Target: {format_price(target)} (+{gain_pct:.1f}%)")
         
         lines.append(f"• STOP LOSS: {format_price(stop)}")
         lines.append(f"• Hold: {hold_days} day{'s' if hold_days > 1 else ''} ({hold_reason})")
