@@ -24333,11 +24333,14 @@ async def debug_checkpoint_status():
         """)
         pending_with_checkpoints = []
         for row in cursor.fetchall():
+            # Handle both datetime objects and strings
+            entry_time = row[2].isoformat() if hasattr(row[2], 'isoformat') else str(row[2]) if row[2] else None
+            target_time = row[3].isoformat() if hasattr(row[3], 'isoformat') else str(row[3]) if row[3] else None
             pending_with_checkpoints.append({
                 "symbol": row[0],
                 "trust_level": row[1],
-                "entry_time": row[2].isoformat() if row[2] else None,
-                "target_time": row[3].isoformat() if row[3] else None,
+                "entry_time": entry_time,
+                "target_time": target_time,
                 "checkpoint_times": row[4],
                 "checkpoint_results": row[5],
                 "checkpoint_evaluated": row[6]
