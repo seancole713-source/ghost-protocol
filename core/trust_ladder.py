@@ -222,10 +222,18 @@ class TrustLadder:
         """
         Record prediction outcome and handle promotion/demotion.
         
+        MULTI-CHECKPOINT LOGIC:
+        - is_checkpoint=True: Intermediate checkpoint (e.g., 60hr of 120hr window)
+          - WIN: Increment checkpoint_wins, no promotion yet
+          - LOSS: Immediate demotion to Level 1
+        - is_checkpoint=False: Final checkpoint (e.g., 120hr of 120hr window)
+          - WIN: Check if all checkpoints passed → promote
+          - LOSS: Demotion to Level 1
+        
         Args:
             symbol: The symbol
             is_win: Whether the prediction was correct
-            is_checkpoint: Whether this is a mid-cycle checkpoint (Level 2+)
+            is_checkpoint: True for intermediate checkpoints, False for final
             
         Returns:
             Dict with new trust state and any level changes
@@ -243,32 +251,51 @@ class TrustLadder:
             trust.consecutive_wins += 1
             trust.consecutive_losses = 0
             trust.checkpoint_wins += 1
+            
+            LOGGER.info(
+                f"[TRUST] [{symbol}] Checkpoint WIN - checkpoint_wins={trust.checkpoint_wins}, "
+                f"is_checkpoint={is_checkpoint}, level={trust.trust_level}"
+            )
         else:
             trust.consecutive_wins = 0
             trust.consecutive_losses += 1
-            trust.checkpoint_wins = 0  # Reset checkpoint progress on loss
+            trust.checkpoint_wins = 0  # Reset checkpoint progress on any loss
+            
+            LOGGER.info(
+                f"[TRUST] [{symbol}] Checkpoint LOSS - resetting checkpoint_wins, "
+                f"is_checkpoint={is_checkpoint}, level={trust.trust_level}"
+            )
         
-        # Check for promotion
+        # Check for promotion (ONLY on final checkpoint, not intermediate)
         promoted = False
         demoted = False
         
-        wins_needed = level_config.get("wins_to_promote")
-        if wins_needed and trust.checkpoint_wins >= wins_needed:
-            # Can promote to next level
-            if trust.trust_level < 3:
-                trust.trust_level += 1
-                trust.checkpoint_wins = 0  # Reset for new level
-                promoted = True
-                LOGGER.info(f"[TRUST] 🚀 {symbol} PROMOTED to Level {trust.trust_level} ({TRUST_LEVELS[trust.trust_level]['name']})")
+        if not is_checkpoint and is_win:
+            # Final checkpoint - check if we can promote
+            wins_needed = level_config.get("wins_to_promote")
+            if wins_needed and trust.checkpoint_wins >= wins_needed:
+                # All checkpoints passed - can promote to next level
+                if trust.trust_level < 3:
+                    trust.trust_level += 1
+                    trust.checkpoint_wins = 0  # Reset for new level
+                    promoted = True
+                    LOGGER.info(
+                        f"[TRUST] 🚀 {symbol} PROMOTED to Level {trust.trust_level} "
+                        f"({TRUST_LEVELS[trust.trust_level]['name']}) - ALL checkpoints passed!"
+                    )
         
-        # Check for demotion
-        if trust.consecutive_losses >= LOSSES_TO_DEMOTE:
+        # Check for demotion (on ANY loss, intermediate or final)
+        if not is_win:
             if trust.trust_level > 1:
                 trust.trust_level = 1  # Demote back to Level 1
                 trust.consecutive_losses = 0
                 trust.checkpoint_wins = 0
                 demoted = True
-                LOGGER.info(f"[TRUST] 📉 {symbol} DEMOTED to Level 1 (Standard)")
+                checkpoint_type = "intermediate" if is_checkpoint else "final"
+                LOGGER.info(
+                    f"[TRUST] 📉 {symbol} DEMOTED to Level 1 (Standard) - "
+                    f"failed {checkpoint_type} checkpoint"
+                )
         
         trust.last_updated = datetime.utcnow()
         
@@ -278,6 +305,7 @@ class TrustLadder:
         return {
             "symbol": symbol,
             "is_win": is_win,
+            "is_checkpoint": is_checkpoint,
             "old_level": old_level,
             "new_level": trust.trust_level,
             "promoted": promoted,

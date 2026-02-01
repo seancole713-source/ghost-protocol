@@ -114,7 +114,12 @@ class PaperTracker:
                         profit_loss_pct REAL,
                         checked_at TIMESTAMP WITH TIME ZONE,
                         notes TEXT,
-                        created_at TIMESTAMP WITH TIME ZONE NOT NULL
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                        trust_level INTEGER DEFAULT 1,
+                        checkpoint_times JSONB DEFAULT '[]',
+                        checkpoint_results JSONB DEFAULT '[]',
+                        checkpoint_evaluated JSONB DEFAULT '[]',
+                        checkpoint_prices JSONB DEFAULT '[]'
                     )
                 """)
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
@@ -203,15 +208,17 @@ class PaperTracker:
         # Level 1 (default): 48hr | Level 2: 120hr | Level 3: 168hr
         # =====================================================================
         try:
-            from core.trust_ladder import get_symbol_prediction_window
+            from core.trust_ladder import get_symbol_prediction_window, TRUST_LEVELS
             trust_config = get_symbol_prediction_window(symbol)
             prediction_hours = trust_config["prediction_hours"]
             trust_level = trust_config["trust_level"]
-            LOGGER.info(f"[{symbol}] Trust Level {trust_level}: {prediction_hours}hr prediction window")
+            checkpoints = TRUST_LEVELS[trust_level]["checkpoints"]
+            LOGGER.info(f"[{symbol}] Trust Level {trust_level}: {prediction_hours}hr prediction window, checkpoints={checkpoints}")
         except Exception as e:
             LOGGER.debug(f"[{symbol}] Trust ladder unavailable: {e} - using default 48hr")
             prediction_hours = 48
             trust_level = 1
+            checkpoints = [48]
         
         # Calculate target time based on trust level
         try:
@@ -222,6 +229,25 @@ class PaperTracker:
         target_dt = entry_dt + timedelta(hours=prediction_hours)
         target_time = target_dt.isoformat()
         
+        # =====================================================================
+        # MULTI-CHECKPOINT: Calculate checkpoint times for progressive evaluation
+        # Level 2: checkpoints at [60, 120] hours
+        # Level 3: checkpoints at [72, 168] hours
+        # =====================================================================
+        checkpoint_times = []
+        checkpoint_results = []
+        checkpoint_evaluated = []
+        for cp_hours in checkpoints:
+            cp_dt = entry_dt + timedelta(hours=cp_hours)
+            checkpoint_times.append(cp_dt.isoformat())
+            checkpoint_results.append(None)  # Will be WIN/LOSS when evaluated
+            checkpoint_evaluated.append(False)
+        
+        LOGGER.info(
+            f"[{symbol}] Trust Level {trust_level}: Checkpoints scheduled at "
+            f"{', '.join([f'{cp}hr' for cp in checkpoints])}"
+        )
+        
         params = (
             paper_trade_id, cascade_id, symbol,
             signal_direction.upper(), signal_confidence, signal_time,
@@ -229,7 +255,12 @@ class PaperTracker:
             target_time,
             position_size, stop_loss_pct, take_profit_pct,
             "PENDING",
-            signal_time
+            signal_time,
+            trust_level,
+            json.dumps(checkpoint_times),
+            json.dumps(checkpoint_results),
+            json.dumps(checkpoint_evaluated),
+            json.dumps([])  # checkpoint_prices starts empty
         )
         
         try:
@@ -242,8 +273,10 @@ class PaperTracker:
                         signal_direction, signal_confidence, signal_time,
                         entry_price, entry_time, target_time,
                         position_size, stop_loss_pct, take_profit_pct,
-                        outcome, created_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        outcome, created_at,
+                        trust_level, checkpoint_times, checkpoint_results,
+                        checkpoint_evaluated, checkpoint_prices
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, params)
                 conn.commit()
                 conn.close()
@@ -255,15 +288,17 @@ class PaperTracker:
                         signal_direction, signal_confidence, signal_time,
                         entry_price, entry_time, target_time,
                         position_size, stop_loss_pct, take_profit_pct,
-                        outcome, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        outcome, created_at,
+                        trust_level, checkpoint_times, checkpoint_results,
+                        checkpoint_evaluated, checkpoint_prices
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, params)
                 conn.commit()
                 conn.close()
             
             LOGGER.info(
                 f"📝 Paper trade logged: {symbol} {signal_direction} "
-                f"@ ${entry_price:,.2f} (conf={signal_confidence:.1%})"
+                f"@ ${entry_price:,.2f} (conf={signal_confidence:.1%}, trust_level={trust_level})"
             )
             
             return paper_trade_id
@@ -448,19 +483,25 @@ class PaperTracker:
     
     def check_all_pending(self, price_data: dict) -> list:
         """
-        Check all pending paper trades and resolve if target time reached.
+        Check all pending paper trades and evaluate checkpoints + final resolution.
+        
+        MULTI-CHECKPOINT SYSTEM:
+        - Level 1: Single checkpoint at 48hr
+        - Level 2: Checkpoints at 60hr and 120hr (both must pass)
+        - Level 3: Checkpoints at 72hr and 168hr (both must pass)
         
         Args:
             price_data: {"BTC": 87500.0, "ETH": 3200.0, ...}
         
         Returns:
-            List of resolved trades
+            List of resolved trades (final outcomes only)
         """
         conn = self._get_connection()
         
         try:
             cur = self._execute(conn, """
-                SELECT paper_trade_id, symbol, target_time
+                SELECT paper_trade_id, symbol, target_time, signal_direction, entry_price,
+                       trust_level, checkpoint_times, checkpoint_results, checkpoint_evaluated, checkpoint_prices
                 FROM paper_trades
                 WHERE outcome = 'PENDING'
                 ORDER BY target_time ASC
@@ -469,37 +510,197 @@ class PaperTracker:
             rows = self._fetchall(cur)
             
             resolved = []
+            checkpoint_updates = []
             now = datetime.utcnow()
             
             for trade in rows:
-                # Parse target_time and strip timezone to compare with naive utcnow
+                symbol = trade["symbol"]
+                paper_trade_id = trade["paper_trade_id"]
+                
+                # Skip if no current price available
+                if symbol not in price_data:
+                    continue
+                
+                current_price = price_data[symbol]
+                
+                # =====================================================================
+                # MULTI-CHECKPOINT EVALUATION
+                # Check each checkpoint that hasn't been evaluated yet
+                # =====================================================================
+                trust_level = trade.get("trust_level", 1) or 1
+                
+                # Parse checkpoint arrays (handle both string JSON and native JSONB)
+                checkpoint_times = trade.get("checkpoint_times") or []
+                checkpoint_results = trade.get("checkpoint_results") or []
+                checkpoint_evaluated = trade.get("checkpoint_evaluated") or []
+                checkpoint_prices = trade.get("checkpoint_prices") or []
+                
+                if isinstance(checkpoint_times, str):
+                    checkpoint_times = json.loads(checkpoint_times)
+                if isinstance(checkpoint_results, str):
+                    checkpoint_results = json.loads(checkpoint_results)
+                if isinstance(checkpoint_evaluated, str):
+                    checkpoint_evaluated = json.loads(checkpoint_evaluated)
+                if isinstance(checkpoint_prices, str):
+                    checkpoint_prices = json.loads(checkpoint_prices)
+                
+                # Ensure lists are proper length
+                if not checkpoint_times:
+                    # Legacy trade without checkpoints - treat as single checkpoint at target_time
+                    checkpoint_times = [trade["target_time"]]
+                    checkpoint_results = [None]
+                    checkpoint_evaluated = [False]
+                    checkpoint_prices = []
+                
+                entry_price = trade["entry_price"]
+                signal_direction = trade["signal_direction"]
+                checkpoints_updated = False
+                
+                # Check each checkpoint
+                for i, cp_time_str in enumerate(checkpoint_times):
+                    # Skip if already evaluated
+                    if i < len(checkpoint_evaluated) and checkpoint_evaluated[i]:
+                        continue
+                    
+                    # Parse checkpoint time
+                    cp_time = datetime.fromisoformat(cp_time_str.replace("Z", "+00:00"))
+                    if cp_time.tzinfo is not None:
+                        cp_time = cp_time.replace(tzinfo=None)
+                    
+                    # Checkpoint time reached?
+                    if now >= cp_time:
+                        # Calculate checkpoint outcome
+                        price_change = current_price - entry_price
+                        actual_direction = "UP" if price_change > 0 else "DOWN"
+                        
+                        # Determine if this checkpoint is a win
+                        if signal_direction == "BULLISH":
+                            cp_result = "WIN" if actual_direction == "UP" else "LOSS"
+                        else:  # BEARISH
+                            cp_result = "WIN" if actual_direction == "DOWN" else "LOSS"
+                        
+                        # Update checkpoint arrays
+                        while len(checkpoint_results) <= i:
+                            checkpoint_results.append(None)
+                        while len(checkpoint_evaluated) <= i:
+                            checkpoint_evaluated.append(False)
+                        while len(checkpoint_prices) <= i:
+                            checkpoint_prices.append(None)
+                        
+                        checkpoint_results[i] = cp_result
+                        checkpoint_evaluated[i] = True
+                        checkpoint_prices[i] = current_price
+                        checkpoints_updated = True
+                        
+                        # Calculate which checkpoint this is (1/2, 2/2, etc.)
+                        cp_num = i + 1
+                        total_cps = len(checkpoint_times)
+                        
+                        # Log checkpoint evaluation
+                        cp_emoji = "✓" if cp_result == "WIN" else "✗"
+                        LOGGER.info(
+                            f"[{symbol}] Trust Level {trust_level}: Checkpoint {cp_num}/{total_cps} "
+                            f"- {cp_result} {cp_emoji} (entry=${entry_price:.2f}, now=${current_price:.2f})"
+                        )
+                        
+                        # =====================================================================
+                        # TRUST LADDER: Record checkpoint outcome
+                        # This is what enables multi-checkpoint tracking for promotion
+                        # =====================================================================
+                        try:
+                            from core.trust_ladder import record_prediction_outcome
+                            is_win = cp_result == "WIN"
+                            is_final = (cp_num == total_cps)  # Is this the final checkpoint?
+                            
+                            trust_result = record_prediction_outcome(
+                                symbol, 
+                                is_win, 
+                                is_checkpoint=not is_final  # True for intermediate, False for final
+                            )
+                            
+                            if trust_result.get("promoted"):
+                                LOGGER.info(
+                                    f"🚀 {symbol} PROMOTED to Level {trust_result['new_level']} "
+                                    f"(all checkpoints passed)"
+                                )
+                            elif trust_result.get("demoted"):
+                                LOGGER.info(
+                                    f"📉 {symbol} DEMOTED to Level 1 "
+                                    f"(checkpoint {cp_num}/{total_cps} failed)"
+                                )
+                        except Exception as e:
+                            LOGGER.debug(f"Trust ladder checkpoint update failed: {e}")
+                
+                # Save checkpoint updates to database
+                if checkpoints_updated:
+                    try:
+                        if self.use_postgres:
+                            update_conn = self._get_postgres_connection()
+                            update_cur = update_conn.cursor()
+                            update_cur.execute("""
+                                UPDATE paper_trades
+                                SET checkpoint_results = %s,
+                                    checkpoint_evaluated = %s,
+                                    checkpoint_prices = %s
+                                WHERE paper_trade_id = %s
+                            """, (
+                                json.dumps(checkpoint_results),
+                                json.dumps(checkpoint_evaluated),
+                                json.dumps(checkpoint_prices),
+                                paper_trade_id
+                            ))
+                            update_conn.commit()
+                            update_conn.close()
+                        else:
+                            update_conn = sqlite3.connect(self.db_path)
+                            update_conn.execute("""
+                                UPDATE paper_trades
+                                SET checkpoint_results = ?,
+                                    checkpoint_evaluated = ?,
+                                    checkpoint_prices = ?
+                                WHERE paper_trade_id = ?
+                            """, (
+                                json.dumps(checkpoint_results),
+                                json.dumps(checkpoint_evaluated),
+                                json.dumps(checkpoint_prices),
+                                paper_trade_id
+                            ))
+                            update_conn.commit()
+                            update_conn.close()
+                            
+                        LOGGER.info(
+                            f"[{symbol}] Checkpoint data saved: {checkpoint_results}"
+                        )
+                    except Exception as e:
+                        LOGGER.error(f"Failed to save checkpoint data: {e}")
+                
+                # =====================================================================
+                # FINAL RESOLUTION: Check if target time reached for final outcome
+                # =====================================================================
                 target_time = datetime.fromisoformat(trade["target_time"].replace("Z", "+00:00"))
                 if target_time.tzinfo is not None:
                     target_time = target_time.replace(tzinfo=None)
                 
-                # Target time reached?
                 if now >= target_time:
-                    symbol = trade["symbol"]
+                    result = self.check_outcome(paper_trade_id, current_price)
                     
-                    # Have current price?
-                    if symbol in price_data:
-                        current_price = price_data[symbol]
-                        result = self.check_outcome(trade["paper_trade_id"], current_price)
-                        
-                        if result.get("resolved"):
-                            resolved.append({
-                                "paper_trade_id": trade["paper_trade_id"],
-                                "symbol": symbol,
-                                **result
-                            })
+                    if result.get("resolved"):
+                        resolved.append({
+                            "paper_trade_id": paper_trade_id,
+                            "symbol": symbol,
+                            "checkpoint_results": checkpoint_results,
+                            **result
+                        })
             
             if resolved:
-                LOGGER.info(f"✅ Resolved {len(resolved)} paper trades")
+                LOGGER.info(f"✅ Resolved {len(resolved)} paper trades (final outcomes)")
             
             return resolved
         
         except Exception as e:
             LOGGER.error(f"Failed to check pending trades: {e}")
+            import traceback
+            LOGGER.error(traceback.format_exc())
             return []
         finally:
             conn.close()
