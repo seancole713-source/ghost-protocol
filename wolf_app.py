@@ -24394,6 +24394,80 @@ async def debug_checkpoint_status():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/promote-symbol")
+async def debug_promote_symbol(symbol: str, level: int = 2):
+    """
+    TEST ENDPOINT: Promote a symbol to a higher trust level for testing multi-checkpoint.
+    
+    Args:
+        symbol: Symbol to promote (e.g., BTC, ETH)
+        level: Trust level (1, 2, or 3)
+    
+    After promotion, the next trade for this symbol will have:
+    - Level 2: checkpoint_times at [60hr, 120hr]
+    - Level 3: checkpoint_times at [72hr, 168hr]
+    """
+    if level not in [1, 2, 3]:
+        return {"error": f"Invalid level {level}. Must be 1, 2, or 3"}
+    
+    symbol = symbol.upper()
+    
+    try:
+        import psycopg2
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        
+        # Upsert the symbol to the specified trust level
+        cursor.execute("""
+            INSERT INTO ghost_symbol_trust (symbol, trust_level, consecutive_wins, checkpoint_wins, total_predictions, total_wins, last_updated)
+            VALUES (%s, %s, %s, 0, 0, 0, NOW())
+            ON CONFLICT (symbol) DO UPDATE SET 
+                trust_level = %s,
+                consecutive_wins = %s,
+                last_updated = NOW()
+        """, (symbol, level, level - 1, level, level - 1))  # consecutive_wins = level-1 to show progression
+        
+        conn.commit()
+        
+        # Verify the update
+        cursor.execute("""
+            SELECT symbol, trust_level, consecutive_wins, checkpoint_wins
+            FROM ghost_symbol_trust
+            WHERE symbol = %s
+        """, (symbol,))
+        
+        row = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        level_names = {1: "Standard (48hr)", 2: "Extended (60hr+120hr)", 3: "Focused (72hr+168hr)"}
+        
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "promoted_to": level,
+            "level_name": level_names.get(level),
+            "current_state": {
+                "symbol": row[0],
+                "trust_level": row[1],
+                "consecutive_wins": row[2],
+                "checkpoint_wins": row[3]
+            } if row else None,
+            "next_trade_will_have": f"checkpoint_times with {2 if level >= 2 else 1} checkpoints",
+            "message": f"✅ {symbol} promoted to Level {level}. Next trade will use multi-checkpoint evaluation."
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/db-clean")
 async def debug_db_clean(
     mode: str = "preview",
