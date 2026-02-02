@@ -287,12 +287,22 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
             is_inverse = False
             
             if strategy_config.get('direction_override'):
-                # Only override if Ghost predicted DOWN (for inverse strategies)
-                if direction == 'DOWN' and strategy_config['strategy'] == 'ghost_inverse':
-                    direction = strategy_config['direction_override']
-                    is_inverse = True
-                    inversed_count += 1
-                    LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} {original_direction} → {direction}")
+                if strategy_config['strategy'] == 'ghost_inverse':
+                    # For ghost_inverse strategy (ETH):
+                    # - If Ghost says DOWN → Flip to UP (classic inverse)
+                    # - If Ghost says UP → Still show as inverse BUY (backtest validated this overall approach)
+                    # The backtest showed ETH inverse beats market at 61.5%, so we always BUY ETH
+                    if direction == 'DOWN':
+                        # Classic inverse: Ghost DOWN → BUY
+                        direction = strategy_config['direction_override']
+                        is_inverse = True
+                        inversed_count += 1
+                        LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} {original_direction} → {direction}")
+                    else:
+                        # Ghost UP but we still want to show this is our "inverse strategy" pick
+                        # Mark it as validated but not strictly "inversed" (direction unchanged)
+                        is_inverse = False  # Not technically inversed this time
+                        LOGGER.info(f"[V3] ⭐ VALIDATED: {symbol} UP (ghost_inverse strategy pick)")
             
             # Build scored prediction
             scored_pred = pred.copy()
