@@ -231,16 +231,20 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
             LOGGER.debug(f"[V3] BLACKLIST skip: {symbol}")
             continue
         
-        # 2. Minimum confidence check
+        # 2. Check for inverse candidate FIRST (before confidence check)
+        # Inverse candidates bypass confidence check since they become good signals when flipped
+        is_inverse = is_v3_inverse_candidate(symbol, direction)
+        is_whitelisted = symbol in V3_WHITELIST_STOCKS or symbol in V3_WHITELIST_CRYPTO
+        
+        # 3. Minimum confidence check
         if confidence < V3_MIN_CONFIDENCE:
             # Whitelist symbols get a pass on minimum confidence
-            is_whitelisted = symbol in V3_WHITELIST_STOCKS or symbol in V3_WHITELIST_CRYPTO
-            if not is_whitelisted:
+            # Inverse candidates ALSO get a pass (they're valuable flipped signals)
+            if not is_whitelisted and not is_inverse:
                 LOGGER.debug(f"[V3] Low confidence skip: {symbol} ({confidence:.0%})")
                 continue
         
-        # 3. Check for inverse candidate
-        is_inverse = is_v3_inverse_candidate(symbol, direction)
+        # 4. Apply inverse logic
         original_direction = direction
         
         if is_inverse:
@@ -249,18 +253,17 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
             inversed_count += 1
             LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} {original_direction} → {direction}")
         
-        # 4. Get historical win rate for the (potentially inversed) direction
+        # 5. Get historical win rate for the (potentially inversed) direction
         historical_win_rate = get_v3_historical_win_rate(symbol, direction)
         
         # For inverse signals, use inverted win rate (0% win = 100% inverse success)
         if is_inverse:
             historical_win_rate = 1.0 - get_v3_historical_win_rate(symbol, original_direction)
         
-        # 5. Calculate V3 score = historical_win_rate × confidence
+        # 6. Calculate V3 score = historical_win_rate × confidence
         v3_score = historical_win_rate * confidence
         
         # Whitelist bonus (small boost for proven performers)
-        is_whitelisted = symbol in V3_WHITELIST_STOCKS or symbol in V3_WHITELIST_CRYPTO
         if is_whitelisted:
             v3_score *= 1.10  # 10% whitelist bonus
         
