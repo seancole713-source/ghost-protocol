@@ -24360,19 +24360,19 @@ async def debug_sweetspot():
         cur.execute("""
             SELECT 
                 CASE 
-                    WHEN confidence >= 0.80 THEN '80-85%'
-                    WHEN confidence >= 0.75 THEN '75-79%'
-                    WHEN confidence >= 0.70 THEN '70-74%'
-                    WHEN confidence >= 0.65 THEN '65-69%'
-                    WHEN confidence >= 0.60 THEN '60-64%'
-                    WHEN confidence >= 0.55 THEN '55-59%'
+                    WHEN signal_confidence >= 0.80 THEN '80-85%'
+                    WHEN signal_confidence >= 0.75 THEN '75-79%'
+                    WHEN signal_confidence >= 0.70 THEN '70-74%'
+                    WHEN signal_confidence >= 0.65 THEN '65-69%'
+                    WHEN signal_confidence >= 0.60 THEN '60-64%'
+                    WHEN signal_confidence >= 0.55 THEN '55-59%'
                     ELSE 'Below 55%'
                 END as confidence_bucket,
                 COUNT(*) as trades,
                 SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
                 ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
             FROM paper_trades
-            WHERE outcome IN ('WIN', 'LOSS') AND confidence IS NOT NULL
+            WHERE outcome IN ('WIN', 'LOSS') AND signal_confidence IS NOT NULL
             GROUP BY confidence_bucket
             ORDER BY confidence_bucket DESC
         """)
@@ -24387,13 +24387,13 @@ async def debug_sweetspot():
         # 4. By Direction
         cur.execute("""
             SELECT 
-                direction,
+                signal_direction as direction,
                 COUNT(*) as trades,
                 SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
                 ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
             FROM paper_trades
-            WHERE outcome IN ('WIN', 'LOSS') AND direction IS NOT NULL
-            GROUP BY direction
+            WHERE outcome IN ('WIN', 'LOSS') AND signal_direction IS NOT NULL
+            GROUP BY signal_direction
             ORDER BY win_rate DESC
         """)
         dir_rows = cur.fetchall()
@@ -24460,13 +24460,13 @@ async def debug_sweetspot():
         cur.execute("""
             SELECT 
                 symbol,
-                direction,
+                signal_direction as direction,
                 COUNT(*) as trades,
                 SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
                 ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
             FROM paper_trades
-            WHERE outcome IN ('WIN', 'LOSS') AND direction IS NOT NULL
-            GROUP BY symbol, direction
+            WHERE outcome IN ('WIN', 'LOSS') AND signal_direction IS NOT NULL
+            GROUP BY symbol, signal_direction
             HAVING COUNT(*) >= 15
             ORDER BY win_rate DESC
             LIMIT 20
