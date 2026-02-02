@@ -24307,7 +24307,100 @@ async def debug_sweetspot():
         
         results = {}
         
-        # 1. Overall stats
+        # Known crypto symbols
+        crypto_symbols = ['BTC', 'ETH', 'SOL', 'XRP', 'AVAX', 'ADA', 'DOT', 'LINK', 'MATIC',
+                         'DOGE', 'SHIB', 'LTC', 'BCH', 'ATOM', 'UNI', 'AAVE', 'MKR', 'CRV',
+                         'RNDR', 'TURBO', 'CHZ', 'ILV', 'ZEC', 'INJ', 'SUI', 'APT', 'ARB', 
+                         'OP', 'TIA', 'SEI', 'FET', 'PEPE', 'WIF', 'BONK', 'FIL', 'ICP',
+                         'NEAR', 'ALGO', 'VET', 'HBAR', 'GRT', 'ENS', 'SAND', 'MANA', 'AXS',
+                         'GALA', 'IMX', 'BLUR', 'APE', 'LDO', 'SNX', 'COMP', 'SUSHI', 'YFI',
+                         '1INCH', 'BAT', 'ZRX', 'DASH', 'XMR', 'ETC', 'ENJ', 'IQ', 'LPT',
+                         'API3', 'BAND', 'MASK', 'CELO', 'JUP', 'IOTX', 'RLC', 'EGLD', 'QNT',
+                         'BRETT', 'SSV', 'RPL', 'BNB', 'KAVA', 'JASMY', 'ROSE', 'FTM', 'ONE']
+        crypto_list = "', '".join(crypto_symbols)
+        
+        # 1. ALL SYMBOLS RANKED (min 20 trades)
+        cur.execute("""
+            SELECT symbol, 
+                   COUNT(*) as trades,
+                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+            FROM paper_trades  
+            WHERE outcome IN ('WIN', 'LOSS')
+            GROUP BY symbol
+            HAVING COUNT(*) >= 20
+            ORDER BY win_rate DESC
+        """)
+        all_symbols = [dict(r) for r in cur.fetchall()]
+        results['all_symbols_ranked'] = all_symbols
+        
+        # 2. STOCKS ONLY (min 15 trades)
+        cur.execute(f"""
+            SELECT symbol, 
+                   COUNT(*) as trades,
+                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+            FROM paper_trades  
+            WHERE outcome IN ('WIN', 'LOSS')
+              AND symbol NOT IN ('{crypto_list}')
+            GROUP BY symbol
+            HAVING COUNT(*) >= 15
+            ORDER BY win_rate DESC
+        """)
+        stocks_only = [dict(r) for r in cur.fetchall()]
+        results['stocks_only'] = stocks_only
+        
+        # 3. CRYPTO ONLY (min 15 trades)
+        cur.execute(f"""
+            SELECT symbol, 
+                   COUNT(*) as trades,
+                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+            FROM paper_trades  
+            WHERE outcome IN ('WIN', 'LOSS')
+              AND symbol IN ('{crypto_list}')
+            GROUP BY symbol
+            HAVING COUNT(*) >= 15
+            ORDER BY win_rate DESC
+        """)
+        crypto_only = [dict(r) for r in cur.fetchall()]
+        results['crypto_only'] = crypto_only
+        
+        # 4. BEST SYMBOL+DIRECTION COMBOS (min 10 trades, top 50)
+        cur.execute("""
+            SELECT symbol, 
+                   signal_direction as direction,
+                   COUNT(*) as trades,
+                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+            FROM paper_trades  
+            WHERE outcome IN ('WIN', 'LOSS')
+            GROUP BY symbol, signal_direction
+            HAVING COUNT(*) >= 10
+            ORDER BY win_rate DESC
+            LIMIT 50
+        """)
+        best_combos = [dict(r) for r in cur.fetchall()]
+        results['best_direction_combos'] = best_combos
+        
+        # 5. WORST PERFORMERS - INVERSE CANDIDATES (min 10 trades, bottom 30)
+        cur.execute("""
+            SELECT symbol, 
+                   signal_direction as direction,
+                   COUNT(*) as trades,
+                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+            FROM paper_trades  
+            WHERE outcome IN ('WIN', 'LOSS')
+            GROUP BY symbol, signal_direction
+            HAVING COUNT(*) >= 10
+            ORDER BY win_rate ASC
+            LIMIT 30
+        """)
+        worst_combos = [dict(r) for r in cur.fetchall()]
+        results['inverse_candidates'] = worst_combos
+        
+        # 6. Overall stats
         cur.execute("""
             SELECT 
                 COUNT(*) as total,
@@ -24316,176 +24409,32 @@ async def debug_sweetspot():
                 SUM(CASE WHEN outcome = 'PENDING' THEN 1 ELSE 0 END) as pending
             FROM paper_trades
         """)
-        row = cur.fetchone()
-        total = row['total']
-        wins = row['wins'] or 0
-        losses = row['losses'] or 0
-        pending = row['pending'] or 0
+        overall = dict(cur.fetchone())
+        wins = overall['wins'] or 0
+        losses = overall['losses'] or 0
         resolved = wins + losses
-        win_rate = round((wins / resolved * 100), 1) if resolved > 0 else 0
+        overall['win_rate'] = round((wins / resolved * 100), 1) if resolved > 0 else 0
+        results['overall'] = overall
         
-        results['overall'] = {
-            'total_trades': total,
-            'resolved': resolved,
-            'pending': pending,
-            'wins': wins,
-            'losses': losses,
-            'win_rate': win_rate,
-            'tradeable': win_rate >= 60,
-            'status': '✅ TRADEABLE' if win_rate >= 60 else ('⚠️ MARGINAL' if win_rate >= 55 else '❌ NOT TRADEABLE')
-        }
+        # Build recommendations
+        tradeable_stocks = [s for s in stocks_only if float(s['win_rate']) >= 60]
+        tradeable_crypto = [s for s in crypto_only if float(s['win_rate']) >= 60]
+        avoid_stocks = [s for s in stocks_only if float(s['win_rate']) < 50]
+        avoid_crypto = [s for s in crypto_only if float(s['win_rate']) < 50]
+        inverse_candidates = [c for c in worst_combos if float(c['win_rate']) <= 20]
         
-        # 2. By Symbol (min 20 trades)
-        cur.execute("""
-            SELECT 
-                symbol,
-                COUNT(*) as total,
-                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades
-            WHERE outcome IN ('WIN', 'LOSS')
-            GROUP BY symbol
-            HAVING COUNT(*) >= 20
-            ORDER BY win_rate DESC
-        """)
-        symbol_rows = cur.fetchall()
-        
-        results['by_symbol'] = {
-            'top_10': [{'symbol': r['symbol'], 'trades': r['total'], 'wins': r['wins'], 'win_rate': float(r['win_rate'])} for r in symbol_rows[:10]],
-            'bottom_10': [{'symbol': r['symbol'], 'trades': r['total'], 'wins': r['wins'], 'win_rate': float(r['win_rate'])} for r in symbol_rows[-10:]],
-            'tradeable_60pct': [{'symbol': r['symbol'], 'trades': r['total'], 'win_rate': float(r['win_rate'])} for r in symbol_rows if r['win_rate'] >= 60]
-        }
-        
-        # 3. By Confidence bucket
-        cur.execute("""
-            SELECT 
-                CASE 
-                    WHEN signal_confidence >= 0.80 THEN '80-85%'
-                    WHEN signal_confidence >= 0.75 THEN '75-79%'
-                    WHEN signal_confidence >= 0.70 THEN '70-74%'
-                    WHEN signal_confidence >= 0.65 THEN '65-69%'
-                    WHEN signal_confidence >= 0.60 THEN '60-64%'
-                    WHEN signal_confidence >= 0.55 THEN '55-59%'
-                    ELSE 'Below 55%'
-                END as confidence_bucket,
-                COUNT(*) as trades,
-                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades
-            WHERE outcome IN ('WIN', 'LOSS') AND signal_confidence IS NOT NULL
-            GROUP BY confidence_bucket
-            ORDER BY confidence_bucket DESC
-        """)
-        conf_rows = cur.fetchall()
-        results['by_confidence'] = [{'bucket': r['confidence_bucket'], 'trades': r['trades'], 'wins': r['wins'], 'win_rate': float(r['win_rate'])} for r in conf_rows]
-        
-        # Find best confidence bucket
-        if conf_rows:
-            best = max(conf_rows, key=lambda r: r['win_rate'])
-            results['best_confidence_bucket'] = {'bucket': best['confidence_bucket'], 'win_rate': float(best['win_rate'])}
-        
-        # 4. By Direction
-        cur.execute("""
-            SELECT 
-                signal_direction as direction,
-                COUNT(*) as trades,
-                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades
-            WHERE outcome IN ('WIN', 'LOSS') AND signal_direction IS NOT NULL
-            GROUP BY signal_direction
-            ORDER BY win_rate DESC
-        """)
-        dir_rows = cur.fetchall()
-        results['by_direction'] = [{'direction': r['direction'], 'trades': r['trades'], 'wins': r['wins'], 'win_rate': float(r['win_rate'])} for r in dir_rows]
-        
-        # 5. By Asset Type
-        crypto_symbols = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'AVAX', 'DOT', 'LINK', 'MATIC', 
-                          'UNI', 'ATOM', 'LTC', 'BCH', 'NEAR', 'APT', 'ARB', 'OP', 'SUI',
-                          'INJ', 'TIA', 'SEI', 'RNDR', 'FET', 'TURBO', 'PEPE', 'WIF', 'BONK',
-                          'DOGE', 'SHIB', 'FIL', 'ICP', 'HBAR', 'VET', 'ALGO', 'SAND', 'MANA',
-                          'AXS', 'GALA', 'ENJ', 'IMX', 'BLUR', 'APE', 'LDO', 'RPL', 'SSV',
-                          'AAVE', 'MKR', 'CRV', 'SNX', 'COMP', 'SUSHI', 'YFI', '1INCH',
-                          'GRT', 'ENS', 'BAT', 'ZRX', 'CHZ', 'ZEC', 'DASH', 'XMR', 'ETC']
-        crypto_list = "', '".join(crypto_symbols)
-        
-        cur.execute(f"""
-            SELECT 
-                CASE WHEN symbol IN ('{crypto_list}') THEN 'CRYPTO' ELSE 'STOCK' END as asset_type,
-                COUNT(*) as trades,
-                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades
-            WHERE outcome IN ('WIN', 'LOSS')
-            GROUP BY asset_type
-            ORDER BY win_rate DESC
-        """)
-        asset_rows = cur.fetchall()
-        results['by_asset_type'] = [{'type': r['asset_type'], 'trades': r['trades'], 'wins': r['wins'], 'win_rate': float(r['win_rate'])} for r in asset_rows]
-        
-        # 6. By Day of Week
-        cur.execute("""
-            SELECT 
-                TO_CHAR(created_at::timestamp, 'Day') as day_name,
-                EXTRACT(DOW FROM created_at::timestamp) as day_num,
-                COUNT(*) as trades,
-                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades
-            WHERE outcome IN ('WIN', 'LOSS') AND created_at IS NOT NULL
-            GROUP BY day_name, day_num
-            ORDER BY day_num
-        """)
-        day_rows = cur.fetchall()
-        results['by_day'] = [{'day': r['day_name'].strip(), 'trades': r['trades'], 'wins': r['wins'], 'win_rate': float(r['win_rate'])} for r in day_rows]
-        
-        # 7. Recent 7 days
-        cur.execute("""
-            SELECT 
-                DATE(created_at::timestamp) as trade_date,
-                COUNT(*) as trades,
-                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
-                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / 
-                      NULLIF(SUM(CASE WHEN outcome IN ('WIN', 'LOSS') THEN 1 ELSE 0 END), 0), 1) as win_rate
-            FROM paper_trades
-            WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'
-            GROUP BY trade_date
-            ORDER BY trade_date DESC
-        """)
-        recent_rows = cur.fetchall()
-        results['recent_7_days'] = [{'date': str(r['trade_date']), 'trades': r['trades'], 'wins': r['wins'] or 0, 'losses': r['losses'] or 0, 'win_rate': float(r['win_rate']) if r['win_rate'] else None} for r in recent_rows]
-        
-        # 8. Best symbol+direction combos (min 15 trades)
-        cur.execute("""
-            SELECT 
-                symbol,
-                signal_direction as direction,
-                COUNT(*) as trades,
-                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades
-            WHERE outcome IN ('WIN', 'LOSS') AND signal_direction IS NOT NULL
-            GROUP BY symbol, signal_direction
-            HAVING COUNT(*) >= 15
-            ORDER BY win_rate DESC
-            LIMIT 20
-        """)
-        combo_rows = cur.fetchall()
-        results['best_combos'] = [{'symbol': r['symbol'], 'direction': r['direction'], 'trades': r['trades'], 'win_rate': float(r['win_rate'])} for r in combo_rows]
-        results['strong_signals_65pct'] = [{'symbol': r['symbol'], 'direction': r['direction'], 'win_rate': float(r['win_rate'])} for r in combo_rows if r['win_rate'] >= 65]
-        
-        # 9. Recommendations
-        tradeable_symbols = results['by_symbol']['tradeable_60pct']
         results['recommendations'] = {
-            'whitelist': [s['symbol'] for s in tradeable_symbols[:5]],
-            'min_confidence': '70%',
-            'focus_on': 'CRYPTO' if any(r['type'] == 'CRYPTO' and r['win_rate'] >= 60 for r in results.get('by_asset_type', [])) else 'STOCK',
-            'expected_win_rate': '60%+' if tradeable_symbols else 'Need more data'
+            'tradeable_stocks': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in tradeable_stocks],
+            'tradeable_crypto': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in tradeable_crypto],
+            'avoid_stocks': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in avoid_stocks],
+            'avoid_crypto': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in avoid_crypto],
+            'inverse_candidates': [{'symbol': c['symbol'], 'direction': c['direction'], 'win_rate': float(c['win_rate']), 'trades': c['trades']} for c in inverse_candidates],
+            'v3_whitelist_stocks': [s['symbol'] for s in tradeable_stocks[:10]],
+            'v3_whitelist_crypto': [s['symbol'] for s in tradeable_crypto[:10]],
+            'v3_blacklist': [s['symbol'] for s in avoid_stocks + avoid_crypto if float(s['win_rate']) < 30]
         }
         
         conn.close()
-        
         return {"ok": True, **results}
         
     except Exception as e:
