@@ -1849,7 +1849,23 @@ class GhostNotificationSystem:
             candidate.get("prediction_48h") or 
             pred.get("prediction_48h")
         )
-        if not target_price or target_price <= 0:
+        
+        # V3 INVERSE FIX: When direction is flipped, we must recalculate target!
+        # Original DOWN target is BELOW entry, but BUY target should be ABOVE entry
+        v3_is_inverse = candidate.get("v3_is_inverse", False)
+        
+        if v3_is_inverse:
+            # RECALCULATE target for inverted direction
+            # Use the same move % but in opposite direction
+            move_pct = 0.05 if asset_class == "crypto" else 0.03
+            if direction in ("UP", "BUY"):
+                # Inverse from DOWN to UP: target should be ABOVE current
+                target_price = current_price * (1 + move_pct)
+            else:
+                # Inverse from UP to DOWN: target should be BELOW current
+                target_price = current_price * (1 - move_pct)
+            LOGGER.debug(f"[V3] Recalculated inverse target for {symbol}: ${target_price:.2f}")
+        elif not target_price or target_price <= 0:
             # Fallback: Calculate from confidence
             if direction in ("UP", "BUY"):
                 move_pct = 0.05 if asset_class == "crypto" else 0.03
@@ -1865,8 +1881,10 @@ class GhostNotificationSystem:
             candidate.get("stop") or
             pred.get("stop")
         )
-        if not stop_price or stop_price <= 0:
-            # Fallback: Calculate stop based on direction
+        
+        # V3 INVERSE FIX: Recalculate stop for inverted direction too
+        if v3_is_inverse or not stop_price or stop_price <= 0:
+            # Calculate stop based on NEW direction
             if direction in ("UP", "BUY"):
                 stop_price = current_price * 0.98  # 2% below for BUY
             else:
