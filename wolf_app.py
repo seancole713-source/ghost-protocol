@@ -24221,6 +24221,70 @@ async def debug_v3_validation():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/v3-filter-test")
+async def debug_v3_filter_test():
+    """
+    Test V3 filter with current predictions.
+    Shows what gets through and why symbols are filtered out.
+    """
+    try:
+        from core.ghost_notifications import (
+            v3_filter_and_score, V3_VALIDATED_STRATEGIES, V3_REMOVED_SYMBOLS,
+            V3_MIN_CONFIDENCE, V3_ENABLED
+        )
+        from core.ghost_agent import get_full_ghost_predictions
+        
+        # Get raw predictions
+        raw_preds = await get_full_ghost_predictions()
+        
+        # Extract validated symbols from raw
+        validated_symbols = ['ETH', 'XRP', 'LINK']
+        raw_validated = []
+        for p in raw_preds:
+            sym = p.get('symbol', '').upper()
+            if sym in validated_symbols:
+                raw_validated.append({
+                    'symbol': sym,
+                    'direction': p.get('direction'),
+                    'confidence': p.get('confidence'),
+                    'asset_type': p.get('asset_type'),
+                })
+        
+        # Run V3 filter
+        filtered = v3_filter_and_score(raw_preds)
+        
+        # Extract crypto from filtered
+        filtered_crypto = [p for p in filtered if p.get('asset_type') == 'crypto']
+        
+        return {
+            "ok": True,
+            "v3_enabled": V3_ENABLED,
+            "min_confidence": V3_MIN_CONFIDENCE,
+            "raw_predictions_count": len(raw_preds),
+            "raw_validated_symbols": raw_validated,
+            "filtered_count": len(filtered),
+            "filtered_crypto_count": len(filtered_crypto),
+            "filtered_crypto": [
+                {
+                    'symbol': p.get('symbol'),
+                    'direction': p.get('direction'),
+                    'v3_is_inverse': p.get('v3_is_inverse'),
+                    'v3_validated': p.get('v3_validated'),
+                    'v3_strategy': p.get('v3_strategy'),
+                }
+                for p in filtered_crypto
+            ],
+            "explanation": {
+                "ETH": "Only included if Ghost predicts DOWN (inverse to UP)",
+                "XRP": "Included for any direction (mean_reversion)",
+                "LINK": "Included for any direction (mean_reversion)",
+            }
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/db-audit")
 async def debug_db_audit():
     """
