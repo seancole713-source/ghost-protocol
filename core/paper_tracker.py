@@ -215,10 +215,10 @@ class PaperTracker:
             checkpoints = TRUST_LEVELS[trust_level]["checkpoints"]
             LOGGER.info(f"[{symbol}] Trust Level {trust_level}: {prediction_hours}hr prediction window, checkpoints={checkpoints}")
         except Exception as e:
-            LOGGER.debug(f"[{symbol}] Trust ladder unavailable: {e} - using default 48hr")
-            prediction_hours = 48
+            LOGGER.debug(f"[{symbol}] Trust ladder unavailable: {e} - using default 72hr")
+            prediction_hours = 72  # Changed from 48 (backtest validated)
             trust_level = 1
-            checkpoints = [48]
+            checkpoints = [72]
         
         # Calculate target time based on trust level
         try:

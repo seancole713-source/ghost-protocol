@@ -30,11 +30,13 @@ from dataclasses import dataclass
 LOGGER = logging.getLogger("ghost.trust_ladder")
 
 # Trust level configurations
+# UPDATED 2026-02-02: Changed Level 1 from 48h to 72h based on backtest results
+# 72h had more statistically significant results than 48h
 TRUST_LEVELS = {
     1: {
         "name": "Standard",
-        "prediction_hours": 48,
-        "checkpoints": [48],  # Single check at 48hr
+        "prediction_hours": 72,   # Changed from 48 (backtest validated)
+        "checkpoints": [72],      # Single check at 72hr
         "wins_to_promote": 1,
         "confidence_boost": 1.0,  # No boost
     },

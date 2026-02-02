@@ -68,60 +68,91 @@ TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
 # ============================================================================
 # V3 QUALITY FILTER - Based on 28K+ Paper Trades Sweetspot Analysis
 # ============================================================================
+# V3 BACKTEST-VALIDATED CONFIGURATION
+# ============================================================================
+# Based on 52,433 trades analyzed across 272 strategy combinations
+# Only includes statistically significant results (p < 0.05)
+# Updated: 2026-02-02 based on backtest/results/backtest_report.txt
 
-# Stocks with >50% win rate (proven performers)
+# VALIDATED STRATEGIES - These have PROVEN edge (p < 0.05)
+V3_VALIDATED_STRATEGIES = {
+    # ETH inverse @ 72h: 61.5% win rate, 78 trades, p=0.027
+    'ETH': {
+        'strategy': 'ghost_inverse',
+        'direction_override': 'UP',  # Always flip DOWN to UP
+        'hold_hours': 72,
+        'win_rate': 0.615,
+        'sample_size': 78,
+        'p_value': 0.027,
+        'confidence_interval': (0.50, 0.72),
+    },
+    # XRP mean_reversion @ 168h: 56.5% win rate, 239 trades, p=0.026
+    'XRP': {
+        'strategy': 'mean_reversion',
+        'direction_override': None,  # Use Ghost's direction
+        'hold_hours': 168,
+        'win_rate': 0.565,
+        'sample_size': 239,
+        'p_value': 0.026,
+        'confidence_interval': (0.50, 0.63),
+    },
+    # LINK mean_reversion @ 72h: 55.2% win rate, 268 trades, p=0.049
+    'LINK': {
+        'strategy': 'mean_reversion',
+        'direction_override': None,
+        'hold_hours': 72,
+        'win_rate': 0.552,
+        'sample_size': 268,
+        'p_value': 0.049,
+        'confidence_interval': (0.49, 0.61),
+    },
+}
+
+# STOCKS - Keep from sweetspot analysis (limited sample but only options)
 V3_WHITELIST_STOCKS = ['T', 'BMBL', 'XPO']
+V3_STOCK_WIN_RATES = {
+    ('T', 'DOWN'): (1.00, 94),      # 100% but only 94 trades
+    ('BMBL', 'UP'): (0.75, 50),     # 75%, 50 trades
+    ('XPO', 'UP'): (0.72, 42),      # 72%, 42 trades
+}
 
-# Crypto with >60% win rate (proven performers)
-V3_WHITELIST_CRYPTO = ['TURBO', 'RNDR', 'IQ', 'ILV', 'CHZ', 'AAVE', 'ZEC']
+# CRYPTO WHITELIST - Only backtest-validated symbols
+V3_WHITELIST_CRYPTO = ['ETH', 'XRP', 'LINK']
 
-# Major crypto with 0% win rate on DOWN predictions - FLIP to inverse
-# These are 100% INVERSE SIGNALS (0% win = 100% wrong = flip direction)
-V3_INVERSE_LIST = ['ETH', 'BTC', 'SOL', 'XRP', 'BNB', 'ADA', 'AVAX', 'LINK', 'LTC', 
-                   'SHIB', 'SUI', 'ALGO', 'DOT', 'FIL', 'VET', 'HBAR', 'NEAR', 'ARB']
+# REMOVED FROM V3 - Not validated by 52K trade backtest
+# These showed "100%" on small samples but ~50% on large samples
+V3_REMOVED_SYMBOLS = {
+    'SOL': 'Inverse 50.2% over 4962 trades - not significant',
+    'BTC': 'Inverse 52% over large sample - not significant', 
+    'AVAX': 'Inverse 48% - actually loses, bearish bias only',
+    'TURBO': 'No backtest data - removed until validated',
+    'RNDR': 'No backtest data - removed until validated',
+    'IQ': 'No backtest data - removed until validated',
+    'ILV': 'No backtest data - removed until validated',
+    'CHZ': 'No backtest data - removed until validated',
+    'ZEC': 'No backtest data - removed until validated',
+    'AAVE': 'No backtest data - removed until validated',
+    'BNB': 'No backtest data - removed until validated',
+    'ADA': 'No backtest data - removed until validated',
+    'LTC': 'No backtest data - removed until validated',
+}
 
-# Complete blacklist (symbols with <30% overall win rate - DO NOT TRADE)
+# BLACKLIST - Symbols and strategies that consistently LOSE
 V3_BLACKLIST = ['TGTX', 'SOUN', 'ABCL', 'ZIL', 'MANA', 'SAND', 'RLC', '1INCH', 
                 'IMX', 'APT', 'SUSHI', 'YFI', 'LDO', 'ETC']
 
-# V3 minimum confidence threshold
-V3_MIN_CONFIDENCE = 0.75
+# RSI strategies consistently underperform (45-46% win rate)
+V3_AVOID_STRATEGIES = ['RSI', 'RSI_extreme']
 
-# Historical win rates from 28K paper trade analysis
-# Format: {symbol: {direction: (win_rate, sample_size)}}
-# IMPORTANT: Only show win rate publicly if sample_size >= V3_MIN_SAMPLE_SIZE
-V3_MIN_SAMPLE_SIZE = 50  # Minimum trades to show win rate without asterisk
+# V3 minimum confidence threshold (lowered since we're more selective)
+V3_MIN_CONFIDENCE = 0.70
 
-V3_HISTORICAL_WIN_RATES = {
-    # TOP PERFORMERS (with sample sizes)
-    'T': {'UP': (0.50, 47), 'DOWN': (1.00, 94)},       # 100% on DOWN (94 trades) ✓
-    'TURBO': {'UP': (1.00, 31), 'DOWN': (0.97, 32)},   # 98.4% overall
-    'RNDR': {'UP': (1.00, 15), 'DOWN': (0.90, 16)},    # 90.3% overall
-    'BMBL': {'UP': (0.75, 28), 'DOWN': (0.50, 22)},    # 72% overall
-    'XPO': {'UP': (0.72, 25), 'DOWN': (0.50, 17)},     # 70.6% overall
-    'IQ': {'UP': (0.74, 31), 'DOWN': (0.50, 28)},      # 74.2% overall
-    'ILV': {'UP': (0.58, 35), 'DOWN': (0.82, 34)},     # 65.7% overall
-    'CHZ': {'UP': (0.50, 30), 'DOWN': (0.75, 30)},     # 63.3% overall
-    'AAVE': {'UP': (0.90, 10), 'DOWN': (0.50, 10)},    # 60% overall
-    'ZEC': {'UP': (0.50, 15), 'DOWN': (0.81, 31)},     # 80.6% on DOWN
-    
-    # INVERSE CANDIDATES (0% win on DOWN = flip to UP)
-    # Note: Small sample sizes - inverse win rates are asterisked
-    'ETH': {'UP': (0.50, 14), 'DOWN': (0.00, 29)},     # 0% on DOWN (29 trades) -> INVERSE
-    'BTC': {'UP': (0.50, 16), 'DOWN': (0.03, 33)},     # 3% on DOWN (33 trades) -> INVERSE
-    'SOL': {'UP': (0.50, 15), 'DOWN': (0.00, 30)},     # 0% on DOWN (30 trades) -> INVERSE
-    'XRP': {'UP': (0.50, 14), 'DOWN': (0.00, 28)},     # 0% on DOWN (28 trades) -> INVERSE
-    'BNB': {'UP': (0.50, 14), 'DOWN': (0.00, 28)},     # 0% on DOWN (28 trades) -> INVERSE
-    'ADA': {'UP': (0.50, 14), 'DOWN': (0.00, 28)},     # 0% on DOWN (28 trades) -> INVERSE
-    'AVAX': {'UP': (0.50, 13), 'DOWN': (0.00, 27)},    # 0% on DOWN (27 trades) -> INVERSE
-    'LINK': {'UP': (0.50, 9), 'DOWN': (0.00, 19)},     # 0% on DOWN (19 trades) -> INVERSE
-    'LTC': {'UP': (0.50, 13), 'DOWN': (0.00, 26)},     # 0% on DOWN (26 trades) -> INVERSE
-    'SHIB': {'UP': (0.50, 8), 'DOWN': (0.00, 16)},     # 0% on DOWN (16 trades) -> INVERSE
-    'DOT': {'UP': (0.50, 8), 'DOWN': (0.00, 16)},      # 0% on DOWN (16 trades) -> INVERSE
-    'NEAR': {'UP': (0.50, 8), 'DOWN': (0.00, 17)},     # 0% on DOWN (17 trades) -> INVERSE
-    'HBAR': {'UP': (0.50, 8), 'DOWN': (0.00, 17)},     # 0% on DOWN (17 trades) -> INVERSE
-    'ARB': {'UP': (0.50, 7), 'DOWN': (0.00, 15)},      # 0% on DOWN (15 trades) -> INVERSE
-}
+# DEFAULT HOLD PERIOD - Changed from 48h to 72h based on backtest
+# 72h had most statistically significant results
+V3_DEFAULT_HOLD_HOURS = 72
+
+# Minimum sample size for displaying win rates without asterisk
+V3_MIN_SAMPLE_SIZE = 50
 
 # V3 Mode toggle (enable by default)
 V3_ENABLED = os.getenv("V3_QUALITY_ENABLED", "1") == "1"
@@ -166,158 +197,174 @@ def is_stock_market_hours() -> bool:
 # V3 QUALITY FILTER FUNCTIONS
 # ============================================================================
 
-def get_v3_historical_win_rate(symbol: str, direction: str) -> tuple:
+def get_v3_validated_config(symbol: str) -> dict:
     """
-    Get historical win rate for symbol+direction from V3 analysis.
+    Get backtest-validated strategy config for a symbol.
+    
+    Returns:
+        Strategy config dict or None if not validated
+    """
+    symbol = symbol.upper()
+    return V3_VALIDATED_STRATEGIES.get(symbol)
+
+
+def get_v3_stock_win_rate(symbol: str, direction: str) -> tuple:
+    """
+    Get win rate for whitelist stocks.
     
     Returns:
         Tuple of (win_rate, sample_size) or (0.50, 0) if unknown
     """
-    symbol = symbol.upper()
-    direction = direction.upper()
-    
-    if symbol in V3_HISTORICAL_WIN_RATES:
-        rates = V3_HISTORICAL_WIN_RATES[symbol]
-        data = rates.get(direction, (0.50, 0))
-        # Handle old format {dir: rate} vs new format {dir: (rate, n)}
-        if isinstance(data, tuple):
-            return data
-        else:
-            return (data, 0)  # Old format, no sample size
-    
-    # Unknown symbol - default to 50%
-    return (0.50, 0)
+    key = (symbol.upper(), direction.upper())
+    return V3_STOCK_WIN_RATES.get(key, (0.50, 0))
 
 
-def is_v3_inverse_candidate(symbol: str, direction: str) -> bool:
-    """
-    Check if symbol+direction should be INVERSED based on V3 analysis.
-    
-    Returns True if Ghost is historically 100% WRONG on this symbol+direction.
-    """
-    symbol = symbol.upper()
-    direction = direction.upper()
-    
-    # Only inverse DOWN predictions for crypto in inverse list
-    if symbol in V3_INVERSE_LIST and direction == 'DOWN':
-        return True
-    
-    return False
+def is_v3_validated_symbol(symbol: str) -> bool:
+    """Check if symbol has backtest-validated strategy."""
+    return symbol.upper() in V3_VALIDATED_STRATEGIES
 
 
 def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
     """
-    Apply V3 quality filter: whitelist, blacklist, inverse, and historical scoring.
+    Filter and score predictions using BACKTEST-VALIDATED V3 logic.
     
-    This is the core V3 logic:
-    1. Skip blacklisted symbols
-    2. Prioritize whitelisted symbols
-    3. Apply inverse logic for major crypto DOWN predictions
-    4. Score by historical_win_rate × confidence
+    Based on 52,433 trades analyzed. Only returns predictions for:
+    1. Validated crypto strategies (ETH, XRP, LINK) with p < 0.05
+    2. Whitelist stocks (T, BMBL, XPO) from sweetspot analysis
+    
+    Applies strategy-specific parameters (hold time, direction override).
     
     Args:
-        predictions: List of prediction dicts with 'symbol', 'direction', 'confidence'
+        predictions: List of prediction dicts
         
     Returns:
-        List of scored predictions, sorted by v3_score descending
+        List of scored predictions, sorted by score descending
     """
     if not V3_ENABLED:
         LOGGER.info("[V3] V3 quality filter DISABLED - using legacy scoring")
         return predictions
     
     scored = []
-    skipped_blacklist = 0
+    skipped_removed = 0
+    skipped_low_conf = 0
     inversed_count = 0
     
     for pred in predictions:
         symbol = pred.get('symbol', '').upper()
         direction = pred.get('direction', 'UP').upper()
         confidence = pred.get('confidence', 0.5)
+        asset_type = pred.get('asset_type', 'crypto')
         
-        # 1. Skip blacklisted symbols
+        if not symbol or not direction:
+            continue
+        
+        # 1. Skip symbols in removed list (not validated by backtest)
+        if symbol in V3_REMOVED_SYMBOLS:
+            skipped_removed += 1
+            LOGGER.debug(f"[V3] REMOVED skip: {symbol} - {V3_REMOVED_SYMBOLS[symbol]}")
+            continue
+        
+        # 2. Skip blacklisted symbols
         if symbol in V3_BLACKLIST:
-            skipped_blacklist += 1
+            skipped_removed += 1
             LOGGER.debug(f"[V3] BLACKLIST skip: {symbol}")
             continue
         
-        # 2. Check for inverse candidate FIRST (before confidence check)
-        # Inverse candidates bypass confidence check since they become good signals when flipped
-        is_inverse = is_v3_inverse_candidate(symbol, direction)
-        is_whitelisted = symbol in V3_WHITELIST_STOCKS or symbol in V3_WHITELIST_CRYPTO
-        
-        # 3. Minimum confidence check
-        if confidence < V3_MIN_CONFIDENCE:
-            # Whitelist symbols get a pass on minimum confidence
-            # Inverse candidates ALSO get a pass (they're valuable flipped signals)
-            if not is_whitelisted and not is_inverse:
-                LOGGER.debug(f"[V3] Low confidence skip: {symbol} ({confidence:.0%})")
-                continue
-        
-        # 4. Apply inverse logic
-        original_direction = direction
-        
-        if is_inverse:
-            # FLIP the direction!
-            direction = 'UP' if direction == 'DOWN' else 'DOWN'
-            inversed_count += 1
-            LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} {original_direction} → {direction}")
+        # 3. Check if validated crypto
+        if symbol in V3_VALIDATED_STRATEGIES:
+            strategy_config = V3_VALIDATED_STRATEGIES[symbol]
             
-            # CRITICAL: Recalculate target and stop for the NEW direction
-            # The original target was for DOWN (below entry), BUY needs target ABOVE entry
-            current_price = pred.get('current', 0) or pred.get('current_price', 0) or pred.get('price', 0)
-            if current_price > 0:
-                asset_type = pred.get('asset_type', 'crypto')
-                move_pct = 0.05 if asset_type == 'crypto' else 0.03
-                
-                if direction in ('UP', 'BUY'):
+            # Minimum confidence check (validated symbols still need decent confidence)
+            if confidence < V3_MIN_CONFIDENCE:
+                # ETH inverse bypasses confidence check (the inverse IS the edge)
+                if strategy_config['strategy'] != 'ghost_inverse':
+                    skipped_low_conf += 1
+                    LOGGER.debug(f"[V3] Low confidence skip: {symbol} ({confidence:.0%})")
+                    continue
+            
+            # Apply direction override for inverse strategies
+            original_direction = direction
+            is_inverse = False
+            
+            if strategy_config.get('direction_override'):
+                # Only override if Ghost predicted DOWN (for inverse strategies)
+                if direction == 'DOWN' and strategy_config['strategy'] == 'ghost_inverse':
+                    direction = strategy_config['direction_override']
+                    is_inverse = True
+                    inversed_count += 1
+                    LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} {original_direction} → {direction}")
+            
+            # Build scored prediction
+            scored_pred = pred.copy()
+            scored_pred['direction'] = direction
+            scored_pred['v3_original_direction'] = original_direction if is_inverse else None
+            scored_pred['v3_is_inverse'] = is_inverse
+            scored_pred['v3_strategy'] = strategy_config['strategy']
+            scored_pred['v3_hold_hours'] = strategy_config['hold_hours']
+            scored_pred['v3_historical_win_rate'] = strategy_config['win_rate']
+            scored_pred['v3_sample_size'] = strategy_config['sample_size']
+            scored_pred['v3_p_value'] = strategy_config['p_value']
+            scored_pred['v3_validated'] = True
+            scored_pred['v3_is_whitelisted'] = True
+            scored_pred['hold_days'] = strategy_config['hold_hours'] // 24
+            
+            # Recalculate target/stop if direction changed (inverse)
+            if is_inverse:
+                current_price = pred.get('current', 0) or pred.get('current_price', 0) or pred.get('price', 0)
+                if current_price > 0:
                     # BUY: target above, stop below
-                    pred['target_price'] = current_price * (1 + move_pct)
-                    pred['prediction_48h'] = pred['target_price']
-                    pred['stop'] = current_price * 0.98
-                    pred['stop_loss'] = pred['stop']
-                else:
-                    # SELL: target below, stop above
-                    pred['target_price'] = current_price * (1 - move_pct)
-                    pred['prediction_48h'] = pred['target_price']
-                    pred['stop'] = current_price * 1.02
-                    pred['stop_loss'] = pred['stop']
-                
-                LOGGER.info(f"[V3] Recalculated {symbol}: target=${pred['target_price']:.2f}, stop=${pred['stop']:.2f}")
+                    scored_pred['target_price'] = current_price * 1.05  # +5%
+                    scored_pred['prediction_48h'] = scored_pred['target_price']
+                    scored_pred['stop'] = current_price * 0.98  # -2%
+                    scored_pred['stop_loss'] = scored_pred['stop']
+                    LOGGER.info(f"[V3] Recalculated {symbol}: target=${scored_pred['target_price']:.2f}, stop=${scored_pred['stop']:.2f}")
+            
+            # Score = validated win rate × confidence
+            scored_pred['v3_score'] = strategy_config['win_rate'] * confidence
+            
+            scored.append(scored_pred)
+            continue
         
-        # 5. Get historical win rate for the (potentially inversed) direction
-        historical_win_rate, sample_size = get_v3_historical_win_rate(symbol, direction)
+        # 4. Check if whitelist stock
+        if symbol in V3_WHITELIST_STOCKS:
+            # Minimum confidence check
+            if confidence < V3_MIN_CONFIDENCE:
+                skipped_low_conf += 1
+                continue
+            
+            key = (symbol, direction)
+            win_rate, sample_size = V3_STOCK_WIN_RATES.get(key, (0.50, 0))
+            
+            # Only include if we have data for this direction
+            if win_rate <= 0.50 and sample_size < 30:
+                continue
+            
+            scored_pred = pred.copy()
+            scored_pred['v3_is_inverse'] = False
+            scored_pred['v3_strategy'] = 'whitelist_stock'
+            scored_pred['v3_hold_hours'] = V3_DEFAULT_HOLD_HOURS
+            scored_pred['v3_historical_win_rate'] = win_rate
+            scored_pred['v3_sample_size'] = sample_size
+            scored_pred['v3_validated'] = sample_size >= V3_MIN_SAMPLE_SIZE
+            scored_pred['v3_is_whitelisted'] = True
+            scored_pred['hold_days'] = V3_DEFAULT_HOLD_HOURS // 24
+            scored_pred['v3_score'] = win_rate * confidence
+            
+            scored.append(scored_pred)
+            continue
         
-        # For inverse signals, use inverted win rate (0% win = 100% inverse success)
-        if is_inverse:
-            orig_rate, orig_sample = get_v3_historical_win_rate(symbol, original_direction)
-            historical_win_rate = 1.0 - orig_rate
-            sample_size = orig_sample  # Sample size from the original direction
-        
-        # 6. Calculate V3 score = historical_win_rate × confidence
-        v3_score = historical_win_rate * confidence
-        
-        # Whitelist bonus (small boost for proven performers)
-        if is_whitelisted:
-            v3_score *= 1.10  # 10% whitelist bonus
-        
-        # Build scored prediction
-        scored_pred = pred.copy()
-        scored_pred['direction'] = direction  # May have been inversed
-        scored_pred['v3_score'] = v3_score
-        scored_pred['v3_historical_win_rate'] = historical_win_rate
-        scored_pred['v3_sample_size'] = sample_size  # Sample size for display
-        scored_pred['v3_is_inverse'] = is_inverse
-        scored_pred['v3_original_direction'] = original_direction if is_inverse else None
-        scored_pred['v3_is_whitelisted'] = is_whitelisted
-        
-        scored.append(scored_pred)
+        # Everything else is filtered out
+        LOGGER.debug(f"[V3] Filtered out: {symbol} - not in validated list")
     
-    # Sort by v3_score descending
-    scored.sort(key=lambda x: x['v3_score'], reverse=True)
+    # Sort by score descending
+    scored.sort(key=lambda x: x.get('v3_score', 0), reverse=True)
     
-    LOGGER.info(f"[V3] ✅ Filtered: {len(scored)}/{len(predictions)} passed, {skipped_blacklist} blacklisted, {inversed_count} inversed")
+    LOGGER.info(f"[V3] ✅ Backtest-validated filter: {len(scored)}/{len(predictions)} passed, "
+                f"{skipped_removed} removed/blacklisted, {skipped_low_conf} low confidence, "
+                f"{inversed_count} inversed")
     
-    return scored
+    # Return top 10
+    return scored[:10]
 
 
 # ============================================================================
@@ -1106,7 +1153,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     
     # ===== BUILD SINGLE MESSAGE =====
     all_lines = [
-        "🎯 GHOST TOP 10 — TRADE PLAN",
+        "🎯 GHOST TOP 10 — TRADE PLAN (V3 VALIDATED)",
         f"📅 {date_str} | ⏰ 8:00 AM CT",
     ]
     
@@ -1144,10 +1191,10 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         all_lines.append("(No stock picks today)")
         all_lines.append("")
     
-    # Add crypto section
+    # Add crypto section - BACKTEST VALIDATED (p < 0.05)
     all_lines.extend([
         "━━━━━━━━━━━━━━━━━━━━━━",
-        "🪙 CRYPTO",
+        "🪙 CRYPTO (V3 VALIDATED)",
         "━━━━━━━━━━━━━━━━━━━━━━",
         ""
     ])
@@ -1168,10 +1215,14 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         "━━━━━━━━━━━━━━━━━━━━━━",
         "🟢 BUY | 🔴 SELL",
         "🔄 = Inverse signal (Ghost flipped)",
-        "⭐ = Whitelist (proven performer)",
+        "⭐ = Validated (p < 0.05 in 52K backtest)",
         "✅ = News-feed influenced",
         "💰 = Return on $100 position",
-        "* = Win rate from limited sample (<50 trades)",
+        "",
+        "📊 V3 BACKTEST VALIDATED:",
+        "• ETH: 61.5% @ 72h (p=0.027)",
+        "• XRP: 56.5% @ 168h (p=0.026)",  
+        "• LINK: 55.2% @ 72h (p=0.049)",
         "Ghost V3 is watching 👁️"
     ])
     

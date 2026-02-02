@@ -24131,6 +24131,96 @@ async def debug_inverse_status():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/v3-validation")
+async def debug_v3_validation():
+    """
+    V3 BACKTEST VALIDATION STATUS
+    
+    Shows performance of backtest-validated strategies:
+    - ETH ghost_inverse @ 72h: Expected 61.5% (p=0.027)
+    - XRP mean_reversion @ 168h: Expected 56.5% (p=0.026)
+    - LINK mean_reversion @ 72h: Expected 55.2% (p=0.049)
+    
+    Also shows REMOVED symbols that failed validation.
+    """
+    try:
+        from core.ghost_notifications import V3_VALIDATED_STRATEGIES, V3_REMOVED_SYMBOLS, V3_DEFAULT_HOLD_HOURS
+        import psycopg2
+        
+        # Query live performance for validated symbols
+        DATABASE_URL = os.getenv("DATABASE_URL")
+        live_stats = {}
+        
+        if DATABASE_URL:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            
+            for symbol in V3_VALIDATED_STRATEGIES.keys():
+                cur.execute("""
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN hit_direction = TRUE THEN 1 ELSE 0 END) as wins,
+                        AVG(CASE WHEN hit_direction = TRUE THEN 1.0 ELSE 0.0 END) as win_rate
+                    FROM ghost_prediction_outcomes
+                    WHERE symbol = %s
+                    AND status = 'resolved'
+                    AND created_at > NOW() - INTERVAL '30 days'
+                """, (symbol,))
+                row = cur.fetchone()
+                if row and row[0] > 0:
+                    live_stats[symbol] = {
+                        "total": row[0],
+                        "wins": row[1] or 0,
+                        "live_win_rate": round(float(row[2] or 0), 3),
+                    }
+            
+            cur.close()
+            conn.close()
+        
+        # Build validation report
+        validation_report = {}
+        for symbol, config in V3_VALIDATED_STRATEGIES.items():
+            expected = config.get("win_rate", 0.5)
+            live = live_stats.get(symbol, {}).get("live_win_rate", None)
+            sample = live_stats.get(symbol, {}).get("total", 0)
+            
+            validation_report[symbol] = {
+                "strategy": config.get("strategy"),
+                "hold_hours": config.get("hold_hours"),
+                "backtest_win_rate": expected,
+                "backtest_p_value": config.get("p_value"),
+                "backtest_sample_size": config.get("sample_size"),
+                "live_win_rate": live,
+                "live_sample_size": sample,
+                "tracking": "✅ TRACKING" if sample > 0 else "⏳ NO DATA YET",
+                "validation": "🔬 VALIDATING" if sample < 50 else ("✅ VALIDATED" if live and live >= expected * 0.85 else "⚠️ UNDERPERFORMING"),
+            }
+        
+        return {
+            "ok": True,
+            "v3_mode": "BACKTEST-VALIDATED",
+            "default_hold_hours": V3_DEFAULT_HOLD_HOURS,
+            "validated_symbols": list(V3_VALIDATED_STRATEGIES.keys()),
+            "removed_symbols": list(V3_REMOVED_SYMBOLS),
+            "validation_report": validation_report,
+            "backtest_summary": {
+                "total_trades_analyzed": 52433,
+                "statistically_significant_results": 8,
+                "significance_threshold": "p < 0.05",
+                "overall_market_efficiency": "50.0% (random walk confirmed)",
+            },
+            "notes": [
+                "ETH ghost_inverse: Only symbol where inverting Ghost beats 50%",
+                "XRP/LINK mean_reversion: Price bounces beat trend following",
+                "RSI strategies: 45-46% win rate - consistently LOSE money",
+                "SOL/BTC/AVAX: Removed - no statistical significance",
+            ]
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/db-audit")
 async def debug_db_audit():
     """
