@@ -24310,9 +24310,9 @@ async def debug_sweetspot():
         cur.execute("""
             SELECT 
                 COUNT(*) as total,
-                SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN final_outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN final_outcome IS NULL THEN 1 ELSE 0 END) as pending
+                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN outcome = 'PENDING' THEN 1 ELSE 0 END) as pending
             FROM paper_trades
         """)
         row = cur.fetchone()
@@ -24339,10 +24339,10 @@ async def debug_sweetspot():
             SELECT 
                 symbol,
                 COUNT(*) as total,
-                SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
             FROM paper_trades
-            WHERE final_outcome IS NOT NULL
+            WHERE outcome IN ('WIN', 'LOSS')
             GROUP BY symbol
             HAVING COUNT(*) >= 20
             ORDER BY win_rate DESC
@@ -24368,10 +24368,10 @@ async def debug_sweetspot():
                     ELSE 'Below 55%'
                 END as confidence_bucket,
                 COUNT(*) as trades,
-                SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
             FROM paper_trades
-            WHERE final_outcome IS NOT NULL AND confidence IS NOT NULL
+            WHERE outcome IN ('WIN', 'LOSS') AND confidence IS NOT NULL
             GROUP BY confidence_bucket
             ORDER BY confidence_bucket DESC
         """)
@@ -24388,10 +24388,10 @@ async def debug_sweetspot():
             SELECT 
                 direction,
                 COUNT(*) as trades,
-                SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
             FROM paper_trades
-            WHERE final_outcome IS NOT NULL AND direction IS NOT NULL
+            WHERE outcome IN ('WIN', 'LOSS') AND direction IS NOT NULL
             GROUP BY direction
             ORDER BY win_rate DESC
         """)
@@ -24412,10 +24412,10 @@ async def debug_sweetspot():
             SELECT 
                 CASE WHEN symbol IN ('{crypto_list}') THEN 'CRYPTO' ELSE 'STOCK' END as asset_type,
                 COUNT(*) as trades,
-                SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
             FROM paper_trades
-            WHERE final_outcome IS NOT NULL
+            WHERE outcome IN ('WIN', 'LOSS')
             GROUP BY asset_type
             ORDER BY win_rate DESC
         """)
@@ -24425,13 +24425,13 @@ async def debug_sweetspot():
         # 6. By Day of Week
         cur.execute("""
             SELECT 
-                TO_CHAR(created_at, 'Day') as day_name,
-                EXTRACT(DOW FROM created_at) as day_num,
+                TO_CHAR(created_at::timestamp, 'Day') as day_name,
+                EXTRACT(DOW FROM created_at::timestamp) as day_num,
                 COUNT(*) as trades,
-                SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
             FROM paper_trades
-            WHERE final_outcome IS NOT NULL AND created_at IS NOT NULL
+            WHERE outcome IN ('WIN', 'LOSS') AND created_at IS NOT NULL
             GROUP BY day_name, day_num
             ORDER BY day_num
         """)
@@ -24441,14 +24441,14 @@ async def debug_sweetspot():
         # 7. Recent 7 days
         cur.execute("""
             SELECT 
-                DATE(created_at) as trade_date,
+                DATE(created_at::timestamp) as trade_date,
                 COUNT(*) as trades,
-                SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN final_outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
-                ROUND(100.0 * SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) / 
-                      NULLIF(SUM(CASE WHEN final_outcome IS NOT NULL THEN 1 ELSE 0 END), 0), 1) as win_rate
+                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
+                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / 
+                      NULLIF(SUM(CASE WHEN outcome IN ('WIN', 'LOSS') THEN 1 ELSE 0 END), 0), 1) as win_rate
             FROM paper_trades
-            WHERE created_at >= NOW() - INTERVAL '7 days'
+            WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'
             GROUP BY trade_date
             ORDER BY trade_date DESC
         """)
@@ -24461,10 +24461,10 @@ async def debug_sweetspot():
                 symbol,
                 direction,
                 COUNT(*) as trades,
-                SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                ROUND(100.0 * SUM(CASE WHEN final_outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
             FROM paper_trades
-            WHERE final_outcome IS NOT NULL AND direction IS NOT NULL
+            WHERE outcome IN ('WIN', 'LOSS') AND direction IS NOT NULL
             GROUP BY symbol, direction
             HAVING COUNT(*) >= 15
             ORDER BY win_rate DESC
