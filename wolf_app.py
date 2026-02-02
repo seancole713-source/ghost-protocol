@@ -24480,7 +24480,7 @@ async def debug_sweetspot():
         results['recommendations'] = {
             'whitelist': [s['symbol'] for s in tradeable_symbols[:5]],
             'min_confidence': '70%',
-            'focus_on': 'CRYPTO' if any(r['type'] == 'CRYPTO' and r['win_rate'] >= 60 for r in asset_rows) else 'STOCK',
+            'focus_on': 'CRYPTO' if any(r['type'] == 'CRYPTO' and r['win_rate'] >= 60 for r in results.get('by_asset_type', [])) else 'STOCK',
             'expected_win_rate': '60%+' if tradeable_symbols else 'Need more data'
         }
         
