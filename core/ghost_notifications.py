@@ -88,35 +88,39 @@ V3_BLACKLIST = ['TGTX', 'SOUN', 'ABCL', 'ZIL', 'MANA', 'SAND', 'RLC', '1INCH',
 V3_MIN_CONFIDENCE = 0.75
 
 # Historical win rates from 28K paper trade analysis
-# Format: {symbol: {direction: win_rate}}
+# Format: {symbol: {direction: (win_rate, sample_size)}}
+# IMPORTANT: Only show win rate publicly if sample_size >= V3_MIN_SAMPLE_SIZE
+V3_MIN_SAMPLE_SIZE = 50  # Minimum trades to show win rate without asterisk
+
 V3_HISTORICAL_WIN_RATES = {
-    # TOP PERFORMERS
-    'T': {'UP': 0.50, 'DOWN': 1.00},      # 100% on DOWN (94 trades)
-    'TURBO': {'UP': 1.00, 'DOWN': 0.97},  # 98.4% overall
-    'RNDR': {'UP': 1.00, 'DOWN': 0.90},   # 90.3% overall
-    'BMBL': {'UP': 0.75, 'DOWN': 0.50},   # 72% overall
-    'XPO': {'UP': 0.72, 'DOWN': 0.50},    # 70.6% overall
-    'IQ': {'UP': 0.74, 'DOWN': 0.50},     # 74.2% overall
-    'ILV': {'UP': 0.58, 'DOWN': 0.82},    # 65.7% overall
-    'CHZ': {'UP': 0.50, 'DOWN': 0.75},    # 63.3% overall
-    'AAVE': {'UP': 0.90, 'DOWN': 0.50},   # 60% overall
-    'ZEC': {'UP': 0.50, 'DOWN': 0.81},    # 80.6% on DOWN
+    # TOP PERFORMERS (with sample sizes)
+    'T': {'UP': (0.50, 47), 'DOWN': (1.00, 94)},       # 100% on DOWN (94 trades) ✓
+    'TURBO': {'UP': (1.00, 31), 'DOWN': (0.97, 32)},   # 98.4% overall
+    'RNDR': {'UP': (1.00, 15), 'DOWN': (0.90, 16)},    # 90.3% overall
+    'BMBL': {'UP': (0.75, 28), 'DOWN': (0.50, 22)},    # 72% overall
+    'XPO': {'UP': (0.72, 25), 'DOWN': (0.50, 17)},     # 70.6% overall
+    'IQ': {'UP': (0.74, 31), 'DOWN': (0.50, 28)},      # 74.2% overall
+    'ILV': {'UP': (0.58, 35), 'DOWN': (0.82, 34)},     # 65.7% overall
+    'CHZ': {'UP': (0.50, 30), 'DOWN': (0.75, 30)},     # 63.3% overall
+    'AAVE': {'UP': (0.90, 10), 'DOWN': (0.50, 10)},    # 60% overall
+    'ZEC': {'UP': (0.50, 15), 'DOWN': (0.81, 31)},     # 80.6% on DOWN
     
     # INVERSE CANDIDATES (0% win on DOWN = flip to UP)
-    'ETH': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (29 trades) -> INVERSE
-    'BTC': {'UP': 0.50, 'DOWN': 0.03},    # 3% on DOWN (33 trades) -> INVERSE
-    'SOL': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (30 trades) -> INVERSE
-    'XRP': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (28 trades) -> INVERSE
-    'BNB': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (28 trades) -> INVERSE
-    'ADA': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (28 trades) -> INVERSE
-    'AVAX': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (27 trades) -> INVERSE
-    'LINK': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (19 trades) -> INVERSE
-    'LTC': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (26 trades) -> INVERSE
-    'SHIB': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (16 trades) -> INVERSE
-    'DOT': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (16 trades) -> INVERSE
-    'NEAR': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (17 trades) -> INVERSE
-    'HBAR': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (17 trades) -> INVERSE
-    'ARB': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (15 trades) -> INVERSE
+    # Note: Small sample sizes - inverse win rates are asterisked
+    'ETH': {'UP': (0.50, 14), 'DOWN': (0.00, 29)},     # 0% on DOWN (29 trades) -> INVERSE
+    'BTC': {'UP': (0.50, 16), 'DOWN': (0.03, 33)},     # 3% on DOWN (33 trades) -> INVERSE
+    'SOL': {'UP': (0.50, 15), 'DOWN': (0.00, 30)},     # 0% on DOWN (30 trades) -> INVERSE
+    'XRP': {'UP': (0.50, 14), 'DOWN': (0.00, 28)},     # 0% on DOWN (28 trades) -> INVERSE
+    'BNB': {'UP': (0.50, 14), 'DOWN': (0.00, 28)},     # 0% on DOWN (28 trades) -> INVERSE
+    'ADA': {'UP': (0.50, 14), 'DOWN': (0.00, 28)},     # 0% on DOWN (28 trades) -> INVERSE
+    'AVAX': {'UP': (0.50, 13), 'DOWN': (0.00, 27)},    # 0% on DOWN (27 trades) -> INVERSE
+    'LINK': {'UP': (0.50, 9), 'DOWN': (0.00, 19)},     # 0% on DOWN (19 trades) -> INVERSE
+    'LTC': {'UP': (0.50, 13), 'DOWN': (0.00, 26)},     # 0% on DOWN (26 trades) -> INVERSE
+    'SHIB': {'UP': (0.50, 8), 'DOWN': (0.00, 16)},     # 0% on DOWN (16 trades) -> INVERSE
+    'DOT': {'UP': (0.50, 8), 'DOWN': (0.00, 16)},      # 0% on DOWN (16 trades) -> INVERSE
+    'NEAR': {'UP': (0.50, 8), 'DOWN': (0.00, 17)},     # 0% on DOWN (17 trades) -> INVERSE
+    'HBAR': {'UP': (0.50, 8), 'DOWN': (0.00, 17)},     # 0% on DOWN (17 trades) -> INVERSE
+    'ARB': {'UP': (0.50, 7), 'DOWN': (0.00, 15)},      # 0% on DOWN (15 trades) -> INVERSE
 }
 
 # V3 Mode toggle (enable by default)
@@ -162,22 +166,27 @@ def is_stock_market_hours() -> bool:
 # V3 QUALITY FILTER FUNCTIONS
 # ============================================================================
 
-def get_v3_historical_win_rate(symbol: str, direction: str) -> float:
+def get_v3_historical_win_rate(symbol: str, direction: str) -> tuple:
     """
     Get historical win rate for symbol+direction from V3 analysis.
     
     Returns:
-        Win rate (0.0-1.0) or 0.50 if unknown
+        Tuple of (win_rate, sample_size) or (0.50, 0) if unknown
     """
     symbol = symbol.upper()
     direction = direction.upper()
     
     if symbol in V3_HISTORICAL_WIN_RATES:
         rates = V3_HISTORICAL_WIN_RATES[symbol]
-        return rates.get(direction, 0.50)
+        data = rates.get(direction, (0.50, 0))
+        # Handle old format {dir: rate} vs new format {dir: (rate, n)}
+        if isinstance(data, tuple):
+            return data
+        else:
+            return (data, 0)  # Old format, no sample size
     
     # Unknown symbol - default to 50%
-    return 0.50
+    return (0.50, 0)
 
 
 def is_v3_inverse_candidate(symbol: str, direction: str) -> bool:
@@ -276,11 +285,13 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
                 LOGGER.info(f"[V3] Recalculated {symbol}: target=${pred['target_price']:.2f}, stop=${pred['stop']:.2f}")
         
         # 5. Get historical win rate for the (potentially inversed) direction
-        historical_win_rate = get_v3_historical_win_rate(symbol, direction)
+        historical_win_rate, sample_size = get_v3_historical_win_rate(symbol, direction)
         
         # For inverse signals, use inverted win rate (0% win = 100% inverse success)
         if is_inverse:
-            historical_win_rate = 1.0 - get_v3_historical_win_rate(symbol, original_direction)
+            orig_rate, orig_sample = get_v3_historical_win_rate(symbol, original_direction)
+            historical_win_rate = 1.0 - orig_rate
+            sample_size = orig_sample  # Sample size from the original direction
         
         # 6. Calculate V3 score = historical_win_rate × confidence
         v3_score = historical_win_rate * confidence
@@ -294,6 +305,7 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
         scored_pred['direction'] = direction  # May have been inversed
         scored_pred['v3_score'] = v3_score
         scored_pred['v3_historical_win_rate'] = historical_win_rate
+        scored_pred['v3_sample_size'] = sample_size  # Sample size for display
         scored_pred['v3_is_inverse'] = is_inverse
         scored_pred['v3_original_direction'] = original_direction if is_inverse else None
         scored_pred['v3_is_whitelisted'] = is_whitelisted
@@ -991,6 +1003,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         v3_is_inverse = item.get('v3_is_inverse', False)
         v3_original_direction = item.get('v3_original_direction')
         v3_historical_win_rate = item.get('v3_historical_win_rate', 0.50)
+        v3_sample_size = item.get('v3_sample_size', 0)  # Sample size for honest display
         v3_score = item.get('v3_score', 0)
         v3_is_whitelisted = item.get('v3_is_whitelisted', False)
         
@@ -1069,9 +1082,18 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         lines.append(f"• STOP LOSS: {format_price(stop)}")
         lines.append(f"• Hold: {hold_days} day{'s' if hold_days > 1 else ''} ({hold_reason})")
         
-        # V3: Include historical win rate if available
+        # V3: Include historical win rate with sample size context
+        # Only show win rate for 50+ trades, or show asterisk with sample count
         if v3_historical_win_rate > 0 and v3_historical_win_rate != 0.50:
-            lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1 | Win Rate: {v3_historical_win_rate:.0%}")
+            if v3_sample_size >= V3_MIN_SAMPLE_SIZE:
+                # High confidence - show win rate without asterisk
+                lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1 | Win Rate: {v3_historical_win_rate:.0%}")
+            elif v3_sample_size > 0:
+                # Low sample - show asterisk with count
+                lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1 | Win Rate: {v3_historical_win_rate:.0%}* ({v3_sample_size} trades)")
+            else:
+                # No sample size data - don't show win rate
+                lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1")
         else:
             lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1")
         
@@ -1149,6 +1171,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         "⭐ = Whitelist (proven performer)",
         "✅ = News-feed influenced",
         "💰 = Return on $100 position",
+        "* = Win rate from limited sample (<50 trades)",
         "Ghost V3 is watching 👁️"
     ])
     
