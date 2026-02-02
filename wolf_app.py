@@ -24292,6 +24292,7 @@ async def debug_sweetspot():
     """
     Analyze paper trades to find Ghost's sweet spots.
     Returns comprehensive accuracy breakdown by symbol, confidence, direction, asset type, etc.
+    Uses 'outcome' column with values: WIN, LOSS, PENDING, BREAK_EVEN
     """
     try:
         import psycopg2
