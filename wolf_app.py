@@ -24159,8 +24159,8 @@ async def debug_v3_validation():
                 cur.execute("""
                     SELECT 
                         COUNT(*) as total,
-                        SUM(CASE WHEN hit_direction = TRUE THEN 1 ELSE 0 END) as wins,
-                        AVG(CASE WHEN hit_direction = TRUE THEN 1.0 ELSE 0.0 END) as win_rate
+                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
+                        AVG(CASE WHEN hit_direction = 1 THEN 1.0 ELSE 0.0 END) as win_rate
                     FROM ghost_prediction_outcomes
                     WHERE symbol = %s
                     AND status = 'resolved'
