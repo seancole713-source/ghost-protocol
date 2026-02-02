@@ -33147,6 +33147,7 @@ async def send_top10_now_endpoint():
     # Format returns list of 2 messages (stocks + crypto)
     messages = format_top10_message(stock_picks, crypto_picks)
     result["message_preview"] = str(messages[0][:300] + "..." if messages else "")
+    result["full_message"] = messages[0] if messages else ""  # Return full message for debugging
     result["stock_picks_count"] = len(stock_picks)
     result["crypto_picks_count"] = len(crypto_picks)
     
