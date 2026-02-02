@@ -33124,6 +33124,26 @@ async def send_top10_now_endpoint():
             "asset_type": "crypto",
         })
     
+    # ================================================================
+    # V3 FILTER: Apply historical win rate scoring and inverse logic
+    # ================================================================
+    try:
+        from core.ghost_notifications import v3_filter_and_score, V3_ENABLED
+        if V3_ENABLED:
+            LOGGER.info(f"[TOP10-V3] Applying V3 quality filter...")
+            stock_picks = v3_filter_and_score(stock_picks)
+            crypto_picks = v3_filter_and_score(crypto_picks)
+            result["v3_applied"] = True
+            result["v3_stocks_after"] = len(stock_picks)
+            result["v3_crypto_after"] = len(crypto_picks)
+            LOGGER.info(f"[TOP10-V3] ✅ After V3: {len(stock_picks)} stocks, {len(crypto_picks)} crypto")
+        else:
+            result["v3_applied"] = False
+    except Exception as e:
+        LOGGER.error(f"[TOP10-V3] V3 filter error: {e}")
+        result["v3_applied"] = False
+        result["v3_error"] = str(e)
+    
     # Format returns list of 2 messages (stocks + crypto)
     messages = format_top10_message(stock_picks, crypto_picks)
     result["message_preview"] = str(messages[0][:300] + "..." if messages else "")
