@@ -252,6 +252,28 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
             direction = 'UP' if direction == 'DOWN' else 'DOWN'
             inversed_count += 1
             LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} {original_direction} → {direction}")
+            
+            # CRITICAL: Recalculate target and stop for the NEW direction
+            # The original target was for DOWN (below entry), BUY needs target ABOVE entry
+            current_price = pred.get('current', 0) or pred.get('current_price', 0) or pred.get('price', 0)
+            if current_price > 0:
+                asset_type = pred.get('asset_type', 'crypto')
+                move_pct = 0.05 if asset_type == 'crypto' else 0.03
+                
+                if direction in ('UP', 'BUY'):
+                    # BUY: target above, stop below
+                    pred['target_price'] = current_price * (1 + move_pct)
+                    pred['prediction_48h'] = pred['target_price']
+                    pred['stop'] = current_price * 0.98
+                    pred['stop_loss'] = pred['stop']
+                else:
+                    # SELL: target below, stop above
+                    pred['target_price'] = current_price * (1 - move_pct)
+                    pred['prediction_48h'] = pred['target_price']
+                    pred['stop'] = current_price * 1.02
+                    pred['stop_loss'] = pred['stop']
+                
+                LOGGER.info(f"[V3] Recalculated {symbol}: target=${pred['target_price']:.2f}, stop=${pred['stop']:.2f}")
         
         # 5. Get historical win rate for the (potentially inversed) direction
         historical_win_rate = get_v3_historical_win_rate(symbol, direction)
