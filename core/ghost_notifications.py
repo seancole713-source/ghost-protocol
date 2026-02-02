@@ -66,6 +66,63 @@ SIGNIFICANT_MOVE_PCT = 0.03  # 3% move to trigger update
 TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
 
 # ============================================================================
+# V3 QUALITY FILTER - Based on 28K+ Paper Trades Sweetspot Analysis
+# ============================================================================
+
+# Stocks with >50% win rate (proven performers)
+V3_WHITELIST_STOCKS = ['T', 'BMBL', 'XPO']
+
+# Crypto with >60% win rate (proven performers)
+V3_WHITELIST_CRYPTO = ['TURBO', 'RNDR', 'IQ', 'ILV', 'CHZ', 'AAVE', 'ZEC']
+
+# Major crypto with 0% win rate on DOWN predictions - FLIP to inverse
+# These are 100% INVERSE SIGNALS (0% win = 100% wrong = flip direction)
+V3_INVERSE_LIST = ['ETH', 'BTC', 'SOL', 'XRP', 'BNB', 'ADA', 'AVAX', 'LINK', 'LTC', 
+                   'SHIB', 'SUI', 'ALGO', 'DOT', 'FIL', 'VET', 'HBAR', 'NEAR', 'ARB']
+
+# Complete blacklist (symbols with <30% overall win rate - DO NOT TRADE)
+V3_BLACKLIST = ['TGTX', 'SOUN', 'ABCL', 'ZIL', 'MANA', 'SAND', 'RLC', '1INCH', 
+                'IMX', 'APT', 'SUSHI', 'YFI', 'LDO', 'ETC']
+
+# V3 minimum confidence threshold
+V3_MIN_CONFIDENCE = 0.75
+
+# Historical win rates from 28K paper trade analysis
+# Format: {symbol: {direction: win_rate}}
+V3_HISTORICAL_WIN_RATES = {
+    # TOP PERFORMERS
+    'T': {'UP': 0.50, 'DOWN': 1.00},      # 100% on DOWN (94 trades)
+    'TURBO': {'UP': 1.00, 'DOWN': 0.97},  # 98.4% overall
+    'RNDR': {'UP': 1.00, 'DOWN': 0.90},   # 90.3% overall
+    'BMBL': {'UP': 0.75, 'DOWN': 0.50},   # 72% overall
+    'XPO': {'UP': 0.72, 'DOWN': 0.50},    # 70.6% overall
+    'IQ': {'UP': 0.74, 'DOWN': 0.50},     # 74.2% overall
+    'ILV': {'UP': 0.58, 'DOWN': 0.82},    # 65.7% overall
+    'CHZ': {'UP': 0.50, 'DOWN': 0.75},    # 63.3% overall
+    'AAVE': {'UP': 0.90, 'DOWN': 0.50},   # 60% overall
+    'ZEC': {'UP': 0.50, 'DOWN': 0.81},    # 80.6% on DOWN
+    
+    # INVERSE CANDIDATES (0% win on DOWN = flip to UP)
+    'ETH': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (29 trades) -> INVERSE
+    'BTC': {'UP': 0.50, 'DOWN': 0.03},    # 3% on DOWN (33 trades) -> INVERSE
+    'SOL': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (30 trades) -> INVERSE
+    'XRP': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (28 trades) -> INVERSE
+    'BNB': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (28 trades) -> INVERSE
+    'ADA': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (28 trades) -> INVERSE
+    'AVAX': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (27 trades) -> INVERSE
+    'LINK': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (19 trades) -> INVERSE
+    'LTC': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (26 trades) -> INVERSE
+    'SHIB': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (16 trades) -> INVERSE
+    'DOT': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (16 trades) -> INVERSE
+    'NEAR': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (17 trades) -> INVERSE
+    'HBAR': {'UP': 0.50, 'DOWN': 0.00},   # 0% on DOWN (17 trades) -> INVERSE
+    'ARB': {'UP': 0.50, 'DOWN': 0.00},    # 0% on DOWN (15 trades) -> INVERSE
+}
+
+# V3 Mode toggle (enable by default)
+V3_ENABLED = os.getenv("V3_QUALITY_ENABLED", "1") == "1"
+
+# ============================================================================
 # MARKET HOURS (Eastern Time for US stocks)
 # ============================================================================
 # Regular trading hours: 9:30 AM - 4:00 PM ET
@@ -99,6 +156,132 @@ def is_stock_market_hours() -> bool:
     # Check if within extended hours (4 AM - 8 PM ET)
     hour = now_et.hour
     return MARKET_OPEN_HOUR <= hour < MARKET_CLOSE_HOUR
+
+
+# ============================================================================
+# V3 QUALITY FILTER FUNCTIONS
+# ============================================================================
+
+def get_v3_historical_win_rate(symbol: str, direction: str) -> float:
+    """
+    Get historical win rate for symbol+direction from V3 analysis.
+    
+    Returns:
+        Win rate (0.0-1.0) or 0.50 if unknown
+    """
+    symbol = symbol.upper()
+    direction = direction.upper()
+    
+    if symbol in V3_HISTORICAL_WIN_RATES:
+        rates = V3_HISTORICAL_WIN_RATES[symbol]
+        return rates.get(direction, 0.50)
+    
+    # Unknown symbol - default to 50%
+    return 0.50
+
+
+def is_v3_inverse_candidate(symbol: str, direction: str) -> bool:
+    """
+    Check if symbol+direction should be INVERSED based on V3 analysis.
+    
+    Returns True if Ghost is historically 100% WRONG on this symbol+direction.
+    """
+    symbol = symbol.upper()
+    direction = direction.upper()
+    
+    # Only inverse DOWN predictions for crypto in inverse list
+    if symbol in V3_INVERSE_LIST and direction == 'DOWN':
+        return True
+    
+    return False
+
+
+def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
+    """
+    Apply V3 quality filter: whitelist, blacklist, inverse, and historical scoring.
+    
+    This is the core V3 logic:
+    1. Skip blacklisted symbols
+    2. Prioritize whitelisted symbols
+    3. Apply inverse logic for major crypto DOWN predictions
+    4. Score by historical_win_rate × confidence
+    
+    Args:
+        predictions: List of prediction dicts with 'symbol', 'direction', 'confidence'
+        
+    Returns:
+        List of scored predictions, sorted by v3_score descending
+    """
+    if not V3_ENABLED:
+        LOGGER.info("[V3] V3 quality filter DISABLED - using legacy scoring")
+        return predictions
+    
+    scored = []
+    skipped_blacklist = 0
+    inversed_count = 0
+    
+    for pred in predictions:
+        symbol = pred.get('symbol', '').upper()
+        direction = pred.get('direction', 'UP').upper()
+        confidence = pred.get('confidence', 0.5)
+        
+        # 1. Skip blacklisted symbols
+        if symbol in V3_BLACKLIST:
+            skipped_blacklist += 1
+            LOGGER.debug(f"[V3] BLACKLIST skip: {symbol}")
+            continue
+        
+        # 2. Minimum confidence check
+        if confidence < V3_MIN_CONFIDENCE:
+            # Whitelist symbols get a pass on minimum confidence
+            is_whitelisted = symbol in V3_WHITELIST_STOCKS or symbol in V3_WHITELIST_CRYPTO
+            if not is_whitelisted:
+                LOGGER.debug(f"[V3] Low confidence skip: {symbol} ({confidence:.0%})")
+                continue
+        
+        # 3. Check for inverse candidate
+        is_inverse = is_v3_inverse_candidate(symbol, direction)
+        original_direction = direction
+        
+        if is_inverse:
+            # FLIP the direction!
+            direction = 'UP' if direction == 'DOWN' else 'DOWN'
+            inversed_count += 1
+            LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} {original_direction} → {direction}")
+        
+        # 4. Get historical win rate for the (potentially inversed) direction
+        historical_win_rate = get_v3_historical_win_rate(symbol, direction)
+        
+        # For inverse signals, use inverted win rate (0% win = 100% inverse success)
+        if is_inverse:
+            historical_win_rate = 1.0 - get_v3_historical_win_rate(symbol, original_direction)
+        
+        # 5. Calculate V3 score = historical_win_rate × confidence
+        v3_score = historical_win_rate * confidence
+        
+        # Whitelist bonus (small boost for proven performers)
+        is_whitelisted = symbol in V3_WHITELIST_STOCKS or symbol in V3_WHITELIST_CRYPTO
+        if is_whitelisted:
+            v3_score *= 1.10  # 10% whitelist bonus
+        
+        # Build scored prediction
+        scored_pred = pred.copy()
+        scored_pred['direction'] = direction  # May have been inversed
+        scored_pred['v3_score'] = v3_score
+        scored_pred['v3_historical_win_rate'] = historical_win_rate
+        scored_pred['v3_is_inverse'] = is_inverse
+        scored_pred['v3_original_direction'] = original_direction if is_inverse else None
+        scored_pred['v3_is_whitelisted'] = is_whitelisted
+        
+        scored.append(scored_pred)
+    
+    # Sort by v3_score descending
+    scored.sort(key=lambda x: x['v3_score'], reverse=True)
+    
+    LOGGER.info(f"[V3] ✅ Filtered: {len(scored)}/{len(predictions)} passed, {skipped_blacklist} blacklisted, {inversed_count} inversed")
+    
+    return scored
+
 
 # ============================================================================
 # CONFIDENCE CALIBRATION FOR DISPLAY
@@ -779,6 +962,13 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         hold_days = item.get('hold_days', 3)
         news = item.get('news_influenced', False)
         
+        # V3 DATA
+        v3_is_inverse = item.get('v3_is_inverse', False)
+        v3_original_direction = item.get('v3_original_direction')
+        v3_historical_win_rate = item.get('v3_historical_win_rate', 0.50)
+        v3_score = item.get('v3_score', 0)
+        v3_is_whitelisted = item.get('v3_is_whitelisted', False)
+        
         # Entry Zone: Use REAL volatility data (daily vol / 2 = intraday range)
         # If no volatility data, estimate from expected_move
         volatility = item.get('volatility', 0.02)  # 20-day annualized vol (default 2%)
@@ -809,6 +999,10 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         action = "BUY" if is_buy else "SELL"
         news_check = " ✅" if news else ""
         
+        # V3 BADGES
+        inverse_badge = " 🔄 INVERSE" if v3_is_inverse else ""
+        whitelist_badge = " ⭐" if v3_is_whitelisted else ""
+        
         # Use correct day name based on asset type
         # Stocks: must use trading day (Mon-Fri)
         # Crypto: can trade 24/7
@@ -816,7 +1010,11 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         entry_date = stock_entry_date if is_stock else ct
         
         lines = []
-        lines.append(f"{idx}) {emoji} {symbol} — {action}{news_check}")
+        lines.append(f"{idx}) {emoji} {symbol} — {action}{inverse_badge}{whitelist_badge}{news_check}")
+        
+        # Add V3 explanation for inverse signals
+        if v3_is_inverse:
+            lines.append(f"🔄 Ghost predicted {v3_original_direction} → FLIPPED to {direction}")
         
         # Add warning if market closed (weekend or holiday) for stocks
         if is_stock and is_market_closed:
@@ -845,7 +1043,13 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         
         lines.append(f"• STOP LOSS: {format_price(stop)}")
         lines.append(f"• Hold: {hold_days} day{'s' if hold_days > 1 else ''} ({hold_reason})")
-        lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1")
+        
+        # V3: Include historical win rate if available
+        if v3_historical_win_rate > 0 and v3_historical_win_rate != 0.50:
+            lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1 | Win Rate: {v3_historical_win_rate:.0%}")
+        else:
+            lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1")
+        
         lines.append(f"💰 $100 → ${return_val:.2f}")
         
         if news:
@@ -916,9 +1120,11 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         "📖 LEGEND",
         "━━━━━━━━━━━━━━━━━━━━━━",
         "🟢 BUY | 🔴 SELL",
+        "🔄 = Inverse signal (Ghost flipped)",
+        "⭐ = Whitelist (proven performer)",
         "✅ = News-feed influenced",
         "💰 = Return on $100 position",
-        "Ghost is watching 👁️"
+        "Ghost V3 is watching 👁️"
     ])
     
     full_msg = "\n".join(all_lines)
@@ -1449,27 +1655,46 @@ class GhostNotificationSystem:
         if event_memory_active and event_adjusted > 0:
             LOGGER.info(f"[EVENT_MEMORY] ⚠️ ADJUSTED {event_adjusted} predictions due to recent events")
         
-        # MONEY GAME: Sort by profit ranking, not just confidence
-        if use_money_game and (money_game_stocks or money_game_crypto):
-            # Create priority lookup (lower index = higher priority)
-            stock_priority = {sym: i for i, sym in enumerate(money_game_stocks)}
-            crypto_priority = {sym: i for i, sym in enumerate(money_game_crypto)}
+        # ================================================================
+        # V3 QUALITY FILTER - Apply historical win rate scoring and inverse logic
+        # ================================================================
+        if V3_ENABLED:
+            LOGGER.info(f"[V3] Applying V3 quality filter to {len(stock_candidates)} stocks, {len(crypto_candidates)} crypto...")
             
-            # Sort by: Money Game priority first, then confidence as tiebreaker
-            # Symbols NOT in Money Game get priority 999 (go to end)
-            stock_candidates.sort(key=lambda x: (
-                stock_priority.get(x["symbol"], 999),
-                -x["confidence"]
-            ))
-            crypto_candidates.sort(key=lambda x: (
-                crypto_priority.get(x["symbol"], 999),
-                -x["confidence"]
-            ))
-            LOGGER.info(f"[MONEY-GAME] ✅ Sorted by PROFIT rankings, not just confidence")
+            # Apply V3 to stock candidates
+            stock_candidates = v3_filter_and_score(stock_candidates)
+            # Apply V3 to crypto candidates
+            crypto_candidates = v3_filter_and_score(crypto_candidates)
+            
+            # V3 sorts by v3_score, so we don't need Money Game or confidence sorting
+            LOGGER.info(f"[V3] ✅ After V3 filter: {len(stock_candidates)} stocks, {len(crypto_candidates)} crypto")
+            top_stocks_str = ", ".join([f"{c['symbol']} ({c.get('v3_score', 0):.2f})" for c in stock_candidates[:3]])
+            top_crypto_str = ", ".join([f"{c['symbol']} ({c.get('v3_score', 0):.2f})" for c in crypto_candidates[:3]])
+            LOGGER.info(f"[V3] Top 3 stocks: {top_stocks_str}")
+            LOGGER.info(f"[V3] Top 3 crypto: {top_crypto_str}")
         else:
-            # Fallback: Sort candidates by confidence only
-            stock_candidates.sort(key=lambda x: x["confidence"], reverse=True)
-            crypto_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+            # Legacy sorting (Money Game or confidence)
+            # MONEY GAME: Sort by profit ranking, not just confidence
+            if use_money_game and (money_game_stocks or money_game_crypto):
+                # Create priority lookup (lower index = higher priority)
+                stock_priority = {sym: i for i, sym in enumerate(money_game_stocks)}
+                crypto_priority = {sym: i for i, sym in enumerate(money_game_crypto)}
+                
+                # Sort by: Money Game priority first, then confidence as tiebreaker
+                # Symbols NOT in Money Game get priority 999 (go to end)
+                stock_candidates.sort(key=lambda x: (
+                    stock_priority.get(x["symbol"], 999),
+                    -x["confidence"]
+                ))
+                crypto_candidates.sort(key=lambda x: (
+                    crypto_priority.get(x["symbol"], 999),
+                    -x["confidence"]
+                ))
+                LOGGER.info(f"[MONEY-GAME] ✅ Sorted by PROFIT rankings, not just confidence")
+            else:
+                # Fallback: Sort candidates by confidence only
+                stock_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+                crypto_candidates.sort(key=lambda x: x["confidence"], reverse=True)
         
         # Phase 2: Only refresh prices for TOP 15 of each (5 final + buffer)
         TOP_N_TO_REFRESH = 15
@@ -1677,6 +1902,12 @@ class GhostNotificationSystem:
             "volatility": volatility,
             "news_influenced": news_influenced,
             "learning_boosted": candidate.get("learning_boosted", False),
+            # V3 DATA
+            "v3_score": candidate.get("v3_score", 0),
+            "v3_historical_win_rate": candidate.get("v3_historical_win_rate", 0.50),
+            "v3_is_inverse": candidate.get("v3_is_inverse", False),
+            "v3_original_direction": candidate.get("v3_original_direction"),
+            "v3_is_whitelisted": candidate.get("v3_is_whitelisted", False),
         }
     
     def send_top10(self, latest_predictions: Dict[str, Dict]) -> bool:
