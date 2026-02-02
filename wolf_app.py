@@ -24232,52 +24232,76 @@ async def debug_v3_filter_test():
             v3_filter_and_score, V3_VALIDATED_STRATEGIES, V3_REMOVED_SYMBOLS,
             V3_MIN_CONFIDENCE, V3_ENABLED
         )
-        from core.ghost_agent import get_full_ghost_predictions
         
-        # Get raw predictions
-        raw_preds = await get_full_ghost_predictions()
+        # Build test predictions matching what send_top10_now does
+        CRYPTO = ["ETH", "XRP", "LINK", "SOL", "BTC"]
         
-        # Extract validated symbols from raw
-        validated_symbols = ['ETH', 'XRP', 'LINK']
-        raw_validated = []
-        for p in raw_preds:
-            sym = p.get('symbol', '').upper()
-            if sym in validated_symbols:
-                raw_validated.append({
-                    'symbol': sym,
-                    'direction': p.get('direction'),
-                    'confidence': p.get('confidence'),
-                    'asset_type': p.get('asset_type'),
+        test_preds = []
+        for symbol in CRYPTO:
+            # Simulate prediction call
+            pred_result = await _run_turbo_prediction_for_top10(symbol)
+            if pred_result and pred_result.get("ok"):
+                direction = pred_result.get("direction", "FLAT")
+                confidence = pred_result.get("confidence", 0.5)
+                
+                test_preds.append({
+                    "symbol": symbol,
+                    "direction": direction,
+                    "confidence": confidence,
+                    "current": pred_result.get("current_price", 0),
+                    "asset_type": "crypto",
                 })
         
         # Run V3 filter
-        filtered = v3_filter_and_score(raw_preds)
+        filtered = v3_filter_and_score(test_preds)
         
-        # Extract crypto from filtered
-        filtered_crypto = [p for p in filtered if p.get('asset_type') == 'crypto']
+        # Build detailed report
+        filter_report = {}
+        for p in test_preds:
+            sym = p['symbol']
+            dir_ = p['direction']
+            conf = p['confidence']
+            
+            # Check why it would be filtered
+            in_validated = sym in V3_VALIDATED_STRATEGIES
+            in_removed = sym in V3_REMOVED_SYMBOLS
+            passed_filter = any(f['symbol'] == sym for f in filtered)
+            
+            reason = "UNKNOWN"
+            if in_removed:
+                reason = f"REMOVED: {V3_REMOVED_SYMBOLS.get(sym, 'not validated')}"
+            elif not in_validated:
+                reason = "NOT IN V3_VALIDATED_STRATEGIES"
+            elif in_validated:
+                strat = V3_VALIDATED_STRATEGIES[sym]
+                if strat['strategy'] == 'ghost_inverse' and dir_ != 'DOWN':
+                    reason = f"SKIPPED: ghost_inverse requires DOWN, got {dir_}"
+                elif conf < V3_MIN_CONFIDENCE and strat['strategy'] != 'ghost_inverse':
+                    reason = f"SKIPPED: confidence {conf:.0%} < {V3_MIN_CONFIDENCE:.0%}"
+                else:
+                    reason = "SHOULD PASS"
+            
+            filter_report[sym] = {
+                "raw_direction": dir_,
+                "raw_confidence": conf,
+                "in_validated": in_validated,
+                "in_removed": in_removed,
+                "passed_filter": passed_filter,
+                "reason": reason,
+            }
         
         return {
             "ok": True,
             "v3_enabled": V3_ENABLED,
             "min_confidence": V3_MIN_CONFIDENCE,
-            "raw_predictions_count": len(raw_preds),
-            "raw_validated_symbols": raw_validated,
+            "test_predictions_count": len(test_preds),
             "filtered_count": len(filtered),
-            "filtered_crypto_count": len(filtered_crypto),
-            "filtered_crypto": [
-                {
-                    'symbol': p.get('symbol'),
-                    'direction': p.get('direction'),
-                    'v3_is_inverse': p.get('v3_is_inverse'),
-                    'v3_validated': p.get('v3_validated'),
-                    'v3_strategy': p.get('v3_strategy'),
-                }
-                for p in filtered_crypto
-            ],
+            "filter_report": filter_report,
+            "filtered_symbols": [f['symbol'] for f in filtered],
             "explanation": {
                 "ETH": "Only included if Ghost predicts DOWN (inverse to UP)",
-                "XRP": "Included for any direction (mean_reversion)",
-                "LINK": "Included for any direction (mean_reversion)",
+                "XRP": "Included for any direction (mean_reversion) if conf >= 70%",
+                "LINK": "Included for any direction (mean_reversion) if conf >= 70%",
             }
         }
     except Exception as e:
