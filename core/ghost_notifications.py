@@ -2109,7 +2109,19 @@ class GhostNotificationSystem:
                     action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
                     direction = "UP" if action == "BUY" else "DOWN"
                     
-                    # Log to paper trades with unique cascade ID
+                    # Extract V3 metadata if present (from v3_filter_and_score)
+                    v3_validated = p.get('v3_validated', False)
+                    v3_strategy = p.get('v3_strategy')
+                    v3_is_inverse = p.get('v3_is_inverse', False)
+                    v3_original_direction = p.get('v3_original_direction')
+                    v3_hold_hours = p.get('v3_hold_hours')
+                    v3_backtest_win_rate = p.get('v3_historical_win_rate')
+                    
+                    # For inverse strategies, use the inverted direction (already in p)
+                    if v3_is_inverse and v3_original_direction:
+                        direction = p.get('direction', direction)  # Use V3's flipped direction
+                    
+                    # Log to paper trades with unique cascade ID and V3 metadata
                     paper_trade_id = paper_tracker.log_signal(
                         cascade_id=f"top10_{p['symbol']}_{int(now.timestamp())}",
                         symbol=p['symbol'],
@@ -2119,12 +2131,20 @@ class GhostNotificationSystem:
                         entry_time=now.isoformat(),
                         position_size=1000.0,  # $1k position size
                         stop_loss_pct=0.05,    # 5% stop loss
-                        take_profit_pct=0.10   # 10% take profit
+                        take_profit_pct=0.10,  # 10% take profit
+                        # V3 tracking metadata
+                        v3_validated=v3_validated,
+                        v3_strategy=v3_strategy,
+                        v3_is_inverse=v3_is_inverse,
+                        v3_original_direction=v3_original_direction,
+                        v3_hold_hours=v3_hold_hours,
+                        v3_backtest_win_rate=v3_backtest_win_rate
                     )
                     
                     if paper_trade_id:
                         logged_count += 1
-                        LOGGER.info(f"[PAPER-TRACK] ✅ Logged {p['symbol']} {direction} to paper_trades (ID: {paper_trade_id[:8]}...)")
+                        v3_info = f" [V3: {v3_strategy}, {v3_hold_hours}hr]" if v3_validated else ""
+                        LOGGER.info(f"[PAPER-TRACK] ✅ Logged {p['symbol']} {direction} to paper_trades (ID: {paper_trade_id[:8]}...){v3_info}")
                     else:
                         LOGGER.debug(f"[PAPER-TRACK] ⏭️ Skipped {p['symbol']} (blacklisted or low confidence)")
                 

@@ -24147,7 +24147,7 @@ async def debug_v3_validation():
         from core.ghost_notifications import V3_VALIDATED_STRATEGIES, V3_REMOVED_SYMBOLS, V3_DEFAULT_HOLD_HOURS
         import psycopg2
         
-        # Query live performance for validated symbols
+        # Query live performance for V3 validated trades from paper_trades
         DATABASE_URL = os.getenv("DATABASE_URL")
         live_stats = {}
         
@@ -24156,33 +24156,57 @@ async def debug_v3_validation():
             cur = conn.cursor()
             
             for symbol in V3_VALIDATED_STRATEGIES.keys():
+                # Query V3 validated paper trades with outcomes
                 cur.execute("""
                     SELECT 
                         COUNT(*) as total,
-                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
-                        AVG(CASE WHEN hit_direction = 1 THEN 1.0 ELSE 0.0 END) as win_rate
-                    FROM ghost_prediction_outcomes
+                        SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                        SUM(CASE WHEN outcome IN ('WIN', 'LOSS') THEN 1 ELSE 0 END) as resolved,
+                        AVG(CASE WHEN outcome = 'WIN' THEN 1.0 WHEN outcome = 'LOSS' THEN 0.0 END) as win_rate,
+                        v3_strategy,
+                        v3_hold_hours,
+                        v3_backtest_win_rate
+                    FROM paper_trades
                     WHERE symbol = %s
-                    AND status = 'resolved'
-                    AND created_at > NOW() - INTERVAL '30 days'
+                    AND v3_validated = TRUE
+                    GROUP BY v3_strategy, v3_hold_hours, v3_backtest_win_rate
                 """, (symbol,))
                 row = cur.fetchone()
-                if row and row[0] > 0:
+                if row:
                     live_stats[symbol] = {
-                        "total": row[0],
+                        "total_v3": row[0],
                         "wins": row[1] or 0,
-                        "live_win_rate": round(float(row[2] or 0), 3),
+                        "resolved": row[2] or 0,
+                        "live_win_rate": round(float(row[3] or 0), 3) if row[3] else None,
+                        "v3_strategy": row[4],
+                        "v3_hold_hours": row[5],
+                        "v3_backtest_win_rate": round(float(row[6] or 0), 3) if row[6] else None,
                     }
+            
+            # Also check for pending V3 trades
+            cur.execute("""
+                SELECT symbol, COUNT(*) as pending_count
+                FROM paper_trades
+                WHERE v3_validated = TRUE
+                AND outcome = 'PENDING'
+                GROUP BY symbol
+            """)
+            pending_rows = cur.fetchall()
+            pending_stats = {row[0]: row[1] for row in pending_rows}
             
             cur.close()
             conn.close()
+        else:
+            pending_stats = {}
         
         # Build validation report
         validation_report = {}
         for symbol, config in V3_VALIDATED_STRATEGIES.items():
             expected = config.get("win_rate", 0.5)
-            live = live_stats.get(symbol, {}).get("live_win_rate", None)
-            sample = live_stats.get(symbol, {}).get("total", 0)
+            stats = live_stats.get(symbol, {})
+            live_rate = stats.get("live_win_rate")
+            resolved = stats.get("resolved", 0)
+            pending = pending_stats.get(symbol, 0)
             
             validation_report[symbol] = {
                 "strategy": config.get("strategy"),
@@ -24190,10 +24214,11 @@ async def debug_v3_validation():
                 "backtest_win_rate": expected,
                 "backtest_p_value": config.get("p_value"),
                 "backtest_sample_size": config.get("sample_size"),
-                "live_win_rate": live,
-                "live_sample_size": sample,
-                "tracking": "✅ TRACKING" if sample > 0 else "⏳ NO DATA YET",
-                "validation": "🔬 VALIDATING" if sample < 50 else ("✅ VALIDATED" if live and live >= expected * 0.85 else "⚠️ UNDERPERFORMING"),
+                "live_win_rate": live_rate,
+                "live_resolved": resolved,
+                "live_pending": pending,
+                "tracking": "✅ TRACKING" if (resolved + pending) > 0 else "⏳ NO DATA YET",
+                "validation": "🔬 VALIDATING" if resolved < 30 else ("✅ VALIDATED" if live_rate and live_rate >= expected * 0.85 else "⚠️ UNDERPERFORMING"),
             }
         
         return {
@@ -24215,6 +24240,62 @@ async def debug_v3_validation():
                 "RSI strategies: 45-46% win rate - consistently LOSE money",
                 "SOL/BTC/AVAX: Removed - no statistical significance",
             ]
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/debug/migrate-v3-columns")
+async def debug_migrate_v3_columns():
+    """
+    Add V3 tracking columns to paper_trades table if they don't exist.
+    
+    Safe to run multiple times - only adds columns if missing.
+    """
+    try:
+        import psycopg2
+        
+        DATABASE_URL = os.getenv("DATABASE_URL")
+        if not DATABASE_URL:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        
+        # V3 columns to add
+        v3_columns = [
+            ("v3_validated", "BOOLEAN DEFAULT FALSE"),
+            ("v3_strategy", "TEXT"),
+            ("v3_is_inverse", "BOOLEAN DEFAULT FALSE"),
+            ("v3_original_direction", "TEXT"),
+            ("v3_hold_hours", "INTEGER"),
+            ("v3_backtest_win_rate", "REAL"),
+        ]
+        
+        added = []
+        skipped = []
+        
+        for col_name, col_type in v3_columns:
+            try:
+                cur.execute(f"ALTER TABLE paper_trades ADD COLUMN {col_name} {col_type}")
+                added.append(col_name)
+            except psycopg2.errors.DuplicateColumn:
+                conn.rollback()  # Reset transaction state
+                skipped.append(col_name)
+            except Exception as e:
+                conn.rollback()
+                skipped.append(f"{col_name}: {e}")
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return {
+            "ok": True,
+            "added_columns": added,
+            "already_existed": skipped,
+            "message": f"Migration complete. Added {len(added)} columns, {len(skipped)} already existed."
         }
     except Exception as e:
         import traceback

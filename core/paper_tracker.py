@@ -119,7 +119,13 @@ class PaperTracker:
                         checkpoint_times JSONB DEFAULT '[]',
                         checkpoint_results JSONB DEFAULT '[]',
                         checkpoint_evaluated JSONB DEFAULT '[]',
-                        checkpoint_prices JSONB DEFAULT '[]'
+                        checkpoint_prices JSONB DEFAULT '[]',
+                        v3_validated BOOLEAN DEFAULT FALSE,
+                        v3_strategy TEXT,
+                        v3_is_inverse BOOLEAN DEFAULT FALSE,
+                        v3_original_direction TEXT,
+                        v3_hold_hours INTEGER,
+                        v3_backtest_win_rate REAL
                     )
                 """)
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
@@ -150,7 +156,18 @@ class PaperTracker:
                         profit_loss_pct REAL,
                         checked_at TEXT,
                         notes TEXT,
-                        created_at TEXT NOT NULL
+                        created_at TEXT NOT NULL,
+                        trust_level INTEGER DEFAULT 1,
+                        checkpoint_times TEXT,
+                        checkpoint_results TEXT,
+                        checkpoint_evaluated TEXT,
+                        checkpoint_prices TEXT,
+                        v3_validated INTEGER DEFAULT 0,
+                        v3_strategy TEXT,
+                        v3_is_inverse INTEGER DEFAULT 0,
+                        v3_original_direction TEXT,
+                        v3_hold_hours INTEGER,
+                        v3_backtest_win_rate REAL
                     )
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
@@ -173,7 +190,14 @@ class PaperTracker:
         entry_time: str,
         position_size: float = 1000.0,
         stop_loss_pct: float = 0.05,
-        take_profit_pct: float = 0.10
+        take_profit_pct: float = 0.10,
+        # V3 metadata (optional)
+        v3_validated: bool = False,
+        v3_strategy: str = None,
+        v3_is_inverse: bool = False,
+        v3_original_direction: str = None,
+        v3_hold_hours: int = None,
+        v3_backtest_win_rate: float = None
     ) -> str:
         """
         Log a Ghost signal as a paper trade.
@@ -206,6 +230,7 @@ class PaperTracker:
         # =====================================================================
         # TRUST LADDER: Get dynamic prediction window based on symbol trust level
         # Level 1 (default): 48hr | Level 2: 120hr | Level 3: 168hr
+        # V3 OVERRIDE: If v3_hold_hours is specified, use that instead
         # =====================================================================
         try:
             from core.trust_ladder import get_symbol_prediction_window, TRUST_LEVELS
@@ -219,6 +244,12 @@ class PaperTracker:
             prediction_hours = 72  # Changed from 48 (backtest validated)
             trust_level = 1
             checkpoints = [72]
+        
+        # V3 OVERRIDE: Use V3-specific hold hours if this is a V3 validated signal
+        if v3_validated and v3_hold_hours:
+            prediction_hours = v3_hold_hours
+            checkpoints = [v3_hold_hours]  # Single checkpoint at hold time
+            LOGGER.info(f"[{symbol}] V3 OVERRIDE: Using {v3_hold_hours}hr hold period (strategy={v3_strategy})")
         
         # Calculate target time based on trust level
         try:
@@ -260,7 +291,14 @@ class PaperTracker:
             json.dumps(checkpoint_times),
             json.dumps(checkpoint_results),
             json.dumps(checkpoint_evaluated),
-            json.dumps([])  # checkpoint_prices starts empty
+            json.dumps([]),  # checkpoint_prices starts empty
+            # V3 tracking fields
+            v3_validated,
+            v3_strategy,
+            v3_is_inverse,
+            v3_original_direction,
+            v3_hold_hours,
+            v3_backtest_win_rate
         )
         
         try:
@@ -275,8 +313,10 @@ class PaperTracker:
                         position_size, stop_loss_pct, take_profit_pct,
                         outcome, created_at,
                         trust_level, checkpoint_times, checkpoint_results,
-                        checkpoint_evaluated, checkpoint_prices
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        checkpoint_evaluated, checkpoint_prices,
+                        v3_validated, v3_strategy, v3_is_inverse,
+                        v3_original_direction, v3_hold_hours, v3_backtest_win_rate
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, params)
                 conn.commit()
                 conn.close()
@@ -290,15 +330,22 @@ class PaperTracker:
                         position_size, stop_loss_pct, take_profit_pct,
                         outcome, created_at,
                         trust_level, checkpoint_times, checkpoint_results,
-                        checkpoint_evaluated, checkpoint_prices
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        checkpoint_evaluated, checkpoint_prices,
+                        v3_validated, v3_strategy, v3_is_inverse,
+                        v3_original_direction, v3_hold_hours, v3_backtest_win_rate
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, params)
                 conn.commit()
                 conn.close()
             
+            # Enhanced logging for V3 trades
+            v3_info = ""
+            if v3_validated:
+                v3_info = f", V3={v3_strategy}, hold={v3_hold_hours}hr, backtest={v3_backtest_win_rate:.1%}" if v3_backtest_win_rate else f", V3={v3_strategy}, hold={v3_hold_hours}hr"
+            
             LOGGER.info(
                 f"📝 Paper trade logged: {symbol} {signal_direction} "
-                f"@ ${entry_price:,.2f} (conf={signal_confidence:.1%}, trust_level={trust_level})"
+                f"@ ${entry_price:,.2f} (conf={signal_confidence:.1%}, trust_level={trust_level}{v3_info})"
             )
             
             return paper_trade_id
