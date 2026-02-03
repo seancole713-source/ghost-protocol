@@ -1166,6 +1166,10 @@ def _configure_logging():
 _configure_logging()
 LOGGER = logging.getLogger("ghost")
 
+# Suppress noisy yfinance "symbol may be delisted" warnings
+# These fire even when Polygon fallback succeeds, creating noise
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+
 # OpenTelemetry (optional)
 OTEL_ENABLED = os.getenv("OTEL_ENABLED", "0").lower() in ("1", "true", "yes")
 OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "ghost-wolf")
@@ -9098,7 +9102,16 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         if direction in ["UP", "DOWN"] and confidence >= 0.55:
             try:
                 from core.paper_tracker import get_paper_tracker
+                from core.ghost_notifications import V3_VALIDATED_STRATEGIES
                 paper_tracker = get_paper_tracker()
+                
+                # Check if symbol is V3 validated
+                v3_config = V3_VALIDATED_STRATEGIES.get(symbol.upper())
+                v3_validated = v3_config is not None
+                v3_strategy = v3_config.get('strategy') if v3_config else None
+                v3_hold_hours = v3_config.get('hold_hours') if v3_config else None
+                v3_win_rate = v3_config.get('win_rate') if v3_config else None
+                v3_is_inverse = v3_config.get('strategy') == 'ghost_inverse' if v3_config else False
                 
                 paper_trade_id = paper_tracker.log_signal(
                     cascade_id=f"pred_{prediction_id}",  # Link to prediction
@@ -9109,9 +9122,16 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     entry_time=datetime.utcfromtimestamp(run_at).isoformat(),
                     position_size=1000.0,  # $1000 per trade for paper tracking
                     stop_loss_pct=stop_loss_pct,
-                    take_profit_pct=abs(expected_move_pct or 3.0) / 100.0
+                    take_profit_pct=abs(expected_move_pct or 3.0) / 100.0,
+                    # V3 tracking metadata
+                    v3_validated=v3_validated,
+                    v3_strategy=v3_strategy,
+                    v3_hold_hours=v3_hold_hours,
+                    v3_backtest_win_rate=v3_win_rate,
+                    v3_is_inverse=v3_is_inverse,
                 )
-                LOGGER.info(f"[{symbol}] 📝 Paper trade auto-logged: {paper_trade_id} ({direction} @ ${current_price:,.2f})")
+                v3_tag = f" [V3: {v3_strategy}]" if v3_validated else ""
+                LOGGER.info(f"[{symbol}] 📝 Paper trade auto-logged: {paper_trade_id} ({direction} @ ${current_price:,.2f}){v3_tag}")
             except Exception as e:
                 LOGGER.warning(f"[{symbol}] Paper trade logging failed (non-fatal): {e}")
         
