@@ -281,12 +281,18 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
                     # Ghost said UP - NOT our validated edge, skip entirely
                     LOGGER.info(f"[V3] SKIP {symbol}: Ghost said UP (only DOWN→inverse validated)")
                     continue
-                # Ghost said DOWN - this is our validated edge, flip to UP
+                # Confidence check for inverse strategies too (bug fix 2026-02-03)
+                # Backtest didn't stratify by confidence, so require 70% minimum
+                if confidence < V3_MIN_CONFIDENCE:
+                    skipped_low_conf += 1
+                    LOGGER.info(f"[V3] SKIP {symbol}: inverse but conf {confidence:.0%} < {V3_MIN_CONFIDENCE:.0%}")
+                    continue
+                # Ghost said DOWN with sufficient confidence - this is our validated edge, flip to UP
                 direction = strategy_config['direction_override']  # 'UP'
                 is_inverse = True
                 inversed_count += 1
                 original_direction = 'DOWN'
-                LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} DOWN → UP (61.5% validated)")
+                LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} DOWN → UP (61.5% validated, conf={confidence:.0%})")
             else:
                 # Non-inverse strategies (XRP, LINK mean_reversion)
                 original_direction = direction

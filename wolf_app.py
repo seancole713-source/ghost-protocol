@@ -24274,9 +24274,14 @@ async def debug_v3_filter_test():
                 reason = "NOT IN V3_VALIDATED_STRATEGIES"
             elif in_validated:
                 strat = V3_VALIDATED_STRATEGIES[sym]
-                if strat['strategy'] == 'ghost_inverse' and dir_ != 'DOWN':
-                    reason = f"SKIPPED: ghost_inverse requires DOWN, got {dir_}"
-                elif conf < V3_MIN_CONFIDENCE and strat['strategy'] != 'ghost_inverse':
+                if strat['strategy'] == 'ghost_inverse':
+                    if dir_ != 'DOWN':
+                        reason = f"SKIPPED: ghost_inverse requires DOWN, got {dir_}"
+                    elif conf < V3_MIN_CONFIDENCE:
+                        reason = f"SKIPPED: inverse but conf {conf:.0%} < {V3_MIN_CONFIDENCE:.0%}"
+                    else:
+                        reason = "SHOULD PASS (inverse with sufficient conf)"
+                elif conf < V3_MIN_CONFIDENCE:
                     reason = f"SKIPPED: confidence {conf:.0%} < {V3_MIN_CONFIDENCE:.0%}"
                 else:
                     reason = "SHOULD PASS"
@@ -24299,9 +24304,9 @@ async def debug_v3_filter_test():
             "filter_report": filter_report,
             "filtered_symbols": [f['symbol'] for f in filtered],
             "explanation": {
-                "ETH": "Only included if Ghost predicts DOWN (inverse to UP)",
-                "XRP": "Included for any direction (mean_reversion) if conf >= 70%",
-                "LINK": "Included for any direction (mean_reversion) if conf >= 70%",
+                "ETH": "Only if Ghost predicts DOWN AND conf >= 70% (inverse to UP)",
+                "XRP": "Any direction (mean_reversion) if conf >= 70%",
+                "LINK": "Any direction (mean_reversion) if conf >= 70%",
             }
         }
     except Exception as e:
