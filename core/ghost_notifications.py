@@ -2053,7 +2053,19 @@ class GhostNotificationSystem:
             LOGGER.info(f"[NOTIFICATIONS] TOP 10 already sent today ({today})")
             return False
         
-        stocks, crypto = self.get_top10_predictions(latest_predictions)
+        # V3 CLEAN ARCHITECTURE: Use new pipeline if enabled
+        use_v3_clean = os.getenv("USE_V3_CLEAN", "1") == "1"  # DEFAULT ON
+        
+        if use_v3_clean:
+            try:
+                from core.adapters import process_v3_from_cache
+                stocks, crypto = process_v3_from_cache(latest_predictions)
+                LOGGER.info(f"[V3-CLEAN] Using clean architecture pipeline: {len(stocks)} stocks, {len(crypto)} crypto")
+            except Exception as e:
+                LOGGER.error(f"[V3-CLEAN] Failed, falling back to legacy: {e}")
+                stocks, crypto = self.get_top10_predictions(latest_predictions)
+        else:
+            stocks, crypto = self.get_top10_predictions(latest_predictions)
         
         if not stocks and not crypto:
             LOGGER.warning("[NOTIFICATIONS] No predictions available for TOP 10")

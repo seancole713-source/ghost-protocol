@@ -227,12 +227,17 @@ def scored_to_formatter_dict(scored: ScoredPrediction) -> Dict[str, Any]:
         'current_price': scored.current_price,  # Some formatters use this key
         'target': scored.target_price,
         'target_price': scored.target_price,
+        'prediction_48h': scored.target_price,  # Alias for paper tracker
         'stop': scored.stop_loss,
         'stop_price': scored.stop_loss,
         # V3 fields - use v3_ prefix as expected by TradePick.from_dict
+        'v3_validated': True,  # All V3 filtered predictions are validated
         'v3_is_inverse': scored.is_inverse,
         'v3_original_direction': 'DOWN' if scored.is_inverse else '',  # ETH inverse flips DOWN→UP
+        'v3_strategy': strategy_name,
+        'v3_hold_hours': hold_hours,
         'v3_historical_win_rate': win_rate,
+        'v3_backtest_win_rate': win_rate,  # Alias
         'v3_sample_size': sample_size,
         'v3_is_whitelisted': True,  # All V3 validated symbols are "whitelisted"
         'v3_score': scored.score,
