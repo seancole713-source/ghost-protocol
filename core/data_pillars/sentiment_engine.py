@@ -231,25 +231,27 @@ class SentimentEngine(BasePillar):
             from core.intelligence.ghost_news_brain import get_news_brain
             import asyncio
             
-            # Fix nested event loop issue
-            try:
-                import nest_asyncio
-                nest_asyncio.apply()
-            except ImportError:
-                logger.debug("nest_asyncio not available - RSS scan may fail in async context")
-            
             brain = get_news_brain()
             
             # Fetch recent headlines (cached for 5 minutes)
             # NOTE: Skip if running in uvloop context (FastAPI/uvicorn)
+            # Check FIRST before trying to apply nest_asyncio (which fails with uvloop)
             try:
                 loop = asyncio.get_running_loop()
-                # We're in uvloop - can't run sync here, return neutral
-                logger.debug(f"[SENTIMENT] {symbol}: Skipping RSS in uvloop context")
+                # We're in an event loop (likely uvloop) - can't run sync here
+                logger.debug(f"[SENTIMENT] {symbol}: Skipping RSS in async context")
                 return {"ok": True, "articles": 0, "sentiment_score": 0.0, "uvloop_skipped": True}
             except RuntimeError:
                 # No running loop - we can create one
                 pass
+            
+            # Only try nest_asyncio if we're NOT in an existing loop
+            try:
+                import nest_asyncio
+                nest_asyncio.apply()
+            except (ImportError, ValueError) as e:
+                # ValueError: uvloop doesn't support nest_asyncio
+                logger.debug(f"nest_asyncio skipped: {e}")
             
             try:
                 loop = asyncio.new_event_loop()

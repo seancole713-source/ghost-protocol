@@ -189,22 +189,29 @@ class PriceEngine(BasePillar):
 
         try:
             import asyncio
+            import concurrent.futures
 
             crypto_quorum = self._get_crypto_quorum_func()
 
-            # Run async function, checking if event loop already running
+            def _run_in_new_loop():
+                """Run async crypto quorum in a fresh event loop."""
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    return new_loop.run_until_complete(crypto_quorum(symbol))
+                finally:
+                    new_loop.close()
+
+            # Check if event loop already running (uvloop in production)
             try:
                 loop = asyncio.get_running_loop()
-                # Loop already running (e.g., in Jupyter/async context)
-                import nest_asyncio
-                nest_asyncio.apply()
-                result = asyncio.run(crypto_quorum(symbol))
+                # Loop already running - use ThreadPoolExecutor to run in separate thread
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(_run_in_new_loop)
+                    result = future.result(timeout=10)
             except RuntimeError:
-                # No running loop, create new one
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(crypto_quorum(symbol))
-                loop.close()
+                # No running loop, run directly with new loop
+                result = _run_in_new_loop()
 
             if result and result.get("price"):
                 price = result.get("price")

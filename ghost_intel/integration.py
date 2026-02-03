@@ -1697,33 +1697,50 @@ def apply_intel_to_prediction(
     
     Call this from run_single_prediction() after feature extraction.
     Uses ThreadPoolExecutor to safely run async code from uvloop context.
+    
+    CRITICAL: uvloop (used by uvicorn/FastAPI) doesn't support nest_asyncio,
+    so we must be careful about how we run async code from sync context.
     """
     import asyncio
     import concurrent.futures
     
-    def _run_intel_async():
-        """Run async Intel in a new event loop (in separate thread)."""
-        return asyncio.run(
-            get_intel_signal_for_prediction(symbol, direction, confidence)
-        )
-    
-    try:
-        # Check if we're in an async context (uvloop typically)
+    def _run_intel_in_new_loop():
+        """Run async Intel in a completely fresh event loop (in separate thread)."""
+        # Create a brand new event loop for this thread
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
         try:
-            loop = asyncio.get_running_loop()
-            # We're in uvloop - use thread to avoid nested loop issues
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(_run_intel_async)
-                result = future.result(timeout=10)  # 10 second timeout
-                return result
-        except RuntimeError:
-            # No running loop - safe to use asyncio.run directly
-            return asyncio.run(
+            return new_loop.run_until_complete(
                 get_intel_signal_for_prediction(symbol, direction, confidence)
             )
+        finally:
+            new_loop.close()
+    
+    try:
+        # Check if we're already in an async context
+        try:
+            loop = asyncio.get_running_loop()
+            loop_type = type(loop).__name__
+            
+            # We're in an event loop (uvloop or standard)
+            # Use ThreadPoolExecutor to run in isolated thread with fresh loop
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_run_intel_in_new_loop)
+                result = future.result(timeout=10)  # 10 second timeout
+                return result
+                
+        except RuntimeError:
+            # No running loop - safe to create one directly
+            return _run_intel_in_new_loop()
+            
     except concurrent.futures.TimeoutError:
         LOGGER.warning(f"[{symbol}] Intel timeout (10s) - skipping")
         return direction, confidence, {"intel_skipped": True, "reason": "timeout"}
     except Exception as e:
-        LOGGER.warning(f"[{symbol}] Intel unavailable: {e}")
-        return direction, confidence, {"intel_skipped": True, "reason": str(e)}
+        # Log the actual error for debugging, but don't spam with full traceback
+        error_str = str(e)
+        if "uvloop" in error_str.lower() or "patch" in error_str.lower():
+            LOGGER.debug(f"[{symbol}] Intel skipped (uvloop context): {error_str}")
+        else:
+            LOGGER.warning(f"[{symbol}] Intel unavailable: {error_str}")
+        return direction, confidence, {"intel_skipped": True, "reason": error_str}
