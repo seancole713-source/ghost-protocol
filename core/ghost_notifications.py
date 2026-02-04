@@ -1244,6 +1244,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         "• ETH: 61.5% @ 72h (p=0.027)",
         "• XRP: 56.5% @ 168h (p=0.026)",  
         "• LINK: 55.2% @ 72h (p=0.049)",
+        "• CHZ: 57.3% @ 48h (p=0.021)",
         "Ghost V3 is watching 👁️"
     ])
     
