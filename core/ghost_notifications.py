@@ -106,6 +106,17 @@ V3_VALIDATED_STRATEGIES = {
         'p_value': 0.049,
         'confidence_interval': (0.49, 0.61),
     },
+    # CHZ mean_reversion @ 48h: 57.3% win rate, 206 trades, p=0.021
+    # Added 2026-02-04 based on backtest + paper trade validation (44.6% paper, 57.3% backtest)
+    'CHZ': {
+        'strategy': 'mean_reversion',
+        'direction_override': None,  # Use Ghost's direction
+        'hold_hours': 48,
+        'win_rate': 0.573,
+        'sample_size': 206,
+        'p_value': 0.021,
+        'confidence_interval': (0.505, 0.638),
+    },
 }
 
 # STOCKS - Keep from sweetspot analysis (limited sample but only options)
@@ -117,7 +128,7 @@ V3_STOCK_WIN_RATES = {
 }
 
 # CRYPTO WHITELIST - Only backtest-validated symbols
-V3_WHITELIST_CRYPTO = ['ETH', 'XRP', 'LINK']
+V3_WHITELIST_CRYPTO = ['ETH', 'XRP', 'LINK', 'CHZ']
 
 # REMOVED FROM V3 - Not validated by 52K trade backtest
 # These showed "100%" on small samples but ~50% on large samples
