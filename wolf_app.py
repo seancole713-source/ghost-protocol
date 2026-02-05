@@ -1573,6 +1573,17 @@ async def _cockpit_page_alias(request: Request):
     return await _cockpit_page(request)
 
 
+@APP.get("/wolf", include_in_schema=False)
+async def _wolf_page(request: Request):
+    """Legacy /wolf route - redirects to main cockpit."""
+    return await _cockpit_page(request)
+
+
+@APP.get("/wolf.html", include_in_schema=False)
+async def _wolf_page_alias(request: Request):
+    return await _cockpit_page(request)
+
+
 @APP.get("/ui/health")
 async def ui_health():
     """Simple healthcheck endpoint that always returns 200 OK"""
