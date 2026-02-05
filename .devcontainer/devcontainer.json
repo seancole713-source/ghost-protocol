@@ -22,12 +22,42 @@
   "customizations": {
     "vscode": {
       "extensions": [
+        // Python Core
         "ms-python.python",
-        "ms-python.vscode-pylance"
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+        
+        // Jupyter (backtesting/analysis)
+        "ms-toolsai.jupyter",
+        "ms-toolsai.jupyter-renderers",
+        
+        // Database (Ghost uses PostgreSQL + Redis)
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        "cweijan.vscode-redis-client",
+        
+        // API Testing
+        "humao.rest-client",
+        
+        // Git
+        "eamodio.gitlens",
+        "donjayamanne.githistory",
+        
+        // Config Files
+        "redhat.vscode-yaml",
+        
+        // Container
+        "ms-azuretools.vscode-docker"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python",
-        "terminal.integrated.defaultProfile.linux": "bash"
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.analysis.typeCheckingMode": "basic",
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.formatOnSave": true
+        }
       }
     }
   }

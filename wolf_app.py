@@ -5445,6 +5445,122 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.error(f"telegram_reports_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # MONEY GAME SCOUT SCHEDULER - Automated daily cycles + Telegram alerts
+    # ═══════════════════════════════════════════════════════════════════════════════
+    try:
+        money_game_enabled = os.getenv("MONEY_GAME_ENABLED", "1") == "1"
+        
+        if money_game_enabled:
+            async def _money_game_scheduler():
+                """
+                🎰 MONEY GAME SCHEDULER
+                
+                Runs at strategic times (Central Time):
+                - 6:00 AM: Full daily scout (finds today's opportunities)
+                - 8:00 AM: Send TOP 10 Telegram alert
+                - 6:00 PM: Resolve today's trades, update rankings
+                
+                Also runs on startup to ensure predictions are fresh.
+                """
+                from datetime import time as dt_time
+                
+                try:
+                    from zoneinfo import ZoneInfo
+                    central_tz = ZoneInfo("America/Chicago")
+                except ImportError:
+                    central_tz = None
+                
+                # Wait for other services to initialize
+                await asyncio.sleep(30)
+                
+                # Run initial scout on startup to populate predictions
+                try:
+                    LOGGER.info("🎰 [MONEY-GAME] Running startup scout...")
+                    from core.smart_scout import SmartScout
+                    scout = SmartScout()
+                    result = scout.full_scout()
+                    LOGGER.info(f"🎰 [MONEY-GAME] Startup scout complete: {result.get('stocks_scouted', 0)} stocks, {result.get('crypto_scouted', 0)} crypto")
+                except Exception as e:
+                    LOGGER.error(f"🎰 [MONEY-GAME] Startup scout error: {e}")
+                
+                # Main scheduler loop
+                while True:
+                    try:
+                        now = datetime.now(central_tz) if central_tz else datetime.utcnow()
+                        current_hour = now.hour
+                        current_minute = now.minute
+                        
+                        # 6:00 AM CT - Full daily scout
+                        if current_hour == 6 and current_minute == 0:
+                            LOGGER.info("🎰 [MONEY-GAME] 6 AM - Running full daily scout...")
+                            try:
+                                from core.smart_scout import SmartScout
+                                scout = SmartScout()
+                                result = scout.full_scout()
+                                LOGGER.info(f"🎰 [MONEY-GAME] Scout complete: {result}")
+                            except Exception as e:
+                                LOGGER.error(f"🎰 [MONEY-GAME] Scout error: {e}")
+                        
+                        # 8:00 AM CT - Send TOP 10 Telegram alert
+                        if current_hour == 8 and current_minute == 0:
+                            LOGGER.info("🎰 [MONEY-GAME] 8 AM - Sending TOP 10 alert...")
+                            try:
+                                from core.smart_scout import get_elite_predictions
+                                elite = get_elite_predictions()
+                                
+                                # Format message (HTML for Telegram)
+                                stocks = elite.get("elite_stocks", [])[:5]
+                                crypto = elite.get("elite_crypto", [])[:5]
+                                
+                                if stocks or crypto:
+                                    msg = "🎰 <b>MONEY GAME TOP 10</b>\n\n"
+                                    
+                                    if stocks:
+                                        msg += "📈 <b>Top Stocks:</b>\n"
+                                        for i, s in enumerate(stocks, 1):
+                                            msg += f"  {i}. {s}\n"
+                                    
+                                    if crypto:
+                                        msg += "\n🪙 <b>Top Crypto:</b>\n"
+                                        for i, c in enumerate(crypto, 1):
+                                            msg += f"  {i}. {c}\n"
+                                    
+                                    msg += "\n<i>Proven money makers from the game!</i>"
+                                    
+                                    # Send via Telegram
+                                    _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
+                                    LOGGER.info("🎰 [MONEY-GAME] TOP 10 alert sent!")
+                            except Exception as e:
+                                LOGGER.error(f"🎰 [MONEY-GAME] Alert error: {e}")
+                        
+                        # 6:00 PM CT - Resolve trades and update rankings
+                        if current_hour == 18 and current_minute == 0:
+                            LOGGER.info("🎰 [MONEY-GAME] 6 PM - Resolving trades...")
+                            try:
+                                from core.smart_scout import run_daily_cycle
+                                result = run_daily_cycle()
+                                LOGGER.info(f"🎰 [MONEY-GAME] Daily cycle complete: {result}")
+                            except Exception as e:
+                                LOGGER.error(f"🎰 [MONEY-GAME] Resolve error: {e}")
+                        
+                        # Sleep for 60 seconds before next check
+                        await asyncio.sleep(60)
+                        
+                    except asyncio.CancelledError:
+                        LOGGER.info("🎰 [MONEY-GAME] Scheduler cancelled")
+                        break
+                    except Exception as e:
+                        LOGGER.error(f"🎰 [MONEY-GAME] Scheduler error: {e}")
+                        await asyncio.sleep(60)
+            
+            asyncio.create_task(_money_game_scheduler())
+            LOGGER.info("🎰 [POST-STARTUP] ✅ Money Game Scheduler ACTIVATED (6 AM scout, 8 AM alerts, 6 PM resolve)")
+        else:
+            LOGGER.info("🎰 [POST-STARTUP] Money Game Scheduler DISABLED (set MONEY_GAME_ENABLED=1)")
+    except Exception as e:
+        LOGGER.error(f"money_game_scheduler_failed: {e}", extra={"component": "startup"}, exc_info=False)
+
     LOGGER.info("🟣 Ghost Investment Hunter initialized - broker features disabled", extra={"component": "startup"})
 
     # Stage 5: Initialize Advanced Execution & Order Management
@@ -43113,6 +43229,76 @@ try:
         
         except Exception as e:
             LOGGER.error(f"[MONEY-GAME] Telegram alert error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @APP.post("/api/money-game/trigger-now")
+    async def money_game_trigger_now():
+        """
+        🚀 INSTANT TRIGGER: Run scout + send alert NOW
+        
+        For testing - bypasses schedule and runs immediately:
+        1. Run full scout
+        2. Send Telegram alert with results
+        
+        No auth required (public endpoint for quick testing).
+        """
+        try:
+            from core.smart_scout import SmartScout, get_elite_predictions
+            
+            results = {"steps": []}
+            
+            # Step 1: Run scout
+            LOGGER.info("🚀 [TRIGGER-NOW] Running instant scout...")
+            scout = SmartScout()
+            scout_result = scout.full_scout()
+            results["scout"] = {
+                "stocks_scouted": scout_result.get("stocks_scouted", 0),
+                "crypto_scouted": scout_result.get("crypto_scouted", 0)
+            }
+            results["steps"].append("Scout complete")
+            
+            # Step 2: Get elite
+            elite = get_elite_predictions()
+            stocks = elite.get("elite_stocks", [])[:5]
+            crypto = elite.get("elite_crypto", [])[:5]
+            results["elite"] = {"stocks": stocks, "crypto": crypto}
+            results["steps"].append("Elite fetched")
+            
+            # Step 3: Send Telegram (HTML format)
+            if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+                msg = "🚀 <b>GHOST INSTANT SCAN</b>\n\n"
+                msg += f"📊 Scanned: {scout_result.get('stocks_scouted', 0)} stocks, {scout_result.get('crypto_scouted', 0)} crypto\n\n"
+                
+                if stocks:
+                    msg += "📈 <b>Top Stocks:</b>\n"
+                    for i, s in enumerate(stocks, 1):
+                        msg += f"  {i}. {s}\n"
+                
+                if crypto:
+                    msg += "\n🪙 <b>Top Crypto:</b>\n"
+                    for i, c in enumerate(crypto, 1):
+                        msg += f"  {i}. {c}\n"
+                
+                if not stocks and not crypto:
+                    msg += "<i>Building rankings... (run again after more data)</i>\n"
+                
+                msg += "\n<i>Instant scan triggered</i>"
+                
+                success = _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
+                results["telegram_sent"] = success
+                results["steps"].append(f"Telegram: {'sent' if success else 'failed'}")
+            else:
+                results["telegram_sent"] = False
+                results["steps"].append("Telegram not configured")
+            
+            return {
+                "ok": True,
+                "message": "Instant trigger complete!",
+                **results
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[MONEY-GAME] Instant trigger error: {e}")
             return {"ok": False, "error": str(e)}
 
     LOGGER.info("✅ 🎮 Money Game Engine endpoints registered (/api/money-game/*)")

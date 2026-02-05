@@ -187,11 +187,13 @@ async def _run_all_predictions_async():
     # Update last run time
     _LAST_RUN_TIME = time.time()
     
-    # Update global prediction counters for health score
+    # Update global prediction counters AND timestamp for health score
     try:
         import wolf_app
         wolf_app._LAST_MULTI_PREDICTION_COUNTS["stocks"] = stocks_success
         wolf_app._LAST_MULTI_PREDICTION_COUNTS["crypto"] = crypto_success
+        # CRITICAL: Also update the timestamp so cockpit shows last run time
+        wolf_app._LAST_MULTI_PREDICTION_TIME = _LAST_RUN_TIME
     except Exception as e:
         if LOGGER:
             LOGGER.warning(f"Could not update prediction counters: {e}")
