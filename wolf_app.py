@@ -5480,7 +5480,9 @@ async def _post_startup_init():
                     from core.smart_scout import SmartScout
                     scout = SmartScout()
                     result = scout.full_scout()
-                    LOGGER.info(f"🎰 [MONEY-GAME] Startup scout complete: {result.get('stocks_scouted', 0)} stocks, {result.get('crypto_scouted', 0)} crypto")
+                    stocks_n = result.get("stocks", {}).get("scouted", 0)
+                    crypto_n = result.get("crypto", {}).get("scouted", 0)
+                    LOGGER.info(f"🎰 [MONEY-GAME] Startup scout complete: {stocks_n} stocks, {crypto_n} crypto")
                 except Exception as e:
                     LOGGER.error(f"🎰 [MONEY-GAME] Startup scout error: {e}")
                 
@@ -5498,7 +5500,8 @@ async def _post_startup_init():
                                 from core.smart_scout import SmartScout
                                 scout = SmartScout()
                                 result = scout.full_scout()
-                                LOGGER.info(f"🎰 [MONEY-GAME] Scout complete: {result}")
+                                total = result.get("total_scouted", 0)
+                                LOGGER.info(f"🎰 [MONEY-GAME] Scout complete: {total} assets")
                             except Exception as e:
                                 LOGGER.error(f"🎰 [MONEY-GAME] Scout error: {e}")
                         
@@ -43251,11 +43254,19 @@ try:
             LOGGER.info("🚀 [TRIGGER-NOW] Running instant scout...")
             scout = SmartScout()
             scout_result = scout.full_scout()
+            
+            # Extract counts from nested structure
+            stocks_scouted = scout_result.get("stocks", {}).get("scouted", 0) or scout_result.get("total_scouted", 0) // 2
+            crypto_scouted = scout_result.get("crypto", {}).get("scouted", 0) or scout_result.get("total_scouted", 0) // 2
+            total_scouted = scout_result.get("total_scouted", stocks_scouted + crypto_scouted)
+            
             results["scout"] = {
-                "stocks_scouted": scout_result.get("stocks_scouted", 0),
-                "crypto_scouted": scout_result.get("crypto_scouted", 0)
+                "stocks_scouted": stocks_scouted,
+                "crypto_scouted": crypto_scouted,
+                "total_scouted": total_scouted,
+                "elapsed_seconds": scout_result.get("elapsed_seconds", 0)
             }
-            results["steps"].append("Scout complete")
+            results["steps"].append(f"Scout complete: {total_scouted} assets")
             
             # Step 2: Get elite
             elite = get_elite_predictions()
@@ -43267,7 +43278,7 @@ try:
             # Step 3: Send Telegram (HTML format)
             if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
                 msg = "🚀 <b>GHOST INSTANT SCAN</b>\n\n"
-                msg += f"📊 Scanned: {scout_result.get('stocks_scouted', 0)} stocks, {scout_result.get('crypto_scouted', 0)} crypto\n\n"
+                msg += f"📊 Scanned: {stocks_scouted} stocks, {crypto_scouted} crypto\n\n"
                 
                 if stocks:
                     msg += "📈 <b>Top Stocks:</b>\n"
