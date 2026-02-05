@@ -55,7 +55,7 @@ from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException, Request, Response, Security, WebSocket
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response, Security, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
