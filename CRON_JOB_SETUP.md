@@ -10,7 +10,18 @@ Go to [cron-job.org](https://cron-job.org) and sign up (free tier = 3 jobs)
 ### 2. Get Your Railway URL
 Your app URL: `https://ghost-protocol-production.up.railway.app`
 
-### 3. Create These Jobs
+### 3. Check if CRON_SECRET is Set
+If Railway has `CRON_SECRET` configured, you must include it in requests:
+```bash
+# Check if secret is needed
+curl https://ghost-protocol-production.up.railway.app/cron/health
+# Returns {"ok": true} if working
+
+# If cron endpoints return "Invalid cron secret", you need the secret
+# Get it from Railway: railway variables get CRON_SECRET
+```
+
+### 4. Create These Jobs
 
 | Job Name | URL | Time (UTC) | Time (Central) | Method |
 |----------|-----|------------|----------------|--------|
