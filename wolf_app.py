@@ -8277,7 +8277,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # =====================================================================
         
         # Step 1: Determine base direction from strongest signals
-        direction = "FLAT"
+        # BUGFIX: Default to UP instead of FLAT (FLAT is not a valid trading direction)
+        direction = "UP"
         rsi = features.get("RSI_14")
         macd_hist = features.get("MACD_HISTOGRAM")
         

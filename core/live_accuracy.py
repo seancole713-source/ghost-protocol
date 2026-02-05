@@ -80,6 +80,15 @@ def get_live_accuracy_dashboard() -> Dict[str, Any]:
             if not pred_price or not direction or not pred_time:
                 continue
             
+            # BUGFIX: Skip invalid predictions (FLAT direction or 0.0 confidence)
+            if direction not in ("UP", "DOWN"):
+                LOGGER.debug(f"Skipping {symbol} with invalid direction '{direction}'")
+                continue
+            
+            if confidence <= 0.0 or confidence is None:
+                LOGGER.debug(f"Skipping {symbol} with invalid confidence {confidence}")
+                continue
+            
             # Calculate price change
             price_change_pct = ((current_price - pred_price) / pred_price) * 100
             

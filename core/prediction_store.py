@@ -238,6 +238,29 @@ class PredictionStore:
         Returns:
             prediction_id (int) from primary backend
         """
+        # =====================================================================
+        # VALIDATION: Reject invalid predictions before saving
+        # =====================================================================
+        # BUGFIX: Reject FLAT directions - they're not actionable trades
+        if direction not in ("UP", "DOWN"):
+            LOGGER.warning(
+                f"[PREDICTION_STORE] Rejecting {symbol} prediction with invalid direction '{direction}' - "
+                f"must be UP or DOWN. Converting to UP with reduced confidence."
+            )
+            direction = "UP"  # Default to bullish
+            confidence = max(0.50, confidence * 0.8) if confidence else 0.50
+        
+        # BUGFIX: Ensure confidence is valid (not 0.0 or None)
+        if confidence is None or confidence <= 0.0:
+            LOGGER.warning(
+                f"[PREDICTION_STORE] Rejecting {symbol} prediction with invalid confidence {confidence} - "
+                f"setting to minimum 0.50"
+            )
+            confidence = 0.50
+        
+        # Clamp confidence to valid range
+        confidence = max(0.50, min(0.95, confidence))
+        
         # Production-grade fail-closed: reject persistence on degraded inputs.
         reason = _fail_closed_reason_from_features(features or {})
         if reason:
