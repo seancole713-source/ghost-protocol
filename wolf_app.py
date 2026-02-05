@@ -43389,7 +43389,7 @@ async def cron_daily_scout(request: Request):
         return {
             "ok": True,
             "job": "daily-scout",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "stocks_scouted": stocks,
             "crypto_scouted": crypto,
             "total_scouted": total
@@ -43428,7 +43428,7 @@ async def cron_morning_alert(request: Request):
         
         if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
             msg = "☀️ <b>GHOST MORNING PICKS</b>\n\n"
-            msg += f"📅 {datetime.now(timezone.utc).strftime('%B %d, %Y')}\n\n"
+            msg += f"📅 {datetime.now(UTC).strftime('%B %d, %Y')}\n\n"
             
             if stocks:
                 msg += "📈 <b>Top 5 Stocks:</b>\n"
@@ -43451,7 +43451,7 @@ async def cron_morning_alert(request: Request):
             return {
                 "ok": True,
                 "job": "morning-alert",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "telegram_sent": success,
                 "stocks": stocks,
                 "crypto": crypto
@@ -43504,7 +43504,7 @@ async def cron_evening_resolve(request: Request):
         return {
             "ok": True,
             "job": "evening-resolve",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "result": result
         }
     except Exception as e:
@@ -43522,7 +43522,7 @@ async def cron_health():
     """
     return {
         "ok": True,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "message": "Ghost is alive and ready for cron jobs"
     }
 
