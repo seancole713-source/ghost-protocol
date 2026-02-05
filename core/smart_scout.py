@@ -142,31 +142,39 @@ class SmartScout:
     
     def get_stock_prices_batch(self, symbols: List[str]) -> Dict[str, float]:
         """
-        Fetch multiple stock prices.
-        Uses Yahoo Finance batch endpoint.
+        Fetch multiple stock prices using Polygon API.
+        Yahoo Finance blocks server requests, so we use Polygon.
         """
         import requests
         
         prices = {}
+        polygon_key = os.getenv("POLYGON_API_KEY")
         
-        # Yahoo allows multiple symbols
-        symbols_str = ",".join(symbols)
+        if not polygon_key:
+            LOGGER.warning("🔍 [SCOUT] No POLYGON_API_KEY - cannot fetch stock prices")
+            return prices
         
-        try:
-            url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbols_str}"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            resp = requests.get(url, headers=headers, timeout=15)
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                results = data.get("quoteResponse", {}).get("result", [])
-                for quote in results:
-                    symbol = quote.get("symbol")
-                    price = quote.get("regularMarketPrice")
-                    if symbol and price:
-                        prices[symbol] = float(price)
-        except Exception as e:
-            LOGGER.error(f"🔍 [SCOUT] Stock batch error: {e}")
+        # Polygon requires individual calls, but we batch smartly
+        LOGGER.info(f"🔍 [SCOUT] Fetching {len(symbols)} stock prices via Polygon...")
+        
+        for symbol in symbols:
+            try:
+                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev?apiKey={polygon_key}"
+                resp = requests.get(url, timeout=10)
+                
+                if resp.status_code == 200:
+                    data = resp.json()
+                    results = data.get("results", [])
+                    if results:
+                        price = results[0].get("c")  # close price
+                        if price:
+                            prices[symbol] = float(price)
+                
+                # Small delay to avoid rate limits (5 req/min on free tier)
+                time.sleep(0.25)
+                
+            except Exception as e:
+                LOGGER.debug(f"Price fetch failed for {symbol}: {e}")
         
         return prices
     

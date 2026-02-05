@@ -43316,3 +43316,215 @@ try:
 
 except Exception as e:
     LOGGER.error(f"⚠️ Money Game Engine not loaded: {e}", exc_info=True)
+
+# ============================================================================
+# 🕐 EXTERNAL CRON ENDPOINTS (for cron-job.org or similar)
+# ============================================================================
+# 
+# These endpoints are designed for external cron services like cron-job.org
+# that can reliably call your app on a schedule, even if Railway restarts.
+#
+# Setup on cron-job.org:
+#   1. Create account at https://cron-job.org
+#   2. Add jobs for each endpoint:
+#      - 6:00 AM CT (12:00 UTC): /cron/daily-scout
+#      - 8:00 AM CT (14:00 UTC): /cron/morning-alert
+#      - 6:00 PM CT (00:00 UTC): /cron/evening-resolve
+#   3. Set method to GET (or POST if you want)
+#   4. Optional: Add secret header for security
+# ============================================================================
+
+# Secret key for cron validation (set in Railway env vars)
+CRON_SECRET = os.getenv("CRON_SECRET", "")
+
+
+def _validate_cron_request(request) -> bool:
+    """Validate cron request has correct secret (if configured)"""
+    if not CRON_SECRET:
+        return True  # No secret configured, allow all
+    
+    # Check header
+    provided = request.headers.get("X-Cron-Secret", "")
+    if provided == CRON_SECRET:
+        return True
+    
+    # Also check query param as fallback
+    if request.query_params.get("secret") == CRON_SECRET:
+        return True
+    
+    return False
+
+
+@APP.get("/cron/daily-scout")
+@APP.post("/cron/daily-scout")
+async def cron_daily_scout(request: Request):
+    """
+    🌅 6:00 AM DAILY SCOUT
+    
+    External cron trigger for daily scouting.
+    Scans all stocks + crypto and records trades.
+    
+    cron-job.org setup:
+      URL: https://your-app.railway.app/cron/daily-scout
+      Time: 12:00 UTC (6:00 AM Central)
+      Method: GET
+    """
+    if not _validate_cron_request(request):
+        LOGGER.warning("⚠️ [CRON] Invalid secret for daily-scout")
+        return {"ok": False, "error": "Invalid cron secret"}
+    
+    try:
+        from core.smart_scout import SmartScout
+        
+        LOGGER.info("🌅 [CRON] Running daily scout via external trigger...")
+        scout = SmartScout()
+        result = scout.full_scout()
+        
+        stocks = result.get("stocks", {}).get("scouted", 0)
+        crypto = result.get("crypto", {}).get("scouted", 0)
+        total = result.get("total_scouted", stocks + crypto)
+        
+        LOGGER.info(f"🌅 [CRON] Daily scout complete: {total} assets ({stocks} stocks, {crypto} crypto)")
+        
+        return {
+            "ok": True,
+            "job": "daily-scout",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "stocks_scouted": stocks,
+            "crypto_scouted": crypto,
+            "total_scouted": total
+        }
+    except Exception as e:
+        LOGGER.error(f"🌅 [CRON] Daily scout error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/cron/morning-alert")
+@APP.post("/cron/morning-alert")
+async def cron_morning_alert(request: Request):
+    """
+    ☀️ 8:00 AM MORNING ALERT
+    
+    External cron trigger for TOP 10 Telegram alert.
+    Sends the daily picks to Telegram.
+    
+    cron-job.org setup:
+      URL: https://your-app.railway.app/cron/morning-alert
+      Time: 14:00 UTC (8:00 AM Central)
+      Method: GET
+    """
+    if not _validate_cron_request(request):
+        LOGGER.warning("⚠️ [CRON] Invalid secret for morning-alert")
+        return {"ok": False, "error": "Invalid cron secret"}
+    
+    try:
+        from core.smart_scout import get_elite_predictions
+        
+        LOGGER.info("☀️ [CRON] Sending morning alert via external trigger...")
+        
+        elite = get_elite_predictions()
+        stocks = elite.get("elite_stocks", [])[:5]
+        crypto = elite.get("elite_crypto", [])[:5]
+        
+        if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+            msg = "☀️ <b>GHOST MORNING PICKS</b>\n\n"
+            msg += f"📅 {datetime.now(timezone.utc).strftime('%B %d, %Y')}\n\n"
+            
+            if stocks:
+                msg += "📈 <b>Top 5 Stocks:</b>\n"
+                for i, s in enumerate(stocks, 1):
+                    msg += f"  {i}. {s}\n"
+            else:
+                msg += "📈 <i>No stock picks yet</i>\n"
+            
+            if crypto:
+                msg += "\n🪙 <b>Top 5 Crypto:</b>\n"
+                for i, c in enumerate(crypto, 1):
+                    msg += f"  {i}. {c}\n"
+            else:
+                msg += "\n🪙 <i>No crypto picks yet</i>\n"
+            
+            msg += "\n<i>Triggered by external cron</i>"
+            
+            success = _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
+            
+            return {
+                "ok": True,
+                "job": "morning-alert",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "telegram_sent": success,
+                "stocks": stocks,
+                "crypto": crypto
+            }
+        else:
+            return {
+                "ok": False,
+                "error": "Telegram not configured",
+                "stocks": stocks,
+                "crypto": crypto
+            }
+            
+    except Exception as e:
+        LOGGER.error(f"☀️ [CRON] Morning alert error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/cron/evening-resolve")
+@APP.post("/cron/evening-resolve")
+async def cron_evening_resolve(request: Request):
+    """
+    🌙 6:00 PM EVENING RESOLVE
+    
+    External cron trigger to resolve trades and update rankings.
+    
+    cron-job.org setup:
+      URL: https://your-app.railway.app/cron/evening-resolve
+      Time: 00:00 UTC (6:00 PM Central)
+      Method: GET
+    """
+    if not _validate_cron_request(request):
+        LOGGER.warning("⚠️ [CRON] Invalid secret for evening-resolve")
+        return {"ok": False, "error": "Invalid cron secret"}
+    
+    try:
+        LOGGER.info("🌙 [CRON] Resolving trades via external trigger...")
+        
+        # Import and run resolver
+        try:
+            from core.ghost_scout import GameResolver
+            resolver = GameResolver()
+            result = resolver.resolve_pending_trades(hours_old=24)
+        except ImportError:
+            from core.money_game_engine import get_money_game
+            game = get_money_game()
+            result = game.resolve_open_trades()
+        
+        LOGGER.info(f"🌙 [CRON] Trade resolution complete: {result}")
+        
+        return {
+            "ok": True,
+            "job": "evening-resolve",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "result": result
+        }
+    except Exception as e:
+        LOGGER.error(f"🌙 [CRON] Evening resolve error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/cron/health")
+async def cron_health():
+    """
+    💓 CRON HEALTH CHECK
+    
+    Simple endpoint to verify the app is up.
+    cron-job.org can ping this to ensure availability.
+    """
+    return {
+        "ok": True,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "message": "Ghost is alive and ready for cron jobs"
+    }
+
+
+LOGGER.info("✅ 🕐 External Cron endpoints registered (/cron/*)")

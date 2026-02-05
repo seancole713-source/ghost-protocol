@@ -575,20 +575,28 @@ class GhostScout:
         return None
     
     def _get_stock_price(self, symbol: str) -> Optional[float]:
-        """Get stock price from Yahoo Finance"""
+        """Get stock price from Polygon API (Yahoo blocks server requests)"""
         import requests
         
+        polygon_key = os.getenv("POLYGON_API_KEY")
+        if not polygon_key:
+            LOGGER.warning(f"No POLYGON_API_KEY - cannot fetch {symbol}")
+            return None
+        
         try:
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            resp = requests.get(url, headers=headers, timeout=5)
+            # Polygon prev close endpoint - most reliable
+            url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev?apiKey={polygon_key}"
+            resp = requests.get(url, timeout=10)
             
             if resp.status_code == 200:
                 data = resp.json()
-                price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
-                return float(price)
-        except:
-            pass
+                results = data.get("results", [])
+                if results:
+                    price = results[0].get("c")  # close price
+                    if price:
+                        return float(price)
+        except Exception as e:
+            LOGGER.debug(f"Polygon price fetch failed for {symbol}: {e}")
         
         return None
     
@@ -658,18 +666,22 @@ class GhostScout:
                 "confidence": confidence
             }
         
+        polygon_key = os.getenv("POLYGON_API_KEY")
+        
         try:
             # Get some historical data to make a better prediction
-            if asset_type == "stock":
-                # Yahoo Finance historical
-                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=30d"
-                headers = {"User-Agent": "Mozilla/5.0"}
-                resp = requests.get(url, headers=headers, timeout=5)
+            if asset_type == "stock" and polygon_key:
+                # Polygon API for historical data
+                from datetime import datetime, timedelta
+                end = datetime.now().strftime("%Y-%m-%d")
+                start = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
+                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start}/{end}?apiKey={polygon_key}"
+                resp = requests.get(url, timeout=10)
                 
                 if resp.status_code == 200:
                     data = resp.json()
-                    closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-                    closes = [c for c in closes if c is not None]
+                    results = data.get("results", [])
+                    closes = [r.get("c") for r in results if r.get("c")]
                     
                     if len(closes) >= 10:
                         # Calculate momentum
