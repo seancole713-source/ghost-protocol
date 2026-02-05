@@ -1,0 +1,85 @@
+{
+  "added": {
+    "SOL": {
+      "strategy": "random",
+      "direction_override": null,
+      "hold_hours": 72,
+      "win_rate": 0.558,
+      "sample_size": 355,
+      "p_value": 0.0168,
+      "confidence_interval": [
+        0.506,
+        0.609
+      ]
+    },
+    "AVAX": {
+      "strategy": "always_down",
+      "direction_override": null,
+      "hold_hours": 168,
+      "win_rate": 0.564,
+      "sample_size": 351,
+      "p_value": 0.0094,
+      "confidence_interval": [
+        0.512,
+        0.615
+      ]
+    },
+    "DDOG": {
+      "strategy": "always_up",
+      "direction_override": null,
+      "hold_hours": 48,
+      "win_rate": 0.569,
+      "sample_size": 202,
+      "p_value": 0.0286,
+      "confidence_interval": [
+        0.5,
+        0.636
+      ]
+    }
+  },
+  "removed": {},
+  "changed": {
+    "XRP": {
+      "old": {
+        "strategy": "mean_reversion",
+        "hold_hours": 168,
+        "win_rate": 0.565
+      },
+      "new": {
+        "strategy": "mean_reversion_aggressive",
+        "hold_hours": 168,
+        "win_rate": 0.565
+      }
+    },
+    "LINK": {
+      "old": {
+        "strategy": "mean_reversion",
+        "hold_hours": 72,
+        "win_rate": 0.552
+      },
+      "new": {
+        "strategy": "always_down",
+        "hold_hours": 168,
+        "win_rate": 0.558
+      }
+    },
+    "ETH": {
+      "old": {
+        "strategy": "ghost_inverse",
+        "hold_hours": 72,
+        "win_rate": 0.615
+      },
+      "new": {
+        "strategy": "ghost_inverse_strong",
+        "hold_hours": 72,
+        "win_rate": 0.615
+      }
+    }
+  },
+  "unchanged": [
+    "CHZ",
+    "PANW",
+    "FTNT",
+    "NET"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "added": {},
+  "removed": {
+    "LINK": "No longer statistically significant",
+    "ETH": "No longer statistically significant",
+    "XRP": "No longer statistically significant",
+    "CHZ": "No longer statistically significant"
+  },
+  "changed": {},
+  "unchanged": [
+    "PANW",
+    "FTNT",
+    "NET"
+  ]
+}
