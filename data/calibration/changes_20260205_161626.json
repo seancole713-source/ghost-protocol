@@ -1,0 +1,40 @@
+{
+  "added": {
+    "DDOG": {
+      "strategy": "always_up",
+      "direction_override": null,
+      "hold_hours": 48,
+      "win_rate": 0.569,
+      "sample_size": 202,
+      "p_value": 0.0286,
+      "confidence_interval": [
+        0.5,
+        0.636
+      ]
+    },
+    "SNOW": {
+      "strategy": "random",
+      "direction_override": null,
+      "hold_hours": 24,
+      "win_rate": 0.586,
+      "sample_size": 203,
+      "p_value": 0.0084,
+      "confidence_interval": [
+        0.517,
+        0.652
+      ]
+    }
+  },
+  "removed": {
+    "XRP": "No longer statistically significant",
+    "LINK": "No longer statistically significant",
+    "CHZ": "No longer statistically significant",
+    "ETH": "No longer statistically significant"
+  },
+  "changed": {},
+  "unchanged": [
+    "FTNT",
+    "NET",
+    "PANW"
+  ]
+}

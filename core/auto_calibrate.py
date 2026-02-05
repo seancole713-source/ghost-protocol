@@ -529,8 +529,15 @@ def run_calibration(
     logger.info(f"\nGenerated config saved to: {config_path}")
     
     if not dry_run and auto_update:
-        logger.info("\n⚠️ AUTO-UPDATE is enabled - would update config files here")
-        # TODO: Implement auto-update of ghost_notifications.py and config/symbols.py
+        logger.info("\n⚠️ AUTO-UPDATE is enabled - updating config files...")
+        update_success = auto_update_config(validated, changes)
+        
+        if update_success:
+            # Send Telegram notification
+            send_calibration_alert(alert, changes)
+            
+            # Auto-commit and push
+            auto_deploy(changes)
     
     return {
         'validated': validated,
@@ -539,6 +546,200 @@ def run_calibration(
         'crypto_results': crypto_results,
         'stock_results': stock_results,
     }
+
+
+# =============================================================================
+# AUTO-UPDATE FUNCTIONS
+# =============================================================================
+
+def auto_update_config(validated: Dict, changes: Dict) -> bool:
+    """
+    Automatically update V3_VALIDATED_STRATEGIES in ghost_notifications.py
+    """
+    import re
+    
+    config_file = Path(__file__).parent / "ghost_notifications.py"
+    
+    if not config_file.exists():
+        logger.error(f"Config file not found: {config_file}")
+        return False
+    
+    # Generate new V3_VALIDATED_STRATEGIES block
+    new_block = generate_v3_block(validated)
+    
+    # Read current file
+    content = config_file.read_text()
+    
+    # Find and replace V3_VALIDATED_STRATEGIES block
+    # Pattern matches from "V3_VALIDATED_STRATEGIES = {" to the closing "}"
+    pattern = r'V3_VALIDATED_STRATEGIES\s*=\s*\{[^}]+(?:\{[^}]*\}[^}]*)*\}'
+    
+    if not re.search(pattern, content):
+        logger.error("Could not find V3_VALIDATED_STRATEGIES in config file")
+        return False
+    
+    # Replace with new block
+    new_content = re.sub(pattern, new_block, content, count=1)
+    
+    # Backup original
+    backup_path = CALIBRATION_DIR / f"ghost_notifications_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
+    backup_path.write_text(content)
+    logger.info(f"Backup saved to: {backup_path}")
+    
+    # Write updated file
+    config_file.write_text(new_content)
+    logger.info(f"Updated: {config_file}")
+    
+    return True
+
+
+def generate_v3_block(validated: Dict) -> str:
+    """Generate the V3_VALIDATED_STRATEGIES dict as a string"""
+    lines = []
+    lines.append("V3_VALIDATED_STRATEGIES = {")
+    
+    # Separate crypto and stocks
+    crypto = {k: v for k, v in validated.items() if v.get('asset_type') != 'stock' and k in CRYPTO_SYMBOLS}
+    stocks = {k: v for k, v in validated.items() if v.get('asset_type') == 'stock' or k in STOCK_SYMBOLS}
+    
+    # Add crypto
+    if crypto:
+        lines.append("    # =========================================================================")
+        lines.append("    # CRYPTO - Auto-calibrated " + datetime.now().strftime('%Y-%m-%d'))
+        lines.append("    # =========================================================================")
+        for symbol in sorted(crypto.keys()):
+            config = crypto[symbol]
+            lines.append(f"    # {symbol} {config['strategy']} @ {config['hold_hours']}h: {config['win_rate']*100:.1f}% win rate, {config['sample_size']} trades, p={config['p_value']}")
+            lines.append(f"    '{symbol}': {{")
+            lines.append(f"        'strategy': '{config['strategy']}',")
+            
+            # Set direction override based on strategy
+            if config['strategy'] in ['ghost_inverse', 'ghost_inverse_strong']:
+                lines.append(f"        'direction_override': 'flip',")
+            elif config['strategy'] == 'always_down':
+                lines.append(f"        'direction_override': 'DOWN',")
+            elif config['strategy'] == 'always_up':
+                lines.append(f"        'direction_override': 'UP',")
+            else:
+                lines.append(f"        'direction_override': None,")
+            
+            lines.append(f"        'hold_hours': {config['hold_hours']},")
+            lines.append(f"        'win_rate': {config['win_rate']},")
+            lines.append(f"        'sample_size': {config['sample_size']},")
+            lines.append(f"        'p_value': {config['p_value']},")
+            ci = config.get('confidence_interval', (0.50, 0.60))
+            lines.append(f"        'confidence_interval': {ci},")
+            lines.append(f"    }},")
+    
+    # Add stocks
+    if stocks:
+        lines.append("    # =========================================================================")
+        lines.append("    # STOCKS - Auto-calibrated " + datetime.now().strftime('%Y-%m-%d'))
+        lines.append("    # =========================================================================")
+        for symbol in sorted(stocks.keys()):
+            config = stocks[symbol]
+            lines.append(f"    # {symbol} {config['strategy']} @ {config['hold_hours']}h: {config['win_rate']*100:.1f}% win rate, {config['sample_size']} trades, p={config['p_value']}")
+            lines.append(f"    '{symbol}': {{")
+            lines.append(f"        'strategy': '{config['strategy']}',")
+            
+            if config['strategy'] in ['ghost_inverse', 'ghost_inverse_strong']:
+                lines.append(f"        'direction_override': 'flip',")
+            elif config['strategy'] == 'always_down':
+                lines.append(f"        'direction_override': 'DOWN',")
+            elif config['strategy'] == 'always_up':
+                lines.append(f"        'direction_override': 'UP',")
+            else:
+                lines.append(f"        'direction_override': None,")
+            
+            lines.append(f"        'hold_hours': {config['hold_hours']},")
+            lines.append(f"        'win_rate': {config['win_rate']},")
+            lines.append(f"        'sample_size': {config['sample_size']},")
+            lines.append(f"        'p_value': {config['p_value']},")
+            lines.append(f"        'asset_type': 'stock',")
+            lines.append(f"    }},")
+    
+    lines.append("}")
+    
+    return "\n".join(lines)
+
+
+def send_calibration_alert(alert: str, changes: Dict) -> bool:
+    """Send calibration results to Telegram"""
+    try:
+        import requests
+        
+        bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+        chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+        
+        if not bot_token or not chat_id:
+            logger.warning("Telegram credentials not set, skipping alert")
+            return False
+        
+        # Truncate if too long
+        if len(alert) > 4000:
+            alert = alert[:3900] + "\n\n... (truncated)"
+        
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            'chat_id': chat_id,
+            'text': alert,
+            'parse_mode': 'HTML'
+        }
+        
+        response = requests.post(url, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            logger.info("✅ Telegram alert sent")
+            return True
+        else:
+            logger.error(f"Telegram error: {response.text}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Failed to send Telegram alert: {e}")
+        return False
+
+
+def auto_deploy(changes: Dict) -> bool:
+    """Auto-commit and push changes to trigger Railway deploy"""
+    import subprocess
+    
+    total_changes = len(changes['added']) + len(changes['removed']) + len(changes['changed'])
+    
+    if total_changes == 0:
+        logger.info("No changes to deploy")
+        return True
+    
+    try:
+        # Stage changes
+        subprocess.run(['git', 'add', '-A'], check=True, cwd=Path(__file__).parent.parent)
+        
+        # Create commit message
+        msg_parts = []
+        if changes['added']:
+            msg_parts.append(f"Added: {', '.join(changes['added'].keys())}")
+        if changes['removed']:
+            msg_parts.append(f"Removed: {', '.join(changes['removed'].keys())}")
+        if changes['changed']:
+            msg_parts.append(f"Updated: {', '.join(changes['changed'].keys())}")
+        
+        commit_msg = f"Auto-calibration: {'; '.join(msg_parts)}"
+        
+        # Commit
+        subprocess.run(['git', 'commit', '-m', commit_msg], check=True, cwd=Path(__file__).parent.parent)
+        
+        # Push
+        subprocess.run(['git', 'push', 'origin', 'main'], check=True, cwd=Path(__file__).parent.parent)
+        
+        logger.info(f"✅ Auto-deployed: {commit_msg}")
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git operation failed: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Auto-deploy failed: {e}")
+        return False
 
 
 # =============================================================================

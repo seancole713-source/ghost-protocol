@@ -4452,6 +4452,16 @@ async def _on_startup():
         LOGGER.error(f"v2_quality_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
+    # 🔄 Start Weekly Auto-Calibration Scheduler (Ghost tunes itself!)
+    # Runs every Sunday at 5:00 AM CT to find optimal strategies
+    try:
+        from core.auto_calibrate_scheduler import start_weekly_calibration_scheduler
+        start_weekly_calibration_scheduler()
+        LOGGER.info("[GHOST STARTUP] ✅ Weekly auto-calibration scheduler started (Sundays 5AM CT)")
+    except Exception as e:
+        LOGGER.warning(f"auto_calibration_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # CRITICAL: Initialize prediction store tables EARLY to prevent "table not found" errors
     # Do NOT wait for full pool init - just ensure tables exist
     try:
@@ -11089,6 +11099,102 @@ async def dashboard_ui():
             content=f"<h1>Error loading dashboard</h1><p>{str(e)}</p>",
             status_code=500
         )
+
+
+# =============================================================================
+# AUTO-CALIBRATION ENDPOINTS
+# =============================================================================
+
+@APP.post("/api/v3/auto-calibrate")
+async def api_auto_calibrate(
+    background_tasks: BackgroundTasks,
+    apply: bool = False,
+    crypto: bool = True,
+    stocks: bool = True
+):
+    """
+    🔄 Run Auto-Calibration
+    
+    Backtests all strategies and finds optimal configurations.
+    
+    Args:
+        apply: If True, auto-update config and deploy (default: False = dry run)
+        crypto: Test crypto symbols (default: True)
+        stocks: Test stock symbols (default: True)
+    
+    Returns:
+        Calibration results with validated strategies and changes
+    """
+    try:
+        from core.auto_calibrate import run_calibration
+        
+        LOGGER.info(f"🔄 Starting auto-calibration (apply={apply}, crypto={crypto}, stocks={stocks})")
+        
+        result = run_calibration(
+            test_crypto=crypto,
+            test_stocks=stocks,
+            auto_update=apply,
+            dry_run=not apply
+        )
+        
+        return {
+            "ok": True,
+            "validated_count": len(result['validated']),
+            "validated": result['validated'],
+            "changes": {
+                "added": list(result['changes']['added'].keys()),
+                "removed": list(result['changes']['removed'].keys()),
+                "changed": list(result['changes']['changed'].keys()),
+                "unchanged": result['changes']['unchanged'],
+            },
+            "alert": result['alert'],
+            "applied": apply,
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Auto-calibration failed: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+@APP.get("/api/v3/auto-calibrate/latest")
+async def api_auto_calibrate_latest():
+    """
+    📊 Get Latest Auto-Calibration Results
+    
+    Returns the most recent calibration without running a new one.
+    """
+    try:
+        from pathlib import Path
+        import json
+        
+        calibration_dir = Path(__file__).parent / "data" / "calibration"
+        latest_file = calibration_dir / "latest_validated.json"
+        
+        if not latest_file.exists():
+            return {
+                "ok": False,
+                "error": "No calibration results found. Run /api/v3/auto-calibrate first."
+            }
+        
+        with open(latest_file) as f:
+            validated = json.load(f)
+        
+        return {
+            "ok": True,
+            "validated_count": len(validated),
+            "validated": validated,
+            "last_modified": latest_file.stat().st_mtime,
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Failed to get latest calibration: {e}", exc_info=True)
+        return {
+            "ok": False,
+            "error": str(e)
+        }
 
 
 @APP.get("/api/v3/calibration/report")
