@@ -53,6 +53,36 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
         backtest_trades=268,
         p_value=0.048,
     ),
+    # =========================================================================
+    # STOCKS - Added 2026-02-05 based on 5063+ bar backtest
+    # =========================================================================
+    'PANW': ValidatedStrategy(
+        symbol='PANW',
+        strategy='ghost_inverse',
+        direction_override='flip',
+        hold_hours=168,
+        backtest_win_rate=0.646,
+        backtest_trades=65,
+        p_value=0.0124,
+    ),
+    'NET': ValidatedStrategy(
+        symbol='NET',
+        strategy='ghost_inverse',
+        direction_override='flip',
+        hold_hours=168,
+        backtest_win_rate=0.625,
+        backtest_trades=72,
+        p_value=0.0222,
+    ),
+    'FTNT': ValidatedStrategy(
+        symbol='FTNT',
+        strategy='ghost_inverse',
+        direction_override='flip',
+        hold_hours=168,
+        backtest_win_rate=0.623,
+        backtest_trades=69,
+        p_value=0.0266,
+    ),
 }
 
 

@@ -117,10 +117,47 @@ V3_VALIDATED_STRATEGIES = {
         'p_value': 0.021,
         'confidence_interval': (0.505, 0.638),
     },
+    # =========================================================================
+    # STOCKS - Added 2026-02-05 based on 5063+ bar backtest (Mar 2023 - Feb 2026)
+    # All use ghost_inverse strategy (flip Ghost's direction)
+    # =========================================================================
+    # PANW ghost_inverse @ 168h: 64.6% win rate, 65 trades, p=0.0124
+    'PANW': {
+        'strategy': 'ghost_inverse',
+        'direction_override': 'flip',  # Flip Ghost's direction
+        'hold_hours': 168,
+        'win_rate': 0.646,
+        'sample_size': 65,
+        'p_value': 0.0124,
+        'confidence_interval': (0.525, 0.751),
+        'asset_type': 'stock',
+    },
+    # NET ghost_inverse @ 168h: 62.5% win rate, 72 trades, p=0.0222
+    'NET': {
+        'strategy': 'ghost_inverse',
+        'direction_override': 'flip',  # Flip Ghost's direction
+        'hold_hours': 168,
+        'win_rate': 0.625,
+        'sample_size': 72,
+        'p_value': 0.0222,
+        'confidence_interval': (0.510, 0.728),
+        'asset_type': 'stock',
+    },
+    # FTNT ghost_inverse @ 168h: 62.3% win rate, 69 trades, p=0.0266
+    'FTNT': {
+        'strategy': 'ghost_inverse',
+        'direction_override': 'flip',  # Flip Ghost's direction
+        'hold_hours': 168,
+        'win_rate': 0.623,
+        'sample_size': 69,
+        'p_value': 0.0266,
+        'confidence_interval': (0.505, 0.728),
+        'asset_type': 'stock',
+    },
 }
 
-# STOCKS - Keep from sweetspot analysis (limited sample but only options)
-V3_WHITELIST_STOCKS = ['T', 'BMBL', 'XPO']
+# STOCKS - V3 validated cybersecurity stocks
+V3_WHITELIST_STOCKS = ['PANW', 'NET', 'FTNT']
 V3_STOCK_WIN_RATES = {
     ('T', 'DOWN'): (1.00, 94),      # 100% but only 94 trades
     ('BMBL', 'UP'): (0.75, 50),     # 75%, 50 trades
