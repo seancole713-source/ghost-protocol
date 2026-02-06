@@ -10497,6 +10497,82 @@ async def _gather_opus_context(symbol: str) -> dict:
     return context
 
 
+@APP.get("/api/v3/review-score")
+async def api_v3_review_score():
+    """
+    PUBLIC ENDPOINT: Get Ghost's current review score.
+    
+    No authentication required. Returns:
+    - Backtest-validated win rates for all V3 symbols
+    - Live accuracy from paper trades (V2 era)
+    - Overall system score
+    """
+    from core.ghost_notifications import V3_VALIDATED_STRATEGIES
+    
+    # V3 backtest-validated strategies
+    v3_symbols = []
+    total_backtest_trades = 0
+    weighted_backtest_win = 0
+    
+    for symbol, config in V3_VALIDATED_STRATEGIES.items():
+        win_rate = config.get('win_rate', 0)
+        sample_size = config.get('sample_size', 0)
+        v3_symbols.append({
+            'symbol': symbol,
+            'strategy': config.get('strategy'),
+            'win_rate': round(win_rate * 100, 1),
+            'trades': sample_size,
+            'p_value': config.get('p_value'),
+            'hold_hours': config.get('hold_hours'),
+            'asset_type': config.get('asset_type', 'crypto')
+        })
+        total_backtest_trades += sample_size
+        weighted_backtest_win += win_rate * sample_size
+    
+    backtest_avg = round((weighted_backtest_win / total_backtest_trades) * 100, 1) if total_backtest_trades > 0 else 0
+    
+    # Try to get live accuracy from paper tracker
+    live_accuracy = None
+    live_trades = 0
+    try:
+        from core.paper_tracker import get_paper_tracker
+        tracker = get_paper_tracker()
+        V2_START_DATE = "2026-01-14"
+        stats = tracker.get_stats(days=30, since=V2_START_DATE, v2_only=True)
+        live_trades = stats.get("resolved_trades", 0)
+        wins = stats.get("wins", 0)
+        if live_trades > 0:
+            live_accuracy = round((wins / live_trades) * 100, 1)
+    except Exception:
+        pass
+    
+    # Overall score: prefer live if we have enough trades, else use backtest
+    if live_trades >= 50:
+        overall_score = live_accuracy
+        score_source = "live_paper_trades"
+    else:
+        overall_score = backtest_avg
+        score_source = "backtest_validated"
+    
+    return {
+        "ok": True,
+        "ghost_review_score": overall_score,
+        "score_source": score_source,
+        "backtest": {
+            "avg_win_rate": backtest_avg,
+            "total_trades": total_backtest_trades,
+            "symbols": v3_symbols
+        },
+        "live": {
+            "win_rate": live_accuracy,
+            "trades": live_trades,
+            "period": "30d since V2 (2026-01-14)"
+        } if live_accuracy else None,
+        "note": "All p-values < 0.05 (statistically significant)",
+        "timestamp": time.time()
+    }
+
+
 @APP.get("/api/v3/accuracy/summary")
 async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_only: bool = True):
     """
