@@ -154,10 +154,22 @@ V3_VALIDATED_STRATEGIES = {
         'confidence_interval': (0.505, 0.728),
         'asset_type': 'stock',
     },
+    # DDOG always_up @ 48h: 56.9% win rate, 202 trades, p=0.0286
+    # Added 2026-02-06 by auto-calibration discovery
+    'DDOG': {
+        'strategy': 'always_up',
+        'direction_override': 'UP',  # Always predict UP regardless of Ghost signal
+        'hold_hours': 48,
+        'win_rate': 0.569,
+        'sample_size': 202,
+        'p_value': 0.0286,
+        'confidence_interval': (0.500, 0.636),
+        'asset_type': 'stock',
+    },
 }
 
 # STOCKS - V3 validated cybersecurity stocks
-V3_WHITELIST_STOCKS = ['PANW', 'NET', 'FTNT']
+V3_WHITELIST_STOCKS = ['PANW', 'NET', 'FTNT', 'DDOG']
 V3_STOCK_WIN_RATES = {
     ('T', 'DOWN'): (1.00, 94),      # 100% but only 94 trades
     ('BMBL', 'UP'): (0.75, 50),     # 75%, 50 trades

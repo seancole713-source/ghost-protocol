@@ -106,11 +106,23 @@ def should_trade(symbol: str, confidence: float) -> Tuple[bool, str]:
     """
     symbol = symbol.upper()
     
-    # Check 1: Blacklist (highest priority - never trade these)
+    # V3 BYPASS (HIGHEST PRIORITY): If symbol has a validated strategy with p < 0.05,
+    # skip ALL checks - the backtest proves the edge exists
+    # This overrides even the blacklist, because V3 strategies like ghost_inverse
+    # INTENTIONALLY trade symbols the base model gets wrong (that's why they're blacklisted)
+    try:
+        from core.ghost_notifications import V3_VALIDATED_STRATEGIES
+        if symbol in V3_VALIDATED_STRATEGIES:
+            v3_config = V3_VALIDATED_STRATEGIES[symbol]
+            return True, f"V3 validated: {v3_config.get('strategy')} @ {v3_config.get('win_rate', 0):.1%} win rate (p={v3_config.get('p_value')})"
+    except ImportError:
+        pass
+    
+    # Check 1: Blacklist (for non-V3 symbols only)
     if symbol in BLACKLIST:
         return False, f"Blacklisted: 0-3% historical win rate - Model cannot predict {symbol}"
     
-    # Check 2: Confidence threshold
+    # Check 2: Confidence threshold (for non-V3 symbols)
     if confidence < MIN_CONFIDENCE:
         return False, f"Low confidence: {confidence:.1%} < {MIN_CONFIDENCE:.1%} threshold"
     

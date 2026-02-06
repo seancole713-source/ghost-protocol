@@ -198,6 +198,9 @@ class PaperTracker:
             ("v3_original_direction", "TEXT"),
             ("v3_hold_hours", "INTEGER"),
             ("v3_backtest_win_rate", "REAL"),
+            ("expected_move_pct", "REAL"),
+            ("actual_move_pct", "REAL"),
+            ("magnitude_error_pct", "REAL"),
         ]
         
         try:
@@ -249,7 +252,8 @@ class PaperTracker:
         v3_is_inverse: bool = False,
         v3_original_direction: str = None,
         v3_hold_hours: int = None,
-        v3_backtest_win_rate: float = None
+        v3_backtest_win_rate: float = None,
+        expected_move_pct: float = None
     ) -> str:
         """
         Log a Ghost signal as a paper trade.
@@ -350,7 +354,8 @@ class PaperTracker:
             v3_is_inverse,
             v3_original_direction,
             v3_hold_hours,
-            v3_backtest_win_rate
+            v3_backtest_win_rate,
+            expected_move_pct
         )
         
         try:
@@ -367,8 +372,9 @@ class PaperTracker:
                         trust_level, checkpoint_times, checkpoint_results,
                         checkpoint_evaluated, checkpoint_prices,
                         v3_validated, v3_strategy, v3_is_inverse,
-                        v3_original_direction, v3_hold_hours, v3_backtest_win_rate
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        v3_original_direction, v3_hold_hours, v3_backtest_win_rate,
+                        expected_move_pct
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, params)
                 conn.commit()
                 conn.close()
@@ -384,8 +390,9 @@ class PaperTracker:
                         trust_level, checkpoint_times, checkpoint_results,
                         checkpoint_evaluated, checkpoint_prices,
                         v3_validated, v3_strategy, v3_is_inverse,
-                        v3_original_direction, v3_hold_hours, v3_backtest_win_rate
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        v3_original_direction, v3_hold_hours, v3_backtest_win_rate,
+                        expected_move_pct
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, params)
                 conn.commit()
                 conn.close()
@@ -395,9 +402,11 @@ class PaperTracker:
             if v3_validated:
                 v3_info = f", V3={v3_strategy}, hold={v3_hold_hours}hr, backtest={v3_backtest_win_rate:.1%}" if v3_backtest_win_rate else f", V3={v3_strategy}, hold={v3_hold_hours}hr"
             
+            mag_info = f", expected_move={expected_move_pct:+.1f}%" if expected_move_pct else ""
+            
             LOGGER.info(
                 f"📝 Paper trade logged: {symbol} {signal_direction} "
-                f"@ ${entry_price:,.2f} (conf={signal_confidence:.1%}, trust_level={trust_level}{v3_info})"
+                f"@ ${entry_price:,.2f} (conf={signal_confidence:.1%}, trust_level={trust_level}{v3_info}{mag_info})"
             )
             
             return paper_trade_id
@@ -515,6 +524,11 @@ class PaperTracker:
             # Update trade
             checked_at = now.isoformat()
             
+            # Magnitude tracking: compare predicted vs actual move
+            actual_move_pct_val = abs(price_change_pct * 100)  # Always positive
+            expected_move = trade.get("expected_move_pct") or 0
+            magnitude_error = abs(actual_move_pct_val - expected_move) if expected_move else None
+            
             self._execute(conn, """
                 UPDATE paper_trades
                 SET target_price = ?,
@@ -522,7 +536,9 @@ class PaperTracker:
                     outcome = ?,
                     profit_loss = ?,
                     profit_loss_pct = ?,
-                    checked_at = ?
+                    checked_at = ?,
+                    actual_move_pct = ?,
+                    magnitude_error_pct = ?
                 WHERE paper_trade_id = ?
             """, (
                 current_price,
@@ -531,13 +547,16 @@ class PaperTracker:
                 pnl,
                 pnl_pct,
                 checked_at,
+                round(actual_move_pct_val, 2),
+                round(magnitude_error, 2) if magnitude_error is not None else None,
                 paper_trade_id
             ))
             conn.commit()
             
+            mag_info = f", actual_move={actual_move_pct_val:.1f}%, predicted={expected_move:.1f}%" if expected_move else ""
             LOGGER.info(
                 f"✅ Paper trade resolved: {trade['symbol']} {outcome} "
-                f"(${pnl:+,.2f}, {pnl_pct:+.2%})"
+                f"(${pnl:+,.2f}, {pnl_pct:+.2%}{mag_info})"
             )
             
             # =====================================================================

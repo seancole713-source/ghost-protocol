@@ -10602,6 +10602,15 @@ async def api_v3_review_score():
             "period": "since V2 (2026-01-14)",
             "by_symbol": v3_live_stats
         } if live_accuracy else None,
+        "v3_symbols_count": len(V3_VALIDATED_STRATEGIES),
+        "v3_symbols": list(V3_VALIDATED_STRATEGIES.keys()),
+        "features": {
+            "direction_prediction": True,
+            "magnitude_prediction": True,
+            "inverse_strategy": True,
+            "always_up_strategy": True,
+            "auto_calibration": True,
+        },
         "note": "Score from backtest-validated V3 symbols only (p < 0.05)",
         "timestamp": time.time()
     }

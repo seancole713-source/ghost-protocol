@@ -145,6 +145,8 @@ class StockPrediction:
     gates_passed: List[str]
     gates_failed: List[str]
     reasons: List[str]
+    expected_move_pct: float = 0.0  # Predicted magnitude (e.g. 2.5 = +2.5%)
+    atr_pct: float = 0.0  # Average True Range as % of price
     timestamp: datetime = field(default_factory=datetime.utcnow)
     
     @property
@@ -165,6 +167,8 @@ class StockPrediction:
             "entry_price": round(self.entry_price, 2),
             "target_price": round(self.target_price, 2),
             "stop_loss": round(self.stop_loss, 2),
+            "expected_move_pct": round(self.expected_move_pct, 2),
+            "atr_pct": round(self.atr_pct, 2),
             "horizon_hours": self.horizon_hours,
             "confirmations": self.confirmations,
             "min_confirmations": STOCK_CONFIG.min_confirmations,
@@ -373,6 +377,41 @@ class StockEngine:
             avg_volume = volume.rolling(20).mean().iloc[-1]
             current_volume = volume.iloc[-1]
             indicators["volume_ratio"] = float(current_volume / avg_volume) if avg_volume > 0 else 1.0
+            
+            # ================================================================
+            # MAGNITUDE ESTIMATION: ATR + Historical Volatility
+            # Used to predict HOW MUCH a stock will move, not just direction
+            # ================================================================
+            try:
+                high = hist['High'] if 'High' in hist.columns else hist.get('h', close)
+                low = hist['Low'] if 'Low' in hist.columns else hist.get('l', close)
+                
+                # ATR (Average True Range) - 14 period
+                tr1 = high - low
+                tr2 = abs(high - close.shift())
+                tr3 = abs(low - close.shift())
+                tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+                atr_14 = tr.rolling(14).mean().iloc[-1]
+                current_price = float(close.iloc[-1])
+                atr_pct = (atr_14 / current_price) * 100 if current_price > 0 else 0
+                indicators["atr_14"] = float(atr_14) if not pd.isna(atr_14) else 0
+                indicators["atr_pct"] = float(atr_pct) if not pd.isna(atr_pct) else 0
+                
+                # Historical daily volatility (std of daily returns)
+                daily_returns = close.pct_change().dropna()
+                daily_vol = float(daily_returns.std()) * 100  # as percentage
+                indicators["daily_volatility_pct"] = daily_vol if not pd.isna(daily_vol) else 1.5
+                
+                # Recent momentum (5-day return)
+                if len(close) >= 6:
+                    recent_return = float((close.iloc[-1] / close.iloc[-6] - 1) * 100)
+                    indicators["recent_5d_return_pct"] = recent_return
+                
+            except Exception as e:
+                LOGGER.debug(f"Magnitude indicators failed for {symbol}: {e}")
+                indicators["atr_14"] = 0
+                indicators["atr_pct"] = 0
+                indicators["daily_volatility_pct"] = 1.5
             
         except Exception as e:
             LOGGER.warning(f"Technical indicators failed for {symbol}: {e}")
@@ -707,6 +746,39 @@ class StockEngine:
             target_price = price
             stop_loss = price
         
+        # Step 11: Magnitude Estimation (HOW MUCH will it move?)
+        # Uses ATR + volatility + confidence to estimate expected % move
+        atr_pct = indicators.get("atr_pct", 0)
+        daily_vol = indicators.get("daily_volatility_pct", 1.5)
+        recent_5d = indicators.get("recent_5d_return_pct", 0)
+        
+        # Base magnitude from ATR (normalized to hold period)
+        # ATR is daily, scale by sqrt(hold_days) for multi-day estimates
+        hold_days = self.config.horizon_hours / 24
+        magnitude_from_atr = atr_pct * (hold_days ** 0.5)  # Sqrt scaling
+        
+        # Confidence multiplier: higher confidence = larger expected move
+        conf_multiplier = 0.5 + (confidence * 0.5)  # Range 0.55 to 0.925
+        
+        # Momentum adjustment: if recent trend aligns, boost magnitude
+        momentum_adj = 1.0
+        if direction == "UP" and recent_5d > 1.0:
+            momentum_adj = 1.15  # Momentum + direction aligned
+        elif direction == "DOWN" and recent_5d < -1.0:
+            momentum_adj = 1.15
+        elif (direction == "UP" and recent_5d < -2.0) or (direction == "DOWN" and recent_5d > 2.0):
+            momentum_adj = 0.85  # Counter-trend, reduce expectation
+        
+        # Final expected move (conservative: cap at 2x ATR)
+        expected_move_pct = min(magnitude_from_atr * conf_multiplier * momentum_adj, atr_pct * 2 * hold_days)
+        expected_move_pct = max(0.5, expected_move_pct)  # Floor at 0.5%
+        
+        # Adjust target_price based on magnitude
+        if direction == "UP":
+            target_price = price * (1 + expected_move_pct / 100)
+        elif direction == "DOWN":
+            target_price = price * (1 - expected_move_pct / 100)
+        
         # Final prediction
         prediction = StockPrediction(
             symbol=symbol,
@@ -719,10 +791,12 @@ class StockEngine:
             confirmations=confirmations,
             gates_passed=gates_passed,
             gates_failed=gates_failed,
-            reasons=all_reasons[:5]  # Top 5 reasons
+            reasons=all_reasons[:5],  # Top 5 reasons
+            expected_move_pct=round(expected_move_pct, 2),
+            atr_pct=round(atr_pct, 2),
         )
         
-        LOGGER.info(f"🏛️ {symbol} → {direction} ({confidence:.0%}) | {confirmations} confirmations")
+        LOGGER.info(f"🏛️ {symbol} → {direction} ({confidence:.0%}) | {confirmations} confirmations | expected move: {expected_move_pct:+.1f}% | ATR: {atr_pct:.1f}%")
         
         # Record pattern for accuracy tracking (only actionable predictions)
         if direction in ("UP", "DOWN") and confidence >= 0.6:
@@ -739,12 +813,15 @@ class StockEngine:
         
         # =====================================================================
         # PAPER TRADE LOGGING - Track stock predictions for accuracy measurement
-        # Only log actionable predictions (UP/DOWN with >= 60% confidence)
+        # Log predictions that are: (a) actionable (UP/DOWN >= 60%), or (b) V3 validated with strategy override
         # =====================================================================
-        if direction in ("UP", "DOWN") and confidence >= 0.6:
+        from core.ghost_notifications import V3_VALIDATED_STRATEGIES
+        v3_config = V3_VALIDATED_STRATEGIES.get(symbol)
+        v3_has_override = v3_config and v3_config.get('strategy') in ('always_up', 'always_down')
+        
+        if (direction in ("UP", "DOWN") and confidence >= 0.6) or v3_has_override:
             try:
                 from core.paper_tracker import get_paper_tracker
-                from core.ghost_notifications import V3_VALIDATED_STRATEGIES
                 
                 paper_tracker = get_paper_tracker()
                 
@@ -755,13 +832,18 @@ class StockEngine:
                 v3_hold_hours = v3_config.get('hold_hours') if v3_config else None
                 v3_backtest_win_rate = v3_config.get('win_rate') if v3_config else None
                 v3_is_inverse = v3_strategy == 'ghost_inverse' if v3_strategy else False
+                v3_is_always_up = v3_strategy == 'always_up' if v3_strategy else False
                 
-                # For inverse strategies, flip the direction
+                # Apply V3 strategy overrides to direction
                 final_direction = direction
                 original_direction = direction
                 if v3_is_inverse:
                     final_direction = "DOWN" if direction == "UP" else "UP"
                     LOGGER.info(f"🔄 [{symbol}] V3 INVERSE: {original_direction} → {final_direction}")
+                elif v3_is_always_up:
+                    final_direction = "UP"
+                    if original_direction != "UP":
+                        LOGGER.info(f"📈 [{symbol}] V3 ALWAYS_UP: {original_direction} → UP")
                 
                 paper_tracker.log_signal(
                     cascade_id=f"stock_{symbol}_{int(time.time())}",
@@ -773,11 +855,12 @@ class StockEngine:
                     v3_validated=v3_validated,
                     v3_strategy=v3_strategy,
                     v3_is_inverse=v3_is_inverse,
-                    v3_original_direction=original_direction if v3_is_inverse else None,
+                    v3_original_direction=original_direction if (v3_is_inverse or v3_is_always_up) else None,
                     v3_hold_hours=v3_hold_hours,
-                    v3_backtest_win_rate=v3_backtest_win_rate
+                    v3_backtest_win_rate=v3_backtest_win_rate,
+                    expected_move_pct=expected_move_pct
                 )
-                LOGGER.info(f"📝 [{symbol}] Stock paper trade logged (V3={v3_validated}, strategy={v3_strategy})")
+                LOGGER.info(f"📝 [{symbol}] Stock paper trade logged (V3={v3_validated}, strategy={v3_strategy}, expected_move={expected_move_pct:+.1f}%)")
             except Exception as e:
                 LOGGER.warning(f"[{symbol}] Failed to log stock paper trade: {e}")
         
