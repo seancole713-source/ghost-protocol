@@ -179,6 +179,58 @@ class PaperTracker:
         except Exception as e:
             LOGGER.error(f"Failed to create paper_trades table: {e}")
             # Don't raise - table might already exist
+        
+        # Run migrations to add columns that might be missing on existing tables
+        self._run_migrations()
+    
+    def _run_migrations(self):
+        """Add missing columns to existing tables (idempotent migrations)"""
+        # Columns that may need to be added to existing tables
+        migrations = [
+            ("trust_level", "INTEGER DEFAULT 1"),
+            ("checkpoint_times", "JSONB DEFAULT '[]'" if self.use_postgres else "TEXT"),
+            ("checkpoint_results", "JSONB DEFAULT '[]'" if self.use_postgres else "TEXT"),
+            ("checkpoint_evaluated", "JSONB DEFAULT '[]'" if self.use_postgres else "TEXT"),
+            ("checkpoint_prices", "JSONB DEFAULT '[]'" if self.use_postgres else "TEXT"),
+            ("v3_validated", "BOOLEAN DEFAULT FALSE" if self.use_postgres else "INTEGER DEFAULT 0"),
+            ("v3_strategy", "TEXT"),
+            ("v3_is_inverse", "BOOLEAN DEFAULT FALSE" if self.use_postgres else "INTEGER DEFAULT 0"),
+            ("v3_original_direction", "TEXT"),
+            ("v3_hold_hours", "INTEGER"),
+            ("v3_backtest_win_rate", "REAL"),
+        ]
+        
+        try:
+            conn = self._get_connection()
+            
+            for col_name, col_type in migrations:
+                try:
+                    if self.use_postgres:
+                        cur = conn.cursor()
+                        # PostgreSQL: Check if column exists
+                        cur.execute("""
+                            SELECT column_name FROM information_schema.columns 
+                            WHERE table_name = 'paper_trades' AND column_name = %s
+                        """, (col_name,))
+                        if not cur.fetchone():
+                            cur.execute(f"ALTER TABLE paper_trades ADD COLUMN {col_name} {col_type}")
+                            conn.commit()
+                            LOGGER.info(f"🔧 Migration: Added column {col_name} to paper_trades")
+                    else:
+                        # SQLite: Try to add, ignore if exists
+                        try:
+                            conn.execute(f"ALTER TABLE paper_trades ADD COLUMN {col_name} {col_type}")
+                            conn.commit()
+                            LOGGER.info(f"🔧 Migration: Added column {col_name} to paper_trades")
+                        except sqlite3.OperationalError as e:
+                            if "duplicate column" not in str(e).lower():
+                                raise
+                except Exception as col_err:
+                    LOGGER.debug(f"Column {col_name} migration skipped: {col_err}")
+            
+            conn.close()
+        except Exception as e:
+            LOGGER.warning(f"Migration check failed (non-fatal): {e}")
     
     def log_signal(
         self,
