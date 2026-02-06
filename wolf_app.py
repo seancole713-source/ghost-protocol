@@ -4317,33 +4317,31 @@ async def _on_startup():
                 try:
                     from core.paper_tracker import get_paper_tracker
                     from core.crypto.crypto_providers import get_crypto_price_quorum
-                    import psycopg2
                     
                     tracker = get_paper_tracker()
                     price_data = {}
                     
-                    # Get unique symbols from pending trades
-                    database_url = os.getenv("DATABASE_URL")
-                    if database_url:
-                        conn = psycopg2.connect(database_url)
-                        cur = conn.cursor()
-                        # Cast target_time to TIMESTAMP for comparison (stored as TEXT)
-                        cur.execute("""
+                    # CRITICAL FIX: Use PaperTracker's own connection abstraction
+                    # instead of raw psycopg2 (which crashes when DATABASE_URL is SQLite)
+                    try:
+                        conn = tracker._get_connection()
+                        now_str = datetime.utcnow().isoformat()
+                        cur = tracker._execute(conn, """
                             SELECT DISTINCT symbol FROM paper_trades 
                             WHERE outcome = 'PENDING' 
-                            AND target_time::timestamp <= NOW()
-                        """)
-                        symbols = cur.fetchall()
-                        cur.close()
+                            AND target_time <= ?
+                        """, (now_str,))
+                        rows = tracker._fetchall(cur)
+                        symbols = [(row["symbol"],) for row in rows]
                         conn.close()
-                    else:
+                    except Exception as query_err:
+                        LOGGER.error(f"[PAPER] Failed to query pending trades: {query_err}")
                         symbols = []
                     
                     if symbols:
                         LOGGER.info(f"[PAPER] Found {len(symbols)} symbols with due trades, fetching prices...")
                         
                         # Fetch current prices for symbols with due trades
-                        # CRITICAL FIX: Use correct price source for stocks vs crypto
                         from core.asset_classifier import get_asset_type
                         
                         for (symbol,) in symbols:
@@ -24521,59 +24519,61 @@ async def debug_v3_validation():
     """
     try:
         from core.ghost_notifications import V3_VALIDATED_STRATEGIES, V3_REMOVED_SYMBOLS, V3_DEFAULT_HOLD_HOURS
-        import psycopg2
+        from core.paper_tracker import get_paper_tracker
         
         # Query live performance for V3 validated trades from paper_trades
-        DATABASE_URL = os.getenv("DATABASE_URL")
+        # FIXED: Use PaperTracker abstraction instead of raw psycopg2
         live_stats = {}
+        pending_stats = {}
         
-        if DATABASE_URL:
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
+        try:
+            tracker = get_paper_tracker()
+            conn = tracker._get_connection()
             
             for symbol in V3_VALIDATED_STRATEGIES.keys():
                 # Query V3 validated paper trades with outcomes
-                cur.execute("""
+                cur = tracker._execute(conn, """
                     SELECT 
                         COUNT(*) as total,
                         SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
                         SUM(CASE WHEN outcome IN ('WIN', 'LOSS') THEN 1 ELSE 0 END) as resolved,
-                        AVG(CASE WHEN outcome = 'WIN' THEN 1.0 WHEN outcome = 'LOSS' THEN 0.0 END) as win_rate,
                         v3_strategy,
                         v3_hold_hours,
                         v3_backtest_win_rate
                     FROM paper_trades
-                    WHERE symbol = %s
-                    AND v3_validated = TRUE
+                    WHERE symbol = ?
+                    AND v3_validated = 1
                     GROUP BY v3_strategy, v3_hold_hours, v3_backtest_win_rate
                 """, (symbol,))
-                row = cur.fetchone()
+                row = tracker._fetchone(cur)
                 if row:
+                    resolved_count = row.get("resolved", 0) or 0
+                    wins_count = row.get("wins", 0) or 0
+                    live_rate = round(wins_count / resolved_count, 3) if resolved_count > 0 else None
                     live_stats[symbol] = {
-                        "total_v3": row[0],
-                        "wins": row[1] or 0,
-                        "resolved": row[2] or 0,
-                        "live_win_rate": round(float(row[3] or 0), 3) if row[3] else None,
-                        "v3_strategy": row[4],
-                        "v3_hold_hours": row[5],
-                        "v3_backtest_win_rate": round(float(row[6] or 0), 3) if row[6] else None,
+                        "total_v3": row.get("total", 0),
+                        "wins": wins_count,
+                        "resolved": resolved_count,
+                        "live_win_rate": live_rate,
+                        "v3_strategy": row.get("v3_strategy"),
+                        "v3_hold_hours": row.get("v3_hold_hours"),
+                        "v3_backtest_win_rate": round(float(row.get("v3_backtest_win_rate") or 0), 3) if row.get("v3_backtest_win_rate") else None,
                     }
             
             # Also check for pending V3 trades
-            cur.execute("""
+            cur = tracker._execute(conn, """
                 SELECT symbol, COUNT(*) as pending_count
                 FROM paper_trades
-                WHERE v3_validated = TRUE
+                WHERE v3_validated = 1
                 AND outcome = 'PENDING'
                 GROUP BY symbol
             """)
-            pending_rows = cur.fetchall()
-            pending_stats = {row[0]: row[1] for row in pending_rows}
+            pending_rows = tracker._fetchall(cur)
+            pending_stats = {row["symbol"]: row["pending_count"] for row in pending_rows}
             
-            cur.close()
             conn.close()
-        else:
-            pending_stats = {}
+        except Exception as db_err:
+            LOGGER.error(f"V3 validation query error: {db_err}")
         
         # Build validation report
         validation_report = {}
@@ -41438,7 +41438,6 @@ try:
         Fetches current prices and resolves trades that reached target time.
         """
         try:
-            import psycopg2
             tracker = get_paper_tracker()
             
             # Get current prices for all tracked symbols
@@ -41446,24 +41445,19 @@ try:
             from core.asset_classifier import get_asset_type
             price_data = {}
             
-            # Get unique symbols from pending trades (PostgreSQL)
-            database_url = os.getenv("DATABASE_URL")
-            if database_url:
-                conn = psycopg2.connect(database_url)
-                cur = conn.cursor()
-                cur.execute("""
+            # CRITICAL FIX: Use PaperTracker's abstraction layer
+            # instead of raw psycopg2 (which crashes on SQLite DATABASE_URL)
+            try:
+                conn = tracker._get_connection()
+                cur = tracker._execute(conn, """
                     SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
                 """)
-                symbols = cur.fetchall()
-                cur.close()
+                rows = tracker._fetchall(cur)
+                symbols = [(row["symbol"],) for row in rows]
                 conn.close()
-            else:
-                # Fallback to SQLite (local dev only)
-                conn = sqlite3.connect("data/ghost_predictions.db")
-                symbols = conn.execute("""
-                    SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
-                """).fetchall()
-                conn.close()
+            except Exception as query_err:
+                LOGGER.error(f"Failed to query pending symbols: {query_err}")
+                symbols = []
             
             # Fetch current prices - FIXED: Use correct source for stocks vs crypto
             for (symbol,) in symbols:
@@ -41616,6 +41610,233 @@ try:
                 "stats": {},
                 "error": str(e)
             }
+
+            return {
+                "ok": False,
+                "stats": {},
+                "error": str(e)
+            }
+
+    @APP.post("/api/v3/paper/force-resolve")
+    async def api_v3_paper_force_resolve(batch_size: int = 200):
+        """
+        Force-resolve all expired pending paper trades in batches.
+        
+        This fetches current prices for symbols with expired trades and resolves them.
+        Use this to catch up on trades that were never resolved due to reconciler bugs.
+        
+        Args:
+            batch_size: Max symbols to process per call (default: 200)
+        """
+        try:
+            from core.paper_tracker import get_paper_tracker
+            from core.crypto.crypto_providers import get_crypto_price_quorum
+            from core.asset_classifier import get_asset_type
+            
+            tracker = get_paper_tracker()
+            price_data = {}
+            
+            # Get all symbols with expired pending trades
+            conn = tracker._get_connection()
+            now_str = datetime.utcnow().isoformat()
+            cur = tracker._execute(conn, """
+                SELECT DISTINCT symbol FROM paper_trades 
+                WHERE outcome = 'PENDING' 
+                AND target_time <= ?
+            """, (now_str,))
+            rows = tracker._fetchall(cur)
+            
+            # Also count total expired for reporting
+            count_cur = tracker._execute(conn, """
+                SELECT COUNT(*) as cnt FROM paper_trades 
+                WHERE outcome = 'PENDING' 
+                AND target_time <= ?
+            """, (now_str,))
+            count_row = tracker._fetchone(count_cur)
+            total_expired = count_row["cnt"] if count_row else 0
+            conn.close()
+            
+            symbols = [row["symbol"] for row in rows][:batch_size]
+            
+            if not symbols:
+                return {"ok": True, "message": "No expired pending trades", "resolved_count": 0}
+            
+            LOGGER.info(f"[FORCE-RESOLVE] Processing {len(symbols)} symbols, {total_expired} expired trades")
+            
+            # Fetch current prices
+            price_errors = []
+            for symbol in symbols:
+                try:
+                    asset_type = get_asset_type(symbol)
+                    if asset_type == 'crypto':
+                        result = await get_crypto_price_quorum(symbol, use_cache=True)
+                        if result and result.get("price"):
+                            price_data[symbol] = result["price"]
+                        else:
+                            price_errors.append(f"{symbol}: no crypto price")
+                    else:
+                        stock_result = turbo_stock_price(symbol, max_budget_s=2.0)
+                        if stock_result and stock_result.get("ok") and stock_result.get("price"):
+                            price_data[symbol] = stock_result["price"]
+                        else:
+                            price_errors.append(f"{symbol}: no stock price")
+                except Exception as e:
+                    price_errors.append(f"{symbol}: {str(e)[:50]}")
+            
+            if not price_data:
+                return {"ok": False, "error": "Could not fetch any prices", "price_errors": price_errors}
+            
+            # Resolve trades
+            resolved = tracker.check_all_pending(price_data)
+            
+            # Get updated stats
+            stats = tracker.get_stats(days=365)
+            
+            return {
+                "ok": True,
+                "resolved_count": len(resolved),
+                "symbols_with_prices": list(price_data.keys()),
+                "symbols_without_prices": price_errors,
+                "total_expired_before": total_expired,
+                "post_resolve_stats": {
+                    "total_trades": stats.get("total_trades", 0),
+                    "resolved_trades": stats.get("resolved_trades", 0),
+                    "pending_trades": stats.get("pending_trades", 0),
+                    "wins": stats.get("wins", 0),
+                    "losses": stats.get("losses", 0),
+                    "win_rate": stats.get("win_rate", 0),
+                }
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[FORCE-RESOLVE] Error: {e}", exc_info=True)
+            return {"ok": False, "error": str(e)}
+
+    @APP.get("/api/v3/paper/accuracy-proof")
+    async def api_v3_paper_accuracy_proof():
+        """
+        THE PROOF ENDPOINT.
+        
+        Returns hard numbers: how many predictions Ghost made, how many were right,
+        broken down by symbol, direction, and time period. No spin, just data.
+        """
+        try:
+            from core.paper_tracker import get_paper_tracker
+            
+            tracker = get_paper_tracker()
+            conn = tracker._get_connection()
+            
+            # Overall stats
+            cur = tracker._execute(conn, """
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
+                    SUM(CASE WHEN outcome = 'BREAK_EVEN' THEN 1 ELSE 0 END) as break_even,
+                    SUM(CASE WHEN outcome = 'PENDING' THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN outcome = 'EXPIRED' THEN 1 ELSE 0 END) as expired
+                FROM paper_trades
+            """)
+            overall = tracker._fetchone(cur)
+            
+            # Per-symbol breakdown
+            cur = tracker._execute(conn, """
+                SELECT 
+                    symbol,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
+                    SUM(CASE WHEN outcome = 'BREAK_EVEN' THEN 1 ELSE 0 END) as break_even,
+                    SUM(CASE WHEN outcome = 'PENDING' THEN 1 ELSE 0 END) as pending
+                FROM paper_trades
+                WHERE outcome != 'EXPIRED'
+                GROUP BY symbol
+                ORDER BY total DESC
+            """)
+            by_symbol = tracker._fetchall(cur)
+            
+            # Per-direction breakdown
+            cur = tracker._execute(conn, """
+                SELECT 
+                    signal_direction,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses
+                FROM paper_trades
+                WHERE outcome IN ('WIN', 'LOSS')
+                GROUP BY signal_direction
+            """)
+            by_direction = tracker._fetchall(cur)
+            
+            # Recent 7-day accuracy (most relevant)
+            seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+            cur = tracker._execute(conn, """
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses
+                FROM paper_trades
+                WHERE outcome IN ('WIN', 'LOSS')
+                AND created_at >= ?
+            """, (seven_days_ago,))
+            recent = tracker._fetchone(cur)
+            
+            conn.close()
+            
+            # Calculate win rates
+            resolved_total = (overall.get("wins", 0) or 0) + (overall.get("losses", 0) or 0)
+            overall_win_rate = round((overall.get("wins", 0) or 0) / resolved_total * 100, 1) if resolved_total > 0 else None
+            
+            recent_resolved = (recent.get("wins", 0) or 0) + (recent.get("losses", 0) or 0)
+            recent_win_rate = round((recent.get("wins", 0) or 0) / recent_resolved * 100, 1) if recent_resolved > 0 else None
+            
+            symbol_stats = []
+            for s in by_symbol:
+                s_resolved = (s.get("wins", 0) or 0) + (s.get("losses", 0) or 0)
+                symbol_stats.append({
+                    "symbol": s["symbol"],
+                    "total_trades": s["total"],
+                    "wins": s.get("wins", 0) or 0,
+                    "losses": s.get("losses", 0) or 0,
+                    "break_even": s.get("break_even", 0) or 0,
+                    "pending": s.get("pending", 0) or 0,
+                    "win_rate": round((s.get("wins", 0) or 0) / s_resolved * 100, 1) if s_resolved > 0 else None,
+                    "sample_size": s_resolved
+                })
+            
+            return {
+                "ok": True,
+                "proof": {
+                    "overall": {
+                        "total_predictions": overall.get("total", 0) or 0,
+                        "resolved": resolved_total,
+                        "wins": overall.get("wins", 0) or 0,
+                        "losses": overall.get("losses", 0) or 0,
+                        "break_even": overall.get("break_even", 0) or 0,
+                        "pending": overall.get("pending", 0) or 0,
+                        "expired": overall.get("expired", 0) or 0,
+                        "win_rate_pct": overall_win_rate,
+                        "verdict": "INSUFFICIENT DATA" if resolved_total < 30 else (
+                            "ACCURATE" if overall_win_rate >= 55 else 
+                            "MARGINAL" if overall_win_rate >= 50 else 
+                            "INACCURATE"
+                        )
+                    },
+                    "last_7_days": {
+                        "resolved": recent_resolved,
+                        "wins": recent.get("wins", 0) or 0,
+                        "losses": recent.get("losses", 0) or 0,
+                        "win_rate_pct": recent_win_rate,
+                    },
+                    "by_symbol": sorted(symbol_stats, key=lambda x: x.get("sample_size", 0), reverse=True),
+                    "by_direction": by_direction,
+                },
+                "note": "This is REAL data from paper trades. Win rate = correct direction predictions / total resolved predictions."
+            }
+        
+        except Exception as e:
+            LOGGER.error(f"[ACCURACY-PROOF] Error: {e}", exc_info=True)
+            return {"ok": False, "error": str(e)}
 
     # =========================================================================
     # TRUST LADDER ENDPOINTS - Progressive accuracy system
@@ -41850,17 +42071,11 @@ try:
         Returns:
             Count of expired trades and updated stats
         """
-        import psycopg2
-        from psycopg2.extras import RealDictCursor
-        from datetime import datetime
-        
-        db_url = os.getenv("DATABASE_URL")
-        if not db_url:
-            return {"ok": False, "error": "DATABASE_URL not configured"}
+        from core.paper_tracker import get_paper_tracker
         
         try:
-            conn = psycopg2.connect(db_url)
-            cur = conn.cursor(cursor_factory=RealDictCursor)
+            tracker = get_paper_tracker()
+            conn = tracker._get_connection()
             
             # Parse cutoff date
             try:
@@ -41869,23 +42084,23 @@ try:
                 conn.close()
                 return {"ok": False, "error": f"Invalid date format: {cutoff_date}. Use YYYY-MM-DD"}
             
-            # Count trades to be expired
-            # created_at is TEXT column, so use string comparison (ISO format sorts correctly)
             cutoff_str = cutoff.strftime("%Y-%m-%dT00:00:00")
-            cur.execute("""
+            
+            # Count trades to be expired
+            cur = tracker._execute(conn, """
                 SELECT
                     COUNT(*) as count,
                     MIN(created_at) as oldest,
                     MAX(created_at) as newest
                 FROM paper_trades
                 WHERE outcome = 'PENDING'
-                  AND created_at < %s::text
+                  AND created_at < ?
             """, (cutoff_str,))
             
-            stats = cur.fetchone()
-            pending_count = stats['count']
-            oldest = stats['oldest']
-            newest = stats['newest']
+            stats = tracker._fetchone(cur)
+            pending_count = stats['count'] if stats else 0
+            oldest = stats.get('oldest') if stats else None
+            newest = stats.get('newest') if stats else None
             
             if pending_count == 0:
                 conn.close()
@@ -41897,14 +42112,14 @@ try:
                 }
             
             if dry_run:
-                # Just return counts without making changes
-                cur.execute("""
+                cur = tracker._execute(conn, """
                     SELECT outcome, COUNT(*) as count
                     FROM paper_trades
                     GROUP BY outcome
                     ORDER BY count DESC
                 """)
-                outcome_counts = {row['outcome']: row['count'] for row in cur.fetchall()}
+                rows = tracker._fetchall(cur)
+                outcome_counts = {row['outcome']: row['count'] for row in rows}
                 conn.close()
                 
                 return {
@@ -41920,40 +42135,41 @@ try:
             # Actually expire the trades
             LOGGER.info(f"🧹 Expiring {pending_count:,} old pending trades before {cutoff_date}")
             
-            cur.execute("""
+            now_str = datetime.utcnow().isoformat()
+            tracker._execute(conn, """
                 UPDATE paper_trades
                 SET
                     outcome = 'EXPIRED',
-                    checked_at = NOW(),
+                    checked_at = ?,
                     notes = 'Auto-expired: Pre-V2 filter trade'
                 WHERE outcome = 'PENDING'
-                  AND created_at < %s::text
-            """, (cutoff_str,))
+                  AND created_at < ?
+            """, (now_str, cutoff_str))
             
-            expired_count = cur.rowcount
             conn.commit()
             
             # Get updated counts
-            cur.execute("""
+            cur = tracker._execute(conn, """
                 SELECT outcome, COUNT(*) as count
                 FROM paper_trades
                 GROUP BY outcome
                 ORDER BY count DESC
             """)
-            outcome_counts = {row['outcome']: row['count'] for row in cur.fetchall()}
+            rows = tracker._fetchall(cur)
+            outcome_counts = {row['outcome']: row['count'] for row in rows}
             
             conn.close()
             
-            LOGGER.info(f"✅ Expired {expired_count:,} old pending trades")
+            LOGGER.info(f"✅ Expired {pending_count:,} old pending trades")
             
             return {
                 "ok": True,
-                "expired_count": expired_count,
+                "expired_count": pending_count,
                 "oldest_trade": str(oldest) if oldest else None,
                 "newest_trade": str(newest) if newest else None,
                 "cutoff_date": cutoff_date,
                 "outcome_counts": outcome_counts,
-                "message": f"Successfully expired {expired_count:,} old pending trades"
+                "message": f"Successfully expired {pending_count:,} old pending trades"
             }
             
         except Exception as e:

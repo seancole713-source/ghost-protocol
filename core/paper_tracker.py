@@ -21,6 +21,10 @@ LOGGER = logging.getLogger("paper_tracker")
 # PostgreSQL support for production
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Only use PostgreSQL if DATABASE_URL is actually a PostgreSQL URL
+# (not if it's a sqlite:/// URL which would crash psycopg2)
+_IS_POSTGRES = bool(DATABASE_URL and DATABASE_URL.startswith(("postgres://", "postgresql://")))
+
 
 class PaperTracker:
     """
@@ -38,7 +42,7 @@ class PaperTracker:
     
     def __init__(self, db_path: str = "data/ghost_predictions.db"):
         self.db_path = db_path
-        self.use_postgres = bool(DATABASE_URL)
+        self.use_postgres = _IS_POSTGRES
         self._ensure_table()
     
     def _get_postgres_connection(self):
