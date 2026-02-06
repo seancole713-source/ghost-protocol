@@ -308,9 +308,17 @@ def compare_strategies(current: Dict, new: Dict) -> Dict:
     for symbol in new_symbols - current_symbols:
         changes['added'][symbol] = new[symbol]
     
-    # Removed symbols
+    # Removed symbols - BUT preserve crypto if we only tested stocks
+    # This prevents crypto symbols from being removed when we can't backtest them
+    CRYPTO_PRESERVE = {'ETH', 'XRP', 'LINK', 'CHZ', 'BTC', 'SOL', 'AVAX', 'DOGE', 'ADA'}
+    
     for symbol in current_symbols - new_symbols:
-        changes['removed'][symbol] = "No longer statistically significant"
+        # Don't remove crypto symbols just because they weren't in the new backtest
+        if symbol in CRYPTO_PRESERVE:
+            changes['unchanged'].append(symbol)
+            logger.info(f"[CALIBRATE] Preserving crypto symbol {symbol} (not tested)")
+        else:
+            changes['removed'][symbol] = "No longer statistically significant"
     
     # Changed or unchanged
     for symbol in current_symbols & new_symbols:
