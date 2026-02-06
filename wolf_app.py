@@ -10040,6 +10040,12 @@ async def api_v3_opus_predict(symbol: str, bypass_calendar: bool = False):
     try:
         symbol = symbol.upper().strip()
         
+        # FIX (Feb 6, 2026): Crypto should NEVER be blocked by economic calendar
+        # The calendar gate (FOMC/CPI/NFP) only applies to stocks
+        from core.asset_classification import is_crypto_symbol as _opus_is_crypto
+        if _opus_is_crypto(symbol):
+            bypass_calendar = True  # Crypto trades 24/7, no economic calendar
+        
         # FIX (Jan 27, 2026): Try stock engine directly with bypass_calendar
         # This avoids V2 filter blocking and honors bypass_calendar param
         from core.stock_engine import get_stock_engine

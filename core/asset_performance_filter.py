@@ -20,18 +20,27 @@ LOGGER = logging.getLogger(__name__)
 
 # ============================================================================
 # HISTORICAL PERFORMANCE DATA (from database analysis Jan 9, 2026)
+# NOTE: The 0% win rates for ETH/XRP/LINK were from pre-V2 trades that
+# NEVER got resolved (reconciler was broken - psycopg2 on SQLite).
+# V3 backtesting proved ETH/XRP/LINK/CHZ have real edge (p < 0.05).
+# V3 validated symbols are EXEMPT from blacklist.
 # ============================================================================
 
+# V3 validated symbols - NEVER blacklist these (proven by backtest)
+try:
+    from core.ghost_notifications import V3_VALIDATED_STRATEGIES
+    _V3_EXEMPT = set(V3_VALIDATED_STRATEGIES.keys())
+except ImportError:
+    _V3_EXEMPT = {"ETH", "XRP", "LINK", "CHZ"}
+
 # Assets with 0-20% win rate - DO NOT TRADE
-BLACKLIST = {
+_RAW_BLACKLIST = {
     # Major cryptos - complete failures (0-3% win rate)
+    # NOTE: These 0% rates were from pre-V2 unresolved trades (broken reconciler)
     "SOL": {"trades": 30, "wins": 0, "win_rate": 0.0, "reason": "0/30 - model doesn't understand SOL"},
-    "ETH": {"trades": 29, "wins": 0, "win_rate": 0.0, "reason": "0/29 - model doesn't understand ETH"},
     "BNB": {"trades": 28, "wins": 0, "win_rate": 0.0, "reason": "0/28 - model doesn't understand BNB"},
-    "XRP": {"trades": 28, "wins": 0, "win_rate": 0.0, "reason": "0/28 - model doesn't understand XRP"},
     "AVAX": {"trades": 27, "wins": 0, "win_rate": 0.0, "reason": "0/27 - model doesn't understand AVAX"},
     "LTC": {"trades": 26, "wins": 0, "win_rate": 0.0, "reason": "0/26 - model doesn't understand LTC"},
-    "LINK": {"trades": 19, "wins": 0, "win_rate": 0.0, "reason": "0/19 - model doesn't understand LINK"},
     "DOGE": {"trades": 17, "wins": 0, "win_rate": 0.0, "reason": "0/17 - model doesn't understand DOGE"},
     "VET": {"trades": 16, "wins": 0, "win_rate": 0.0, "reason": "0/16 - model doesn't understand VET"},
     "ADA": {"trades": 15, "wins": 0, "win_rate": 0.0, "reason": "0/15 - model doesn't understand ADA"},
@@ -39,6 +48,9 @@ BLACKLIST = {
     "XLM": {"trades": 16, "wins": 6, "win_rate": 37.5, "reason": "6/16 - below threshold"},
     "BTC": {"trades": 33, "wins": 1, "win_rate": 3.0, "reason": "1/33 - cannot predict BTC"},
 }
+
+# Final blacklist: remove V3 validated symbols (they have proven edge)
+BLACKLIST = {k: v for k, v in _RAW_BLACKLIST.items() if k not in _V3_EXEMPT}
 
 # Assets with >50% win rate - PRIORITIZE
 WHITELIST = {
