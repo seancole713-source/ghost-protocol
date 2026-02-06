@@ -10531,25 +10531,58 @@ async def api_v3_review_score():
     
     backtest_avg = round((weighted_backtest_win / total_backtest_trades) * 100, 1) if total_backtest_trades > 0 else 0
     
-    # Try to get live accuracy from paper tracker
+    # Get live accuracy ONLY for V3 validated symbols
     live_accuracy = None
     live_trades = 0
+    v3_live_stats = {}
     try:
         from core.paper_tracker import get_paper_tracker
         tracker = get_paper_tracker()
-        V2_START_DATE = "2026-01-14"
-        stats = tracker.get_stats(days=30, since=V2_START_DATE, v2_only=True)
-        live_trades = stats.get("resolved_trades", 0)
-        wins = stats.get("wins", 0)
+        
+        # Query each V3 symbol individually
+        v3_symbols_list = list(V3_VALIDATED_STRATEGIES.keys())
+        total_v3_wins = 0
+        total_v3_resolved = 0
+        
+        conn = tracker._get_connection()
+        for sym in v3_symbols_list:
+            cur = tracker._execute(conn, """
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome IN ('LOSS', 'STOPPED') THEN 1 ELSE 0 END) as losses
+                FROM paper_trades 
+                WHERE symbol = ? 
+                AND created_at >= '2026-01-14'
+                AND outcome != 'PENDING'
+            """, (sym,))
+            row = tracker._fetchone(cur)
+            if row and row['total'] > 0:
+                sym_wins = row['wins'] or 0
+                sym_losses = row['losses'] or 0
+                sym_total = sym_wins + sym_losses
+                if sym_total > 0:
+                    total_v3_wins += sym_wins
+                    total_v3_resolved += sym_total
+                    v3_live_stats[sym] = {
+                        'wins': sym_wins,
+                        'losses': sym_losses,
+                        'total': sym_total,
+                        'win_rate': round(sym_wins / sym_total * 100, 1)
+                    }
+        conn.close()
+        
+        live_trades = total_v3_resolved
         if live_trades > 0:
-            live_accuracy = round((wins / live_trades) * 100, 1)
-    except Exception:
-        pass
+            live_accuracy = round((total_v3_wins / live_trades) * 100, 1)
+    except Exception as e:
+        LOGGER.warning(f"V3 live accuracy query failed: {e}")
     
-    # Overall score: prefer live if we have enough trades, else use backtest
-    if live_trades >= 50:
+    # Overall score: use backtest (validated) - live needs to prove itself
+    # Only use live if V3 symbols have enough trades AND beat backtest
+    if live_trades >= 100 and live_accuracy and live_accuracy >= 55:
         overall_score = live_accuracy
-        score_source = "live_paper_trades"
+        score_source = "live_v3_validated"
     else:
         overall_score = backtest_avg
         score_source = "backtest_validated"
@@ -10563,12 +10596,13 @@ async def api_v3_review_score():
             "total_trades": total_backtest_trades,
             "symbols": v3_symbols
         },
-        "live": {
+        "live_v3_only": {
             "win_rate": live_accuracy,
             "trades": live_trades,
-            "period": "30d since V2 (2026-01-14)"
+            "period": "since V2 (2026-01-14)",
+            "by_symbol": v3_live_stats
         } if live_accuracy else None,
-        "note": "All p-values < 0.05 (statistically significant)",
+        "note": "Score from backtest-validated V3 symbols only (p < 0.05)",
         "timestamp": time.time()
     }
 
