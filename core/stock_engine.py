@@ -737,6 +737,50 @@ class StockEngine:
             except Exception as e:
                 LOGGER.warning(f"[PATTERN_TRACKER] Failed to record: {e}")
         
+        # =====================================================================
+        # PAPER TRADE LOGGING - Track stock predictions for accuracy measurement
+        # Only log actionable predictions (UP/DOWN with >= 60% confidence)
+        # =====================================================================
+        if direction in ("UP", "DOWN") and confidence >= 0.6:
+            try:
+                from core.paper_tracker import get_paper_tracker
+                from core.ghost_notifications import V3_VALIDATED_STRATEGIES
+                
+                paper_tracker = get_paper_tracker()
+                
+                # Check if this is a V3 validated stock
+                v3_config = V3_VALIDATED_STRATEGIES.get(symbol)
+                v3_validated = v3_config is not None
+                v3_strategy = v3_config.get('strategy') if v3_config else None
+                v3_hold_hours = v3_config.get('hold_hours') if v3_config else None
+                v3_backtest_win_rate = v3_config.get('win_rate') if v3_config else None
+                v3_is_inverse = v3_strategy == 'ghost_inverse' if v3_strategy else False
+                
+                # For inverse strategies, flip the direction
+                final_direction = direction
+                original_direction = direction
+                if v3_is_inverse:
+                    final_direction = "DOWN" if direction == "UP" else "UP"
+                    LOGGER.info(f"🔄 [{symbol}] V3 INVERSE: {original_direction} → {final_direction}")
+                
+                paper_tracker.log_signal(
+                    cascade_id=f"stock_{symbol}_{int(time.time())}",
+                    symbol=symbol,
+                    signal_direction=final_direction,
+                    signal_confidence=confidence,
+                    entry_price=entry_price,
+                    entry_time=datetime.utcnow().isoformat(),
+                    v3_validated=v3_validated,
+                    v3_strategy=v3_strategy,
+                    v3_is_inverse=v3_is_inverse,
+                    v3_original_direction=original_direction if v3_is_inverse else None,
+                    v3_hold_hours=v3_hold_hours,
+                    v3_backtest_win_rate=v3_backtest_win_rate
+                )
+                LOGGER.info(f"📝 [{symbol}] Stock paper trade logged (V3={v3_validated}, strategy={v3_strategy})")
+            except Exception as e:
+                LOGGER.warning(f"[{symbol}] Failed to log stock paper trade: {e}")
+        
         return prediction
     
     async def predict_batch(self, symbols: List[str], bypass_calendar: bool = False) -> Dict[str, StockPrediction]:
