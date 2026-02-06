@@ -689,13 +689,24 @@ class PaperTracker:
                     if now >= cp_time:
                         # Calculate checkpoint outcome
                         price_change = current_price - entry_price
+                        price_change_pct = price_change / entry_price if entry_price > 0 else 0
                         actual_direction = "UP" if price_change > 0 else "DOWN"
                         
                         # Determine if this checkpoint is a win
-                        if signal_direction == "BULLISH":
+                        # Signal directions are stored as UP/DOWN (not BULLISH/BEARISH)
+                        is_up_pred = signal_direction in ("UP", "LONG", "BULLISH")
+                        is_down_pred = signal_direction in ("DOWN", "SHORT", "BEARISH")
+                        
+                        # Dead zone: less than 1% move = BREAK_EVEN at checkpoint
+                        if abs(price_change_pct) < 0.01:
+                            cp_result = "BREAK_EVEN"
+                        elif is_up_pred:
                             cp_result = "WIN" if actual_direction == "UP" else "LOSS"
-                        else:  # BEARISH
+                        elif is_down_pred:
                             cp_result = "WIN" if actual_direction == "DOWN" else "LOSS"
+                        else:
+                            LOGGER.warning(f"[{symbol}] Unknown signal_direction at checkpoint: {signal_direction}")
+                            cp_result = "BREAK_EVEN"
                         
                         # Update checkpoint arrays
                         while len(checkpoint_results) <= i:

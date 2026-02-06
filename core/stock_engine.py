@@ -147,6 +147,7 @@ class StockPrediction:
     reasons: List[str]
     expected_move_pct: float = 0.0  # Predicted magnitude (e.g. 2.5 = +2.5%)
     atr_pct: float = 0.0  # Average True Range as % of price
+    data_quality: float = 1.0  # 0.0 = all defaults, 1.0 = all real data
     timestamp: datetime = field(default_factory=datetime.utcnow)
     
     @property
@@ -169,6 +170,7 @@ class StockPrediction:
             "stop_loss": round(self.stop_loss, 2),
             "expected_move_pct": round(self.expected_move_pct, 2),
             "atr_pct": round(self.atr_pct, 2),
+            "data_quality": round(self.data_quality, 2),
             "horizon_hours": self.horizon_hours,
             "confirmations": self.confirmations,
             "min_confirmations": STOCK_CONFIG.min_confirmations,
@@ -277,7 +279,9 @@ class StockEngine:
         except Exception as e:
             LOGGER.warning(f"SPY regime check failed: {e}")
         
-        return True, 0  # Default to bullish if can't check
+        # Default: UNKNOWN, not bullish. Don't assume bull market when data fails.
+        LOGGER.warning("SPY regime unknown — data unavailable. Defaulting to neutral (not bullish).")
+        return False, 0
     
     async def _get_technical_indicators(self, symbol: str) -> Dict[str, Any]:
         """
@@ -351,7 +355,7 @@ class StockEngine:
             loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
             rs = gain / loss
             rsi = 100 - (100 / (1 + rs))
-            indicators["rsi_14"] = float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50
+            indicators["rsi_14"] = float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None
             
             # EMA 12, 26 for MACD
             ema12 = close.ewm(span=12).mean()
@@ -359,7 +363,7 @@ class StockEngine:
             macd = ema12 - ema26
             signal = macd.ewm(span=9).mean()
             histogram = macd - signal
-            indicators["macd_histogram"] = float(histogram.iloc[-1]) if not pd.isna(histogram.iloc[-1]) else 0
+            indicators["macd_histogram"] = float(histogram.iloc[-1]) if not pd.isna(histogram.iloc[-1]) else None
             
             # EMA 20
             ema20 = close.ewm(span=20).mean()
@@ -416,6 +420,38 @@ class StockEngine:
         except Exception as e:
             LOGGER.warning(f"Technical indicators failed for {symbol}: {e}")
         
+        # ================================================================
+        # DATA QUALITY SCORE: Track how many indicators are REAL vs DEFAULT
+        # A prediction with 2/7 real indicators is garbage - we need to know
+        # ================================================================
+        real_indicators = 0
+        total_indicators = 7  # RSI, MACD, EMA20, BB, Volume, ATR, Price
+        
+        if indicators.get("current_price", 0) > 0:
+            real_indicators += 1
+        if indicators.get("rsi_14") is not None:  # None means unavailable
+            real_indicators += 1
+        if indicators.get("macd_histogram") is not None:  # None means unavailable
+            real_indicators += 1
+        if indicators.get("ema_20", 0) > 0:
+            real_indicators += 1
+        if indicators.get("bb_lower", 0) > 0 and indicators.get("bb_upper", 0) > 0:
+            real_indicators += 1
+        if indicators.get("volume_ratio", 1.0) != 1.0:  # 1.0 is the default
+            real_indicators += 1
+        if indicators.get("atr_pct", 0) > 0:
+            real_indicators += 1
+        
+        indicators["data_quality_score"] = real_indicators / total_indicators
+        indicators["data_quality_real"] = real_indicators
+        indicators["data_quality_total"] = total_indicators
+        
+        if real_indicators < 4:
+            LOGGER.warning(
+                f"⚠️ [{symbol}] LOW DATA QUALITY: only {real_indicators}/{total_indicators} "
+                f"indicators are real (rest are defaults). Prediction reliability is degraded."
+            )
+        
         return indicators
     
     async def _count_confirmations(
@@ -433,8 +469,8 @@ class StockEngine:
         reasons = []
         
         price = indicators.get("current_price", 0)
-        rsi = indicators.get("rsi_14", 50)
-        macd = indicators.get("macd_histogram", 0)
+        rsi = indicators.get("rsi_14")  # None if unavailable
+        macd = indicators.get("macd_histogram")  # None if unavailable
         bb_lower = indicators.get("bb_lower", 0)
         bb_upper = indicators.get("bb_upper", 0)
         ema20 = indicators.get("ema_20", 0)
@@ -626,8 +662,9 @@ class StockEngine:
             )
         
         # Step 6: Determine Direction using ENSEMBLE + Technical Indicators
-        rsi = indicators.get("rsi_14", 50)
-        macd = indicators.get("macd_histogram", 0)
+        # Use None-safe defaults — None means "indicator unavailable, don't use"
+        rsi = indicators.get("rsi_14")  # None if unavailable
+        macd = indicators.get("macd_histogram")  # None if unavailable
         price = indicators.get("current_price", 0)
         
         # PRIMARY: Use Ensemble Predictor (LSTM + XGBoost + Transformer)
@@ -655,20 +692,23 @@ class StockEngine:
             LOGGER.warning(f"[{symbol}] Ensemble predictor failed: {e}")
         
         # FALLBACK: Technical indicators if ensemble is uncertain
+        # Only use RSI/MACD if they are REAL values (not None defaults)
         if direction == "HOLD" or ensemble_confidence < 0.55:
-            # Use more lenient RSI thresholds for stocks (40/60 instead of 35/65)
-            if rsi < 40 and macd > 0:
-                direction = "UP"
-                all_reasons.append(f"RSI oversold ({rsi:.0f}) + MACD bullish")
-            elif rsi > 60 and macd < 0:
-                direction = "DOWN"
-                all_reasons.append(f"RSI overbought ({rsi:.0f}) + MACD bearish")
-            elif rsi < 50 and macd > 0 and spy_bullish:
-                direction = "UP"
-                all_reasons.append("MACD bullish + SPY bull regime")
-            elif rsi > 50 and macd < 0 and not spy_bullish:
-                direction = "DOWN"
-                all_reasons.append("MACD bearish + SPY bear regime")
+            if rsi is not None and macd is not None:
+                if rsi < 40 and macd > 0:
+                    direction = "UP"
+                    all_reasons.append(f"RSI oversold ({rsi:.0f}) + MACD bullish")
+                elif rsi > 60 and macd < 0:
+                    direction = "DOWN"
+                    all_reasons.append(f"RSI overbought ({rsi:.0f}) + MACD bearish")
+                elif rsi < 50 and macd > 0 and spy_bullish:
+                    direction = "UP"
+                    all_reasons.append("MACD bullish + SPY bull regime")
+                elif rsi > 50 and macd < 0 and not spy_bullish:
+                    direction = "DOWN"
+                    all_reasons.append("MACD bearish + SPY bear regime")
+            else:
+                LOGGER.warning(f"[{symbol}] RSI/MACD unavailable — cannot use technical fallback")
         
         # Step 7: Apply Ghost Intel Rules (CRITICAL FIX - was missing!)
         intel_boost = 0.0
@@ -714,7 +754,9 @@ class StockEngine:
             pass
         
         # Step 10: Calculate Confidence (incorporating ensemble + Intel)
-        base_confidence = max(0.5, ensemble_confidence)  # Start from ensemble
+        # USE THE REAL CONFIDENCE - don't floor at 50%
+        # If the model says 35%, that's valuable information (low conviction = don't trade)
+        base_confidence = ensemble_confidence  # Raw model output, no floor
         
         # Boost for confirmations
         conf_boost = min(0.25, confirmations * 0.04)
@@ -722,8 +764,11 @@ class StockEngine:
         # Intel boost (already calculated)
         intel_adj = intel_boost
         
-        # Boost/penalty for sector
-        sector_adj = (sector_modifier - 1.0) * 0.1 if 'sector_modifier' in dir() else 0
+        # Boost/penalty for sector (only if sector gate ran)
+        try:
+            sector_adj = (sector_modifier - 1.0) * 0.1
+        except NameError:
+            sector_adj = 0
         
         # Penalty for high VIX
         vix_penalty = max(0, (vix - 15) * 0.01) if vix else 0
@@ -769,6 +814,16 @@ class StockEngine:
         elif (direction == "UP" and recent_5d < -2.0) or (direction == "DOWN" and recent_5d > 2.0):
             momentum_adj = 0.85  # Counter-trend, reduce expectation
         
+        # Data quality affects confidence: bad data = lower confidence
+        data_quality = indicators.get("data_quality_score", 1.0)
+        if data_quality < 0.5:
+            # Less than half the indicators are real - scale confidence DOWN
+            quality_penalty = (0.5 - data_quality) * 0.3  # Up to -15% penalty
+            confidence = max(0.1, confidence - quality_penalty)
+            LOGGER.warning(
+                f"⚠️ [{symbol}] Data quality {data_quality:.0%} → confidence penalized by {quality_penalty:.0%}"
+            )
+        
         # Final expected move (conservative: cap at 2x ATR)
         expected_move_pct = min(magnitude_from_atr * conf_multiplier * momentum_adj, atr_pct * 2 * hold_days)
         expected_move_pct = max(0.5, expected_move_pct)  # Floor at 0.5%
@@ -794,6 +849,7 @@ class StockEngine:
             reasons=all_reasons[:5],  # Top 5 reasons
             expected_move_pct=round(expected_move_pct, 2),
             atr_pct=round(atr_pct, 2),
+            data_quality=round(data_quality, 2),
         )
         
         LOGGER.info(f"🏛️ {symbol} → {direction} ({confidence:.0%}) | {confirmations} confirmations | expected move: {expected_move_pct:+.1f}% | ATR: {atr_pct:.1f}%")

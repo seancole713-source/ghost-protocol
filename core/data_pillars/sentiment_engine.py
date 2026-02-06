@@ -310,9 +310,9 @@ class SentimentEngine(BasePillar):
             DataSignal(
                 name="NEWS_SENTIMENT_SCORE",
                 value=0.0,  # Neutral
-                confidence=0.5,  # Low confidence due to no data
-                data_available=True,
-                source="no_news_neutral",
+                confidence=0.0,  # ZERO confidence - we have NO data
+                data_available=False,  # Be honest: we don't have sentiment data
+                source="no_data",
                 timestamp=ts,
                 metadata={"symbol": symbol, "reason": "no_recent_news"},
             ),
@@ -320,17 +320,17 @@ class SentimentEngine(BasePillar):
                 name="NEWS_COUNT_24H",
                 value=0,
                 confidence=1.0,
-                data_available=True,
-                source="no_news_neutral",
+                data_available=True,  # We know there are 0 articles
+                source="no_data",
                 timestamp=ts,
                 metadata={"symbol": symbol},
             ),
             DataSignal(
                 name="BULLISH_RATIO",
                 value=0.5,  # Neutral
-                confidence=0.5,
-                data_available=True,
-                source="no_news_neutral",
+                confidence=0.0,  # ZERO confidence - no data to calculate from
+                data_available=False,
+                source="no_data",
                 timestamp=ts,
                 metadata={"symbol": symbol},
             ),

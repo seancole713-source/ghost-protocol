@@ -571,6 +571,17 @@ class XGBoostModel:
                 if missing_features and len(missing_features) < 10:
                     logger.debug(f"Missing features for XGBoost: {missing_features[:5]}...")
                 
+                # Track data quality — what % of features are real?
+                total_features = len(self.feature_names)
+                real_features = total_features - len(missing_features)
+                feature_quality = real_features / total_features if total_features > 0 else 0
+                
+                if len(missing_features) > total_features * 0.5:
+                    logger.warning(
+                        f"⚠️ XGBoost: {len(missing_features)}/{total_features} features are DEFAULTS. "
+                        f"Prediction quality severely degraded."
+                    )
+                
                 X = np.array([feature_values])
                 
                 # Predict using trained model
@@ -610,6 +621,17 @@ class XGBoostModel:
                     predicted_change = -confidence * 6.0
                 else:
                     predicted_change = 0.0
+                
+                # QUALITY PENALTY: If >50% features are defaults, reduce confidence
+                # The model is making predictions on mostly fabricated inputs
+                if feature_quality < 0.5:
+                    quality_penalty = (0.5 - feature_quality) * 0.4  # Up to 20% penalty
+                    original_conf = confidence
+                    confidence = max(0.35, confidence - quality_penalty)
+                    logger.warning(
+                        f"⚠️ XGBoost confidence reduced {original_conf:.1%} → {confidence:.1%} "
+                        f"(only {real_features}/{total_features} real features)"
+                    )
                 
                 return ModelPrediction(
                     model_name=f"XGBoost-{self.model_version}",
@@ -722,60 +744,68 @@ class EnsemblePredictor:
         
         # =====================================================================
         # MARKET REGIME ADJUSTMENT
-        # Use Fear & Greed for SMALL adjustments in extreme conditions
-        # ADDITIVE instead of multiplicative to preserve natural variation
+        # Fear & Greed is CRYPTO-ONLY (api.alternative.me measures crypto sentiment)
+        # Only apply to crypto symbols, not stocks
         # =====================================================================
-        try:
-            fng = get_fear_greed_index()
-            
-            # Extreme Fear (<25): Be cautious about DOWN predictions
-            # During panic, markets often bounce - don't short the bottom
-            if xgb_pred.direction == "DOWN" and fng < 25:
-                logger.warning(
-                    f"[REGIME] XGBoost says DOWN but Fear&Greed={fng} (EXTREME FEAR). "
-                    f"Small reduction - don't short during panic."
-                )
-                xgb_pred = ModelPrediction(
-                    model_name=xgb_pred.model_name,
-                    direction=xgb_pred.direction,
-                    confidence=max(0.35, xgb_pred.confidence - 0.08),  # -8% additive
-                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.9,
-                    weight=xgb_pred.weight
-                )
-                predictions = [xgb_pred]
-            
-            # Extreme Fear + UP signal: Small boost (contrarian buy)
-            elif xgb_pred.direction == "UP" and fng < 30:
-                logger.info(
-                    f"[REGIME] XGBoost says UP in Fear&Greed={fng} (FEAR). "
-                    f"Small boost - contrarian buy signal."
-                )
-                xgb_pred = ModelPrediction(
-                    model_name=xgb_pred.model_name,
-                    direction=xgb_pred.direction,
-                    confidence=min(0.85, xgb_pred.confidence + 0.03),  # +3% additive, cap at 85%
-                    predicted_change_pct=xgb_pred.predicted_change_pct,
-                    weight=xgb_pred.weight
-                )
-                predictions = [xgb_pred]
-            
-            # Extreme Greed (>75): Be cautious about UP predictions
-            elif xgb_pred.direction == "UP" and fng > 75:
-                logger.warning(
-                    f"[REGIME] XGBoost says UP but Fear&Greed={fng} (GREED). "
-                    f"Small reduction - market may be overheated."
-                )
-                xgb_pred = ModelPrediction(
-                    model_name=xgb_pred.model_name,
-                    direction=xgb_pred.direction,
-                    confidence=max(0.35, xgb_pred.confidence - 0.05),  # -5% additive
-                    predicted_change_pct=xgb_pred.predicted_change_pct * 0.9,
-                    weight=xgb_pred.weight
-                )
-                predictions = [xgb_pred]
+        is_crypto_symbol = symbol and any(
+            s in symbol.upper().replace("-", "").replace("/", "").replace("USD", "") 
+            or symbol.upper().replace("-", "").replace("/", "").replace("USD", "") in s 
+            for s in BTC_CORRELATED_SYMBOLS
+        )
+        
+        if is_crypto_symbol:
+            try:
+                fng = get_fear_greed_index()
                 
-        except Exception as e:
-            logger.error(f"[REGIME] Error getting Fear&Greed: {e}")
+                # Extreme Fear (<25): Be cautious about DOWN predictions
+                if xgb_pred.direction == "DOWN" and fng < 25:
+                    logger.warning(
+                        f"[REGIME] XGBoost says DOWN but Fear&Greed={fng} (EXTREME FEAR). "
+                        f"Small reduction - don't short during panic."
+                    )
+                    xgb_pred = ModelPrediction(
+                        model_name=xgb_pred.model_name,
+                        direction=xgb_pred.direction,
+                        confidence=max(0.35, xgb_pred.confidence - 0.08),
+                        predicted_change_pct=xgb_pred.predicted_change_pct * 0.9,
+                        weight=xgb_pred.weight
+                    )
+                    predictions = [xgb_pred]
+                
+                # Extreme Fear + UP signal: Small boost (contrarian buy)
+                elif xgb_pred.direction == "UP" and fng < 30:
+                    logger.info(
+                        f"[REGIME] XGBoost says UP in Fear&Greed={fng} (FEAR). "
+                        f"Small boost - contrarian buy signal."
+                    )
+                    xgb_pred = ModelPrediction(
+                        model_name=xgb_pred.model_name,
+                        direction=xgb_pred.direction,
+                        confidence=min(0.85, xgb_pred.confidence + 0.03),
+                        predicted_change_pct=xgb_pred.predicted_change_pct,
+                        weight=xgb_pred.weight
+                    )
+                    predictions = [xgb_pred]
+                
+                # Extreme Greed (>75): Be cautious about UP predictions
+                elif xgb_pred.direction == "UP" and fng > 75:
+                    logger.warning(
+                        f"[REGIME] XGBoost says UP but Fear&Greed={fng} (GREED). "
+                        f"Small reduction - market may be overheated."
+                    )
+                    xgb_pred = ModelPrediction(
+                        model_name=xgb_pred.model_name,
+                        direction=xgb_pred.direction,
+                        confidence=max(0.35, xgb_pred.confidence - 0.05),
+                        predicted_change_pct=xgb_pred.predicted_change_pct * 0.9,
+                        weight=xgb_pred.weight
+                    )
+                    predictions = [xgb_pred]
+                    
+            except Exception as e:
+                logger.error(f"[REGIME] Error getting Fear&Greed: {e}")
+        else:
+            logger.debug(f"[REGIME] Skipping Fear&Greed for stock {symbol} (crypto-only signal)")
         
         # Build ensemble result (now just XGBoost)
         # PRESERVE XGBoost's raw confidence - don't cap it artificially
@@ -790,54 +820,10 @@ class EnsemblePredictor:
         )
         
         # =====================================================================
-        # FEAR & GREED INTEGRATION
-        # ADDITIVE adjustments to preserve XGBoost's natural variation
-        # Small nudges (+/-5%) instead of multiplicative compression
+        # FEAR & GREED - Already applied above (once only, crypto-only)
+        # Previously this was a SECOND application of the same signal,
+        # causing double-counting. Removed.
         # =====================================================================
-        try:
-            fng_signal, fng_modifier = get_fear_greed_signal()
-            original_confidence = ensemble_result.confidence
-            
-            # Skip boosting for FLAT predictions - FLAT should remain uncertain
-            if ensemble_result.direction == "FLAT":
-                logger.debug(f"[FEAR&GREED] Skipping boost for FLAT prediction")
-            elif fng_signal != "NEUTRAL":
-                if fng_signal == ensemble_result.direction:
-                    # Fear & Greed AGREES with prediction - small additive boost
-                    # Use smaller boost (3-8%) to preserve variation
-                    additive_boost = min(fng_modifier, 0.08)  # Cap at 8%
-                    boosted = min(0.85, ensemble_result.confidence + additive_boost)  # Cap final at 85%
-                    logger.info(
-                        f"[FEAR&GREED] {fng_signal} aligns with {ensemble_result.direction}, "
-                        f"confidence {original_confidence:.1%} -> {boosted:.1%} (+{additive_boost:.1%})"
-                    )
-                    ensemble_result = EnsemblePrediction(
-                        direction=ensemble_result.direction,
-                        confidence=boosted,
-                        predicted_change_pct=ensemble_result.predicted_change_pct,
-                        individual_predictions=ensemble_result.individual_predictions,
-                        model_weights=ensemble_result.model_weights,
-                        ensemble_method=ensemble_result.ensemble_method
-                    )
-                elif (fng_signal == "UP" and ensemble_result.direction == "DOWN") or \
-                     (fng_signal == "DOWN" and ensemble_result.direction == "UP"):
-                    # Fear & Greed DISAGREES - small additive reduction
-                    additive_reduction = min(fng_modifier / 2, 0.05)  # Cap at 5%
-                    reduced = max(0.35, ensemble_result.confidence - additive_reduction)
-                    logger.info(
-                        f"[FEAR&GREED] {fng_signal} conflicts with {ensemble_result.direction}, "
-                        f"confidence {original_confidence:.1%} -> {reduced:.1%} (-{additive_reduction:.1%})"
-                    )
-                    ensemble_result = EnsemblePrediction(
-                        direction=ensemble_result.direction,
-                        confidence=reduced,
-                        predicted_change_pct=ensemble_result.predicted_change_pct,
-                        individual_predictions=ensemble_result.individual_predictions,
-                        model_weights=ensemble_result.model_weights,
-                        ensemble_method=ensemble_result.ensemble_method
-                    )
-        except Exception as e:
-            logger.warning(f"[FEAR&GREED] Integration error: {e}")
         
         # =====================================================================
         # BTC CORRELATION INTEGRATION
