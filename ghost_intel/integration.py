@@ -792,19 +792,27 @@ def calculate_intel_signal(
         should_trade = False
         block_reason = f"VIX panic ({vix:.1f}) - no BUY signals"
         signals_used.append("VIX_PANIC_BLOCK")
+    elif vix_regime == "panic" and base_direction == "DOWN":
+        # SYMMETRIC: Don't short panic bottoms — panic often marks bottoms
+        confidence_adj -= 0.08
+        signals_used.append(f"VIX_PANIC_SELL_CAUTION_{vix:.0f}")
         
     elif vix_regime == "fear" and base_direction == "UP":
         # Reduce confidence on BUY during fear
         confidence_adj -= 0.10
         signals_used.append(f"VIX_FEAR_{vix:.0f}")
+    elif vix_regime == "fear" and base_direction == "DOWN":
+        # SYMMETRIC: Moderate sell confidence during fear (don't pile on)
+        confidence_adj -= 0.05
+        signals_used.append(f"VIX_FEAR_SELL_MODERATE_{vix:.0f}")
         
     elif vix_regime == "elevated":
-        # Slight caution
+        # Slight caution (both directions)
         confidence_adj -= 0.03
         signals_used.append(f"VIX_ELEVATED_{vix:.0f}")
         
     elif vix_regime == "calm":
-        # Low VIX = trends persist
+        # Low VIX = trends persist (both directions)
         confidence_adj += 0.05
         signals_used.append(f"VIX_CALM_{vix:.0f}")
     

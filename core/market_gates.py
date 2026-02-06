@@ -684,9 +684,9 @@ async def apply_market_gates(
     confirmation_counter = ConfirmationCounter()
     
     # ========================================
-    # GATE 1: Regime Filter
+    # GATE 1: Regime Filter (SYMMETRIC - checks both UP and DOWN)
     # ========================================
-    if direction == "UP":  # Only filter BUYs
+    if direction == "UP":
         allow_buy, regime_reason = await regime_filter.should_allow_buy(asset_type)
         gate_info["regime_filter"] = {
             "applied": True,
@@ -695,46 +695,60 @@ async def apply_market_gates(
         }
         
         if not allow_buy:
-            # Explicit logging for blocked signals
-            if "SPY below" in regime_reason or "SPY" in regime_reason:
-                LOGGER.info(f"[REGIME-GATE] Blocked BUY for {symbol} - SPY below 20MA")
-            elif "BTC" in regime_reason:
-                LOGGER.info(f"[REGIME-GATE] Blocked BUY for {symbol} - BTC in downtrend")
-            else:
-                LOGGER.info(f"[REGIME-GATE] Blocked BUY for {symbol} - {regime_reason}")
-            
             LOGGER.warning(f"🚫 REGIME FILTER: Blocking BUY for {symbol} - {regime_reason}")
             gate_info["gates_passed"] = False
-            # Convert BUY to HOLD instead of completely blocking
             return "FLAT", 0.5, gate_info
+    elif direction == "DOWN":
+        # Symmetric: also check regime for SELL signals
+        # In strong uptrends (SPY > 20MA, BTC trending up), penalize DOWN signals
+        allow_buy, regime_reason = await regime_filter.should_allow_buy(asset_type)
+        gate_info["regime_filter"] = {
+            "applied": True,
+            "allowed": True,  # Don't hard-block DOWN, but reduce confidence
+            "reason": f"SELL in {'bullish' if allow_buy else 'bearish'} regime"
+        }
+        if allow_buy:
+            # Regime is bullish (would allow buys) — selling into strength is risky
+            old_conf = confidence
+            confidence = confidence * 0.85  # 15% penalty for selling in uptrend
+            LOGGER.info(f"[REGIME-GATE] {symbol} SELL penalized in bullish regime ({old_conf:.0%} → {confidence:.0%})")
     
     # ========================================
-    # GATE 2: VIX Gate
+    # GATE 2: VIX Gate (SYMMETRIC - affects both UP and DOWN)
     # ========================================
-    if direction == "UP":  # Only affects BUYs
-        vix_multiplier, vix_reason = await vix_gate.get_buy_confidence_multiplier()
-        vix_level = vix_gate.last_vix or 20.0
-        
-        gate_info["vix_gate"] = {
-            "applied": True,
-            "multiplier": vix_multiplier,
-            "reason": vix_reason,
-            "vix_level": vix_level
-        }
-        
+    vix_multiplier, vix_reason = await vix_gate.get_buy_confidence_multiplier()
+    vix_level = vix_gate.last_vix or 20.0
+    
+    gate_info["vix_gate"] = {
+        "applied": True,
+        "multiplier": vix_multiplier,
+        "reason": vix_reason,
+        "vix_level": vix_level
+    }
+    
+    if direction == "UP":
         if vix_multiplier == 0:
-            LOGGER.info(f"[VIX-GATE] Blocked BUY for {symbol} - VIX at {vix_level:.1f} (PANIC MODE)")
-            LOGGER.warning(f"🚫 VIX GATE: Blocking BUY for {symbol} - {vix_reason}")
+            LOGGER.warning(f"🚫 VIX GATE: Blocking BUY for {symbol} - VIX at {vix_level:.1f} (PANIC)")
             gate_info["gates_passed"] = False
             return "FLAT", 0.5, gate_info
-        
         elif vix_multiplier < 1.0:
-            # Confidence reduced but not blocked
             old_conf = confidence
             confidence = confidence * vix_multiplier
-            LOGGER.info(f"[VIX-GATE] Reduced confidence for {symbol} - VIX at {vix_level:.1f} ({old_conf:.0%} → {confidence:.0%})")
-        
-        LOGGER.info(f"📊 VIX GATE: {symbol} confidence adjusted to {confidence:.0%} ({vix_reason})")
+            LOGGER.info(f"[VIX-GATE] Reduced UP confidence for {symbol} - VIX {vix_level:.1f} ({old_conf:.0%} → {confidence:.0%})")
+    elif direction == "DOWN":
+        # Symmetric: LOW VIX (calm) should penalize SELL signals
+        # If VIX is calm (< 15), market is complacent — shorting calm markets is risky
+        if vix_level < 15:
+            old_conf = confidence
+            confidence = confidence * 0.85
+            LOGGER.info(f"[VIX-GATE] Reduced DOWN confidence for {symbol} - VIX calm at {vix_level:.1f} ({old_conf:.0%} → {confidence:.0%})")
+        # High VIX should also moderate DOWN (don't short panic bottoms)
+        elif vix_level > 35:
+            old_conf = confidence
+            confidence = confidence * 0.90
+            LOGGER.info(f"[VIX-GATE] Reduced DOWN confidence for {symbol} - VIX extreme at {vix_level:.1f} ({old_conf:.0%} → {confidence:.0%})")
+    
+    LOGGER.info(f"📊 VIX GATE: {symbol} {direction} confidence at {confidence:.0%} ({vix_reason})")
     
     # ========================================
     # GATE 3: Confirmation Counter
@@ -770,29 +784,39 @@ async def apply_market_gates(
         }
         
         if signal_quality == "SKIP":
-            LOGGER.info(f"[CONFIRM-GATE] Blocked BUY for {symbol} - Only {conf_count} confirmations (need {MIN_CONFIRMATIONS_LOW}+)")
-            LOGGER.info(f"[CONFIRM-GATE] {symbol} signals present: {', '.join(conf_reasons) if conf_reasons else 'none'}")
             LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - skipping BUY signal")
             gate_info["gates_passed"] = False
             return "FLAT", 0.5, gate_info
         elif signal_quality == "LOW":
             old_conf = confidence
             confidence = confidence * 0.8
-            LOGGER.info(f"[CONFIRM-GATE] Reduced confidence for {symbol} - {conf_count} confirmations (LOW quality)")
-            LOGGER.info(f"[CONFIRM-GATE] {symbol} signals: {', '.join(conf_reasons)} ({old_conf:.0%} → {confidence:.0%})")
+            LOGGER.info(f"[CONFIRM-GATE] {symbol} BUY LOW quality ({conf_count} confirmations) ({old_conf:.0%} → {confidence:.0%})")
         else:
-            LOGGER.info(f"[CONFIRM-GATE] {symbol} passed with {conf_count} confirmations (HIGH quality)")
-            LOGGER.info(f"[CONFIRM-GATE] {symbol} signals: {', '.join(conf_reasons)}")
+            LOGGER.info(f"[CONFIRM-GATE] {symbol} BUY HIGH quality ({conf_count} confirmations)")
     
     elif direction == "DOWN":
+        # SYMMETRIC: DOWN signals also need confirmation quality checks
         conf_count, conf_reasons = await confirmation_counter.count_sell_confirmations(
             metrics, spy_above_ma, vix_level, has_negative_news
         )
+        signal_quality = confirmation_counter.get_signal_quality(conf_count)
+        
         gate_info["confirmations"] = {
             "count": conf_count,
-            "reasons": conf_reasons
+            "reasons": conf_reasons,
+            "quality": signal_quality
         }
-        LOGGER.info(f"[CONFIRM-GATE] {symbol} SELL has {conf_count} confirmations: {', '.join(conf_reasons)}")
+        
+        if signal_quality == "SKIP":
+            LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - skipping SELL signal")
+            gate_info["gates_passed"] = False
+            return "FLAT", 0.5, gate_info
+        elif signal_quality == "LOW":
+            old_conf = confidence
+            confidence = confidence * 0.8
+            LOGGER.info(f"[CONFIRM-GATE] {symbol} SELL LOW quality ({conf_count} confirmations) ({old_conf:.0%} → {confidence:.0%})")
+        else:
+            LOGGER.info(f"[CONFIRM-GATE] {symbol} SELL HIGH quality ({conf_count} confirmations)")
     
     # ========================================
     # FINAL OUTPUT

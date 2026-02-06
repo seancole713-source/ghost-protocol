@@ -9244,6 +9244,25 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 from core.ghost_notifications import V3_VALIDATED_STRATEGIES
                 paper_tracker = get_paper_tracker()
                 
+                # DEDUP: Skip if we already logged a trade for this symbol in the last 30 min
+                try:
+                    conn = paper_tracker._get_connection()
+                    cutoff = (datetime.utcnow() - timedelta(minutes=30)).isoformat()
+                    cur = paper_tracker._execute(conn, 
+                        "SELECT COUNT(*) as cnt FROM paper_trades WHERE symbol = ? AND entry_time > ?",
+                        (symbol.upper(), cutoff)
+                    )
+                    row = paper_tracker._fetchall(cur)
+                    conn.close()
+                    recent_count = row[0]["cnt"] if row else 0
+                    if recent_count > 0:
+                        LOGGER.info(f"[{symbol}] ⏭️ Paper trade DEDUP: Already {recent_count} trade(s) in last 30min, skipping")
+                        raise Exception("dedup_skip")  # Skip to except block
+                except Exception as dedup_err:
+                    if "dedup_skip" in str(dedup_err):
+                        raise  # Re-raise to hit the outer except
+                    LOGGER.debug(f"[{symbol}] Dedup check failed (continuing): {dedup_err}")
+                
                 # Check if symbol is V3 validated
                 v3_config = V3_VALIDATED_STRATEGIES.get(symbol.upper())
                 v3_validated = v3_config is not None
@@ -41442,22 +41461,24 @@ try:
         Check all pending paper trades (called by scheduler).
         
         Fetches current prices and resolves trades that reached target time.
+        Only processes trades whose target_time has been reached (not all pending).
         """
         try:
             tracker = get_paper_tracker()
             
-            # Get current prices for all tracked symbols
             from core.crypto.crypto_providers import get_crypto_price_quorum
             from core.asset_classifier import get_asset_type
             price_data = {}
             
-            # CRITICAL FIX: Use PaperTracker's abstraction layer
-            # instead of raw psycopg2 (which crashes on SQLite DATABASE_URL)
+            # Only fetch symbols that are ACTUALLY DUE (target_time <= now)
+            # This prevents fetching prices for hundreds of symbols that aren't ready
             try:
                 conn = tracker._get_connection()
+                now_str = datetime.utcnow().isoformat()
                 cur = tracker._execute(conn, """
-                    SELECT DISTINCT symbol FROM paper_trades WHERE outcome = 'PENDING'
-                """)
+                    SELECT DISTINCT symbol FROM paper_trades 
+                    WHERE outcome = 'PENDING' AND target_time <= ?
+                """, (now_str,))
                 rows = tracker._fetchall(cur)
                 symbols = [(row["symbol"],) for row in rows]
                 conn.close()
@@ -41465,27 +41486,36 @@ try:
                 LOGGER.error(f"Failed to query pending symbols: {query_err}")
                 symbols = []
             
-            # Fetch current prices - FIXED: Use correct source for stocks vs crypto
-            for (symbol,) in symbols:
+            LOGGER.info(f"[check_all] {len(symbols)} symbols with due trades")
+            
+            # Fetch current prices with timeout per symbol
+            import asyncio
+            for (symbol,) in symbols[:50]:  # Cap at 50 symbols per batch
                 try:
                     asset_type = get_asset_type(symbol)
                     if asset_type == 'crypto':
-                        result = await get_crypto_price_quorum(symbol, use_cache=True)
+                        result = await asyncio.wait_for(
+                            get_crypto_price_quorum(symbol, use_cache=True), 
+                            timeout=5.0
+                        )
                         if result and result.get("price"):
                             price_data[symbol] = result["price"]
                     else:
-                        # Use stock price provider for stocks
                         stock_result = turbo_stock_price(symbol, max_budget_s=2.0)
                         if stock_result and stock_result.get("ok") and stock_result.get("price"):
                             price_data[symbol] = stock_result["price"]
+                except asyncio.TimeoutError:
+                    LOGGER.debug(f"Price fetch timeout for {symbol}")
                 except Exception as e:
-                    LOGGER.warning(f"Could not get price for {symbol}: {e}")
+                    LOGGER.debug(f"Could not get price for {symbol}: {e}")
             
             resolved = tracker.check_all_pending(price_data)
             
             return {
                 "ok": True,
                 "resolved_count": len(resolved),
+                "symbols_checked": len(symbols),
+                "prices_fetched": len(price_data),
                 "resolved": resolved
             }
         
