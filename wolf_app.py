@@ -8326,6 +8326,14 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         ensemble = get_ensemble_predictor()
         ensemble_prediction = ensemble.predict(features, method="confidence_weighted", symbol=symbol)
         
+        # Extract XGBoost raw probabilities for debugging
+        xgb_debug = {}
+        if ensemble_prediction.individual_predictions:
+            xgb_pred = ensemble_prediction.individual_predictions[0]
+            xgb_debug = getattr(xgb_pred, 'metadata', {}) or {}
+            xgb_debug["xgb_direction"] = xgb_pred.direction
+            xgb_debug["xgb_confidence"] = round(xgb_pred.confidence, 4)
+        
         # Use ensemble direction if confidence is moderate (lowered from 0.55 to enable regime override)
         if ensemble_prediction.confidence > 0.45:
             direction = ensemble_prediction.direction
@@ -9320,6 +9328,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "available_count": feature_data["available_count"],
             "duration_ms": duration_ms,
             "momentum": momentum_data,  # Add momentum to API response
+            "xgb_debug": xgb_debug if 'xgb_debug' in locals() else {},  # Raw XGBoost probabilities for debugging
         }
 
     except Exception as e:
@@ -34756,7 +34765,7 @@ async def api_status():
 @APP.get("/api/health")
 async def api_health():
     """Simple health check endpoint for monitoring systems."""
-    return {"ok": True, "ts": int(time.time() * 1000), "version": "feb7-balanced-model-v4"}
+    return {"ok": True, "ts": int(time.time() * 1000), "version": "feb7-no-flat-v5"}
 
 
 @APP.get("/api/stability/status")

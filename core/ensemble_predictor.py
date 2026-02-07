@@ -326,6 +326,11 @@ class ModelPrediction:
     confidence: float  # 0.0-1.0
     predicted_change_pct: float
     weight: float  # Model weight in ensemble
+    metadata: dict = None  # Optional: raw probabilities, feature quality, etc.
+
+    def __post_init__(self):
+        if self.metadata is None:
+            self.metadata = {}
 
 
 @dataclass
@@ -599,22 +604,16 @@ class XGBoostModel:
                     f"UP={prob_up:.1%}, DOWN={prob_down:.1%}"
                 )
                 
-                # Simple threshold: Use majority class as direction
-                # With a well-calibrated balanced model, probabilities hover near 50%
-                # The signal is which side of 50% we're on, not how far above 55%
-                # Only go FLAT if truly undecided (within 1% of 50/50)
-                conviction_threshold = 0.51  # Just need >51% to pick a direction
-                
-                if prob_up >= conviction_threshold:
+                # BINARY CLASSIFIER: Always pick a direction (UP or DOWN)
+                # This is a binary model trained on UP/DOWN labels.
+                # There is NO "FLAT" class. Whichever probability is higher wins.
+                # Even 50.1% vs 49.9% is a valid signal from a balanced model.
+                if prob_up >= prob_down:
                     direction = "UP"
                     confidence = prob_up
-                elif prob_down >= conviction_threshold:
+                else:
                     direction = "DOWN"
                     confidence = prob_down
-                else:
-                    # Truly undecided - within 49-51% band
-                    direction = "FLAT"
-                    confidence = max(prob_up, prob_down)
                 
                 # Scale predicted change based on confidence
                 if direction == "UP":
@@ -640,7 +639,16 @@ class XGBoostModel:
                     direction=direction,
                     confidence=confidence,
                     predicted_change_pct=predicted_change,
-                    weight=0.7 if self.model_version == "v2" else 0.6
+                    weight=0.7 if self.model_version == "v2" else 0.6,
+                    metadata={
+                        "prob_up": round(prob_up, 4),
+                        "prob_down": round(prob_down, 4),
+                        "feature_quality": round(feature_quality, 3),
+                        "real_features": real_features,
+                        "total_features": total_features,
+                        "missing_count": len(missing_features),
+                        "model_version": self.model_version,
+                    }
                 )
             else:
                 # Fallback to feature-based prediction if model not loaded
