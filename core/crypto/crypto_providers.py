@@ -1081,38 +1081,40 @@ async def get_crypto_prices_batch(symbols: list[str], use_cache: bool = True) ->
     # Fetch any remaining symbols individually using Coinbase (fast, no rate limit)
     missing = [s for s in symbols_to_fetch if s not in results]
     if missing:
-        LOGGER.info(f"Crypto batch: {len(missing)} symbols need individual fetch via Coinbase: {missing}")
+        LOGGER.info(f"Crypto batch: {len(missing)} symbols need Coinbase fallback")
         
-        # Use Coinbase for ALL missing symbols in parallel (fast ~200ms each, no rate limit)
+        # Semaphore limits concurrent HTTP connections to 4 (prevents socket exhaustion)
+        _sem = asyncio.Semaphore(4)
         coinbase = CoinbaseProvider()
         
         async def _fetch_one_coinbase(sym: str) -> tuple[str, dict | None]:
-            try:
-                result = await asyncio.wait_for(
-                    asyncio.to_thread(coinbase.get_price, sym),
-                    timeout=3.0  # 3s max per symbol
-                )
-                if result and result.get("price"):
-                    # Add quorum metadata for consistency
-                    return sym, {
-                        **result,
-                        "confidence": 0.75,  # Single provider = 75%
-                        "quorum_size": 1,
-                        "spread": 0.0,
-                        "timestamp": int(time.time()),
-                    }
-                return sym, None
-            except (asyncio.TimeoutError, Exception) as e:
-                LOGGER.debug(f"Coinbase fetch failed for {sym}: {e}")
-                return sym, None
+            async with _sem:
+                try:
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(coinbase.get_price, sym),
+                        timeout=3.0
+                    )
+                    if result and result.get("price"):
+                        return sym, {
+                            **result,
+                            "confidence": 0.75,
+                            "quorum_size": 1,
+                            "spread": 0.0,
+                            "timestamp": int(time.time()),
+                        }
+                    return sym, None
+                except (asyncio.TimeoutError, Exception) as e:
+                    LOGGER.debug(f"Coinbase fetch failed for {sym}: {e}")
+                    return sym, None
         
-        # Fire all Coinbase requests in parallel (bounded by 5s overall timeout)
+        # Fetch with semaphore-bounded concurrency + 8s overall timeout
         try:
             fetch_tasks = [_fetch_one_coinbase(s) for s in missing]
             coinbase_results = await asyncio.wait_for(
                 asyncio.gather(*fetch_tasks, return_exceptions=True),
-                timeout=5.0  # 5s max for all parallel fetches
+                timeout=8.0
             )
+            fetched = 0
             for item in coinbase_results:
                 if isinstance(item, Exception):
                     continue
@@ -1120,8 +1122,10 @@ async def get_crypto_prices_batch(symbols: list[str], use_cache: bool = True) ->
                 if data:
                     _set_crypto_cache(sym, data)
                     results[sym] = data
+                    fetched += 1
+            LOGGER.info(f"Coinbase fallback: {fetched}/{len(missing)} symbols fetched")
         except asyncio.TimeoutError:
-            LOGGER.warning(f"Coinbase parallel batch timed out for {len(missing)} symbols")
+            LOGGER.warning(f"Coinbase fallback timed out ({len(missing)} symbols)")
     
     LOGGER.info(f"Crypto batch complete: {len(results)}/{len(symbols)} symbols")
     return results

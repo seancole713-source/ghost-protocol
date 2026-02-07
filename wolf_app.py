@@ -12995,38 +12995,77 @@ async def api_v3_system_orchestrator():
         }
 
 
+# Watchlist enriched cache (30s TTL) — prevents thundering herd from UI polling
+_WATCHLIST_ENRICHED_CACHE: dict = {}
+_WATCHLIST_ENRICHED_CACHE_AT: float = 0.0
+_WATCHLIST_ENRICHED_CACHE_TTL: float = 30.0  # 30 seconds
+_WATCHLIST_ENRICHED_LOCK: asyncio.Lock | None = None
+
+def _get_watchlist_lock() -> asyncio.Lock:
+    global _WATCHLIST_ENRICHED_LOCK
+    if _WATCHLIST_ENRICHED_LOCK is None:
+        _WATCHLIST_ENRICHED_LOCK = asyncio.Lock()
+    return _WATCHLIST_ENRICHED_LOCK
+
 @APP.get("/api/v3/watchlist/enriched")
 async def api_v3_watchlist_enriched():
     """
     Get watchlist with current prices and latest predictions.
     
     Used by cockpit watchlist panel.
-    OPTIMIZED (Jan 29, 2026): Batch crypto fetching reduces 2min → <2s
+    CACHED (Feb 7, 2026): 30s TTL cache prevents 50+ HTTP calls per poll
     """
-    # Wrap entire endpoint in timeout to prevent hanging
-    try:
-        return await asyncio.wait_for(
-            _api_v3_watchlist_enriched_core(),
-            timeout=15.0  # 15s max
-        )
-    except asyncio.TimeoutError:
-        LOGGER.error("Watchlist enriched TIMEOUT after 15s")
-        return {
-            "ok": False,
-            "items": [],
-            "watchlist": [],
-            "count": 0,
-            "error": "Timeout: request took >15s"
-        }
-    except Exception as e:
-        LOGGER.error(f"Watchlist enriched error: {e}", exc_info=True)
-        return {
-            "ok": False,
-            "items": [],
-            "watchlist": [],
-            "count": 0,
-            "error": str(e)[:200]
-        }
+    global _WATCHLIST_ENRICHED_CACHE, _WATCHLIST_ENRICHED_CACHE_AT
+    
+    # Return cache if fresh (< 30s old)
+    if _WATCHLIST_ENRICHED_CACHE and (time.time() - _WATCHLIST_ENRICHED_CACHE_AT) < _WATCHLIST_ENRICHED_CACHE_TTL:
+        return _WATCHLIST_ENRICHED_CACHE
+    
+    # Use lock to prevent multiple concurrent fetches (thundering herd)
+    lock = _get_watchlist_lock()
+    if lock.locked():
+        # Another request is already fetching — return stale cache or empty
+        if _WATCHLIST_ENRICHED_CACHE:
+            return _WATCHLIST_ENRICHED_CACHE
+        return {"ok": True, "items": [], "watchlist": [], "count": 0}
+    
+    async with lock:
+        # Double-check cache after acquiring lock
+        if _WATCHLIST_ENRICHED_CACHE and (time.time() - _WATCHLIST_ENRICHED_CACHE_AT) < _WATCHLIST_ENRICHED_CACHE_TTL:
+            return _WATCHLIST_ENRICHED_CACHE
+        
+        try:
+            result = await asyncio.wait_for(
+                _api_v3_watchlist_enriched_core(),
+                timeout=15.0
+            )
+            # Only cache successful results
+            if result.get("ok"):
+                _WATCHLIST_ENRICHED_CACHE = result
+                _WATCHLIST_ENRICHED_CACHE_AT = time.time()
+            return result
+        except asyncio.TimeoutError:
+            LOGGER.error("Watchlist enriched TIMEOUT after 15s")
+            if _WATCHLIST_ENRICHED_CACHE:
+                return _WATCHLIST_ENRICHED_CACHE  # Return stale on timeout
+            return {
+                "ok": False,
+                "items": [],
+                "watchlist": [],
+                "count": 0,
+                "error": "Timeout: request took >15s"
+            }
+        except Exception as e:
+            LOGGER.error(f"Watchlist enriched error: {e}", exc_info=True)
+            if _WATCHLIST_ENRICHED_CACHE:
+                return _WATCHLIST_ENRICHED_CACHE  # Return stale on error
+            return {
+                "ok": False,
+                "items": [],
+                "watchlist": [],
+                "count": 0,
+                "error": str(e)[:200]
+            }
 
 
 async def _api_v3_watchlist_enriched_core():

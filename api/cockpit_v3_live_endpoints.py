@@ -2209,36 +2209,35 @@ async def update_watchlist(body: WatchlistUpdateBody):
         }
 
 
+# V3 watchlist enriched cache (30s TTL)
+_V3_WL_CACHE: dict = {}
+_V3_WL_CACHE_AT: float = 0.0
+
 @router.get("/watchlist/enriched")
 async def get_watchlist_enriched():
     """
     Get watchlist with live prices and % changes.
-    Fetches real-time data for all watchlist symbols.
-    
-    Returns:
-        {
-            "ok": bool,
-            "items": [
-                {
-                    "symbol": "AAPL",
-                    "price": 190.50,
-                    "change_pct": 2.34,
-                    "type": "stock"
-                },
-                ...
-            ],
-            "count": N,
-            "timestamp": float
-        }
+    Cached for 30s to prevent thundering herd.
     """
+    global _V3_WL_CACHE, _V3_WL_CACHE_AT
+    
+    # Return cache if fresh
+    if _V3_WL_CACHE and (time.time() - _V3_WL_CACHE_AT) < 30.0:
+        return _V3_WL_CACHE
+    
     try:
-        # Wrap in timeout to prevent hanging
-        return await asyncio.wait_for(
+        result = await asyncio.wait_for(
             _get_watchlist_enriched_core(),
-            timeout=10.0  # 10 second max for all price fetches
+            timeout=10.0
         )
+        if result.get("ok"):
+            _V3_WL_CACHE = result
+            _V3_WL_CACHE_AT = time.time()
+        return result
     except asyncio.TimeoutError:
         LOGGER.warning("Watchlist enriched timeout after 10s")
+        if _V3_WL_CACHE:
+            return _V3_WL_CACHE
         return {
             "ok": False,
             "items": [],
