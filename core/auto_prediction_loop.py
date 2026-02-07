@@ -200,6 +200,9 @@ async def _run_all_predictions_async():
         wolf_app._LAST_MULTI_PREDICTION_COUNTS["crypto"] = crypto_success
         # CRITICAL: Also update the timestamp so cockpit shows last run time
         wolf_app._LAST_MULTI_PREDICTION_TIME = _LAST_RUN_TIME
+        # Update telegram status from "never_run" → "predictions_active" if not yet sent
+        if wolf_app._LAST_TELEGRAM_STATUS == "never_run" and (stocks_success + crypto_success) > 0:
+            wolf_app._LAST_TELEGRAM_STATUS = "predictions_active"
     except Exception as e:
         if LOGGER:
             LOGGER.warning(f"Could not update prediction counters: {e}")
@@ -329,8 +332,8 @@ def _run_all_predictions_sync():
         if LOGGER:
             LOGGER.debug(f"[AUTO-PREDICT] Crypto batch {i//BATCH_SIZE + 1} completed in {batch_duration:.1f}s")
     
-    # Update last run time
-    _LAST_RUN_TIME = start_time
+    # Update last run time (use end time, not start time)
+    _LAST_RUN_TIME = time.time()
     
     # Log summary
     total = stocks_success + crypto_success
