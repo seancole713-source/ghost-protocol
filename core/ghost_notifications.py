@@ -58,7 +58,7 @@ TOP_10_HOUR = 8  # 8 AM Central
 UPDATE_HOURS = [12, 16, 20]  # 12 PM, 4 PM, 8 PM
 
 # Thresholds
-MIN_CONFIDENCE = 0.85  # 85% minimum for BUY/SELL
+MIN_CONFIDENCE = 0.55  # 55% minimum for BUY/SELL (was 85% - nothing ever cleared that)
 WATCH_THRESHOLD = 0.02  # 2% move threshold for WATCH
 SIGNIFICANT_MOVE_PCT = 0.03  # 3% move to trigger update
 
@@ -204,8 +204,8 @@ V3_BLACKLIST = ['TGTX', 'SOUN', 'ABCL', 'ZIL', 'MANA', 'SAND', 'RLC', '1INCH',
 # RSI strategies consistently underperform (45-46% win rate)
 V3_AVOID_STRATEGIES = ['RSI', 'RSI_extreme']
 
-# V3 minimum confidence threshold (lowered since we're more selective)
-V3_MIN_CONFIDENCE = 0.70
+# V3 minimum confidence threshold (lowered — V3 strategies are already backtest-validated)
+V3_MIN_CONFIDENCE = 0.50
 
 # DEFAULT HOLD PERIOD - Changed from 48h to 72h based on backtest
 # 72h had most statistically significant results
@@ -1755,7 +1755,7 @@ class GhostNotificationSystem:
             
             # MONEY GAME: Always include TOP 10 symbols regardless of confidence
             is_money_game_elite = symbol in money_game_stocks or symbol in money_game_crypto
-            if not is_money_game_elite and confidence < 0.50:  # Only filter non-elite symbols
+            if not is_money_game_elite and confidence < 0.40:  # Only filter non-elite symbols
                 continue
             
             # LEARNING: Apply confidence boost for high-accuracy symbols

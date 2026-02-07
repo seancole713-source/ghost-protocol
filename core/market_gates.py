@@ -699,8 +699,8 @@ async def apply_market_gates(
         if not allow_buy:
             LOGGER.warning(f"🚫 REGIME FILTER: Penalizing BUY for {symbol} - {regime_reason}")
             gate_info["gates_passed"] = False
-            # Don't flatten — reduce confidence heavily instead
-            confidence = confidence * 0.60  # 40% penalty for buying in bear market
+            # Don't flatten — moderate penalty (was 0.60, too aggressive)
+            confidence = confidence * 0.75  # 25% penalty for buying in bear market
     elif direction == "DOWN":
         # Symmetric: also check regime for SELL signals
         # In strong uptrends (SPY > 20MA, BTC trending up), penalize DOWN signals
@@ -733,8 +733,8 @@ async def apply_market_gates(
         if vix_multiplier == 0:
             LOGGER.warning(f"🚫 VIX GATE: Heavy penalty for BUY {symbol} - VIX at {vix_level:.1f} (PANIC)")
             gate_info["gates_passed"] = False
-            # Don't flatten — reduce confidence heavily instead
-            confidence = confidence * 0.40  # 60% penalty for buying in panic
+            # Don't flatten — moderate penalty (was 0.40, too aggressive)
+            confidence = confidence * 0.60  # 40% penalty for buying in panic
         elif vix_multiplier < 1.0:
             old_conf = confidence
             confidence = confidence * vix_multiplier
@@ -790,11 +790,11 @@ async def apply_market_gates(
         if signal_quality == "SKIP":
             LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - low quality BUY signal")
             gate_info["gates_passed"] = False
-            # Don't flatten — penalize confidence instead
-            confidence = confidence * 0.65  # 35% penalty for unconfirmed signal
+            # Moderate penalty (was 0.65, caused stacking collapse)
+            confidence = confidence * 0.80  # 20% penalty for unconfirmed signal
         elif signal_quality == "LOW":
             old_conf = confidence
-            confidence = confidence * 0.8
+            confidence = confidence * 0.90
             LOGGER.info(f"[CONFIRM-GATE] {symbol} BUY LOW quality ({conf_count} confirmations) ({old_conf:.0%} → {confidence:.0%})")
         else:
             LOGGER.info(f"[CONFIRM-GATE] {symbol} BUY HIGH quality ({conf_count} confirmations)")
@@ -815,18 +815,34 @@ async def apply_market_gates(
         if signal_quality == "SKIP":
             LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - low quality SELL signal")
             gate_info["gates_passed"] = False
-            # Don't flatten — penalize confidence instead
-            confidence = confidence * 0.65  # 35% penalty for unconfirmed signal
+            # Moderate penalty (was 0.65, caused stacking collapse)
+            confidence = confidence * 0.80  # 20% penalty for unconfirmed signal
         elif signal_quality == "LOW":
             old_conf = confidence
-            confidence = confidence * 0.8
+            confidence = confidence * 0.90
             LOGGER.info(f"[CONFIRM-GATE] {symbol} SELL LOW quality ({conf_count} confirmations) ({old_conf:.0%} → {confidence:.0%})")
         else:
             LOGGER.info(f"[CONFIRM-GATE] {symbol} SELL HIGH quality ({conf_count} confirmations)")
     
     # ========================================
-    # FINAL OUTPUT
+    # FINAL OUTPUT — enforce confidence floor + penalty cap
     # ========================================
+    original = gate_info["original_confidence"]
+    
+    # Cap total penalty at 50% (never lose more than half the signal)
+    PENALTY_CAP = 0.50
+    if original > 0:
+        total_penalty_ratio = confidence / original
+        if total_penalty_ratio < PENALTY_CAP:
+            confidence = original * PENALTY_CAP
+            LOGGER.info(f"[GATES-CAP] {symbol}: Penalty cap applied ({total_penalty_ratio:.0%} → {PENALTY_CAP:.0%} of original {original:.0%})")
+    
+    # Confidence floor: never go below 15% (below that is pure noise)
+    CONFIDENCE_FLOOR = 0.15
+    if confidence < CONFIDENCE_FLOOR and original >= CONFIDENCE_FLOOR:
+        confidence = CONFIDENCE_FLOOR
+        LOGGER.info(f"[GATES-FLOOR] {symbol}: Confidence floor applied → {CONFIDENCE_FLOOR:.0%}")
+    
     gate_info["final_confidence"] = confidence
     
     if gate_info["gates_passed"]:
@@ -836,7 +852,7 @@ async def apply_market_gates(
         )
     else:
         LOGGER.info(
-            f"⚠️ [GATES-SUMMARY] {symbol} PENALIZED: {direction} {gate_info['original_confidence']:.0%} → {confidence:.0%} "
+            f"⚠️ [GATES-SUMMARY] {symbol} PENALIZED: {direction} {original:.0%} → {confidence:.0%} "
             f"(Confirmations: {gate_info.get('confirmations', {}).get('count', '?')})"
         )
     

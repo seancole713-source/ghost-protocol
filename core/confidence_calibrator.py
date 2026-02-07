@@ -298,37 +298,45 @@ class ConfidenceCalibrator:
         sentiment = features.get("NEWS_SENTIMENT_SCORE")
         market_trend = features.get("SPY_MOMENTUM")
         
-        # RSI SIGNALS
+        # RSI SIGNALS — stronger signal, higher boost
         if rsi is not None:
-            if rsi < 30 and base_direction == "UP":
-                confidence += 0.10
-                adjustments["rsi_oversold"] = 0.10
+            if rsi < 25 and base_direction == "UP":
+                confidence += 0.12
+                adjustments["rsi_deeply_oversold"] = 0.12
                 signals_fired.append("RSI_OVERSOLD_BUY")
-            elif rsi > 70 and base_direction == "DOWN":
-                confidence += 0.10
-                adjustments["rsi_overbought"] = 0.10
+            elif rsi < 35 and base_direction == "UP":
+                confidence += 0.08
+                adjustments["rsi_oversold"] = 0.08
+                signals_fired.append("RSI_OVERSOLD_BUY")
+            elif rsi > 75 and base_direction == "DOWN":
+                confidence += 0.12
+                adjustments["rsi_deeply_overbought"] = 0.12
+                signals_fired.append("RSI_OVERBOUGHT_SELL")
+            elif rsi > 65 and base_direction == "DOWN":
+                confidence += 0.08
+                adjustments["rsi_overbought"] = 0.08
                 signals_fired.append("RSI_OVERBOUGHT_SELL")
         
-        # MACD SIGNALS
+        # MACD SIGNALS — most reliable technical indicator
         if macd_hist is not None:
             if macd_hist > 0 and base_direction == "UP":
-                confidence += 0.08
-                adjustments["macd_bullish"] = 0.08
+                confidence += 0.10
+                adjustments["macd_bullish"] = 0.10
                 signals_fired.append("MACD_BULLISH")
             elif macd_hist < 0 and base_direction == "DOWN":
-                confidence += 0.08
-                adjustments["macd_bearish"] = 0.08
+                confidence += 0.10
+                adjustments["macd_bearish"] = 0.10
                 signals_fired.append("MACD_BEARISH")
         
         # BOLLINGER BAND SIGNALS
         if bb_position is not None:
             if bb_position < 0.2 and base_direction == "UP":
-                confidence += 0.07
-                adjustments["bb_bounce_buy"] = 0.07
+                confidence += 0.08
+                adjustments["bb_bounce_buy"] = 0.08
                 signals_fired.append("BB_BOUNCE_BUY")
             elif bb_position > 0.8 and base_direction == "DOWN":
-                confidence += 0.07
-                adjustments["bb_bounce_sell"] = 0.07
+                confidence += 0.08
+                adjustments["bb_bounce_sell"] = 0.08
                 signals_fired.append("BB_BOUNCE_SELL")
         
         # VOLUME SIGNALS
@@ -337,8 +345,8 @@ class ConfidenceCalibrator:
             adjustments["volume_surge"] = 0.08
             signals_fired.append("VOLUME_SURGE")
         elif volume_spike is not None and volume_spike < 0.5:
-            confidence -= 0.05
-            adjustments["volume_weak"] = -0.05
+            confidence -= 0.03
+            adjustments["volume_weak"] = -0.03
         
         # SENTIMENT SIGNALS
         if sentiment is not None:
@@ -355,17 +363,20 @@ class ConfidenceCalibrator:
         if market_trend is not None:
             if (market_trend > 0 and base_direction == "UP") or \
                (market_trend < 0 and base_direction == "DOWN"):
-                confidence += 0.05
-                adjustments["market_aligned"] = 0.05
+                confidence += 0.06
+                adjustments["market_aligned"] = 0.06
                 signals_fired.append("MARKET_TAILWIND")
         
-        # ALIGNMENT BONUS
+        # ALIGNMENT BONUS — multiple confirming signals are multiplicatively stronger
         if len(signals_fired) >= 5:
             confidence += 0.15
             adjustments["full_alignment"] = 0.15
         elif len(signals_fired) >= 3:
-            confidence += 0.08
-            adjustments["partial_alignment"] = 0.08
+            confidence += 0.10
+            adjustments["partial_alignment"] = 0.10
+        elif len(signals_fired) >= 2:
+            confidence += 0.05
+            adjustments["dual_signal"] = 0.05
         
         # Clamp to 5%-85%
         confidence = max(0.05, min(0.85, confidence))

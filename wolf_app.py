@@ -8381,7 +8381,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # Step 3: Calibrate confidence using signal-based system
         from core.confidence_calibrator import calibrate_confidence_with_signals
         
-        base_confidence = 0.45  # Conservative baseline
+        base_confidence = 0.52  # Aligned with balanced XGBoost output (~52%)
         calibration_result = calibrate_confidence_with_signals(
             features=features,
             base_direction=direction,
@@ -8607,9 +8607,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # =====================================================================
         # CONFIDENCE THRESHOLD (NEW: Jan 9, 2026)
         # Only trade predictions with sufficient confidence
-        # Lowered from 70% to 55% for balanced model (Feb 7, 2026)
+        # Lowered to 0.40 to build accuracy data (Feb 7, 2026)
+        # Paper trades need to FLOW so we can measure if predictions are right
         # =====================================================================
-        MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.55"))
+        MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.40"))
         
         if base_confidence < MIN_CONFIDENCE_THRESHOLD:
             LOGGER.warning(
@@ -8632,7 +8633,11 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # Outcome-driven confidence calibration (Postgres-backed, if available).
         # This makes confidence honest and ensures yesterday's outcomes affect tomorrow's signals.
         cal = None
-        should_predict = True
+        # FIXED: was unconditionally resetting should_predict=True here, which
+        # nullified the MIN_CONFIDENCE_THRESHOLD check above. Now we preserve
+        # the should_predict value from the threshold check and only let the
+        # calibrator FURTHER restrict it (never override False → True).
+        threshold_should_predict = should_predict  # preserve threshold decision
         expected_accuracy = base_confidence
         try:
             from core.confidence_calibrator import get_confidence_calibrator
@@ -8640,12 +8645,16 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             calibrator = get_confidence_calibrator()
             cal = calibrator.calibrate_confidence(base_confidence, symbol=symbol)
             expected_accuracy = float(cal.get("expected_accuracy", base_confidence))
-            should_predict = bool(cal.get("should_predict", True))
+            calibrator_should_predict = bool(cal.get("should_predict", True))
+            
+            # Both threshold AND calibrator must agree to predict
+            should_predict = threshold_should_predict and calibrator_should_predict
 
             # Use calibrated expected accuracy as the confidence we expose downstream.
             base_confidence = expected_accuracy
         except Exception:
-            pass
+            # If calibrator fails, honor the threshold decision only
+            should_predict = threshold_should_predict
 
         # Apply degraded guardrail last (never signal on degraded inputs)
         if degraded:
@@ -9247,8 +9256,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # ========================================================================
         # AUTO-LOG PAPER TRADE: Track all predictions for paper trading P&L
         # Only log directional predictions (UP/DOWN) with minimum confidence
+        # Lowered to 0.45 to build accuracy data — paper trades are for MEASURING
         # ========================================================================
-        if direction in ["UP", "DOWN"] and confidence >= 0.55:
+        if direction in ["UP", "DOWN"] and confidence >= 0.45:
             try:
                 from core.paper_tracker import get_paper_tracker
                 from core.ghost_notifications import V3_VALIDATED_STRATEGIES

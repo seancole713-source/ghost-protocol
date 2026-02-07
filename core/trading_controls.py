@@ -79,7 +79,7 @@ WHITELIST = {
 # ============================================================================
 # TRADING PARAMETERS
 # ============================================================================
-MIN_CONFIDENCE = 0.55  # Only trade predictions with ≥55% confidence (lowered from 70% for balanced model)
+MIN_CONFIDENCE = 0.45  # Paper trade threshold — lower bar to build accuracy data
 WHITELIST_ONLY_MODE = False  # True = only trade whitelist, False = also allow unknown assets
 
 

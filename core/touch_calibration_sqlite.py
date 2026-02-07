@@ -123,16 +123,20 @@ def calibrate_touch_confidence(
                 band=label,
             )
 
-        # Final fallback: no data - BE CONSERVATIVE!
-        # Without calibration data, we can't trust high confidence predictions
-        # Use 0.50 (MONITOR gate) to prevent untested predictions from auto-execution
-        # This ensures new symbols go through proper validation before hitting EXECUTION gate
-        conservative_calibrated = min(raw * 0.6, 0.50)  # Cap at 50% to stay in MONITOR
+        # Final fallback: no calibration data yet
+        # Without historical touch data, we can't calibrate — but we shouldn't
+        # permanently block ALL predictions either. Default to ANALYSIS gate
+        # so predictions can flow, paper trades log, and we BUILD the data
+        # needed for real calibration. Once we have 30+ evaluated samples,
+        # the empirical calibration above takes over automatically.
+        #
+        # Gate progression: MONITOR (blocked) → ANALYSIS (paper trades flow) → EXECUTION (live)
+        # Setting calibrated to 0.70 puts us in ANALYSIS (stage5_ok=True, stage6_ok=False)
         return TouchCalibration(
             symbol=sym,
             raw_confidence=raw,
-            calibrated_1pct=conservative_calibrated,
-            calibrated_0_5pct=conservative_calibrated,
+            calibrated_1pct=0.70,    # → stage5_ok=True → gate=ANALYSIS
+            calibrated_0_5pct=0.50,  # → stage6_ok=False (no EXECUTION without real data)
             sample_size=len(rows),
             band=label,
         )
