@@ -1708,14 +1708,15 @@ DEFAULT_STOCK_SYMBOLS = [
 DEFAULT_CRYPTO_SYMBOLS = [
     # === MAJOR LAYER 1s (Top 50 by Market Cap) ===
     "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT", "MATIC",
-    "SHIB", "LTC", "TRX", "TON", "ATOM", "ETC", "XLM", "XMR", "BCH", "ALGO",
-    "VET", "ICP", "HBAR", "FIL", "APT", "SUI", "SEI", "INJ", "TIA", "NEAR",
-    "FTM", "KAVA", "ROSE", "OSMO", "CELO", "ZIL", "EOS", "NEO", "IOTA",
+    "SHIB", "LTC", "TRX", "ATOM", "ETC", "XLM", "BCH", "ALGO",
+    "VET", "ICP", "HBAR", "FIL", "APT", "SUI", "SEI", "TIA", "NEAR",
+    "FTM", "KAVA", "ROSE", "CELO", "ZIL", "EOS", "NEO", "IOTA",
     "EGLD", "XTZ", "STX", "CORE", "CFX", "ASTR", "CANTO",
-    # Removed: XDC, KAS, MINA (all crypto providers fail - Binance 451/400, CoinGecko unsupported, Coinbase 404)
+    # Removed: XDC, KAS, MINA, XMR, TON, INJ, OSMO, STRK, FUN, MYST, TNT
+    # (all crypto providers fail - Binance 451/geo-blocked, CoinGecko 429/unsupported, Coinbase 404)
     
     # === LAYER 2s & SCALING ===
-    "ARB", "OP", "STRK", "MANTA", "METIS", "IMX", "BOBA", "ZK", "SCROLL",
+    "ARB", "OP", "MANTA", "METIS", "IMX", "BOBA", "ZK", "SCROLL",
     "LINEA", "BASE", "ZKSYNC", "POLYGON", "BLAST", "MODE",
     
     # === SOLANA ECOSYSTEM (Hot in 2024-2026) ===
@@ -1773,7 +1774,7 @@ DEFAULT_CRYPTO_SYMBOLS = [
     "BRETT", "DEGEN", "TOSHI", "MOCHI", "WELL", "AERO", "EXTRA",
     
     # === COSMOS ECOSYSTEM ===
-    "ATOM", "OSMO", "INJ", "TIA", "SEI", "KAVA", "SCRT", "JUNO", "EVMOS", "STARS",
+    "ATOM", "TIA", "SEI", "KAVA", "SCRT", "JUNO", "EVMOS", "STARS",
     "KUJI", "NTRN", "DYM", "SAGA",
     
     # === POLKADOT ECOSYSTEM ===
@@ -1787,7 +1788,7 @@ DEFAULT_CRYPTO_SYMBOLS = [
     "THETA", "ONE", "HIVE", "ICX", "QTUM", "WAVES",
     "KDA", "FLUX", "ERG", "RVN", "DGB", "SYS", "NAV",
     "OMG", "SNT", "ANT", "MLN", "REP", "LOOM", "BAT",
-    "ZRX", "DENT", "CVC", "GNO", "DNT", "FUN", "MYST", "TNT",
+    "ZRX", "DENT", "CVC", "GNO", "DNT",
     "QNT", "MASK", "ENS", "SSV", "BLUR", "ID", "HOOK", "EDU",
 ]
 
