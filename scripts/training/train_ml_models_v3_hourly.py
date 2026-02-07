@@ -413,7 +413,7 @@ def prepare_training_data(symbols: list[str] = None, hours: int = HOURS_OF_DATA)
 
 
 def train_xgboost_model(X: np.ndarray, y: np.ndarray, feature_names: list[str]) -> dict:
-    """Train XGBoost classifier with proper validation."""
+    """Train XGBoost classifier with proper validation and CLASS BALANCING."""
     try:
         import xgboost as xgb
         from sklearn.model_selection import train_test_split, cross_val_score, TimeSeriesSplit
@@ -422,7 +422,7 @@ def train_xgboost_model(X: np.ndarray, y: np.ndarray, feature_names: list[str]) 
         return {"ok": False, "error": "XGBoost not installed"}
     
     logger.info("\n" + "=" * 60)
-    logger.info("🤖 TRAINING XGBOOST MODEL (v3 - Hourly)")
+    logger.info("🤖 TRAINING XGBOOST MODEL (v3 - Hourly, CLASS-BALANCED)")
     logger.info("=" * 60)
     
     # Time-series split (CRITICAL: no data leakage!)
@@ -430,9 +430,35 @@ def train_xgboost_model(X: np.ndarray, y: np.ndarray, feature_names: list[str]) 
     X_train, X_test = X[:split_idx], X[split_idx:]
     y_train, y_test = y[:split_idx], y[split_idx:]
     
-    logger.info(f"Train size: {len(X_train)}, Test size: {len(X_test)}")
+    logger.info(f"Train size (before balancing): {len(X_train)}, Test size: {len(X_test)}")
+    
+    # === CRITICAL FIX: DOWNSAMPLE majority class (DOWN) to match minority (UP) ===
+    # scale_pos_weight alone is NOT enough when the ratio is severe.
+    # We need to physically balance the training data.
+    n_down_train = int((y_train == 0).sum())
+    n_up_train = int((y_train == 1).sum())
+    logger.info(f"Class balance BEFORE balancing: UP={n_up_train}, DOWN={n_down_train}")
+    
+    # Downsample DOWN to match UP count
+    down_indices = np.where(y_train == 0)[0]
+    up_indices = np.where(y_train == 1)[0]
+    
+    np.random.seed(42)
+    # Keep all UP samples, randomly sample DOWN to match
+    down_sampled = np.random.choice(down_indices, size=len(up_indices), replace=False)
+    balanced_indices = np.concatenate([up_indices, down_sampled])
+    np.random.shuffle(balanced_indices)
+    
+    X_train_balanced = X_train[balanced_indices]
+    y_train_balanced = y_train[balanced_indices]
+    
+    n_down_bal = int((y_train_balanced == 0).sum())
+    n_up_bal = int((y_train_balanced == 1).sum())
+    logger.info(f"Class balance AFTER balancing:  UP={n_up_bal}, DOWN={n_down_bal}")
+    logger.info(f"Balanced training size: {len(X_train_balanced)}")
     
     # XGBoost parameters (optimized for hourly crypto prediction)
+    # scale_pos_weight=1.0 since we already balanced the data
     model = xgb.XGBClassifier(
         n_estimators=300,
         max_depth=5,           # Slightly shallower for hourly data
@@ -443,25 +469,31 @@ def train_xgboost_model(X: np.ndarray, y: np.ndarray, feature_names: list[str]) 
         gamma=0.2,
         reg_alpha=0.1,
         reg_lambda=1.0,
+        scale_pos_weight=1.0,  # Already balanced via downsampling
         objective="binary:logistic",
         eval_metric="logloss",
         random_state=42,
         n_jobs=-1
     )
     
-    # Train with early stopping
+    # Train with early stopping on BALANCED data
     model.fit(
-        X_train, y_train,
+        X_train_balanced, y_train_balanced,
         eval_set=[(X_test, y_test)],
         verbose=False
     )
     
-    # Evaluate
-    y_pred_train = model.predict(X_train)
+    # Evaluate on ORIGINAL (unbalanced) test set - this is the real-world distribution
+    y_pred_train = model.predict(X_train_balanced)
     y_pred_test = model.predict(X_test)
     
-    train_accuracy = accuracy_score(y_train, y_pred_train)
+    train_accuracy = accuracy_score(y_train_balanced, y_pred_train)
     test_accuracy = accuracy_score(y_test, y_pred_test)
+    
+    # Check direction balance on test predictions
+    test_up = int((y_pred_test == 1).sum())
+    test_down = int((y_pred_test == 0).sum())
+    logger.info(f"\n📊 Test set prediction mix: UP={test_up} ({test_up/len(y_pred_test)*100:.0f}%), DOWN={test_down} ({test_down/len(y_pred_test)*100:.0f}%)")
     
     # Cross-validation (time-series aware)
     tscv = TimeSeriesSplit(n_splits=5)
