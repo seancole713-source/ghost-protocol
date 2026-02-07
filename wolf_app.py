@@ -1682,8 +1682,9 @@ DEFAULT_CRYPTO_SYMBOLS = [
     "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT", "MATIC",
     "SHIB", "LTC", "TRX", "TON", "ATOM", "ETC", "XLM", "XMR", "BCH", "ALGO",
     "VET", "ICP", "HBAR", "FIL", "APT", "SUI", "SEI", "INJ", "TIA", "NEAR",
-    "FTM", "KAVA", "ROSE", "OSMO", "CELO", "ZIL", "EOS", "NEO", "IOTA", "XDC",
-    "EGLD", "XTZ", "MINA", "KAS", "STX", "CORE", "CFX", "ASTR", "CANTO",
+    "FTM", "KAVA", "ROSE", "OSMO", "CELO", "ZIL", "EOS", "NEO", "IOTA",
+    "EGLD", "XTZ", "STX", "CORE", "CFX", "ASTR", "CANTO",
+    # Removed: XDC, KAS, MINA (all crypto providers fail - Binance 451/400, CoinGecko unsupported, Coinbase 404)
     
     # === LAYER 2s & SCALING ===
     "ARB", "OP", "STRK", "MANTA", "METIS", "IMX", "BOBA", "ZK", "SCROLL",
@@ -8546,7 +8547,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             # Log the gates result
             if not gate_info.get("gates_passed", True):
                 LOGGER.warning(
-                    f"[{symbol}] 🚫 MARKET GATES BLOCKED: {original_direction} → {direction} "
+                    f"[{symbol}] ⚠️ MARKET GATES PENALIZED: {direction} {original_confidence:.1%} → {gated_confidence:.1%} "
                     f"(Regime: {gate_info.get('regime_filter', {}).get('reason', 'N/A')})"
                 )
             elif gated_confidence < original_confidence:

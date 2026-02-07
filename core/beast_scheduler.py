@@ -157,7 +157,8 @@ CRYPTO_SYMBOLS = [
     "STETH", "JITOSOL", "RETH", "BNSOL", "SOLVBTC",
     
     # Altcoins with volume
-    "FIL", "ATOM", "VET", "ALGO", "ICP", "QNT", "FLR", "XDC",
+    "FIL", "ATOM", "VET", "ALGO", "ICP", "QNT", "FLR",
+    # Removed: XDC (all crypto providers fail)
     
     # Governance/Exchange Tokens
     "KCS", "GT", "HYPE"

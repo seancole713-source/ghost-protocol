@@ -392,24 +392,24 @@ class ConfirmationCounter:
         reasons = []
         
         # 1. RSI Oversold (< 30)
-        rsi = metrics.get("rsi_14", metrics.get("rsi", 50))
-        if rsi < 30:
+        rsi = metrics.get("rsi_14") or metrics.get("rsi") or 50
+        if rsi is not None and rsi < 30:
             confirmations += 1
             reasons.append(f"RSI oversold ({rsi:.0f})")
         
         # 2. MACD Crossover bullish (histogram turning positive)
-        macd_hist = metrics.get("macd_histogram", 0)
-        macd_prev = metrics.get("macd_histogram_prev", macd_hist)  # Previous value
-        if macd_hist > 0 and macd_prev <= 0:
+        macd_hist = metrics.get("macd_histogram") or 0
+        macd_prev = metrics.get("macd_histogram_prev") or macd_hist
+        if macd_hist is not None and macd_hist > 0 and macd_prev is not None and macd_prev <= 0:
             confirmations += 1
             reasons.append("MACD bullish crossover")
-        elif macd_hist > 0:
+        elif macd_hist is not None and macd_hist > 0:
             confirmations += 0.5  # Partial credit
             reasons.append("MACD positive")
         
         # 3. Price near support (using Bollinger lower band)
-        bb_lower = metrics.get("bb_lower", 0)
-        price = metrics.get("current_price", metrics.get("price", 0))
+        bb_lower = metrics.get("bb_lower") or 0
+        price = metrics.get("current_price") or metrics.get("price") or 0
         if bb_lower > 0 and price > 0:
             distance_to_bb = (price - bb_lower) / price
             if distance_to_bb < 0.02:  # Within 2% of lower band
@@ -422,10 +422,10 @@ class ConfirmationCounter:
             reasons.append("SPY above 20MA (bull market)")
         
         # 5. VIX low (< 20)
-        if vix_level < VIX_CAUTION_THRESHOLD:
+        if vix_level is not None and vix_level < VIX_CAUTION_THRESHOLD:
             confirmations += 1
             reasons.append(f"VIX low ({vix_level:.1f})")
-        elif vix_level < VIX_FEAR_THRESHOLD:
+        elif vix_level is not None and vix_level < VIX_FEAR_THRESHOLD:
             confirmations += 0.5
             reasons.append(f"VIX moderate ({vix_level:.1f})")
         
@@ -435,14 +435,14 @@ class ConfirmationCounter:
             reasons.append("No negative news")
         
         # 7. Momentum positive
-        momentum = metrics.get("momentum_7d", metrics.get("momentum", 0))
-        if momentum > 0.02:  # 2% positive momentum
+        momentum = metrics.get("momentum_7d") or metrics.get("momentum") or 0
+        if momentum is not None and momentum > 0.02:  # 2% positive momentum
             confirmations += 1
             reasons.append(f"Positive momentum ({momentum:.1%})")
         
         # 8. Volume confirmation
-        volume_trend = metrics.get("volume_trend", 1.0)
-        if volume_trend > 1.2:  # 20% above average
+        volume_trend = metrics.get("volume_trend") or 1.0
+        if volume_trend is not None and volume_trend > 1.2:  # 20% above average
             confirmations += 0.5
             reasons.append("High volume")
         
@@ -465,20 +465,20 @@ class ConfirmationCounter:
         reasons = []
         
         # 1. RSI Overbought (> 70)
-        rsi = metrics.get("rsi_14", metrics.get("rsi", 50))
-        if rsi > 70:
+        rsi = metrics.get("rsi_14") or metrics.get("rsi") or 50
+        if rsi is not None and rsi > 70:
             confirmations += 1
             reasons.append(f"RSI overbought ({rsi:.0f})")
         
         # 2. MACD Crossover bearish
-        macd_hist = metrics.get("macd_histogram", 0)
-        if macd_hist < 0:
+        macd_hist = metrics.get("macd_histogram") or 0
+        if macd_hist is not None and macd_hist < 0:
             confirmations += 1
             reasons.append("MACD bearish")
         
         # 3. Price near resistance (BB upper band)
-        bb_upper = metrics.get("bb_upper", 0)
-        price = metrics.get("current_price", metrics.get("price", 0))
+        bb_upper = metrics.get("bb_upper") or 0
+        price = metrics.get("current_price") or metrics.get("price") or 0
         if bb_upper > 0 and price > 0:
             distance_to_bb = (bb_upper - price) / price
             if distance_to_bb < 0.02:
@@ -491,7 +491,7 @@ class ConfirmationCounter:
             reasons.append("SPY below 20MA (bear market)")
         
         # 5. VIX high (> 25) - fear = downside likely
-        if vix_level > VIX_FEAR_THRESHOLD:
+        if vix_level is not None and vix_level > VIX_FEAR_THRESHOLD:
             confirmations += 1
             reasons.append(f"VIX high ({vix_level:.1f})")
         
@@ -501,8 +501,8 @@ class ConfirmationCounter:
             reasons.append("Negative news detected")
         
         # 7. Momentum negative
-        momentum = metrics.get("momentum_7d", metrics.get("momentum", 0))
-        if momentum < -0.02:
+        momentum = metrics.get("momentum_7d") or metrics.get("momentum") or 0
+        if momentum is not None and momentum < -0.02:
             confirmations += 1
             reasons.append(f"Negative momentum ({momentum:.1%})")
         
@@ -510,6 +510,8 @@ class ConfirmationCounter:
     
     def get_signal_quality(self, confirmations: int) -> str:
         """Convert confirmation count to signal quality."""
+        if confirmations is None:
+            return "SKIP"
         if confirmations >= MIN_CONFIRMATIONS_HIGH:
             return "HIGH"
         elif confirmations >= MIN_CONFIRMATIONS_LOW:
@@ -830,12 +832,12 @@ async def apply_market_gates(
     if gate_info["gates_passed"]:
         LOGGER.info(
             f"✅ [GATES-SUMMARY] {symbol} PASSED all gates: {direction} @ {confidence:.0%} "
-            f"(Confirmations: {gate_info['confirmations']['count']})"
+            f"(Confirmations: {gate_info.get('confirmations', {}).get('count', '?')})"
         )
     else:
         LOGGER.info(
-            f"🚫 [GATES-SUMMARY] {symbol} BLOCKED: {direction} → FLAT "
-            f"(Original conf: {gate_info['original_confidence']:.0%})"
+            f"⚠️ [GATES-SUMMARY] {symbol} PENALIZED: {direction} {gate_info['original_confidence']:.0%} → {confidence:.0%} "
+            f"(Confirmations: {gate_info.get('confirmations', {}).get('count', '?')})"
         )
     
     return direction, confidence, gate_info
