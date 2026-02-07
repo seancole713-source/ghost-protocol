@@ -21086,8 +21086,11 @@ async def api_health_predictions():
 
         # Use HUNTER_ lists (actual prediction targets) — NOT env-inflated STOCK_SYMBOLS
         total_symbols = len(HUNTER_STOCK_SYMBOLS) + len(HUNTER_CRYPTO_SYMBOLS) + len(VIP_COINS)
-        symbols_with_data = _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0) + \
-                           _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0) + \
+        # Use live counts from _LATEST_PREDICTIONS as primary (always up-to-date)
+        _ls = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") == "stock_v2")
+        _lc = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") != "stock_v2")
+        symbols_with_data = max(_ls, _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0)) + \
+                           max(_lc, _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0)) + \
                            vip_provider_health.get("symbols_with_data", 0)
 
         # Compute live avg_confidence from actual predictions
@@ -21101,8 +21104,8 @@ async def api_health_predictions():
             "avg_confidence": round(_live_avg_conf, 3)
         }
 
-        # Prediction coverage — use actual prediction count vs expected
-        predictions_generated = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
+        # Prediction coverage — use live count as primary
+        predictions_generated = max(sum(_LAST_MULTI_PREDICTION_COUNTS.values()), len(_LATEST_PREDICTIONS))
         prediction_coverage = {
             "predictions_generated": predictions_generated,
             "total_expected": total_symbols,
@@ -21190,8 +21193,11 @@ async def api_cockpit_snapshot():
 
             # Use HUNTER_ lists (actual prediction targets) — NOT env-inflated STOCK_SYMBOLS
             total_symbols = len(HUNTER_STOCK_SYMBOLS) + len(HUNTER_CRYPTO_SYMBOLS) + len(VIP_COINS)
-            symbols_with_data = _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0) + \
-                               _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0) + \
+            # Use live counts from _LATEST_PREDICTIONS as primary (always up-to-date)
+            _ls = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") == "stock_v2")
+            _lc = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") != "stock_v2")
+            symbols_with_data = max(_ls, _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0)) + \
+                               max(_lc, _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0)) + \
                                vip_provider_health.get("symbols_with_data", 0)
 
             # Compute live avg_confidence from actual predictions
@@ -21205,8 +21211,8 @@ async def api_cockpit_snapshot():
                 "avg_confidence": round(_live_avg_conf, 3)
             }
 
-            # Prediction coverage — use actual prediction count vs expected
-            predictions_generated = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
+            # Prediction coverage — use live count as primary
+            predictions_generated = max(sum(_LAST_MULTI_PREDICTION_COUNTS.values()), len(_LATEST_PREDICTIONS))
             prediction_coverage = {
                 "predictions_generated": predictions_generated,
                 "total_expected": total_symbols,
