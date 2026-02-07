@@ -1262,69 +1262,87 @@ async def health_check():
             health_status["price_providers"] = "warming_up"
             return JSONResponse(content=health_status, status_code=200)
         
-        # Check 1: Database connectivity
-        db_status = "unknown"
-        try:
-            import sqlite3
-            conn = sqlite3.connect(WOLF_SQLITE_PATH)
-            conn.execute("SELECT 1").fetchone()
-            conn.close()
-            db_status = "connected"
-        except Exception as e:
-            db_status = "error"
-            health_status["status"] = "degraded"
-            health_status["database_error"] = str(e)
+        # ================================================================
+        # NON-BLOCKING health checks using cached values
+        # The health endpoint MUST respond in <100ms regardless of what
+        # else is running (Stock Engine predictions, ensemble ML, etc.)
+        # Background: Stock Engine predictions consume heavy CPU/GIL time,
+        # so any sync IO or asyncio.to_thread() calls here will stall.
+        # ================================================================
         
-        health_status["database"] = db_status
+        # Use cached health state (updated by background task)
+        if not hasattr(health_check, '_cache'):
+            health_check._cache = {
+                "database": "unknown",
+                "prediction_store": "unknown", 
+                "price_providers": "unknown",
+                "btc_price": None,
+                "last_check": 0,
+            }
         
-        # Check 2: Prediction store (PostgreSQL if available)
-        prediction_store_status = "unknown"
-        try:
-            from core.prediction_store import get_prediction_store
-            store = get_prediction_store()
-            store.get_recent_predictions(limit=1)
-            prediction_store_status = "connected"
-        except Exception:
-            prediction_store_status = "unavailable"
+        cache = health_check._cache
+        cache_age = time.time() - cache["last_check"]
         
-        health_status["prediction_store"] = prediction_store_status
+        # Refresh cache in background every 60s (non-blocking)
+        if cache_age > 60:
+            async def _refresh_health_cache():
+                try:
+                    # Check 1: Database (run in thread to avoid blocking event loop)
+                    try:
+                        def _check_db():
+                            import sqlite3
+                            c = sqlite3.connect(WOLF_SQLITE_PATH)
+                            c.execute("SELECT 1").fetchone()
+                            c.close()
+                            return "connected"
+                        cache["database"] = await asyncio.wait_for(
+                            asyncio.to_thread(_check_db), timeout=2.0
+                        )
+                    except Exception:
+                        cache["database"] = "error"
+                    
+                    # Check 2: Prediction store
+                    try:
+                        def _check_store():
+                            from core.prediction_store import get_prediction_store
+                            get_prediction_store().get_recent_predictions(limit=1)
+                            return "connected"
+                        cache["prediction_store"] = await asyncio.wait_for(
+                            asyncio.to_thread(_check_store), timeout=2.0
+                        )
+                    except Exception:
+                        cache["prediction_store"] = "unavailable"
+                    
+                    # Check 3: BTC price
+                    try:
+                        from core.coinbase_provider import get_coinbase_provider
+                        provider = get_coinbase_provider()
+                        btc_price = await asyncio.wait_for(
+                            asyncio.to_thread(provider.get_price, "BTC"), timeout=3.0
+                        )
+                        if btc_price and btc_price > 0:
+                            cache["price_providers"] = "operational"
+                            cache["btc_price"] = round(btc_price, 2)
+                        else:
+                            cache["price_providers"] = "degraded"
+                    except Exception:
+                        cache["price_providers"] = "timeout"
+                    
+                    cache["last_check"] = time.time()
+                except Exception as bg_err:
+                    LOGGER.debug(f"Health cache refresh error: {bg_err}")
+            
+            # Fire and forget — don't await, let it run in background
+            asyncio.ensure_future(_refresh_health_cache())
+            # If first time, mark as checking
+            if cache["last_check"] == 0:
+                cache["last_check"] = time.time() - 50  # Will retry in 10s
         
-        # Check 3: Price provider sanity check (production-critical)
-        # Only check if we've been running for >120s (allows startup predictions to finish)
-        # During startup, skip this check to keep health endpoint instant
-        if time.time() - _START_TS > 120:
-            try:
-                # Quick test: Can we fetch BTC price from Coinbase (most reliable)?
-                from core.coinbase_provider import get_coinbase_provider
-                
-                provider = get_coinbase_provider()
-                btc_price = await asyncio.wait_for(
-                    asyncio.to_thread(provider.get_price, "BTC"),
-                    timeout=3.0
-                )
-                
-                if btc_price and btc_price > 0:
-                    health_status["price_providers"] = "operational"
-                    health_status["btc_price"] = round(btc_price, 2)
-                else:
-                    # Fallback: Try the quorum system
-                    from core.crypto.crypto_providers import get_crypto_price_quorum
-                    btc_test = await asyncio.wait_for(
-                        get_crypto_price_quorum("BTC", use_cache=True),
-                        timeout=2.0
-                    )
-                    if btc_test and btc_test.get("price"):
-                        health_status["price_providers"] = "operational"
-                        health_status["btc_price"] = round(btc_test["price"], 2)
-                    else:
-                        health_status["price_providers"] = "degraded"
-                        health_status["status"] = "degraded"
-            except asyncio.TimeoutError:
-                health_status["price_providers"] = "timeout"
-                health_status["status"] = "degraded"
-            except Exception as e:
-                health_status["price_providers"] = f"error: {str(e)[:50]}"
-                # Don't fail health check on provider issues (may be temporary)
+        health_status["database"] = cache["database"]
+        health_status["prediction_store"] = cache["prediction_store"]
+        health_status["price_providers"] = cache["price_providers"]
+        if cache["btc_price"]:
+            health_status["btc_price"] = cache["btc_price"]
         
         # Return 503 if critical systems failed
         if health_status["status"] == "unhealthy":
