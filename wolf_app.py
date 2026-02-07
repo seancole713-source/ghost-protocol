@@ -21084,8 +21084,8 @@ async def api_health_predictions():
     try:
         from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
 
-        # Use HUNTER_ lists (actual prediction targets) — NOT env-inflated STOCK_SYMBOLS
-        total_symbols = len(HUNTER_STOCK_SYMBOLS) + len(HUNTER_CRYPTO_SYMBOLS) + len(VIP_COINS)
+        # Use DEFAULT_ list sizes (initial prediction targets, not runtime-expanded HUNTER_)
+        total_symbols = len(DEFAULT_STOCK_SYMBOLS) + len(DEFAULT_CRYPTO_SYMBOLS) + len(VIP_COINS)
         # Use live counts from _LATEST_PREDICTIONS as primary (always up-to-date)
         _ls = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") == "stock_v2")
         _lc = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") != "stock_v2")
@@ -21192,7 +21192,8 @@ async def api_cockpit_snapshot():
             from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
 
             # Use HUNTER_ lists (actual prediction targets) — NOT env-inflated STOCK_SYMBOLS
-            total_symbols = len(HUNTER_STOCK_SYMBOLS) + len(HUNTER_CRYPTO_SYMBOLS) + len(VIP_COINS)
+            # Use DEFAULT_ list sizes (initial prediction targets, not runtime-expanded HUNTER_)
+            total_symbols = len(DEFAULT_STOCK_SYMBOLS) + len(DEFAULT_CRYPTO_SYMBOLS) + len(VIP_COINS)
             # Use live counts from _LATEST_PREDICTIONS as primary (always up-to-date)
             _ls = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") == "stock_v2")
             _lc = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") != "stock_v2")
