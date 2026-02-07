@@ -416,18 +416,22 @@ class ConfirmationCounter:
                 confirmations += 1
                 reasons.append("Price near support (BB lower)")
         
-        # 4. SPY above 20MA (market regime)
+        # 4. SPY above 20MA (market regime) — always counts, not just stocks
         if spy_above_ma:
             confirmations += 1
             reasons.append("SPY above 20MA (bull market)")
-        
-        # 5. VIX low (< 20)
-        if vix_level is not None and vix_level < VIX_CAUTION_THRESHOLD:
-            confirmations += 1
-            reasons.append(f"VIX low ({vix_level:.1f})")
-        elif vix_level is not None and vix_level < VIX_FEAR_THRESHOLD:
+        else:
+            # Partial credit: not above MA but not in freefall
             confirmations += 0.5
-            reasons.append(f"VIX moderate ({vix_level:.1f})")
+            reasons.append("SPY below 20MA (partial credit)")
+        
+        # 5. VIX not elevated (< 25 is normal range)
+        if vix_level is not None and vix_level < VIX_FEAR_THRESHOLD:
+            confirmations += 1
+            reasons.append(f"VIX normal ({vix_level:.1f})")
+        elif vix_level is not None and vix_level < VIX_PANIC_THRESHOLD:
+            confirmations += 0.5
+            reasons.append(f"VIX elevated ({vix_level:.1f})")
         
         # 6. No negative news
         if not has_negative_news:
@@ -464,11 +468,14 @@ class ConfirmationCounter:
         confirmations = 0
         reasons = []
         
-        # 1. RSI Overbought (> 70)
+        # 1. RSI Overbought (> 70) or elevated (> 55)
         rsi = metrics.get("rsi_14") or metrics.get("rsi") or 50
         if rsi is not None and rsi > 70:
             confirmations += 1
             reasons.append(f"RSI overbought ({rsi:.0f})")
+        elif rsi is not None and rsi > 55:
+            confirmations += 0.5
+            reasons.append(f"RSI elevated ({rsi:.0f})")
         
         # 2. MACD Crossover bearish
         macd_hist = metrics.get("macd_histogram") or 0
@@ -485,20 +492,31 @@ class ConfirmationCounter:
                 confirmations += 1
                 reasons.append("Price near resistance (BB upper)")
         
-        # 4. SPY below 20MA (bear market)
+        # 4. SPY below 20MA (bear market) or neutral credit
         if not spy_above_ma:
             confirmations += 1
             reasons.append("SPY below 20MA (bear market)")
+        else:
+            # Partial credit: SPY is above MA but sell signals can still be valid
+            confirmations += 0.5
+            reasons.append("SPY above 20MA (partial credit for sell)")
         
-        # 5. VIX high (> 25) - fear = downside likely
+        # 5. VIX elevated (> 20) — fear supports downside
         if vix_level is not None and vix_level > VIX_FEAR_THRESHOLD:
             confirmations += 1
             reasons.append(f"VIX high ({vix_level:.1f})")
+        elif vix_level is not None and vix_level > VIX_CAUTION_THRESHOLD:
+            confirmations += 0.5
+            reasons.append(f"VIX cautious ({vix_level:.1f})")
         
         # 6. Negative news
         if has_negative_news:
             confirmations += 1
             reasons.append("Negative news detected")
+        else:
+            # No news is neutral for sell — partial credit
+            confirmations += 0.5
+            reasons.append("Neutral news (no strong positive)")
         
         # 7. Momentum negative
         momentum = metrics.get("momentum_7d") or metrics.get("momentum") or 0
@@ -699,21 +717,20 @@ async def apply_market_gates(
         if not allow_buy:
             LOGGER.warning(f"🚫 REGIME FILTER: Penalizing BUY for {symbol} - {regime_reason}")
             gate_info["gates_passed"] = False
-            # Don't flatten — moderate penalty (was 0.60, too aggressive)
-            confidence = confidence * 0.75  # 25% penalty for buying in bear market
+            # ADDITIVE penalty instead of multiplicative (prevents stacking collapse)
+            confidence = max(confidence - 0.10, 0.15)  # -10% flat penalty for buying in bear
     elif direction == "DOWN":
         # Symmetric: also check regime for SELL signals
-        # In strong uptrends (SPY > 20MA, BTC trending up), penalize DOWN signals
         allow_buy, regime_reason = await regime_filter.should_allow_buy(asset_type)
         gate_info["regime_filter"] = {
             "applied": True,
-            "allowed": True,  # Don't hard-block DOWN, but reduce confidence
+            "allowed": True,
             "reason": f"SELL in {'bullish' if allow_buy else 'bearish'} regime"
         }
         if allow_buy:
-            # Regime is bullish (would allow buys) — selling into strength is risky
+            # Regime is bullish — selling into strength has modest penalty
             old_conf = confidence
-            confidence = confidence * 0.85  # 15% penalty for selling in uptrend
+            confidence = max(confidence - 0.07, 0.15)  # -7% flat penalty
             LOGGER.info(f"[REGIME-GATE] {symbol} SELL penalized in bullish regime ({old_conf:.0%} → {confidence:.0%})")
     
     # ========================================
@@ -733,23 +750,24 @@ async def apply_market_gates(
         if vix_multiplier == 0:
             LOGGER.warning(f"🚫 VIX GATE: Heavy penalty for BUY {symbol} - VIX at {vix_level:.1f} (PANIC)")
             gate_info["gates_passed"] = False
-            # Don't flatten — moderate penalty (was 0.40, too aggressive)
-            confidence = confidence * 0.60  # 40% penalty for buying in panic
+            # ADDITIVE penalty: -15% for buying in panic (was × 0.60 which crushed to 33%)
+            confidence = max(confidence - 0.15, 0.15)
         elif vix_multiplier < 1.0:
             old_conf = confidence
-            confidence = confidence * vix_multiplier
+            # Convert multiplier to additive: 0.75 → -5%, 0.50 → -10%
+            penalty = min((1.0 - vix_multiplier) * 0.20, 0.10)  # Cap at -10%
+            confidence = max(confidence - penalty, 0.15)
             LOGGER.info(f"[VIX-GATE] Reduced UP confidence for {symbol} - VIX {vix_level:.1f} ({old_conf:.0%} → {confidence:.0%})")
     elif direction == "DOWN":
-        # Symmetric: LOW VIX (calm) should penalize SELL signals
-        # If VIX is calm (< 15), market is complacent — shorting calm markets is risky
+        # Symmetric: LOW VIX (calm) = small penalty for shorting calm markets
         if vix_level < 15:
             old_conf = confidence
-            confidence = confidence * 0.85
+            confidence = max(confidence - 0.05, 0.15)
             LOGGER.info(f"[VIX-GATE] Reduced DOWN confidence for {symbol} - VIX calm at {vix_level:.1f} ({old_conf:.0%} → {confidence:.0%})")
-        # High VIX should also moderate DOWN (don't short panic bottoms)
+        # High VIX = small penalty for shorting panic bottoms
         elif vix_level > 35:
             old_conf = confidence
-            confidence = confidence * 0.90
+            confidence = max(confidence - 0.03, 0.15)
             LOGGER.info(f"[VIX-GATE] Reduced DOWN confidence for {symbol} - VIX extreme at {vix_level:.1f} ({old_conf:.0%} → {confidence:.0%})")
     
     LOGGER.info(f"📊 VIX GATE: {symbol} {direction} confidence at {confidence:.0%} ({vix_reason})")
@@ -790,11 +808,11 @@ async def apply_market_gates(
         if signal_quality == "SKIP":
             LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - low quality BUY signal")
             gate_info["gates_passed"] = False
-            # Moderate penalty (was 0.65, caused stacking collapse)
-            confidence = confidence * 0.80  # 20% penalty for unconfirmed signal
+            # ADDITIVE: -8% for unconfirmed (was × 0.80 which stacked to crush confidence)
+            confidence = max(confidence - 0.08, 0.15)
         elif signal_quality == "LOW":
             old_conf = confidence
-            confidence = confidence * 0.90
+            confidence = max(confidence - 0.04, 0.15)
             LOGGER.info(f"[CONFIRM-GATE] {symbol} BUY LOW quality ({conf_count} confirmations) ({old_conf:.0%} → {confidence:.0%})")
         else:
             LOGGER.info(f"[CONFIRM-GATE] {symbol} BUY HIGH quality ({conf_count} confirmations)")
@@ -815,11 +833,11 @@ async def apply_market_gates(
         if signal_quality == "SKIP":
             LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - low quality SELL signal")
             gate_info["gates_passed"] = False
-            # Moderate penalty (was 0.65, caused stacking collapse)
-            confidence = confidence * 0.80  # 20% penalty for unconfirmed signal
+            # ADDITIVE: -8% for unconfirmed
+            confidence = max(confidence - 0.08, 0.15)
         elif signal_quality == "LOW":
             old_conf = confidence
-            confidence = confidence * 0.90
+            confidence = max(confidence - 0.04, 0.15)
             LOGGER.info(f"[CONFIRM-GATE] {symbol} SELL LOW quality ({conf_count} confirmations) ({old_conf:.0%} → {confidence:.0%})")
         else:
             LOGGER.info(f"[CONFIRM-GATE] {symbol} SELL HIGH quality ({conf_count} confirmations)")
@@ -829,16 +847,16 @@ async def apply_market_gates(
     # ========================================
     original = gate_info["original_confidence"]
     
-    # Cap total penalty at 50% (never lose more than half the signal)
-    PENALTY_CAP = 0.50
+    # Cap total penalty at 35% (never lose more than 35% of signal — gates are advisory)
+    PENALTY_CAP = 0.65
     if original > 0:
         total_penalty_ratio = confidence / original
         if total_penalty_ratio < PENALTY_CAP:
             confidence = original * PENALTY_CAP
             LOGGER.info(f"[GATES-CAP] {symbol}: Penalty cap applied ({total_penalty_ratio:.0%} → {PENALTY_CAP:.0%} of original {original:.0%})")
     
-    # Confidence floor: never go below 15% (below that is pure noise)
-    CONFIDENCE_FLOOR = 0.15
+    # Confidence floor: never go below 35% (below that is noise, not tradeable)
+    CONFIDENCE_FLOOR = 0.35
     if confidence < CONFIDENCE_FLOOR and original >= CONFIDENCE_FLOOR:
         confidence = CONFIDENCE_FLOOR
         LOGGER.info(f"[GATES-FLOOR] {symbol}: Confidence floor applied → {CONFIDENCE_FLOOR:.0%}")

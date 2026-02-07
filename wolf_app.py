@@ -8740,7 +8740,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # Lowered to 0.40 to build accuracy data (Feb 7, 2026)
         # Paper trades need to FLOW so we can measure if predictions are right
         # =====================================================================
-        MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.40"))
+        MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.35"))
         
         should_predict = True  # Default: predict unless gates say otherwise
         if base_confidence < MIN_CONFIDENCE_THRESHOLD:
