@@ -1281,8 +1281,9 @@ async def health_check():
         health_status["prediction_store"] = prediction_store_status
         
         # Check 3: Price provider sanity check (production-critical)
-        # Only check if we've been running for >10s (allows startup initialization)
-        if time.time() - _START_TS > 10:
+        # Only check if we've been running for >120s (allows startup predictions to finish)
+        # During startup, skip this check to keep health endpoint instant
+        if time.time() - _START_TS > 120:
             try:
                 # Quick test: Can we fetch BTC price from Coinbase (most reliable)?
                 from core.coinbase_provider import get_coinbase_provider
