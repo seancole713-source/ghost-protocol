@@ -99,8 +99,21 @@ class BTCCorrelationAnalyzer:
                 if (datetime.now() - cached_time).seconds < self.cache_duration:
                     return cached_data
             
+            # Try CoinGecko with short timeout (respect rate limits)
             url = f"{self.COINGECKO_URL}/global"
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=5)
+            
+            # Handle rate limiting gracefully
+            if response.status_code == 429:
+                logger.warning("CoinGecko 429 rate limit on /global - using cached/default")
+                if cache_key in self.cache:
+                    return self.cache[cache_key][1]
+                return {
+                    'btc_dominance': 50,
+                    'dom_signal': 'UNKNOWN',
+                    'error': 'rate_limited'
+                }
+            
             response.raise_for_status()
             data = response.json()['data']
             
@@ -145,8 +158,25 @@ class BTCCorrelationAnalyzer:
     def get_btc_price_data(self, days: int = 30) -> Dict:
         """Get BTC price and trend data"""
         try:
+            cache_key = f'btc_price_{days}d'
+            if cache_key in self.cache:
+                cached_time, cached_data = self.cache[cache_key]
+                if (datetime.now() - cached_time).seconds < self.cache_duration:
+                    return cached_data
+            
             url = f"{self.COINGECKO_URL}/coins/bitcoin/market_chart?vs_currency=usd&days={days}"
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 429:
+                logger.warning("CoinGecko 429 rate limit on BTC price - using cached/default")
+                if cache_key in self.cache:
+                    return self.cache[cache_key][1]
+                return {
+                    'current_price': 70000,
+                    'trend': 'unknown',
+                    'error': 'rate_limited'
+                }
+            
             response.raise_for_status()
             data = response.json()
             
@@ -173,7 +203,7 @@ class BTCCorrelationAnalyzer:
             else:
                 trend = 'stable'
             
-            return {
+            result = {
                 'price': current_price,
                 'change_1d': price_1d,
                 'change_7d': price_7d,
@@ -183,6 +213,9 @@ class BTCCorrelationAnalyzer:
                 'older_avg': older_avg
             }
             
+            self.cache[cache_key] = (datetime.now(), result)
+            return result
+            
         except Exception as e:
             logger.error(f"Error fetching BTC price data: {e}")
             return {'price': 0, 'trend': 'unknown', 'error': str(e)}
@@ -190,10 +223,15 @@ class BTCCorrelationAnalyzer:
     def get_dominance_trend(self, days: int = 14) -> Dict:
         """Calculate BTC dominance trend over time"""
         try:
-            # Get historical global data
-            url = f"{self.COINGECKO_URL}/global"
-            response = requests.get(url, timeout=10)
-            current_dom = response.json()['data']['market_cap_percentage']['btc']
+            cache_key = 'dom_trend'
+            if cache_key in self.cache:
+                cached_time, cached_data = self.cache[cache_key]
+                if (datetime.now() - cached_time).seconds < self.cache_duration:
+                    return cached_data
+            
+            # Reuse cached dominance data if available
+            dom_data = self.get_btc_dominance()
+            current_dom = dom_data.get('btc_dominance', 50)
             
             # We can estimate trend from BTC vs total market cap changes
             # In production, you'd store historical dominance values
@@ -208,11 +246,14 @@ class BTCCorrelationAnalyzer:
             else:
                 trend = 'stable'
             
-            return {
+            result = {
                 'current': current_dom,
                 'trend': trend,
                 'interpretation': self._interpret_dom_trend(trend)
             }
+            
+            self.cache[cache_key] = (datetime.now(), result)
+            return result
             
         except Exception as e:
             logger.error(f"Error calculating dominance trend: {e}")
@@ -303,14 +344,26 @@ class BTCCorrelationAnalyzer:
         - Beta 0.5 = moves half of BTC (less volatile)
         """
         try:
+            cache_key = f'beta_{altcoin}_{days}'
+            if cache_key in self.cache:
+                cached_time, cached_data = self.cache[cache_key]
+                if (datetime.now() - cached_time).seconds < self.cache_duration:
+                    return cached_data
+            
             # Get BTC data
             btc_url = f"{self.COINGECKO_URL}/coins/bitcoin/market_chart?vs_currency=usd&days={days}"
-            btc_response = requests.get(btc_url, timeout=10)
+            btc_response = requests.get(btc_url, timeout=5)
+            if btc_response.status_code == 429:
+                logger.warning(f"CoinGecko 429 on BTC beta calc for {altcoin}")
+                return {'beta': 1.0, 'volatility_ratio': 1.0, 'error': 'rate_limited'}
             btc_prices = [p[1] for p in btc_response.json()['prices']]
             
             # Get altcoin data
             alt_url = f"{self.COINGECKO_URL}/coins/{altcoin.lower()}/market_chart?vs_currency=usd&days={days}"
-            alt_response = requests.get(alt_url, timeout=10)
+            alt_response = requests.get(alt_url, timeout=5)
+            if alt_response.status_code == 429:
+                logger.warning(f"CoinGecko 429 on altcoin beta calc for {altcoin}")
+                return {'beta': 1.0, 'volatility_ratio': 1.0, 'error': 'rate_limited'}
             alt_prices = [p[1] for p in alt_response.json()['prices']]
             
             # Align lengths

@@ -73,9 +73,22 @@ class SocialSentimentAnalyzer:
                     return cached_data
             
             url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={limit}"
-            headers = {'User-Agent': 'Ghost Oracle Bot 1.0'}
+            headers = {'User-Agent': 'Mozilla/5.0 (compatible; GhostProtocol/1.0)'}
             
-            response = requests.get(url, headers=headers, timeout=15)
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            # Reddit blocks bots with 403 — fail gracefully
+            if response.status_code in (403, 429):
+                logger.debug(f"Reddit returned {response.status_code} for r/{subreddit} — using neutral fallback")
+                fallback = {
+                    'overall_sentiment': 'NEUTRAL',
+                    'strength': 0.5,
+                    'activity_level': 'UNKNOWN',
+                    'source': 'reddit_blocked'
+                }
+                self.cache[cache_key] = (datetime.now(), fallback)
+                return fallback
+            
             response.raise_for_status()
             posts = response.json()['data']['children']
             

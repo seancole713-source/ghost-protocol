@@ -8117,7 +8117,26 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 # ================================================================
                 try:
                     import sqlite3 as _se_sqlite3
-                    conn = _se_sqlite3.connect("ghost_predictions.db")
+                    conn = _se_sqlite3.connect(WOLF_SQLITE_PATH)
+                    # Ensure table exists (ephemeral storage loses it on redeploy)
+                    conn.execute("""CREATE TABLE IF NOT EXISTS ghost_predictions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        symbol TEXT NOT NULL,
+                        predicted_at INTEGER NOT NULL,
+                        check_at INTEGER NOT NULL,
+                        predicted_price REAL,
+                        predicted_direction TEXT,
+                        predicted_pct REAL,
+                        confidence REAL,
+                        timeframe_hours INTEGER,
+                        current_price REAL,
+                        target_price REAL,
+                        stage5_ok INTEGER,
+                        stage6_ok INTEGER,
+                        gate TEXT,
+                        checked INTEGER DEFAULT 0,
+                        UNIQUE(symbol, predicted_at)
+                    )""")
                     se_predicted_price = stock_result.get("target_price") or se_entry_price
                     se_predicted_pct = ((se_predicted_price - se_entry_price) / se_entry_price * 100) if se_entry_price else 0.0
                     conn.execute("""
