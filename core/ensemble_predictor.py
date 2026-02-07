@@ -599,9 +599,11 @@ class XGBoostModel:
                     f"UP={prob_up:.1%}, DOWN={prob_down:.1%}"
                 )
                 
-                # Simple threshold: 55% conviction required
-                # (Slightly above 50% to filter pure noise)
-                conviction_threshold = 0.55
+                # Simple threshold: Use majority class as direction
+                # With a well-calibrated balanced model, probabilities hover near 50%
+                # The signal is which side of 50% we're on, not how far above 55%
+                # Only go FLAT if truly undecided (within 1% of 50/50)
+                conviction_threshold = 0.51  # Just need >51% to pick a direction
                 
                 if prob_up >= conviction_threshold:
                     direction = "UP"
@@ -610,7 +612,7 @@ class XGBoostModel:
                     direction = "DOWN"
                     confidence = prob_down
                 else:
-                    # Truly uncertain - FLAT (now rare: requires 48-52% band)
+                    # Truly undecided - within 49-51% band
                     direction = "FLAT"
                     confidence = max(prob_up, prob_down)
                 
