@@ -21179,7 +21179,10 @@ async def api_cockpit_snapshot():
                     "run_at": pred["run_at"],
                     "confidence": pred["confidence"],
                     "direction": pred["direction"],
-                    "horizon_h": pred["horizon_h"],
+                    "horizon_h": pred.get("horizon_h", 48),
+                    "engine": pred.get("engine", "turbo"),
+                    "confirmations": pred.get("confirmations"),
+                    "intel_applied": pred.get("intel_applied", False),
                 }
         except Exception as e:
             LOGGER.warning(f"Failed to build predictions for /api/cockpit: {e}")
