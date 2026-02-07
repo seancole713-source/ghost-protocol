@@ -10857,6 +10857,10 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
         weekly_wins = weekly_stats.get("wins", 0)
         weekly_acc = round((weekly_wins / weekly_total) * 100, 1) if weekly_total > 0 else 0.0
         
+        # Compute avg_confidence from live predictions
+        _live_confs_acc = [p.get("confidence", 0) for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("confidence")]
+        _avg_conf_acc = round(sum(_live_confs_acc) / len(_live_confs_acc), 3) if _live_confs_acc else 0.65
+
         return {
             "ok": True,
             "accuracy_pct": accuracy_pct,
@@ -10866,7 +10870,7 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
             "total_predictions": total,
             "resolved_predictions": total,
             "correct_predictions": wins,
-            "avg_confidence": 0.75,  # V2 whitelist avg confidence
+            "avg_confidence": _avg_conf_acc,
             "avg_move_pct": 0.0,
             "symbol": symbol or "ALL",
             "period_days": days,
@@ -12676,11 +12680,12 @@ async def api_current_regime():
     """
     try:
         from core.regime_detector import get_regime_detector
-        from core.price_fetchers import get_price
         
-        # Fetch SPY and VIX data
-        spy_price = get_price("SPY")
-        vix_level = get_price("VIX") if get_price("VIX") else 20.0
+        # Fetch SPY and VIX data using internal price cache
+        spy_price_data = _cache_get_price("SPY")
+        spy_price = spy_price_data[0] if spy_price_data[0] else None
+        vix_data = _cache_get_price("VIX")
+        vix_level = vix_data[0] if vix_data[0] else 20.0
         
         # Calculate SPY MA20 (2% below current as proxy for uptrend)
         # In production, fetch from database or yfinance historical data
@@ -32343,22 +32348,34 @@ async def api_cockpit_legacy():
 
         vip_health = get_vip_provider_health()
 
-        total_symbols = len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS) + len(VIP_COINS)
-        symbols_with_data = _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0) + \
-                           _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0) + \
-                           vip_health.get("symbols_with_data", 0)
+        # Use DEFAULT lists (fixed size) — not runtime-expanded STOCK_SYMBOLS/HUNTER_STOCK_SYMBOLS
+        total_symbols = len(DEFAULT_STOCK_SYMBOLS) + len(DEFAULT_CRYPTO_SYMBOLS) + len(VIP_COINS)
+
+        # Live counts from _LATEST_PREDICTIONS (immediate) + fallback to counters
+        _live_stocks_snap = sum(1 for s in _LATEST_PREDICTIONS if _classify_symbol_category(s) == "stocks")
+        _live_crypto_snap = sum(1 for s in _LATEST_PREDICTIONS if _classify_symbol_category(s) in ("crypto", "vip"))
+        symbols_with_data = max(_live_stocks_snap + _live_crypto_snap,
+                               _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0) +
+                               _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0) +
+                               vip_health.get("symbols_with_data", 0))
+
+        # Live avg confidence from actual predictions
+        _confs_snap = [p["confidence"] for p in _LATEST_PREDICTIONS.values() if "confidence" in p]
+        _live_avg_conf_snap = sum(_confs_snap) / len(_confs_snap) if _confs_snap else 0.65
+
+        _live_pred_count_snap = max(len(_LATEST_PREDICTIONS), sum(_LAST_MULTI_PREDICTION_COUNTS.values()))
 
         ghost_score = compute_ghost_score_v2(
             data_quality={
                 "symbols_with_data": symbols_with_data,
                 "total_symbols": total_symbols,
                 "provider_redundancy": 0.7,
-                "avg_confidence": 0.75
+                "avg_confidence": _live_avg_conf_snap
             },
             prediction_coverage={
-                "predictions_generated": sum(_LAST_MULTI_PREDICTION_COUNTS.values()),
+                "predictions_generated": _live_pred_count_snap,
                 "total_expected": total_symbols,
-                "success_rate_estimate": 0.5
+                "success_rate_estimate": 0.6
             },
             risk_status=get_current_risk_status()
         )
@@ -32374,7 +32391,10 @@ async def api_cockpit_legacy():
                 "crypto_providers_active": 3,
                 "vip_symbols_with_data": vip_health.get("symbols_with_data", 0),
                 "vip_symbols_total": len(VIP_COINS),
-                "multi_symbol_counts": _LAST_MULTI_PREDICTION_COUNTS.copy()
+                "multi_symbol_counts": {
+                    "stocks": max(_live_stocks_snap, _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0)),
+                    "crypto": max(_live_crypto_snap, _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0)),
+                }
             }
         }
     except Exception as e:
@@ -32874,10 +32894,10 @@ async def debug_telegram_test(
             if credentials and credentials.credentials
             else None
         )
-        (body or {}).get("message", "🧪 Test notification from GHOST")
+        message = (body or {}).get("message", "🧪 Test notification from GHOST")
 
         # Format as a status card
-        card = """<b>📡 GHOST Test Alert</b>
+        card = f"""<b>📡 GHOST Test Alert</b>
 {message}
 
 <i>Timestamp: {datetime.now().isoformat()}</i>
@@ -42684,27 +42704,29 @@ try:
         """
         try:
             conn = psycopg2.connect(os.getenv("DATABASE_URL"))
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            
-            query = "SELECT * FROM guardian_alerts WHERE 1=1"
-            params = []
-            
-            if symbol:
-                query += " AND symbol = %s"
-                params.append(symbol.upper())
-            if severity:
-                query += " AND severity = %s"
-                params.append(severity.upper())
-            if acknowledged is not None:
-                query += " AND acknowledged = %s"
-                params.append(acknowledged)
-            
-            query += " ORDER BY created_at DESC LIMIT %s"
-            params.append(limit)
-            
-            cur.execute(query, params)
-            alerts = cur.fetchall()
-            conn.close()
+            try:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                
+                query = "SELECT * FROM guardian_alerts WHERE 1=1"
+                params = []
+                
+                if symbol:
+                    query += " AND symbol = %s"
+                    params.append(symbol.upper())
+                if severity:
+                    query += " AND severity = %s"
+                    params.append(severity.upper())
+                if acknowledged is not None:
+                    query += " AND acknowledged = %s"
+                    params.append(acknowledged)
+                
+                query += " ORDER BY created_at DESC LIMIT %s"
+                params.append(limit)
+                
+                cur.execute(query, params)
+                alerts = cur.fetchall()
+            finally:
+                conn.close()
             
             # Convert to serializable format
             result = []
@@ -43098,16 +43120,18 @@ try:
         try:
             import sqlite3
             conn = sqlite3.connect("data/ghost_predictions.db")
-            conn.row_factory = sqlite3.Row
-            
-            rows = conn.execute("""
-                SELECT * FROM guardian_alerts
-                ORDER BY sent_at DESC
-                LIMIT 50
-            """).fetchall()
-            
-            alerts = [dict(row) for row in rows]
-            conn.close()
+            try:
+                conn.row_factory = sqlite3.Row
+                
+                rows = conn.execute("""
+                    SELECT * FROM guardian_alerts
+                    ORDER BY sent_at DESC
+                    LIMIT 50
+                """).fetchall()
+                
+                alerts = [dict(row) for row in rows]
+            finally:
+                conn.close()
             
             return {
                 "ok": True,
