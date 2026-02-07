@@ -21089,8 +21089,11 @@ async def api_health_predictions():
     try:
         from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
 
-        # Use DEFAULT_ list sizes (initial prediction targets, not runtime-expanded HUNTER_)
-        total_symbols = len(DEFAULT_STOCK_SYMBOLS) + len(DEFAULT_CRYPTO_SYMBOLS) + len(VIP_COINS)
+        # Use actual prediction LIMITS (auto_prediction_loop caps: 50 stocks + 25 crypto + VIP)
+        # NOT the full DEFAULT_ watchlists (272 stocks + 340 crypto = 612 — way more than we predict)
+        _PREDICTION_CAP_STOCKS = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "50"))
+        _PREDICTION_CAP_CRYPTO = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "25"))
+        total_symbols = _PREDICTION_CAP_STOCKS + _PREDICTION_CAP_CRYPTO + len(VIP_COINS)
         # Use live counts from _LATEST_PREDICTIONS as primary (always up-to-date)
         _ls = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") == "stock_v2")
         _lc = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") != "stock_v2")
@@ -21196,9 +21199,10 @@ async def api_cockpit_snapshot():
         try:
             from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
 
-            # Use HUNTER_ lists (actual prediction targets) — NOT env-inflated STOCK_SYMBOLS
-            # Use DEFAULT_ list sizes (initial prediction targets, not runtime-expanded HUNTER_)
-            total_symbols = len(DEFAULT_STOCK_SYMBOLS) + len(DEFAULT_CRYPTO_SYMBOLS) + len(VIP_COINS)
+            # Use actual prediction LIMITS (auto_prediction_loop caps: 50 stocks + 25 crypto + VIP)
+            _PREDICTION_CAP_STOCKS = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "50"))
+            _PREDICTION_CAP_CRYPTO = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "25"))
+            total_symbols = _PREDICTION_CAP_STOCKS + _PREDICTION_CAP_CRYPTO + len(VIP_COINS)
             # Use live counts from _LATEST_PREDICTIONS as primary (always up-to-date)
             _ls = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") == "stock_v2")
             _lc = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") != "stock_v2")
@@ -32348,8 +32352,10 @@ async def api_cockpit_legacy():
 
         vip_health = get_vip_provider_health()
 
-        # Use DEFAULT lists (fixed size) — not runtime-expanded STOCK_SYMBOLS/HUNTER_STOCK_SYMBOLS
-        total_symbols = len(DEFAULT_STOCK_SYMBOLS) + len(DEFAULT_CRYPTO_SYMBOLS) + len(VIP_COINS)
+        # Use actual prediction LIMITS (auto_prediction_loop caps: 50 stocks + 25 crypto + VIP)
+        _PREDICTION_CAP_STOCKS = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "50"))
+        _PREDICTION_CAP_CRYPTO = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "25"))
+        total_symbols = _PREDICTION_CAP_STOCKS + _PREDICTION_CAP_CRYPTO + len(VIP_COINS)
 
         # Live counts from _LATEST_PREDICTIONS (immediate) + fallback to counters
         _live_stocks_snap = sum(1 for s in _LATEST_PREDICTIONS if _classify_symbol_category(s) == "stocks")
