@@ -8059,28 +8059,100 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 duration_ms = int((time.monotonic() - start) * 1000)
                 
                 # Convert stock engine result to standard format
+                se_direction = stock_result.get("direction", "HOLD")
+                se_confidence = stock_result.get("confidence", 0.0)
+                se_entry_price = stock_result.get("entry_price")
+                se_horizon = stock_result.get("horizon_hours", 24)
+                
+                # ================================================================
+                # WIRE STOCK ENGINE → _LATEST_PREDICTIONS (cockpit + Telegram)
+                # Without this, Stock Engine predictions are invisible to:
+                #   - /api/cockpit dashboard
+                #   - Telegram TOP 10 notifications
+                #   - Ghost Score calculations
+                # ================================================================
+                se_action = "BUY" if se_direction == "UP" else "SELL" if se_direction == "DOWN" else "HOLD"
+                with _LATEST_PREDICTIONS_LOCK:
+                    _LATEST_PREDICTIONS[symbol] = {
+                        "prediction_id": None,
+                        "symbol": symbol,
+                        "run_at": time.time(),
+                        "confidence": se_confidence,
+                        "direction": se_direction,
+                        "action": se_action,
+                        "horizon_h": se_horizon,
+                        "provider": "stock_engine_v2",
+                        "price": se_entry_price,
+                        "price_at_prediction": se_entry_price,
+                        "market": "stock",
+                        "engine": "stock_v2",
+                        "confirmations": stock_result.get("confirmations", 0),
+                        "intel_applied": True,
+                        "gates_passed": stock_result.get("gates_passed", []),
+                        "reasons": stock_result.get("reasons", []),
+                        "should_predict": se_direction != "HOLD",
+                    }
+                LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → cockpit: {se_direction} {se_confidence:.0%} ({stock_result.get('confirmations', 0)} confirmations)")
+                
+                # ================================================================
+                # WIRE STOCK ENGINE → ghost_predictions DB (touch calibration data)
+                # ================================================================
+                try:
+                    import sqlite3 as _se_sqlite3
+                    conn = _se_sqlite3.connect("ghost_predictions.db")
+                    se_predicted_price = stock_result.get("target_price") or se_entry_price
+                    se_predicted_pct = ((se_predicted_price - se_entry_price) / se_entry_price * 100) if se_entry_price else 0.0
+                    conn.execute("""
+                        INSERT INTO ghost_predictions (
+                            symbol, predicted_at, check_at, predicted_price,
+                            predicted_direction, predicted_pct, confidence, timeframe_hours,
+                            current_price, target_price, stage5_ok, stage6_ok, gate,
+                            checked
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        symbol,
+                        int(time.time()),
+                        int(time.time() + se_horizon * 3600),
+                        se_predicted_price,
+                        se_direction,
+                        float(se_predicted_pct),
+                        se_confidence,
+                        se_horizon,
+                        se_entry_price,
+                        se_predicted_price,
+                        1 if stock_result.get("is_actionable") else 0,
+                        1 if se_confidence >= 0.6 else 0,
+                        "STOCK_ENGINE",
+                        0,
+                    ))
+                    conn.commit()
+                    conn.close()
+                    LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → ghost_predictions DB ✅")
+                except Exception as db_err:
+                    LOGGER.warning(f"[{symbol}] Stock Engine ghost_predictions write failed (non-fatal): {db_err}")
+                
                 return {
-                    "ok": stock_result.get("is_actionable", False) or stock_result.get("direction") != "HOLD",
-                    "prediction_id": None,  # Stock engine doesn't store yet
+                    "ok": stock_result.get("is_actionable", False) or se_direction != "HOLD",
+                    "prediction_id": None,
                     "symbol": symbol,
-                    "direction": stock_result.get("direction", "HOLD"),
-                    "confidence": stock_result.get("confidence", 0.0),
-                    "current_price": stock_result.get("entry_price"),
+                    "direction": se_direction,
+                    "confidence": se_confidence,
+                    "current_price": se_entry_price,
                     "target_price": stock_result.get("target_price"),
                     "stop_loss": stock_result.get("stop_loss"),
                     "feature_count": len(stock_result.get("gates_passed", [])) + len(stock_result.get("gates_failed", [])),
                     "available_count": len(stock_result.get("gates_passed", [])),
                     "duration_ms": duration_ms,
-                    "engine": "stock_v2",  # Updated to v2 with Intel + Ensemble
-                    "horizon_hours": stock_result.get("horizon_hours", 24),
+                    "engine": "stock_v2",
+                    "horizon_hours": se_horizon,
                     "confirmations": stock_result.get("confirmations", 0),
-                    "min_confirmations": stock_result.get("min_confirmations", 3),  # Updated from 4 to 3
+                    "min_confirmations": stock_result.get("min_confirmations", 3),
                     "gates_passed": stock_result.get("gates_passed", []),
                     "gates_failed": stock_result.get("gates_failed", []),
                     "reasons": stock_result.get("reasons", []),
                     "is_actionable": stock_result.get("is_actionable", False),
-                    "intel_applied": True,  # Flag that Intel rules were applied
-                    "error": None if stock_result.get("is_actionable") or stock_result.get("direction") != "HOLD" else "Stock gates blocked prediction"
+                    "intel_applied": True,
+                    "error": None if stock_result.get("is_actionable") or se_direction != "HOLD" else "Stock gates blocked prediction"
                 }
             except Exception as e:
                 LOGGER.warning(f"[{symbol}] Stock engine failed, falling back to turbo engine: {e}")
