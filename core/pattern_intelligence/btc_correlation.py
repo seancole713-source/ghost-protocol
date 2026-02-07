@@ -430,11 +430,34 @@ class BTCCorrelationAnalyzer:
         - 50-75% = Moderate alt season
         - < 50% = BTC season
         """
+        # Check cache (10 min)
+        cache_key = 'alt_season_index'
+        if cache_key in self.cache:
+            cached_time, cached_data = self.cache[cache_key]
+            if (datetime.now() - cached_time).seconds < 600:
+                return cached_data
+        
         try:
             # Get top coins
             url = f"{self.COINGECKO_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=51&page=1"
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=5)
+            
+            # Handle 429 rate limit
+            if response.status_code == 429:
+                logger.warning("CoinGecko 429 rate limit on /coins/markets - using cached/default for alt season")
+                if cache_key in self.cache:
+                    return self.cache[cache_key][1]
+                return {'index': 50, 'signal': 'UNKNOWN', 'error': 'rate_limited'}
+            
+            response.raise_for_status()
             coins = response.json()
+            
+            # Validate response is a list (CoinGecko errors return dicts)
+            if not isinstance(coins, list):
+                logger.warning(f"CoinGecko /coins/markets returned non-list: {type(coins).__name__}")
+                if cache_key in self.cache:
+                    return self.cache[cache_key][1]
+                return {'index': 50, 'signal': 'UNKNOWN', 'error': 'invalid_response'}
             
             # Find BTC
             btc_data = next((c for c in coins if c['id'] == 'bitcoin'), None)
@@ -479,7 +502,7 @@ class BTCCorrelationAnalyzer:
                 description = 'BTC strongly dominating - avoid small alts'
                 strategy = 'BTC_ONLY'
             
-            return {
+            result = {
                 'index': index,
                 'outperforming_count': outperforming,
                 'total_alts': total_alts,
@@ -488,9 +511,13 @@ class BTCCorrelationAnalyzer:
                 'description': description,
                 'strategy': strategy
             }
+            self.cache[cache_key] = (datetime.now(), result)
+            return result
             
         except Exception as e:
             logger.error(f"Error calculating alt season index: {e}")
+            if cache_key in self.cache:
+                return self.cache[cache_key][1]
             return {'index': 50, 'signal': 'UNKNOWN', 'error': str(e)}
     
     def get_signal_strength(self, symbol: str = 'BTC') -> Dict:

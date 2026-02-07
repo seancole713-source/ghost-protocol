@@ -81,9 +81,11 @@ class SocialSentimentAnalyzer:
             if response.status_code in (403, 429):
                 logger.debug(f"Reddit returned {response.status_code} for r/{subreddit} — using neutral fallback")
                 fallback = {
-                    'overall_sentiment': 'NEUTRAL',
+                    'subreddit': subreddit,
+                    'signal': 'NEUTRAL',
+                    'accuracy': 0.50,
+                    'sentiment_ratio': 1.0,
                     'strength': 0.5,
-                    'activity_level': 'UNKNOWN',
                     'source': 'reddit_blocked'
                 }
                 self.cache[cache_key] = (datetime.now(), fallback)
