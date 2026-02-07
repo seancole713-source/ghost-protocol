@@ -2,6 +2,9 @@ __pycache__/
 **/__pycache__/
 *.pyc
 data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
 data/last_good_cockpit.json
 GHOST_STATUS_REPORT.json
 *.log
