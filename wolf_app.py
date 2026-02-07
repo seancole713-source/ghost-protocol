@@ -7959,9 +7959,14 @@ async def run_single_prediction_async(symbol: str) -> dict[str, Any]:
             "error": str or None
         }
     """
-    # Run synchronous prediction in thread pool to avoid blocking event loop
+    # Run synchronous prediction in DEDICATED thread pool (max 2 workers)
+    # This prevents prediction batch cycles from consuming the default
+    # thread pool, which would block health checks and other API endpoints.
+    from concurrent.futures import ThreadPoolExecutor
+    if not hasattr(run_single_prediction_async, '_executor'):
+        run_single_prediction_async._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ghost-predict")
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, run_single_prediction, symbol)
+    return await loop.run_in_executor(run_single_prediction_async._executor, run_single_prediction, symbol)
 
 
 def run_single_prediction(symbol: str) -> dict[str, Any]:

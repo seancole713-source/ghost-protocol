@@ -98,9 +98,9 @@ async def _run_all_predictions_async():
             status = "OPEN" if is_market_open else "CLOSED (FORCE_STOCK_PREDICTIONS=1)"
             LOGGER.info(f"[AUTO-PREDICT] Market {status} - processing {stock_count}/{len(HUNTER_STOCK_SYMBOLS)} stocks asynchronously")
         
-        # Process stocks with async concurrency (2 at a time for stability)
-        for i in range(0, stock_count, 2):  # REDUCED: 2 concurrent (was 3)
-            batch = stock_symbols_to_process[i:i+2]
+        # Process stocks ONE at a time to keep server responsive during cycle
+        for i in range(0, stock_count, 1):
+            batch = stock_symbols_to_process[i:i+1]
             
             # Filter out recently predicted symbols (deduplication)
             batch_filtered = [
@@ -135,8 +135,8 @@ async def _run_all_predictions_async():
                 except Exception as e:
                     errors.append(f"{symbol}: {str(e)[:100]}")
             
-            # RESOURCE GUARD: 5s delay between stock batches for Railway stability
-            await asyncio.sleep(5)
+            # RESOURCE GUARD: 8s delay between predictions to keep health/API responsive
+            await asyncio.sleep(8)
     else:
         if LOGGER:
             LOGGER.info(f"[AUTO-PREDICT] Market CLOSED and FORCE_STOCK_PREDICTIONS=0 - skipping {stock_count} stock predictions")
@@ -150,9 +150,9 @@ async def _run_all_predictions_async():
     if LOGGER:
         LOGGER.info(f"[AUTO-PREDICT] ASYNC: Processing {crypto_count}/{len(HUNTER_CRYPTO_SYMBOLS)} top crypto symbols")
     
-    # Process crypto with async concurrency (2 at a time for stability)
-    for i in range(0, crypto_count, 2):  # REDUCED: 2 concurrent (was 3)
-        batch = crypto_symbols_to_process[i:i+2]
+    # Process crypto ONE at a time to keep server responsive during cycle
+    for i in range(0, crypto_count, 1):
+        batch = crypto_symbols_to_process[i:i+1]
         
         # Filter out recently predicted symbols (deduplication)
         batch_filtered = [
@@ -187,8 +187,8 @@ async def _run_all_predictions_async():
             except Exception as e:
                 errors.append(f"{symbol}: {str(e)[:100]}")
         
-        # RESOURCE GUARD: 10s delay between crypto batches for Railway stability
-        await asyncio.sleep(10)
+        # RESOURCE GUARD: 12s delay between predictions to keep server responsive
+        await asyncio.sleep(12)
     
     # Update last run time
     _LAST_RUN_TIME = time.time()
