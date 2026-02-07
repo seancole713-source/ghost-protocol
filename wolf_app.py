@@ -4248,54 +4248,59 @@ async def _on_startup():
                             tracker = get_accuracy_tracker()
                             feedback = get_feedback_loop()
                             
-                            # Get recently completed forecasts (last 24 hours)
-                            import sqlite3
-                            db_path = tracker.db_path
-                            with sqlite3.connect(db_path) as conn:
-                                completed = conn.execute("""
+                            # AccuracyTracker uses PostgreSQL — query via its connection
+                            if not getattr(tracker, '_enabled', False):
+                                return
+                            
+                            try:
+                                conn = tracker._get_conn()
+                                cur = conn.cursor()
+                                cur.execute("""
                                     SELECT 
-                                        id, symbol, forecast_price, actual_price, 
-                                        confidence, percentage_error, metadata, timestamp
-                                    FROM forecasts
-                                    WHERE actual_price IS NOT NULL
-                                    AND timestamp > ?
-                                    ORDER BY timestamp DESC
+                                        id, symbol, direction, confidence,
+                                        entry_price, exit_price, was_correct,
+                                        pnl_pct, metadata, 
+                                        EXTRACT(EPOCH FROM created_at) as ts
+                                    FROM accuracy_forecasts
+                                    WHERE was_correct IS NOT NULL
+                                    AND created_at > NOW() - INTERVAL '24 hours'
+                                    ORDER BY created_at DESC
                                     LIMIT 100
-                                """, (time.time() - 86400,)).fetchall()
+                                """)
+                                completed = cur.fetchall()
+                                conn.close()
+                            except Exception as db_err:
+                                LOGGER.debug(f"[FEEDBACK LOOP] DB query failed: {db_err}")
+                                return
                             
                             outcomes_processed = 0
                             for row in completed:
-                                forecast_id, symbol, pred_price, actual_price, conf, pct_err, metadata_json, ts = row
+                                (forecast_id, symbol, direction, conf,
+                                 pred_price, actual_price, was_correct,
+                                 pnl_pct, metadata_json, ts) = row
                                 
                                 # Parse metadata
                                 try:
-                                    metadata = json.loads(metadata_json) if metadata_json else {}
+                                    metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else (metadata_json or {})
                                 except:
                                     metadata = {}
                                 
-                                # Determine if prediction was correct (within 2.5% tolerance)
-                                was_correct = abs(pct_err) <= 2.5
-                                direction = metadata.get("direction", "FLAT")
                                 signals = metadata.get("signals", [])
-                                
-                                # Extract features from metadata (if available)
-                                features = {}
-                                if "features" in metadata:
-                                    features = metadata["features"]
+                                features = metadata.get("features", {})
                                 
                                 # Create outcome for feedback loop
                                 outcome = PredictionOutcome(
                                     prediction_id=forecast_id,
                                     symbol=symbol,
-                                    direction=direction,
+                                    direction=direction or "FLAT",
                                     confidence=conf or 0.5,
-                                    predicted_price=pred_price,
-                                    actual_price=actual_price,
-                                    was_correct=was_correct,
-                                    accuracy_pct=100 - abs(pct_err),
+                                    predicted_price=pred_price or 0,
+                                    actual_price=actual_price or 0,
+                                    was_correct=bool(was_correct),
+                                    accuracy_pct=100 - abs(pnl_pct or 0),
                                     signals_used=signals,
                                     features=features,
-                                    timestamp=ts
+                                    timestamp=ts or time.time()
                                 )
                                 
                                 # Feed to learning system

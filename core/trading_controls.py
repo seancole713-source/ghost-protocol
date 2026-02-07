@@ -64,7 +64,7 @@ def _refresh_auto_blacklist():
                        SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
                 FROM paper_trades
                 WHERE outcome IN ('WIN', 'LOSS')
-                  AND entry_time > NOW() - INTERVAL '14 days'
+                  AND entry_time::timestamptz > NOW() - INTERVAL '14 days'
                 GROUP BY symbol
                 HAVING SUM(CASE WHEN outcome IN ('WIN','LOSS') THEN 1 ELSE 0 END) >= %s
             """, (AUTO_BLACKLIST_MIN_TRADES,))

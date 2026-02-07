@@ -390,8 +390,20 @@ class XGBoostModel:
                 with open(model_path, "rb") as f:
                     model_data = pickle.load(f)
                 
-                self.model = model_data["model"]
-                self.feature_names = model_data["feature_names"]
+                # Handle both dict format and bare XGBClassifier
+                if isinstance(model_data, dict):
+                    self.model = model_data["model"]
+                    self.feature_names = model_data.get("feature_names", [])
+                    accuracy = model_data.get('test_accuracy', 0)
+                    cv_score = model_data.get('cv_score', 0)
+                else:
+                    # Bare XGBClassifier was pickled directly
+                    self.model = model_data
+                    self.feature_names = getattr(model_data, 'feature_names_in_', []) or []
+                    accuracy = 0
+                    cv_score = 0
+                    logger.warning(f"⚠️ XGBoost model loaded as bare {type(model_data).__name__} (no metadata)")
+                
                 self._loaded = True
                 
                 # Detect version from path
