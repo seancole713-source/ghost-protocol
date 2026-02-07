@@ -86,17 +86,21 @@ async def _run_all_predictions_async():
     is_market_open = _is_market_hours()
     
     # Run stock predictions (during market hours OR when forced for TOP 10)
-    stock_count = len(HUNTER_STOCK_SYMBOLS)
+    # RESOURCE GUARD: Limit to top 50 stocks to prevent server exhaustion
+    # Full list (200+) causes multi-hour scans on Railway
+    TOP_STOCK_ASYNC_LIMIT = 50
+    stock_symbols_to_process = HUNTER_STOCK_SYMBOLS[:TOP_STOCK_ASYNC_LIMIT]
+    stock_count = len(stock_symbols_to_process)
     should_process_stocks = is_market_open or FORCE_STOCK_PREDICTIONS
     
     if should_process_stocks:
         if LOGGER:
             status = "OPEN" if is_market_open else "CLOSED (FORCE_STOCK_PREDICTIONS=1)"
-            LOGGER.info(f"[AUTO-PREDICT] Market {status} - processing {stock_count} stocks asynchronously")
+            LOGGER.info(f"[AUTO-PREDICT] Market {status} - processing {stock_count}/{len(HUNTER_STOCK_SYMBOLS)} stocks asynchronously")
         
         # Process stocks with async concurrency (2 at a time for stability)
         for i in range(0, stock_count, 2):  # REDUCED: 2 concurrent (was 3)
-            batch = HUNTER_STOCK_SYMBOLS[i:i+2]
+            batch = stock_symbols_to_process[i:i+2]
             
             # Filter out recently predicted symbols (deduplication)
             batch_filtered = [
@@ -131,18 +135,20 @@ async def _run_all_predictions_async():
                 except Exception as e:
                     errors.append(f"{symbol}: {str(e)[:100]}")
             
-            # ULTRA-LIGHT: 5s delay between batches to minimize Railway resource usage
-            await asyncio.sleep(PREDICTION_DELAY_S)
+            # RESOURCE GUARD: 5s delay between stock batches for Railway stability
+            await asyncio.sleep(5)
     else:
         if LOGGER:
             LOGGER.info(f"[AUTO-PREDICT] Market CLOSED and FORCE_STOCK_PREDICTIONS=0 - skipping {stock_count} stock predictions")
     
     # Run crypto predictions (24/7 - crypto markets never close)
-    # Process ALL crypto symbols (no artificial limits - scales to 1000+ coins)
-    crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS
+    # RESOURCE GUARD: Limit to top 25 crypto to prevent server OOM on Railway
+    # Full list (350+) causes 30+ minute scans that exhaust CPU/memory
+    TOP_CRYPTO_ASYNC_LIMIT = 25
+    crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_ASYNC_LIMIT]
     crypto_count = len(crypto_symbols_to_process)
     if LOGGER:
-        LOGGER.info(f"[AUTO-PREDICT] ASYNC: Processing {crypto_count} crypto symbols with concurrency")
+        LOGGER.info(f"[AUTO-PREDICT] ASYNC: Processing {crypto_count}/{len(HUNTER_CRYPTO_SYMBOLS)} top crypto symbols")
     
     # Process crypto with async concurrency (2 at a time for stability)
     for i in range(0, crypto_count, 2):  # REDUCED: 2 concurrent (was 3)
@@ -181,8 +187,8 @@ async def _run_all_predictions_async():
             except Exception as e:
                 errors.append(f"{symbol}: {str(e)[:100]}")
         
-        # Delay between batches for Railway stability (configurable via BATCH_DELAY_S)
-        await asyncio.sleep(BATCH_DELAY_S)
+        # RESOURCE GUARD: 10s delay between crypto batches for Railway stability
+        await asyncio.sleep(10)
     
     # Update last run time
     _LAST_RUN_TIME = time.time()

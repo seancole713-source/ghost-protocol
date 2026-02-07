@@ -21,59 +21,26 @@ from typing import Tuple
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# BLACKLIST: Assets with <20% historical win rate - DO NOT TRADE
+# BLACKLIST: CLEARED — Feb 2026
 # ============================================================================
-# These assets consistently lose money. The model cannot predict them accurately.
-# Source: Database analysis Jan 9, 2026 - 1,078 total trades analyzed
+# Previous blacklist was built on data from broken model (pre-balanced XGBoost).
+# Model retrained Feb 7 2026 with balanced classes (4127 UP / 4127 DOWN).
+# Old 0% win rates were caused by model bias, not by unpredictable assets.
+# The new model needs FRESH accuracy data — paper trades must flow.
+# If a symbol truly can't be predicted, the accuracy tracker will catch it
+# and it can be re-blacklisted with VALID data.
 BLACKLIST = {
-    # 0% Win Rate (Major Cryptos - Complete Failures)
-    "SOL",    # 0/30 = 0.0%  - Solana
-    "ETH",    # 0/29 = 0.0%  - Ethereum
-    "BNB",    # 0/28 = 0.0%  - Binance Coin
-    "XRP",    # 0/28 = 0.0%  - Ripple
-    "AVAX",   # 0/27 = 0.0%  - Avalanche
-    "LTC",    # 0/26 = 0.0%  - Litecoin
-    "LINK",   # 0/23 = 0.0%  - Chainlink
-    "DOGE",   # 0/17 = 0.0%  - Dogecoin
-    "VET",    # 0/17 = 0.0%  - VeChain
-    "ADA",    # 0/28 = 0.0%  - Cardano
-    "DOT",    # 0/16 = 0.0%  - Polkadot
-    
-    # Very Low Win Rate (<10%)
-    "BTC",    # 1/33 = 3.0%  - Bitcoin
-    "XLM",    # 3/8  = 37.5% - Stellar (included for <40% threshold)
+    # EMPTY — let the retrained model prove itself with fresh data
 }
 
 # ============================================================================
-# WHITELIST: Assets with >50% historical win rate - PRIORITIZE THESE
+# WHITELIST: Symbols with historically strong performance — PRIORITIZE
 # ============================================================================
-# These assets have proven the model CAN work with the right data.
-# Format: symbol -> historical_win_rate
+# Kept as reference but will be rebuilt with fresh data from retrained model.
+# V3 validated strategies (ETH, XRP, LINK, CHZ, PANW, NET, etc.) bypass 
+# this entirely via V3_VALIDATED_STRATEGIES in should_trade().
 WHITELIST = {
-    # Perfect Performance (100% win rate)
-    "CHZ":   1.00,   # 13/13 = 100% - Chiliz
-    "ZEC":   1.00,   # 7/7   = 100% - Zcash
-    "T":     1.00,   # 18/18 = 100% - Threshold
-    "ILV":   1.00,   # 13/13 = 100% - Illuvium
-    "RNDR":  1.00,   # 12/12 = 100% - Render
-    "RLC":   1.00,   # 5/5   = 100% - iExec RLC
-    "EGLD":  1.00,   # 5/5   = 100% - MultiversX (Elrond)
-    "TURBO": 1.00,   # 13/13 = 100% - Turbo
-    "DASH":  1.00,   # 1/1   = 100% - Dash
-    "FLOW":  1.00,   # 1/1   = 100% - Flow
-    
-    # Excellent Performance (>90%)
-    "ICP":   0.93,   # 14/15 = 93.3% - Internet Computer
-    "BCH":   0.94,   # 15/16 = 93.8% - Bitcoin Cash
-    "OCEAN": 0.90,   # 9/10  = 90.0% - Ocean Protocol
-    
-    # Strong Performance (>80%)
-    "LRC":   0.86,   # 12/14 = 85.7% - Loopring
-    "CELO":  0.83,   # 10/12 = 83.3% - Celo
-    
-    # Good Performance (>60%)
-    "AAVE":  0.64,   # 9/14  = 64.3% - Aave
-    "NMR":   0.73,   # 8/11  = 72.7% - Numeraire
+    # Will be populated by accuracy tracker as new data arrives
 }
 
 # ============================================================================
