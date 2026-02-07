@@ -34756,7 +34756,7 @@ async def api_status():
 @APP.get("/api/health")
 async def api_health():
     """Simple health check endpoint for monitoring systems."""
-    return {"ok": True, "ts": int(time.time() * 1000), "version": "jan24-fix5-v3"}
+    return {"ok": True, "ts": int(time.time() * 1000), "version": "feb7-balanced-model-v4"}
 
 
 @APP.get("/api/stability/status")
