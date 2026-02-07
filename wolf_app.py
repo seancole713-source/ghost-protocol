@@ -24801,7 +24801,7 @@ async def debug_v3_validation():
                         v3_backtest_win_rate
                     FROM paper_trades
                     WHERE symbol = ?
-                    AND v3_validated = 1
+                    AND v3_validated = TRUE
                     GROUP BY v3_strategy, v3_hold_hours, v3_backtest_win_rate
                 """, (symbol,))
                 row = tracker._fetchone(cur)
@@ -24823,7 +24823,7 @@ async def debug_v3_validation():
             cur = tracker._execute(conn, """
                 SELECT symbol, COUNT(*) as pending_count
                 FROM paper_trades
-                WHERE v3_validated = 1
+                WHERE v3_validated = TRUE
                 AND outcome = 'PENDING'
                 GROUP BY symbol
             """)
