@@ -4578,8 +4578,8 @@ async def _on_startup():
     # ========================================================================
     try:
         async def _startup_predictions():
-            """Trigger stock + crypto predictions 30s after startup to ensure TOP 10 is ready"""
-            await asyncio.sleep(30)  # Wait for app to fully initialize
+            """Trigger stock + crypto predictions 60s after startup to ensure TOP 10 is ready"""
+            await asyncio.sleep(60)  # Wait for app to fully initialize
             
             # CRITICAL FIX (Jan 22, 2026): Use V2 whitelist for startup predictions!
             # Previously used hardcoded lists that didn't include whitelisted symbols
@@ -4597,8 +4597,8 @@ async def _on_startup():
             DEFAULT_STOCKS = ["AAPL", "MSFT", "NVDA", "TSLA", "GOOGL", "META", "AMD", "AMZN", "JPM", "GS"]
             DEFAULT_CRYPTO = ["BTC", "ETH", "SOL", "ADA", "XRP", "BNB", "LINK", "AVAX", "ATOM", "LTC"]
             
-            TOP_STOCKS = WHITELIST_STOCKS if WHITELIST_STOCKS else DEFAULT_STOCKS
-            TOP_CRYPTO = WHITELIST_CRYPTO if WHITELIST_CRYPTO else DEFAULT_CRYPTO
+            TOP_STOCKS = (WHITELIST_STOCKS if WHITELIST_STOCKS else DEFAULT_STOCKS)[:5]  # Max 5 for startup
+            TOP_CRYPTO = (WHITELIST_CRYPTO if WHITELIST_CRYPTO else DEFAULT_CRYPTO)[:5]  # Max 5 for startup
             
             LOGGER.info(f"[STARTUP PREDS] V2 whitelist: {len(WHITELIST_STOCKS)} stocks, {len(WHITELIST_CRYPTO)} crypto")
             LOGGER.info(f"[STARTUP PREDS] Triggering predictions for {len(TOP_STOCKS)} stocks + {len(TOP_CRYPTO)} crypto...")
@@ -4627,7 +4627,7 @@ async def _on_startup():
                             if data.get("ok") or data.get("direction"):
                                 stocks_triggered += 1
                                 LOGGER.info(f"[STARTUP PREDS] ✅ {symbol}: {data.get('direction')} conf={data.get('confidence', 0):.2f}")
-                        await asyncio.sleep(0.3)  # Rate limit
+                        await asyncio.sleep(5)  # Rate limit - keep server responsive
                     except Exception as e:
                         LOGGER.warning(f"[STARTUP PREDS] ⚠️ {symbol} failed: {e}")
                 
@@ -4644,7 +4644,7 @@ async def _on_startup():
                             if data.get("ok") or data.get("direction"):
                                 crypto_triggered += 1
                                 LOGGER.info(f"[STARTUP PREDS] ✅ {symbol}: {data.get('direction')} conf={data.get('confidence', 0):.2f}")
-                        await asyncio.sleep(0.3)  # Rate limit
+                        await asyncio.sleep(5)  # Rate limit - keep server responsive
                     except Exception as e:
                         LOGGER.warning(f"[STARTUP PREDS] ⚠️ {symbol} failed: {e}")
             
