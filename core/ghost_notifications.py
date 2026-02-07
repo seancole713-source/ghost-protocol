@@ -58,7 +58,7 @@ TOP_10_HOUR = 8  # 8 AM Central
 UPDATE_HOURS = [12, 16, 20]  # 12 PM, 4 PM, 8 PM
 
 # Thresholds
-MIN_CONFIDENCE = 0.55  # 55% minimum for BUY/SELL (was 85% - nothing ever cleared that)
+MIN_CONFIDENCE = 0.60  # 60% minimum for BUY/SELL — below this is WATCH (noise territory)
 WATCH_THRESHOLD = 0.02  # 2% move threshold for WATCH
 SIGNIFICANT_MOVE_PCT = 0.03  # 3% move to trigger update
 
@@ -529,8 +529,8 @@ def calibrate_display_confidence(raw_confidence: float, symbol: str = None) -> f
 # ============================================================================
 
 # Learning thresholds
-LEARNING_MIN_PREDICTIONS = 10  # Need at least 10 predictions to evaluate
-LEARNING_EXCLUDE_ACCURACY = 40.0  # Exclude symbols with <40% accuracy
+LEARNING_MIN_PREDICTIONS = 20  # Need 20+ predictions before judging (statistically meaningful)
+LEARNING_EXCLUDE_ACCURACY = 45.0  # Exclude symbols with <45% accuracy (below coin flip)
 LEARNING_BOOST_ACCURACY = 70.0  # Boost symbols with >70% accuracy
 LEARNING_BOOST_AMOUNT = 0.15  # 15% confidence boost
 

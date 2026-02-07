@@ -9257,9 +9257,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # ========================================================================
         # AUTO-LOG PAPER TRADE: Track all predictions for paper trading P&L
         # Only log directional predictions (UP/DOWN) with minimum confidence
-        # Lowered to 0.45 to build accuracy data — paper trades are for MEASURING
+        # Threshold 0.30: filters junk (BTC 7%, DOGE 0%) but keeps useful (ETH 48%, GE 70%)
         # ========================================================================
-        if direction in ["UP", "DOWN"] and confidence >= 0.45:
+        if direction in ["UP", "DOWN"] and confidence >= 0.30:
             try:
                 from core.paper_tracker import get_paper_tracker
                 from core.ghost_notifications import V3_VALIDATED_STRATEGIES

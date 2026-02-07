@@ -21,17 +21,88 @@ from typing import Tuple
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# BLACKLIST: CLEARED — Feb 2026
+# BLACKLIST: AUTO-POPULATED from live paper trade accuracy
 # ============================================================================
-# Previous blacklist was built on data from broken model (pre-balanced XGBoost).
-# Model retrained Feb 7 2026 with balanced classes (4127 UP / 4127 DOWN).
-# Old 0% win rates were caused by model bias, not by unpredictable assets.
-# The new model needs FRESH accuracy data — paper trades must flow.
-# If a symbol truly can't be predicted, the accuracy tracker will catch it
-# and it can be re-blacklisted with VALID data.
-BLACKLIST = {
-    # EMPTY — let the retrained model prove itself with fresh data
+# Static blacklist cleared Feb 7 2026 (old data from broken model).
+# Now uses dynamic auto-blacklist: if a symbol has 20+ resolved paper trades
+# and win rate < 35%, it gets blocked automatically.
+# The auto_blacklist_check() function queries the database at runtime.
+STATIC_BLACKLIST = {
+    # Add symbols here only for non-accuracy reasons (e.g., delisted, illiquid)
 }
+
+# Dynamic blacklist cache (refreshed every 30 minutes)
+_AUTO_BLACKLIST_CACHE = {}  # {symbol: win_rate}
+_AUTO_BLACKLIST_LAST_REFRESH = 0
+AUTO_BLACKLIST_MIN_TRADES = 20       # Need 20+ resolved trades
+AUTO_BLACKLIST_MAX_WIN_RATE = 0.35   # Block if win rate < 35%
+AUTO_BLACKLIST_REFRESH_SECONDS = 1800  # Refresh every 30 min
+
+
+def _refresh_auto_blacklist():
+    """Query paper_trades for symbols with proven poor accuracy."""
+    global _AUTO_BLACKLIST_CACHE, _AUTO_BLACKLIST_LAST_REFRESH
+    import time as _time
+    now = _time.time()
+    if now - _AUTO_BLACKLIST_LAST_REFRESH < AUTO_BLACKLIST_REFRESH_SECONDS:
+        return  # Cache still fresh
+    
+    try:
+        from core.paper_tracker import get_paper_tracker
+        tracker = get_paper_tracker()
+        conn = tracker._get_connection()
+        
+        # Use compatible SQL (works on both PostgreSQL and SQLite)
+        # IMPORTANT: Only consider trades from the last 14 days to avoid
+        # penalizing symbols based on the old broken model's data.
+        # The retrained model (Feb 7 2026) needs a clean slate.
+        if tracker.use_postgres:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT symbol,
+                       SUM(CASE WHEN outcome IN ('WIN','LOSS') THEN 1 ELSE 0 END) as resolved,
+                       SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
+                FROM paper_trades
+                WHERE outcome IN ('WIN', 'LOSS')
+                  AND entry_time > NOW() - INTERVAL '14 days'
+                GROUP BY symbol
+                HAVING SUM(CASE WHEN outcome IN ('WIN','LOSS') THEN 1 ELSE 0 END) >= %s
+            """, (AUTO_BLACKLIST_MIN_TRADES,))
+            columns = [desc[0] for desc in cur.description]
+            rows = [dict(zip(columns, row)) for row in cur.fetchall()]
+        else:
+            cur = conn.execute("""
+                SELECT symbol,
+                       SUM(CASE WHEN outcome IN ('WIN','LOSS') THEN 1 ELSE 0 END) as resolved,
+                       SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
+                FROM paper_trades
+                WHERE outcome IN ('WIN', 'LOSS')
+                  AND entry_time > datetime('now', '-14 days')
+                GROUP BY symbol
+                HAVING SUM(CASE WHEN outcome IN ('WIN','LOSS') THEN 1 ELSE 0 END) >= ?
+            """, (AUTO_BLACKLIST_MIN_TRADES,))
+            rows = [dict(row) for row in cur.fetchall()]
+        conn.close()
+        
+        new_blacklist = {}
+        for row in rows:
+            sym = row['symbol']
+            resolved = row['resolved']
+            wins = row['wins']
+            win_rate = wins / resolved if resolved > 0 else 0
+            if win_rate < AUTO_BLACKLIST_MAX_WIN_RATE:
+                new_blacklist[sym] = win_rate
+        
+        _AUTO_BLACKLIST_CACHE = new_blacklist
+        _AUTO_BLACKLIST_LAST_REFRESH = now
+        if new_blacklist:
+            logger.info(f"[AUTO-BLACKLIST] Refreshed: {len(new_blacklist)} symbols blocked (< {AUTO_BLACKLIST_MAX_WIN_RATE:.0%} WR with {AUTO_BLACKLIST_MIN_TRADES}+ trades)")
+    except Exception as e:
+        logger.warning(f"[AUTO-BLACKLIST] Refresh failed (using cache): {e}")
+
+
+# Backward compatibility alias
+BLACKLIST = STATIC_BLACKLIST
 
 # ============================================================================
 # WHITELIST: Symbols with historically strong performance — PRIORITIZE
@@ -46,7 +117,7 @@ WHITELIST = {
 # ============================================================================
 # TRADING PARAMETERS
 # ============================================================================
-MIN_CONFIDENCE = 0.45  # Paper trade threshold — lower bar to build accuracy data
+MIN_CONFIDENCE = 0.30  # Paper trade threshold — matches wolf_app.py paper trade gate
 WHITELIST_ONLY_MODE = False  # True = only trade whitelist, False = also allow unknown assets
 
 
@@ -85,9 +156,15 @@ def should_trade(symbol: str, confidence: float) -> Tuple[bool, str]:
     except ImportError:
         pass
     
-    # Check 1: Blacklist (for non-V3 symbols only)
-    if symbol in BLACKLIST:
-        return False, f"Blacklisted: 0-3% historical win rate - Model cannot predict {symbol}"
+    # Check 1: Static blacklist (for non-V3 symbols only)
+    if symbol in STATIC_BLACKLIST:
+        return False, f"Static blacklisted: {symbol} (delisted/illiquid)"
+    
+    # Check 1b: Dynamic auto-blacklist from live paper trade accuracy
+    _refresh_auto_blacklist()
+    if symbol in _AUTO_BLACKLIST_CACHE:
+        wr = _AUTO_BLACKLIST_CACHE[symbol]
+        return False, f"Auto-blacklisted: {wr:.0%} win rate over {AUTO_BLACKLIST_MIN_TRADES}+ trades"
     
     # Check 2: Confidence threshold (for non-V3 symbols)
     if confidence < MIN_CONFIDENCE:

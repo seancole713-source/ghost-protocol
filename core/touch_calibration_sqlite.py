@@ -114,11 +114,32 @@ def calibrate_touch_confidence(
             return sum(vals) / len(vals) if vals else 0.0
 
         if len(rows) >= min_samples:
+            cal_1 = _avg2(0)
+            cal_05 = _avg2(1)
             return TouchCalibration(
                 symbol=sym,
                 raw_confidence=raw,
-                calibrated_1pct=_avg2(0),
-                calibrated_0_5pct=_avg2(1),
+                calibrated_1pct=cal_1,
+                calibrated_0_5pct=cal_05,
+                sample_size=len(rows),
+                band=label,
+            )
+
+        # Partial data path: If we have SOME data (5+ samples), blend it with
+        # the default to provide a smoother ramp toward EXECUTION.
+        # This avoids the cliff where <30 samples = fixed 0.70 default.
+        if len(rows) >= 5:
+            empirical_1 = _avg2(0)
+            empirical_05 = _avg2(1)
+            # Weight: 0 at 5 samples → 1.0 at 30 samples
+            w = min(1.0, (len(rows) - 5) / (min_samples - 5))
+            blended_1 = empirical_1 * w + 0.70 * (1 - w)
+            blended_05 = empirical_05 * w + 0.50 * (1 - w)
+            return TouchCalibration(
+                symbol=sym,
+                raw_confidence=raw,
+                calibrated_1pct=blended_1,
+                calibrated_0_5pct=blended_05,
                 sample_size=len(rows),
                 band=label,
             )
