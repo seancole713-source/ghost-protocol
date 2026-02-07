@@ -8612,6 +8612,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # =====================================================================
         MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.40"))
         
+        should_predict = True  # Default: predict unless gates say otherwise
         if base_confidence < MIN_CONFIDENCE_THRESHOLD:
             LOGGER.warning(
                 f"[{symbol}] ⚠️ Low confidence: {base_confidence:.1%} < {MIN_CONFIDENCE_THRESHOLD:.1%} threshold - Forcing MONITOR"
