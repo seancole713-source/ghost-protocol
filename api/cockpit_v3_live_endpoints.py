@@ -2266,9 +2266,9 @@ async def _get_watchlist_enriched_core():
         crypto = watchlist_data.get("crypto", [])
         vip = watchlist_data.get("vip", [])
         
-        # CRITICAL FIX: Limit to first 15 symbols to prevent timeouts
-        # Fetching prices for 50+ symbols sequentially takes 150+ seconds
-        all_symbols = (stocks + crypto + vip)[:15]
+        # Allow up to 30 symbols — parallel fetch with 2s per-symbol timeout
+        # keeps total under 10s even if some time out
+        all_symbols = (stocks + crypto + vip)[:30]
         
         LOGGER.info(f"Enriching watchlist: {len(all_symbols)} symbols (limited from {len(stocks) + len(crypto) + len(vip)} total)")
         
