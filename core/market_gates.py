@@ -695,9 +695,10 @@ async def apply_market_gates(
         }
         
         if not allow_buy:
-            LOGGER.warning(f"🚫 REGIME FILTER: Blocking BUY for {symbol} - {regime_reason}")
+            LOGGER.warning(f"🚫 REGIME FILTER: Penalizing BUY for {symbol} - {regime_reason}")
             gate_info["gates_passed"] = False
-            return "FLAT", 0.5, gate_info
+            # Don't flatten — reduce confidence heavily instead
+            confidence = confidence * 0.60  # 40% penalty for buying in bear market
     elif direction == "DOWN":
         # Symmetric: also check regime for SELL signals
         # In strong uptrends (SPY > 20MA, BTC trending up), penalize DOWN signals
@@ -728,9 +729,10 @@ async def apply_market_gates(
     
     if direction == "UP":
         if vix_multiplier == 0:
-            LOGGER.warning(f"🚫 VIX GATE: Blocking BUY for {symbol} - VIX at {vix_level:.1f} (PANIC)")
+            LOGGER.warning(f"🚫 VIX GATE: Heavy penalty for BUY {symbol} - VIX at {vix_level:.1f} (PANIC)")
             gate_info["gates_passed"] = False
-            return "FLAT", 0.5, gate_info
+            # Don't flatten — reduce confidence heavily instead
+            confidence = confidence * 0.40  # 60% penalty for buying in panic
         elif vix_multiplier < 1.0:
             old_conf = confidence
             confidence = confidence * vix_multiplier
@@ -784,9 +786,10 @@ async def apply_market_gates(
         }
         
         if signal_quality == "SKIP":
-            LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - skipping BUY signal")
+            LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - low quality BUY signal")
             gate_info["gates_passed"] = False
-            return "FLAT", 0.5, gate_info
+            # Don't flatten — penalize confidence instead
+            confidence = confidence * 0.65  # 35% penalty for unconfirmed signal
         elif signal_quality == "LOW":
             old_conf = confidence
             confidence = confidence * 0.8
@@ -808,9 +811,10 @@ async def apply_market_gates(
         }
         
         if signal_quality == "SKIP":
-            LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - skipping SELL signal")
+            LOGGER.warning(f"⚠️ CONFIRMATIONS: Only {conf_count} for {symbol} - low quality SELL signal")
             gate_info["gates_passed"] = False
-            return "FLAT", 0.5, gate_info
+            # Don't flatten — penalize confidence instead
+            confidence = confidence * 0.65  # 35% penalty for unconfirmed signal
         elif signal_quality == "LOW":
             old_conf = confidence
             confidence = confidence * 0.8
