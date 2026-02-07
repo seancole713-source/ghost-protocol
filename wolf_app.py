@@ -8605,9 +8605,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
 
         # =====================================================================
         # CONFIDENCE THRESHOLD (NEW: Jan 9, 2026)
-        # Only trade predictions with sufficient confidence (70%+ recommended)
+        # Only trade predictions with sufficient confidence
+        # Lowered from 70% to 55% for balanced model (Feb 7, 2026)
         # =====================================================================
-        MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.70"))
+        MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.55"))
         
         if base_confidence < MIN_CONFIDENCE_THRESHOLD:
             LOGGER.warning(

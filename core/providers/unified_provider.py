@@ -324,7 +324,7 @@ class UnifiedProvider:
         try:
             bars = self.binance_ohlcv.get_ohlcv(symbol, interval, lookback)
             
-            if bars and len(bars) >= 20:
+            if bars and len(bars) >= 5:
                 latency = (time.time() - start_time) * 1000
                 self._track_success("binance", latency)
                 
@@ -362,7 +362,7 @@ class UnifiedProvider:
                 # CoinGecko returns OHLCV via market_chart endpoint
                 result = self.coingecko.get_ohlcv(symbol, days=lookback)
                 
-                if result and len(result) >= 20:
+                if result and len(result) >= 5:
                     latency = (time.time() - start_time) * 1000
                     self._track_success("coingecko", latency)
                     LOGGER.info(f"[COINGECKO] ✅ Fetched {len(result)} bars for {symbol} (fallback)")
@@ -402,7 +402,8 @@ class UnifiedProvider:
         from datetime import datetime, timedelta
         
         # Calculate lookback days from bar count
-        lookback_days = lookback if interval == "1d" else min(lookback // 78, 90)  # ~78 bars/day for 1h
+        # For hourly requests, ensure at least 30 days of daily bars (Polygon returns daily)
+        lookback_days = lookback if interval == "1d" else max(30, min(lookback // 78, 90))
         
         # PRIMARY: Polygon (PAID - most reliable, works after hours)
         polygon_api_key = os.getenv("POLYGON_API_KEY")
@@ -424,7 +425,7 @@ class UnifiedProvider:
                     data = response.json()
                     results = data.get("results", [])
                     
-                    if results and len(results) >= 20:
+                    if results and len(results) >= 5:
                         latency = (time.time() - start_time) * 1000
                         self._track_success("polygon", latency)
                         
@@ -463,7 +464,7 @@ class UnifiedProvider:
             try:
                 bars = self.yahoo.get_ohlcv(symbol, interval, lookback_days)
                 
-                if bars and len(bars) >= 20:
+                if bars and len(bars) >= 5:
                     latency = (time.time() - start_time) * 1000
                     self._track_success("yahoo", latency)
                     
@@ -501,7 +502,7 @@ class UnifiedProvider:
             # Use longer period to ensure we get enough bars
             hist = ticker.history(period="3mo")  # 3 months of daily data
             
-            if hist is not None and len(hist) >= 20:
+            if hist is not None and len(hist) >= 5:
                 hist = hist.reset_index()
                 
                 bars = []
@@ -519,7 +520,7 @@ class UnifiedProvider:
                     except Exception:
                         continue
                 
-                if len(bars) >= 20:
+                if len(bars) >= 5:
                     LOGGER.info(f"[YFINANCE] ✅ Fetched {len(bars)} bars for {symbol}")
                     return {
                         "symbol": symbol,
