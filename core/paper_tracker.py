@@ -1035,7 +1035,19 @@ class PaperTracker:
                         "win_rate": sym_win_rate
                     }
             
-            expired = resolved - (wins + losses + stopped)
+            # Count BREAK_EVEN separately - it's a real outcome, not an expiry
+            cur = self._execute(conn, f"""
+                SELECT COUNT(*) as count FROM paper_trades
+                WHERE created_at >= ? AND outcome = 'BREAK_EVEN'{symbol_filter}
+            """, (cutoff, *symbol_params))
+            break_even = self._fetchone(cur)["count"]
+            
+            # Count actual EXPIRED trades (bulk-expired old trades)
+            cur = self._execute(conn, f"""
+                SELECT COUNT(*) as count FROM paper_trades
+                WHERE created_at >= ? AND outcome = 'EXPIRED'{symbol_filter}
+            """, (cutoff, *symbol_params))
+            expired = self._fetchone(cur)["count"]
             
             return {
                 "total_trades": total,
@@ -1044,6 +1056,7 @@ class PaperTracker:
                 "wins": wins,
                 "losses": losses,
                 "stopped": stopped,
+                "break_even": break_even,
                 "expired": expired,
                 "win_rate": win_rate,
                 "win_rate_pct": round(win_rate * 100, 1),

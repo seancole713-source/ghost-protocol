@@ -4344,9 +4344,9 @@ async def _on_startup():
         import asyncio as _asyncio_module
         
         async def _paper_trade_reconciler_loop():
-            """Background task to reconcile paper trades every hour."""
-            # Wait 5 minutes on startup before first run
-            await _asyncio_module.sleep(300)
+            """Background task to reconcile paper trades every 15 minutes."""
+            # Wait 60 seconds on startup before first run (was 300s - too long)
+            await _asyncio_module.sleep(60)
             
             while True:
                 try:
@@ -4379,6 +4379,7 @@ async def _on_startup():
                         # Fetch current prices for symbols with due trades
                         from core.asset_classifier import get_asset_type
                         
+                        failed_symbols = []
                         for (symbol,) in symbols:
                             try:
                                 asset_type = get_asset_type(symbol)
@@ -4386,14 +4387,25 @@ async def _on_startup():
                                     result = await get_crypto_price_quorum(symbol, use_cache=True)
                                     if result and result.get("price"):
                                         price_data[symbol] = result["price"]
+                                    else:
+                                        failed_symbols.append(symbol)
                                 else:
                                     # Use stock price provider for stocks
                                     stock_result = turbo_stock_price(symbol, max_budget_s=2.0)
                                     if stock_result and stock_result.get("ok") and stock_result.get("price"):
                                         price_data[symbol] = stock_result["price"]
                                         LOGGER.info(f"[PAPER] Stock price for {symbol}: ${stock_result['price']:.2f}")
+                                    else:
+                                        failed_symbols.append(symbol)
                             except Exception as price_err:
+                                failed_symbols.append(symbol)
                                 LOGGER.debug(f"[PAPER] Price fetch failed for {symbol}: {price_err}")
+                        
+                        if failed_symbols:
+                            LOGGER.warning(
+                                f"[PAPER] ⚠️ Price fetch failed for {len(failed_symbols)} symbols "
+                                f"(will retry next cycle): {failed_symbols[:10]}"
+                            )
                         
                         if price_data:
                             resolved = tracker.check_all_pending(price_data)
@@ -4418,11 +4430,11 @@ async def _on_startup():
                 except Exception as paper_err:
                     LOGGER.error(f"[PAPER] Reconciler error: {paper_err}", exc_info=False)
                 
-                # Sleep for 1 hour
-                await _asyncio_module.sleep(3600)
+                # Sleep for 15 minutes (was 1 hour - too long, trades expire between cycles)
+                await _asyncio_module.sleep(900)
         
         _asyncio_module.create_task(_paper_trade_reconciler_loop())
-        LOGGER.info("[GHOST STARTUP] ✅ Paper trade reconciler scheduled (hourly)")
+        LOGGER.info("[GHOST STARTUP] ✅ Paper trade reconciler scheduled (every 15 min)")
     except Exception as e:
         LOGGER.error(f"paper_trade_reconciler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
@@ -41762,7 +41774,7 @@ try:
             
             # Fetch current prices with timeout per symbol
             import asyncio
-            for (symbol,) in symbols[:50]:  # Cap at 50 symbols per batch
+            for (symbol,) in symbols[:100]:  # Cap at 100 symbols per batch
                 try:
                     asset_type = get_asset_type(symbol)
                     if asset_type == 'crypto':
