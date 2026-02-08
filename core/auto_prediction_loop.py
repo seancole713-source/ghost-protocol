@@ -86,9 +86,10 @@ async def _run_all_predictions_async():
     is_market_open = _is_market_hours()
     
     # Run stock predictions (during market hours OR when forced for TOP 10)
-    # RESOURCE GUARD: Limit to top 50 stocks to prevent server exhaustion
-    # Full list (200+) causes multi-hour scans on Railway
-    TOP_STOCK_ASYNC_LIMIT = 50
+    # QUALITY GUARD: Limit to top 15 stocks — prevents flooding with low-conviction predictions
+    # Previous limit of 50 created ~965 paper trades/day with only 15.6% 7-day win rate
+    # Top 15 focuses on highest-liquidity, best-data stocks where model has real edge
+    TOP_STOCK_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "15"))
     stock_symbols_to_process = HUNTER_STOCK_SYMBOLS[:TOP_STOCK_ASYNC_LIMIT]
     stock_count = len(stock_symbols_to_process)
     should_process_stocks = is_market_open or FORCE_STOCK_PREDICTIONS
@@ -142,9 +143,10 @@ async def _run_all_predictions_async():
             LOGGER.info(f"[AUTO-PREDICT] Market CLOSED and FORCE_STOCK_PREDICTIONS=0 - skipping {stock_count} stock predictions")
     
     # Run crypto predictions (24/7 - crypto markets never close)
-    # RESOURCE GUARD: Limit to top 25 crypto to prevent server OOM on Railway
-    # Full list (350+) causes 30+ minute scans that exhaust CPU/memory
-    TOP_CRYPTO_ASYNC_LIMIT = 25
+    # QUALITY GUARD: Limit to top 10 crypto — most crypto had 0% win rate in last 7 days
+    # Only 7 out of 77 crypto symbols had >50% win rate (ICP, NEIRO, YFI, HBAR, ENJ, ILV, EGLD)
+    # Previous limit of 25 produced massive losses
+    TOP_CRYPTO_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "10"))
     crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_ASYNC_LIMIT]
     crypto_count = len(crypto_symbols_to_process)
     if LOGGER:

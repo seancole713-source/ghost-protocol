@@ -9407,18 +9407,59 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # ========================================================================
         # AUTO-LOG PAPER TRADE: Track all predictions for paper trading P&L
         # Only log directional predictions (UP/DOWN) with minimum confidence
-        # Threshold 0.30: filters junk (BTC 7%, DOGE 0%) but keeps useful (ETH 48%, GE 70%)
+        # Threshold 0.55: Only log predictions where model has meaningful conviction
+        # Previous 0.30 threshold flooded with garbage (15.6% win rate over 7 days)
+        # Also checks symbol's recent win rate — skip symbols with <20% historical accuracy
         # ========================================================================
-        if direction in ["UP", "DOWN"] and confidence >= 0.30:
+        _PAPER_TRADE_MIN_CONFIDENCE = float(os.getenv("PAPER_TRADE_MIN_CONFIDENCE", "0.55"))
+        if direction in ["UP", "DOWN"] and confidence >= _PAPER_TRADE_MIN_CONFIDENCE:
             try:
                 from core.paper_tracker import get_paper_tracker
                 from core.ghost_notifications import V3_VALIDATED_STRATEGIES
                 paper_tracker = get_paper_tracker()
                 
-                # DEDUP: Skip if we already logged a trade for this symbol in the last 30 min
+                # QUALITY GATE: Check symbol's recent win rate — skip consistently losing symbols
+                # This prevents flooding paper_trades with predictions for symbols where model has no edge
+                _PAPER_TRADE_MIN_SYMBOL_WINRATE = float(os.getenv("PAPER_TRADE_MIN_SYMBOL_WINRATE", "0.15"))
+                _PAPER_TRADE_MIN_SYMBOL_TRADES = int(os.getenv("PAPER_TRADE_MIN_SYMBOL_TRADES", "8"))
+                try:
+                    conn_qg = paper_tracker._get_connection()
+                    qg_cutoff = (datetime.utcnow() - timedelta(days=14)).isoformat()
+                    cur_qg = paper_tracker._execute(conn_qg,
+                        """SELECT 
+                            COUNT(*) as total,
+                            SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                            SUM(CASE WHEN outcome IN ('LOSS', 'STOPPED') THEN 1 ELSE 0 END) as losses
+                        FROM paper_trades 
+                        WHERE symbol = ? AND entry_time > ? AND outcome IS NOT NULL AND outcome != 'PENDING'
+                        """,
+                        (symbol.upper(), qg_cutoff)
+                    )
+                    qg_row = paper_tracker._fetchall(cur_qg)
+                    conn_qg.close()
+                    
+                    if qg_row and qg_row[0]:
+                        qg_total = qg_row[0].get("total", 0) or 0
+                        qg_wins = qg_row[0].get("wins", 0) or 0
+                        qg_losses = qg_row[0].get("losses", 0) or 0
+                        qg_resolved = qg_wins + qg_losses
+                        
+                        if qg_resolved >= _PAPER_TRADE_MIN_SYMBOL_TRADES:
+                            qg_winrate = qg_wins / qg_resolved if qg_resolved > 0 else 0
+                            if qg_winrate < _PAPER_TRADE_MIN_SYMBOL_WINRATE:
+                                LOGGER.info(f"[{symbol}] 🚫 QUALITY GATE: {qg_winrate:.1%} win rate ({qg_wins}W/{qg_losses}L in 14d) < {_PAPER_TRADE_MIN_SYMBOL_WINRATE:.0%} min — skipping paper trade")
+                                raise Exception("quality_gate_skip")
+                except Exception as qg_err:
+                    if "quality_gate_skip" in str(qg_err):
+                        raise  # Re-raise to hit the outer except
+                    LOGGER.debug(f"[{symbol}] Quality gate check failed (continuing): {qg_err}")
+                
+                # DEDUP: Skip if we already logged a trade for this symbol in the last 90 min
+                # Increased from 30min to 90min to reduce duplicate trade volume
+                _PAPER_TRADE_DEDUP_MINUTES = int(os.getenv("PAPER_TRADE_DEDUP_MINUTES", "90"))
                 try:
                     conn = paper_tracker._get_connection()
-                    cutoff = (datetime.utcnow() - timedelta(minutes=30)).isoformat()
+                    cutoff = (datetime.utcnow() - timedelta(minutes=_PAPER_TRADE_DEDUP_MINUTES)).isoformat()
                     cur = paper_tracker._execute(conn, 
                         "SELECT COUNT(*) as cnt FROM paper_trades WHERE symbol = ? AND entry_time > ?",
                         (symbol.upper(), cutoff)
@@ -9427,7 +9468,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     conn.close()
                     recent_count = row[0]["cnt"] if row else 0
                     if recent_count > 0:
-                        LOGGER.info(f"[{symbol}] ⏭️ Paper trade DEDUP: Already {recent_count} trade(s) in last 30min, skipping")
+                        LOGGER.info(f"[{symbol}] ⏭️ Paper trade DEDUP: Already {recent_count} trade(s) in last {_PAPER_TRADE_DEDUP_MINUTES}min, skipping")
                         raise Exception("dedup_skip")  # Skip to except block
                 except Exception as dedup_err:
                     if "dedup_skip" in str(dedup_err):
@@ -9441,6 +9482,19 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 v3_hold_hours = v3_config.get('hold_hours') if v3_config else None
                 v3_win_rate = v3_config.get('win_rate') if v3_config else None
                 v3_is_inverse = v3_config.get('strategy') == 'ghost_inverse' if v3_config else False
+                
+                # PRICE SANITY CHECK: Reject clearly garbage entry prices
+                # JUP was logged at $0.00048679 when real price is ~$0.50-1.00 (390,000% PnL artifact)
+                # Any price below $0.00001 or above $1M is almost certainly bad data
+                if current_price is None or current_price <= 0:
+                    LOGGER.warning(f"[{symbol}] 🚫 PRICE SANITY: entry_price is {current_price} — skipping paper trade")
+                    raise Exception("price_sanity_skip")
+                if current_price < 0.00001:
+                    LOGGER.warning(f"[{symbol}] 🚫 PRICE SANITY: entry_price ${current_price} suspiciously low — skipping paper trade")
+                    raise Exception("price_sanity_skip")
+                if current_price > 1_000_000:
+                    LOGGER.warning(f"[{symbol}] 🚫 PRICE SANITY: entry_price ${current_price:,.2f} suspiciously high — skipping paper trade")
+                    raise Exception("price_sanity_skip")
                 
                 paper_trade_id = paper_tracker.log_signal(
                     cascade_id=f"pred_{prediction_id}",  # Link to prediction
@@ -9462,7 +9516,11 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 v3_tag = f" [V3: {v3_strategy}]" if v3_validated else ""
                 LOGGER.info(f"[{symbol}] 📝 Paper trade auto-logged: {paper_trade_id} ({direction} @ ${current_price:,.2f}){v3_tag}")
             except Exception as e:
-                LOGGER.warning(f"[{symbol}] Paper trade logging failed (non-fatal): {e}")
+                skip_reasons = ["dedup_skip", "quality_gate_skip", "price_sanity_skip"]
+                if any(reason in str(e) for reason in skip_reasons):
+                    pass  # Intentional skip — already logged above
+                else:
+                    LOGGER.warning(f"[{symbol}] Paper trade logging failed (non-fatal): {e}")
         
         # Calculate total duration
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -42033,12 +42091,15 @@ try:
             return {"ok": False, "error": str(e)}
 
     @APP.get("/api/v3/paper/accuracy-proof")
-    async def api_v3_paper_accuracy_proof():
+    async def api_v3_paper_accuracy_proof(days: int = 30):
         """
         THE PROOF ENDPOINT.
         
         Returns hard numbers: how many predictions Ghost made, how many were right,
         broken down by symbol, direction, and time period. No spin, just data.
+        
+        Args:
+            days: Number of days to look back (default 30). Use days=0 for all-time.
         """
         try:
             from core.paper_tracker import get_paper_tracker
@@ -42046,8 +42107,16 @@ try:
             tracker = get_paper_tracker()
             conn = tracker._get_connection()
             
-            # Overall stats
-            cur = tracker._execute(conn, """
+            # Time filter — default 30 days to exclude pre-V2 garbage data
+            time_filter = ""
+            time_params = ()
+            if days > 0:
+                cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+                time_filter = " AND created_at >= ?"
+                time_params = (cutoff,)
+            
+            # Overall stats (within time window)
+            cur = tracker._execute(conn, f"""
                 SELECT 
                     COUNT(*) as total,
                     SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
@@ -42056,11 +42125,12 @@ try:
                     SUM(CASE WHEN outcome = 'PENDING' THEN 1 ELSE 0 END) as pending,
                     SUM(CASE WHEN outcome = 'EXPIRED' THEN 1 ELSE 0 END) as expired
                 FROM paper_trades
-            """)
+                WHERE 1=1 {time_filter}
+            """, time_params)
             overall = tracker._fetchone(cur)
             
-            # Per-symbol breakdown
-            cur = tracker._execute(conn, """
+            # Per-symbol breakdown (within time window)
+            cur = tracker._execute(conn, f"""
                 SELECT 
                     symbol,
                     COUNT(*) as total,
@@ -42069,23 +42139,23 @@ try:
                     SUM(CASE WHEN outcome = 'BREAK_EVEN' THEN 1 ELSE 0 END) as break_even,
                     SUM(CASE WHEN outcome = 'PENDING' THEN 1 ELSE 0 END) as pending
                 FROM paper_trades
-                WHERE outcome != 'EXPIRED'
+                WHERE outcome != 'EXPIRED' {time_filter}
                 GROUP BY symbol
                 ORDER BY total DESC
-            """)
+            """, time_params)
             by_symbol = tracker._fetchall(cur)
             
-            # Per-direction breakdown
-            cur = tracker._execute(conn, """
+            # Per-direction breakdown (within time window)
+            cur = tracker._execute(conn, f"""
                 SELECT 
                     signal_direction,
                     COUNT(*) as total,
                     SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
                     SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses
                 FROM paper_trades
-                WHERE outcome IN ('WIN', 'LOSS')
+                WHERE outcome IN ('WIN', 'LOSS') {time_filter}
                 GROUP BY signal_direction
-            """)
+            """, time_params)
             by_direction = tracker._fetchall(cur)
             
             # Recent 7-day accuracy (most relevant)
@@ -42151,7 +42221,7 @@ try:
                     "by_symbol": sorted(symbol_stats, key=lambda x: x.get("sample_size", 0), reverse=True),
                     "by_direction": by_direction,
                 },
-                "note": "This is REAL data from paper trades. Win rate = correct direction predictions / total resolved predictions."
+                "note": f"This is REAL data from paper trades (last {days} days). Win rate = correct direction predictions / total resolved predictions. Use ?days=0 for all-time."
             }
         
         except Exception as e:
