@@ -949,7 +949,10 @@ class PaperTracker:
             """, (cutoff, *symbol_params))
             stopped = self._fetchone(cur)["count"]
             
-            win_rate = wins / resolved if resolved > 0 else 0.0
+            # FIXED: Win rate = wins / (wins + losses), NOT wins / resolved
+            # 'resolved' includes EXPIRED trades which are neither WIN nor LOSS
+            decided = wins + losses  # Only trades with definitive outcome
+            win_rate = wins / decided if decided > 0 else 0.0
             
             # P&L stats
             cur = self._execute(conn, f"""
@@ -1014,15 +1017,25 @@ class PaperTracker:
                 """, (cutoff, symbol))
                 sym_wins = self._fetchone(cur)["count"]
                 
-                sym_win_rate = sym_wins / sym_resolved if sym_resolved > 0 else 0.0
+                cur = self._execute(conn, """
+                    SELECT COUNT(*) as count FROM paper_trades
+                    WHERE created_at >= ? AND symbol = ? AND outcome IN ('LOSS', 'STOPPED')
+                """, (cutoff, symbol))
+                sym_losses = self._fetchone(cur)["count"]
                 
-                # Include all symbols with trades
-                if sym_resolved > 0:
+                # FIXED: Win rate = wins / (wins + losses), excluding EXPIRED
+                sym_decided = sym_wins + sym_losses
+                sym_win_rate = sym_wins / sym_decided if sym_decided > 0 else 0.0
+                
+                # Include all symbols with decided trades
+                if sym_decided > 0:
                     accuracy_by_symbol[symbol] = {
                         "trades": sym_resolved,
                         "wins": sym_wins,
                         "win_rate": sym_win_rate
                     }
+            
+            expired = resolved - (wins + losses + stopped)
             
             return {
                 "total_trades": total,
@@ -1031,6 +1044,7 @@ class PaperTracker:
                 "wins": wins,
                 "losses": losses,
                 "stopped": stopped,
+                "expired": expired,
                 "win_rate": win_rate,
                 "win_rate_pct": round(win_rate * 100, 1),
                 "total_pnl": total_pnl,
