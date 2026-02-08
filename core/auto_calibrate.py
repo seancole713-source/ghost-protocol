@@ -64,8 +64,14 @@ MIN_TRADES = 50          # Need at least 50 trades
 MIN_WIN_RATE = 0.54      # Need >54% win rate
 MAX_P_VALUE = 0.05       # Need p < 0.05 (statistically significant)
 
-# Use ALL strategies for comprehensive testing
-DEFAULT_STRATEGIES = ALL_STRATEGIES
+# Strategies excluded from calibration candidates:
+# - random: coin flip baseline, "wins" are statistical noise not repeatable edge
+# - always_up/always_down: directional bias, not a strategy
+# These are useful as baselines to BEAT, not strategies to DEPLOY.
+EXCLUDED_STRATEGIES = {'random', 'always_up', 'always_down'}
+
+# Use all real strategies for testing (exclude baselines)
+DEFAULT_STRATEGIES = {k: v for k, v in ALL_STRATEGIES.items() if k not in EXCLUDED_STRATEGIES}
 
 # Data settings
 DATA_DIR = Path(__file__).parent.parent / "backtest" / "data"
@@ -536,15 +542,19 @@ def run_calibration(
     config_path.write_text(config_code)
     logger.info(f"\nGenerated config saved to: {config_path}")
     
+    # Always send Telegram alert with findings for human review
+    try:
+        send_calibration_alert(alert, changes)
+        logger.info("📩 Calibration alert sent to Telegram for review")
+    except Exception as e:
+        logger.warning(f"Failed to send calibration alert: {e}")
+    
     if not dry_run and auto_update:
         logger.info("\n⚠️ AUTO-UPDATE is enabled - updating config files...")
         update_success = auto_update_config(validated, changes)
         
         if update_success:
-            # Send Telegram notification
-            send_calibration_alert(alert, changes)
-            
-            # Auto-commit and push
+            # Auto-commit and push (requires git credentials)
             auto_deploy(changes)
     
     return {

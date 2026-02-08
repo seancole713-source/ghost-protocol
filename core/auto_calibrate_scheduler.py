@@ -53,8 +53,8 @@ def run_weekly_calibration():
         result = run_calibration(
             test_crypto=True,
             test_stocks=True,
-            auto_update=True,  # Apply changes automatically
-            dry_run=False      # Not a dry run - make real changes
+            auto_update=False,  # Report only — human reviews & applies
+            dry_run=True        # Dry run — no config file changes
         )
         
         # Log summary
