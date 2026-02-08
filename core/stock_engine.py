@@ -867,58 +867,10 @@ class StockEngine:
             except Exception as e:
                 LOGGER.warning(f"[PATTERN_TRACKER] Failed to record: {e}")
         
-        # =====================================================================
-        # PAPER TRADE LOGGING - Track stock predictions for accuracy measurement
-        # Log predictions that are: (a) actionable (UP/DOWN >= 60%), or (b) V3 validated with strategy override
-        # =====================================================================
-        from core.ghost_notifications import V3_VALIDATED_STRATEGIES
-        v3_config = V3_VALIDATED_STRATEGIES.get(symbol)
-        v3_has_override = v3_config and v3_config.get('strategy') in ('always_up', 'always_down')
-        
-        if (direction in ("UP", "DOWN") and confidence >= 0.6) or v3_has_override:
-            try:
-                from core.paper_tracker import get_paper_tracker
-                
-                paper_tracker = get_paper_tracker()
-                
-                # Check if this is a V3 validated stock
-                v3_config = V3_VALIDATED_STRATEGIES.get(symbol)
-                v3_validated = v3_config is not None
-                v3_strategy = v3_config.get('strategy') if v3_config else None
-                v3_hold_hours = v3_config.get('hold_hours') if v3_config else None
-                v3_backtest_win_rate = v3_config.get('win_rate') if v3_config else None
-                v3_is_inverse = v3_strategy == 'ghost_inverse' if v3_strategy else False
-                v3_is_always_up = v3_strategy == 'always_up' if v3_strategy else False
-                
-                # Apply V3 strategy overrides to direction
-                final_direction = direction
-                original_direction = direction
-                if v3_is_inverse:
-                    final_direction = "DOWN" if direction == "UP" else "UP"
-                    LOGGER.info(f"🔄 [{symbol}] V3 INVERSE: {original_direction} → {final_direction}")
-                elif v3_is_always_up:
-                    final_direction = "UP"
-                    if original_direction != "UP":
-                        LOGGER.info(f"📈 [{symbol}] V3 ALWAYS_UP: {original_direction} → UP")
-                
-                paper_tracker.log_signal(
-                    cascade_id=f"stock_{symbol}_{int(time.time())}",
-                    symbol=symbol,
-                    signal_direction=final_direction,
-                    signal_confidence=confidence,
-                    entry_price=entry_price,
-                    entry_time=datetime.utcnow().isoformat(),
-                    v3_validated=v3_validated,
-                    v3_strategy=v3_strategy,
-                    v3_is_inverse=v3_is_inverse,
-                    v3_original_direction=original_direction if (v3_is_inverse or v3_is_always_up) else None,
-                    v3_hold_hours=v3_hold_hours,
-                    v3_backtest_win_rate=v3_backtest_win_rate,
-                    expected_move_pct=expected_move_pct
-                )
-                LOGGER.info(f"📝 [{symbol}] Stock paper trade logged (V3={v3_validated}, strategy={v3_strategy}, expected_move={expected_move_pct:+.1f}%)")
-            except Exception as e:
-                LOGGER.warning(f"[{symbol}] Failed to log stock paper trade: {e}")
+        # NOTE: Paper trade logging is handled centrally in wolf_app.py run_prediction
+        # which calls paper_tracker.log_signal() with centralized dedup.
+        # Previously this created DUPLICATE trades (stock_engine + run_prediction both logging).
+        # Removed Feb 2026 to fix 793 trades/day volume (should be ~25/cycle).
         
         return prediction
     

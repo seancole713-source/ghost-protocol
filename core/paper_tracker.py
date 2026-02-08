@@ -282,6 +282,28 @@ class PaperTracker:
         except Exception as e:
             LOGGER.warning(f"[{symbol}] Trading controls check failed: {e} - Proceeding with paper trade")
         
+        # =====================================================================
+        # CENTRALIZED DEDUP: Prevent duplicate trades for same symbol within window
+        # All callers (run_prediction, stock_engine, ghost_notifications, cascade)
+        # go through log_signal(), so dedup here catches ALL paths
+        # =====================================================================
+        _dedup_minutes = int(os.environ.get("PAPER_TRADE_DEDUP_MINUTES", "90"))
+        try:
+            dedup_conn = self._get_connection()
+            dedup_cutoff = (datetime.utcnow() - timedelta(minutes=_dedup_minutes)).isoformat()
+            dedup_cur = self._execute(dedup_conn,
+                "SELECT COUNT(*) as cnt FROM paper_trades WHERE symbol = ? AND entry_time > ?",
+                (symbol.upper(), dedup_cutoff)
+            )
+            dedup_row = self._fetchall(dedup_cur)
+            dedup_conn.close()
+            recent_count = dedup_row[0]["cnt"] if dedup_row and dedup_row[0] else 0
+            if recent_count > 0:
+                LOGGER.info(f"[{symbol}] ⏭️ DEDUP (centralized): Already {recent_count} trade(s) in last {_dedup_minutes}min — skipping")
+                return None
+        except Exception as dedup_err:
+            LOGGER.debug(f"[{symbol}] Centralized dedup check failed (continuing): {dedup_err}")
+        
         import uuid
         
         paper_trade_id = str(uuid.uuid4())
@@ -910,144 +932,87 @@ class PaperTracker:
             else:
                 cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
             
-            # MONEY GAME: No more V2 whitelist filtering - all symbols compete!
-            # Removed Jan 29, 2026 - the Money Game system handles ranking
-            symbol_filter = ""
-            symbol_params = []
+            # OPTIMIZED: Single aggregate query instead of 8+ separate ones
+            cur = self._execute(conn, """
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN outcome != 'PENDING' THEN 1 ELSE 0 END) as resolved,
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome IN ('LOSS', 'STOPPED') THEN 1 ELSE 0 END) as losses,
+                    SUM(CASE WHEN outcome = 'STOPPED' THEN 1 ELSE 0 END) as stopped,
+                    SUM(CASE WHEN outcome = 'BREAK_EVEN' THEN 1 ELSE 0 END) as break_even,
+                    SUM(CASE WHEN outcome = 'EXPIRED' THEN 1 ELSE 0 END) as expired,
+                    SUM(CASE WHEN profit_loss IS NOT NULL THEN profit_loss ELSE 0 END) as total_pnl
+                FROM paper_trades
+                WHERE created_at >= ?
+            """, (cutoff,))
+            agg = self._fetchone(cur)
             
-            # Overall stats
-            cur = self._execute(conn, f"""
-                SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ?{symbol_filter}
-            """, (cutoff, *symbol_params))
-            total = self._fetchone(cur)["count"]
-            
-            cur = self._execute(conn, f"""
-                SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome != 'PENDING'{symbol_filter}
-            """, (cutoff, *symbol_params))
-            resolved = self._fetchone(cur)["count"]
-            
+            total = agg["total"] or 0
+            resolved = agg["resolved"] or 0
+            wins = agg["wins"] or 0
+            losses = agg["losses"] or 0
+            stopped = agg["stopped"] or 0
+            break_even = agg["break_even"] or 0
+            expired = agg["expired"] or 0
+            total_pnl = agg["total_pnl"] or 0
             pending = total - resolved
             
-            # Outcome counts
-            cur = self._execute(conn, f"""
-                SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome = 'WIN'{symbol_filter}
-            """, (cutoff, *symbol_params))
-            wins = self._fetchone(cur)["count"]
-            
-            cur = self._execute(conn, f"""
-                SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED'){symbol_filter}
-            """, (cutoff, *symbol_params))
-            losses = self._fetchone(cur)["count"]
-            
-            cur = self._execute(conn, f"""
-                SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome = 'STOPPED'{symbol_filter}
-            """, (cutoff, *symbol_params))
-            stopped = self._fetchone(cur)["count"]
-            
-            # FIXED: Win rate = wins / (wins + losses), NOT wins / resolved
-            # 'resolved' includes EXPIRED trades which are neither WIN nor LOSS
-            decided = wins + losses  # Only trades with definitive outcome
+            decided = wins + losses
             win_rate = wins / decided if decided > 0 else 0.0
             
-            # P&L stats
-            cur = self._execute(conn, f"""
-                SELECT profit_loss FROM paper_trades
-                WHERE created_at >= ? AND profit_loss IS NOT NULL{symbol_filter}
-            """, (cutoff, *symbol_params))
-            pnl_rows = self._fetchall(cur)
-            
-            total_pnl = sum(row["profit_loss"] for row in pnl_rows)
-            
-            cur = self._execute(conn, f"""
-                SELECT profit_loss FROM paper_trades
-                WHERE created_at >= ? AND outcome = 'WIN'{symbol_filter}
-            """, (cutoff, *symbol_params))
-            win_trades = self._fetchall(cur)
-            
-            cur = self._execute(conn, f"""
-                SELECT profit_loss FROM paper_trades
-                WHERE created_at >= ? AND outcome IN ('LOSS', 'STOPPED'){symbol_filter}
-            """, (cutoff, *symbol_params))
-            loss_trades = self._fetchall(cur)
-            
-            avg_win = sum(t["profit_loss"] for t in win_trades) / len(win_trades) if win_trades else 0.0
-            avg_loss = sum(t["profit_loss"] for t in loss_trades) / len(loss_trades) if loss_trades else 0.0
+            # OPTIMIZED: Single query for avg win/loss
+            cur = self._execute(conn, """
+                SELECT 
+                    AVG(CASE WHEN outcome = 'WIN' THEN profit_loss END) as avg_win,
+                    AVG(CASE WHEN outcome IN ('LOSS', 'STOPPED') THEN profit_loss END) as avg_loss
+                FROM paper_trades
+                WHERE created_at >= ? AND profit_loss IS NOT NULL
+            """, (cutoff,))
+            avgs = self._fetchone(cur)
+            avg_win = avgs["avg_win"] or 0.0
+            avg_loss = avgs["avg_loss"] or 0.0
             
             # Best/worst trades
-            cur = self._execute(conn, f"""
+            cur = self._execute(conn, """
                 SELECT * FROM paper_trades
-                WHERE created_at >= ? AND profit_loss IS NOT NULL{symbol_filter}
+                WHERE created_at >= ? AND profit_loss IS NOT NULL
                 ORDER BY profit_loss DESC LIMIT 1
-            """, (cutoff, *symbol_params))
+            """, (cutoff,))
             best = self._fetchone(cur)
             
-            cur = self._execute(conn, f"""
+            cur = self._execute(conn, """
                 SELECT * FROM paper_trades
-                WHERE created_at >= ? AND profit_loss IS NOT NULL{symbol_filter}
+                WHERE created_at >= ? AND profit_loss IS NOT NULL
                 ORDER BY profit_loss ASC LIMIT 1
-            """, (cutoff, *symbol_params))
+            """, (cutoff,))
             worst = self._fetchone(cur)
             
-            # Accuracy by symbol - ALL symbols that have trades (Money Game)
-            cur = self._execute(conn, f"""
-                SELECT DISTINCT symbol FROM paper_trades
-                WHERE created_at >= ?{symbol_filter}
-            """, (cutoff, *symbol_params))
-            symbols_to_check = self._fetchall(cur)
+            # OPTIMIZED: Single query for per-symbol accuracy (was N*3 queries for N symbols)
+            cur = self._execute(conn, """
+                SELECT 
+                    symbol,
+                    SUM(CASE WHEN outcome != 'PENDING' THEN 1 ELSE 0 END) as resolved,
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome IN ('LOSS', 'STOPPED') THEN 1 ELSE 0 END) as losses
+                FROM paper_trades
+                WHERE created_at >= ?
+                GROUP BY symbol
+                HAVING SUM(CASE WHEN outcome IN ('WIN', 'LOSS', 'STOPPED') THEN 1 ELSE 0 END) > 0
+            """, (cutoff,))
+            sym_rows = self._fetchall(cur)
             
             accuracy_by_symbol = {}
-            
-            for sym_row in symbols_to_check:
-                symbol = sym_row["symbol"]
-                
-                cur = self._execute(conn, """
-                    SELECT COUNT(*) as count FROM paper_trades
-                    WHERE created_at >= ? AND symbol = ? AND outcome != 'PENDING'
-                """, (cutoff, symbol))
-                sym_resolved = self._fetchone(cur)["count"]
-                
-                cur = self._execute(conn, """
-                    SELECT COUNT(*) as count FROM paper_trades
-                    WHERE created_at >= ? AND symbol = ? AND outcome = 'WIN'
-                """, (cutoff, symbol))
-                sym_wins = self._fetchone(cur)["count"]
-                
-                cur = self._execute(conn, """
-                    SELECT COUNT(*) as count FROM paper_trades
-                    WHERE created_at >= ? AND symbol = ? AND outcome IN ('LOSS', 'STOPPED')
-                """, (cutoff, symbol))
-                sym_losses = self._fetchone(cur)["count"]
-                
-                # FIXED: Win rate = wins / (wins + losses), excluding EXPIRED
+            for row in sym_rows:
+                sym_wins = row["wins"] or 0
+                sym_losses = row["losses"] or 0
                 sym_decided = sym_wins + sym_losses
-                sym_win_rate = sym_wins / sym_decided if sym_decided > 0 else 0.0
-                
-                # Include all symbols with decided trades
                 if sym_decided > 0:
-                    accuracy_by_symbol[symbol] = {
-                        "trades": sym_resolved,
+                    accuracy_by_symbol[row["symbol"]] = {
+                        "trades": row["resolved"] or 0,
                         "wins": sym_wins,
-                        "win_rate": sym_win_rate
+                        "win_rate": sym_wins / sym_decided
                     }
-            
-            # Count BREAK_EVEN separately - it's a real outcome, not an expiry
-            cur = self._execute(conn, f"""
-                SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome = 'BREAK_EVEN'{symbol_filter}
-            """, (cutoff, *symbol_params))
-            break_even = self._fetchone(cur)["count"]
-            
-            # Count actual EXPIRED trades (bulk-expired old trades)
-            cur = self._execute(conn, f"""
-                SELECT COUNT(*) as count FROM paper_trades
-                WHERE created_at >= ? AND outcome = 'EXPIRED'{symbol_filter}
-            """, (cutoff, *symbol_params))
-            expired = self._fetchone(cur)["count"]
             
             return {
                 "total_trades": total,

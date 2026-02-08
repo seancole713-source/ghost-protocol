@@ -9503,26 +9503,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         raise  # Re-raise to hit the outer except
                     LOGGER.debug(f"[{symbol}] Quality gate check failed (continuing): {qg_err}")
                 
-                # DEDUP: Skip if we already logged a trade for this symbol in the last 90 min
-                # Increased from 30min to 90min to reduce duplicate trade volume
-                _PAPER_TRADE_DEDUP_MINUTES = int(os.getenv("PAPER_TRADE_DEDUP_MINUTES", "90"))
-                try:
-                    conn = paper_tracker._get_connection()
-                    cutoff = (datetime.utcnow() - timedelta(minutes=_PAPER_TRADE_DEDUP_MINUTES)).isoformat()
-                    cur = paper_tracker._execute(conn, 
-                        "SELECT COUNT(*) as cnt FROM paper_trades WHERE symbol = ? AND entry_time > ?",
-                        (symbol.upper(), cutoff)
-                    )
-                    row = paper_tracker._fetchall(cur)
-                    conn.close()
-                    recent_count = row[0]["cnt"] if row else 0
-                    if recent_count > 0:
-                        LOGGER.info(f"[{symbol}] ⏭️ Paper trade DEDUP: Already {recent_count} trade(s) in last {_PAPER_TRADE_DEDUP_MINUTES}min, skipping")
-                        raise Exception("dedup_skip")  # Skip to except block
-                except Exception as dedup_err:
-                    if "dedup_skip" in str(dedup_err):
-                        raise  # Re-raise to hit the outer except
-                    LOGGER.debug(f"[{symbol}] Dedup check failed (continuing): {dedup_err}")
+                # DEDUP: Now centralized in paper_tracker.log_signal() — catches ALL callers
+                # (run_prediction, stock_engine, ghost_notifications, cascade)
                 
                 # Check if symbol is V3 validated
                 v3_config = V3_VALIDATED_STRATEGIES.get(symbol.upper())
@@ -9565,7 +9547,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 v3_tag = f" [V3: {v3_strategy}]" if v3_validated else ""
                 LOGGER.info(f"[{symbol}] 📝 Paper trade auto-logged: {paper_trade_id} ({direction} @ ${current_price:,.2f}){v3_tag}")
             except Exception as e:
-                skip_reasons = ["dedup_skip", "quality_gate_skip", "price_sanity_skip"]
+                skip_reasons = ["quality_gate_skip", "price_sanity_skip"]
                 if any(reason in str(e) for reason in skip_reasons):
                     pass  # Intentional skip — already logged above
                 else:
