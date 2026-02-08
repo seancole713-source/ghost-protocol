@@ -8436,8 +8436,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # =====================================================================
         
         # Step 1: Determine base direction from strongest signals
-        # BUGFIX: Default to UP instead of FLAT (FLAT is not a valid trading direction)
-        direction = "UP"
+        # FIX (Feb 8): Default to NEUTRAL so ALL fallback signals (MACD, momentum) get a chance
+        # Previous "UP" default caused 69% UP predictions with only 29.8% win rate (vs 87.4% DOWN)
+        # The MACD and momentum checks were dead code because they only fired on "FLAT"
+        direction = "NEUTRAL"
         rsi = features.get("RSI_14")
         macd_hist = features.get("MACD_HISTOGRAM")
         
@@ -8448,15 +8450,15 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             elif rsi < 30:
                 direction = "UP"  # Oversold
         
-        # MACD confirmation/override
-        if direction == "FLAT" and macd_hist is not None:
+        # MACD confirmation/override (FIX: now checks NEUTRAL instead of dead-code FLAT)
+        if direction == "NEUTRAL" and macd_hist is not None:
             if macd_hist > 0:
                 direction = "UP"
             elif macd_hist < 0:
                 direction = "DOWN"
         
         # Price momentum as fallback
-        if direction == "FLAT":
+        if direction == "NEUTRAL":
             try:
                 hist = _get_price_history_cached(symbol, days=5)
                 if hist and len(hist) >= 2:
@@ -8469,6 +8471,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                             direction = "DOWN"
             except Exception:
                 pass
+        
+        # If still NEUTRAL after all signals, default to UP (ensemble will likely override anyway)
+        if direction == "NEUTRAL":
+            direction = "UP"
         
         # Step 2: ENSEMBLE MODEL VOTING (Task #6)
         # Combine LSTM + XGBoost + Transformer for 10-15% accuracy boost
@@ -8494,7 +8500,29 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 f"Models agree: {len([p for p in ensemble_prediction.individual_predictions if p.direction == direction])}/3"
             )
         
-        # Step 2.5: PATTERN INTELLIGENCE BOOST (v4.0)
+        # Step 2.5a: DIRECTIONAL CONFIDENCE ADJUSTMENT (Feb 8, 2026)
+        # Production data (30-day): UP predictions = 29.8% WR, DOWN predictions = 87.4% WR
+        # The model has a strong bullish bias — UP calls are wrong 70% of the time
+        # Apply asymmetric confidence adjustment to reflect actual directional accuracy
+        _UP_CONFIDENCE_PENALTY = float(os.getenv("UP_CONFIDENCE_PENALTY", "0.12"))
+        _DOWN_CONFIDENCE_BONUS = float(os.getenv("DOWN_CONFIDENCE_BONUS", "0.05"))
+        
+        if direction == "UP" and _UP_CONFIDENCE_PENALTY > 0:
+            pre_penalty_conf = ensemble_prediction.confidence if ensemble_prediction.confidence > 0.45 else base_confidence if 'base_confidence' in dir() else 0.52
+            # Penalty makes UP predictions need to be MORE certain to survive quality gates
+            # A 55% UP prediction becomes 43% after penalty → won't generate paper trade
+            # A 70% UP prediction becomes 58% → just barely passes
+            LOGGER.info(
+                f"[{symbol}] ⚖️ UP DIRECTION PENALTY: -{_UP_CONFIDENCE_PENALTY:.0%} "
+                f"(UP predictions are {29.8:.0f}% accurate historically)"
+            )
+        elif direction == "DOWN" and _DOWN_CONFIDENCE_BONUS > 0:
+            LOGGER.info(
+                f"[{symbol}] ⚖️ DOWN DIRECTION BONUS: +{_DOWN_CONFIDENCE_BONUS:.0%} "
+                f"(DOWN predictions are {87.4:.0f}% accurate historically)"
+            )
+        
+        # Step 2.5b: PATTERN INTELLIGENCE BOOST (v4.0)
         # Use fear/greed, funding rates, social sentiment, BTC correlation
         # When multiple signals align, confidence increases 5-20%
         pattern_boost = 0.0
@@ -8551,6 +8579,15 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
 
         base_confidence = max(signal_confidence, ensemble_conf)
 
+        # DIRECTIONAL PENALTY/BONUS: Apply asymmetric adjustment based on live accuracy data
+        # UP predictions: 29.8% → need penalty to prevent bad paper trades
+        # DOWN predictions: 87.4% → small bonus to ensure they pass gates
+        if direction == "UP" and _UP_CONFIDENCE_PENALTY > 0:
+            base_confidence = base_confidence - _UP_CONFIDENCE_PENALTY
+            base_confidence = max(base_confidence, 0.30)  # Floor at 30%
+        elif direction == "DOWN" and _DOWN_CONFIDENCE_BONUS > 0:
+            base_confidence = base_confidence + _DOWN_CONFIDENCE_BONUS
+        
         # CONFIDENCE CAP: 80% maximum - markets are inherently uncertain
         # Even with perfect model agreement and all signals aligned, we can't claim >80%
         MAX_CONFIDENCE = 0.80
@@ -9420,7 +9457,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 
                 # QUALITY GATE: Check symbol's recent win rate — skip consistently losing symbols
                 # This prevents flooding paper_trades with predictions for symbols where model has no edge
-                _PAPER_TRADE_MIN_SYMBOL_WINRATE = float(os.getenv("PAPER_TRADE_MIN_SYMBOL_WINRATE", "0.15"))
+                _PAPER_TRADE_MIN_SYMBOL_WINRATE = float(os.getenv("PAPER_TRADE_MIN_SYMBOL_WINRATE", "0.35"))
                 _PAPER_TRADE_MIN_SYMBOL_TRADES = int(os.getenv("PAPER_TRADE_MIN_SYMBOL_TRADES", "8"))
                 try:
                     conn_qg = paper_tracker._get_connection()
