@@ -8500,27 +8500,36 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 f"Models agree: {len([p for p in ensemble_prediction.individual_predictions if p.direction == direction])}/3"
             )
         
-        # Step 2.5a: DIRECTIONAL CONFIDENCE ADJUSTMENT (Feb 8, 2026)
-        # Production data (30-day): UP predictions = 29.8% WR, DOWN predictions = 87.4% WR
-        # The model has a strong bullish bias — UP calls are wrong 70% of the time
-        # Apply asymmetric confidence adjustment to reflect actual directional accuracy
-        _UP_CONFIDENCE_PENALTY = float(os.getenv("UP_CONFIDENCE_PENALTY", "0.12"))
-        _DOWN_CONFIDENCE_BONUS = float(os.getenv("DOWN_CONFIDENCE_BONUS", "0.05"))
-        
-        if direction == "UP" and _UP_CONFIDENCE_PENALTY > 0:
-            pre_penalty_conf = ensemble_prediction.confidence if ensemble_prediction.confidence > 0.45 else base_confidence if 'base_confidence' in dir() else 0.52
-            # Penalty makes UP predictions need to be MORE certain to survive quality gates
-            # A 55% UP prediction becomes 43% after penalty → won't generate paper trade
-            # A 70% UP prediction becomes 58% → just barely passes
-            LOGGER.info(
-                f"[{symbol}] ⚖️ UP DIRECTION PENALTY: -{_UP_CONFIDENCE_PENALTY:.0%} "
-                f"(UP predictions are {29.8:.0f}% accurate historically)"
-            )
-        elif direction == "DOWN" and _DOWN_CONFIDENCE_BONUS > 0:
-            LOGGER.info(
-                f"[{symbol}] ⚖️ DOWN DIRECTION BONUS: +{_DOWN_CONFIDENCE_BONUS:.0%} "
-                f"(DOWN predictions are {87.4:.0f}% accurate historically)"
-            )
+        # Step 2.5a: ADAPTIVE DIRECTIONAL CONFIDENCE ADJUSTMENT (Feb 8, 2026)
+        # Auto-adjusts UP/DOWN penalties based on LIVE paper trade performance.
+        # If market regime flips (bear→bull), penalties auto-reverse within 1 hour.
+        # Replaces hardcoded penalties that would break on regime change.
+        _directional_adjustment = 0.0
+        _directional_meta = {}
+        try:
+            from core.directional_accuracy_tracker import get_directional_adjustment
+            _directional_adjustment, _directional_meta = get_directional_adjustment(direction)
+            
+            if abs(_directional_adjustment) > 0.005:
+                adj_type = "PENALTY" if _directional_adjustment < 0 else "BONUS"
+                adj_wr = _directional_meta.get('win_rate', '?')
+                adj_n = _directional_meta.get('sample_size', 0)
+                regime = _directional_meta.get('regime', '?')
+                LOGGER.info(
+                    f"[{symbol}] ⚖️ ADAPTIVE {direction} {adj_type}: {_directional_adjustment:+.1%} "
+                    f"({direction} WR={adj_wr}% over {adj_n} trades, regime={regime})"
+                )
+            else:
+                LOGGER.debug(f"[{symbol}] ⚖️ Directional adjustment negligible: {_directional_adjustment:+.4f}")
+        except Exception as e:
+            LOGGER.debug(f"[{symbol}] Directional tracker unavailable (using defaults): {e}")
+            # Fallback to env-var overrides if adaptive tracker fails
+            _fallback_up = float(os.getenv("UP_CONFIDENCE_PENALTY", "0.12"))
+            _fallback_down = float(os.getenv("DOWN_CONFIDENCE_BONUS", "0.05"))
+            if direction == "UP":
+                _directional_adjustment = -_fallback_up
+            elif direction == "DOWN":
+                _directional_adjustment = _fallback_down
         
         # Step 2.5b: PATTERN INTELLIGENCE BOOST (v4.0)
         # Use fear/greed, funding rates, social sentiment, BTC correlation
@@ -8579,14 +8588,17 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
 
         base_confidence = max(signal_confidence, ensemble_conf)
 
-        # DIRECTIONAL PENALTY/BONUS: Apply asymmetric adjustment based on live accuracy data
-        # UP predictions: 29.8% → need penalty to prevent bad paper trades
-        # DOWN predictions: 87.4% → small bonus to ensure they pass gates
-        if direction == "UP" and _UP_CONFIDENCE_PENALTY > 0:
-            base_confidence = base_confidence - _UP_CONFIDENCE_PENALTY
-            base_confidence = max(base_confidence, 0.30)  # Floor at 30%
-        elif direction == "DOWN" and _DOWN_CONFIDENCE_BONUS > 0:
-            base_confidence = base_confidence + _DOWN_CONFIDENCE_BONUS
+        # ADAPTIVE DIRECTIONAL ADJUSTMENT: Apply data-driven penalty/bonus
+        # Auto-adjusts based on live UP vs DOWN win rates from paper_trades
+        # If market flips bullish, UP penalty auto-reduces / reverses
+        if abs(_directional_adjustment) > 0.005:
+            pre_adj_confidence = base_confidence
+            base_confidence = base_confidence + _directional_adjustment
+            base_confidence = max(base_confidence, 0.25)  # Floor at 25%
+            LOGGER.info(
+                f"[{symbol}] ⚖️ Directional adj applied: {pre_adj_confidence:.1%} → {base_confidence:.1%} "
+                f"({_directional_adjustment:+.1%}, regime={_directional_meta.get('regime', '?')})"
+            )
         
         # CONFIDENCE CAP: 80% maximum - markets are inherently uncertain
         # Even with perfect model agreement and all signals aligned, we can't claim >80%
@@ -42263,6 +42275,44 @@ try:
         
         except Exception as e:
             LOGGER.error(f"[ACCURACY-PROOF] Error: {e}", exc_info=True)
+            return {"ok": False, "error": str(e)}
+
+    # =========================================================================
+    # DIRECTIONAL REGIME ENDPOINT - Monitor adaptive UP/DOWN adjustments
+    # =========================================================================
+    
+    @APP.get("/api/v3/directional/regime")
+    async def api_v3_directional_regime():
+        """
+        Shows the current directional accuracy regime and auto-calculated penalties.
+        
+        When the market shifts (bear→bull), the penalties auto-adjust within 1 hour.
+        Use this endpoint to monitor whether the system is correctly adapting.
+        """
+        try:
+            from core.directional_accuracy_tracker import get_regime_info, refresh_cache
+            
+            info = get_regime_info()
+            
+            # If cache is stale or empty, force refresh
+            if info.get("cache_age_s", 9999) > 7200 or info.get("regime") == "unknown":
+                refresh_cache()
+                info = get_regime_info()
+            
+            return {
+                "ok": True,
+                "regime": info,
+                "interpretation": {
+                    "bearish_edge": "Model is better at calling DOWN moves. UP predictions penalized.",
+                    "bullish_edge": "Model is better at calling UP moves. DOWN predictions penalized.",
+                    "model_accurate": "Model is good at both directions. Minimal adjustments.",
+                    "model_broken": "Model is bad at both directions. Large penalties on both.",
+                    "mixed": "No clear directional edge. Small adjustments.",
+                    "insufficient_data": f"Need {info.get('min_sample_size', 20)}+ trades per direction.",
+                }.get(info.get("regime", "unknown"), "Unknown regime"),
+            }
+        except Exception as e:
+            LOGGER.error(f"[DIRECTIONAL-REGIME] Error: {e}", exc_info=True)
             return {"ok": False, "error": str(e)}
 
     # =========================================================================
