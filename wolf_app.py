@@ -9460,8 +9460,32 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # Previous 0.30 threshold flooded with garbage (15.6% win rate over 7 days)
         # Also checks symbol's recent win rate — skip symbols with <20% historical accuracy
         # ========================================================================
+        
+        # =====================================================================
+        # EDGE SYMBOL WHITELIST (Feb 9, 2026)
+        # 30-day data analysis: 24 symbols have ≥50% WR (74.7% combined, 743W/252L)
+        # The other 76 symbols have 21.5% WR (256W/933L) — pure destruction
+        # Only trade symbols with PROVEN edge. Updated via env var for easy tuning.
+        # =====================================================================
         _PAPER_TRADE_MIN_CONFIDENCE = float(os.getenv("PAPER_TRADE_MIN_CONFIDENCE", "0.55"))
-        if direction in ["UP", "DOWN"] and confidence >= _PAPER_TRADE_MIN_CONFIDENCE:
+        _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS", 
+            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+        )
+        EDGE_SYMBOLS = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
+        _EDGE_WHITELIST_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+        
+        if _EDGE_WHITELIST_ENABLED and symbol.upper() not in EDGE_SYMBOLS:
+            LOGGER.info(
+                f"[{symbol}] 🚫 EDGE WHITELIST: Symbol not in {len(EDGE_SYMBOLS)} proven edge symbols — skipping paper trade"
+            )
+            # Still return the prediction, just don't log a paper trade
+        elif direction == "HOLD":
+            # HOLD ZONE: Model has no conviction — don't paper trade
+            LOGGER.info(
+                f"[{symbol}] 🛑 HOLD ZONE: XGBoost near coin-flip — no paper trade logged"
+            )
+        elif direction in ["UP", "DOWN"] and confidence >= _PAPER_TRADE_MIN_CONFIDENCE:
             try:
                 from core.paper_tracker import get_paper_tracker
                 from core.ghost_notifications import V3_VALIDATED_STRATEGIES

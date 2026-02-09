@@ -616,11 +616,23 @@ class XGBoostModel:
                     f"UP={prob_up:.1%}, DOWN={prob_down:.1%}"
                 )
                 
-                # BINARY CLASSIFIER: Always pick a direction (UP or DOWN)
-                # This is a binary model trained on UP/DOWN labels.
-                # There is NO "FLAT" class. Whichever probability is higher wins.
-                # Even 50.1% vs 49.9% is a valid signal from a balanced model.
-                if prob_up >= prob_down:
+                # HOLD ZONE (Feb 9, 2026): When model is near coin-flip, DON'T force a trade.
+                # "A binary classifier that's forced to choose will always output something.
+                #  Real edge comes from knowing when NOT to trade."
+                # If abs(prob_up - prob_down) < threshold, model has NO conviction → HOLD.
+                import os as _os
+                _HOLD_ZONE_THRESHOLD = float(_os.getenv("HOLD_ZONE_THRESHOLD", "0.08"))
+                _prob_spread = abs(prob_up - prob_down)
+                
+                if _prob_spread < _HOLD_ZONE_THRESHOLD:
+                    # Model is near 50/50 — no edge, sit out
+                    direction = "HOLD"
+                    confidence = max(prob_up, prob_down)  # Still report the winning prob
+                    logger.info(
+                        f"🛑 XGBoost HOLD ZONE for {features.get('symbol', '?')}: "
+                        f"spread={_prob_spread:.1%} < threshold={_HOLD_ZONE_THRESHOLD:.0%} — NO TRADE"
+                    )
+                elif prob_up >= prob_down:
                     direction = "UP"
                     confidence = prob_up
                 else:
@@ -655,6 +667,9 @@ class XGBoostModel:
                     metadata={
                         "prob_up": round(prob_up, 4),
                         "prob_down": round(prob_down, 4),
+                        "prob_spread": round(_prob_spread, 4),
+                        "hold_zone": direction == "HOLD",
+                        "hold_threshold": _HOLD_ZONE_THRESHOLD,
                         "feature_quality": round(feature_quality, 3),
                         "real_features": real_features,
                         "total_features": total_features,

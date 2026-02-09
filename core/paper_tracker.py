@@ -266,6 +266,31 @@ class PaperTracker:
         Supports both PostgreSQL (production) and SQLite (local).
         """
         # =====================================================================
+        # EDGE SYMBOL WHITELIST (Feb 9, 2026): Only trade proven symbols
+        # 30-day data: 24 edge symbols = 74.7% WR, 76 non-edge = 21.5% WR
+        # Catches ALL callers: run_prediction, ghost_notifications, cascade
+        # =====================================================================
+        _edge_whitelist_enabled = os.environ.get("EDGE_WHITELIST_ENABLED", "1") == "1"
+        if _edge_whitelist_enabled:
+            _edge_csv = os.environ.get("EDGE_SYMBOLS",
+                "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+                "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+            )
+            _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
+            if symbol.upper() not in _edge_set:
+                LOGGER.info(
+                    f"[{symbol}] 🚫 EDGE WHITELIST (centralized): Not in {len(_edge_set)} proven symbols — blocking paper trade"
+                )
+                return None
+        
+        # =====================================================================
+        # HOLD ZONE: Don't log paper trades for HOLD signals
+        # =====================================================================
+        if signal_direction and signal_direction.upper() == "HOLD":
+            LOGGER.info(f"[{symbol}] 🛑 HOLD ZONE (centralized): Model has no conviction — skipping paper trade")
+            return None
+        
+        # =====================================================================
         # TRADING CONTROLS: Check blacklist/whitelist BEFORE logging trade
         # This prevents paper trades on assets with 0% historical win rate
         # =====================================================================

@@ -91,6 +91,20 @@ async def _run_all_predictions_async():
     # Top 15 focuses on highest-liquidity, best-data stocks where model has real edge
     TOP_STOCK_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "15"))
     stock_symbols_to_process = HUNTER_STOCK_SYMBOLS[:TOP_STOCK_ASYNC_LIMIT]
+    
+    # EDGE FILTER (Feb 9, 2026): Only predict symbols with proven edge
+    # 30-day analysis: 24 edge symbols = 74.7% WR vs 76 non-edge = 21.5% WR
+    # No point wasting compute on symbols the model can't predict
+    _EDGE_FILTER_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+    _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS",
+        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+    )
+    _EDGE_SET = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
+    
+    if _EDGE_FILTER_ENABLED:
+        stock_symbols_to_process = [s for s in stock_symbols_to_process if s.upper() in _EDGE_SET]
+    
     stock_count = len(stock_symbols_to_process)
     should_process_stocks = is_market_open or FORCE_STOCK_PREDICTIONS
     
@@ -148,6 +162,11 @@ async def _run_all_predictions_async():
     # Previous limit of 25 produced massive losses
     TOP_CRYPTO_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "10"))
     crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_ASYNC_LIMIT]
+    
+    # EDGE FILTER: Same as stocks — only predict proven symbols
+    if _EDGE_FILTER_ENABLED:
+        crypto_symbols_to_process = [s for s in crypto_symbols_to_process if s.upper() in _EDGE_SET]
+    
     crypto_count = len(crypto_symbols_to_process)
     if LOGGER:
         LOGGER.info(f"[AUTO-PREDICT] ASYNC: Processing {crypto_count}/{len(HUNTER_CRYPTO_SYMBOLS)} top crypto symbols")
