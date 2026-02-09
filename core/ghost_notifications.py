@@ -1638,6 +1638,10 @@ class GhostNotificationSystem:
         """
         Get top 5 crypto and top 5 stocks from latest predictions.
         
+        EDGE WHITELIST (Feb 9, 2026):
+        - Only recommends symbols with proven edge (24 symbols, 74.6% combined WR)
+        - Previously recommended ETH, XRP, LINK etc. which had 20-40% WR
+        
         LEARNING INTEGRATION:
         - Excludes symbols with <40% accuracy (after 10+ predictions)
         - Boosts confidence by 15% for symbols with >70% accuracy
@@ -1654,6 +1658,20 @@ class GhostNotificationSystem:
             (stocks_list, crypto_list) - each sorted by confidence
         """
         from core.asset_classifier import get_asset_type, AssetClassifier
+        
+        # EDGE WHITELIST (Feb 9, 2026): Only recommend proven edge symbols
+        _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+        _edge_csv = os.getenv("EDGE_SYMBOLS",
+            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+        )
+        _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
+        
+        if _edge_enabled:
+            filtered_predictions = {sym: pred for sym, pred in latest_predictions.items() if sym.upper() in _edge_set}
+            blocked_count = len(latest_predictions) - len(filtered_predictions)
+            LOGGER.info(f"[TOP10] 🎯 EDGE WHITELIST: {len(filtered_predictions)} edge symbols kept, {blocked_count} non-edge blocked")
+            latest_predictions = filtered_predictions
         
         # FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
         inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"

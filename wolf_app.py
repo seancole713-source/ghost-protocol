@@ -5257,72 +5257,45 @@ async def _post_startup_init():
                         if current_hour == TOP_10_HOUR and last_top10_date != current_date:
                             LOGGER.info(f"[NOTIFICATIONS] 🌅 8 AM WINDOW - Sending morning TOP 10 ({now_central.strftime('%H:%M:%S')} Central)...")
                             
-                            # CRITICAL FIX (Jan 22, 2026): Scan V2 WHITELISTED stocks FIRST!
-                            # Previously only scanned first 50 of HUNTER_STOCK_SYMBOLS
-                            # This missed all whitelisted stocks (IQ, ABCL, CVNA, etc.)
+                            # EDGE WHITELIST (Feb 9, 2026): Only scan edge symbols for TOP 10
+                            # Previously scanned V2 whitelist + random HUNTER stocks → recommended ETH, XRP, LINK (all losers)
+                            # Now only scans the 24 proven edge symbols (81.4% stock WR, 73% crypto WR)
                             try:
                                 stock_count = 0
-                                
-                                # Step 1: Scan ALL V2 whitelisted stocks FIRST (priority)
-                                from core.v2_quality import get_quality_system
-                                from core.asset_classifier import get_asset_type
-                                v2_system = get_quality_system()
-                                v2_whitelist = v2_system._whitelist or set()
-                                
-                                # Extract stock symbols from whitelist
-                                whitelist_stocks = [s for s in v2_whitelist if get_asset_type(s) != 'crypto']
-                                LOGGER.info(f"[TOP10-PREP] Scanning {len(whitelist_stocks)} V2 whitelisted stocks: {whitelist_stocks}")
-                                
-                                for stock_symbol in whitelist_stocks:
-                                    try:
-                                        result = run_single_prediction(stock_symbol)
-                                        if result.get("ok"):
-                                            stock_count += 1
-                                            LOGGER.debug(f"[TOP10-PREP] ✅ V2 whitelist: {stock_symbol}")
-                                    except Exception as e:
-                                        LOGGER.debug(f"[TOP10-PREP] V2 whitelist prediction failed for {stock_symbol}: {e}")
-                                
-                                LOGGER.info(f"[TOP10-PREP] Generated {stock_count} predictions from V2 whitelist")
-                                
-                                # Step 2: Fill remaining slots with HUNTER_STOCK_SYMBOLS (up to 50 total)
-                                remaining_slots = max(0, 50 - stock_count)
-                                if remaining_slots > 0:
-                                    additional_count = 0
-                                    for stock_symbol in HUNTER_STOCK_SYMBOLS[:100]:  # Check first 100
-                                        if stock_symbol not in whitelist_stocks:  # Skip already-scanned
-                                            try:
-                                                result = run_single_prediction(stock_symbol)
-                                                if result.get("ok"):
-                                                    additional_count += 1
-                                                    if additional_count >= remaining_slots:
-                                                        break
-                                            except Exception:
-                                                pass
-                                    LOGGER.info(f"[TOP10-PREP] Added {additional_count} additional stocks from HUNTER list")
-                                    stock_count += additional_count
-                                
-                                LOGGER.info(f"[TOP10-PREP] Total: {stock_count} fresh stock predictions for TOP 10")
-                            except Exception as e:
-                                LOGGER.warning(f"[TOP10-PREP] Stock generation error: {e}")
-                            
-                            # Also scan V2 whitelisted CRYPTO (Jan 22, 2026)
-                            try:
                                 crypto_count = 0
-                                whitelist_crypto = [s for s in v2_whitelist if get_asset_type(s) == 'crypto']
-                                LOGGER.info(f"[TOP10-PREP] Scanning {len(whitelist_crypto)} V2 whitelisted crypto: {whitelist_crypto}")
+                                from core.asset_classifier import get_asset_type
                                 
-                                for crypto_symbol in whitelist_crypto:
+                                _TOP10_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+                                _TOP10_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
+                                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+                                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+                                )
+                                _TOP10_EDGE_SET = set(s.strip().upper() for s in _TOP10_EDGE_CSV.split(",") if s.strip())
+                                
+                                if _TOP10_EDGE_ENABLED:
+                                    scan_symbols = list(_TOP10_EDGE_SET)
+                                    LOGGER.info(f"[TOP10-PREP] EDGE WHITELIST: Scanning {len(scan_symbols)} proven edge symbols")
+                                else:
+                                    # Fallback: old behavior
+                                    scan_symbols = HUNTER_STOCK_SYMBOLS[:50] + HUNTER_CRYPTO_SYMBOLS[:25]
+                                    LOGGER.info(f"[TOP10-PREP] Edge whitelist DISABLED — scanning {len(scan_symbols)} symbols")
+                                
+                                for symbol in scan_symbols:
                                     try:
-                                        result = run_single_prediction(crypto_symbol)
+                                        result = run_single_prediction(symbol)
                                         if result.get("ok"):
-                                            crypto_count += 1
-                                            LOGGER.debug(f"[TOP10-PREP] ✅ V2 whitelist crypto: {crypto_symbol}")
+                                            asset_type = get_asset_type(symbol)
+                                            if asset_type == "crypto":
+                                                crypto_count += 1
+                                            else:
+                                                stock_count += 1
+                                            LOGGER.debug(f"[TOP10-PREP] ✅ Edge: {symbol}")
                                     except Exception as e:
-                                        LOGGER.debug(f"[TOP10-PREP] V2 whitelist crypto prediction failed for {crypto_symbol}: {e}")
+                                        LOGGER.debug(f"[TOP10-PREP] Edge prediction failed for {symbol}: {e}")
                                 
-                                LOGGER.info(f"[TOP10-PREP] Generated {crypto_count} predictions from V2 whitelist crypto")
+                                LOGGER.info(f"[TOP10-PREP] Total: {stock_count} stocks + {crypto_count} crypto from edge symbols")
                             except Exception as e:
-                                LOGGER.warning(f"[TOP10-PREP] Crypto generation error: {e}")
+                                LOGGER.warning(f"[TOP10-PREP] Edge scan error: {e}")
                             
                             LOGGER.info(f"[NOTIFICATIONS] Predictions available: {len(_LATEST_PREDICTIONS)} symbols")
                             
