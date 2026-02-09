@@ -1036,6 +1036,7 @@ class PaperTracker:
                     accuracy_by_symbol[row["symbol"]] = {
                         "trades": row["resolved"] or 0,
                         "wins": sym_wins,
+                        "losses": sym_losses,
                         "win_rate": sym_wins / sym_decided
                     }
             
