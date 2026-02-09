@@ -1694,6 +1694,8 @@ DEFAULT_STOCK_SYMBOLS = [
     # High Momentum/Meme/Volatility
     "GME", "AMC", "BBBY", "KOSS", "EXPR", "BB", "NOK", "CLOV", "WISH", "SPCE",
     "SNAP", "PINS", "UBER", "LYFT", "DASH", "RBLX", "U", "ROKU", "SPOT", "SHOP",
+    # Edge Symbols — proven 81.4% WR (added Feb 9, 2026)
+    "BMBL", "XPO", "ITRI",
     # Space & Defense
     "RKLB", "ASTR", "ASTS", "RDW", "LUNR", "MNTS",
     # Biotech Momentum

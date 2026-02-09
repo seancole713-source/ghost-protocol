@@ -85,15 +85,9 @@ async def _run_all_predictions_async():
     # Check market hours for stocks
     is_market_open = _is_market_hours()
     
-    # Run stock predictions (during market hours OR when forced for TOP 10)
-    # QUALITY GUARD: Limit to top 15 stocks — prevents flooding with low-conviction predictions
-    # Previous limit of 50 created ~965 paper trades/day with only 15.6% 7-day win rate
-    # Top 15 focuses on highest-liquidity, best-data stocks where model has real edge
-    TOP_STOCK_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "15"))
-    stock_symbols_to_process = HUNTER_STOCK_SYMBOLS[:TOP_STOCK_ASYNC_LIMIT]
-    
     # EDGE FILTER (Feb 9, 2026): Only predict symbols with proven edge
     # 30-day analysis: 24 edge symbols = 74.7% WR vs 76 non-edge = 21.5% WR
+    # Stock edge: 158W/36L = 81.4% — BEST edge in the system
     # No point wasting compute on symbols the model can't predict
     _EDGE_FILTER_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS",
@@ -102,8 +96,15 @@ async def _run_all_predictions_async():
     )
     _EDGE_SET = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
     
+    # Run stock predictions (during market hours OR when forced for TOP 10)
+    # FIX (Feb 9, 2026): Apply edge filter BEFORE limit cap, not after.
+    # Previously: took first 15 from 200+ list → filtered → got 0 stock edge symbols
+    # Now: filter full list to edge symbols first → then cap → gets all 7 stock edge symbols
+    TOP_STOCK_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "15"))
     if _EDGE_FILTER_ENABLED:
-        stock_symbols_to_process = [s for s in stock_symbols_to_process if s.upper() in _EDGE_SET]
+        stock_symbols_to_process = [s for s in HUNTER_STOCK_SYMBOLS if s.upper() in _EDGE_SET][:TOP_STOCK_ASYNC_LIMIT]
+    else:
+        stock_symbols_to_process = HUNTER_STOCK_SYMBOLS[:TOP_STOCK_ASYNC_LIMIT]
     
     stock_count = len(stock_symbols_to_process)
     should_process_stocks = is_market_open or FORCE_STOCK_PREDICTIONS
@@ -160,12 +161,14 @@ async def _run_all_predictions_async():
     # QUALITY GUARD: Limit to top 10 crypto — most crypto had 0% win rate in last 7 days
     # Only 7 out of 77 crypto symbols had >50% win rate (ICP, NEIRO, YFI, HBAR, ENJ, ILV, EGLD)
     # Previous limit of 25 produced massive losses
-    TOP_CRYPTO_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "10"))
-    crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_ASYNC_LIMIT]
-    
-    # EDGE FILTER: Same as stocks — only predict proven symbols
+    # FIX (Feb 9, 2026): Apply edge filter BEFORE limit cap for crypto too
+    # Previously: took first 10 from 200+ list → filtered → missed edge crypto symbols
+    # Now: filter full list to edge symbols first → then cap
+    TOP_CRYPTO_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "25"))
     if _EDGE_FILTER_ENABLED:
-        crypto_symbols_to_process = [s for s in crypto_symbols_to_process if s.upper() in _EDGE_SET]
+        crypto_symbols_to_process = [s for s in HUNTER_CRYPTO_SYMBOLS if s.upper() in _EDGE_SET][:TOP_CRYPTO_ASYNC_LIMIT]
+    else:
+        crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_ASYNC_LIMIT]
     
     crypto_count = len(crypto_symbols_to_process)
     if LOGGER:
@@ -287,14 +290,25 @@ def _run_all_predictions_sync():
     is_market_open = _is_market_hours()
     
     # Run stock predictions (ONLY during market hours)
-    stock_count = len(HUNTER_STOCK_SYMBOLS)
+    # EDGE FILTER (Feb 9, 2026): Only predict proven edge symbols
+    _SYNC_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+    _SYNC_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
+        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+    )
+    _SYNC_EDGE_SET = set(s.strip().upper() for s in _SYNC_EDGE_CSV.split(",") if s.strip())
+    if _SYNC_EDGE_ENABLED:
+        sync_stock_symbols = [s for s in HUNTER_STOCK_SYMBOLS if s.upper() in _SYNC_EDGE_SET]
+    else:
+        sync_stock_symbols = HUNTER_STOCK_SYMBOLS
+    stock_count = len(sync_stock_symbols)
     if is_market_open:
         if LOGGER:
             LOGGER.info(f"[AUTO-PREDICT] Market OPEN - processing {stock_count} stocks in batches of {BATCH_SIZE}")
         
         # Process stocks in batches
         for i in range(0, stock_count, BATCH_SIZE):
-            batch = HUNTER_STOCK_SYMBOLS[i:i+BATCH_SIZE]
+            batch = sync_stock_symbols[i:i+BATCH_SIZE]
             batch_start = time.time()
             
             for symbol in batch:
@@ -321,9 +335,12 @@ def _run_all_predictions_sync():
             LOGGER.info(f"[AUTO-PREDICT] Market CLOSED - skipping {stock_count} stock predictions")
     
     # Run crypto predictions (24/7 - crypto markets never close)
-    # ULTRA-LIGHT: Top 10 crypto only for Railway free tier
-    TOP_CRYPTO_LIMIT = 10  # BTC, ETH, BNB, SOL, XRP, ADA, DOGE, DOT, MATIC, AVAX
-    crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_LIMIT]
+    # EDGE FILTER (Feb 9, 2026): Only predict proven edge symbols
+    TOP_CRYPTO_LIMIT = 25
+    if _SYNC_EDGE_ENABLED:
+        crypto_symbols_to_process = [s for s in HUNTER_CRYPTO_SYMBOLS if s.upper() in _SYNC_EDGE_SET][:TOP_CRYPTO_LIMIT]
+    else:
+        crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_LIMIT]
     crypto_count = len(crypto_symbols_to_process)
     if LOGGER:
         LOGGER.info(f"[AUTO-PREDICT] ULTRA-LIGHT: Processing {crypto_count}/{len(HUNTER_CRYPTO_SYMBOLS)} top crypto in batches of {BATCH_SIZE}")
