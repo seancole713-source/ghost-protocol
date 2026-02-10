@@ -189,7 +189,7 @@ V3_REMOVED_SYMBOLS = {
     'RNDR': 'No backtest data - removed until validated',
     'IQ': 'No backtest data - removed until validated',
     'ILV': 'No backtest data - removed until validated',
-    'CHZ': 'No backtest data - removed until validated',
+    # CHZ removed from this list Feb 10, 2026 — now in V3_VALIDATED_STRATEGIES + edge whitelist
     'ZEC': 'No backtest data - removed until validated',
     'AAVE': 'No backtest data - removed until validated',
     'BNB': 'No backtest data - removed until validated',
@@ -198,8 +198,9 @@ V3_REMOVED_SYMBOLS = {
 }
 
 # BLACKLIST - Symbols and strategies that consistently LOSE
+# NOTE: YFI removed from blacklist Feb 10, 2026 — it's an edge symbol with proven WR
 V3_BLACKLIST = ['TGTX', 'SOUN', 'ABCL', 'ZIL', 'MANA', 'SAND', 'RLC', '1INCH', 
-                'IMX', 'APT', 'SUSHI', 'YFI', 'LDO', 'ETC']
+                'IMX', 'APT', 'SUSHI', 'LDO', 'ETC']
 
 # RSI strategies consistently underperform (45-46% win rate)
 V3_AVOID_STRATEGIES = ['RSI', 'RSI_extreme']
@@ -1289,11 +1290,9 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         "✅ = News-feed influenced",
         "💰 = Return on $100 position",
         "",
-        "📊 V3 BACKTEST VALIDATED:",
-        "• ETH: 61.5% @ 72h (p=0.027)",
-        "• XRP: 56.5% @ 168h (p=0.026)",  
-        "• LINK: 55.2% @ 72h (p=0.049)",
-        "• CHZ: 57.3% @ 48h (p=0.021)",
+        "📊 EDGE WHITELIST ACTIVE:",
+        "• 24 proven symbols (74.6% combined WR)",
+        "• 7 stocks | 17 crypto",
         "Ghost V3 is watching 👁️"
     ])
     

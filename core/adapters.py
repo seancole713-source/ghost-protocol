@@ -350,6 +350,10 @@ def process_v3_from_cache(
     This is specifically for the wolf_app notification loop which
     uses _LATEST_PREDICTIONS dict (symbol -> prediction).
     
+    EDGE WHITELIST (Feb 10, 2026): Filters to edge symbols BEFORE
+    V3 scoring. Previously this was a backdoor that bypassed the
+    edge filter in get_top10_predictions() — LINK, XRP, ETH leaked through.
+    
     Args:
         latest_predictions: Dict mapping symbol -> prediction dict
         min_confidence: Minimum confidence threshold
@@ -357,5 +361,22 @@ def process_v3_from_cache(
     Returns:
         (stocks, crypto) tuple ready for format_top10_message()
     """
+    import os
+    import logging
+    _logger = logging.getLogger("ghost")
+    
+    # EDGE WHITELIST: Filter predictions to proven edge symbols only
+    _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+    if _edge_enabled:
+        _edge_csv = os.getenv("EDGE_SYMBOLS",
+            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+        )
+        _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
+        filtered = {sym: pred for sym, pred in latest_predictions.items() if sym.upper() in _edge_set}
+        blocked = len(latest_predictions) - len(filtered)
+        _logger.info(f"[V3-CLEAN] 🎯 EDGE WHITELIST: {len(filtered)} edge kept, {blocked} non-edge blocked")
+        latest_predictions = filtered
+    
     raw_list = list(latest_predictions.values())
     return process_v3_predictions(raw_list, min_confidence)

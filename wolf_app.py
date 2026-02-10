@@ -4540,9 +4540,23 @@ async def _on_startup():
                 )
                 warmup_count = 0
                 
+                # EDGE WHITELIST (Feb 10, 2026): Only cache edge symbols on startup
+                # Previously loaded 50 random predictions → polluted cache with ETH, XRP, LINK
+                _warmup_edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+                _warmup_edge_csv = os.getenv("EDGE_SYMBOLS",
+                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+                )
+                _warmup_edge_set = set(s.strip().upper() for s in _warmup_edge_csv.split(",") if s.strip())
+                
                 # Populate cache with most recent prediction per symbol
+                warmup_blocked = 0
                 for pred in recent_preds:
                     symbol = pred.get("symbol")
+                    # Skip non-edge symbols during warmup
+                    if _warmup_edge_enabled and symbol and symbol.upper() not in _warmup_edge_set:
+                        warmup_blocked += 1
+                        continue
                     if symbol and symbol not in _LATEST_PREDICTIONS:
                         _LATEST_PREDICTIONS[symbol] = {
                             "prediction_id": pred.get("id"),
@@ -4557,7 +4571,7 @@ async def _on_startup():
                         }
                         warmup_count += 1
                 
-                LOGGER.info(f"[GHOST STARTUP] ✅ Cache warmed with {warmup_count} predictions")
+                LOGGER.info(f"[GHOST STARTUP] ✅ Cache warmed with {warmup_count} edge predictions ({warmup_blocked} non-edge blocked)")
             except asyncio.TimeoutError:
                 LOGGER.warning("[GHOST STARTUP] Cache warmup timeout (2s) - endpoints will use DB fallback")
             except Exception as e:
