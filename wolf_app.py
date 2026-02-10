@@ -4643,26 +4643,26 @@ async def _on_startup():
             """Trigger stock + crypto predictions 60s after startup to ensure TOP 10 is ready"""
             await asyncio.sleep(60)  # Wait for app to fully initialize
             
-            # CRITICAL FIX (Jan 22, 2026): Use V2 whitelist for startup predictions!
-            # Previously used hardcoded lists that didn't include whitelisted symbols
-            from core.v2_quality import get_quality_system
+            # CRITICAL FIX (Feb 10, 2025): Use EDGE_SYMBOLS for startup predictions!
+            # V2 whitelist includes non-edge symbols (AAPL, MSFT, etc.) that leak into _LATEST_PREDICTIONS
             from core.asset_classifier import get_asset_type
             
-            v2_system = get_quality_system()
-            v2_whitelist = v2_system._whitelist or set()
+            edge_raw = _os_module.getenv("EDGE_SYMBOLS", "")
+            edge_enabled = _os_module.getenv("EDGE_WHITELIST_ENABLED", "0") == "1"
             
-            # Extract stocks and crypto from V2 whitelist
-            WHITELIST_STOCKS = [s for s in v2_whitelist if get_asset_type(s) != 'crypto']
-            WHITELIST_CRYPTO = [s for s in v2_whitelist if get_asset_type(s) == 'crypto']
+            if edge_enabled and edge_raw:
+                edge_set = {s.strip().upper() for s in edge_raw.split(",") if s.strip()}
+                EDGE_STOCKS = [s for s in edge_set if get_asset_type(s) != 'crypto']
+                EDGE_CRYPTO = [s for s in edge_set if get_asset_type(s) == 'crypto']
+            else:
+                # Fallback: hardcode the 24 edge symbols
+                EDGE_STOCKS = ["T", "GME", "HOOD", "BMBL", "XPO", "COIN", "ITRI"]
+                EDGE_CRYPTO = ["TURBO", "RNDR", "ENJ", "JUP", "BAND", "IQ", "HBAR", "PEPE", "IOTX", "GIGA", "ILV", "BCH", "CHZ", "ALICE", "YFI", "ICP", "BRETT"]
             
-            # Fallback defaults if whitelist is empty
-            DEFAULT_STOCKS = ["AAPL", "MSFT", "NVDA", "TSLA", "GOOGL", "META", "AMD", "AMZN", "JPM", "GS"]
-            DEFAULT_CRYPTO = ["BTC", "ETH", "SOL", "ADA", "XRP", "BNB", "LINK", "AVAX", "ATOM", "LTC"]
+            TOP_STOCKS = EDGE_STOCKS[:5]  # Max 5 for startup
+            TOP_CRYPTO = EDGE_CRYPTO[:5]  # Max 5 for startup
             
-            TOP_STOCKS = (WHITELIST_STOCKS if WHITELIST_STOCKS else DEFAULT_STOCKS)[:5]  # Max 5 for startup
-            TOP_CRYPTO = (WHITELIST_CRYPTO if WHITELIST_CRYPTO else DEFAULT_CRYPTO)[:5]  # Max 5 for startup
-            
-            LOGGER.info(f"[STARTUP PREDS] V2 whitelist: {len(WHITELIST_STOCKS)} stocks, {len(WHITELIST_CRYPTO)} crypto")
+            LOGGER.info(f"[STARTUP PREDS] Edge symbols: {len(EDGE_STOCKS)} stocks, {len(EDGE_CRYPTO)} crypto")
             LOGGER.info(f"[STARTUP PREDS] Triggering predictions for {len(TOP_STOCKS)} stocks + {len(TOP_CRYPTO)} crypto...")
             
             import httpx
