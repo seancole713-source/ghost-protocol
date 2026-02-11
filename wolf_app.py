@@ -27363,13 +27363,20 @@ async def top10_preview():
     Preview the TOP 10 message that would be sent.
     
     Shows the EXACT message content and individual pick directions.
-    This helps debug whether directions are correct.
+    Uses the SAME V3 clean architecture pipeline as send_top10().
     """
     try:
         from core.ghost_notifications import get_notification_system, format_top10_message
+        from core.adapters import process_v3_from_cache
         
         notif = get_notification_system()
-        stocks, crypto = notif.get_top10_predictions(_LATEST_PREDICTIONS)
+        
+        # Use V3 clean path (same as send_top10) with legacy fallback
+        try:
+            stocks, crypto = process_v3_from_cache(_LATEST_PREDICTIONS)
+        except Exception as e:
+            LOGGER.warning(f"[TOP10-PREVIEW] V3 clean failed, falling back to legacy: {e}")
+            stocks, crypto = notif.get_top10_predictions(_LATEST_PREDICTIONS)
         
         # Build direction debug info
         stocks_debug = [

@@ -135,6 +135,8 @@ CRYPTO_SYMBOLS: FrozenSet[str] = frozenset([
     'RENDER', 'GRT', 'SNX', 'COMP', '1INCH', 'SAND', 'MANA', 'AXS', 'ENJ',
     'VET', 'ALGO', 'NEAR', 'SUSHI', 'YFI', 'LDO', 'ETC', 'IMX', 'HBAR',
     'RLC', 'FIL', 'ICP', 'EGLD', 'XLM', 'XMR', 'IOTA', 'NEO', 'WAVES',
+    # Edge whitelist crypto (added Feb 11, 2026)
+    'JUP', 'BAND', 'IQ', 'IOTX', 'GIGA', 'BCH', 'ALICE', 'BRETT',
 ])
 
 
