@@ -43,6 +43,24 @@ MIN_SANE_PRICES = {
     'ALGO': 0.05,    # ALGO should never be below $0.05
     'BCH': 50,       # BCH should never be below $50
     'ANKR': 0.001,   # ANKR is a low-price coin ~$0.006
+    # Edge whitelist symbols (Feb 11, 2026)
+    # JUP: Coinbase returns WRONG coin ($0.0004 vs real $0.14) — this catches it
+    'JUP': 0.01,     # Jupiter Exchange ~$0.14 (never below $0.01)
+    'RNDR': 0.30,    # Render Token ~$1.28 (never below $0.30)
+    'ENJ': 0.005,    # Enjin Coin ~$0.02 
+    'CHZ': 0.005,    # Chiliz ~$0.04
+    'ILV': 1.0,      # Illuvium ~$3.77
+    'YFI': 500,      # Yearn Finance ~$3000 (never below $500)
+    'ICP': 0.50,     # Internet Computer ~$2.34
+    'HBAR': 0.01,    # Hedera ~$0.09
+    'BAND': 0.05,    # Band Protocol ~$0.23
+    'ALICE': 0.02,   # My Neighbor Alice ~$0.11
+    'IOTX': 0.001,   # IoTeX ~$0.007
+    'TURBO': 0.0001, # Turbo ~$0.001 (micro-cap meme)
+    'GIGA': 0.0001,  # GIGACHAD ~$0.002 (micro-cap meme)
+    'BRETT': 0.001,  # Brett ~$0.007 (meme)
+    'PEPE': 0.0000001, # PEPE ~$0.000001 (micro price)
+    'IQ': 0.0005,    # IQ/Everipedia ~$0.002
 }
 
 MAX_SANE_PRICES = {
@@ -735,6 +753,11 @@ class CoinbaseProvider:
 
     BASE_URL = "https://api.coinbase.com/v2"
 
+    # Symbols where Coinbase returns a DIFFERENT coin than intended
+    # JUP: Returns JUP ($0.0004) instead of Jupiter Exchange ($0.14)
+    # Verified Feb 11, 2026 — Coinbase JUP-USD is NOT Jupiter (Solana)
+    SKIP_SYMBOLS = {"JUP"}
+
     def __init__(self):
         # Circuit breaker state
         self.circuit_open = False
@@ -747,6 +770,11 @@ class CoinbaseProvider:
 
         Note: Coinbase provides less 24h data than CoinGecko/Binance
         """
+        # Skip symbols where Coinbase returns the wrong coin
+        if symbol.upper() in self.SKIP_SYMBOLS:
+            LOGGER.debug(f"Coinbase SKIP: {symbol} is in SKIP_SYMBOLS (wrong coin on Coinbase)")
+            return None
+
         # Check circuit breaker
         if self.circuit_open:
             if time.time() < self.circuit_open_until:
