@@ -27326,6 +27326,37 @@ async def learning_symbol_accuracy(symbol: str):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.post("/debug/force-send-top10")
+async def force_send_top10():
+    """
+    FORCE SEND TOP 10 via the real pipeline (bypasses date check).
+    Uses _LATEST_PREDICTIONS → V3 clean → Telegram.
+    For testing V3 pipeline changes immediately.
+    """
+    try:
+        from core.ghost_notifications import get_notification_system, format_top10_message
+        from core.adapters import process_v3_from_cache
+        import traceback
+
+        notif = get_notification_system()
+
+        # Reset the date guard so send_top10 doesn't skip
+        notif._last_top10_date = ""
+
+        # Call the real send_top10 pipeline
+        success = notif.send_top10(_LATEST_PREDICTIONS)
+
+        return {
+            "ok": success,
+            "predictions_count": len(_LATEST_PREDICTIONS),
+            "message": "TOP 10 sent via real pipeline" if success else "send_top10 returned False",
+            "last_top10_date": notif._last_top10_date,
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/top10-preview")
 async def top10_preview():
     """
