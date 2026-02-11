@@ -27364,11 +27364,48 @@ async def force_send_top10():
         
         # Pre-check: run V3 pipeline ourselves to get diagnostic data
         try:
-            from core.adapters import process_v3_from_cache as _pv3
+            from core.adapters import process_v3_from_cache as _pv3, batch_convert
+            
+            # Step 1: Check edge filter
+            import os as _os
+            _edge_csv = _os.getenv("EDGE_SYMBOLS",
+                "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+                "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+            )
+            _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
+            edge_preds = {sym: p for sym, p in _LATEST_PREDICTIONS.items() if sym.upper() in _edge_set}
+            
+            # Step 2: Check batch_convert
+            converted = batch_convert(list(edge_preds.values()))
+            
+            # Step 3: Run full pipeline
             pre_stocks, pre_crypto = _pv3(_LATEST_PREDICTIONS)
-            pre_info = {"stocks": len(pre_stocks), "crypto": len(pre_crypto)}
+            
+            # Sample prediction for debugging
+            sample = None
+            if edge_preds:
+                first_sym = list(edge_preds.keys())[0]
+                first_pred = edge_preds[first_sym]
+                sample = {
+                    "symbol": first_pred.get("symbol"),
+                    "direction": first_pred.get("direction"),
+                    "confidence": first_pred.get("confidence"),
+                    "current_price": first_pred.get("current_price") or first_pred.get("price_current"),
+                    "ok": first_pred.get("ok"),
+                }
+            
+            pre_info = {
+                "total_predictions": len(_LATEST_PREDICTIONS),
+                "edge_filtered": len(edge_preds),
+                "edge_symbols": sorted(list(edge_preds.keys()))[:10],
+                "batch_converted": len(converted),
+                "stocks": len(pre_stocks),
+                "crypto": len(pre_crypto),
+                "sample_prediction": sample,
+            }
         except Exception as pe:
-            pre_info = {"error": str(pe)}
+            import traceback
+            pre_info = {"error": str(pe), "trace": traceback.format_exc()[-500:]}
         
         success = notif.send_top10(_LATEST_PREDICTIONS)
 
