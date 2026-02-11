@@ -41,12 +41,7 @@ ALL_STOCKS = [
     
     # Semiconductors
     "AVGO", "QCOM", "TXN", "MU", "LRCX", "AMAT", "KLAC", "MRVL",
-    "ON", "NXPI", "ADI", "MCHP",
-    
-    # Cloud & Software
-    "SNOW", "DDOG", "NET", "ZS", "CRWD", "PANW", "FTNT",
-    "NOW", "WDAY", "HUBS", "TTD", "U", "RBLX",
-    
+    "ON", "NXPI", "ADI", "MCHP"    
     # AI & Innovation
     "PLTR", "AI", "PATH", "UPST", "COIN", "HOOD", "SOFI",
     
@@ -554,7 +549,12 @@ class GhostScout:
             "MANA": "decentraland", "GALA": "gala", "ILV": "illuvium",
             "GRT": "the-graph", "FIL": "filecoin", "AR": "arweave",
             "STACKS": "blockstack", "TIA": "celestia", "CHZ": "chiliz",  # STACKS not STX (avoid collision)
-            "EGLD": "elrond-erd-2", "ZEC": "zcash", "RLC": "iexec-rlc"
+            "EGLD": "elrond-erd-2", "ZEC": "zcash", "RLC": "iexec-rlc",
+            # Edge whitelist symbols (Feb 11, 2026)
+            "GIGA": "gigachad", "IOTX": "iotex", "ALICE": "my-neighbor-alice",
+            "JUP": "jupiter-exchange-solana", "IQ": "everipedia",
+            "BAND": "band-protocol", "BRETT": "brett", "ICP": "internet-computer",
+            "BCH": "bitcoin-cash", "YFI": "yearn-finance", "HBAR": "hedera-hashgraph"
         }
         
         cg_id = symbol_to_id.get(symbol.upper())
@@ -699,8 +699,14 @@ class GhostScout:
             elif asset_type == "crypto":
                 # CoinGecko historical
                 symbol_to_id = {
-                    "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana"
-                    # Add more mappings as needed
+                    "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
+                    "GIGA": "gigachad", "IOTX": "iotex", "ALICE": "my-neighbor-alice",
+                    "JUP": "jupiter-exchange-solana", "IQ": "everipedia",
+                    "BAND": "band-protocol", "BRETT": "brett", "ICP": "internet-computer",
+                    "RNDR": "render-token", "TURBO": "turbo", "ENJ": "enjincoin",
+                    "CHZ": "chiliz", "ILV": "illuvium", "BCH": "bitcoin-cash",
+                    "YFI": "yearn-finance", "HBAR": "hedera-hashgraph",
+                    "PEPE": "pepe", "LINK": "chainlink", "AVAX": "avalanche-2",
                 }
                 cg_id = symbol_to_id.get(symbol.upper(), symbol.lower())
                 

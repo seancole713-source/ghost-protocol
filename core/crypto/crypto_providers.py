@@ -256,6 +256,12 @@ class CoinGeckoProvider:
         # Gaming/Metaverse tokens (Jan 29, 2026)
         "ILV": "illuvium",
         "STACKS": "blockstack",  # Stacks blockchain (renamed from STX to avoid collision)
+        # Edge whitelist symbols (Feb 11, 2026) — were causing $0.00 prices
+        "GIGA": "gigachad",
+        "IOTX": "iotex",
+        "ALICE": "my-neighbor-alice",
+        "JUP": "jupiter-exchange-solana",
+        "IQ": "everipedia",
     }
     
     # SINGLETON: Preserve rate limit and circuit breaker state across calls

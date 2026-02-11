@@ -284,6 +284,20 @@ class PaperTracker:
                 return None
         
         # =====================================================================
+        # PRICE SANITY: Reject $0.00 or near-zero entry prices (Feb 11, 2026)
+        # GIGA was logging paper trades at $0.00 — corrupts P&L tracking
+        # =====================================================================
+        if entry_price is None or entry_price <= 0:
+            LOGGER.warning(f"[{symbol}] 🚫 PRICE SANITY (centralized): entry_price is {entry_price} — blocking paper trade")
+            return None
+        if entry_price < 0.00001:
+            LOGGER.warning(f"[{symbol}] 🚫 PRICE SANITY (centralized): entry_price ${entry_price} suspiciously low — blocking paper trade")
+            return None
+        if entry_price > 1_000_000:
+            LOGGER.warning(f"[{symbol}] 🚫 PRICE SANITY (centralized): entry_price ${entry_price:,.2f} suspiciously high — blocking paper trade")
+            return None
+
+        # =====================================================================
         # HOLD ZONE: Don't log paper trades for HOLD signals
         # =====================================================================
         if signal_direction and signal_direction.upper() == "HOLD":

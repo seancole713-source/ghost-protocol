@@ -410,6 +410,14 @@ try:
                     "XRP": "ripple",
                     "ADA": "cardano",
                     "BNB": "binancecoin",
+                    # Edge whitelist symbols (Feb 11, 2026)
+                    "GIGA": "gigachad", "IOTX": "iotex", "ALICE": "my-neighbor-alice",
+                    "JUP": "jupiter-exchange-solana", "IQ": "everipedia",
+                    "BAND": "band-protocol", "BRETT": "brett", "ICP": "internet-computer",
+                    "RNDR": "render-token", "TURBO": "turbo", "ENJ": "enjincoin",
+                    "CHZ": "chiliz", "ILV": "illuvium", "BCH": "bitcoin-cash",
+                    "YFI": "yearn-finance", "HBAR": "hedera-hashgraph",
+                    "LINK": "chainlink", "AVAX": "avalanche-2",
                 }
                 gecko_id = symbol_map.get(sym, (symbol or "").strip().lower())
 
@@ -28877,6 +28885,12 @@ async def reconcile_predictions_now(request: Request):
                 
                 if entry_price is None or entry_price <= 0:
                     entry_price = current_price  # Fallback
+                
+                # Guard: if entry_price is still 0 after fallback, skip this trade
+                if not entry_price or entry_price <= 0:
+                    LOGGER.warning(f"[RECONCILE] 🚫 {symbol}: entry_price is ${entry_price} after fallback — skipping")
+                    failed += 1
+                    continue
                 
                 # Determine actual movement
                 price_change_pct = ((current_price - entry_price) / entry_price) * 100
