@@ -17,7 +17,11 @@ from datetime import datetime
 
 logger = logging.getLogger("ghost")
 
-from config.settings import settings
+# Inline constants (avoids config/settings.py → pydantic_settings import chain)
+_V3_MIN_CONFIDENCE = float(os.getenv("V3_MIN_CONFIDENCE", "0.70"))
+_DEFAULT_TARGET_PCT = 0.066  # 6.6%
+_DEFAULT_STOP_PCT = 0.033    # 3.3%
+
 from config.symbols import (
     V3_VALIDATED_STRATEGIES, 
     V3_REMOVED_SYMBOLS,
@@ -52,7 +56,7 @@ class V3Filter:
         Args:
             min_confidence: Minimum confidence threshold (default from settings)
         """
-        self.min_confidence = min_confidence or settings.V3_MIN_CONFIDENCE
+        self.min_confidence = min_confidence or _V3_MIN_CONFIDENCE
         self._stats = {
             'total_processed': 0,
             'passed': 0,
@@ -279,8 +283,8 @@ class V3Filter:
         Returns:
             Tuple of (target_price, stop_loss)
         """
-        target_price = current_price * (1 + settings.DEFAULT_TARGET_PCT)
-        stop_loss = current_price * (1 - settings.DEFAULT_STOP_PCT)
+        target_price = current_price * (1 + _DEFAULT_TARGET_PCT)
+        stop_loss = current_price * (1 - _DEFAULT_STOP_PCT)
         return target_price, stop_loss
 
     def _process_edge(self, pred: Prediction) -> FilterResult:
