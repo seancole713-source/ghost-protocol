@@ -27361,13 +27361,23 @@ async def force_send_top10():
 
         # Call the real send_top10 pipeline
         has_tg = bool(notif.send_telegram)
+        
+        # Pre-check: run V3 pipeline ourselves to get diagnostic data
+        try:
+            from core.adapters import process_v3_from_cache as _pv3
+            pre_stocks, pre_crypto = _pv3(_LATEST_PREDICTIONS)
+            pre_info = {"stocks": len(pre_stocks), "crypto": len(pre_crypto)}
+        except Exception as pe:
+            pre_info = {"error": str(pe)}
+        
         success = notif.send_top10(_LATEST_PREDICTIONS)
 
         return {
             "ok": success,
             "predictions_count": len(_LATEST_PREDICTIONS),
             "telegram_func_set": has_tg,
-            "message": "TOP 10 sent via real pipeline" if success else "send_top10 returned False",
+            "v3_pre_check": pre_info,
+            "message": "TOP 10 sent via real pipeline" if success else "send_top10 returned False — check deploy logs",
             "last_top10_date": notif._last_top10_date,
         }
     except Exception as e:
