@@ -90,15 +90,12 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
 # REMOVED SYMBOLS
 # These symbols were analyzed but did NOT show statistical significance
 # =============================================================================
+# NOTE: Edge whitelist symbols removed Feb 11, 2026
+# TURBO, RNDR, IQ, ILV, CHZ have proven paper trade performance
 V3_REMOVED_SYMBOLS: Dict[str, str] = {
     'SOL': 'Inverse 50.2% over 4962 trades - not significant',
     'BTC': 'Inverse 52% over large sample - not significant',
     'AVAX': 'Inverse 50.2% over 4988 trades - not significant',
-    'TURBO': 'Inverse 46.5% over 6064 trades - consistently loses',
-    'RNDR': 'Inverse 49.3% over 2600 trades - not significant',
-    'IQ': 'Inverse 47.8% over 2102 trades - consistently loses',
-    'ILV': 'RSI 45.9% over 1853 trades - consistently loses',
-    'CHZ': 'Inverse 50.8% over 3201 trades - not significant',
     'ZEC': 'Inverse 50.1% over 3006 trades - not significant',
     'AAVE': 'Inverse 49.8% over 2844 trades - not significant',
     'BNB': 'Inverse 49.5% over 4200 trades - not significant',
@@ -111,10 +108,11 @@ V3_REMOVED_SYMBOLS: Dict[str, str] = {
 # BLACKLISTED SYMBOLS
 # Never trade these regardless of predictions
 # =============================================================================
+# NOTE: YFI and HBAR removed Feb 11, 2026 — they are edge whitelist symbols
 V3_BLACKLIST: FrozenSet[str] = frozenset([
     'TGTX', 'SOUN', 'ABCL', '1INCH', 'SAND', 'MANA', 'DOT', 'SHIB', 'FIL',
-    'VET', 'ALGO', 'ARB', 'NEAR', 'SUSHI', 'YFI', 'LDO', 'ETC', 'IMX',
-    'APT', 'SUI', 'HBAR', 'RLC',
+    'VET', 'ALGO', 'ARB', 'NEAR', 'SUSHI', 'LDO', 'ETC', 'IMX',
+    'APT', 'SUI', 'RLC',
 ])
 
 

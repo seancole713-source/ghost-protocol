@@ -1,13 +1,15 @@
 """
 V3 Filter: Scores and filters predictions using validated strategies.
 
-Only passes predictions that:
-1. Are in V3_VALIDATED_STRATEGIES (ETH, XRP, LINK)
-2. Meet minimum confidence threshold (70%)
-3. For inverse strategies: Ghost predicted the trigger direction (DOWN)
+Passes predictions that:
+1. Are in V3_VALIDATED_STRATEGIES (ETH, XRP, LINK) — full V3 scoring, OR
+2. Are in the EDGE WHITELIST — scored at 0.55 × confidence (proven paper trade performance)
+3. Meet minimum confidence threshold
+4. For inverse strategies: Ghost predicted the trigger direction (DOWN)
 
-Based on 52,433 trade backtest analysis.
+Based on 52,433 trade backtest analysis + edge whitelist paper trade validation.
 """
+import os
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from datetime import datetime
@@ -23,6 +25,14 @@ from config.symbols import (
     is_removed,
 )
 from core.models import Prediction, ScoredPrediction, Direction, FilterResult
+
+# Edge whitelist: symbols with proven paper trade performance
+# These bypass V3_VALIDATED_STRATEGIES gate and get scored at 0.55 × confidence
+_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
+    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+)
+_EDGE_SET = frozenset(s.strip().upper() for s in _EDGE_CSV.split(",") if s.strip())
 
 
 class V3Filter:
@@ -103,8 +113,8 @@ class V3Filter:
         """Process a single prediction through V3 filter."""
         symbol = pred.symbol.upper()
         
-        # Check blacklist first
-        if is_blacklisted(symbol):
+        # Check blacklist first — edge symbols bypass blacklist
+        if is_blacklisted(symbol) and symbol not in _EDGE_SET:
             self._stats['rejected_blacklisted'] += 1
             return FilterResult(
                 passed=False,
@@ -112,8 +122,8 @@ class V3Filter:
                 reason=f"BLACKLISTED: {symbol} is on the blacklist"
             )
         
-        # Check if in removed symbols
-        if is_removed(symbol):
+        # Check if in removed symbols — edge symbols bypass this check
+        if is_removed(symbol) and symbol not in _EDGE_SET:
             self._stats['rejected_not_validated'] += 1
             reason = V3_REMOVED_SYMBOLS.get(symbol, "Not statistically significant")
             return FilterResult(
@@ -122,8 +132,12 @@ class V3Filter:
                 reason=f"REMOVED: {reason}"
             )
         
-        # Must be in validated strategies
+        # Must be in validated strategies OR edge whitelist
         if symbol not in V3_VALIDATED_STRATEGIES:
+            # EDGE WHITELIST PASSTHROUGH: edge symbols get scored at 0.55 × confidence
+            if symbol in _EDGE_SET:
+                return self._process_edge(pred)
+            
             self._stats['rejected_not_validated'] += 1
             return FilterResult(
                 passed=False,
@@ -266,6 +280,57 @@ class V3Filter:
         target_price = current_price * (1 + settings.DEFAULT_TARGET_PCT)
         stop_loss = current_price * (1 - settings.DEFAULT_STOP_PCT)
         return target_price, stop_loss
+
+    def _process_edge(self, pred: Prediction) -> FilterResult:
+        """
+        Process edge whitelist symbol (not in V3_VALIDATED_STRATEGIES).
+        
+        Edge symbols have proven paper trade performance but no V3 backtest
+        validation. They get scored at 0.55 × confidence (conservative).
+        """
+        symbol = pred.symbol.upper()
+        
+        # Minimum confidence check (use lower threshold for edge: 0.50)
+        if pred.confidence < 0.50:
+            self._stats['rejected_low_confidence'] += 1
+            return FilterResult(
+                passed=False,
+                symbol=symbol,
+                reason=f"LOW_CONFIDENCE: {pred.confidence:.0%} < 50% (edge threshold)"
+            )
+        
+        # Edge symbols scored at 0.55 × confidence (conservative)
+        score = 0.55 * pred.confidence
+        
+        logger.info(
+            f"[V3] 🎯 EDGE {symbol}: {pred.direction} "
+            f"(edge_whitelist, conf={pred.confidence:.0%}, score={score:.3f})"
+        )
+        
+        scored_pred = ScoredPrediction(
+            symbol=symbol,
+            direction=pred.direction,
+            confidence=pred.confidence,
+            current_price=pred.current_price,
+            target_price=pred.target_price,
+            stop_loss=pred.stop_loss,
+            hold_hours=48,  # Default 48h hold for edge symbols
+            timestamp=pred.timestamp,
+            strategy='edge_whitelist',
+            original_direction=pred.direction,
+            is_inverse=False,
+            backtest_win_rate=0.55,  # Conservative estimate
+            score=score,
+            news_influenced=pred.news_influenced,
+            asset_type=pred.asset_type,
+        )
+        
+        return FilterResult(
+            passed=True,
+            symbol=symbol,
+            reason=f"PASSED: edge_whitelist",
+            prediction=scored_pred,
+        )
 
 
 # Singleton instance for convenience
