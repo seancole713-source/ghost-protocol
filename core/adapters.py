@@ -85,8 +85,9 @@ def production_to_prediction(raw: Dict[str, Any]) -> Optional[Prediction]:
     Returns:
         Prediction object, or None if conversion fails (e.g., HOLD direction)
     """
-    # Skip failed predictions
-    if not raw.get('ok', True):
+    # Skip explicitly failed predictions (ok=False)
+    # Note: _LATEST_PREDICTIONS format doesn't always have 'ok' field
+    if raw.get('ok') is False:
         return None
     
     # Skip HOLD/ERROR directions
@@ -107,7 +108,10 @@ def production_to_prediction(raw: Dict[str, Any]) -> Optional[Prediction]:
     if confidence <= 0:
         return None
     
-    current_price = _safe_float(raw.get('current_price') or raw.get('price_current'))
+    current_price = _safe_float(
+        raw.get('current_price') or raw.get('price_current') or 
+        raw.get('price_at_prediction') or raw.get('price')
+    )
     target_price = _safe_float(raw.get('target_price') or raw.get('price_pred_mid'))
     stop_loss = _safe_float(raw.get('stop_loss'))
     
