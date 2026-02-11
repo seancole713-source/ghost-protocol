@@ -181,14 +181,12 @@ V3_WHITELIST_CRYPTO = ['ETH', 'XRP', 'LINK', 'CHZ']
 
 # REMOVED FROM V3 - Not validated by 52K trade backtest
 # These showed "100%" on small samples but ~50% on large samples
+# NOTE: Edge whitelist symbols removed from this list Feb 11, 2026
+# Edge symbols have proven paper trade performance and should NOT be blocked
 V3_REMOVED_SYMBOLS = {
     'SOL': 'Inverse 50.2% over 4962 trades - not significant',
     'BTC': 'Inverse 52% over large sample - not significant', 
     'AVAX': 'Inverse 48% - actually loses, bearish bias only',
-    'TURBO': 'No backtest data - removed until validated',
-    'RNDR': 'No backtest data - removed until validated',
-    'IQ': 'No backtest data - removed until validated',
-    'ILV': 'No backtest data - removed until validated',
     # CHZ removed from this list Feb 10, 2026 — now in V3_VALIDATED_STRATEGIES + edge whitelist
     'ZEC': 'No backtest data - removed until validated',
     'AAVE': 'No backtest data - removed until validated',
@@ -309,6 +307,15 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
     skipped_removed = 0
     skipped_low_conf = 0
     inversed_count = 0
+    edge_passthrough = 0
+    
+    # Load edge whitelist so edge symbols bypass V3_REMOVED_SYMBOLS blocking
+    _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+    _edge_csv = os.getenv("EDGE_SYMBOLS",
+        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+    )
+    _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip()) if _edge_enabled else set()
     
     for pred in predictions:
         symbol = pred.get('symbol', '').upper()
@@ -319,11 +326,14 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
         if not symbol or not direction:
             continue
         
-        # 1. Skip symbols in removed list (not validated by backtest)
+        # 1. Skip symbols in removed list (NOT if they're edge whitelist symbols)
         if symbol in V3_REMOVED_SYMBOLS:
-            skipped_removed += 1
-            LOGGER.debug(f"[V3] REMOVED skip: {symbol} - {V3_REMOVED_SYMBOLS[symbol]}")
-            continue
+            if symbol not in _edge_set:
+                skipped_removed += 1
+                LOGGER.debug(f"[V3] REMOVED skip: {symbol} - {V3_REMOVED_SYMBOLS[symbol]}")
+                continue
+            else:
+                LOGGER.info(f"[V3] ✅ EDGE OVERRIDE: {symbol} is in V3_REMOVED but also in edge whitelist — allowing")
         
         # 2. Skip blacklisted symbols
         if symbol in V3_BLACKLIST:
@@ -424,6 +434,36 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
             scored.append(scored_pred)
             continue
         
+        # 5. EDGE WHITELIST PASSTHROUGH (Feb 11, 2026)
+        # Edge symbols have proven paper trade performance (74.6% combined WR)
+        # They don't need V3 backtest validation — their real results speak
+        if symbol in _edge_set:
+            if confidence < V3_MIN_CONFIDENCE:
+                skipped_low_conf += 1
+                LOGGER.debug(f"[V3] Edge symbol {symbol} low conf: {confidence:.0%}")
+                continue
+            
+            # Skip HOLD signals
+            if direction == 'HOLD':
+                continue
+            
+            scored_pred = pred.copy()
+            scored_pred['v3_is_inverse'] = False
+            scored_pred['v3_original_direction'] = None
+            scored_pred['v3_strategy'] = 'edge_whitelist'
+            scored_pred['v3_hold_hours'] = V3_DEFAULT_HOLD_HOURS
+            scored_pred['v3_historical_win_rate'] = 0.55  # Conservative default for edge symbols
+            scored_pred['v3_sample_size'] = 0  # No V3 backtest data
+            scored_pred['v3_validated'] = False  # Not V3 validated, but edge proven
+            scored_pred['v3_is_whitelisted'] = True  # Edge whitelist = whitelisted
+            scored_pred['hold_days'] = V3_DEFAULT_HOLD_HOURS // 24
+            scored_pred['v3_score'] = 0.55 * confidence  # Score using conservative WR × confidence
+            edge_passthrough += 1
+            
+            scored.append(scored_pred)
+            LOGGER.info(f"[V3] 🎯 EDGE PASSTHROUGH: {symbol} {direction} @ {confidence:.0%} (score={scored_pred['v3_score']:.3f})")
+            continue
+        
         # Everything else is filtered out
         LOGGER.debug(f"[V3] Filtered out: {symbol} - not in validated list")
     
@@ -432,7 +472,7 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
     
     LOGGER.info(f"[V3] ✅ Backtest-validated filter: {len(scored)}/{len(predictions)} passed, "
                 f"{skipped_removed} removed/blacklisted, {skipped_low_conf} low confidence, "
-                f"{inversed_count} inversed")
+                f"{inversed_count} inversed, {edge_passthrough} edge passthrough")
     
     # Return top 10
     return scored[:10]
