@@ -27342,21 +27342,31 @@ async def force_send_top10():
 
         # Ensure telegram function is set (may not be if notification loop hasn't started)
         if not notif.send_telegram:
+            tg_token = TELEGRAM_BOT_TOKEN
+            tg_chat = TELEGRAM_CHAT_ID
+            if not tg_token or not tg_chat:
+                return {
+                    "ok": False,
+                    "error": "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set",
+                    "token_set": bool(tg_token),
+                    "chat_set": bool(tg_chat),
+                    "predictions_count": len(_LATEST_PREDICTIONS),
+                }
             def _send_tg(message: str) -> bool:
-                if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-                    return False
-                return _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
+                return _tg_send_chat_message(tg_chat, message)
             notif.set_telegram_func(_send_tg)
 
         # Reset the date guard so send_top10 doesn't skip
         notif._last_top10_date = ""
 
         # Call the real send_top10 pipeline
+        has_tg = bool(notif.send_telegram)
         success = notif.send_top10(_LATEST_PREDICTIONS)
 
         return {
             "ok": success,
             "predictions_count": len(_LATEST_PREDICTIONS),
+            "telegram_func_set": has_tg,
             "message": "TOP 10 sent via real pipeline" if success else "send_top10 returned False",
             "last_top10_date": notif._last_top10_date,
         }
