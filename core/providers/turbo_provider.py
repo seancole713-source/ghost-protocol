@@ -339,6 +339,20 @@ class TurboProvider:
             logs.extend(result.logs)
 
             if result.ok and result.price and result.price > 0:
+                # Validate price against MIN_SANE_PRICES before accepting
+                # This catches wrong-coin issues (e.g., Coinbase JUP ≠ Jupiter Exchange)
+                try:
+                    from core.crypto.crypto_providers import validate_crypto_price
+                    if not validate_crypto_price(symbol_upper, result.price):
+                        logs.append(
+                            f"{provider_name}: price ${result.price} failed validation "
+                            f"for {symbol_upper} (likely wrong coin)"
+                        )
+                        self._record_provider_failure(provider_name)
+                        continue  # Try next provider
+                except ImportError:
+                    pass  # validate not available, proceed
+
                 # Success! Record health and cache
                 self._record_provider_success(provider_name)
                 

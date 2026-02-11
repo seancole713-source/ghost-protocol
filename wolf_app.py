@@ -19941,12 +19941,17 @@ def _send_telegram_internal(card: str, capture: bool = False) -> tuple[bool, lis
             t0 = time.perf_counter()
             entry: dict[str, Any] = {"chat_id": chat_id}
             try:
+                # Detect if text contains HTML tags — if not, send as plain text
+                # to avoid Telegram HTML parser choking on <, >, & in plain messages
+                import re as _re
+                _has_html = bool(_re.search(r"<[a-zA-Z/]", card))
                 payload = {
                     "chat_id": chat_id,
                     "text": card,
-                    "parse_mode": "HTML",
                     "disable_web_page_preview": True,
                 }
+                if _has_html:
+                    payload["parse_mode"] = "HTML"
                 r = _http_post(url, json=payload, timeout=8)
                 latency = time.perf_counter() - t0
                 raw_response: Any = None
@@ -20022,12 +20027,17 @@ def _tg_send_chat_message(chat_id: str, text: str) -> bool:
         return False
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        # Detect if text contains HTML tags — if not, send as plain text
+        # to avoid Telegram HTML parser choking on <, >, & in plain messages
+        import re as _re
+        _has_html = bool(_re.search(r"<[a-zA-Z/]", text))
         payload = {
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
+        if _has_html:
+            payload["parse_mode"] = "HTML"
         r = _http_post(url, json=payload, timeout=8)
         return bool((r.json() or {}).get("ok"))
     except Exception:

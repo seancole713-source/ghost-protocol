@@ -1341,6 +1341,20 @@ _COINGECKO_IDS = {
     "RNDR": "render-token",
     "ZEC": "zcash",
     "TURBO": "turbo",
+    # Edge whitelist (Feb 11, 2026)
+    "JUP": "jupiter-exchange-solana",
+    "ILV": "illuvium",
+    "HBAR": "hedera-hashgraph",
+    "ICP": "internet-computer",
+    "BAND": "band-protocol",
+    "ALICE": "my-neighbor-alice",
+    "IOTX": "iotex",
+    "GIGA": "gigachad",
+    "BRETT": "brett",
+    "BCH": "bitcoin-cash",
+    "YFI": "yearn-finance",
+    "ENJ": "enjin-coin",
+    "IQ": "everipedia",
 }
 
 
@@ -1370,12 +1384,21 @@ def get_price_coingecko(symbol: str) -> dict:
     }
 
 
+# Symbols where Coinbase returns a DIFFERENT coin than intended
+# Must match CoinbaseProvider.SKIP_SYMBOLS
+_COINBASE_SKIP_SYMBOLS = {"JUP"}  # JUP on Coinbase is NOT Jupiter Exchange (Solana)
+
+
 def get_price_coinbase(symbol: str) -> dict:
     """
     Sync wrapper for Coinbase spot price with 24h change.
     Uses /v2/prices/<SYMBOL>-USD/spot for current price
     and /v2/prices/<SYMBOL>-USD/historic for 24h change.
     """
+    # Skip symbols where Coinbase returns the wrong coin
+    if symbol.upper() in _COINBASE_SKIP_SYMBOLS:
+        raise ValueError(f"Coinbase SKIP: {symbol} returns wrong coin (in _COINBASE_SKIP_SYMBOLS)")
+
     pair = f"{symbol.upper()}-USD"
     url = f"https://api.coinbase.com/v2/prices/{pair}/spot"
     resp = requests.get(url, timeout=3)

@@ -1326,7 +1326,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         "━━━━━━━━━━━━━━━━━━━━━━",
         "🟢 BUY | 🔴 SELL",
         "🔄 = Inverse signal (Ghost flipped)",
-        "⭐ = Validated (p < 0.05 in 52K backtest)",
+        "⭐ = Validated (p ≤ 0.05 in 52K backtest)",
         "✅ = News-feed influenced",
         "💰 = Return on $100 position",
         "",
