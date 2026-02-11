@@ -4933,6 +4933,193 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.error(f"🚨 News Brain FAILED TO START: {e}", extra={"component": "startup"}, exc_info=True)
     
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # GHOST NOTIFICATION SYSTEM - Runs in ALL modes (web + worker)
+    # Lightweight: checks clock once/min, sends Telegram at 8 AM Central
+    # Moved BEFORE WORKER_MODE gate (Feb 11, 2026) — was unreachable in web mode
+    # ═══════════════════════════════════════════════════════════════════════════════
+    try:
+        from core.ghost_notifications import get_notification_system, get_central_time
+        
+        active_tracking_enabled = os.getenv("ACTIVE_TRACKING_ENABLED", "1") == "1"
+        LOGGER.info(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}")
+        print(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}")
+        
+        if active_tracking_enabled:
+            def _send_telegram(message: str) -> bool:
+                if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+                    return False
+                return _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
+            
+            notification_system = get_notification_system()
+            notification_system.set_telegram_func(_send_telegram)
+            
+            async def _get_current_price(symbol: str) -> float:
+                """Get current price for a symbol"""
+                try:
+                    from core.asset_classifier import get_asset_type
+                    asset_class = get_asset_type(symbol)
+                    if asset_class == "crypto":
+                        result = turbo_crypto_price(symbol, max_budget_s=2.0)
+                    else:
+                        result = turbo_stock_price(symbol, max_budget_s=2.0)
+                    if result and result.get("ok") and result.get("price"):
+                        return float(result["price"])
+                except Exception:
+                    pass
+                return 0.0
+            
+            async def _ghost_notification_loop():
+                """
+                SIMPLE notification loop - ONE message at 8 AM Central.
+                
+                Schedule:
+                - 8:00-8:59 AM Central: Send ONE TOP 10 message (5 stocks + 5 crypto)
+                - Every 4 hours: Check for updates (12 PM, 4 PM, 8 PM)
+                - Every 15 min: Check for target/stop hits
+                
+                IMPORTANT: The scheduler runs in a background task.
+                If Railway restarts the container, this task restarts too.
+                """
+                global _LAST_TELEGRAM_STATUS, _LAST_TELEGRAM_SEND_TIME, _LAST_TELEGRAM_ERROR
+                try:
+                    from zoneinfo import ZoneInfo
+                    central_tz = ZoneInfo("America/Chicago")
+                except ImportError:
+                    import pytz
+                    central_tz = pytz.timezone("America/Chicago")
+                
+                TOP_10_HOUR = 8  # 8 AM Central — daily TOP 10 send
+                UPDATE_HOURS = [12, 16, 20]  # 12 PM, 4 PM, 8 PM Central
+                
+                now_central = datetime.now(central_tz)
+                LOGGER.info(f"[NOTIFICATIONS] 🎯 Starting notification loop (TOP 10 at {TOP_10_HOUR}:00 Central)")
+                LOGGER.info(f"[NOTIFICATIONS] Current time: {now_central.strftime('%Y-%m-%d %H:%M:%S')} Central")
+                
+                last_top10_date = None
+                last_check_time = 0
+                loop_count = 0
+                
+                _NOTIFICATION_LOOP_STATUS["running"] = True
+                _NOTIFICATION_LOOP_STATUS["started_at"] = datetime.now(central_tz).isoformat()
+                print("=" * 60)
+                print("[NOTIFICATION LOOP] 🚀 LOOP STARTED SUCCESSFULLY")
+                print(f"[NOTIFICATION LOOP] Current time: {datetime.now(central_tz).strftime('%Y-%m-%d %H:%M:%S')} Central")
+                print(f"[NOTIFICATION LOOP] Schedule: TOP 10 at 8 AM, Watchdog every 15 min")
+                print("=" * 60)
+                LOGGER.info("[NOTIFICATION LOOP] 🚀 Status set to RUNNING")
+                
+                await asyncio.sleep(10)
+                print("[NOTIFICATION LOOP] ✅ Initial delay complete - entering main loop")
+                
+                while True:
+                    try:
+                        loop_count += 1
+                        now_central = datetime.now(central_tz)
+                        current_hour = now_central.hour
+                        current_date = now_central.strftime("%Y-%m-%d")
+                        current_time = time.time()
+                        
+                        _NOTIFICATION_LOOP_STATUS["loop_count"] = loop_count
+                        _NOTIFICATION_LOOP_STATUS["current_central_time"] = now_central.strftime("%Y-%m-%d %H:%M:%S")
+                        _NOTIFICATION_LOOP_STATUS["last_top10_date"] = last_top10_date
+                        _NOTIFICATION_LOOP_STATUS["predictions_count"] = len(_LATEST_PREDICTIONS)
+                        
+                        if loop_count <= 5 or loop_count % 10 == 0:
+                            LOGGER.info(f"[NOTIFICATIONS] ⏰ Loop tick #{loop_count}: {now_central.strftime('%H:%M')} Central, predictions={len(_LATEST_PREDICTIONS)}")
+                        
+                        if current_hour == TOP_10_HOUR and last_top10_date != current_date:
+                            LOGGER.info(f"[NOTIFICATIONS] 🌅 8 AM WINDOW - Sending morning TOP 10 ({now_central.strftime('%H:%M:%S')} Central)...")
+                            
+                            try:
+                                stock_count = 0
+                                crypto_count = 0
+                                from core.asset_classifier import get_asset_type
+                                
+                                _TOP10_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+                                _TOP10_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
+                                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+                                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+                                )
+                                _TOP10_EDGE_SET = set(s.strip().upper() for s in _TOP10_EDGE_CSV.split(",") if s.strip())
+                                
+                                if _TOP10_EDGE_ENABLED:
+                                    scan_symbols = list(_TOP10_EDGE_SET)
+                                    LOGGER.info(f"[TOP10-PREP] EDGE WHITELIST: Scanning {len(scan_symbols)} proven edge symbols")
+                                else:
+                                    scan_symbols = HUNTER_STOCK_SYMBOLS[:50] + HUNTER_CRYPTO_SYMBOLS[:25]
+                                    LOGGER.info(f"[TOP10-PREP] Edge whitelist DISABLED — scanning {len(scan_symbols)} symbols")
+                                
+                                for symbol in scan_symbols:
+                                    try:
+                                        result = run_single_prediction(symbol)
+                                        if result.get("ok"):
+                                            asset_type = get_asset_type(symbol)
+                                            if asset_type == "crypto":
+                                                crypto_count += 1
+                                            else:
+                                                stock_count += 1
+                                            LOGGER.debug(f"[TOP10-PREP] ✅ Edge: {symbol}")
+                                    except Exception as e:
+                                        LOGGER.debug(f"[TOP10-PREP] Edge prediction failed for {symbol}: {e}")
+                                
+                                LOGGER.info(f"[TOP10-PREP] Total: {stock_count} stocks + {crypto_count} crypto from edge symbols")
+                            except Exception as e:
+                                LOGGER.warning(f"[TOP10-PREP] Edge scan error: {e}")
+                            
+                            LOGGER.info(f"[NOTIFICATIONS] Predictions available: {len(_LATEST_PREDICTIONS)} symbols")
+                            
+                            success = notification_system.send_top10(_LATEST_PREDICTIONS)
+                            
+                            if success:
+                                last_top10_date = current_date
+                                _NOTIFICATION_LOOP_STATUS["last_top10_date"] = current_date
+                                _NOTIFICATION_LOOP_STATUS["last_top10_send_time"] = now_central.isoformat()
+                                _NOTIFICATION_LOOP_STATUS["last_top10_success"] = True
+                                _LAST_TELEGRAM_SEND_TIME = time.time()
+                                _LAST_TELEGRAM_STATUS = "ok"
+                                _LAST_TELEGRAM_ERROR = None
+                                LOGGER.info(f"[NOTIFICATIONS] ✅ TOP 10 sent successfully at {now_central.strftime('%H:%M:%S')} Central!")
+                            else:
+                                _NOTIFICATION_LOOP_STATUS["last_top10_success"] = False
+                                _LAST_TELEGRAM_STATUS = "error"
+                                _LAST_TELEGRAM_ERROR = "TOP 10 send failed or no predictions"
+                                LOGGER.warning(f"[NOTIFICATIONS] ⚠️ TOP 10 send failed or no predictions (count={len(_LATEST_PREDICTIONS)})")
+                        
+                        if current_time - last_check_time >= 900:
+                            def get_price(symbol: str) -> float:
+                                try:
+                                    from core.asset_classifier import get_asset_type
+                                    if get_asset_type(symbol) == "crypto":
+                                        r = turbo_crypto_price(symbol, max_budget_s=2.0)
+                                    else:
+                                        r = turbo_stock_price(symbol, max_budget_s=2.0)
+                                    return float(r.get("price", 0)) if r and r.get("ok") else 0
+                                except:
+                                    return 0
+                            
+                            notification_system.check_for_updates(get_price)
+                            last_check_time = current_time
+                            _NOTIFICATION_LOOP_STATUS["last_check_time"] = datetime.now(central_tz).isoformat()
+                        
+                        await asyncio.sleep(60)
+                        
+                    except asyncio.CancelledError:
+                        _NOTIFICATION_LOOP_STATUS["running"] = False
+                        LOGGER.info("[NOTIFICATIONS] Loop cancelled - shutting down")
+                        break
+                    except Exception as e:
+                        LOGGER.error(f"[NOTIFICATIONS] Loop error: {e}", exc_info=True)
+                        await asyncio.sleep(60)
+            
+            task = asyncio.create_task(_ghost_notification_loop())
+            LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System ACTIVE (8 AM TOP 10 + watchdog)")
+            LOGGER.info("🎯 [POST-STARTUP] Backup endpoints: /alerts/top10/now, /alerts/watchdog/check")
+        else:
+            LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
+    except Exception as e:
+        LOGGER.error(f"ghost_notification_system_init_failed: {e}", extra={"component": "startup"}, exc_info=True)
+    
     # CRITICAL: Check if this is WORKER mode or WEB mode
     WORKER_MODE = os.getenv("WORKER_MODE") == "1"
     
@@ -5157,220 +5344,7 @@ async def _post_startup_init():
         LOGGER.error(f"full_market_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
     # NOTE: News Brain startup moved BEFORE WORKER_MODE check (runs in all modes)
-    
-    # ═══════════════════════════════════════════════════════════════════════════════
-    # GHOST NOTIFICATION SYSTEM - ONE simple system for all alerts
-    # Replaces old individual alert spam with consolidated messages
-    # ═══════════════════════════════════════════════════════════════════════════════
-    try:
-        # ================================================================
-        # NEW GHOST NOTIFICATION SYSTEM
-        # ONE simple system that handles all alerts:
-        # - 8 AM Central: TOP 10 message
-        # - Every 4 hours: Updates (if >3% moves)
-        # - Instant: Target/stop hit alerts
-        # ================================================================
-        from core.ghost_notifications import get_notification_system, get_central_time
-        
-        active_tracking_enabled = os.getenv("ACTIVE_TRACKING_ENABLED", "1") == "1"
-        LOGGER.info(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}")
-        print(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}")
-        
-        if active_tracking_enabled:
-            # Set up Telegram function
-            def _send_telegram(message: str) -> bool:
-                if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-                    return False
-                return _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
-            
-            notification_system = get_notification_system()
-            notification_system.set_telegram_func(_send_telegram)
-            
-            async def _get_current_price(symbol: str) -> float:
-                """Get current price for a symbol"""
-                try:
-                    from core.asset_classifier import get_asset_type
-                    asset_class = get_asset_type(symbol)
-                    
-                    if asset_class == "crypto":
-                        result = turbo_crypto_price(symbol, max_budget_s=2.0)
-                    else:
-                        result = turbo_stock_price(symbol, max_budget_s=2.0)
-                    
-                    if result and result.get("ok") and result.get("price"):
-                        return float(result["price"])
-                except Exception:
-                    pass
-                return 0.0
-            
-            async def _ghost_notification_loop():
-                """
-                SIMPLE notification loop - ONE message at 8 AM Central.
-                
-                Schedule:
-                - 8:00-8:59 AM Central: Send ONE TOP 10 message (5 stocks + 5 crypto)
-                - Every 4 hours: Check for updates (12 PM, 4 PM, 8 PM)
-                - Every 15 min: Check for target/stop hits
-                
-                IMPORTANT: The scheduler runs in a background task.
-                If Railway restarts the container, this task restarts too.
-                """
-                global _LAST_TELEGRAM_STATUS, _LAST_TELEGRAM_SEND_TIME, _LAST_TELEGRAM_ERROR
-                try:
-                    from zoneinfo import ZoneInfo
-                    central_tz = ZoneInfo("America/Chicago")
-                except ImportError:
-                    import pytz
-                    central_tz = pytz.timezone("America/Chicago")
-                
-                TOP_10_HOUR = 8  # 8 AM Central — daily TOP 10 send
-                UPDATE_HOURS = [12, 16, 20]  # 12 PM, 4 PM, 8 PM Central
-                
-                now_central = datetime.now(central_tz)
-                LOGGER.info(f"[NOTIFICATIONS] 🎯 Starting notification loop (TOP 10 at {TOP_10_HOUR}:00 Central)")
-                LOGGER.info(f"[NOTIFICATIONS] Current time: {now_central.strftime('%Y-%m-%d %H:%M:%S')} Central")
-                
-                last_top10_date = None
-                last_check_time = 0
-                loop_count = 0
-                
-                # Mark loop as running IMMEDIATELY - use print for Railway visibility
-                _NOTIFICATION_LOOP_STATUS["running"] = True
-                _NOTIFICATION_LOOP_STATUS["started_at"] = datetime.now(central_tz).isoformat()
-                print("=" * 60)
-                print("[NOTIFICATION LOOP] 🚀 LOOP STARTED SUCCESSFULLY")
-                print(f"[NOTIFICATION LOOP] Current time: {datetime.now(central_tz).strftime('%Y-%m-%d %H:%M:%S')} Central")
-                print(f"[NOTIFICATION LOOP] Schedule: TOP 10 at 8 AM, Watchdog every 15 min")
-                print("=" * 60)
-                LOGGER.info("[NOTIFICATION LOOP] 🚀 Status set to RUNNING")
-                
-                # Shorter initial delay for faster confirmation
-                await asyncio.sleep(10)
-                print("[NOTIFICATION LOOP] ✅ Initial delay complete - entering main loop")
-                
-                while True:
-                    try:
-                        loop_count += 1
-                        now_central = datetime.now(central_tz)
-                        current_hour = now_central.hour
-                        current_date = now_central.strftime("%Y-%m-%d")
-                        current_time = time.time()
-                        
-                        # Update status tracking
-                        _NOTIFICATION_LOOP_STATUS["loop_count"] = loop_count
-                        _NOTIFICATION_LOOP_STATUS["current_central_time"] = now_central.strftime("%Y-%m-%d %H:%M:%S")
-                        _NOTIFICATION_LOOP_STATUS["last_top10_date"] = last_top10_date
-                        _NOTIFICATION_LOOP_STATUS["predictions_count"] = len(_LATEST_PREDICTIONS)
-                        
-                        # Log first 5 iterations, then every 10 minutes to confirm loop is alive
-                        if loop_count <= 5 or loop_count % 10 == 0:
-                            LOGGER.info(f"[NOTIFICATIONS] ⏰ Loop tick #{loop_count}: {now_central.strftime('%H:%M')} Central, predictions={len(_LATEST_PREDICTIONS)}")
-                        
-                        # Task 1: Daily TOP 10 at 8 AM Central (entire hour window)
-                        # This triggers anytime during 8:00-8:59 if not already sent today
-                        if current_hour == TOP_10_HOUR and last_top10_date != current_date:
-                            LOGGER.info(f"[NOTIFICATIONS] 🌅 8 AM WINDOW - Sending morning TOP 10 ({now_central.strftime('%H:%M:%S')} Central)...")
-                            
-                            # EDGE WHITELIST (Feb 9, 2026): Only scan edge symbols for TOP 10
-                            # Previously scanned V2 whitelist + random HUNTER stocks → recommended ETH, XRP, LINK (all losers)
-                            # Now only scans the 24 proven edge symbols (81.4% stock WR, 73% crypto WR)
-                            try:
-                                stock_count = 0
-                                crypto_count = 0
-                                from core.asset_classifier import get_asset_type
-                                
-                                _TOP10_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-                                _TOP10_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
-                                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-                                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
-                                )
-                                _TOP10_EDGE_SET = set(s.strip().upper() for s in _TOP10_EDGE_CSV.split(",") if s.strip())
-                                
-                                if _TOP10_EDGE_ENABLED:
-                                    scan_symbols = list(_TOP10_EDGE_SET)
-                                    LOGGER.info(f"[TOP10-PREP] EDGE WHITELIST: Scanning {len(scan_symbols)} proven edge symbols")
-                                else:
-                                    # Fallback: old behavior
-                                    scan_symbols = HUNTER_STOCK_SYMBOLS[:50] + HUNTER_CRYPTO_SYMBOLS[:25]
-                                    LOGGER.info(f"[TOP10-PREP] Edge whitelist DISABLED — scanning {len(scan_symbols)} symbols")
-                                
-                                for symbol in scan_symbols:
-                                    try:
-                                        result = run_single_prediction(symbol)
-                                        if result.get("ok"):
-                                            asset_type = get_asset_type(symbol)
-                                            if asset_type == "crypto":
-                                                crypto_count += 1
-                                            else:
-                                                stock_count += 1
-                                            LOGGER.debug(f"[TOP10-PREP] ✅ Edge: {symbol}")
-                                    except Exception as e:
-                                        LOGGER.debug(f"[TOP10-PREP] Edge prediction failed for {symbol}: {e}")
-                                
-                                LOGGER.info(f"[TOP10-PREP] Total: {stock_count} stocks + {crypto_count} crypto from edge symbols")
-                            except Exception as e:
-                                LOGGER.warning(f"[TOP10-PREP] Edge scan error: {e}")
-                            
-                            LOGGER.info(f"[NOTIFICATIONS] Predictions available: {len(_LATEST_PREDICTIONS)} symbols")
-                            
-                            # Use _LATEST_PREDICTIONS
-                            success = notification_system.send_top10(_LATEST_PREDICTIONS)
-                            
-                            if success:
-                                last_top10_date = current_date
-                                _NOTIFICATION_LOOP_STATUS["last_top10_date"] = current_date
-                                _NOTIFICATION_LOOP_STATUS["last_top10_send_time"] = now_central.isoformat()
-                                _NOTIFICATION_LOOP_STATUS["last_top10_success"] = True
-                                _LAST_TELEGRAM_SEND_TIME = time.time()
-                                _LAST_TELEGRAM_STATUS = "ok"
-                                _LAST_TELEGRAM_ERROR = None
-                                LOGGER.info(f"[NOTIFICATIONS] ✅ TOP 10 sent successfully at {now_central.strftime('%H:%M:%S')} Central!")
-                            else:
-                                _NOTIFICATION_LOOP_STATUS["last_top10_success"] = False
-                                _LAST_TELEGRAM_STATUS = "error"
-                                _LAST_TELEGRAM_ERROR = "TOP 10 send failed or no predictions"
-                                LOGGER.warning(f"[NOTIFICATIONS] ⚠️ TOP 10 send failed or no predictions (count={len(_LATEST_PREDICTIONS)})")
-                                # Don't set last_top10_date so it can retry next minute
-                        
-                        # Task 2: Check for updates/alerts every 15 minutes
-                        if current_time - last_check_time >= 900:  # 15 minutes
-                            # Define price getter
-                            def get_price(symbol: str) -> float:
-                                try:
-                                    from core.asset_classifier import get_asset_type
-                                    if get_asset_type(symbol) == "crypto":
-                                        r = turbo_crypto_price(symbol, max_budget_s=2.0)
-                                    else:
-                                        r = turbo_stock_price(symbol, max_budget_s=2.0)
-                                    return float(r.get("price", 0)) if r and r.get("ok") else 0
-                                except:
-                                    return 0
-                            
-                            notification_system.check_for_updates(get_price)
-                            last_check_time = current_time
-                            _NOTIFICATION_LOOP_STATUS["last_check_time"] = datetime.now(central_tz).isoformat()
-                        
-                        await asyncio.sleep(60)  # Check every minute
-                        
-                    except asyncio.CancelledError:
-                        _NOTIFICATION_LOOP_STATUS["running"] = False
-                        LOGGER.info("[NOTIFICATIONS] Loop cancelled - shutting down")
-                        break
-                    except Exception as e:
-                        LOGGER.error(f"[NOTIFICATIONS] Loop error: {e}", exc_info=True)
-                        await asyncio.sleep(60)
-            
-            # ================================================================
-            # Re-enabled internal loop for self-contained operation
-            # External cron endpoints still available as backup triggers
-            # ================================================================
-            task = asyncio.create_task(_ghost_notification_loop())
-            LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System ACTIVE (8 AM TOP 10 + watchdog)")
-            LOGGER.info("🎯 [POST-STARTUP] Backup endpoints: /alerts/top10/now, /alerts/watchdog/check")
-        else:
-            LOGGER.info("🎯 [POST-STARTUP] Ghost Notification System DISABLED (set ACTIVE_TRACKING_ENABLED=1)")
-    except Exception as e:
-        LOGGER.error(f"ghost_notification_system_init_failed: {e}", extra={"component": "startup"}, exc_info=True)
+    # NOTE: Notification system moved BEFORE WORKER_MODE check (Feb 11, 2026)
     
     # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
     try:
