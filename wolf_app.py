@@ -27340,6 +27340,14 @@ async def force_send_top10():
 
         notif = get_notification_system()
 
+        # Ensure telegram function is set (may not be if notification loop hasn't started)
+        if not notif.send_telegram:
+            def _send_tg(message: str) -> bool:
+                if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+                    return False
+                return _tg_send_chat_message(TELEGRAM_CHAT_ID, message)
+            notif.set_telegram_func(_send_tg)
+
         # Reset the date guard so send_top10 doesn't skip
         notif._last_top10_date = ""
 
