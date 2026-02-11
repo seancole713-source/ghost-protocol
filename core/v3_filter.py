@@ -10,10 +10,12 @@ Passes predictions that:
 Based on 52,433 trade backtest analysis + edge whitelist paper trade validation.
 """
 import os
+import logging
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from datetime import datetime
-from loguru import logger
+
+logger = logging.getLogger("ghost")
 
 from config.settings import settings
 from config.symbols import (
