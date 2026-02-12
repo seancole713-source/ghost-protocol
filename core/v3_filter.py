@@ -296,13 +296,17 @@ class V3Filter:
         """
         symbol = pred.symbol.upper()
         
-        # Minimum confidence check (use lower threshold for edge: 0.50)
-        if pred.confidence < 0.50:
+        # Confidence check: edge symbols use same floor as V3 validated (0.70)
+        # Raw 0.70 calibrates to display ~48%. Below this, picks look terrible
+        # and have no statistical edge. Previous 0.50 floor let 59-63% raw
+        # through which displayed as 40-43% — unacceptable for user trust.
+        _edge_min = self.min_confidence  # Same as V3 validated (default 0.70)
+        if pred.confidence < _edge_min:
             self._stats['rejected_low_confidence'] += 1
             return FilterResult(
                 passed=False,
                 symbol=symbol,
-                reason=f"LOW_CONFIDENCE: {pred.confidence:.0%} < 50% (edge threshold)"
+                reason=f"LOW_CONFIDENCE: {pred.confidence:.0%} < {_edge_min:.0%} (edge threshold)"
             )
         
         # Edge symbols scored at 0.55 × confidence (conservative)
