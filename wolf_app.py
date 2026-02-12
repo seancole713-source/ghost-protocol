@@ -26196,6 +26196,45 @@ async def debug_revert_false_stops(confirm: str = "no"):
         return {"ok": False, "error": str(e)}
 
 
+@APP.get("/debug/fix-watch-zombies")
+async def debug_fix_watch_zombies(confirm: str = "no"):
+    """
+    Fix WATCH direction zombie picks by coercing to BUY/SELL.
+    Direction is determined by target_price vs entry_price.
+    
+    Usage:
+        /debug/fix-watch-zombies           → preview
+        /debug/fix-watch-zombies?confirm=yes → execute
+    """
+    import os, psycopg2
+    try:
+        conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT symbol, entry_price, target_price FROM ghost_tracked_picks WHERE status = 'active' AND direction = 'WATCH'"
+        )
+        rows = cur.fetchall()
+        fixes = []
+        for sym, entry, target in rows:
+            correct = "BUY" if float(target) >= float(entry) else "SELL"
+            fixes.append({"symbol": sym, "from": "WATCH", "to": correct, "entry": float(entry), "target": float(target)})
+        if confirm == "yes":
+            for f in fixes:
+                cur.execute(
+                    "UPDATE ghost_tracked_picks SET direction = %s WHERE symbol = %s AND status = 'active' AND direction = 'WATCH'",
+                    (f["to"], f["symbol"])
+                )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return {"ok": True, "fixed": len(fixes), "fixes": fixes}
+        cur.close()
+        conn.close()
+        return {"ok": True, "preview": fixes, "count": len(fixes), "note": "Add ?confirm=yes to execute"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/debug/db-reset-accuracy")
 async def debug_db_reset_accuracy(confirm: str = "no"):
     """
