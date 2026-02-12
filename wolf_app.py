@@ -26158,6 +26158,44 @@ async def debug_paper_trades_lookup(symbol: str = "", limit: int = 20):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/revert-false-stops")
+async def debug_revert_false_stops(confirm: str = "no"):
+    """
+    One-time fix: Revert JUP/BAND/GME from stop_hit back to active.
+    These were falsely triggered by the near_stop 2% buffer bug (Feb 12, 2026).
+    
+    Usage:
+        /debug/revert-false-stops           → preview
+        /debug/revert-false-stops?confirm=yes → execute
+    """
+    import os, psycopg2
+    symbols = ["JUP", "BAND", "GME"]
+    try:
+        conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT symbol, status, entry_price, stop_price FROM ghost_tracked_picks WHERE symbol = ANY(%s) AND status = 'stop_hit'",
+            (symbols,)
+        )
+        rows = cur.fetchall()
+        preview = [{"symbol": r[0], "status": r[1], "entry": float(r[2]), "stop": float(r[3])} for r in rows]
+        if confirm == "yes":
+            cur.execute(
+                "UPDATE ghost_tracked_picks SET status = 'active' WHERE symbol = ANY(%s) AND status = 'stop_hit'",
+                (symbols,)
+            )
+            reverted = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+            return {"ok": True, "reverted": reverted, "symbols": symbols}
+        cur.close()
+        conn.close()
+        return {"ok": True, "preview": preview, "count": len(preview), "note": "Add ?confirm=yes to execute"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @APP.get("/debug/db-reset-accuracy")
 async def debug_db_reset_accuracy(confirm: str = "no"):
     """

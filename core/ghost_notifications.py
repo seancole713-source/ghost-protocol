@@ -2471,7 +2471,10 @@ class GhostNotificationSystem:
                 # CRITICAL FIX (Jan 11, 2026 - v2): EXACT target match only (no buffer)
                 # Bug: 2% buffer allowed false positives like META +0.4% triggering
                 near_target = current >= target  # Must ACTUALLY hit target
-                near_stop = current <= stop * 1.02
+                # CRITICAL FIX (Feb 12, 2026): EXACT stop match only (no buffer)
+                # Bug: stop * 1.02 inflated stop 2% upward → fired at -3.1% instead of -5%
+                # JUP/BAND/GME all false-triggered because expanded stop was above current price
+                near_stop = current <= stop  # Must ACTUALLY hit stop
                 # OFF PATH = BUY but price dropped >2%
                 is_off_path = pct_change < -0.02
             else:  # SELL
@@ -2479,7 +2482,9 @@ class GhostNotificationSystem:
                 on_track = current <= entry * 1.02  # Allow 2% buffer
                 # CRITICAL FIX (Jan 11, 2026 - v2): EXACT target match only (no buffer)
                 near_target = current <= target  # Must ACTUALLY hit target
-                near_stop = current >= stop * 0.98
+                # CRITICAL FIX (Feb 12, 2026): EXACT stop match only (no buffer)
+                # Bug: stop * 0.98 deflated stop 2% downward → fired before actual stop hit
+                near_stop = current >= stop  # Must ACTUALLY hit stop
                 # OFF PATH = SELL but price rose >2%
                 is_off_path = pct_change > 0.02
             
