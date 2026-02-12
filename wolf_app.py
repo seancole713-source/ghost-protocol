@@ -26024,6 +26024,72 @@ async def debug_paper_trades_clean(
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/tracked-picks")
+async def debug_tracked_picks(symbol: str = ""):
+    """
+    Inspect ghost_tracked_picks table.
+    Shows all active tracked picks, or filter by symbol.
+
+    Usage:
+        /debug/tracked-picks          — all active picks
+        /debug/tracked-picks?symbol=GME — just GME
+    """
+    try:
+        import psycopg2
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+
+        where = "WHERE status = 'active'"
+        params = ()
+        if symbol:
+            where = "WHERE symbol = %s"
+            params = (symbol.upper().strip(),)
+
+        cur.execute(f"""
+            SELECT symbol, asset_type, direction, entry_price, target_price,
+                   stop_price, confidence, entry_time, expires_at, status
+            FROM ghost_tracked_picks
+            {where}
+            ORDER BY entry_time DESC
+            LIMIT 50
+        """, params)
+
+        rows = cur.fetchall()
+        cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'active'")
+        active_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks")
+        total_count = cur.fetchone()[0]
+        conn.close()
+
+        picks = []
+        for r in rows:
+            picks.append({
+                "symbol": r[0], "asset_type": r[1], "direction": r[2],
+                "entry_price": float(r[3]) if r[3] else None,
+                "target_price": float(r[4]) if r[4] else None,
+                "stop_price": float(r[5]) if r[5] else None,
+                "confidence": float(r[6]) if r[6] else None,
+                "entry_time": str(r[7]) if r[7] else None,
+                "expires_at": str(r[8]) if r[8] else None,
+                "status": r[9],
+            })
+
+        return {
+            "ok": True,
+            "active_count": active_count,
+            "total_count": total_count,
+            "filter": symbol.upper() if symbol else "all active",
+            "picks": picks,
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/db-reset-accuracy")
 async def debug_db_reset_accuracy(confirm: str = "no"):
     """
