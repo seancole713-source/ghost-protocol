@@ -4942,16 +4942,23 @@ async def _post_startup_init():
         LOGGER.error(f"🚨 News Brain FAILED TO START: {e}", extra={"component": "startup"}, exc_info=True)
     
     # ═══════════════════════════════════════════════════════════════════════════════
-    # GHOST NOTIFICATION SYSTEM - Runs in ALL modes (web + worker)
-    # Lightweight: checks clock once/min, sends Telegram at 8 AM Central
-    # Moved BEFORE WORKER_MODE gate (Feb 11, 2026) — was unreachable in web mode
+    # GHOST NOTIFICATION SYSTEM - Runs in WEB mode ONLY (not worker)
+    # FIX (Feb 12, 2026): Was running in BOTH web + worker processes, causing
+    # duplicate Telegram cards with slightly different confidences because each
+    # process has its own in-memory _last_top10_date guard and runs independent
+    # edge scans seconds apart (prices shift → confidences differ).
+    # Now gated to web-only. Worker process skips this entirely.
     # ═══════════════════════════════════════════════════════════════════════════════
+    _IS_WORKER = os.getenv("WORKER_MODE") == "1"
+    if _IS_WORKER:
+        LOGGER.info("[WORKER MODE] ⏭️ Skipping notification loop (web process handles it)")
+    
     try:
         from core.ghost_notifications import get_notification_system, get_central_time
         
-        active_tracking_enabled = os.getenv("ACTIVE_TRACKING_ENABLED", "1") == "1"
-        LOGGER.info(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}")
-        print(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}")
+        active_tracking_enabled = os.getenv("ACTIVE_TRACKING_ENABLED", "1") == "1" and not _IS_WORKER
+        LOGGER.info(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}, WORKER_MODE = {_IS_WORKER}")
+        print(f"[NOTIFICATION DEBUG] ACTIVE_TRACKING_ENABLED = {active_tracking_enabled}, WORKER_MODE = {_IS_WORKER}")
         
         if active_tracking_enabled:
             def _send_telegram(message: str) -> bool:
