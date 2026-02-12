@@ -25954,7 +25954,7 @@ async def debug_paper_trades_clean(
         total_count = cursor.fetchone()[0]
 
         cursor.execute(f"""
-            SELECT paper_trade_id, symbol, direction, entry_price, confidence, created_at
+            SELECT paper_trade_id, symbol, signal_direction, entry_price, signal_confidence, created_at
             FROM paper_trades
             WHERE {corrupt_where}
             ORDER BY created_at DESC
