@@ -2379,6 +2379,40 @@ class GhostNotificationSystem:
         if not self.send_telegram:
             return False
         
+        # =====================================================================
+        # EXPIRATION SWEEP (Feb 12, 2026)
+        # Picks that passed their 48-hour expires_at were never marked expired,
+        # causing phantom path alerts for weeks-old stale picks.
+        # Clean them BEFORE loading active picks.
+        # =====================================================================
+        try:
+            if self._use_postgres:
+                conn = self._get_postgres_conn()
+                cur = conn.cursor()
+                cur.execute("""
+                    UPDATE ghost_tracked_picks
+                    SET status = 'expired'
+                    WHERE status = 'active' AND expires_at < NOW()
+                """)
+                expired_count = cur.rowcount
+                conn.commit()
+                cur.close()
+                conn.close()
+                if expired_count > 0:
+                    LOGGER.info(f"[WATCHDOG] 🧹 Expired {expired_count} stale tracked picks")
+            else:
+                import sqlite3
+                conn = sqlite3.connect(self._db_path)
+                conn.execute("""
+                    UPDATE tracked_picks
+                    SET status = 'expired'
+                    WHERE status = 'active' AND expires_at < datetime('now')
+                """)
+                conn.commit()
+                conn.close()
+        except Exception as e:
+            LOGGER.warning(f"[WATCHDOG] Expiration sweep failed (non-fatal): {e}")
+
         # Load active picks from PostgreSQL (persistent across deploys)
         rows = []
         if self._use_postgres:
