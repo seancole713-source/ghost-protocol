@@ -25917,6 +25917,106 @@ async def debug_db_clean(
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/paper-trades-clean")
+async def debug_paper_trades_clean(
+    mode: str = "preview",
+    confirm: str = "no"
+):
+    """
+    Clean corrupt paper trades (entry_price = 0, near-zero, or NULL).
+
+    Modes:
+        preview - Show corrupt trades (default, safe)
+        delete  - Delete corrupt trades (requires confirm=yes)
+
+    Usage:
+        /debug/paper-trades-clean?mode=preview
+        /debug/paper-trades-clean?mode=delete&confirm=yes
+    """
+    try:
+        import psycopg2
+        from datetime import datetime
+
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+
+        corrupt_where = "entry_price IS NULL OR entry_price <= 0 OR entry_price < 0.00001"
+
+        # Always show preview info
+        cursor.execute(f"SELECT COUNT(*) FROM paper_trades WHERE {corrupt_where}")
+        corrupt_count = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM paper_trades")
+        total_count = cursor.fetchone()[0]
+
+        cursor.execute(f"""
+            SELECT paper_trade_id, symbol, direction, entry_price, confidence, created_at
+            FROM paper_trades
+            WHERE {corrupt_where}
+            ORDER BY created_at DESC
+            LIMIT 20
+        """)
+        samples = [
+            {
+                "id": str(r[0]),
+                "symbol": r[1],
+                "direction": r[2],
+                "entry_price": float(r[3]) if r[3] else None,
+                "confidence": float(r[4]) if r[4] else None,
+                "created_at": str(r[5]) if r[5] else None,
+            }
+            for r in cursor.fetchall()
+        ]
+
+        if mode == "preview":
+            conn.close()
+            return {
+                "ok": True,
+                "mode": "preview",
+                "total_paper_trades": total_count,
+                "corrupt_count": corrupt_count,
+                "corrupt_samples": samples,
+                "instruction": "/debug/paper-trades-clean?mode=delete&confirm=yes",
+            }
+
+        if mode == "delete":
+            if confirm != "yes":
+                conn.close()
+                return {
+                    "ok": False,
+                    "error": "Requires confirm=yes",
+                    "instruction": "/debug/paper-trades-clean?mode=delete&confirm=yes",
+                }
+
+            cursor.execute(f"DELETE FROM paper_trades WHERE {corrupt_where}")
+            deleted = cursor.rowcount
+            conn.commit()
+
+            cursor.execute("SELECT COUNT(*) FROM paper_trades")
+            remaining = cursor.fetchone()[0]
+            conn.close()
+
+            LOGGER.warning(f"[PAPER-TRADES-CLEAN] Deleted {deleted} corrupt paper trades")
+            return {
+                "ok": True,
+                "mode": "delete",
+                "deleted": deleted,
+                "remaining": remaining,
+                "samples_deleted": samples,
+            }
+
+        conn.close()
+        return {"ok": False, "error": f"Unknown mode: {mode}"}
+
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/db-reset-accuracy")
 async def debug_db_reset_accuracy(confirm: str = "no"):
     """
