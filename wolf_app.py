@@ -25944,7 +25944,7 @@ async def debug_paper_trades_clean(
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
 
-        corrupt_where = "entry_price IS NULL OR entry_price <= 0 OR entry_price < 0.00001"
+        corrupt_where = "entry_price IS NULL OR entry_price = 0"
 
         # Always show preview info
         cursor.execute(f"SELECT COUNT(*) FROM paper_trades WHERE {corrupt_where}")
