@@ -792,17 +792,33 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     """
     symbol_upper = symbol.upper()
     
-    # MONEY GAME: No more V2 whitelist bypass - all symbols compete on merit!
+    # EDGE WHITELIST BYPASS (Feb 12, 2026): Edge symbols skip HARDCODED_EXCLUSIONS
+    # 7 edge symbols (HBAR, ILV, BAND, PEPE, ENJ, YFI, RNDR) were silently blocked
+    _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+    _edge_csv = os.getenv("EDGE_SYMBOLS",
+        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
+        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+    )
+    _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
+    is_edge = _edge_enabled and symbol_upper in _edge_set
     
     # PRIORITY 0: Check environment variable exclusions FIRST (Railway config)
+    # Edge symbols are NOT exempt from env exclusions (manual override)
     if symbol_upper in _ENV_EXCLUSIONS:
         return True, f"ENV_EXCLUDED: In GHOST_EXCLUDE_SYMBOLS"
     
     # PRIORITY 1: Check hardcoded exclusions (code-level)
+    # BYPASS for edge whitelist symbols — they were added to edge AFTER being excluded
     if symbol_upper in HARDCODED_EXCLUSIONS:
-        return True, f"HARDCODED: {HARDCODED_EXCLUSIONS[symbol_upper]}"
+        if is_edge:
+            LOGGER.info(f"[EXCLUSIONS] Edge bypass: {symbol_upper} in HARDCODED_EXCLUSIONS but allowed by edge whitelist")
+        else:
+            return True, f"HARDCODED: {HARDCODED_EXCLUSIONS[symbol_upper]}"
     if symbol in HARDCODED_EXCLUSIONS:
-        return True, f"HARDCODED: {HARDCODED_EXCLUSIONS[symbol]}"
+        if is_edge:
+            LOGGER.info(f"[EXCLUSIONS] Edge bypass: {symbol} in HARDCODED_EXCLUSIONS but allowed by edge whitelist")
+        else:
+            return True, f"HARDCODED: {HARDCODED_EXCLUSIONS[symbol]}"
     
     # PRIORITY 2: Check learning data (only if LEARNING_EXCLUDE_ENABLED)
     if not LEARNING_EXCLUDE_ENABLED:
@@ -2304,6 +2320,21 @@ class GhostNotificationSystem:
                     action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
                     asset_type = p.get('asset_type', 'crypto' if p['symbol'] in ['BTC', 'ETH', 'SOL'] else 'stock')
                     
+                    # FIX (Feb 12, 2026): Coerce WATCH → BUY/SELL based on predicted move
+                    # WATCH picks were zombie entries — tracked but never monitored by watchdog
+                    if action == "WATCH":
+                        if p['prediction_48h'] >= p['current']:
+                            action = "BUY"
+                        else:
+                            action = "SELL"
+                        LOGGER.info(f"[TRACKING] Coerced WATCH → {action} for {p['symbol']}")
+                    
+                    # FIX (Feb 12, 2026): Use pick's actual stop/target from V3, not hardcoded 5%
+                    stop_price = p.get('stop') or p.get('stop_loss') or (
+                        p['current'] * 0.95 if action == 'BUY' else p['current'] * 1.05
+                    )
+                    target_price = p.get('target_price') or p.get('prediction_48h')
+                    
                     # Use ON CONFLICT to update existing active picks instead of duplicating
                     cur.execute("""
                         INSERT INTO ghost_tracked_picks 
@@ -2312,6 +2343,8 @@ class GhostNotificationSystem:
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
                         ON CONFLICT (symbol) WHERE status = 'active'
                         DO UPDATE SET
+                            direction = EXCLUDED.direction,
+                            asset_type = EXCLUDED.asset_type,
                             entry_price = EXCLUDED.entry_price,
                             target_price = EXCLUDED.target_price,
                             stop_price = EXCLUDED.stop_price,
@@ -2324,8 +2357,8 @@ class GhostNotificationSystem:
                         asset_type,
                         action,
                         p['current'],
-                        p['prediction_48h'],
-                        p['current'] * 0.95 if action == 'BUY' else p['current'] * 1.05,
+                        target_price,
+                        stop_price,
                         p['prediction_48h'],
                         p['confidence'],
                         now,
