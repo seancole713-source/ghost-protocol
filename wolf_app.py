@@ -26090,6 +26090,74 @@ async def debug_tracked_picks(symbol: str = ""):
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/paper-trades-lookup")
+async def debug_paper_trades_lookup(symbol: str = "", limit: int = 20):
+    """
+    Look up paper trades by symbol. Returns entry_price, direction, timestamps.
+
+    Usage:
+        /debug/paper-trades-lookup?symbol=GIGA
+        /debug/paper-trades-lookup?symbol=GIGA&limit=50
+    """
+    try:
+        import psycopg2
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return {"ok": False, "error": "DATABASE_URL not set"}
+        if not symbol:
+            return {"ok": False, "error": "symbol parameter required"}
+
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT paper_trade_id, symbol, signal_direction, entry_price,
+                   signal_confidence, created_at, outcome, profit_loss_pct,
+                   v3_validated, v3_strategy
+            FROM paper_trades
+            WHERE symbol = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (symbol.upper().strip(), limit))
+
+        rows = cur.fetchall()
+        cur.execute("SELECT COUNT(*) FROM paper_trades WHERE symbol = %s",
+                    (symbol.upper().strip(),))
+        total = cur.fetchone()[0]
+
+        # Also run the exact corrupt check
+        cur.execute("""
+            SELECT COUNT(*) FROM paper_trades
+            WHERE symbol = %s AND entry_price < 0.01
+        """, (symbol.upper().strip(),))
+        suspect_count = cur.fetchone()[0]
+
+        conn.close()
+
+        trades = []
+        for r in rows:
+            trades.append({
+                "id": str(r[0])[:12], "symbol": r[1], "direction": r[2],
+                "entry_price": float(r[3]) if r[3] else None,
+                "confidence": float(r[4]) if r[4] else None,
+                "created_at": str(r[5]) if r[5] else None,
+                "outcome": r[6], "pnl_pct": float(r[7]) if r[7] else None,
+                "v3": r[8], "strategy": r[9],
+            })
+
+        return {
+            "ok": True,
+            "symbol": symbol.upper(),
+            "total_trades": total,
+            "suspect_below_001": suspect_count,
+            "showing": len(trades),
+            "trades": trades,
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/db-reset-accuracy")
 async def debug_db_reset_accuracy(confirm: str = "no"):
     """
