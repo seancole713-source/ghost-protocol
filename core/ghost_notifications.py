@@ -2318,7 +2318,10 @@ class GhostNotificationSystem:
                 
                 for p in picks:
                     action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
-                    asset_type = p.get('asset_type', 'crypto' if p['symbol'] in ['BTC', 'ETH', 'SOL'] else 'stock')
+                    # FIX (Feb 13, 2026): Use AssetClassifier instead of hardcoded BTC/ETH/SOL
+                    # BAND, JUP, and other crypto tokens were misclassified as 'stock'
+                    from core.asset_classifier import AssetClassifier
+                    asset_type = p.get('asset_type') or ('crypto' if AssetClassifier.is_crypto(p['symbol']) else 'stock')
                     
                     # FIX (Feb 12, 2026): Coerce WATCH → BUY/SELL based on predicted move
                     # WATCH picks were zombie entries — tracked but never monitored by watchdog
@@ -2496,6 +2499,17 @@ class GhostNotificationSystem:
             if direction not in ("BUY", "SELL"):
                 LOGGER.error(f"[WATCHDOG] Invalid direction '{direction}' for {symbol} - skipping")
                 continue
+            
+            # FIX (Feb 13, 2026): Validate stop is on correct side of entry
+            # WATCH zombie bug left SELL-style stops on BUY picks (e.g., ITRI stop $104.80 > entry $99.81)
+            if direction == "BUY" and stop > entry:
+                correct_stop = entry * 0.95
+                LOGGER.warning(f"[WATCHDOG] ⚠️ {symbol} BUY has stop ${stop:.4f} ABOVE entry ${entry:.4f} — correcting to ${correct_stop:.4f}")
+                stop = correct_stop
+            elif direction == "SELL" and stop < entry:
+                correct_stop = entry * 1.05
+                LOGGER.warning(f"[WATCHDOG] ⚠️ {symbol} SELL has stop ${stop:.4f} BELOW entry ${entry:.4f} — correcting to ${correct_stop:.4f}")
+                stop = correct_stop
             
             # Determine if on track based on direction
             if direction == "BUY":

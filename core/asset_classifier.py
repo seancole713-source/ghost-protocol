@@ -66,6 +66,7 @@ class AssetClassifier:
         'TURBO', 'SAMO', 'ELON', 'LADYS', 'WOJAK', 'CHAD',
         'NEIRO', 'TOSHI', 'POPCAT', 'PNUT', 'MOODENG', 'GIGA',  # Missing meme coins!
         'SPX',  # SPX6900 meme coin
+        'BRETT',  # Brett meme coin (Base chain)
         # DeFi tokens - IMPORTANT: These are CRYPTO, not stocks!
         'MKR', 'SNX', 'CRV', 'COMP', 'YFI', 'SUSHI', '1INCH',
         'LDO', 'AAVE', 'UNI', 'CAKE', 'JOE', 'GMX', 'DYDX',
