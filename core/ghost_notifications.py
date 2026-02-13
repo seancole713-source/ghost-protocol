@@ -2527,6 +2527,28 @@ class GhostNotificationSystem:
         for row in rows:
             symbol, asset_type, direction, entry, target, stop, pred_48h, conf, entry_time, expires = row
             
+            # FIX (Feb 13, 2026): Don't trust DB asset_type — re-classify at runtime
+            # BAND and JUP were registered as 'stock' before AssetClassifier fix (091f0bb)
+            try:
+                from core.asset_classifier import AssetClassifier
+                correct_type = 'crypto' if AssetClassifier.is_crypto(symbol) else 'stock'
+                if correct_type != asset_type:
+                    LOGGER.info(f"[WATCHDOG] Correcting {symbol} asset_type: '{asset_type}' → '{correct_type}'")
+                    asset_type = correct_type
+                    # Also fix in DB so it doesn't happen again
+                    if self._use_postgres:
+                        try:
+                            conn = self._get_postgres_conn()
+                            cur = conn.cursor()
+                            cur.execute("UPDATE ghost_tracked_picks SET asset_type = %s WHERE symbol = %s AND status = 'active'", (correct_type, symbol))
+                            conn.commit()
+                            cur.close()
+                            conn.close()
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            
             # Get current price
             current = get_price_func(symbol)
             if current <= 0:
