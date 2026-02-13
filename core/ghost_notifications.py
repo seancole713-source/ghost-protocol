@@ -1487,6 +1487,11 @@ def format_alert_message(alerts: List[Dict]) -> str:
     
     for a in alerts:
         pct = (a['current'] - a['entry']) / a['entry'] * 100
+        # FIX (Feb 13, 2026): For SELL picks, profit is when price goes DOWN
+        # Show profit/loss from the trader's perspective, not raw price change
+        direction = a.get('direction', 'BUY')
+        if direction == 'SELL':
+            pct = -pct  # Flip sign: price drop = profit for SELL
         pct_str = f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
         
         if a['type'] == 'target_hit':
@@ -1610,6 +1615,29 @@ class GhostNotificationSystem:
                     message_preview TEXT
                 )
             """)
+            
+            # FIX (Feb 13, 2026): Persist notification state across redeploys
+            # _last_top10_date and _last_off_path_alerts were in-memory only,
+            # causing duplicate TOP 10 cards and off-path alerts after Railway redeploys
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_notification_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+            
+            # Load persisted state
+            cur.execute("SELECT key, value FROM ghost_notification_state")
+            for key, value in cur.fetchall():
+                if key == 'last_top10_date':
+                    self._last_top10_date = value
+                    LOGGER.info(f"[TRACKING] Restored _last_top10_date = {value} from PostgreSQL")
+                elif key.startswith('off_path_alert:'):
+                    symbol = key.split(':', 1)[1]
+                    self._last_off_path_alerts[symbol] = value
+            if self._last_off_path_alerts:
+                LOGGER.info(f"[TRACKING] Restored {len(self._last_off_path_alerts)} off-path alert states from PostgreSQL")
             
             # Create index for faster active picks lookup
             cur.execute("""
@@ -2219,6 +2247,8 @@ class GhostNotificationSystem:
         
         if success:
             self._last_top10_date = today
+            # FIX (Feb 13, 2026): Persist to PostgreSQL so redeploy doesn't re-send
+            self._persist_state('last_top10_date', today)
             LOGGER.info("[NOTIFICATIONS] ✅ TOP 10 sent successfully")
             
             # Register picks for tracking
@@ -2236,7 +2266,10 @@ class GhostNotificationSystem:
         This connects Telegram alerts → paper trading database.
         """
         now = get_central_time()
-        expires = now + timedelta(hours=48)
+        # FIX (Feb 13, 2026): Use pick's actual hold period instead of hardcoded 48h
+        # V3 strategies have different hold periods: 48h (CHZ, DDOG), 72h (ETH, LINK), 168h (XRP, PANW, NET, FTNT)
+        # Default to V3_DEFAULT_HOLD_HOURS (72) if not specified in pick
+        default_hold = V3_DEFAULT_HOLD_HOURS  # 72h
         
         # =====================================================================
         # CRITICAL FIX (Jan 10, 2026): Log to paper_trades table
@@ -2338,6 +2371,10 @@ class GhostNotificationSystem:
                     )
                     target_price = p.get('target_price') or p.get('prediction_48h')
                     
+                    # FIX (Feb 13, 2026): Per-pick expiration from V3 hold_hours
+                    pick_hold_hours = p.get('v3_hold_hours') or p.get('hold_hours') or default_hold
+                    expires = now + timedelta(hours=pick_hold_hours)
+                    
                     # Use ON CONFLICT to update existing active picks instead of duplicating
                     cur.execute("""
                         INSERT INTO ghost_tracked_picks 
@@ -2382,6 +2419,8 @@ class GhostNotificationSystem:
         for p in picks:
             action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
             asset_type = p.get('asset_type', 'crypto' if p['symbol'] in ['BTC', 'ETH', 'SOL'] else 'stock')
+            pick_hold_hours = p.get('v3_hold_hours') or p.get('hold_hours') or default_hold
+            expires = now + timedelta(hours=pick_hold_hours)
             
             conn.execute("""
                 INSERT INTO tracked_picks 
@@ -2545,6 +2584,7 @@ class GhostNotificationSystem:
                 alerts.append({
                     "symbol": symbol,
                     "type": "target_hit",
+                    "direction": direction,
                     "entry": entry,
                     "current": current,
                     "target": target,
@@ -2554,6 +2594,7 @@ class GhostNotificationSystem:
                 alerts.append({
                     "symbol": symbol,
                     "type": "stop_hit",
+                    "direction": direction,
                     "entry": entry,
                     "current": current,
                     "target": target,
@@ -2666,17 +2707,19 @@ class GhostNotificationSystem:
         if new_off_path_stocks:
             msg = format_off_path_alert(new_off_path_stocks, asset_type="stock")
             self.send_telegram(msg)
-            # Mark as alerted today
+            # Mark as alerted today — persist to PostgreSQL
             for p in new_off_path_stocks:
                 self._last_off_path_alerts[p['symbol']] = today
+                self._persist_state(f"off_path_alert:{p['symbol']}", today)
             LOGGER.info(f"[NOTIFICATIONS] Sent OFF PATH alert for {len(new_off_path_stocks)} stocks")
         
         if new_off_path_crypto:
             msg = format_off_path_alert(new_off_path_crypto, asset_type="crypto")
             self.send_telegram(msg)
-            # Mark as alerted today
+            # Mark as alerted today — persist to PostgreSQL
             for p in new_off_path_crypto:
                 self._last_off_path_alerts[p['symbol']] = today
+                self._persist_state(f"off_path_alert:{p['symbol']}", today)
             LOGGER.info(f"[NOTIFICATIONS] Sent OFF PATH alert for {len(new_off_path_crypto)} crypto")
         
         # Send scheduled updates (12 PM, 4 PM, 8 PM) - only if no alerts sent
@@ -2689,6 +2732,28 @@ class GhostNotificationSystem:
         
         return bool(alerts or updates or new_off_path_stocks or new_off_path_crypto)
     
+    def _persist_state(self, key: str, value: str):
+        """Persist notification state to PostgreSQL (survives redeploys).
+        
+        FIX (Feb 13, 2026): _last_top10_date and _last_off_path_alerts were in-memory
+        only, causing duplicate TOP 10 cards and off-path alerts after Railway redeploys.
+        """
+        if not self._use_postgres:
+            return  # SQLite is ephemeral on Railway anyway
+        try:
+            conn = self._get_postgres_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO ghost_notification_state (key, value, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (key, value))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            LOGGER.warning(f"[TRACKING] Failed to persist state {key}: {e}")
+
     def get_status(self) -> Dict:
         """Get current status of the notification system"""
         active = 0

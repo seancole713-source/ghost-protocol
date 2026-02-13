@@ -5102,6 +5102,21 @@ async def _post_startup_init():
                                 LOGGER.warning(f"[NOTIFICATIONS] ⚠️ TOP 10 send failed or no predictions (count={len(_LATEST_PREDICTIONS)})")
                         
                         if current_time - last_check_time >= 900:
+                            # FIX (Feb 13, 2026): TTL eviction for _LATEST_PREDICTIONS
+                            # Stale predictions stayed in memory forever (no expiry).
+                            # Evict entries older than 24h to prevent stale data from
+                            # polluting TOP 10 and cockpit displays.
+                            _TTL_SECONDS = 24 * 3600  # 24 hours
+                            with _LATEST_PREDICTIONS_LOCK:
+                                stale_symbols = [
+                                    sym for sym, pred in _LATEST_PREDICTIONS.items()
+                                    if isinstance(pred, dict) and (current_time - pred.get('run_at', current_time)) > _TTL_SECONDS
+                                ]
+                                for sym in stale_symbols:
+                                    del _LATEST_PREDICTIONS[sym]
+                                if stale_symbols:
+                                    LOGGER.info(f"[TTL-EVICT] 🧹 Evicted {len(stale_symbols)} stale predictions (>24h): {stale_symbols}")
+                            
                             def get_price(symbol: str) -> float:
                                 try:
                                     from core.asset_classifier import get_asset_type
