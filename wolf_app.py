@@ -27942,13 +27942,23 @@ async def top10_force_send():
 @APP.post("/alerts/top10/now")
 async def top10_send_now(request: Request):
     """
-    Send TOP 10 message NOW using the new Ghost Notification System.
+    DISABLED (Feb 21, 2026): This cron endpoint was sending a SECOND TOP 10 card
+    using hardcoded symbols (NVDA, META, PLTR...) and a legacy 0.50 confidence floor,
+    completely bypassing the main notification loop's clean V3 pipeline + 0.70 floor.
+    Result: duplicate cards every morning at 8:00 + 8:02 with different picks.
     
-    SECURED: Requires X-Cron-Secret header matching CRON_SECRET env var.
-    This endpoint is called by external cron (cron-job.org) at 8 AM Central.
+    The main notification loop in _post_startup_init() handles 8 AM sends correctly
+    with proper edge whitelist, V3Filter, PostgreSQL dedup, and 0.70 floor.
     
-    IMPORTANT: Only ONE message per day. If already sent today, returns success=False.
+    Kill the cron-job.org job too — this endpoint now returns immediately.
     """
+    return {
+        "ok": False,
+        "disabled": True,
+        "reason": "Cron TOP 10 disabled Feb 21 2026 — main notification loop handles 8 AM sends. Kill the cron-job.org job.",
+    }
+
+    # --- DEAD CODE BELOW (kept for archaeology) ---
     # Check cron secret for authentication
     cron_secret = os.getenv("CRON_SECRET", "")
     provided_secret = request.headers.get("X-Cron-Secret", "")

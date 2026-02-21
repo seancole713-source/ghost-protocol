@@ -204,7 +204,7 @@ V3_BLACKLIST = ['TGTX', 'SOUN', 'ABCL', 'ZIL', 'MANA', 'SAND', 'RLC', '1INCH',
 V3_AVOID_STRATEGIES = ['RSI', 'RSI_extreme']
 
 # V3 minimum confidence threshold (lowered — V3 strategies are already backtest-validated)
-V3_MIN_CONFIDENCE = 0.50
+V3_MIN_CONFIDENCE = 0.70  # FIXED Feb 21, 2026: Was 0.50, letting 43-47% display picks through. Must match v3_filter.py _V3_MIN_CONFIDENCE
 
 # DEFAULT HOLD PERIOD - Changed from 48h to 72h based on backtest
 # 72h had most statistically significant results
