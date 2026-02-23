@@ -85,13 +85,16 @@ class StockMarketHoursGate:
     
     Regular trading: 9:30 AM - 4:00 PM ET
     Extended hours: 4:00 AM - 8:00 PM ET (pre/post market)
+    Pre-market card: 7:00 AM - 9:30 AM ET (for 8 AM CT daily card)
     
     For strict mode: Only regular hours
     For extended mode: Include pre/post market
+    For premarket_card mode: Allow pre-market predictions using yesterday's close
     """
     
-    def __init__(self, strict: bool = True):
+    def __init__(self, strict: bool = True, allow_premarket_card: bool = False):
         self.strict = strict
+        self.allow_premarket_card = allow_premarket_card
     
     def check(self, date: datetime = None) -> GateResult:
         if date is None:
@@ -134,6 +137,16 @@ class StockMarketHoursGate:
                 gate_name="MarketHours",
                 reason=f"Market open ({hour}:{minute:02d} ET)",
                 confidence_modifier=1.0
+            )
+        elif self.allow_premarket_card and 7.0 <= time_decimal < 9.5:
+            # Pre-market card window: yesterday's close data is valid
+            # The stock market doesn't open until 9:30 AM ET, so there
+            # is literally no fresher data to wait for.
+            return GateResult(
+                passed=True,
+                gate_name="MarketHours",
+                reason=f"Pre-market card ({hour}:{minute:02d} ET, daily bars valid)",
+                confidence_modifier=0.95  # Slight discount for pre-market
             )
         else:
             return GateResult(
@@ -462,7 +475,8 @@ async def run_all_stock_gates(
     symbol: str,
     direction: str,
     metrics: Dict[str, Any],
-    strict_market_hours: bool = True
+    strict_market_hours: bool = True,
+    allow_premarket_card: bool = False
 ) -> StockGateResults:
     """
     Run all stock gates and return combined result.
@@ -472,6 +486,7 @@ async def run_all_stock_gates(
         direction: "UP" or "DOWN"
         metrics: Feature metrics dict
         strict_market_hours: If True, only regular hours. If False, extended hours.
+        allow_premarket_card: If True, allow 7-9:30 AM ET for daily card predictions.
     
     Returns:
         StockGateResults with all gate outcomes
@@ -482,7 +497,7 @@ async def run_all_stock_gates(
     final_modifier = 1.0
     
     # 1. Market Hours Gate
-    market_gate = StockMarketHoursGate(strict=strict_market_hours)
+    market_gate = StockMarketHoursGate(strict=strict_market_hours, allow_premarket_card=allow_premarket_card)
     result = market_gate.check()
     gates.append(result)
     if not result.passed:

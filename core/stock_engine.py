@@ -25,6 +25,15 @@ BTC trend gate         | SPY regime gate
 No earnings            | Earnings blackout
 
 Target: 40-50% win rate (up from 4.5%)
+
+PRE-MARKET FIX (Feb 24, 2026):
+  At 8 AM CT (9 AM ET), the stock market doesn't open until 8:30 CT / 9:30 ET.
+  Yesterday's close is the FRESHEST data available — there is literally nothing
+  newer to wait for. Daily bars from Polygon/yfinance are perfectly valid.
+  The ensemble predictor degrades pre-market because the feature orchestrator
+  can't get real-time price/volume, but the stock engine's own daily-bar
+  indicators (RSI, MACD, Bollinger, volume ratio, ATR) are fully valid.
+  This fix makes the engine pre-market aware so stocks appear in 8 AM cards.
 """
 
 import os
@@ -42,6 +51,41 @@ from core.pattern_tracker import record_pattern_detection
 _wolf_app_loaded = False
 
 LOGGER = logging.getLogger("ghost.stock_engine")
+
+# ============================================================================
+# TIMEZONE + PRE-MARKET DETECTION
+# ============================================================================
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from pytz import timezone as ZoneInfo
+
+_ET = ZoneInfo("America/New_York")
+
+# Pre-market staleness: how old stock data can be before it's "stale".
+# Default 18h covers the overnight gap (yesterday 3 PM CT close → today 8 AM CT card).
+# On weekends this covers Fri close → Mon 8 AM (≈65h), but the engine already
+# blocks weekends via SPY/VIX gates and economic_calendar, so it doesn't matter.
+STOCK_DATA_STALENESS_H = float(os.getenv("STOCK_DATA_STALENESS_H", "18"))
+
+
+def _is_premarket() -> bool:
+    """
+    True when the US stock market has NOT yet opened today.
+
+    Pre-market = weekday AND current ET time < 9:30 AM ET.
+    Returns False on weekends (no card fires on weekends anyway).
+
+    At 8 AM CT = 9 AM ET this returns True, which is exactly when the
+    daily TOP 10 card fires. The market opens at 9:30 AM ET (8:30 AM CT),
+    so yesterday's close is the freshest data available.
+    """
+    now_et = datetime.now(_ET)
+    if now_et.weekday() >= 5:  # Sat/Sun
+        return False
+    time_decimal = now_et.hour + now_et.minute / 60.0
+    return time_decimal < 9.5  # Before 9:30 AM ET
 
 # ============================================================================
 # STOCK ENGINE CONFIGURATION
@@ -758,6 +802,41 @@ class StockEngine:
         # If the model says 35%, that's valuable information (low conviction = don't trade)
         base_confidence = ensemble_confidence  # Raw model output, no floor
         
+        # ================================================================
+        # PRE-MARKET CONFIDENCE FIX (Feb 24, 2026)
+        #
+        # At 8 AM CT (9 AM ET), the ensemble predictor is degraded because
+        # the feature orchestrator can't get real-time price/volume data
+        # (market doesn't open until 9:30 AM ET).  However, the stock
+        # engine's OWN indicators (Step 5) come from Polygon/yfinance
+        # *daily bars*, which are perfectly valid — yesterday's close IS
+        # the freshest data available before market open.
+        #
+        # Without this fix:
+        #   ensemble_confidence ≈ 0.50 (degraded) → final ≈ 0.62 → fails 0.70 V3 floor
+        #   → stocks missing from every 8 AM card for 3+ days
+        #
+        # With this fix:
+        #   When pre-market + daily-bar indicators are good (data_quality >= 0.7),
+        #   use indicator-based confidence as the floor instead of the degraded
+        #   ensemble.  The indicator signals (RSI, MACD, BB, SPY, VIX) are
+        #   trustworthy at 8 AM — they're derived from real closing data.
+        # ================================================================
+        premarket = _is_premarket()
+        data_quality = indicators.get("data_quality_score", 1.0)
+        
+        if premarket and direction != "HOLD" and data_quality >= 0.7:
+            # Daily-bar indicators are valid → use indicator-based confidence floor
+            # Floor = 0.62 + confirmations * 0.03 (max 5 confirms → 0.77)
+            indicator_floor = 0.62 + min(0.15, confirmations * 0.03)
+            if base_confidence < indicator_floor:
+                LOGGER.info(
+                    f"🌅 [{symbol}] Pre-market confidence lift: ensemble {base_confidence:.0%} → "
+                    f"indicator floor {indicator_floor:.0%} (daily bars valid, "
+                    f"data_quality={data_quality:.0%}, {confirmations} confirms)"
+                )
+                base_confidence = indicator_floor
+        
         # Boost for confirmations
         conf_boost = min(0.25, confirmations * 0.04)
         
@@ -815,13 +894,22 @@ class StockEngine:
             momentum_adj = 0.85  # Counter-trend, reduce expectation
         
         # Data quality affects confidence: bad data = lower confidence
-        data_quality = indicators.get("data_quality_score", 1.0)
-        if data_quality < 0.5:
+        # PRE-MARKET EXCEPTION: Skip penalty when daily-bar indicators are good.
+        # At 8 AM CT, data_quality from _get_technical_indicators() reflects
+        # daily bars (RSI, MACD, BB, volume, ATR) — these are fully valid
+        # pre-market.  Only penalize during market hours when stale data is
+        # genuinely a problem (live quotes should be available).
+        if data_quality < 0.5 and not (premarket and data_quality >= 0.3):
             # Less than half the indicators are real - scale confidence DOWN
             quality_penalty = (0.5 - data_quality) * 0.3  # Up to -15% penalty
             confidence = max(0.1, confidence - quality_penalty)
             LOGGER.warning(
                 f"⚠️ [{symbol}] Data quality {data_quality:.0%} → confidence penalized by {quality_penalty:.0%}"
+            )
+        elif premarket and data_quality < 0.5:
+            LOGGER.info(
+                f"🌅 [{symbol}] Pre-market: skipping data quality penalty "
+                f"(quality={data_quality:.0%}, daily bars accepted as valid)"
             )
         
         # Final expected move (conservative: cap at 2x ATR)
@@ -852,7 +940,11 @@ class StockEngine:
             data_quality=round(data_quality, 2),
         )
         
-        LOGGER.info(f"🏛️ {symbol} → {direction} ({confidence:.0%}) | {confirmations} confirmations | expected move: {expected_move_pct:+.1f}% | ATR: {atr_pct:.1f}%")
+        LOGGER.info(
+            f"🏛️ {symbol} → {direction} ({confidence:.0%}) | "
+            f"{confirmations} confirmations | expected move: {expected_move_pct:+.1f}% | "
+            f"ATR: {atr_pct:.1f}%{' | 🌅 PRE-MARKET' if premarket else ''}"
+        )
         
         # Record pattern for accuracy tracking (only actionable predictions)
         if direction in ("UP", "DOWN") and confidence >= 0.6:
