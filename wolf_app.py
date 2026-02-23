@@ -27812,6 +27812,77 @@ async def top10_preview():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/regime-status")
+async def debug_regime_status():
+    """
+    Debug endpoint: Current market regime filter status.
+    
+    Shows BTC 24h/7d trends, SPY regime, current filter level,
+    and what action would be taken on crypto/stock BUYs.
+    
+    Usage:
+        /debug/regime-status
+    """
+    try:
+        from core.regime_filter import get_regime_debug
+        return await get_regime_debug()
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/debug/regime-preview")
+async def debug_regime_preview():
+    """
+    Debug endpoint: Preview what the regime filter would do to today's picks.
+    
+    Runs the full V3 pipeline + regime filter and shows before/after.
+    Does NOT send any messages.
+    
+    Usage:
+        /debug/regime-preview
+    """
+    try:
+        from core.adapters import process_v3_from_cache
+        from core.regime_filter import apply_regime_filter
+        
+        # Run V3 pipeline
+        stocks_raw, crypto_raw = process_v3_from_cache(_LATEST_PREDICTIONS)
+        
+        # Run regime filter
+        stocks_filtered, crypto_filtered, regime_info = await apply_regime_filter(
+            stocks_raw, crypto_raw
+        )
+        
+        def _pick_summary(picks):
+            return [
+                {
+                    "symbol": p["symbol"],
+                    "direction": p.get("direction", "?"),
+                    "confidence": round(p.get("confidence", 0), 3),
+                }
+                for p in picks
+            ]
+        
+        return {
+            "ok": True,
+            "regime": regime_info,
+            "before": {
+                "stocks": _pick_summary(stocks_raw),
+                "crypto": _pick_summary(crypto_raw),
+                "total": len(stocks_raw) + len(crypto_raw),
+            },
+            "after": {
+                "stocks": _pick_summary(stocks_filtered),
+                "crypto": _pick_summary(crypto_filtered),
+                "total": len(stocks_filtered) + len(crypto_filtered),
+            },
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/tracking-status")
 async def debug_tracking_status(secret: str = ""):
     """

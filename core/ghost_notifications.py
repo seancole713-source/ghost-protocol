@@ -2233,6 +2233,60 @@ class GhostNotificationSystem:
             LOGGER.warning("[NOTIFICATIONS] No predictions available for TOP 10")
             return False
         
+        # ═══════════════════════════════════════════════════════════
+        # REGIME FILTER (Feb 23, 2026): Gate BUY signals in dumps
+        # Sits between V3 pipeline output and message formatting.
+        # SELLs always pass. Crypto BUYs blocked when BTC dumping.
+        # Stock BUYs blocked when SPY below 20-day MA.
+        # ═══════════════════════════════════════════════════════════
+        regime_info = None
+        try:
+            import asyncio
+            import threading
+            from core.regime_filter import apply_regime_filter, format_regime_alert
+            
+            # Robust sync→async bridge: run regime filter in a separate thread
+            # with its own event loop. This avoids all event loop conflicts with
+            # FastAPI's running loop.
+            _result = [stocks, crypto, None]
+            _error = [None]
+            
+            def _run_regime():
+                try:
+                    _result[0], _result[1], _result[2] = asyncio.run(
+                        apply_regime_filter(stocks, crypto)
+                    )
+                except Exception as e:
+                    _error[0] = e
+            
+            t = threading.Thread(target=_run_regime, daemon=True)
+            t.start()
+            t.join(timeout=30)
+            
+            if _error[0]:
+                raise _error[0]
+            
+            stocks, crypto, regime_info = _result
+            
+            # Send regime alert to Telegram if picks were filtered
+            if regime_info and regime_info.get("filtered_count", 0) > 0:
+                alert_msg = format_regime_alert(regime_info)
+                if alert_msg and self.send_telegram:
+                    self.send_telegram(alert_msg)
+                    LOGGER.info(f"[REGIME] Sent regime filter alert to Telegram")
+            
+            # If regime filter removed ALL picks, still mark as sent (don't re-send)
+            if not stocks and not crypto:
+                LOGGER.warning("[REGIME] All picks filtered by regime — no card today")
+                self._last_top10_date = today
+                self._persist_state('last_top10_date', today)
+                return True  # Not an error — regime filter working as designed
+            
+        except Exception as e:
+            LOGGER.error(f"[REGIME] Regime filter failed (non-fatal, sending unfiltered): {e}", exc_info=True)
+            # Non-fatal: if regime filter crashes, send picks unfiltered
+            # Better to send a questionable BUY than to silently break notifications
+        
         # FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
         inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
         messages = format_top10_message(stocks, crypto, inverse_mode)
