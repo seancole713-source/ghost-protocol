@@ -5066,13 +5066,15 @@ async def _post_startup_init():
                     central_tz = pytz.timezone("America/Chicago")
                 
                 TOP_10_HOUR = 8  # 8 AM Central — daily TOP 10 send
+                PRE_SCAN_HOUR = 7  # 7 AM Central — run predictions so 8 AM send is instant
                 UPDATE_HOURS = [12, 16, 20]  # 12 PM, 4 PM, 8 PM Central
                 
                 now_central = datetime.now(central_tz)
-                LOGGER.info(f"[NOTIFICATIONS] 🎯 Starting notification loop (TOP 10 at {TOP_10_HOUR}:00 Central)")
+                LOGGER.info(f"[NOTIFICATIONS] 🎯 Starting notification loop (PRE-SCAN at {PRE_SCAN_HOUR}:00, TOP 10 at {TOP_10_HOUR}:00 Central)")
                 LOGGER.info(f"[NOTIFICATIONS] Current time: {now_central.strftime('%Y-%m-%d %H:%M:%S')} Central")
                 
                 last_top10_date = None
+                last_prescan_date = None  # Track pre-scan so it runs once per day
                 last_check_time = 0
                 loop_count = 0
                 
@@ -5081,7 +5083,7 @@ async def _post_startup_init():
                 print("=" * 60)
                 print("[NOTIFICATION LOOP] 🚀 LOOP STARTED SUCCESSFULLY")
                 print(f"[NOTIFICATION LOOP] Current time: {datetime.now(central_tz).strftime('%Y-%m-%d %H:%M:%S')} Central")
-                print(f"[NOTIFICATION LOOP] Schedule: TOP 10 at 8 AM, Watchdog every 15 min")
+                print(f"[NOTIFICATION LOOP] Schedule: PRE-SCAN at 7 AM, TOP 10 at 8 AM, Watchdog every 15 min")
                 print("=" * 60)
                 LOGGER.info("[NOTIFICATION LOOP] 🚀 Status set to RUNNING")
                 
@@ -5104,43 +5106,83 @@ async def _post_startup_init():
                         if loop_count <= 5 or loop_count % 10 == 0:
                             LOGGER.info(f"[NOTIFICATIONS] ⏰ Loop tick #{loop_count}: {now_central.strftime('%H:%M')} Central, predictions={len(_LATEST_PREDICTIONS)}")
                         
-                        if current_hour == TOP_10_HOUR and last_top10_date != current_date:
-                            LOGGER.info(f"[NOTIFICATIONS] 🌅 8 AM WINDOW - Sending morning TOP 10 ({now_central.strftime('%H:%M:%S')} Central)...")
-                            
+                        # ── 7 AM PRE-SCAN: Run predictions so 8 AM send is instant ──
+                        if current_hour == PRE_SCAN_HOUR and last_prescan_date != current_date:
+                            LOGGER.info(f"[PRE-SCAN] 🔄 7 AM - Running prediction scan for all edge symbols ({now_central.strftime('%H:%M:%S')} Central)...")
                             try:
-                                stock_count = 0
-                                crypto_count = 0
+                                _ps_stock_count = 0
+                                _ps_crypto_count = 0
                                 from core.asset_classifier import get_asset_type
                                 
-                                _TOP10_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-                                _TOP10_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
+                                _PS_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+                                _PS_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
                                     "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
                                 )
-                                _TOP10_EDGE_SET = set(s.strip().upper() for s in _TOP10_EDGE_CSV.split(",") if s.strip())
+                                _PS_EDGE_SET = set(s.strip().upper() for s in _PS_EDGE_CSV.split(",") if s.strip())
                                 
-                                if _TOP10_EDGE_ENABLED:
-                                    scan_symbols = list(_TOP10_EDGE_SET)
-                                    LOGGER.info(f"[TOP10-PREP] EDGE WHITELIST: Scanning {len(scan_symbols)} proven edge symbols")
+                                if _PS_EDGE_ENABLED:
+                                    prescan_symbols = list(_PS_EDGE_SET)
                                 else:
-                                    scan_symbols = HUNTER_STOCK_SYMBOLS[:50] + HUNTER_CRYPTO_SYMBOLS[:25]
-                                    LOGGER.info(f"[TOP10-PREP] Edge whitelist DISABLED — scanning {len(scan_symbols)} symbols")
+                                    prescan_symbols = HUNTER_STOCK_SYMBOLS[:50] + HUNTER_CRYPTO_SYMBOLS[:25]
                                 
-                                for symbol in scan_symbols:
+                                LOGGER.info(f"[PRE-SCAN] Scanning {len(prescan_symbols)} symbols...")
+                                for symbol in prescan_symbols:
                                     try:
                                         result = run_single_prediction(symbol)
                                         if result.get("ok"):
                                             asset_type = get_asset_type(symbol)
                                             if asset_type == "crypto":
-                                                crypto_count += 1
+                                                _ps_crypto_count += 1
                                             else:
-                                                stock_count += 1
-                                            LOGGER.debug(f"[TOP10-PREP] ✅ Edge: {symbol}")
+                                                _ps_stock_count += 1
                                     except Exception as e:
-                                        LOGGER.debug(f"[TOP10-PREP] Edge prediction failed for {symbol}: {e}")
+                                        LOGGER.debug(f"[PRE-SCAN] Prediction failed for {symbol}: {e}")
                                 
-                                LOGGER.info(f"[TOP10-PREP] Total: {stock_count} stocks + {crypto_count} crypto from edge symbols")
+                                last_prescan_date = current_date
+                                LOGGER.info(f"[PRE-SCAN] ✅ Complete: {_ps_stock_count} stocks + {_ps_crypto_count} crypto ready for 8 AM send")
                             except Exception as e:
-                                LOGGER.warning(f"[TOP10-PREP] Edge scan error: {e}")
+                                LOGGER.error(f"[PRE-SCAN] Error: {e}", exc_info=True)
+                        
+                        # ── 8 AM SEND: Instant send from pre-scanned predictions ──
+                        if current_hour == TOP_10_HOUR and last_top10_date != current_date:
+                            LOGGER.info(f"[NOTIFICATIONS] 🌅 8 AM WINDOW - Sending morning TOP 10 IMMEDIATELY ({now_central.strftime('%H:%M:%S')} Central)...")
+                            
+                            # If pre-scan didn't run (e.g. Railway restarted after 7 AM),
+                            # do a quick scan now before sending
+                            if last_prescan_date != current_date:
+                                LOGGER.warning(f"[NOTIFICATIONS] ⚠️ Pre-scan missed — running quick scan before send")
+                                try:
+                                    stock_count = 0
+                                    crypto_count = 0
+                                    from core.asset_classifier import get_asset_type
+                                    
+                                    _TOP10_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+                                    _TOP10_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
+                                        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+                                    )
+                                    _TOP10_EDGE_SET = set(s.strip().upper() for s in _TOP10_EDGE_CSV.split(",") if s.strip())
+                                    
+                                    if _TOP10_EDGE_ENABLED:
+                                        scan_symbols = list(_TOP10_EDGE_SET)
+                                    else:
+                                        scan_symbols = HUNTER_STOCK_SYMBOLS[:50] + HUNTER_CRYPTO_SYMBOLS[:25]
+                                    
+                                    for symbol in scan_symbols:
+                                        try:
+                                            result = run_single_prediction(symbol)
+                                            if result.get("ok"):
+                                                asset_type = get_asset_type(symbol)
+                                                if asset_type == "crypto":
+                                                    crypto_count += 1
+                                                else:
+                                                    stock_count += 1
+                                        except Exception as e:
+                                            LOGGER.debug(f"[TOP10-PREP] Fallback scan failed for {symbol}: {e}")
+                                    
+                                    LOGGER.info(f"[TOP10-PREP] Fallback scan: {stock_count} stocks + {crypto_count} crypto")
+                                    last_prescan_date = current_date
+                                except Exception as e:
+                                    LOGGER.warning(f"[TOP10-PREP] Fallback scan error: {e}")
                             
                             LOGGER.info(f"[NOTIFICATIONS] Predictions available: {len(_LATEST_PREDICTIONS)} symbols")
                             
