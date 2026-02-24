@@ -840,26 +840,45 @@ class EnsemblePredictor:
             try:
                 fng = get_fear_greed_index()
                 
-                # Extreme Fear (<25): Be cautious about DOWN predictions
-                if xgb_pred.direction == "DOWN" and fng < 25:
+                # =============================================================
+                # FEAR & GREED REGIME LOGIC (fixed Feb 24, 2025)
+                #
+                # OLD (backwards) logic:
+                #   Fear  + DOWN → penalize shorts ("don't short panic")
+                #   Fear  + UP   → boost buys ("contrarian buy")
+                #   Greed + UP   → penalize buys ("overheated")
+                #
+                # PROBLEM: During sustained dumps (F&G=8), this BOOSTED BUYs
+                # and PENALIZED shorts. All 3 BUY picks (ILV/ICP/CHZ) lost.
+                # Contrarian "buy the dip" catches falling knives.
+                #
+                # NEW (correct) logic:
+                #   Fear  + UP   → PENALIZE buys (market dumping, don't catch knives)
+                #   Fear  + DOWN → LEAVE ALONE (shorts are correct during panic)
+                #   Greed + UP   → LEAVE ALONE (momentum is correct during euphoria)
+                #   Greed + DOWN → PENALIZE shorts (don't fight euphoria)
+                # =============================================================
+                
+                # Extreme Fear (<25): Market is dumping — penalize BUY, trust SHORT
+                if xgb_pred.direction == "UP" and fng < 25:
                     logger.warning(
-                        f"[REGIME] XGBoost says DOWN but Fear&Greed={fng} (EXTREME FEAR). "
-                        f"Small reduction - don't short during panic."
+                        f"[REGIME] XGBoost says UP but Fear&Greed={fng} (EXTREME FEAR). "
+                        f"Penalizing BUY — don't catch falling knives."
                     )
                     xgb_pred = ModelPrediction(
                         model_name=xgb_pred.model_name,
                         direction=xgb_pred.direction,
-                        confidence=max(0.35, xgb_pred.confidence - 0.08),
-                        predicted_change_pct=xgb_pred.predicted_change_pct * 0.9,
+                        confidence=max(0.30, xgb_pred.confidence - 0.10),
+                        predicted_change_pct=xgb_pred.predicted_change_pct * 0.7,
                         weight=xgb_pred.weight
                     )
                     predictions = [xgb_pred]
                 
-                # Extreme Fear + UP signal: Small boost (contrarian buy)
-                elif xgb_pred.direction == "UP" and fng < 30:
+                elif xgb_pred.direction == "DOWN" and fng < 25:
+                    # DOWN during extreme fear = correct read, small boost
                     logger.info(
-                        f"[REGIME] XGBoost says UP in Fear&Greed={fng} (FEAR). "
-                        f"Small boost - contrarian buy signal."
+                        f"[REGIME] XGBoost says DOWN in Fear&Greed={fng} (EXTREME FEAR). "
+                        f"Confirmed — market sentiment agrees with SHORT."
                     )
                     xgb_pred = ModelPrediction(
                         model_name=xgb_pred.model_name,
@@ -870,17 +889,32 @@ class EnsemblePredictor:
                     )
                     predictions = [xgb_pred]
                 
-                # Extreme Greed (>75): Be cautious about UP predictions
-                elif xgb_pred.direction == "UP" and fng > 75:
+                # Extreme Greed (>75): Market euphoria — penalize SHORT, trust BUY
+                elif xgb_pred.direction == "DOWN" and fng > 75:
                     logger.warning(
-                        f"[REGIME] XGBoost says UP but Fear&Greed={fng} (GREED). "
-                        f"Small reduction - market may be overheated."
+                        f"[REGIME] XGBoost says DOWN but Fear&Greed={fng} (EXTREME GREED). "
+                        f"Penalizing SHORT — don't fight euphoria."
                     )
                     xgb_pred = ModelPrediction(
                         model_name=xgb_pred.model_name,
                         direction=xgb_pred.direction,
-                        confidence=max(0.35, xgb_pred.confidence - 0.05),
-                        predicted_change_pct=xgb_pred.predicted_change_pct * 0.9,
+                        confidence=max(0.30, xgb_pred.confidence - 0.10),
+                        predicted_change_pct=xgb_pred.predicted_change_pct * 0.7,
+                        weight=xgb_pred.weight
+                    )
+                    predictions = [xgb_pred]
+                
+                elif xgb_pred.direction == "UP" and fng > 75:
+                    # UP during greed = correct read, small boost
+                    logger.info(
+                        f"[REGIME] XGBoost says UP in Fear&Greed={fng} (EXTREME GREED). "
+                        f"Confirmed — market momentum agrees with BUY."
+                    )
+                    xgb_pred = ModelPrediction(
+                        model_name=xgb_pred.model_name,
+                        direction=xgb_pred.direction,
+                        confidence=min(0.85, xgb_pred.confidence + 0.03),
+                        predicted_change_pct=xgb_pred.predicted_change_pct,
                         weight=xgb_pred.weight
                     )
                     predictions = [xgb_pred]
