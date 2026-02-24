@@ -775,8 +775,32 @@ class EnsemblePredictor:
         """
         start = time.time()
         
-        # Get XGBoost prediction (the only real ML model)
-        xgb_pred = self.xgboost.predict(features)
+        # =====================================================================
+        # LEARNING FIX: Apply feedback loop's learned feature weights
+        # The feedback loop tracks which features correlate with correct predictions
+        # and adjusts their weights (1.20x for 70%+ accuracy, 0.80x for <40%).
+        # Previously, these weights were computed but NEVER applied here.
+        # =====================================================================
+        adjusted_features = features
+        feedback_confidence_adjust = 0.0
+        try:
+            from core.feedback_loop import get_feedback_loop
+            feedback = get_feedback_loop()
+            
+            # Apply learned feature weights
+            adjusted_features = feedback.get_adjusted_features(features)
+            
+            # Get confidence adjustment from signal performance tracking
+            # (symbols that consistently win/lose get boosted/penalized)
+            symbol_signal = f"SYMBOL_{symbol}" if symbol else ""
+            signals = [symbol_signal] if symbol_signal else []
+            feedback_confidence_adjust = feedback.get_signals_confidence_adjustment(signals)
+            
+        except Exception as e:
+            logger.debug(f"[FEEDBACK] Feature weight adjustment skipped: {e}")
+        
+        # Get XGBoost prediction (the only real ML model) — now with learned feature weights
+        xgb_pred = self.xgboost.predict(adjusted_features)
         predictions = [xgb_pred]
         
         # =====================================================================
@@ -890,6 +914,29 @@ class EnsemblePredictor:
                     )
             except Exception as e:
                 logger.warning(f"[BTC_CORR] Integration error: {e}")
+        
+        # =====================================================================
+        # LEARNING FIX: Apply feedback loop confidence adjustment
+        # Boosts/penalizes confidence based on per-symbol historical accuracy.
+        # If a symbol has been consistently losing, confidence gets reduced.
+        # =====================================================================
+        if abs(feedback_confidence_adjust) > 0.005:
+            original_conf = ensemble_result.confidence
+            new_conf = max(0.35, min(0.90, ensemble_result.confidence + feedback_confidence_adjust))
+            
+            if abs(new_conf - original_conf) > 0.005:
+                logger.info(
+                    f"[FEEDBACK] {symbol}: confidence {original_conf:.1%} → {new_conf:.1%} "
+                    f"(feedback adjustment: {feedback_confidence_adjust:+.1%})"
+                )
+                ensemble_result = EnsemblePrediction(
+                    direction=ensemble_result.direction,
+                    confidence=new_conf,
+                    predicted_change_pct=ensemble_result.predicted_change_pct,
+                    individual_predictions=ensemble_result.individual_predictions,
+                    model_weights=ensemble_result.model_weights,
+                    ensemble_method=ensemble_result.ensemble_method
+                )
         
         duration_ms = (time.time() - start) * 1000
         logger.info(

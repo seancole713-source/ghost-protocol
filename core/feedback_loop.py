@@ -73,6 +73,9 @@ class FeedbackLoop:
         
         # Bootstrap from PostgreSQL if SQLite is empty (Railway restarts wipe SQLite)
         self._bootstrap_from_postgres()
+        
+        # Load persisted feature weights from PostgreSQL (survive deploys)
+        self._load_weights_from_postgres()
     
     def _init_db(self):
         """Initialize feedback database"""
@@ -240,6 +243,132 @@ class FeedbackLoop:
         except Exception as e:
             logger.warning(f"⚠️ Failed to bootstrap from PostgreSQL: {e}")
     
+    def _load_weights_from_postgres(self):
+        """
+        Load persisted feature weights from PostgreSQL.
+        
+        This is the KEY fix — feature weights now survive Railway deploys.
+        Previously stored only in ephemeral SQLite, wiped on every redeploy.
+        """
+        import os
+        try:
+            import psycopg2
+        except ImportError:
+            return
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return
+        
+        try:
+            conn = psycopg2.connect(database_url)
+            cursor = conn.cursor()
+            
+            # Create table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_learned_weights (
+                    feature_name TEXT PRIMARY KEY,
+                    weight_multiplier REAL NOT NULL,
+                    total_predictions INTEGER DEFAULT 0,
+                    correct_predictions INTEGER DEFAULT 0,
+                    accuracy_rate REAL DEFAULT 0.5,
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+            
+            # Load weights
+            cursor.execute("""
+                SELECT feature_name, weight_multiplier, total_predictions, correct_predictions, accuracy_rate
+                FROM ghost_learned_weights
+                WHERE total_predictions >= 10
+            """)
+            
+            rows = cursor.fetchall()
+            if rows:
+                loaded = 0
+                for name, weight, total, correct, accuracy in rows:
+                    # Only override if we don't already have better local data
+                    if name not in self.feature_weights or len(self.recent_outcomes) < 50:
+                        self.feature_weights[name] = weight
+                        loaded += 1
+                
+                logger.info(f"✅ Loaded {loaded} persisted feature weights from PostgreSQL (survive deploys)")
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load weights from PostgreSQL: {e}")
+    
+    def _persist_weights_to_postgres(self):
+        """
+        Save learned feature weights to PostgreSQL for persistence across deploys.
+        Called after every weight update cycle.
+        """
+        import os
+        if not self.feature_weights:
+            return
+        
+        try:
+            import psycopg2
+        except ImportError:
+            return
+        
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            return
+        
+        try:
+            conn = psycopg2.connect(database_url)
+            cursor = conn.cursor()
+            
+            # Ensure table exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_learned_weights (
+                    feature_name TEXT PRIMARY KEY,
+                    weight_multiplier REAL NOT NULL,
+                    total_predictions INTEGER DEFAULT 0,
+                    correct_predictions INTEGER DEFAULT 0,
+                    accuracy_rate REAL DEFAULT 0.5,
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            
+            # Upsert all weights
+            for feature_name, weight in self.feature_weights.items():
+                # Get stats from SQLite
+                with sqlite3.connect(self.db_path) as local_conn:
+                    row = local_conn.execute(
+                        "SELECT total_predictions, correct_predictions, accuracy_rate FROM feature_weights WHERE feature_name = ?",
+                        (feature_name,)
+                    ).fetchone()
+                
+                total = row[0] if row else 0
+                correct = row[1] if row else 0
+                accuracy = row[2] if row else 0.5
+                
+                cursor.execute("""
+                    INSERT INTO ghost_learned_weights 
+                    (feature_name, weight_multiplier, total_predictions, correct_predictions, accuracy_rate, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (feature_name) DO UPDATE SET
+                        weight_multiplier = EXCLUDED.weight_multiplier,
+                        total_predictions = EXCLUDED.total_predictions,
+                        correct_predictions = EXCLUDED.correct_predictions,
+                        accuracy_rate = EXCLUDED.accuracy_rate,
+                        updated_at = NOW()
+                """, (feature_name, weight, total, correct, accuracy))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"💾 Persisted {len(self.feature_weights)} feature weights to PostgreSQL")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to persist weights to PostgreSQL: {e}")
+    
     def _compute_symbol_performance(self):
         """
         Compute per-symbol accuracy from recent outcomes.
@@ -383,6 +512,9 @@ class FeedbackLoop:
                 conn.commit()
             
             logger.info(f"✅ Updated {len(updates)} feature weights")
+            
+            # Persist to PostgreSQL so weights survive Railway deploys
+            self._persist_weights_to_postgres()
     
     def get_adjusted_features(self, features: dict[str, float]) -> dict[str, float]:
         """Apply learned weights to features"""

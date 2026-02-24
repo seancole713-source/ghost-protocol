@@ -4517,6 +4517,16 @@ async def _on_startup():
         LOGGER.warning(f"auto_calibration_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
+    # 🧠 Start Model Retrain Scheduler (Ghost learns from its mistakes!)
+    # Retrains XGBoost every 14 days on recent outcome data
+    try:
+        from core.ml_trainer import start_retrain_scheduler
+        start_retrain_scheduler()
+        LOGGER.info("[GHOST STARTUP] ✅ Model retrain scheduler started (every 14 days)")
+    except Exception as e:
+        LOGGER.warning(f"retrain_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # CRITICAL: Initialize prediction store tables EARLY to prevent "table not found" errors
     # Do NOT wait for full pool init - just ensure tables exist
     try:

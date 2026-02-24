@@ -8,6 +8,11 @@ Passes predictions that:
 4. For inverse strategies: Ghost predicted the trigger direction (DOWN)
 
 Based on 52,433 trade backtest analysis + edge whitelist paper trade validation.
+
+LEARNING INTEGRATION (Feb 24, 2026):
+- Learning loop's bias_correction adjusts raw confidence before scoring
+- Learning loop's confidence_threshold can dynamically raise/lower the floor
+- This closes the dead-end where learning_loop wrote to memory.json but nothing read it
 """
 import os
 import logging
@@ -21,6 +26,9 @@ logger = logging.getLogger("ghost")
 _V3_MIN_CONFIDENCE = float(os.getenv("V3_MIN_CONFIDENCE", "0.70"))
 _DEFAULT_TARGET_PCT = 0.066  # 6.6%
 _DEFAULT_STOP_PCT = 0.033    # 3.3%
+
+# Learning loop integration — dynamically adjusts confidence based on recent accuracy
+_LEARNING_LOOP_ENABLED = os.getenv("LEARNING_LOOP_ENABLED", "1") == "1"
 
 from config.symbols import (
     V3_VALIDATED_STRATEGIES, 
@@ -57,6 +65,9 @@ class V3Filter:
             min_confidence: Minimum confidence threshold (default from settings)
         """
         self.min_confidence = min_confidence or _V3_MIN_CONFIDENCE
+        self._bias_correction = 0.0  # Updated from learning loop
+        self._learning_threshold = None  # Dynamic threshold from learning loop
+        self._last_learning_sync = 0
         self._stats = {
             'total_processed': 0,
             'passed': 0,
@@ -92,6 +103,9 @@ class V3Filter:
         Returns:
             List of scored predictions, sorted by score descending
         """
+        # Sync learning loop adjustments (max once per 5 min)
+        self._sync_learning_loop()
+        
         scored = []
         
         for pred in predictions:
@@ -107,6 +121,52 @@ class V3Filter:
         
         return scored[:max_results]
     
+    def _sync_learning_loop(self):
+        """
+        Pull bias_correction and confidence_threshold from the learning loop.
+        
+        This closes the gap where learning_loop.py computed adjustments
+        and wrote them to memory.json but nothing ever read them.
+        Now the V3 filter dynamically adjusts based on recent accuracy.
+        """
+        import time as _time
+        now = _time.time()
+        
+        # Only sync every 5 minutes to avoid overhead
+        if now - self._last_learning_sync < 300:
+            return
+        
+        self._last_learning_sync = now
+        
+        if not _LEARNING_LOOP_ENABLED:
+            return
+        
+        try:
+            from core.learning_loop import get_current_config
+            config = get_current_config()
+            
+            # Apply bias correction (shifts confidence up/down based on systematic error)
+            new_bias = config.get("bias_correction", 0.0)
+            if abs(new_bias) > 0.001 and abs(new_bias) < 0.15:  # Safety bounds
+                self._bias_correction = new_bias
+            
+            # Apply dynamic confidence threshold
+            new_threshold = config.get("confidence_threshold", None)
+            if new_threshold and 0.50 <= new_threshold <= 0.90:
+                self._learning_threshold = new_threshold
+                # Don't go below the env var floor (safety)
+                effective = max(new_threshold, _V3_MIN_CONFIDENCE)
+                if abs(effective - self.min_confidence) > 0.01:
+                    logger.info(
+                        f"[V3] 🧠 Learning loop adjusted threshold: "
+                        f"{self.min_confidence:.0%} → {effective:.0%} "
+                        f"(bias_correction={self._bias_correction:+.3f})"
+                    )
+                    self.min_confidence = effective
+            
+        except Exception as e:
+            logger.debug(f"[V3] Learning loop sync skipped: {e}")
+    
     def filter_single(self, pred: Prediction) -> FilterResult:
         """
         Filter a single prediction and return detailed result.
@@ -118,6 +178,24 @@ class V3Filter:
     def _process_prediction(self, pred: Prediction) -> FilterResult:
         """Process a single prediction through V3 filter."""
         symbol = pred.symbol.upper()
+        
+        # Apply learning loop bias correction to confidence
+        # This corrects systematic over/under-prediction detected by the learning loop
+        adjusted_confidence = pred.confidence + self._bias_correction
+        adjusted_confidence = max(0.0, min(1.0, adjusted_confidence))
+        if abs(self._bias_correction) > 0.001:
+            # Create adjusted prediction with corrected confidence
+            pred = Prediction(
+                symbol=pred.symbol,
+                direction=pred.direction,
+                confidence=adjusted_confidence,
+                current_price=pred.current_price,
+                target_price=pred.target_price,
+                stop_loss=pred.stop_loss,
+                timestamp=pred.timestamp,
+                news_influenced=pred.news_influenced,
+                asset_type=pred.asset_type,
+            )
         
         # Check blacklist first — edge symbols bypass blacklist
         if is_blacklisted(symbol) and symbol not in _EDGE_SET:

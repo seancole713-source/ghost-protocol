@@ -468,6 +468,129 @@ def get_ml_trainer() -> GhostMLTrainer:
     return _ML_TRAINER
 
 
+# =============================================================================
+# AUTOMATED RETRAIN SCHEDULER
+# =============================================================================
+# Ghost's model was previously static — trained once and never updated.
+# This scheduler retrains the XGBoost model on a configurable schedule
+# using recent outcome data from PostgreSQL, then hot-swaps the new model
+# into the running ensemble predictor.
+#
+# Controls:
+#   RETRAIN_ENABLED=1         — master switch (default: enabled)
+#   RETRAIN_INTERVAL_DAYS=14  — how often to retrain (default: every 2 weeks)
+#   RETRAIN_MIN_SAMPLES=200   — minimum outcomes required to retrain
+#   RETRAIN_LOOKBACK_DAYS=90  — training window
+# =============================================================================
+
+_retrain_scheduler_started = False
+
+
+def _run_scheduled_retrain():
+    """Execute a model retrain and hot-swap if the new model is better."""
+    import time as _time
+    
+    logger.info("🔄 [RETRAIN] Starting scheduled model retrain...")
+    
+    lookback = int(os.getenv("RETRAIN_LOOKBACK_DAYS", "90"))
+    min_samples = int(os.getenv("RETRAIN_MIN_SAMPLES", "200"))
+    
+    try:
+        result = train_model(symbol=None, lookback_days=lookback, min_samples=min_samples)
+        
+        if not result.get("ok"):
+            logger.warning(f"🔄 [RETRAIN] Training failed: {result.get('error', 'unknown')}")
+            return result
+        
+        test_acc = result.get("test_accuracy", 0)
+        samples = result.get("samples", 0)
+        
+        logger.info(
+            f"🔄 [RETRAIN] New model trained: accuracy={test_acc:.1%}, "
+            f"samples={samples}, features={len(result.get('features', []))}"
+        )
+        
+        # Hot-swap: reload the ensemble predictor's XGBoost with new model
+        if test_acc >= 0.52:  # Only swap if better than coin flip
+            try:
+                from core.ensemble_predictor import get_ensemble_predictor
+                predictor = get_ensemble_predictor()
+                predictor.xgboost._load_model()  # Reload from disk
+                logger.info(f"🔄 [RETRAIN] ✅ Hot-swapped new model into ensemble predictor")
+            except Exception as e:
+                logger.warning(f"🔄 [RETRAIN] Hot-swap failed (will use on next restart): {e}")
+        else:
+            logger.warning(f"🔄 [RETRAIN] New model accuracy {test_acc:.1%} too low, keeping current model")
+        
+        # Send Telegram notification
+        try:
+            from core.ghost_notifications import send_telegram_message
+            import asyncio
+            msg = (
+                f"🧠 Ghost Model Retrained\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"Accuracy: {test_acc:.1%}\n"
+                f"Samples: {samples}\n"
+                f"Features: {len(result.get('features', []))}\n"
+                f"Status: {'✅ Deployed' if test_acc >= 0.52 else '⚠️ Below threshold'}"
+            )
+            asyncio.get_event_loop().run_until_complete(send_telegram_message(msg))
+        except Exception:
+            pass  # Non-critical
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"🔄 [RETRAIN] Scheduled retrain failed: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+def start_retrain_scheduler():
+    """
+    Start the automated model retrain scheduler.
+    
+    Runs in a background thread. Retrains on a configurable interval
+    (default: every 14 days). Uses PostgreSQL outcome data.
+    """
+    global _retrain_scheduler_started
+    
+    if _retrain_scheduler_started:
+        logger.warning("🔄 [RETRAIN] Scheduler already running")
+        return
+    
+    enabled = os.getenv("RETRAIN_ENABLED", "1") == "1"
+    if not enabled:
+        logger.info("🔄 [RETRAIN] Scheduler disabled (RETRAIN_ENABLED=0)")
+        return
+    
+    interval_days = int(os.getenv("RETRAIN_INTERVAL_DAYS", "14"))
+    
+    import threading
+    import time as _time
+    
+    def _retrain_loop():
+        """Background thread: retrain model on schedule."""
+        logger.info(f"🔄 [RETRAIN] Scheduler started (every {interval_days} days)")
+        
+        # Wait 10 min on startup to let everything initialize
+        _time.sleep(600)
+        
+        while True:
+            try:
+                _run_scheduled_retrain()
+            except Exception as e:
+                logger.error(f"🔄 [RETRAIN] Loop error: {e}", exc_info=True)
+            
+            # Sleep for configured interval
+            _time.sleep(interval_days * 86400)
+    
+    thread = threading.Thread(target=_retrain_loop, daemon=True, name="model-retrain-scheduler")
+    thread.start()
+    
+    _retrain_scheduler_started = True
+    logger.info(f"✅ [RETRAIN] Model retrain scheduler started (interval: {interval_days} days)")
+
+
 if __name__ == "__main__":
     # Train model manually
     logging.basicConfig(level=logging.INFO)

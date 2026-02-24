@@ -50,11 +50,19 @@ def run_weekly_calibration():
         
         logger.info("🔄 [AUTO-CALIBRATE] Starting weekly calibration...")
         
+        # LEARNING FIX: Ghost now auto-applies validated strategies
+        # Controlled by env vars for safety — can be disabled without redeploy
+        import os
+        auto_update = os.getenv("CALIBRATION_AUTO_UPDATE", "1") == "1"
+        dry_run = os.getenv("CALIBRATION_DRY_RUN", "0") == "1"
+        
+        logger.info(f"🔄 [AUTO-CALIBRATE] Mode: auto_update={auto_update}, dry_run={dry_run}")
+        
         result = run_calibration(
             test_crypto=True,
             test_stocks=True,
-            auto_update=False,  # Report only — human reviews & applies
-            dry_run=True        # Dry run — no config file changes
+            auto_update=auto_update,  # Live updates (disable: CALIBRATION_AUTO_UPDATE=0)
+            dry_run=dry_run            # Real writes (enable dry run: CALIBRATION_DRY_RUN=1)
         )
         
         # Log summary

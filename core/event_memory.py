@@ -335,6 +335,12 @@ class EventMemory:
         self.patterns: Dict[str, EventPattern] = {}
         self._init_db()
         self._load_historical_patterns()
+        
+        # LEARNING FIX: Load refined patterns from PostgreSQL (survive restarts)
+        self._load_persisted_patterns()
+        
+        # LEARNING FIX: Overlay real accuracy from pattern_tracker
+        self._overlay_pattern_tracker_accuracy()
     
     def _init_db(self):
         """Create event memory tables if they don't exist"""
@@ -1906,12 +1912,175 @@ class EventMemory:
             LOGGER.info(f"[EVENT_MEMORY] 🧠 Updated {event.event_type} pattern: "
                        f"accuracy={pattern.accuracy:.1%}, observed={new_count}x")
         
+        # Persist updated pattern to PostgreSQL so it survives restarts
+        self._persist_pattern(event.event_type)
+        
         # Generate lesson
         direction = "pumped" if event.reaction_48h > 0 else "dumped"
         event.lesson = (
             f"{event.event_type}: {event.trigger} → {event.primary_symbol} {direction} "
             f"{abs(event.reaction_48h):.1f}% over 48h (peak: {event.peak_reaction:.1f}%)"
         )
+    
+    def _persist_pattern(self, event_type: str):
+        """
+        Persist refined pattern to PostgreSQL ghost_event_patterns table.
+        
+        LEARNING FIX: Previously, updated patterns were in-memory only and lost
+        on every restart. Now they survive deploys.
+        """
+        pattern = self.patterns.get(event_type)
+        if not pattern or not self.db_url or 'sqlite' in self.db_url:
+            return
+        
+        try:
+            import psycopg2
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor()
+            
+            cur.execute("""
+                INSERT INTO ghost_event_patterns 
+                (event_type, keywords, affected_symbols, immediate_reaction, peak_reaction,
+                 recovery_time_hours, typical_direction, times_observed, last_observed,
+                 accuracy, notes, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (event_type) DO UPDATE SET
+                    immediate_reaction = EXCLUDED.immediate_reaction,
+                    peak_reaction = EXCLUDED.peak_reaction,
+                    times_observed = EXCLUDED.times_observed,
+                    last_observed = EXCLUDED.last_observed,
+                    accuracy = EXCLUDED.accuracy,
+                    notes = EXCLUDED.notes,
+                    updated_at = NOW()
+            """, (
+                pattern.event_type,
+                json.dumps(pattern.keywords),
+                json.dumps(pattern.affected_symbols),
+                pattern.immediate_reaction,
+                pattern.peak_reaction,
+                pattern.recovery_time_hours,
+                pattern.typical_direction,
+                pattern.times_observed,
+                pattern.last_observed,
+                pattern.accuracy,
+                pattern.notes,
+            ))
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            LOGGER.debug(f"[EVENT_MEMORY] 💾 Persisted pattern {event_type} to PostgreSQL")
+            
+        except Exception as e:
+            LOGGER.warning(f"[EVENT_MEMORY] Failed to persist pattern {event_type}: {e}")
+    
+    def _load_persisted_patterns(self):
+        """
+        Load refined patterns from PostgreSQL and overlay on hardcoded defaults.
+        
+        LEARNING FIX: Patterns refined through _learn_from_event are now
+        persisted in PostgreSQL. On restart, we load them to replace the
+        hardcoded defaults with empirically-refined values.
+        """
+        if not self.db_url or 'sqlite' in self.db_url:
+            return
+        
+        try:
+            import psycopg2
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT event_type, immediate_reaction, peak_reaction, times_observed,
+                       last_observed, accuracy, notes
+                FROM ghost_event_patterns
+                WHERE times_observed > 0
+            """)
+            
+            rows = cur.fetchall()
+            updated = 0
+            
+            for event_type, imm_react, peak_react, times_obs, last_obs, accuracy, notes in rows:
+                if event_type in self.patterns:
+                    pattern = self.patterns[event_type]
+                    # Only override if DB has more observations than the hardcoded default
+                    if times_obs > pattern.times_observed or pattern.times_observed <= 500:
+                        pattern.immediate_reaction = imm_react
+                        pattern.peak_reaction = peak_react
+                        pattern.times_observed = times_obs
+                        pattern.accuracy = accuracy
+                        if last_obs:
+                            pattern.last_observed = str(last_obs)
+                        if notes:
+                            pattern.notes = notes
+                        updated += 1
+            
+            cur.close()
+            conn.close()
+            
+            if updated > 0:
+                LOGGER.info(f"[EVENT_MEMORY] 🧠 Loaded {updated} refined patterns from PostgreSQL (survive deploys)")
+            
+        except Exception as e:
+            LOGGER.warning(f"[EVENT_MEMORY] Failed to load persisted patterns: {e}")
+    
+    def _overlay_pattern_tracker_accuracy(self):
+        """
+        Replace hardcoded pattern accuracy with REAL accuracy from pattern_tracker.
+        
+        LEARNING FIX: pattern_tracker records every pattern detection and tracks 
+        whether it was profitable. This data was stored in PostgreSQL but never
+        fed back into event_memory's hardcoded patterns. Now it is.
+        
+        Example: If pattern_tracker shows ELON_TWEET has 45% real accuracy 
+        (not the hardcoded 80%), we use 45%.
+        """
+        try:
+            from core.pattern_tracker import get_pattern_accuracy
+            
+            real_accuracy = get_pattern_accuracy()
+            
+            if "error" in real_accuracy:
+                return
+            
+            updated = 0
+            for pattern_type, stats in real_accuracy.items():
+                if pattern_type == "overall" or pattern_type == "pending_reconciliation":
+                    continue
+                
+                # Find matching pattern in memory
+                if pattern_type in self.patterns and stats.get("detections", 0) >= 5:
+                    old_accuracy = self.patterns[pattern_type].accuracy
+                    empirical_accuracy = stats["accuracy"] / 100.0  # Convert from % to fraction
+                    
+                    # Blend: weight empirical data more as sample size grows
+                    n = stats["detections"]
+                    if n >= 20:
+                        # Strong sample — use 80% empirical, 20% historical
+                        blended = 0.8 * empirical_accuracy + 0.2 * old_accuracy
+                    elif n >= 10:
+                        # Moderate sample — 50/50
+                        blended = 0.5 * empirical_accuracy + 0.5 * old_accuracy
+                    else:
+                        # Small sample — 30% empirical, 70% historical
+                        blended = 0.3 * empirical_accuracy + 0.7 * old_accuracy
+                    
+                    self.patterns[pattern_type].accuracy = blended
+                    
+                    if abs(blended - old_accuracy) > 0.05:
+                        LOGGER.info(
+                            f"[EVENT_MEMORY] 📊 {pattern_type} accuracy updated: "
+                            f"{old_accuracy:.0%} → {blended:.0%} "
+                            f"(empirical={empirical_accuracy:.0%}, n={n})"
+                        )
+                        updated += 1
+            
+            if updated > 0:
+                LOGGER.info(f"[EVENT_MEMORY] 🧠 Updated {updated} patterns with real accuracy from pattern_tracker")
+                
+        except Exception as e:
+            LOGGER.warning(f"[EVENT_MEMORY] Pattern tracker overlay failed: {e}")
     
     def _save_event(self, event: EventMemoryEntry):
         """Save event to database"""

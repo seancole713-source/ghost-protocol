@@ -45,7 +45,7 @@ LOGGER = logging.getLogger("ghost.regime")
 REGIME_ENABLED = os.getenv("REGIME_FILTER_V2", "1") == "1"
 
 # BTC 24h thresholds (fast signal — catches intraday dumps)
-BTC_24H_CAUTION  = float(os.getenv("BTC_24H_CAUTION", "-3.0"))   # -3% = caution
+BTC_24H_CAUTION  = float(os.getenv("BTC_24H_CAUTION", "-2.0"))   # -2% = caution (tightened from -3% — Feb 23 showed -4% wasn't caught early enough)
 BTC_24H_BEARISH  = float(os.getenv("BTC_24H_BEARISH", "-5.0"))   # -5% = bearish
 BTC_24H_CRASH    = float(os.getenv("BTC_24H_CRASH", "-8.0"))     # -8% = crash
 
