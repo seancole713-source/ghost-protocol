@@ -275,7 +275,7 @@ class CoinGeckoProvider:
         "ILV": "illuvium",
         "STACKS": "blockstack",  # Stacks blockchain (renamed from STX to avoid collision)
         # Edge whitelist symbols (Feb 11, 2026) — were causing $0.00 prices
-        "GIGA": "gigachad",
+        "GIGA": "gigachad-2",
         "IOTX": "iotex",
         "ALICE": "my-neighbor-alice",
         "JUP": "jupiter-exchange-solana",
@@ -1349,7 +1349,7 @@ _COINGECKO_IDS = {
     "BAND": "band-protocol",
     "ALICE": "my-neighbor-alice",
     "IOTX": "iotex",
-    "GIGA": "gigachad",
+    "GIGA": "gigachad-2",
     "BRETT": "based-brett",
     "BCH": "bitcoin-cash",
     "YFI": "yearn-finance",
