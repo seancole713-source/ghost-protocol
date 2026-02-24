@@ -312,8 +312,8 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
     # Load edge whitelist so edge symbols bypass V3_REMOVED_SYMBOLS blocking
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _edge_csv = os.getenv("EDGE_SYMBOLS",
-        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
     )
     _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip()) if _edge_enabled else set()
     
@@ -796,8 +796,8 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     # 7 edge symbols (HBAR, ILV, BAND, PEPE, ENJ, YFI, RNDR) were silently blocked
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _edge_csv = os.getenv("EDGE_SYMBOLS",
-        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
     )
     _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
     is_edge = _edge_enabled and symbol_upper in _edge_set
@@ -1745,8 +1745,8 @@ class GhostNotificationSystem:
         # EDGE WHITELIST (Feb 9, 2026): Only recommend proven edge symbols
         _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
         _edge_csv = os.getenv("EDGE_SYMBOLS",
-            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
         )
         _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
         

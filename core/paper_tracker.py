@@ -273,8 +273,8 @@ class PaperTracker:
         _edge_whitelist_enabled = os.environ.get("EDGE_WHITELIST_ENABLED", "1") == "1"
         if _edge_whitelist_enabled:
             _edge_csv = os.environ.get("EDGE_SYMBOLS",
-                "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-                "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+                "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+                "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
             )
             _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
             if symbol.upper() not in _edge_set:
