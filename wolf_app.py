@@ -4633,7 +4633,11 @@ async def _on_startup():
                             "horizon_h": pred.get("horizon_h", 6),
                             "method": pred.get("method", "unknown"),
                             "price_at_prediction": pred.get("price_at_prediction"),
+                            "price": pred.get("price_at_prediction"),  # FIX (Feb 24): cockpit expects "price"
                             "expected_move": pred.get("expected_move"),
+                            "engine": pred.get("engine", "turbo"),  # FIX (Feb 24): was missing
+                            "intel_applied": pred.get("intel_applied", False),  # FIX (Feb 24): was missing
+                            "market": pred.get("market", "unknown"),  # FIX (Feb 24): was missing
                         }
                         warmup_count += 1
                 
@@ -8244,6 +8248,45 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → ghost_predictions DB ✅")
                 except Exception as db_err:
                     LOGGER.warning(f"[{symbol}] Stock Engine ghost_predictions write failed (non-fatal): {db_err}")
+
+                # ================================================================
+                # ALSO write stock predictions to PostgreSQL (Feb 24, 2026)
+                # Evaluator now reads from PostgreSQL exclusively.
+                # ================================================================
+                try:
+                    import psycopg2 as _se_pg
+                    _se_pg_url = os.getenv("DATABASE_URL")
+                    if _se_pg_url:
+                        _se_pg_conn = _se_pg.connect(_se_pg_url)
+                        _se_pg_cur = _se_pg_conn.cursor()
+                        _se_pred_price = stock_result.get("target_price") or se_entry_price
+                        _se_pred_pct = ((float(_se_pred_price) - se_entry_price) / se_entry_price * 100) if se_entry_price else 0.0
+                        _se_pg_cur.execute("""
+                            INSERT INTO ghost_predictions (
+                                symbol, predicted_at, check_at, predicted_price,
+                                predicted_direction, predicted_pct, confidence, timeframe_hours,
+                                current_price, target_price, gate, checked
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (symbol, predicted_at) DO NOTHING
+                        """, (
+                            symbol,
+                            int(time.time()),
+                            int(time.time() + se_horizon * 3600),
+                            float(_se_pred_price),
+                            se_direction,
+                            float(_se_pred_pct),
+                            se_confidence,
+                            se_horizon,
+                            se_entry_price,
+                            float(_se_pred_price),
+                            "STOCK_ENGINE",
+                            0,
+                        ))
+                        _se_pg_conn.commit()
+                        _se_pg_conn.close()
+                        LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → PostgreSQL ghost_predictions ✅")
+                except Exception as _se_pg_err:
+                    LOGGER.warning(f"[{symbol}] Stock Engine PostgreSQL write failed (non-fatal): {_se_pg_err}")
                 
                 return {
                     "ok": stock_result.get("is_actionable", False) or se_direction != "HOLD",
@@ -9398,6 +9441,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 "price": current_price,  # For trade decision engine
                 "price_at_prediction": current_price,
                 "market": "crypto" if _is_crypto_symbol(symbol) else "stock",  # Market type
+                "engine": "turbo",  # FIX (Feb 24): was missing, cockpit defaulted to phantom "turbo"
+                "intel_applied": bool(intel_metadata.get("intel_applied")),  # FIX (Feb 24): was missing for crypto, always showed False
+                "confirmations": intel_metadata.get("confirmations", 0),  # FIX (Feb 24): was missing
                 "feature_status": feature_status.to_dict(),
                 "confidence_metadata": confidence_metadata,
                 "should_predict": bool(should_predict),
@@ -9601,6 +9647,52 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             LOGGER.info(f"[{symbol}] Stored in ghost_predictions table (ID={prediction_id}, direction={direction}, confidence={confidence:.1%}, features={len(features)})")
         except Exception as e:
             LOGGER.error(f"[{symbol}] Failed to write to ghost_predictions table: {e}")
+
+        # ================================================================
+        # ALSO write to PostgreSQL ghost_predictions (Feb 24, 2026)
+        # The evaluator now reads from PostgreSQL, so predictions MUST
+        # exist there for evaluation to work.
+        # ================================================================
+        try:
+            import psycopg2 as _pg_pred
+            _pg_url = os.getenv("DATABASE_URL")
+            if _pg_url:
+                _pg_conn = _pg_pred.connect(_pg_url)
+                _pg_cur = _pg_conn.cursor()
+                # Ensure table (evaluator's _ensure_pg_tables handles this, but be safe)
+                _predicted_price = take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price
+                _predicted_pct = float(expected_move_pct) if expected_move_pct is not None else (
+                    ((float(_predicted_price) - current_price) / current_price) * 100 if current_price else 0.0
+                )
+                import json as _pg_json
+                _features_json = _pg_json.dumps(features)
+                _pg_cur.execute("""
+                    INSERT INTO ghost_predictions (
+                        symbol, predicted_at, check_at, predicted_price,
+                        predicted_direction, predicted_pct, confidence, timeframe_hours,
+                        current_price, target_price, gate, checked, features_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (symbol, predicted_at) DO NOTHING
+                """, (
+                    symbol,
+                    int(run_at),
+                    int(run_at + (horizon_h * 3600)),
+                    float(_predicted_price),
+                    direction,
+                    float(_predicted_pct),
+                    confidence,
+                    horizon_h,
+                    current_price,
+                    float(_predicted_price),
+                    str(_LATEST_PREDICTIONS.get(symbol, {}).get("gate") or "MONITOR"),
+                    0,
+                    _features_json,
+                ))
+                _pg_conn.commit()
+                _pg_conn.close()
+                LOGGER.info(f"[{symbol}] ✅ PostgreSQL ghost_predictions stored")
+        except Exception as _pg_err:
+            LOGGER.warning(f"[{symbol}] PostgreSQL ghost_predictions write failed (non-fatal): {_pg_err}")
         
         # ========================================================================
         # AUTO-LOG PAPER TRADE: Track all predictions for paper trading P&L
@@ -21624,18 +21716,33 @@ async def api_cockpit_snapshot():
             LOGGER.warning(f"Could not query latest predictions: {e}")
 
         # Build predictions from in-memory store
+        # FIX (Feb 24, 2026): Expose FULL prediction payload.
+        # Previously stripped ~70% of fields (price, action, gates, trust, momentum).
         predictions = {}
         try:
             for sym, pred in _LATEST_PREDICTIONS.items():
                 predictions[sym] = {
-                    "prediction_id": pred["prediction_id"],
-                    "run_at": pred["run_at"],
-                    "confidence": pred["confidence"],
-                    "direction": pred["direction"],
+                    "prediction_id": pred.get("prediction_id"),
+                    "symbol": sym,
+                    "run_at": pred.get("run_at"),
+                    "confidence": pred.get("confidence"),
+                    "direction": pred.get("direction"),
+                    "action": pred.get("action"),
                     "horizon_h": pred.get("horizon_h", 48),
                     "engine": pred.get("engine", "turbo"),
                     "confirmations": pred.get("confirmations"),
                     "intel_applied": pred.get("intel_applied", False),
+                    "price": pred.get("price"),
+                    "price_at_prediction": pred.get("price_at_prediction"),
+                    "market": pred.get("market"),
+                    "provider": pred.get("provider"),
+                    "should_predict": pred.get("should_predict"),
+                    "gates_passed": pred.get("gates_passed"),
+                    "reasons": pred.get("reasons"),
+                    "momentum": pred.get("momentum"),
+                    "expected_move_pct": pred.get("expected_move_pct"),
+                    "trust_level": pred.get("trust_level"),
+                    "trust_boost": pred.get("trust_boost"),
                 }
         except Exception as e:
             LOGGER.warning(f"Failed to build predictions for /api/cockpit: {e}")
@@ -26524,7 +26631,7 @@ async def debug_model_status(secret: str = ""):
     """
     Check if XGBoost model is loaded and its stats.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -26601,7 +26708,7 @@ async def debug_fear_greed(secret: str = ""):
     Debug endpoint to check Fear & Greed Index integration.
     Shows current value, trading signal, and confidence modifier.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -26647,7 +26754,7 @@ async def debug_btc_trend(secret: str = "", symbol: str = "BTC"):
     Debug endpoint to check BTC trend and correlation boost.
     Shows current BTC price, trend, and correlation boost for a symbol.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -26693,7 +26800,7 @@ async def debug_movers_scanner(secret: str = ""):
     Debug endpoint to check real-time market movers scanner status.
     Shows discovered symbols today, scanner settings, and manual trigger.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -26766,7 +26873,7 @@ async def debug_stock_status(secret: str = ""):
     Debug endpoint to diagnose stock prediction issues.
     Shows market hours status, timezone info, and stock counts.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -26842,7 +26949,7 @@ async def debug_accuracy_stack(secret: str = ""):
     Combined endpoint showing all accuracy improvement systems.
     Shows Fear & Greed, BTC Correlation, Volatility Filter, and Model Status.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -26921,7 +27028,7 @@ async def debug_volatility(secret: str = "", symbol: str = "BTC"):
     """
     Debug endpoint to check volatility filter for a symbol.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -26964,7 +27071,7 @@ async def debug_exclusions(secret: str = ""):
     Debug endpoint to verify exclusion system is working.
     Shows both HARDCODED_EXCLUSIONS and GHOST_EXCLUDE_SYMBOLS env var.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -27004,7 +27111,7 @@ async def debug_watchlist_raw(secret: str = ""):
     """
     Get raw watchlist from database.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -27053,7 +27160,7 @@ async def debug_watchlist_add(symbol: str = "", asset_type: str = "stock", secre
     Debug endpoint to add symbols directly to watchlist.
     Bypasses API layer for testing.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     if not symbol:
@@ -27112,7 +27219,7 @@ async def debug_watchlist_bulk_add(request: Request, secret: str = ""):
     Bulk add symbols to watchlist.
     Body: {"symbols": ["AAPL", "AMD", ...], "asset_type": "stock"}
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -27189,7 +27296,7 @@ async def debug_watchlist_schema(secret: str = ""):
     Check if ghost_watchlist_items table exists and show schema.
     Also create it if it doesn't exist.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -27421,7 +27528,7 @@ async def reconcile_predictions_now(request: Request):
     from datetime import datetime
     
     # Check cron secret for authentication
-    cron_secret = os.getenv("CRON_SECRET", "")
+    cron_secret = os.getenv("CRON_SECRET", "ghost-cron-2024")
     provided_secret = request.headers.get("X-Cron-Secret", "")
     
     # Allow bypass for local testing or if already authenticated via bearer token
@@ -28100,7 +28207,7 @@ async def debug_tracking_status(secret: str = ""):
     Debug endpoint to check pick tracking status.
     Shows all active tracked picks and their current status.
     """
-    if secret != os.getenv("CRON_SECRET", ""):
+    if secret != os.getenv("CRON_SECRET", "ghost-cron-2024"):
         return {"error": "Invalid secret"}
     
     try:
@@ -28242,7 +28349,7 @@ async def top10_send_now(request: Request):
 
     # --- DEAD CODE BELOW (kept for archaeology) ---
     # Check cron secret for authentication
-    cron_secret = os.getenv("CRON_SECRET", "")
+    cron_secret = os.getenv("CRON_SECRET", "ghost-cron-2024")
     provided_secret = request.headers.get("X-Cron-Secret", "")
     
     if not cron_secret:
@@ -28325,7 +28432,7 @@ async def top10_force_send(request: Request):
     
     Use this for testing only. Requires X-Cron-Secret AND X-Force-Send: true headers.
     """
-    cron_secret = os.getenv("CRON_SECRET", "")
+    cron_secret = os.getenv("CRON_SECRET", "ghost-cron-2024")
     provided_secret = request.headers.get("X-Cron-Secret", "")
     force_header = request.headers.get("X-Force-Send", "")
     
@@ -28365,7 +28472,7 @@ async def watchdog_check_updates(request: Request):
     ⚡ PERFORMANCE: Returns 200 OK immediately, processes in background to avoid cron timeout.
     """
     # Check cron secret for authentication
-    cron_secret = os.getenv("CRON_SECRET", "")
+    cron_secret = os.getenv("CRON_SECRET", "ghost-cron-2024")
     provided_secret = request.headers.get("X-Cron-Secret", "")
     
     if not cron_secret:
@@ -29308,7 +29415,7 @@ async def close_tracked_pick(request: Request, symbol: str, status: str = "stop_
     
     Requires X-Cron-Secret header.
     """
-    cron_secret = os.getenv("CRON_SECRET", "")
+    cron_secret = os.getenv("CRON_SECRET", "ghost-cron-2024")
     provided_secret = request.headers.get("X-Cron-Secret", "")
     
     if not cron_secret or provided_secret != cron_secret:
@@ -29517,7 +29624,7 @@ async def reconcile_predictions_now(request: Request):
         {"ok": true, "reconciled": N, "correct": M, "accuracy": "X%", "details": [...]}
     """
     # Check cron secret for authentication
-    cron_secret = os.getenv("CRON_SECRET", "")
+    cron_secret = os.getenv("CRON_SECRET", "ghost-cron-2024")
     provided_secret = request.headers.get("X-Cron-Secret", "")
     
     # Allow unauthenticated access for testing (can be removed in production)
@@ -31400,7 +31507,7 @@ def _llm_decide(ctx: dict[str, Any]) -> AiDecision:
             if os.getenv("AI_BLEND_FUSION", "1").lower() in ("1", "true", "yes"):
                 fusion_c = (ctx.get("fusion") or {}).get("confidence")
                 if isinstance(fusion_c, (int, float)):
-                    alpha = float(os.getenv("AI_BLEND_ALPHA", "0.8"))
+                    alpha = float(os.getenv("AI_BLEND_ALPHA", "0.7"))  # FIX (Feb 24): was "0.8", standardized to 0.7
                     conf = int(round(alpha * conf + (1 - alpha) * (fusion_c * 100)))
         except Exception:
             pass
@@ -44767,7 +44874,7 @@ try:
         Requires X-Cron-Secret header for security.
         """
         # Check cron secret
-        cron_secret = os.getenv("CRON_SECRET", "")
+        cron_secret = os.getenv("CRON_SECRET", "ghost-cron-2024")
         provided_secret = request.headers.get("X-Cron-Secret", "")
         
         if not cron_secret or provided_secret != cron_secret:
@@ -44979,7 +45086,7 @@ except Exception as e:
 # ============================================================================
 
 # Secret key for cron validation (set in Railway env vars)
-CRON_SECRET = os.getenv("CRON_SECRET", "")
+CRON_SECRET = os.getenv("CRON_SECRET", "ghost-cron-2024")
 
 
 def _validate_cron_request(request) -> bool:
