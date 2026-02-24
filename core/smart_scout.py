@@ -114,8 +114,11 @@ class SmartScout:
             return prices
         
         # Batch fetch in groups
-        for i in range(0, len(ids_to_fetch), self.batch_size):
-            batch = ids_to_fetch[i:i + self.batch_size]
+        # FIX (Feb 24, 2026): Use while loop so 429 retry actually re-processes the batch.
+        # Old `for` loop with `i -= batch_size` was a no-op (for reassigns i each iteration).
+        batch_idx = 0
+        while batch_idx < len(ids_to_fetch):
+            batch = ids_to_fetch[batch_idx:batch_idx + self.batch_size]
             ids_str = ",".join(batch)
             
             self._rate_limit()
@@ -130,13 +133,18 @@ class SmartScout:
                         symbol = symbol_to_id.get(cg_id)
                         if symbol and "usd" in price_data:
                             prices[symbol] = price_data["usd"]
+                    batch_idx += self.batch_size  # Advance to next batch
                 elif resp.status_code == 429:
-                    LOGGER.warning("🔍 [SCOUT] CoinGecko rate limited, waiting 60s...")
-                    time.sleep(60)
-                    # Retry this batch
-                    i -= self.batch_size
+                    LOGGER.warning("🔍 [SCOUT] CoinGecko rate limited, waiting 65s then retrying batch...")
+                    time.sleep(65)
+                    # Don't advance batch_idx — retry this batch
+                    continue
+                else:
+                    LOGGER.warning(f"🔍 [SCOUT] CoinGecko HTTP {resp.status_code}, skipping batch")
+                    batch_idx += self.batch_size
             except Exception as e:
                 LOGGER.error(f"🔍 [SCOUT] Batch price error: {e}")
+                batch_idx += self.batch_size  # Skip failed batch
         
         return prices
     

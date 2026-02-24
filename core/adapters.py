@@ -237,7 +237,7 @@ def scored_to_formatter_dict(scored: ScoredPrediction) -> Dict[str, Any]:
         # V3 fields - use v3_ prefix as expected by TradePick.from_dict
         'v3_validated': True,  # All V3 filtered predictions are validated
         'v3_is_inverse': scored.is_inverse,
-        'v3_original_direction': 'DOWN' if scored.is_inverse else '',  # ETH inverse flips DOWN→UP
+        'v3_original_direction': scored.original_direction.value if scored.is_inverse else '',  # Use actual original direction
         'v3_strategy': strategy_name,
         'v3_hold_hours': hold_hours,
         'v3_historical_win_rate': win_rate,

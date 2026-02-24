@@ -168,8 +168,10 @@ V3_VALIDATED_STRATEGIES = {
     },
 }
 
-# STOCKS - V3 validated cybersecurity stocks
-V3_WHITELIST_STOCKS = ['PANW', 'NET', 'FTNT', 'DDOG']
+# STOCKS - Sweetspot analysis stocks that have directional win rates
+# NOTE (Feb 24, 2026): PANW/NET/FTNT/DDOG are in V3_VALIDATED_STRATEGIES above,
+# so they're handled there. This list is for stocks only in V3_STOCK_WIN_RATES.
+V3_WHITELIST_STOCKS = ['T', 'BMBL', 'XPO']
 V3_STOCK_WIN_RATES = {
     ('T', 'DOWN'): (1.00, 94),      # 100% but only 94 trades
     ('BMBL', 'UP'): (0.75, 50),     # 75%, 50 trades
@@ -357,16 +359,29 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
                     skipped_low_conf += 1
                     LOGGER.info(f"[V3] SKIP {symbol}: inverse but conf {confidence:.0%} < {V3_MIN_CONFIDENCE:.0%}")
                     continue
-                # Ghost said DOWN with sufficient confidence - this is our validated edge, flip to UP
-                direction = strategy_config['direction_override']  # 'UP'
+                # Ghost said DOWN with sufficient confidence - this is our validated edge
+                # FIX (Feb 24, 2026): Handle 'flip' override (PANW/NET/FTNT) vs fixed 'UP' (ETH)
+                original_direction = direction
+                override = strategy_config['direction_override']
+                if override == 'flip':
+                    direction = 'UP' if direction == 'DOWN' else 'DOWN'
+                else:
+                    direction = override  # e.g., 'UP' for ETH
                 is_inverse = True
                 inversed_count += 1
-                original_direction = 'DOWN'
-                LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} DOWN → UP (61.5% validated, conf={confidence:.0%})")
+                LOGGER.info(f"[V3] 🔄 INVERSE: {symbol} {original_direction} → {direction} ({strategy_config['win_rate']:.1%} validated, conf={confidence:.0%})")
             else:
-                # Non-inverse strategies (XRP, LINK mean_reversion)
+                # Non-inverse strategies (XRP, LINK mean_reversion, DDOG always_up)
                 original_direction = direction
                 is_inverse = False
+                
+                # FIX (Feb 24, 2026): Apply direction_override for always_up/always_down
+                # DDOG always_up should FORCE direction to UP regardless of Ghost signal
+                override = strategy_config.get('direction_override')
+                if override and override not in ('flip',):
+                    if direction != override:
+                        LOGGER.info(f"[V3] ↕️ OVERRIDE: {symbol} {direction} → {override} (strategy={strategy_config['strategy']})")
+                    direction = override
                 
                 # Minimum confidence check for non-inverse strategies
                 if confidence < V3_MIN_CONFIDENCE:

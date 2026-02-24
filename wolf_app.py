@@ -5106,6 +5106,53 @@ async def _post_startup_init():
                         if loop_count <= 5 or loop_count % 10 == 0:
                             LOGGER.info(f"[NOTIFICATIONS] ⏰ Loop tick #{loop_count}: {now_central.strftime('%H:%M')} Central, predictions={len(_LATEST_PREDICTIONS)}")
                         
+                        # ── DEAD-MAN'S SWITCH (Feb 24, 2026) ──
+                        # If Railway restarted AFTER 8 AM and today's TOP 10 was never
+                        # sent, catch up now. Only fires once (sets last_top10_date).
+                        # Window: 8 AM - 9 PM CT (don't send at midnight).
+                        if (
+                            current_hour > TOP_10_HOUR
+                            and current_hour < 21
+                            and last_top10_date != current_date
+                            and not notification_system._last_top10_date == current_date
+                            and len(_LATEST_PREDICTIONS) == 0
+                            and last_prescan_date != current_date
+                        ):
+                            # No predictions cached and pre-scan didn't run — do emergency scan
+                            LOGGER.warning(f"[DEAD-MAN] ⚠️ Missed 8 AM window — running emergency scan ({now_central.strftime('%H:%M')} CT)")
+                            try:
+                                from core.asset_classifier import get_asset_type
+                                _DM_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
+                                    "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+                                )
+                                _dm_symbols = [s.strip().upper() for s in _DM_EDGE_CSV.split(",") if s.strip()]
+                                for sym in _dm_symbols:
+                                    try:
+                                        run_single_prediction(sym)
+                                    except Exception:
+                                        pass
+                                last_prescan_date = current_date
+                                LOGGER.info(f"[DEAD-MAN] Emergency scan done, {len(_LATEST_PREDICTIONS)} predictions cached")
+                            except Exception as e:
+                                LOGGER.error(f"[DEAD-MAN] Emergency scan failed: {e}")
+                        
+                        if (
+                            current_hour > TOP_10_HOUR
+                            and current_hour < 21
+                            and last_top10_date != current_date
+                            and not notification_system._last_top10_date == current_date
+                            and len(_LATEST_PREDICTIONS) > 0
+                        ):
+                            LOGGER.warning(f"[DEAD-MAN] ⚠️ Catching up missed TOP 10 ({now_central.strftime('%H:%M')} CT, {len(_LATEST_PREDICTIONS)} predictions)")
+                            try:
+                                success = notification_system.send_top10(_LATEST_PREDICTIONS)
+                                if success:
+                                    last_top10_date = current_date
+                                    _NOTIFICATION_LOOP_STATUS["last_top10_date"] = current_date
+                                    LOGGER.info(f"[DEAD-MAN] ✅ Catch-up TOP 10 sent at {now_central.strftime('%H:%M')} CT")
+                            except Exception as e:
+                                LOGGER.error(f"[DEAD-MAN] Catch-up send failed: {e}")
+                        
                         # ── 7 AM PRE-SCAN: Run predictions so 8 AM send is instant ──
                         if current_hour == PRE_SCAN_HOUR and last_prescan_date != current_date:
                             LOGGER.info(f"[PRE-SCAN] 🔄 7 AM - Running prediction scan for all edge symbols ({now_central.strftime('%H:%M:%S')} Central)...")
@@ -5656,44 +5703,13 @@ async def _post_startup_init():
                             except Exception as e:
                                 LOGGER.error(f"🎰 [MONEY-GAME] Scout error: {e}")
                         
-                        # 8:00 AM CT - Send TOP 10 Telegram alert
-                        if current_hour == 8 and current_minute == 0:
-                            LOGGER.info("🎰 [MONEY-GAME] 8 AM - Sending TOP 10 alert...")
-                            try:
-                                from core.smart_scout import get_elite_predictions
-                                elite = get_elite_predictions()
-                                
-                                # Format message (HTML for Telegram)
-                                stocks = elite.get("elite_stocks", [])[:5]
-                                crypto = elite.get("elite_crypto", [])[:5]
-                                
-                                if stocks or crypto:
-                                    msg = "🎰 <b>MONEY GAME TOP 10</b>\n\n"
-                                    
-                                    if stocks:
-                                        msg += "📈 <b>Top Stocks:</b>\n"
-                                        for i, s in enumerate(stocks, 1):
-                                            msg += f"  {i}. {s}\n"
-                                    
-                                    if crypto:
-                                        msg += "\n🪙 <b>Top Crypto:</b>\n"
-                                        for i, c in enumerate(crypto, 1):
-                                            msg += f"  {i}. {c}\n"
-                                    
-                                    msg += "\n<i>Proven money makers from the game!</i>"
-                                    
-                                    # Send via Telegram and update global status
-                                    _mg_success = _tg_send_chat_message(TELEGRAM_CHAT_ID, msg)
-                                    _LAST_TELEGRAM_SEND_TIME = time.time()
-                                    if _mg_success:
-                                        _LAST_TELEGRAM_STATUS = "ok"
-                                        _LAST_TELEGRAM_ERROR = None
-                                    else:
-                                        _LAST_TELEGRAM_STATUS = "error"
-                                        _LAST_TELEGRAM_ERROR = "Money Game alert send failed"
-                                    LOGGER.info("🎰 [MONEY-GAME] TOP 10 alert sent!")
-                            except Exception as e:
-                                LOGGER.error(f"🎰 [MONEY-GAME] Alert error: {e}")
+                        # 8:00 AM CT - DISABLED (Feb 24, 2026)
+                        # The Ghost notification loop (_ghost_notification_loop) already
+                        # sends the proper TOP 10 card at 8 AM with V3 filtering, regime
+                        # filter, and calibrated confidence. This Money Game send was a
+                        # DUPLICATE that sent a second, simpler message at 8:00 AM.
+                        # if current_hour == 8 and current_minute == 0:
+                        #     ... (removed to prevent duplicate 8 AM Telegram messages)
                         
                         # 6:00 PM CT - Resolve trades and update rankings
                         if current_hour == 18 and current_minute == 0:

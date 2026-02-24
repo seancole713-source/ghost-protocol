@@ -114,10 +114,14 @@ def format_price(price: float) -> str:
 def calibrate_display_confidence(raw_conf: float, symbol: str = "") -> float:
     """
     Calibrate confidence for display.
-    Raw model confidence may need adjustment based on historical accuracy.
+    Delegates to the real calibration curve in core.ghost_notifications.
     """
-    # For now, pass through (can add calibration later)
-    return raw_conf
+    try:
+        from core.ghost_notifications import calibrate_display_confidence as _real_calibrate
+        return _real_calibrate(raw_conf, symbol)
+    except ImportError:
+        # Fallback: apply simple scaling if ghost_notifications unavailable
+        return raw_conf * 0.7
 
 
 def get_risk_level(conf: float) -> str:

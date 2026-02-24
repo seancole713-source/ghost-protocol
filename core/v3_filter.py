@@ -268,7 +268,13 @@ class V3Filter:
             )
         
         # Flip direction
-        new_direction = Direction(strategy.direction_override)
+        # FIX (Feb 24, 2026): 'flip' is not a valid Direction enum value.
+        # For PANW/NET/FTNT, direction_override='flip' means "use opposite of Ghost's prediction".
+        # For ETH, direction_override='UP' means "always use UP".
+        if strategy.direction_override == 'flip':
+            new_direction = pred.direction.opposite()
+        else:
+            new_direction = Direction(strategy.direction_override)
         
         # Recalculate targets for flipped direction
         target_price, stop_loss = self._calculate_inverse_targets(pred.current_price)
@@ -315,11 +321,14 @@ class V3Filter:
         symbol = pred.symbol.upper()
         
         # Use direction override if specified, otherwise use prediction direction
-        direction = (
-            Direction(strategy.direction_override) 
-            if strategy.direction_override 
-            else pred.direction
-        )
+        # FIX (Feb 24, 2026): Handle 'flip' override (reverse Ghost's direction)
+        # and 'UP'/'DOWN' forced overrides (e.g., DDOG always_up → force UP)
+        if strategy.direction_override == 'flip':
+            direction = pred.direction.opposite()
+        elif strategy.direction_override:
+            direction = Direction(strategy.direction_override)
+        else:
+            direction = pred.direction
         
         score = strategy.backtest_win_rate * pred.confidence
         
