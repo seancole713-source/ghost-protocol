@@ -91,8 +91,8 @@ async def _run_all_predictions_async():
     # No point wasting compute on symbols the model can't predict
     _EDGE_FILTER_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS",
-        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
     )
     _EDGE_SET = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
     
@@ -165,7 +165,13 @@ async def _run_all_predictions_async():
     # Previously: took first 10 from 200+ list → filtered → missed edge crypto symbols
     # Now: filter full list to edge symbols first → then cap
     TOP_CRYPTO_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "25"))
-    if _EDGE_FILTER_ENABLED:
+    # CRYPTO_ENABLED gate: skip crypto predictions when disabled
+    _crypto_enabled = os.getenv("CRYPTO_ENABLED", "0") == "1"
+    if not _crypto_enabled:
+        crypto_symbols_to_process = []
+        if LOGGER:
+            LOGGER.info("[AUTO-PREDICT] CRYPTO_ENABLED=0 — skipping all crypto predictions")
+    elif _EDGE_FILTER_ENABLED:
         crypto_symbols_to_process = [s for s in HUNTER_CRYPTO_SYMBOLS if s.upper() in _EDGE_SET][:TOP_CRYPTO_ASYNC_LIMIT]
     else:
         crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_ASYNC_LIMIT]
@@ -293,8 +299,8 @@ def _run_all_predictions_sync():
     # EDGE FILTER (Feb 9, 2026): Only predict proven edge symbols
     _SYNC_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _SYNC_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
-        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
     )
     _SYNC_EDGE_SET = set(s.strip().upper() for s in _SYNC_EDGE_CSV.split(",") if s.strip())
     if _SYNC_EDGE_ENABLED:
@@ -336,8 +342,14 @@ def _run_all_predictions_sync():
     
     # Run crypto predictions (24/7 - crypto markets never close)
     # EDGE FILTER (Feb 9, 2026): Only predict proven edge symbols
+    # CRYPTO_ENABLED gate: skip crypto predictions when disabled
     TOP_CRYPTO_LIMIT = 25
-    if _SYNC_EDGE_ENABLED:
+    _sync_crypto_enabled = os.getenv("CRYPTO_ENABLED", "0") == "1"
+    if not _sync_crypto_enabled:
+        crypto_symbols_to_process = []
+        if LOGGER:
+            LOGGER.info("[AUTO-PREDICT] CRYPTO_ENABLED=0 — skipping all crypto predictions")
+    elif _SYNC_EDGE_ENABLED:
         crypto_symbols_to_process = [s for s in HUNTER_CRYPTO_SYMBOLS if s.upper() in _SYNC_EDGE_SET][:TOP_CRYPTO_LIMIT]
     else:
         crypto_symbols_to_process = HUNTER_CRYPTO_SYMBOLS[:TOP_CRYPTO_LIMIT]

@@ -4610,8 +4610,8 @@ async def _on_startup():
                 # Previously loaded 50 random predictions → polluted cache with ETH, XRP, LINK
                 _warmup_edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
                 _warmup_edge_csv = os.getenv("EDGE_SYMBOLS",
-                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
                 )
                 _warmup_edge_set = set(s.strip().upper() for s in _warmup_edge_csv.split(",") if s.strip())
                 
@@ -5115,8 +5115,8 @@ async def _post_startup_init():
                                 
                                 _TOP10_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
                                 _TOP10_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
-                                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-                                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+                                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+                                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
                                 )
                                 _TOP10_EDGE_SET = set(s.strip().upper() for s in _TOP10_EDGE_CSV.split(",") if s.strip())
                                 
@@ -9710,8 +9710,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # =====================================================================
         _PAPER_TRADE_MIN_CONFIDENCE = float(os.getenv("PAPER_TRADE_MIN_CONFIDENCE", "0.55"))
         _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS", 
-            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
         )
         EDGE_SYMBOLS = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
         _EDGE_WHITELIST_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
@@ -17649,9 +17649,26 @@ async def api_walk_forward_analysis(
         
         backtester = get_backtester()
         
-        # Get historical returns from prediction database
-        # Note: Requires query to ghost_predictions.db for historical accuracy
-        returns = []  # Empty until prediction history is accumulated
+        # Get historical returns from PostgreSQL prediction outcomes
+        returns = []
+        try:
+            import psycopg2 as _pg2
+            _db_url = os.getenv("DATABASE_URL")
+            if _db_url:
+                _conn = _pg2.connect(_db_url)
+                _cur = _conn.cursor()
+                _cur.execute("""
+                    SELECT realized_move_pct
+                    FROM ghost_prediction_outcomes
+                    WHERE symbol = %s AND status = 'resolved'
+                      AND realized_move_pct IS NOT NULL
+                    ORDER BY closed_at ASC
+                """, (symbol.upper(),))
+                returns = [row[0] / 100.0 for row in _cur.fetchall()]
+                _cur.close()
+                _conn.close()
+        except Exception as _e:
+            LOGGER.warning(f"Walk-forward: could not load returns from DB: {_e}")
         
         if len(returns) < (in_sample_window + out_sample_window):
             raise HTTPException(400, f"Insufficient prediction history: need {in_sample_window + out_sample_window} days, have {len(returns)}")
@@ -17718,9 +17735,26 @@ async def api_monte_carlo(
         
         backtester = get_backtester()
         
-        # Get historical returns from prediction database
-        # Note: Accumulates over time as predictions are tracked
-        returns = []  # Empty until sufficient prediction history exists
+        # Get historical returns from PostgreSQL prediction outcomes
+        returns = []
+        try:
+            import psycopg2 as _pg2
+            _db_url = os.getenv("DATABASE_URL")
+            if _db_url:
+                _conn = _pg2.connect(_db_url)
+                _cur = _conn.cursor()
+                _cur.execute("""
+                    SELECT realized_move_pct
+                    FROM ghost_prediction_outcomes
+                    WHERE symbol = %s AND status = 'resolved'
+                      AND realized_move_pct IS NOT NULL
+                    ORDER BY closed_at ASC
+                """, (symbol.upper(),))
+                returns = [row[0] / 100.0 for row in _cur.fetchall()]
+                _cur.close()
+                _conn.close()
+        except Exception as _e:
+            LOGGER.warning(f"Monte Carlo: could not load returns from DB: {_e}")
         
         if len(returns) < 20:
             raise HTTPException(400, f"Insufficient data for Monte Carlo: need 20 days, have {len(returns)}")
@@ -17785,9 +17819,23 @@ async def api_momentum_shift(
     try:
         from core.momentum_detector import detect_momentum_shift, get_momentum_history
         
-        # Current momentum score (from price velocity)
-        # Note: In production, calculate from recent prediction confidence trends
-        current_momentum = 0.0  # Neutral baseline (requires historical tracking)
+        # Compute momentum from latest prediction confidence
+        current_momentum = 0.0
+        try:
+            _sym_upper = symbol.upper()
+            if _sym_upper in _LATEST_PREDICTIONS:
+                _pred = _LATEST_PREDICTIONS[_sym_upper]
+                _conf = float(_pred.get("confidence", 0.5))
+                _dir = str(_pred.get("direction", "HOLD")).upper()
+                if _dir in ("BUY", "UP"):
+                    current_momentum = _conf
+                elif _dir in ("SELL", "DOWN"):
+                    current_momentum = -_conf
+            # Feed momentum tracker so history accumulates
+            from core.momentum_detector import track_momentum
+            track_momentum(_sym_upper, current_momentum)
+        except Exception:
+            pass
         
         shift = detect_momentum_shift(
             symbol=symbol.upper(),
@@ -21788,115 +21836,6 @@ async def api_cockpit_snapshot():
         }
 
 
-@APP.get("/ready")
-async def ready():
-    """Kubernetes-style readiness probe - checks all dependencies."""
-    checks = {}
-    ready_status = True
-
-    # Check database
-    try:
-        conn = __import__("sqlite3").connect("wolf.db", timeout=2)
-        conn.execute("SELECT 1").fetchone()
-        conn.close()
-        checks["database"] = True
-    except Exception as e:
-        checks["database"] = False
-        ready_status = False
-        LOGGER.error(f"Database check failed: {e}")
-
-    # Check price providers
-    try:
-        price, _, provider = get_wolf_price()
-        checks["price_provider"] = provider is not None and price is not None
-        if not checks["price_provider"]:
-            ready_status = False
-    except Exception:
-        checks["price_provider"] = False
-        ready_status = False
-
-    # Check broker (if enabled)
-    if os.getenv("BROKER", "") == "alpaca":
-        try:
-            from core.alpaca_broker import get_broker
-
-            broker = get_broker()
-            health_check = broker.health_check()
-            checks["broker"] = health_check.get("ok", False)
-            if not checks["broker"]:
-                ready_status = False
-        except Exception:
-            checks["broker"] = False
-            ready_status = False
-
-    return {"ready": ready_status, "checks": checks, "timestamp": int(time.time())}
-
-
-@APP.get("/metrics")
-async def metrics():
-    """Prometheus metrics endpoint in text format."""
-    lines = []
-
-    # HELP and TYPE declarations
-    lines.append("# HELP ghost_uptime_seconds Time since Ghost started")
-    lines.append("# TYPE ghost_uptime_seconds gauge")
-    lines.append(f"ghost_uptime_seconds {round(time.time() - _START_TS, 2)}")
-
-    lines.append("# HELP ghost_price_current Current WOLF stock price")
-    lines.append("# TYPE ghost_price_current gauge")
-    try:
-        price, _, provider = get_wolf_price()
-        if price:
-            lines.append(f'ghost_price_current{{symbol="WOLF",provider="{provider}"}} {price}')
-    except Exception:
-        pass
-
-    lines.append("# HELP ghost_portfolio_nav_usd Portfolio Net Asset Value in USD")
-    lines.append("# TYPE ghost_portfolio_nav_usd gauge")
-    try:
-        qty, avg = _get_portfolio_qty_and_avg()
-        price, _, _ = get_wolf_price()
-        nav = qty * (price if price else avg)
-        lines.append(f"ghost_portfolio_nav_usd {nav}")
-    except Exception:
-        pass
-
-    lines.append("# HELP ghost_errors_total Total error count")
-    lines.append("# TYPE ghost_errors_total counter")
-    errors = len(EVENTS.get("errors", []))
-    lines.append(f"ghost_errors_total {errors}")
-
-    lines.append("# HELP ghost_price_fetch_total Total price fetch attempts")
-    lines.append("# TYPE ghost_price_fetch_total counter")
-    price_fetches = len(
-        [e for e in EVENTS.get("prices", []) if e.get("msg", "").startswith("Price")]
-    )
-    lines.append(f"ghost_price_fetch_total {price_fetches}")
-
-    lines.append("# HELP ghost_broker_enabled Broker integration enabled")
-    lines.append("# TYPE ghost_broker_enabled gauge")
-    broker_enabled = 1 if os.getenv("BROKER", "") == "alpaca" else 0
-    lines.append(f"ghost_broker_enabled {broker_enabled}")
-
-    lines.append("# HELP ghost_risk_kill_switch Risk engine kill switch status")
-    lines.append("# TYPE ghost_risk_kill_switch gauge")
-    risk_kill = int(os.getenv("RISK_KILL", "0"))
-    lines.append(f"ghost_risk_kill_switch {risk_kill}")
-
-    lines.append("# HELP ghost_crypto_enabled Crypto module enabled")
-    lines.append("# TYPE ghost_crypto_enabled gauge")
-    crypto_enabled = 1 if os.getenv("CRYPTO_ENABLED", "0") == "1" else 0
-    lines.append(f"ghost_crypto_enabled {crypto_enabled}")
-
-    lines.append("# HELP ghost_agents_enabled AI agents enabled")
-    lines.append("# TYPE ghost_agents_enabled gauge")
-    agents_enabled = 1 if os.getenv("AGENTS_ENABLED", "0") == "1" else 0
-    lines.append(f"ghost_agents_enabled {agents_enabled}")
-
-    # Return as plain text
-    from fastapi.responses import Response
-
-    return Response(content="\n".join(lines) + "\n", media_type="text/plain")
 
 
 @APP.get("/health/detailed")
@@ -28030,8 +27969,8 @@ async def force_send_top10():
             # Step 1: Check edge filter
             import os as _os
             _edge_csv = _os.getenv("EDGE_SYMBOLS",
-                "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,IQ,BMBL,HBAR,XPO,"
-                "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ITRI,ICP,BRETT"
+                "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
+                "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
             )
             _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
             edge_preds = {sym: p for sym, p in _LATEST_PREDICTIONS.items() if sym.upper() in _edge_set}
@@ -29600,431 +29539,6 @@ async def get_tracking_accuracy(days: int = 7):
         LOGGER.error(f"Tracking accuracy failed: {e}", exc_info=True)
         return {"ok": False, "error": str(e)}
 
-
-# ==============================================================================
-# GHOST LEARNING SYSTEM - Real-time accuracy tracking and symbol-level learning
-# ==============================================================================
-
-@APP.post("/alerts/reconcile/now")
-async def reconcile_predictions_now(request: Request):
-    """
-    🧠 OUTCOME RECONCILER: Evaluate predictions and record outcomes.
-    
-    SECURED: Requires X-Cron-Secret header matching CRON_SECRET env var.
-    Schedule this via cron-job.org every 4 hours.
-    
-    What it does:
-    1. Finds predictions where (run_at + 48h) <= NOW()
-    2. Gets current price from Coinbase (crypto) or Polygon (stocks)
-    3. Compares predicted direction vs actual movement
-    4. Records outcome: hit_direction = 1 (correct) or 0 (wrong)
-    5. Updates ghost_symbol_accuracy table for learning
-    
-    Returns:
-        {"ok": true, "reconciled": N, "correct": M, "accuracy": "X%", "details": [...]}
-    """
-    # Check cron secret for authentication
-    cron_secret = os.getenv("CRON_SECRET", "ghost-cron-2024")
-    provided_secret = request.headers.get("X-Cron-Secret", "")
-    
-    # Allow unauthenticated access for testing (can be removed in production)
-    allow_test = request.headers.get("X-Test-Mode", "").lower() == "true"
-    
-    if not allow_test:
-        if not cron_secret:
-            LOGGER.warning("[RECONCILE] CRON_SECRET not configured - endpoint disabled")
-            return {"ok": False, "error": "CRON_SECRET not configured"}
-        
-        if provided_secret != cron_secret:
-            LOGGER.warning(f"[RECONCILE] Invalid cron secret attempt")
-            return {"ok": False, "error": "Unauthorized - invalid X-Cron-Secret"}
-    
-    try:
-        import psycopg2
-        from datetime import datetime, timedelta
-        
-        LOGGER.info("[RECONCILE] 🧠 Starting outcome reconciliation...")
-        
-        database_url = os.getenv("DATABASE_URL")
-        if not database_url:
-            return {"ok": False, "error": "DATABASE_URL not configured"}
-        
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        # First, create the ghost_symbol_accuracy table if it doesn't exist
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
-                symbol TEXT PRIMARY KEY,
-                total_predictions INTEGER DEFAULT 0,
-                correct_predictions INTEGER DEFAULT 0,
-                accuracy_pct NUMERIC(5,2) DEFAULT 0,
-                last_updated TIMESTAMP DEFAULT NOW(),
-                status TEXT DEFAULT 'active'
-            )
-        """)
-        conn.commit()
-        
-        # Find predictions ready for reconciliation:
-        # - run_at + 48 hours <= NOW()
-        # - NOT already in ghost_prediction_outcomes
-        cutoff = datetime.utcnow() - timedelta(hours=48)
-        
-        cursor.execute("""
-            SELECT p.id, p.symbol, p.direction, p.confidence, p.run_at,
-                   p.price_at_prediction
-            FROM predictions p
-            LEFT JOIN ghost_prediction_outcomes o ON p.id = o.prediction_id
-            WHERE p.run_at <= %s
-            AND o.prediction_id IS NULL
-            AND p.direction IS NOT NULL
-            ORDER BY p.run_at DESC
-            LIMIT 200
-        """, (cutoff.timestamp(),))
-        
-        pending = cursor.fetchall()
-        
-        if not pending:
-            LOGGER.info("[RECONCILE] ✅ No pending predictions to reconcile")
-            return {
-                "ok": True,
-                "reconciled": 0,
-                "message": "No predictions ready for reconciliation",
-                "note": "Predictions need 48 hours to mature"
-            }
-        
-        LOGGER.info(f"[RECONCILE] 📊 Found {len(pending)} predictions to reconcile")
-        
-        # Process each prediction
-        reconciled = 0
-        correct = 0
-        failed = 0
-        details = []
-        symbol_updates = {}  # Track per-symbol updates
-        
-        for pred_id, symbol, direction, confidence, run_at, entry_price in pending:
-            try:
-                # Get current price
-                from services.outcome_reconciler_v2 import get_symbol_price
-                current_price = get_symbol_price(symbol)
-                
-                if current_price is None or current_price <= 0:
-                    LOGGER.warning(f"[RECONCILE] No price for {symbol}")
-                    failed += 1
-                    continue
-                
-                # PRICE VALIDATION - Reject corrupt prices
-                from core.prediction_store import validate_price
-                is_valid_entry, reason_entry = validate_price(symbol, entry_price, "entry")
-                is_valid_current, reason_current = validate_price(symbol, current_price, "current")
-                
-                if not is_valid_entry:
-                    LOGGER.warning(f"[RECONCILE] 🚫 CORRUPT entry price rejected for {symbol}: {reason_entry}")
-                    failed += 1
-                    continue
-                
-                if not is_valid_current:
-                    LOGGER.warning(f"[RECONCILE] 🚫 CORRUPT current price rejected for {symbol}: {reason_current}")
-                    failed += 1
-                    continue
-                
-                if entry_price is None or entry_price <= 0:
-                    entry_price = current_price  # Fallback
-                
-                # Guard: if entry_price is still 0 after fallback, skip this trade
-                if not entry_price or entry_price <= 0:
-                    LOGGER.warning(f"[RECONCILE] 🚫 {symbol}: entry_price is ${entry_price} after fallback — skipping")
-                    failed += 1
-                    continue
-                
-                # Determine actual movement
-                price_change_pct = ((current_price - entry_price) / entry_price) * 100
-                
-                # Determine if prediction was correct
-                # Ghost predicts direction (UP/DOWN)
-                # INVERSE_GHOST flips this in TOP 10 (except INVERSE_SKIP_SYMBOLS)
-                actual_up = price_change_pct > 0.25  # 0.25% threshold
-                actual_down = price_change_pct < -0.25
-                
-                # Check if this symbol is excluded from INVERSE
-                # Must match INVERSE_SKIP_SYMBOLS from TOP 10 generation
-                inverse_skip_symbols = {
-                    "OMG", "RLC", "THETA", "EGLD", "BAT", "ONDO", "ZEN",
-                    "DOGE", "DOT", "ZRX", "BNB", "AVAX", "OCEAN", "ANT"
-                }
-                symbol_no_inverse = symbol.upper() in inverse_skip_symbols
-                
-                if symbol_no_inverse:
-                    # NO INVERSE - Ghost prediction is used RAW
-                    if direction == "UP":
-                        hit = 1 if actual_up else 0
-                        inverse_prediction = "UP (RAW)"
-                    elif direction == "DOWN":
-                        hit = 1 if actual_down else 0
-                        inverse_prediction = "DOWN (RAW)"
-                    else:
-                        hit = 0
-                        inverse_prediction = direction
-                else:
-                    # INVERSE APPLIED - Ghost prediction is flipped
-                    if direction == "DOWN":
-                        # Ghost said DOWN, so with INVERSE we said UP
-                        hit = 1 if actual_up else 0
-                        inverse_prediction = "UP"
-                    elif direction == "UP":
-                        # Ghost said UP, so with INVERSE we said DOWN
-                        hit = 1 if actual_down else 0
-                        inverse_prediction = "DOWN"
-                    else:
-                        hit = 0
-                        inverse_prediction = direction
-                
-                # Record outcome
-                cursor.execute("""
-                    INSERT INTO ghost_prediction_outcomes (
-                        prediction_id, symbol, closed_at, price_at_prediction,
-                        price_at_resolution, realized_move_pct, predicted_direction,
-                        actual_direction, hit_direction, predicted_confidence, status
-                    ) VALUES (%s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, 'resolved')
-                    ON CONFLICT (prediction_id) DO NOTHING
-                """, (
-                    pred_id, symbol, entry_price, current_price, price_change_pct,
-                    direction,
-                    'UP' if actual_up else ('DOWN' if actual_down else 'FLAT'),
-                    hit, confidence or 0.5
-                ))
-                
-                # Track symbol accuracy for learning
-                if symbol not in symbol_updates:
-                    symbol_updates[symbol] = {"total": 0, "correct": 0}
-                symbol_updates[symbol]["total"] += 1
-                if hit:
-                    symbol_updates[symbol]["correct"] += 1
-                
-                reconciled += 1
-                if hit:
-                    correct += 1
-                
-                details.append({
-                    "symbol": symbol,
-                    "ghost_direction": direction,
-                    "inverse_prediction": inverse_prediction,
-                    "entry_price": round(entry_price, 2) if entry_price else None,
-                    "current_price": round(current_price, 2),
-                    "change_pct": round(price_change_pct, 2),
-                    "result": "CORRECT ✅" if hit else "WRONG ❌"
-                })
-                
-            except Exception as e:
-                LOGGER.error(f"[RECONCILE] Error processing {symbol}: {e}")
-                failed += 1
-                continue
-        
-        # Update ghost_symbol_accuracy table
-        for symbol, stats in symbol_updates.items():
-            cursor.execute("""
-                INSERT INTO ghost_symbol_accuracy (symbol, total_predictions, correct_predictions, accuracy_pct, last_updated)
-                VALUES (%s, %s, %s, %s, NOW())
-                ON CONFLICT (symbol) DO UPDATE SET
-                    total_predictions = ghost_symbol_accuracy.total_predictions + EXCLUDED.total_predictions,
-                    correct_predictions = ghost_symbol_accuracy.correct_predictions + EXCLUDED.correct_predictions,
-                    accuracy_pct = CASE 
-                        WHEN (ghost_symbol_accuracy.total_predictions + EXCLUDED.total_predictions) > 0 
-                        THEN ((ghost_symbol_accuracy.correct_predictions + EXCLUDED.correct_predictions)::NUMERIC / 
-                              (ghost_symbol_accuracy.total_predictions + EXCLUDED.total_predictions)) * 100
-                        ELSE 0 
-                    END,
-                    last_updated = NOW()
-            """, (
-                symbol, stats["total"], stats["correct"],
-                (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0
-            ))
-        
-        conn.commit()
-        conn.close()
-        
-        accuracy_pct = (correct / reconciled * 100) if reconciled > 0 else 0
-        
-        LOGGER.info(f"[RECONCILE] ✅ Completed: {reconciled} reconciled, {correct} correct ({accuracy_pct:.1f}%)")
-        
-        return {
-            "ok": True,
-            "reconciled": reconciled,
-            "correct": correct,
-            "wrong": reconciled - correct,
-            "failed": failed,
-            "accuracy": f"{accuracy_pct:.1f}%",
-            "details": details[:20],  # Limit details to 20 for response size
-            "symbol_updates": len(symbol_updates),
-            "note": "Using INVERSE_GHOST logic - Ghost DOWN = We predict UP"
-        }
-        
-    except Exception as e:
-        LOGGER.error(f"[RECONCILE] Error: {e}", exc_info=True)
-        return {"ok": False, "error": str(e)}
-
-
-@APP.get("/api/learning/dashboard")
-async def learning_dashboard():
-    """
-    📊 LEARNING DASHBOARD: Comprehensive view of Ghost's learning progress.
-    
-    Shows:
-    - Overall accuracy (7d, 30d, all-time)
-    - Per-symbol performance (best/worst)
-    - Learning status
-    - Recommendations for symbol exclusions/boosts
-    """
-    try:
-        import psycopg2
-        from datetime import datetime, timedelta
-        
-        database_url = os.getenv("DATABASE_URL")
-        if not database_url:
-            return {"ok": False, "error": "DATABASE_URL not configured"}
-        
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        # Overall accuracy by time period
-        def get_accuracy_for_period(days):
-            if days is None:
-                cursor.execute("""
-                    SELECT COUNT(*), SUM(hit_direction)
-                    FROM ghost_prediction_outcomes
-                    WHERE status = 'resolved'
-                """)
-            else:
-                cutoff = datetime.utcnow() - timedelta(days=days)
-                cursor.execute("""
-                    SELECT COUNT(*), SUM(hit_direction)
-                    FROM ghost_prediction_outcomes
-                    WHERE status = 'resolved' AND closed_at >= %s
-                """, (cutoff,))
-            
-            row = cursor.fetchone()
-            total = row[0] or 0
-            correct = row[1] or 0
-            return {
-                "total": total,
-                "correct": correct,
-                "accuracy": f"{(correct/total*100):.1f}%" if total > 0 else "N/A"
-            }
-        
-        overall_accuracy = {
-            "7d": get_accuracy_for_period(7),
-            "30d": get_accuracy_for_period(30),
-            "all_time": get_accuracy_for_period(None)
-        }
-        
-        # Best symbols (>60% accuracy with 5+ predictions)
-        cursor.execute("""
-            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, status
-            FROM ghost_symbol_accuracy
-            WHERE total_predictions >= 5
-            ORDER BY accuracy_pct DESC
-            LIMIT 10
-        """)
-        best_symbols = [
-            {
-                "symbol": row[0],
-                "predictions": row[1],
-                "correct": row[2],
-                "accuracy": f"{row[3]:.1f}%",
-                "status": row[4]
-            }
-            for row in cursor.fetchall()
-        ]
-        
-        # Worst symbols (<40% accuracy with 5+ predictions)
-        cursor.execute("""
-            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, status
-            FROM ghost_symbol_accuracy
-            WHERE total_predictions >= 5
-            ORDER BY accuracy_pct ASC
-            LIMIT 10
-        """)
-        worst_symbols = [
-            {
-                "symbol": row[0],
-                "predictions": row[1],
-                "correct": row[2],
-                "accuracy": f"{row[3]:.1f}%",
-                "status": row[4],
-                "recommendation": "EXCLUDE" if row[3] < 40 else "WATCH"
-            }
-            for row in cursor.fetchall()
-        ]
-        
-        # Get symbols to exclude (< 40% accuracy with 10+ predictions)
-        cursor.execute("""
-            SELECT symbol FROM ghost_symbol_accuracy
-            WHERE accuracy_pct < 40 AND total_predictions >= 10
-        """)
-        excluded_symbols = [row[0] for row in cursor.fetchall()]
-        
-        # Get symbols to boost (> 70% accuracy with 10+ predictions)
-        cursor.execute("""
-            SELECT symbol FROM ghost_symbol_accuracy
-            WHERE accuracy_pct > 70 AND total_predictions >= 10
-        """)
-        boosted_symbols = [row[0] for row in cursor.fetchall()]
-        
-        # Asset type breakdown
-        cursor.execute("""
-            SELECT 
-                CASE WHEN symbol IN ('BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK', 
-                                     'DOGE', 'SHIB', 'LTC', 'ATOM', 'UNI', 'AAVE', 'PEPE', 'BONK')
-                     THEN 'crypto' ELSE 'stock' END as asset_type,
-                COUNT(*) as total,
-                SUM(hit_direction) as correct
-            FROM ghost_prediction_outcomes
-            WHERE status = 'resolved'
-            GROUP BY asset_type
-        """)
-        by_asset = {}
-        for row in cursor.fetchall():
-            asset_type, total, correct = row
-            correct = correct or 0
-            by_asset[asset_type] = {
-                "total": total,
-                "correct": correct,
-                "accuracy": f"{(correct/total*100):.1f}%" if total > 0 else "N/A"
-            }
-        
-        # Last reconciliation time
-        cursor.execute("""
-            SELECT MAX(closed_at) FROM ghost_prediction_outcomes
-        """)
-        last_reconciliation = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        # Determine learning status
-        total_outcomes = overall_accuracy["all_time"]["total"]
-        learning_active = total_outcomes >= 50
-        learning_status = "active" if learning_active else "training"
-        
-        return {
-            "ok": True,
-            "overall_accuracy": overall_accuracy,
-            "total_predictions_evaluated": total_outcomes,
-            "by_asset_type": by_asset,
-            "best_symbols": best_symbols[:5],
-            "worst_symbols": worst_symbols[:5],
-            "learning_recommendations": {
-                "exclude_symbols": excluded_symbols,
-                "boost_symbols": boosted_symbols
-            },
-            "learning_status": learning_status,
-            "learning_active": learning_active,
-            "last_reconciliation": last_reconciliation.isoformat() if last_reconciliation else None,
-            "next_reconciliation": "Scheduled every 4 hours via cron"
-        }
-        
-    except Exception as e:
-        LOGGER.error(f"[LEARNING] Dashboard error: {e}", exc_info=True)
-        return {"ok": False, "error": str(e)}
 
 
 @APP.get("/api/learning/symbols")
@@ -36318,48 +35832,6 @@ async def api_news_trending():
         return {"items": [], "ts": int(time.time() * 1000)}
 
 
-@APP.post("/api/crypto/predict/run")
-async def api_crypto_predict_run(
-    payload: dict[str, Any], credentials: HTTPAuthorizationCredentials | None = AUTH_DEP
-):
-    """Run crypto prediction for given symbol and horizon. Returns forecast or 501 if disabled."""
-    _require_bearer(
-        (f"Bearer {credentials.credentials}") if credentials and credentials.credentials else None
-    )
-
-    symbol = str(payload.get("symbol", "BTC")).upper()
-    horizon_h = int(payload.get("horizon_h", 48))
-
-    # Check if crypto forecasting is available
-    crypto_enabled = int(os.getenv("CRYPTO_ENABLED", "1"))
-    if not crypto_enabled:
-        return JSONResponse(
-            {"ok": False, "detail": "crypto forecast disabled"},
-            status_code=501
-        )
-
-    try:
-        # Call existing crypto forecast logic if available
-        # For now, return minimal structure
-        return {
-            "ok": True,
-            "symbol": symbol,
-            "horizon_h": horizon_h,
-            "forecast": {
-                "action": "HOLD",
-                "confidence": 0.5,
-                "price_target": None,
-                "note": "Crypto forecast placeholder - integrate with existing crypto module"
-            },
-            "ts": int(time.time() * 1000)
-        }
-    except Exception as e:
-        LOGGER.error(f"crypto_predict_run_error: {e}")
-        return JSONResponse(
-            {"ok": False, "detail": str(e)},
-            status_code=500
-        )
-
 
 @APP.post("/api/alerts/test")
 async def api_alerts_test():
@@ -36988,14 +36460,6 @@ async def api_news(limit: int = 20):
         return {"news": [], "count": 0, "error": str(e)}
 
 
-@APP.get("/api/news/recent")
-async def api_news_recent(limit: int = 20):
-    """Get recent news articles for the cockpit news feed."""
-    try:
-        return await _get_news_feed(limit)
-    except Exception as e:
-        LOGGER.error(f"Error getting news: {e}")
-        return {"news": [], "count": 0, "error": str(e)}
 
 
 @APP.get("/api/snapshot")
@@ -41018,34 +40482,6 @@ async def trade_close_position(
         return {"ok": False, "error": str(e)}
 
 
-@APP.get("/api/risk/status")
-async def risk_get_status(credentials: HTTPAuthorizationCredentials | None = AUTH_DEP):
-    """
-    Get current risk engine status and limits.
-    """
-    try:
-        _require_bearer(
-            (f"Bearer {credentials.credentials}")
-            if credentials and credentials.credentials
-            else None
-        )
-    except Exception:
-        pass
-
-    try:
-        from core.risk_engine import get_risk_engine
-
-        risk_engine = get_risk_engine()
-
-        status = risk_engine.get_status()
-        return {
-            "ok": True,
-            "risk": status,
-        }
-    except Exception as e:
-        LOGGER.error(f"Failed to get risk status: {e}")
-        return {"ok": False, "error": str(e)}
-
 
 @APP.get("/api/risk/scan_exits")
 async def risk_scan_exits(credentials: HTTPAuthorizationCredentials | None = AUTH_DEP):
@@ -41162,54 +40598,6 @@ async def api_accuracy_ledger():
         }
 
 
-@APP.get("/api/regime/current")
-async def api_regime_current():
-    """Get current market regime detection."""
-    try:
-        from core.regime_detector import RegimeDetector
-        detector = RegimeDetector()
-        regime_data = {
-            "regime": detector.current_regime,
-            "confidence": detector.confidence,
-            "timestamp": time.time()
-        }
-        return {"ok": True, **regime_data}
-    except Exception as e:
-        LOGGER.error(f"Regime detection failed: {e}")
-        return {
-            "ok": False,
-            "regime": "UNKNOWN",
-            "confidence": 0.0,
-            "error": str(e),
-            "timestamp": time.time()
-        }
-
-
-@APP.get("/api/risk/status")
-async def api_risk_status():
-    """Get comprehensive risk status and limits."""
-    try:
-        from core.risk_engine import RiskEngine
-        engine = RiskEngine()
-        status = {
-            "portfolio_value": engine.portfolio_value,
-            "peak_value": engine.peak_value,
-            "current_drawdown_pct": engine.current_drawdown_pct,
-            "max_drawdown_limit": engine.max_drawdown_pct,
-            "within_limits": engine.current_drawdown_pct < engine.max_drawdown_pct,
-            "timestamp": time.time()
-        }
-        return {"ok": True, **status}
-    except Exception as e:
-        LOGGER.error(f"Risk status failed: {e}")
-        return {
-            "ok": False,
-            "portfolio_value": 0,
-            "peak_value": 0,
-            "current_drawdown_pct": 0,
-            "error": str(e),
-            "timestamp": time.time()
-        }
 
 
 @APP.get("/api/goals/all")
@@ -42155,50 +41543,6 @@ async def mobile_cockpit():
         )
 
 
-# ============================================================================
-# GHOST MOBILE COCKPIT API ENDPOINTS
-# ============================================================================
-
-@APP.get("/api/goals")
-async def api_goals():
-    """
-    Get trading goals and YTD performance.
-
-    Returns:
-        {
-            'ok': True,
-            'ytd_pnl': 15420.50,
-            'ytd_target': 50000.00,
-            'win_rate': 68.5,
-            'total_trades': 127,
-            'avg_gain': 4.2,
-            'avg_loss': -2.1
-        }
-    """
-    try:
-        from core.goal_tracker import get_ytd_stats
-
-        stats = get_ytd_stats()
-
-        return {
-            'ok': True,
-            **stats,
-            'timestamp': int(time.time())
-        }
-    except Exception as e:
-        LOGGER.error(f"Goals API failed: {e}")
-        return {
-            'ok': False,
-            'error': str(e),
-            'ytd_pnl': 0,
-            'ytd_target': 0,
-            'win_rate': 0,
-            'total_trades': 0,
-            'timestamp': int(time.time())
-        }
-
-
-@APP.get("/api/vip_status")
 async def api_vip_status():
     """
     Get VIP microcap coin status with real-time prices.
@@ -44113,38 +43457,6 @@ try:
             LOGGER.error(f"Failed to get guardian positions: {e}")
             return {"ok": False, "error": str(e)}
 
-    @APP.get("/api/v3/guardian/alerts")
-    async def api_v3_guardian_alerts():
-        """
-        Get Guardian alert history.
-        
-        Shows all alerts sent (confidence changes, reversals, etc.)
-        """
-        try:
-            import sqlite3
-            conn = sqlite3.connect("data/ghost_predictions.db")
-            try:
-                conn.row_factory = sqlite3.Row
-                
-                rows = conn.execute("""
-                    SELECT * FROM guardian_alerts
-                    ORDER BY sent_at DESC
-                    LIMIT 50
-                """).fetchall()
-                
-                alerts = [dict(row) for row in rows]
-            finally:
-                conn.close()
-            
-            return {
-                "ok": True,
-                "count": len(alerts),
-                "alerts": alerts
-            }
-        
-        except Exception as e:
-            LOGGER.error(f"Failed to get guardian alerts: {e}")
-            return {"ok": False, "error": str(e)}
 
     @APP.post("/api/v3/guardian/heartbeat/{heartbeat_type}")
     async def api_v3_force_heartbeat(heartbeat_type: str):
