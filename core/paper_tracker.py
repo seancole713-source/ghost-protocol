@@ -648,6 +648,36 @@ class PaperTracker:
             except Exception as e:
                 LOGGER.debug(f"Trust ladder update failed: {e}")
             
+            # =====================================================================
+            # ONLINE CALIBRATOR: Log forecast result for weight recalibration
+            # Feeds the calibration engine with real outcome data so it can
+            # adjust horizon weights and strategy weights over time.
+            # =====================================================================
+            try:
+                from core.online_calibrator import get_online_calibrator
+                
+                calibrator = get_online_calibrator()
+                calibrator.log_forecast_result(
+                    horizon="swing",  # Default 48h horizon
+                    symbol=trade['symbol'],
+                    predicted_price=float(trade.get('target_price') or entry_price),
+                    actual_price=float(current_price),
+                    confidence=float(trade.get('signal_confidence') or 0.5),
+                )
+                
+                # Also log as strategy result for strategy weight calibration
+                calibrator.log_strategy_result(
+                    strategy_name=trade.get('v3_strategy') or "ensemble_v3",
+                    symbol=trade['symbol'],
+                    action=trade.get('signal_direction', 'UP'),
+                    confidence=float(trade.get('signal_confidence') or 0.5),
+                    entry_price=float(entry_price),
+                    exit_price=float(current_price),
+                )
+                LOGGER.debug(f"[{trade['symbol']}] Online calibrator: logged forecast+strategy result")
+            except Exception as e:
+                LOGGER.debug(f"Online calibrator logging failed: {e}")
+            
             return {
                 "resolved": True,
                 "outcome": outcome,

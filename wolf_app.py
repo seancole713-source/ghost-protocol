@@ -4527,6 +4527,54 @@ async def _on_startup():
         LOGGER.warning(f"retrain_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
 
+    # 🔄 Start Online Calibrator Scheduler (Feb 25, 2026)
+    # Periodically recalibrates horizon/strategy weights based on actual performance.
+    # Runs every 6 hours, checks for model drift, and auto-adjusts weights.
+    try:
+        import threading
+        
+        def _online_calibration_loop():
+            """Background thread: run calibration every 6 hours."""
+            import time as _time
+            _time.sleep(600)  # Wait 10 min after startup for data to be available
+            
+            while True:
+                try:
+                    from core.online_calibrator import get_online_calibrator
+                    calibrator = get_online_calibrator()
+                    
+                    # Calibrate horizon weights
+                    horizon_result = calibrator.calibrate_horizon_weights()
+                    if horizon_result:
+                        LOGGER.info(
+                            f"[CALIBRATOR] ✅ Horizon weights recalibrated: "
+                            f"gain={horizon_result.performance_gain:.1%}"
+                        )
+                    
+                    # Calibrate strategy weights
+                    strategy_result = calibrator.calibrate_strategy_weights()
+                    if strategy_result:
+                        LOGGER.info(
+                            f"[CALIBRATOR] ✅ Strategy weights recalibrated: "
+                            f"gain={strategy_result.performance_gain:.1%}"
+                        )
+                    
+                except Exception as e:
+                    LOGGER.warning(f"[CALIBRATOR] Calibration cycle failed: {e}")
+                
+                _time.sleep(6 * 3600)  # Every 6 hours
+        
+        _calibrator_thread = threading.Thread(
+            target=_online_calibration_loop,
+            daemon=True,
+            name="online-calibrator"
+        )
+        _calibrator_thread.start()
+        LOGGER.info("[GHOST STARTUP] ✅ Online calibrator scheduler started (every 6 hours)")
+    except Exception as e:
+        LOGGER.warning(f"online_calibrator_scheduler_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+
     # CRITICAL: Initialize prediction store tables EARLY to prevent "table not found" errors
     # Do NOT wait for full pool init - just ensure tables exist
     try:
@@ -8618,6 +8666,66 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             base_confidence = min(base_confidence + pattern_boost, MAX_CONFIDENCE)
             LOGGER.info(f"[{symbol}] 📊 Pattern Intelligence boost: +{pattern_boost:.1%} (final: {base_confidence:.1%})")
         
+        # =====================================================================
+        # MULTI-HORIZON CONSENSUS CHECK (Feb 25, 2026)
+        # Uses already-extracted features to compute a quick multi-timeframe
+        # directional vote. If short/medium/long timeframes disagree with the
+        # ensemble direction, apply a conflict penalty. If they agree, small boost.
+        # This replaces calling the full MultiHorizonForecaster which needs
+        # yfinance HTTP calls (too slow for hot path).
+        # =====================================================================
+        _mh_adjustment = 0.0
+        try:
+            if os.getenv("MULTI_HORIZON_CONSENSUS_ENABLED", "1") == "1":
+                # Short-term signal: RSI momentum (< 30 = bullish, > 70 = bearish)
+                _rsi = features.get("RSI_14") or features.get("RSI", 50)
+                _short_bullish = _rsi < 40  # Oversold territory
+                _short_bearish = _rsi > 60  # Overbought territory
+                
+                # Medium-term signal: MACD histogram direction
+                _macd_hist = features.get("MACD_HISTOGRAM", 0) or 0
+                _med_bullish = _macd_hist > 0
+                _med_bearish = _macd_hist < 0
+                
+                # Long-term signal: Price vs SMA/EMA and momentum
+                _momentum = features.get("MOMENTUM_7D", features.get("MOMENTUM", 0)) or 0
+                _sma_50_diff = features.get("SMA_50_DIFF", features.get("SMA_DIFF", 0)) or 0
+                _long_bullish = _momentum > 0 and _sma_50_diff > 0
+                _long_bearish = _momentum < 0 and _sma_50_diff < 0
+                
+                # Count agreement with current direction
+                if direction == "UP":
+                    _votes_agree = sum([_short_bullish, _med_bullish, _long_bullish])
+                    _votes_disagree = sum([_short_bearish, _med_bearish, _long_bearish])
+                elif direction == "DOWN":
+                    _votes_agree = sum([_short_bearish, _med_bearish, _long_bearish])
+                    _votes_disagree = sum([_short_bullish, _med_bullish, _long_bullish])
+                else:
+                    _votes_agree = 0
+                    _votes_disagree = 0
+                
+                # Apply adjustment based on agreement
+                if _votes_agree >= 3:
+                    _mh_adjustment = 0.03  # All 3 horizons agree: +3%
+                elif _votes_agree >= 2 and _votes_disagree == 0:
+                    _mh_adjustment = 0.02  # 2 agree, none disagree: +2%
+                elif _votes_disagree >= 2:
+                    _mh_adjustment = -0.03  # 2+ horizons disagree: -3%
+                elif _votes_disagree >= 1 and _votes_agree == 0:
+                    _mh_adjustment = -0.02  # 1 disagrees, none agree: -2%
+                
+                if _mh_adjustment != 0:
+                    pre_mh = base_confidence
+                    base_confidence = max(0.25, min(MAX_CONFIDENCE, base_confidence + _mh_adjustment))
+                    LOGGER.info(
+                        f"[{symbol}] 🔭 MULTI-HORIZON: {_votes_agree}/3 agree, {_votes_disagree}/3 disagree → "
+                        f"{pre_mh:.1%} → {base_confidence:.1%} ({_mh_adjustment:+.1%})"
+                    )
+                else:
+                    LOGGER.debug(f"[{symbol}] Multi-horizon: mixed signals, no adjustment")
+        except Exception as e:
+            LOGGER.debug(f"[{symbol}] Multi-horizon consensus unavailable: {e}")
+        
         # Apply Stage 1 Context boost/penalty (market regime alignment) - REDUCED
         if stage1_boost != 0:
             stage1_boost = max(-0.05, min(0.03, stage1_boost))  # Cap stage1 effects
@@ -9120,6 +9228,42 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         confidence = float(base_confidence)
         
         # =====================================================================
+        # TRUST LADDER: Apply confidence boost for proven symbols (Feb 25, 2026)
+        # Symbols that have been winning consistently get promoted through levels:
+        #   Level 1 (Standard): 1.0x (no boost)
+        #   Level 2 (Extended): 1.10x (+10% confidence)
+        #   Level 3 (Focused):  1.20x (+20% confidence)
+        # Trust ladder outcomes are recorded in paper_tracker.py on WIN/LOSS.
+        # This closes the loop: proven symbols get higher confidence.
+        # =====================================================================
+        trust_boost = 1.0
+        trust_level = 1
+        try:
+            if os.getenv("TRUST_LADDER_ENABLED", "1") == "1":
+                from core.trust_ladder import get_trust_ladder
+                
+                trust_data = get_trust_ladder().get_trust(symbol)
+                trust_boost = trust_data.confidence_boost
+                trust_level = trust_data.trust_level
+                
+                if trust_boost > 1.0:
+                    pre_trust_confidence = confidence
+                    confidence = confidence * trust_boost
+                    LOGGER.info(
+                        f"[{symbol}] 🏆 TRUST LADDER: Level {trust_level} "
+                        f"({trust_data.level_config['name']}) → "
+                        f"{pre_trust_confidence:.1%} × {trust_boost:.2f} = {confidence:.1%} "
+                        f"(wins={trust_data.consecutive_wins}, "
+                        f"accuracy={trust_data.accuracy_pct:.0f}%)"
+                    )
+                else:
+                    LOGGER.debug(
+                        f"[{symbol}] Trust ladder: Level {trust_level} (Standard, no boost)"
+                    )
+        except Exception as e:
+            LOGGER.debug(f"[{symbol}] Trust ladder unavailable: {e}")
+        
+        # =====================================================================
         # HARD CAP: NEVER claim more than 85% confidence (Jan 31, 2026)
         # Real trading systems rarely exceed this. Our 52% win rate doesn't
         # justify 90%+ confidence claims.
@@ -9141,7 +9285,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             "calibration": cal or {},
             "signals_fired": signals_fired,
             "adjustments": calibration_result.get("adjustments", {}),
-            "features_used": [k for k, v in features.items() if v is not None]
+            "features_used": [k for k, v in features.items() if v is not None],
+            "trust_level": trust_level,
+            "trust_boost": trust_boost,
         }
 
         # Log calibration details
@@ -9554,6 +9700,61 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     LOGGER.warning(f"[{symbol}] 🚫 PRICE SANITY: entry_price ${current_price:,.2f} suspiciously high — skipping paper trade")
                     raise Exception("price_sanity_skip")
                 
+                # =====================================================================
+                # POSITION SIZER: Kelly Criterion + ATR sizing (Feb 25, 2026)
+                # Replace fixed $1000 with intelligent position sizing based on:
+                #   - Kelly Criterion (optimal bet sizing for edge)
+                #   - ATR (volatility-based stop losses)
+                #   - Symbol win rate (data-driven from paper_trades)
+                # Default $1000 fallback if sizer fails.
+                # =====================================================================
+                _position_size = 1000.0  # Default fallback
+                try:
+                    if os.getenv("POSITION_SIZER_ENABLED", "1") == "1":
+                        from core.position_sizer import get_position_sizer
+                        
+                        _sizer = get_position_sizer(capital=float(os.getenv("PAPER_TRADE_CAPITAL", "100000")))
+                        _atr = features.get("ATR_PERCENT", features.get("ATR", 3.0)) or 3.0
+                        _atr_dollar = current_price * float(_atr) / 100.0 if float(_atr) < 50 else float(_atr)
+                        
+                        # Get symbol's historical win rate from paper trades
+                        _sym_wr = 0.55  # Default
+                        try:
+                            conn_wr = paper_tracker._get_connection()
+                            cur_wr = paper_tracker._execute(conn_wr,
+                                """SELECT SUM(CASE WHEN outcome='WIN' THEN 1 ELSE 0 END) as w,
+                                          SUM(CASE WHEN outcome IN ('LOSS','STOPPED') THEN 1 ELSE 0 END) as l
+                                   FROM paper_trades WHERE symbol=? AND outcome IS NOT NULL AND outcome != 'PENDING'""",
+                                (symbol.upper(),)
+                            )
+                            _wr_row = paper_tracker._fetchall(cur_wr)
+                            conn_wr.close()
+                            if _wr_row and _wr_row[0]:
+                                _w = _wr_row[0].get("w", 0) or 0
+                                _l = _wr_row[0].get("l", 0) or 0
+                                if (_w + _l) >= 5:
+                                    _sym_wr = _w / (_w + _l)
+                        except Exception:
+                            pass
+                        
+                        _ps = _sizer.calculate_position_size(
+                            symbol=symbol,
+                            entry_price=current_price,
+                            confidence=confidence,
+                            atr=_atr_dollar,
+                            win_rate=_sym_wr,
+                        )
+                        _position_size = max(_ps.dollar_amount, 100.0)  # Min $100
+                        _position_size = min(_position_size, 10000.0)  # Cap $10k
+                        LOGGER.info(
+                            f"[{symbol}] 💰 POSITION SIZER: ${_position_size:,.0f} "
+                            f"(Kelly={_ps.kelly_fraction:.1%}, WR={_sym_wr:.0%}, "
+                            f"R:R={_ps.risk_reward_ratio:.1f}:1)"
+                        )
+                except Exception as e:
+                    LOGGER.debug(f"[{symbol}] Position sizer failed, using $1000 default: {e}")
+                    _position_size = 1000.0
+                
                 paper_trade_id = paper_tracker.log_signal(
                     cascade_id=f"pred_{prediction_id}",  # Link to prediction
                     symbol=symbol,
@@ -9561,7 +9762,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     signal_confidence=confidence,
                     entry_price=current_price,
                     entry_time=datetime.utcfromtimestamp(run_at).isoformat(),
-                    position_size=1000.0,  # $1000 per trade for paper tracking
+                    position_size=_position_size,  # Kelly-optimal sizing (was fixed $1000)
                     stop_loss_pct=stop_loss_pct,
                     take_profit_pct=abs(expected_move_pct or 3.0) / 100.0,
                     # V3 tracking metadata
