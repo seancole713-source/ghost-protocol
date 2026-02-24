@@ -2910,6 +2910,32 @@ class GhostNotificationSystem:
         except Exception as e:
             LOGGER.warning(f"[TRACKING] Failed to persist state {key}: {e}")
 
+    def get_tracked_symbols(self) -> list:
+        """Return list of symbols with active tracked picks (for cron watchdog price prefetch)."""
+        if self._use_postgres:
+            try:
+                conn = self._get_postgres_conn()
+                cur = conn.cursor()
+                cur.execute("SELECT DISTINCT symbol FROM ghost_tracked_picks WHERE status = 'active'")
+                symbols = [row[0] for row in cur.fetchall()]
+                cur.close()
+                conn.close()
+                return symbols
+            except Exception as e:
+                LOGGER.error(f"get_tracked_symbols PostgreSQL failed: {e}")
+                return []
+        else:
+            try:
+                import sqlite3
+                conn = sqlite3.connect(self._db_path)
+                symbols = [row[0] for row in conn.execute(
+                    "SELECT DISTINCT symbol FROM tracked_picks WHERE status = 'active'"
+                ).fetchall()]
+                conn.close()
+                return symbols
+            except Exception:
+                return []
+
     def get_status(self) -> Dict:
         """Get current status of the notification system"""
         active = 0

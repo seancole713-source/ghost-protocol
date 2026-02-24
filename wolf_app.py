@@ -28557,9 +28557,9 @@ async def _watchdog_background_check():
                 return 0.0
         
         # PARALLEL PRICE FETCHING: Fetch all prices concurrently
-        # Get list of symbols to check
-        status = notif.get_status()
-        active_symbols = [pick.get("symbol") for pick in status.get("tracked_picks", []) if pick.get("symbol")]
+        # FIX (Feb 24, 2026): get_status() returns integer counts, NOT pick lists.
+        # Use get_tracked_symbols() to get the actual symbol list for price prefetch.
+        active_symbols = notif.get_tracked_symbols()
         
         if active_symbols:
             LOGGER.info(f"[WATCHDOG] 💰 Fetching prices for {len(active_symbols)} symbols in parallel...")
