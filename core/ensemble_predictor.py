@@ -399,10 +399,31 @@ class XGBoostModel:
                 else:
                     # Bare XGBClassifier was pickled directly
                     self.model = model_data
-                    self.feature_names = getattr(model_data, 'feature_names_in_', []) or []
+                    # Extract feature names from the model object itself
+                    _raw_names = getattr(model_data, 'feature_names_in_', None)
+                    if _raw_names is not None and hasattr(_raw_names, '__len__') and len(_raw_names) > 0:
+                        self.feature_names = list(_raw_names)
+                    else:
+                        # feature_names_in_ missing — try booster's feature_names
+                        try:
+                            booster_names = model_data.get_booster().feature_names
+                            if booster_names:
+                                self.feature_names = list(booster_names)
+                            else:
+                                # Last resort: infer from n_features_in_
+                                n = getattr(model_data, 'n_features_in_', 0)
+                                if n > 0:
+                                    self.feature_names = [f"f{i}" for i in range(n)]
+                                else:
+                                    self.feature_names = []
+                        except Exception:
+                            self.feature_names = []
                     accuracy = 0
                     cv_score = 0
-                    logger.warning(f"⚠️ XGBoost model loaded as bare {type(model_data).__name__} (no metadata)")
+                    logger.warning(
+                        f"⚠️ XGBoost model loaded as bare {type(model_data).__name__} "
+                        f"(no metadata, {len(self.feature_names)} features extracted)"
+                    )
                 
                 self._loaded = True
                 
@@ -414,8 +435,9 @@ class XGBoostModel:
                 else:
                     self.model_version = "v1"
                 
-                accuracy = model_data.get('test_accuracy', 0)
-                cv_score = model_data.get('cv_score', 0)
+                # NOTE: accuracy/cv_score already set in the if/else branches above.
+                # Do NOT call model_data.get() here — it crashes when model_data
+                # is a bare XGBClassifier (has no .get() method).
                 
                 logger.info(f"✅ XGBoost {self.model_version} loaded: {accuracy:.1%} accuracy, CV={cv_score:.1%}, {len(self.feature_names)} features")
             else:

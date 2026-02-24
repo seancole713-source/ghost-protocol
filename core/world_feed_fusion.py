@@ -200,7 +200,7 @@ class WorldFeedFusion:
         {
             "source_id": "cnbc",
             "name": "CNBC Top News",
-            "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+            "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
             "category": "general",
             "priority": 8,
             "refresh_interval": 600,  # 10 minutes

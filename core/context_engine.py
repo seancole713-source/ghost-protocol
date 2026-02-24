@@ -643,7 +643,7 @@ async def start_background_updater(
         # Financial News (Major)
         "https://feeds.reuters.com/reuters/businessNews",
         "https://www.marketwatch.com/rss/topstories",
-        "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
         "https://www.cnbc.com/id/10001147/device/rss/rss.html",
         "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
         

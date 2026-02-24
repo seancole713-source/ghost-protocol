@@ -142,6 +142,7 @@ def get_sector_name(sector_etf: str) -> str:
 def get_sector_trend(sector_etf: str, days: int = 5) -> Optional[float]:
     """
     Get sector trend (percent change over N days).
+    Uses Polygon API (reliable for ETFs) with yfinance fallback.
     
     Returns:
         Percentage change (e.g., 2.5 for +2.5%, -1.3 for -1.3%)
@@ -154,8 +155,33 @@ def get_sector_trend(sector_etf: str, days: int = 5) -> Optional[float]:
         if time.time() - cached_ts < _SECTOR_CACHE_TTL:
             return cached_trend
     
+    # PRIMARY: Polygon API (works reliably for ETFs like XLF, XLC, SPY)
     try:
-        # Try to get price history from existing price infrastructure
+        import os, httpx
+        from datetime import datetime as _dt, timedelta
+        api_key = os.getenv("POLYGON_API_KEY", "")
+        if api_key:
+            end = _dt.utcnow().strftime("%Y-%m-%d")
+            start = (_dt.utcnow() - timedelta(days=days + 10)).strftime("%Y-%m-%d")
+            url = (
+                f"https://api.polygon.io/v2/aggs/ticker/{sector_etf}/range/1/day/"
+                f"{start}/{end}?adjusted=true&sort=asc&apiKey={api_key}"
+            )
+            resp = httpx.get(url, timeout=10)
+            if resp.status_code == 200:
+                bars = resp.json().get("results", [])
+                if len(bars) >= 2:
+                    old_price = bars[0]["c"]
+                    new_price = bars[-1]["c"]
+                    if old_price > 0:
+                        trend_pct = ((new_price - old_price) / old_price) * 100
+                        _SECTOR_TREND_CACHE[cache_key] = (trend_pct, time.time())
+                        return trend_pct
+    except Exception as e:
+        LOGGER.debug(f"Polygon sector trend failed for {sector_etf}: {e}")
+    
+    # FALLBACK 1: wolf_app price history (only works for traded assets)
+    try:
         from wolf_app import _get_price_history_cached
         
         history = _get_price_history_cached(sector_etf, days=days + 5)
@@ -163,19 +189,16 @@ def get_sector_trend(sector_etf: str, days: int = 5) -> Optional[float]:
         if history and len(history) >= 2:
             prices = [h.get("price") or h.get("close") for h in history if h.get("price") or h.get("close")]
             if len(prices) >= 2:
-                # Calculate percent change
                 old_price = prices[0]
                 new_price = prices[-1]
                 if old_price > 0:
                     trend_pct = ((new_price - old_price) / old_price) * 100
-                    
-                    # Cache result
                     _SECTOR_TREND_CACHE[cache_key] = (trend_pct, time.time())
                     return trend_pct
     except Exception as e:
-        LOGGER.debug(f"Sector trend calculation failed for {sector_etf}: {e}")
+        LOGGER.debug(f"Wolf_app sector trend failed for {sector_etf}: {e}")
     
-    # Fallback: try yfinance directly
+    # FALLBACK 2: yfinance (rate-limited, unreliable)
     try:
         import yfinance as yf
         

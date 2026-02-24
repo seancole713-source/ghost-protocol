@@ -530,9 +530,10 @@ async def fetch_intel_context(symbol: str = None) -> Dict[str, Any]:
     }
     
     try:
-        # Fetch rates (VIX, yields)
-        from ghost_intel.sources import fetch_live_rates
-        rates = await fetch_live_rates()
+        # Fetch rates (VIX, yields) — use IntelSources singleton
+        from ghost_intel.sources import get_intel_sources
+        sources = get_intel_sources()
+        rates = await sources.get_rates_and_liquidity()
         
         if rates:
             vix = rates.get("vix", {}).get("price", 20.0)
@@ -564,22 +565,26 @@ async def fetch_intel_context(symbol: str = None) -> Dict[str, Any]:
         LOGGER.warning(f"Failed to fetch rates: {e}")
     
     try:
-        # Fetch positioning
-        from ghost_intel.positioning import MarketPositioningAnalyzer
+        # Fetch positioning — use PositioningAnalyzer singleton (correct class name)
+        from ghost_intel.positioning import get_positioning_analyzer
         
-        analyzer = MarketPositioningAnalyzer()
-        positioning = await analyzer.get_positioning_snapshot()
+        analyzer = get_positioning_analyzer()
+        # PositioningAnalyzer.analyze() takes a data dict, not get_positioning_snapshot()
+        positioning = analyzer.analyze({
+            "vix": context.get("vix", 20.0),
+            "put_call_ratio": 0.9,  # Default; would need options data feed for real value
+        })
         
         if positioning:
-            context["put_call_ratio"] = positioning.get("put_call", {}).get("ratio", 1.0)
-            context["fragility_score"] = positioning.get("fragility", {}).get("score", 50.0)
+            context["put_call_ratio"] = getattr(positioning, 'put_call_ratio', 1.0)
+            context["fragility_score"] = getattr(positioning, 'fragility', 50.0)
             
             # Determine positioning bias
             pcr = context["put_call_ratio"]
             if pcr < 0.7:
-                context["positioning"] = "bullish"  # Low put/call = complacent bulls
+                context["positioning"] = "bullish"
             elif pcr > 1.3:
-                context["positioning"] = "bearish"  # High put/call = hedging
+                context["positioning"] = "bearish"
             else:
                 context["positioning"] = "neutral"
                 
@@ -587,11 +592,17 @@ async def fetch_intel_context(symbol: str = None) -> Dict[str, Any]:
         LOGGER.warning(f"Failed to fetch positioning: {e}")
     
     try:
-        # Fetch active events
-        from ghost_intel.routes import _fetch_and_process_events
+        # Fetch active events — use IntelSources (routes don't export raw functions)
+        from ghost_intel.sources import get_intel_sources
+        sources = get_intel_sources()
+        all_data = await sources.fetch_all_layers()
         
-        events = await _fetch_and_process_events(limit=10, min_score=20)
-        context["active_events"] = events.get("events", [])
+        # Extract events from raw feed data
+        events_list = []
+        for item in (all_data or []):
+            if hasattr(item, 'data') and item.data:
+                events_list.append(item.data)
+        context["active_events"] = events_list[:10]
         
     except Exception as e:
         LOGGER.warning(f"Failed to fetch events: {e}")

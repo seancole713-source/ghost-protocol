@@ -72,7 +72,7 @@ class GhostNewsBrain:
         self.cryptopanic_key = os.getenv("CRYPTOPANIC_API_KEY")
         self.rss_feeds = [
             # Financial
-            "https://www.cnbc.com/id/100003114/device/rss/rss.html",  # CNBC Top
+            "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",  # CNBC Top
             "https://feeds.marketwatch.com/marketwatch/topstories/",  # MarketWatch
             "https://seekingalpha.com/market_currents.xml",           # Seeking Alpha
             "https://www.investing.com/rss/news.rss",                 # Investing.com

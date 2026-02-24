@@ -209,7 +209,7 @@ class CoinGeckoProvider:
         "AXS": "axie-infinity",
         "GALA": "gala",
         # New/Trending (Add as needed)
-        "BRETT": "brett",
+        "BRETT": "based-brett",
         "MOG": "mog-coin",
         "TURBO": "turbo",
         "WOJAK": "wojak",
@@ -408,12 +408,12 @@ class CoinGeckoProvider:
 
             return {
                 "symbol": symbol.upper(),
-                "price": float(coin_data.get("usd", 0)),
-                "change_24h": float(coin_data.get("usd_24h_change", 0)),
-                "change_24h_pct": float(coin_data.get("usd_24h_change", 0)),
-                "market_cap": float(coin_data.get("usd_market_cap", 0)),
-                "volume_24h": float(coin_data.get("usd_24h_vol", 0)),
-                "last_updated": int(coin_data.get("last_updated_at", time.time())),
+                "price": float(coin_data.get("usd") or 0),
+                "change_24h": float(coin_data.get("usd_24h_change") or 0),
+                "change_24h_pct": float(coin_data.get("usd_24h_change") or 0),
+                "market_cap": float(coin_data.get("usd_market_cap") or 0),
+                "volume_24h": float(coin_data.get("usd_24h_vol") or 0),
+                "last_updated": int(coin_data.get("last_updated_at") or time.time()),
                 "provider": "coingecko",
             }
 
@@ -511,11 +511,11 @@ class CoinGeckoProvider:
                     results[symbol] = {
                         "symbol": symbol,
                         "price": price,
-                        "change_24h": float(coin_data.get("usd_24h_change", 0)),
-                        "change_24h_pct": float(coin_data.get("usd_24h_change", 0)),
-                        "market_cap": float(coin_data.get("usd_market_cap", 0)),
-                        "volume_24h": float(coin_data.get("usd_24h_vol", 0)),
-                        "last_updated": int(coin_data.get("last_updated_at", time.time())),
+                        "change_24h": float(coin_data.get("usd_24h_change") or 0),
+                        "change_24h_pct": float(coin_data.get("usd_24h_change") or 0),
+                        "market_cap": float(coin_data.get("usd_market_cap") or 0),
+                        "volume_24h": float(coin_data.get("usd_24h_vol") or 0),
+                        "last_updated": int(coin_data.get("last_updated_at") or time.time()),
                         "provider": "coingecko",
                     }
             
@@ -1350,7 +1350,7 @@ _COINGECKO_IDS = {
     "ALICE": "my-neighbor-alice",
     "IOTX": "iotex",
     "GIGA": "gigachad",
-    "BRETT": "brett",
+    "BRETT": "based-brett",
     "BCH": "bitcoin-cash",
     "YFI": "yearn-finance",
     "ENJ": "enjin-coin",

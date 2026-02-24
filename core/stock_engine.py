@@ -299,6 +299,7 @@ class StockEngine:
     async def _get_spy_regime(self) -> Tuple[bool, float]:
         """
         Check if SPY is above 20-day MA (bull market).
+        Uses yfinance with Polygon fallback.
         
         Returns: (is_bullish, pct_vs_ma)
         """
@@ -307,24 +308,53 @@ class StockEngine:
             data = self._spy_cache[0]
             return data.get("bullish", True), data.get("pct_vs_ma", 0)
         
+        hist_closes = []
+        
+        # Try yfinance first
         try:
             import yfinance as yf
             spy = yf.Ticker("SPY")
             hist = spy.history(period="30d")
             
             if len(hist) >= 20:
-                current = hist['Close'].iloc[-1]
-                ma20 = hist['Close'].rolling(20).mean().iloc[-1]
-                pct_vs_ma = ((current - ma20) / ma20) * 100
-                bullish = current > ma20
-                
-                self._spy_cache = ({"bullish": bullish, "pct_vs_ma": pct_vs_ma}, now)
-                return bullish, pct_vs_ma
+                hist_closes = hist['Close'].tolist()
         except Exception as e:
-            LOGGER.warning(f"SPY regime check failed: {e}")
+            LOGGER.debug(f"SPY yfinance failed: {e}")
         
-        # Default: UNKNOWN, not bullish. Don't assume bull market when data fails.
-        LOGGER.warning("SPY regime unknown — data unavailable. Defaulting to neutral (not bullish).")
+        # Polygon fallback if yfinance failed
+        if len(hist_closes) < 20:
+            try:
+                import os, httpx
+                from datetime import datetime as _dt, timedelta
+                api_key = os.getenv("POLYGON_API_KEY", "")
+                if api_key:
+                    end = _dt.utcnow().strftime("%Y-%m-%d")
+                    start = (_dt.utcnow() - timedelta(days=45)).strftime("%Y-%m-%d")
+                    url = (
+                        f"https://api.polygon.io/v2/aggs/ticker/SPY/range/1/day/"
+                        f"{start}/{end}?adjusted=true&sort=asc&apiKey={api_key}"
+                    )
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        resp = await client.get(url)
+                        if resp.status_code == 200:
+                            bars = resp.json().get("results", [])
+                            if len(bars) >= 20:
+                                hist_closes = [b["c"] for b in bars]
+                                LOGGER.info(f"✅ SPY regime: Polygon fallback ({len(bars)} bars)")
+            except Exception as e:
+                LOGGER.debug(f"SPY Polygon fallback failed: {e}")
+        
+        if len(hist_closes) >= 20:
+            current = hist_closes[-1]
+            ma20 = sum(hist_closes[-20:]) / 20
+            pct_vs_ma = ((current - ma20) / ma20) * 100
+            bullish = current > ma20
+            
+            self._spy_cache = ({"bullish": bullish, "pct_vs_ma": pct_vs_ma}, now)
+            return bullish, pct_vs_ma
+        
+        # Default: UNKNOWN, not bullish
+        LOGGER.warning("SPY regime unknown — all data sources failed. Defaulting to neutral.")
         return False, 0
     
     async def _get_technical_indicators(self, symbol: str) -> Dict[str, Any]:
@@ -803,42 +833,37 @@ class StockEngine:
         base_confidence = ensemble_confidence  # Raw model output, no floor
         
         # ================================================================
-        # PRE-MARKET CONFIDENCE FIX (Feb 24, 2026)
+        # PRE-MARKET CONFIDENCE ADJUSTMENT (Feb 24, 2026 v2)
         #
         # At 8 AM CT (9 AM ET), the ensemble predictor is degraded because
-        # the feature orchestrator can't get real-time price/volume data
-        # (market doesn't open until 9:30 AM ET).  However, the stock
-        # engine's OWN indicators (Step 5) come from Polygon/yfinance
-        # *daily bars*, which are perfectly valid — yesterday's close IS
-        # the freshest data available before market open.
+        # the feature orchestrator can't get real-time price/volume data.
+        # But the stock engine's indicators (from Polygon daily bars) are valid.
         #
-        # Without this fix:
-        #   ensemble_confidence ≈ 0.50 (degraded) → final ≈ 0.62 → fails 0.70 V3 floor
-        #   → stocks missing from every 8 AM card for 3+ days
-        #
-        # With this fix:
-        #   When pre-market + daily-bar indicators are good (data_quality >= 0.7),
-        #   use indicator-based confidence as the floor instead of the degraded
-        #   ensemble.  The indicator signals (RSI, MACD, BB, SPY, VIX) are
-        #   trustworthy at 8 AM — they're derived from real closing data.
+        # FIXED: Previous version had two problems:
+        #   1. Indicator floor was 0.62 + confirms*0.03 (manufactured from thin air)
+        #   2. Confirmations were double-counted (floor calc AND conf_boost)
+        # Now: modest flat boost capped at +8%, no confirmation double-count.
         # ================================================================
         premarket = _is_premarket()
         data_quality = indicators.get("data_quality_score", 1.0)
         
+        premarket_boost = 0.0
         if premarket and direction != "HOLD" and data_quality >= 0.7:
-            # Daily-bar indicators are valid → use indicator-based confidence floor
-            # Floor = 0.62 + confirmations * 0.03 (max 5 confirms → 0.77)
-            indicator_floor = 0.62 + min(0.15, confirmations * 0.03)
-            if base_confidence < indicator_floor:
+            # Modest boost: daily bars are valid but ensemble is degraded.
+            # Don't manufacture confidence — just compensate for data staleness.
+            # Max boost = +8% (from 52% → 60%, not 52% → 80%).
+            premarket_boost = min(0.08, 0.04 + confirmations * 0.01)
+            if base_confidence < 0.65:
+                base_confidence += premarket_boost
                 LOGGER.info(
-                    f"🌅 [{symbol}] Pre-market confidence lift: ensemble {base_confidence:.0%} → "
-                    f"indicator floor {indicator_floor:.0%} (daily bars valid, "
+                    f"🌅 [{symbol}] Pre-market boost: +{premarket_boost:.0%} → "
+                    f"{base_confidence:.0%} (daily bars valid, "
                     f"data_quality={data_quality:.0%}, {confirmations} confirms)"
                 )
-                base_confidence = indicator_floor
         
-        # Boost for confirmations
-        conf_boost = min(0.25, confirmations * 0.04)
+        # Boost for confirmations (NOT double-counted with pre-market)
+        # Reduced from 0.04 to 0.02 per confirmation, cap 0.10 (was 0.25)
+        conf_boost = min(0.10, confirmations * 0.02)
         
         # Intel boost (already calculated)
         intel_adj = intel_boost
