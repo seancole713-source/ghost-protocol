@@ -2543,6 +2543,52 @@ class GhostNotificationSystem:
             return False
         
         # =====================================================================
+        # CONCURRENCY GUARD (Feb 24, 2026)
+        # Both the internal notification loop AND external /alerts/watchdog/check
+        # cron can call check_for_updates(). If they fire within seconds of each
+        # other, two identical alerts are sent before dedup state persists.
+        # Use a simple time-based guard: skip if last run was < 120s ago.
+        # =====================================================================
+        _now_ts = time.time()
+        _min_interval = 120  # seconds
+        if hasattr(self, '_last_watchdog_run') and (_now_ts - self._last_watchdog_run) < _min_interval:
+            LOGGER.info(f"[WATCHDOG] Skipping — last run was {_now_ts - self._last_watchdog_run:.0f}s ago (< {_min_interval}s)")
+            return False
+        self._last_watchdog_run = _now_ts
+        
+        # =====================================================================
+        # EDGE WHITELIST EVICTION (Feb 24, 2026)
+        # When symbols are removed from EDGE_SYMBOLS (e.g. ILV, BAND, HBAR),
+        # their tracked picks stay active in PostgreSQL and continue generating
+        # path alerts and stop alerts for weeks. Evict them here.
+        # =====================================================================
+        try:
+            _evict_edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
+            if _evict_edge_enabled and self._use_postgres:
+                _evict_edge_csv = os.getenv("EDGE_SYMBOLS",
+                    "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+                )
+                _evict_edge_set = set(s.strip().upper() for s in _evict_edge_csv.split(",") if s.strip())
+                conn = self._get_postgres_conn()
+                cur = conn.cursor()
+                # Find active picks NOT in current edge whitelist
+                cur.execute("SELECT DISTINCT symbol FROM ghost_tracked_picks WHERE status = 'active'")
+                active_symbols = [row[0] for row in cur.fetchall()]
+                stale_symbols = [s for s in active_symbols if s.upper() not in _evict_edge_set]
+                if stale_symbols:
+                    for sym in stale_symbols:
+                        cur.execute(
+                            "UPDATE ghost_tracked_picks SET status = 'evicted_edge' WHERE symbol = %s AND status = 'active'",
+                            (sym,)
+                        )
+                    conn.commit()
+                    LOGGER.info(f"[WATCHDOG] 🧹 Evicted {len(stale_symbols)} non-edge tracked picks: {stale_symbols}")
+                cur.close()
+                conn.close()
+        except Exception as e:
+            LOGGER.warning(f"[WATCHDOG] Edge eviction failed (non-fatal): {e}")
+        
+        # =====================================================================
         # EXPIRATION SWEEP (Feb 12, 2026)
         # Picks that passed their 48-hour expires_at were never marked expired,
         # causing phantom path alerts for weeks-old stale picks.
