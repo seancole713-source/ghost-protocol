@@ -43,8 +43,7 @@ from core.models import Prediction, ScoredPrediction, Direction, FilterResult
 # Edge whitelist: symbols with proven paper trade performance
 # These bypass V3_VALIDATED_STRATEGIES gate and get scored at 0.55 × confidence
 _EDGE_CSV = os.getenv("EDGE_SYMBOLS",
-    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+    "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
 )
 _EDGE_SET = frozenset(s.strip().upper() for s in _EDGE_CSV.split(",") if s.strip())
 

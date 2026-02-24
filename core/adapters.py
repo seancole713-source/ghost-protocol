@@ -373,8 +373,7 @@ def process_v3_from_cache(
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     if _edge_enabled:
         _edge_csv = os.getenv("EDGE_SYMBOLS",
-            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+            "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
         )
         _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
         filtered = {sym: pred for sym, pred in latest_predictions.items() if sym.upper() in _edge_set}

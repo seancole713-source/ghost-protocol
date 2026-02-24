@@ -91,8 +91,7 @@ async def _run_all_predictions_async():
     # No point wasting compute on symbols the model can't predict
     _EDGE_FILTER_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS",
-        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
     )
     _EDGE_SET = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
     
@@ -299,8 +298,7 @@ def _run_all_predictions_sync():
     # EDGE FILTER (Feb 9, 2026): Only predict proven edge symbols
     _SYNC_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _SYNC_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
-        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
     )
     _SYNC_EDGE_SET = set(s.strip().upper() for s in _SYNC_EDGE_CSV.split(",") if s.strip())
     if _SYNC_EDGE_ENABLED:

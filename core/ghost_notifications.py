@@ -312,8 +312,7 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
     # Load edge whitelist so edge symbols bypass V3_REMOVED_SYMBOLS blocking
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _edge_csv = os.getenv("EDGE_SYMBOLS",
-        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
     )
     _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip()) if _edge_enabled else set()
     
@@ -796,8 +795,7 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     # 7 edge symbols (HBAR, ILV, BAND, PEPE, ENJ, YFI, RNDR) were silently blocked
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _edge_csv = os.getenv("EDGE_SYMBOLS",
-        "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-        "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
     )
     _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
     is_edge = _edge_enabled and symbol_upper in _edge_set
@@ -1336,6 +1334,15 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         all_lines.append("")
     
     # Add legend at end
+    # Compute dynamic symbol counts from EDGE_SYMBOLS env var
+    _edge_raw = os.environ.get(
+        "EDGE_SYMBOLS",
+        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT",
+    )
+    _edge_list = [s.strip().upper() for s in _edge_raw.split(",") if s.strip()]
+    _STOCK_SYMBOLS = {"T", "HOOD", "COIN", "XPO"}  # known stock tickers in edge list
+    _n_stocks = sum(1 for s in _edge_list if s in _STOCK_SYMBOLS)
+    _n_crypto = len(_edge_list) - _n_stocks
     all_lines.extend([
         "━━━━━━━━━━━━━━━━━━━━━━",
         "📖 LEGEND",
@@ -1347,8 +1354,8 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         "💰 = Return on $100 position",
         "",
         "📊 EDGE WHITELIST ACTIVE:",
-        "• 24 proven symbols (74.6% combined WR)",
-        "• 7 stocks | 17 crypto",
+        f"• {len(_edge_list)} proven symbols",
+        f"• {_n_stocks} stocks | {_n_crypto} crypto",
         "Ghost V3 is watching 👁️"
     ])
     
@@ -1745,8 +1752,7 @@ class GhostNotificationSystem:
         # EDGE WHITELIST (Feb 9, 2026): Only recommend proven edge symbols
         _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
         _edge_csv = os.getenv("EDGE_SYMBOLS",
-            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+            "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
         )
         _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
         
@@ -2275,12 +2281,40 @@ class GhostNotificationSystem:
                     self.send_telegram(alert_msg)
                     LOGGER.info(f"[REGIME] Sent regime filter alert to Telegram")
             
-            # If regime filter removed ALL picks, still mark as sent (don't re-send)
+            # If regime filter removed ALL picks, send a "standing down" message
+            # instead of going completely silent. User should ALWAYS get 8 AM notification.
             if not stocks and not crypto:
-                LOGGER.warning("[REGIME] All picks filtered by regime — no card today")
+                LOGGER.warning("[REGIME] All picks filtered by regime — sending stand-down notice")
+                level = regime_info.get('level', 'BEARISH') if regime_info else 'BEARISH'
+                reason = regime_info.get('reason', 'adverse market conditions') if regime_info else 'adverse market conditions'
+                btc_24h = regime_info.get('btc_24h_pct') if regime_info else None
+                
+                level_emoji = {'CAUTION': '⚠️', 'BEARISH': '🔴', 'CRASH': '🚨'}.get(level, '🔴')
+                
+                standdown_msg = (
+                    f"{level_emoji} <b>GHOST STANDING DOWN — {level}</b>\n"
+                    f"\n"
+                    f"📅 {today}\n"
+                    f"\n"
+                    f"<b>Reason:</b> {reason}\n"
+                )
+                if btc_24h is not None:
+                    standdown_msg += f"₿ BTC 24h: {btc_24h:+.1f}%\n"
+                standdown_msg += (
+                    f"\n"
+                    f"🛡️ <b>All BUY signals suppressed by regime filter.</b>\n"
+                    f"No picks meet safety criteria today.\n"
+                    f"\n"
+                    f"<i>Ghost protects capital first. Will resume when conditions improve.</i>"
+                )
+                
+                if self.send_telegram:
+                    self.send_telegram(standdown_msg)
+                    LOGGER.info("[REGIME] Sent stand-down notification to Telegram")
+                
                 self._last_top10_date = today
                 self._persist_state('last_top10_date', today)
-                return True  # Not an error — regime filter working as designed
+                return True  # Regime filter working as designed, but user was notified
             
         except Exception as e:
             LOGGER.error(f"[REGIME] Regime filter failed (non-fatal, sending unfiltered): {e}", exc_info=True)

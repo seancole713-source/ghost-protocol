@@ -4610,8 +4610,7 @@ async def _on_startup():
                 # Previously loaded 50 random predictions → polluted cache with ETH, XRP, LINK
                 _warmup_edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
                 _warmup_edge_csv = os.getenv("EDGE_SYMBOLS",
-                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+                    "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
                 )
                 _warmup_edge_set = set(s.strip().upper() for s in _warmup_edge_csv.split(",") if s.strip())
                 
@@ -4726,8 +4725,8 @@ async def _on_startup():
                 EDGE_CRYPTO = [s for s in edge_set if get_asset_type(s) == 'crypto']
             else:
                 # Fallback: hardcode the 24 edge symbols
-                EDGE_STOCKS = ["T", "GME", "HOOD", "BMBL", "XPO", "COIN", "ITRI"]
-                EDGE_CRYPTO = ["TURBO", "RNDR", "ENJ", "JUP", "BAND", "IQ", "HBAR", "PEPE", "IOTX", "GIGA", "ILV", "BCH", "CHZ", "ALICE", "YFI", "ICP", "BRETT"]
+                EDGE_STOCKS = ["T", "HOOD", "COIN"]
+                EDGE_CRYPTO = ["TURBO", "RNDR", "JUP", "IOTX", "GIGA", "BCH", "CHZ", "ALICE", "YFI", "ICP", "BRETT"]
             
             TOP_STOCKS = EDGE_STOCKS[:5]  # Max 5 for startup
             TOP_CRYPTO = EDGE_CRYPTO[:5]  # Max 5 for startup
@@ -5115,8 +5114,7 @@ async def _post_startup_init():
                                 
                                 _TOP10_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
                                 _TOP10_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
-                                    "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-                                    "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+                                    "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
                                 )
                                 _TOP10_EDGE_SET = set(s.strip().upper() for s in _TOP10_EDGE_CSV.split(",") if s.strip())
                                 
@@ -9710,8 +9708,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # =====================================================================
         _PAPER_TRADE_MIN_CONFIDENCE = float(os.getenv("PAPER_TRADE_MIN_CONFIDENCE", "0.55"))
         _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS", 
-            "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-            "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+            "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
         )
         EDGE_SYMBOLS = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
         _EDGE_WHITELIST_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
@@ -27969,8 +27966,7 @@ async def force_send_top10():
             # Step 1: Check edge filter
             import os as _os
             _edge_csv = _os.getenv("EDGE_SYMBOLS",
-                "T,GME,TURBO,RNDR,ENJ,JUP,BAND,HOOD,HBAR,XPO,"
-                "PEPE,IOTX,GIGA,COIN,ILV,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+                "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
             )
             _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
             edge_preds = {sym: p for sym, p in _LATEST_PREDICTIONS.items() if sym.upper() in _edge_set}
