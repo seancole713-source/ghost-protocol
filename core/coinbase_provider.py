@@ -175,7 +175,7 @@ class CoinbaseProvider:
                 timeout=5
             )
             return response.status_code == 200
-        except:
+        except Exception:
             return False
     
     def get_cache_info(self) -> dict:

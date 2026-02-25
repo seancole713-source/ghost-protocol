@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import json
 import logging
+from config.symbols import DIRECTION_FLIP
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -258,7 +259,7 @@ def find_validated_strategies(results_df: pd.DataFrame) -> Dict:
         
         # Determine direction override
         if best['strategy'] == 'ghost_inverse':
-            direction_override = 'flip'
+            direction_override = DIRECTION_FLIP
         else:
             direction_override = None
         

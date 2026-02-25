@@ -253,7 +253,7 @@ class MarketScanner:
                     targets = AssetClassifier.get_target_stop(candidate["asset"], horizon_hours=48)
                     target_pct = targets["target_pct"]
                     stop_pct = targets["stop_pct"]
-                except:
+                except Exception:
                     target_pct = 6.0  # Fallback
                     stop_pct = 4.5
                 

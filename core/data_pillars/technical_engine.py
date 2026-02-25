@@ -684,7 +684,7 @@ class TechnicalEngine(BasePillar):
                                 confidence=1.0, data_available=True,
                                 source="calculated", timestamp=ts, metadata={}
                             ))
-                except:
+                except Exception:
                     pass
             
             # === EMAs (12h, 24h) ===
@@ -698,7 +698,7 @@ class TechnicalEngine(BasePillar):
                                 confidence=1.0, data_available=True,
                                 source="calculated", timestamp=ts, metadata={}
                             ))
-                except:
+                except Exception:
                     pass
             
             # === RSI derived features ===
@@ -715,7 +715,7 @@ class TechnicalEngine(BasePillar):
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-            except:
+            except Exception:
                 pass
             
             # === MACD derived features ===
@@ -736,7 +736,7 @@ class TechnicalEngine(BasePillar):
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-            except:
+            except Exception:
                 pass
             
             # === Bollinger Band features ===
@@ -763,7 +763,7 @@ class TechnicalEngine(BasePillar):
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-            except:
+            except Exception:
                 pass
             
             # === ATR_PCT ===
@@ -775,7 +775,7 @@ class TechnicalEngine(BasePillar):
                     confidence=1.0, data_available=True,
                     source="calculated", timestamp=ts, metadata={}
                 ))
-            except:
+            except Exception:
                 pass
             
             # === Volume features ===
@@ -800,7 +800,7 @@ class TechnicalEngine(BasePillar):
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-            except:
+            except Exception:
                 pass
             
             # === OBV features ===
@@ -823,7 +823,7 @@ class TechnicalEngine(BasePillar):
                     confidence=1.0, data_available=True,
                     source="calculated", timestamp=ts, metadata={}
                 ))
-            except:
+            except Exception:
                 pass
             
             # === Momentum features (HOURLY - direct lookback!) ===
@@ -838,7 +838,7 @@ class TechnicalEngine(BasePillar):
                             confidence=1.0, data_available=True,
                             source="calculated", timestamp=ts, metadata={}
                         ))
-                except:
+                except Exception:
                     pass
             
             # === ROC (Rate of Change - 24 hours) ===
@@ -850,7 +850,7 @@ class TechnicalEngine(BasePillar):
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-            except:
+            except Exception:
                 pass
             
             # === ABOVE_SMA features (HOURLY periods - direct!) ===
@@ -863,7 +863,7 @@ class TechnicalEngine(BasePillar):
                             confidence=1.0, data_available=True,
                             source="calculated", timestamp=ts, metadata={}
                         ))
-                except:
+                except Exception:
                     pass
             
             # === EMA_BULLISH ===
@@ -877,7 +877,7 @@ class TechnicalEngine(BasePillar):
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-            except:
+            except Exception:
                 pass
             
             # === SMA Cross (24h vs 48h) ===
@@ -891,7 +891,7 @@ class TechnicalEngine(BasePillar):
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-            except:
+            except Exception:
                 pass
             
             # === Near High/Low features (HOURLY - 24 bars = 24 hours) ===
@@ -922,7 +922,7 @@ class TechnicalEngine(BasePillar):
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-            except:
+            except Exception:
                 pass
             
             # === Volatility features (HOURLY - use last 24/48 bars) ===
@@ -943,7 +943,7 @@ class TechnicalEngine(BasePillar):
                         confidence=1.0, data_available=True,
                         source="calculated", timestamp=ts, metadata={}
                     ))
-            except:
+            except Exception:
                 pass
             
             # === Hourly Range features ===
@@ -954,7 +954,7 @@ class TechnicalEngine(BasePillar):
                     confidence=1.0, data_available=True,
                     source="calculated", timestamp=ts, metadata={}
                 ))
-            except:
+            except Exception:
                 pass
             
             # === Time features ===
@@ -975,7 +975,7 @@ class TechnicalEngine(BasePillar):
                     confidence=1.0, data_available=True,
                     source="calculated", timestamp=ts, metadata={}
                 ))
-            except:
+            except Exception:
                 pass
             
             # === BTC Correlation features (for non-BTC crypto) ===

@@ -75,6 +75,7 @@ TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
 # Source of truth: config/symbols.py (frozen dataclasses)
 from config.symbols import (
     DEFAULT_EDGE_SYMBOLS,
+    DIRECTION_FLIP,
     v3_strategies_as_dicts,
 )
 
@@ -275,7 +276,7 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
                 # FIX (Feb 24, 2026): Handle 'flip' override (PANW/NET/FTNT) vs fixed 'UP' (ETH)
                 original_direction = direction
                 override = strategy_config['direction_override']
-                if override == 'flip':
+                if override == DIRECTION_FLIP:
                     direction = 'UP' if direction == 'DOWN' else 'DOWN'
                 else:
                     direction = override  # e.g., 'UP' for ETH
@@ -2487,12 +2488,16 @@ class GhostNotificationSystem:
             if _evict_edge_enabled and self._use_postgres:
                 _evict_edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
                 _evict_edge_set = set(s.strip().upper() for s in _evict_edge_csv.split(",") if s.strip())
+                # V3 validated symbols must NEVER be evicted — they are the
+                # highest-conviction picks and need target/stop monitoring.
+                _v3_set = set(V3_VALIDATED_STRATEGIES.keys())
+                _keep_set = _evict_edge_set | _v3_set
                 conn = self._get_postgres_conn()
                 cur = conn.cursor()
-                # Find active picks NOT in current edge whitelist
+                # Find active picks NOT in edge whitelist AND NOT V3 validated
                 cur.execute("SELECT DISTINCT symbol FROM ghost_tracked_picks WHERE status = 'active'")
                 active_symbols = [row[0] for row in cur.fetchall()]
-                stale_symbols = [s for s in active_symbols if s.upper() not in _evict_edge_set]
+                stale_symbols = [s for s in active_symbols if s.upper() not in _keep_set]
                 if stale_symbols:
                     for sym in stale_symbols:
                         cur.execute(

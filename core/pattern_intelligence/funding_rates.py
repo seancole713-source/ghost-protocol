@@ -545,7 +545,7 @@ class FundingRateAnalyzer:
                     bullish_count += 1
                 elif funding['signal'] in ['BEARISH', 'STRONG_BEARISH']:
                     bearish_count += 1
-            except:
+            except Exception:
                 continue
         
         avg_funding = total_funding / len(results) if results else 0

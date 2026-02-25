@@ -35,6 +35,7 @@ from config.symbols import (
     V3_REMOVED_SYMBOLS,
     V3_BLACKLIST,
     ValidatedStrategy,
+    DIRECTION_FLIP,
     is_blacklisted,
     is_removed,
 )
@@ -270,7 +271,7 @@ class V3Filter:
         # FIX (Feb 24, 2026): 'flip' is not a valid Direction enum value.
         # For PANW/NET/FTNT, direction_override='flip' means "use opposite of Ghost's prediction".
         # For ETH, direction_override='UP' means "always use UP".
-        if strategy.direction_override == 'flip':
+        if strategy.direction_override == DIRECTION_FLIP:
             new_direction = pred.direction.opposite()
         else:
             new_direction = Direction(strategy.direction_override)
@@ -322,7 +323,7 @@ class V3Filter:
         # Use direction override if specified, otherwise use prediction direction
         # FIX (Feb 24, 2026): Handle 'flip' override (reverse Ghost's direction)
         # and 'UP'/'DOWN' forced overrides (e.g., DDOG always_up → force UP)
-        if strategy.direction_override == 'flip':
+        if strategy.direction_override == DIRECTION_FLIP:
             direction = pred.direction.opposite()
         elif strategy.direction_override:
             direction = Direction(strategy.direction_override)

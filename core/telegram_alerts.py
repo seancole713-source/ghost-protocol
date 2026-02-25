@@ -167,7 +167,7 @@ def _get_today_key() -> str:
     """Get today's date key in Chicago timezone"""
     try:
         return datetime.now(ZoneInfo(DEFAULT_TZ)).strftime("%Y-%m-%d")
-    except:
+    except Exception:
         return datetime.now().strftime("%Y-%m-%d")
 
 
@@ -440,7 +440,7 @@ def format_touch_target_signal(
     try:
         from core.asset_classifier import get_asset_type
         asset_type = get_asset_type(symbol)
-    except:
+    except Exception:
         asset_type = "crypto"  # Default
     
     # Get real accuracy stats
@@ -453,7 +453,7 @@ def format_touch_target_signal(
             losses = stats.get("losses", 0)
             acc_pct = stats.get("accuracy_pct", 0)
             status_msg = stats.get("status", "LEARNING")
-    except:
+    except Exception:
         pass
     
     # Format track record - show LEARNING if no verified outcomes yet
@@ -631,7 +631,7 @@ def format_prediction_alert_cashapp(
             wins = stats.get("wins", 0)
             losses = stats.get("losses", 0)
             acc_pct = stats.get("accuracy_pct", 0)
-    except:
+    except Exception:
         pass
     
     # Calculate target/stop if not provided

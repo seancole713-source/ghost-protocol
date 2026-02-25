@@ -206,7 +206,7 @@ def _check_pending_cascades():
                     result = asyncio.run(get_crypto_price_quorum(symbol, use_cache=True))
                     if result and result.get("price"):
                         price_data[symbol] = result["price"]
-                except:
+                except Exception:
                     pass
             
             if price_data:

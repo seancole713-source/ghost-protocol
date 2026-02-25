@@ -612,7 +612,7 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             try:
                 import json
                 raw_analysis = json.loads(row['raw_response']) if row['raw_response'] else {}
-            except:
+            except (ValueError, KeyError):
                 raw_analysis = {}
             
             # Build symbol-specific sentiment map

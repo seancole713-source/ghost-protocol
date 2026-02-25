@@ -889,7 +889,7 @@ You're about to make ${target_profit:+.0f}.
             from dateutil import parser
             dt = parser.isoparse(sell_at_iso)
             return dt.strftime('%b %d, %I:%M %p')
-        except:
+        except Exception:
             return "48h from now"
     
     def _hours_since_start(self) -> int:
@@ -920,7 +920,7 @@ You're about to make ${target_profit:+.0f}.
         try:
             from beast_scheduler import STOCK_SYMBOLS, CRYPTO_SYMBOLS
             return len(STOCK_SYMBOLS) + len(CRYPTO_SYMBOLS)
-        except:
+        except Exception:
             return 436  # Fallback
     
     def _format_change_reasons(self, changes: Dict) -> str:

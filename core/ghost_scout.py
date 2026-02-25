@@ -562,15 +562,25 @@ class GhostScout:
             # Try lowercase
             cg_id = symbol.lower()
         
-        try:
-            url = f"https://api.coingecko.com/api/v3/simple/price?ids={cg_id}&vs_currencies=usd"
-            resp = requests.get(url, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                if cg_id in data:
-                    return data[cg_id]["usd"]
-        except Exception:
-            pass
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={cg_id}&vs_currencies=usd"
+        
+        # Retry once on 429 rate-limit (CoinGecko free tier)
+        for attempt in range(2):
+            try:
+                resp = requests.get(url, timeout=5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if cg_id in data:
+                        return data[cg_id]["usd"]
+                elif resp.status_code == 429 and attempt == 0:
+                    import time
+                    LOGGER.debug(f"[SCOUT] CoinGecko 429 for {symbol}, retrying in 2s...")
+                    time.sleep(2)
+                    continue
+                # Non-retryable error
+                break
+            except Exception:
+                break
         
         return None
     

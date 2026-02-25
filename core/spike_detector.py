@@ -233,7 +233,7 @@ async def scan_breaking_news(symbols: list[str]) -> list[dict[str, Any]]:
                                 
                                 if pub_time >= one_hour_ago:
                                     recent_articles.append(article)
-                            except:
+                            except (ValueError, KeyError):
                                 continue
                         
                         # If we have recent news, flag it

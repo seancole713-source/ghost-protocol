@@ -55,7 +55,7 @@ class SignalAggregator:
                 'zone': fg['zone'],
                 'signal': fg['signal']
             }
-        except:
+        except Exception:
             pulse['indicators']['fear_greed'] = {'value': 50, 'signal': 'HOLD'}
         
         # BTC dominance
@@ -65,7 +65,7 @@ class SignalAggregator:
                 'value': dom['btc_dominance'],
                 'signal': dom['dom_signal']
             }
-        except:
+        except Exception:
             pulse['indicators']['btc_dominance'] = {'value': 50, 'signal': 'NORMAL'}
         
         # Quick overall assessment

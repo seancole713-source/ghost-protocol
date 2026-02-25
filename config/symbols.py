@@ -8,13 +8,17 @@ Only strategies with p < 0.05 are included.
 from dataclasses import dataclass
 from typing import Optional, Dict, FrozenSet, Tuple
 
+# Direction override constant — used in ghost_inverse strategies
+# that flip Ghost's prediction (e.g., PANW/NET/FTNT)
+DIRECTION_FLIP = 'flip'
+
 
 @dataclass(frozen=True)
 class ValidatedStrategy:
     """Configuration for a V3 validated trading strategy."""
     symbol: str
     strategy: str  # 'ghost_inverse' | 'mean_reversion'
-    direction_override: Optional[str]  # 'UP' | 'DOWN' | None
+    direction_override: Optional[str]  # 'UP' | 'DOWN' | DIRECTION_FLIP | None
     hold_hours: int
     backtest_win_rate: float
     backtest_trades: int
@@ -64,7 +68,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     'PANW': ValidatedStrategy(
         symbol='PANW',
         strategy='ghost_inverse',
-        direction_override='flip',
+        direction_override=DIRECTION_FLIP,
         hold_hours=168,
         backtest_win_rate=0.646,
         backtest_trades=65,
@@ -75,7 +79,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     'NET': ValidatedStrategy(
         symbol='NET',
         strategy='ghost_inverse',
-        direction_override='flip',
+        direction_override=DIRECTION_FLIP,
         hold_hours=168,
         backtest_win_rate=0.625,
         backtest_trades=72,
@@ -86,7 +90,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     'FTNT': ValidatedStrategy(
         symbol='FTNT',
         strategy='ghost_inverse',
-        direction_override='flip',
+        direction_override=DIRECTION_FLIP,
         hold_hours=168,
         backtest_win_rate=0.623,
         backtest_trades=69,

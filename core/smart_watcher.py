@@ -431,7 +431,7 @@ class SmartWatcher:
             from core.asset_classifier import AssetClassifier
             targets = AssetClassifier.get_target_stop(symbol, horizon_hours=48)
             stop_pct = targets["stop_pct"]
-        except:
+        except Exception:
             stop_pct = 4.0  # Fallback
         
         # Determine signal type

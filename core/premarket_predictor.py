@@ -236,7 +236,7 @@ async def _scan_universe_premarket(max_stocks: int) -> List[str]:
                         today_change = ticker.get("todaysChangePerc", 0)
                         if today_change:
                             moves.append((symbol, abs(today_change)))
-            except:
+            except Exception:
                 pass
             
             # Small delay to avoid rate limits

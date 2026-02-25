@@ -323,7 +323,7 @@ class FullMarketScanner:
                                 "change_pct": change_pct,
                                 "asset_type": "stock"
                             })
-            except:
+            except Exception:
                 pass
         
         return movers

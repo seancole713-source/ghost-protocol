@@ -1554,7 +1554,7 @@ class PostgresBackend:
                         price = features.get("current_price") or features.get("PRICE")
                         if price:
                             pred["price_at_prediction"] = float(price)
-                    except:
+                    except (ValueError, KeyError):
                         pass
                 
                 results.append(pred)
