@@ -68,7 +68,7 @@ def get_live_accuracy_dashboard() -> Dict[str, Any]:
                     timeout=3
                 ).json()
                 current_price = float(price_response['data']['amount'])
-            except:
+            except Exception:
                 # Skip if price unavailable
                 continue
             

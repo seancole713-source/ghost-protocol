@@ -282,9 +282,9 @@ def find_validated_strategies(results_df: pd.DataFrame) -> Dict:
 def load_current_strategies() -> Dict:
     """Load current V3_VALIDATED_STRATEGIES from config"""
     try:
-        from core.ghost_notifications import V3_VALIDATED_STRATEGIES
-        return dict(V3_VALIDATED_STRATEGIES)
-    except:
+        from config.symbols import v3_strategies_as_dicts
+        return v3_strategies_as_dicts()
+    except Exception:
         return {}
 
 

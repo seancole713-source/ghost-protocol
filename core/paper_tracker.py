@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 import logging
+from config.symbols import DEFAULT_EDGE_SYMBOLS
 
 LOGGER = logging.getLogger("paper_tracker")
 
@@ -272,9 +273,7 @@ class PaperTracker:
         # =====================================================================
         _edge_whitelist_enabled = os.environ.get("EDGE_WHITELIST_ENABLED", "1") == "1"
         if _edge_whitelist_enabled:
-            _edge_csv = os.environ.get("EDGE_SYMBOLS",
-                "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
-            )
+            _edge_csv = os.environ.get("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
             _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
             if symbol.upper() not in _edge_set:
                 LOGGER.info(

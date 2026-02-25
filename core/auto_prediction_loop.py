@@ -20,6 +20,7 @@ HUNTER_CRYPTO_SYMBOLS = []
 
 # Get configuration from environment variables
 import os
+from config.symbols import DEFAULT_EDGE_SYMBOLS
 
 # Loop control
 _LOOP_THREAD: threading.Thread | None = None
@@ -90,9 +91,7 @@ async def _run_all_predictions_async():
     # Stock edge: 158W/36L = 81.4% — BEST edge in the system
     # No point wasting compute on symbols the model can't predict
     _EDGE_FILTER_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-    _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS",
-        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
-    )
+    _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
     _EDGE_SET = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
     
     # Run stock predictions (during market hours OR when forced for TOP 10)
@@ -297,9 +296,7 @@ def _run_all_predictions_sync():
     # Run stock predictions (ONLY during market hours)
     # EDGE FILTER (Feb 9, 2026): Only predict proven edge symbols
     _SYNC_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-    _SYNC_EDGE_CSV = os.getenv("EDGE_SYMBOLS",
-        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
-    )
+    _SYNC_EDGE_CSV = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
     _SYNC_EDGE_SET = set(s.strip().upper() for s in _SYNC_EDGE_CSV.split(",") if s.strip())
     if _SYNC_EDGE_ENABLED:
         sync_stock_symbols = [s for s in HUNTER_STOCK_SYMBOLS if s.upper() in _SYNC_EDGE_SET]

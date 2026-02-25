@@ -304,7 +304,7 @@ class SmartScout:
                     "target": round(target, 6),
                     "confidence": conf
                 }
-        except:
+        except Exception:
             pass
         
         # Default: slight bullish bias

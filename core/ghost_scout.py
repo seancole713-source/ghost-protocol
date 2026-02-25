@@ -264,7 +264,7 @@ class GhostScout:
         try:
             import wolf_app
             latest_predictions = wolf_app._LATEST_PREDICTIONS
-        except:
+        except ImportError:
             latest_predictions = {}
         
         LOGGER.info("🔍 [SCOUT] Starting full scouting run...")
@@ -569,7 +569,7 @@ class GhostScout:
                 data = resp.json()
                 if cg_id in data:
                     return data[cg_id]["usd"]
-        except:
+        except Exception:
             pass
         
         return None

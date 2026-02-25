@@ -2210,7 +2210,7 @@ def record_market_event(event_type: str, trigger: str, symbol: str, price: float
     memory = get_event_memory()
     try:
         et = EventType(event_type)
-    except:
+    except (ValueError, KeyError):
         et = EventType.UNKNOWN
     return memory.record_event(et, trigger, symbol, price)
 

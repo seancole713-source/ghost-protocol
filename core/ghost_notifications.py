@@ -68,105 +68,20 @@ TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
 # ============================================================================
 # V3 QUALITY FILTER - Based on 28K+ Paper Trades Sweetspot Analysis
 # ============================================================================
-# V3 BACKTEST-VALIDATED CONFIGURATION
+# V3 BACKTEST-VALIDATED CONFIGURATION — imported from canonical source
 # ============================================================================
 # Based on 52,433 trades analyzed across 272 strategy combinations
 # Only includes statistically significant results (p < 0.05)
-# Updated: 2026-02-02 based on backtest/results/backtest_report.txt
+# Source of truth: config/symbols.py (frozen dataclasses)
+from config.symbols import (
+    V3_VALIDATED_STRATEGIES as _V3_CANONICAL,
+    DEFAULT_EDGE_SYMBOLS,
+    v3_strategies_as_dicts,
+)
 
-# VALIDATED STRATEGIES - These have PROVEN edge (p < 0.05)
-V3_VALIDATED_STRATEGIES = {
-    # ETH inverse @ 72h: 61.5% win rate, 78 trades, p=0.027
-    'ETH': {
-        'strategy': 'ghost_inverse',
-        'direction_override': 'UP',  # Always flip DOWN to UP
-        'hold_hours': 72,
-        'win_rate': 0.615,
-        'sample_size': 78,
-        'p_value': 0.027,
-        'confidence_interval': (0.50, 0.72),
-    },
-    # XRP mean_reversion @ 168h: 56.5% win rate, 239 trades, p=0.026
-    'XRP': {
-        'strategy': 'mean_reversion',
-        'direction_override': None,  # Use Ghost's direction
-        'hold_hours': 168,
-        'win_rate': 0.565,
-        'sample_size': 239,
-        'p_value': 0.026,
-        'confidence_interval': (0.50, 0.63),
-    },
-    # LINK mean_reversion @ 72h: 55.2% win rate, 268 trades, p=0.049
-    'LINK': {
-        'strategy': 'mean_reversion',
-        'direction_override': None,
-        'hold_hours': 72,
-        'win_rate': 0.552,
-        'sample_size': 268,
-        'p_value': 0.049,
-        'confidence_interval': (0.49, 0.61),
-    },
-    # CHZ mean_reversion @ 48h: 57.3% win rate, 206 trades, p=0.021
-    # Added 2026-02-04 based on backtest + paper trade validation (44.6% paper, 57.3% backtest)
-    'CHZ': {
-        'strategy': 'mean_reversion',
-        'direction_override': None,  # Use Ghost's direction
-        'hold_hours': 48,
-        'win_rate': 0.573,
-        'sample_size': 206,
-        'p_value': 0.021,
-        'confidence_interval': (0.505, 0.638),
-    },
-    # =========================================================================
-    # STOCKS - Added 2026-02-05 based on 5063+ bar backtest (Mar 2023 - Feb 2026)
-    # All use ghost_inverse strategy (flip Ghost's direction)
-    # =========================================================================
-    # PANW ghost_inverse @ 168h: 64.6% win rate, 65 trades, p=0.0124
-    'PANW': {
-        'strategy': 'ghost_inverse',
-        'direction_override': 'flip',  # Flip Ghost's direction
-        'hold_hours': 168,
-        'win_rate': 0.646,
-        'sample_size': 65,
-        'p_value': 0.0124,
-        'confidence_interval': (0.525, 0.751),
-        'asset_type': 'stock',
-    },
-    # NET ghost_inverse @ 168h: 62.5% win rate, 72 trades, p=0.0222
-    'NET': {
-        'strategy': 'ghost_inverse',
-        'direction_override': 'flip',  # Flip Ghost's direction
-        'hold_hours': 168,
-        'win_rate': 0.625,
-        'sample_size': 72,
-        'p_value': 0.0222,
-        'confidence_interval': (0.510, 0.728),
-        'asset_type': 'stock',
-    },
-    # FTNT ghost_inverse @ 168h: 62.3% win rate, 69 trades, p=0.0266
-    'FTNT': {
-        'strategy': 'ghost_inverse',
-        'direction_override': 'flip',  # Flip Ghost's direction
-        'hold_hours': 168,
-        'win_rate': 0.623,
-        'sample_size': 69,
-        'p_value': 0.0266,
-        'confidence_interval': (0.505, 0.728),
-        'asset_type': 'stock',
-    },
-    # DDOG always_up @ 48h: 56.9% win rate, 202 trades, p=0.0286
-    # Added 2026-02-06 by auto-calibration discovery
-    'DDOG': {
-        'strategy': 'always_up',
-        'direction_override': 'UP',  # Always predict UP regardless of Ghost signal
-        'hold_hours': 48,
-        'win_rate': 0.569,
-        'sample_size': 202,
-        'p_value': 0.0286,
-        'confidence_interval': (0.500, 0.636),
-        'asset_type': 'stock',
-    },
-}
+# Legacy code expects dict-of-dicts with keys: strategy, direction_override,
+# hold_hours, win_rate, sample_size, p_value, confidence_interval, asset_type.
+V3_VALIDATED_STRATEGIES = v3_strategies_as_dicts()
 
 # STOCKS - Sweetspot analysis stocks that have directional win rates
 # NOTE (Feb 24, 2026): PANW/NET/FTNT/DDOG are in V3_VALIDATED_STRATEGIES above,
@@ -231,7 +146,7 @@ MARKET_CLOSE_HOUR = 20  # 8 PM ET (after-hours ends)
 
 try:
     EASTERN_TZ = ZoneInfo("America/New_York")
-except:
+except Exception:
     EASTERN_TZ = ZoneInfo("US/Eastern")
 
 def is_stock_market_hours() -> bool:
@@ -313,9 +228,7 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
     
     # Load edge whitelist so edge symbols bypass V3_REMOVED_SYMBOLS blocking
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-    _edge_csv = os.getenv("EDGE_SYMBOLS",
-        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
-    )
+    _edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
     _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip()) if _edge_enabled else set()
     
     for pred in predictions:
@@ -809,9 +722,7 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     # EDGE WHITELIST BYPASS (Feb 12, 2026): Edge symbols skip HARDCODED_EXCLUSIONS
     # 7 edge symbols (HBAR, ILV, BAND, PEPE, ENJ, YFI, RNDR) were silently blocked
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-    _edge_csv = os.getenv("EDGE_SYMBOLS",
-        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
-    )
+    _edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
     _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
     is_edge = _edge_enabled and symbol_upper in _edge_set
     
@@ -1007,7 +918,7 @@ def _get_buy_timing(asset_type: str) -> tuple:
             
             next_open = next_open.replace(hour=9, minute=30, second=0, microsecond=0)
             return ("📅 BUY AT OPEN", next_open.strftime("%b %d 9:30 AM ET"))
-    except:
+    except Exception:
         return ("📅 BUY AT OPEN", "Next Market Open")
 
 
@@ -1350,10 +1261,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     
     # Add legend at end
     # Compute dynamic symbol counts from EDGE_SYMBOLS env var
-    _edge_raw = os.environ.get(
-        "EDGE_SYMBOLS",
-        "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT",
-    )
+    _edge_raw = os.environ.get("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
     _edge_list = [s.strip().upper() for s in _edge_raw.split(",") if s.strip()]
     _STOCK_SYMBOLS = {"T", "HOOD", "COIN", "XPO"}  # known stock tickers in edge list
     _n_stocks = sum(1 for s in _edge_list if s in _STOCK_SYMBOLS)
@@ -1766,9 +1674,7 @@ class GhostNotificationSystem:
         
         # EDGE WHITELIST (Feb 9, 2026): Only recommend proven edge symbols
         _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-        _edge_csv = os.getenv("EDGE_SYMBOLS",
-            "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
-        )
+        _edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
         _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
         
         if _edge_enabled:
@@ -2580,9 +2486,7 @@ class GhostNotificationSystem:
         try:
             _evict_edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
             if _evict_edge_enabled and self._use_postgres:
-                _evict_edge_csv = os.getenv("EDGE_SYMBOLS",
-                    "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
-                )
+                _evict_edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
                 _evict_edge_set = set(s.strip().upper() for s in _evict_edge_csv.split(",") if s.strip())
                 conn = self._get_postgres_conn()
                 cur = conn.cursor()

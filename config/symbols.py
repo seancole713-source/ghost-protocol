@@ -6,7 +6,7 @@ Based on 52,433 trade backtest analysis.
 Only strategies with p < 0.05 are included.
 """
 from dataclasses import dataclass
-from typing import Optional, Dict, FrozenSet
+from typing import Optional, Dict, FrozenSet, Tuple
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,8 @@ class ValidatedStrategy:
     backtest_win_rate: float
     backtest_trades: int
     p_value: float
+    confidence_interval: Optional[Tuple[float, float]] = None
+    asset_type: Optional[str] = None  # 'stock' | None (crypto is default)
 
 
 # =============================================================================
@@ -34,6 +36,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
         backtest_win_rate=0.615,
         backtest_trades=78,
         p_value=0.027,
+        confidence_interval=(0.50, 0.72),
     ),
     'XRP': ValidatedStrategy(
         symbol='XRP',
@@ -43,6 +46,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
         backtest_win_rate=0.565,
         backtest_trades=239,
         p_value=0.043,
+        confidence_interval=(0.50, 0.63),
     ),
     'LINK': ValidatedStrategy(
         symbol='LINK',
@@ -52,6 +56,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
         backtest_win_rate=0.552,
         backtest_trades=268,
         p_value=0.048,
+        confidence_interval=(0.49, 0.61),
     ),
     # =========================================================================
     # STOCKS - Added 2026-02-05 based on 5063+ bar backtest
@@ -64,6 +69,8 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
         backtest_win_rate=0.646,
         backtest_trades=65,
         p_value=0.0124,
+        confidence_interval=(0.525, 0.751),
+        asset_type='stock',
     ),
     'NET': ValidatedStrategy(
         symbol='NET',
@@ -73,6 +80,8 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
         backtest_win_rate=0.625,
         backtest_trades=72,
         p_value=0.0222,
+        confidence_interval=(0.510, 0.728),
+        asset_type='stock',
     ),
     'FTNT': ValidatedStrategy(
         symbol='FTNT',
@@ -82,6 +91,33 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
         backtest_win_rate=0.623,
         backtest_trades=69,
         p_value=0.0266,
+        confidence_interval=(0.505, 0.728),
+        asset_type='stock',
+    ),
+    # CHZ mean_reversion @ 48h: 57.3% win rate, 206 trades, p=0.021
+    # Added 2026-02-04 based on backtest + paper trade validation
+    'CHZ': ValidatedStrategy(
+        symbol='CHZ',
+        strategy='mean_reversion',
+        direction_override=None,
+        hold_hours=48,
+        backtest_win_rate=0.573,
+        backtest_trades=206,
+        p_value=0.021,
+        confidence_interval=(0.505, 0.638),
+    ),
+    # DDOG always_up @ 48h: 56.9% win rate, 202 trades, p=0.0286
+    # Added 2026-02-06 by auto-calibration discovery
+    'DDOG': ValidatedStrategy(
+        symbol='DDOG',
+        strategy='always_up',
+        direction_override='UP',
+        hold_hours=48,
+        backtest_win_rate=0.569,
+        backtest_trades=202,
+        p_value=0.0286,
+        confidence_interval=(0.500, 0.636),
+        asset_type='stock',
     ),
 }
 
@@ -141,6 +177,14 @@ CRYPTO_SYMBOLS: FrozenSet[str] = frozenset([
 
 
 # =============================================================================
+# DEFAULT EDGE SYMBOLS
+# Single source of truth for the EDGE_SYMBOLS env var fallback.
+# All code should import this instead of hardcoding the CSV string.
+# =============================================================================
+DEFAULT_EDGE_SYMBOLS = "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+
+
+# =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
 
@@ -167,3 +211,27 @@ def is_removed(symbol: str) -> bool:
 def get_strategy(symbol: str) -> Optional[ValidatedStrategy]:
     """Get the validated strategy for a symbol, if any."""
     return V3_VALIDATED_STRATEGIES.get(symbol.upper())
+
+
+def v3_strategies_as_dicts() -> Dict[str, dict]:
+    """Convert V3_VALIDATED_STRATEGIES to legacy dict format.
+
+    Legacy code expects keys: strategy, direction_override, hold_hours,
+    win_rate, sample_size, p_value, confidence_interval, asset_type.
+    """
+    result = {}
+    for sym, vs in V3_VALIDATED_STRATEGIES.items():
+        d = {
+            'strategy': vs.strategy,
+            'direction_override': vs.direction_override,
+            'hold_hours': vs.hold_hours,
+            'win_rate': vs.backtest_win_rate,
+            'sample_size': vs.backtest_trades,
+            'p_value': vs.p_value,
+        }
+        if vs.confidence_interval is not None:
+            d['confidence_interval'] = vs.confidence_interval
+        if vs.asset_type is not None:
+            d['asset_type'] = vs.asset_type
+        result[sym] = d
+    return result
