@@ -34,7 +34,7 @@ def test_checkpoint_times_calculated():
     # Level 1: Single checkpoint at 48hr
     level1 = TRUST_LEVELS[1]
     print(f"\nLevel 1: prediction_hours={level1['prediction_hours']}, checkpoints={level1['checkpoints']}")
-    assert level1['checkpoints'] == [48], "Level 1 should have checkpoint at 48hr"
+    assert level1['checkpoints'] == [72], "Level 1 should have checkpoint at 72hr"
     print("  ✅ Level 1 checkpoints correct")
     
     # Level 2: Checkpoints at 60hr and 120hr

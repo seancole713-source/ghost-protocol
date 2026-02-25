@@ -16,7 +16,10 @@ import json
 import sys
 import time
 
+import pytest
 import requests
+
+pytestmark = pytest.mark.skip(reason="Manual integration script — hits production Railway deployment")
 
 # Color codes for terminal output
 GREEN = "\033[92m"

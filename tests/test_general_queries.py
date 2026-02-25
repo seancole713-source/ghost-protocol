@@ -3,7 +3,10 @@
 Test general questions (non-meta, non-WOLF) to ensure NO contamination
 """
 
+import pytest
 import requests
+
+pytestmark = pytest.mark.skip(reason="Manual integration script — requires running server at localhost:5000")
 
 BASE_URL = "http://localhost:5000"
 AUTH_TOKEN = "supersecret123jamaica713"

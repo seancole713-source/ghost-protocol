@@ -63,7 +63,9 @@ class V3Filter:
         Args:
             min_confidence: Minimum confidence threshold (default from settings)
         """
-        self.min_confidence = min_confidence or _V3_MIN_CONFIDENCE
+        self._explicit_confidence = min_confidence is not None
+        self.min_confidence = min_confidence if min_confidence is not None else _V3_MIN_CONFIDENCE
+        self._min_confidence_floor = self.min_confidence  # Preserve constructor floor for learning loop
         self._bias_correction = 0.0  # Updated from learning loop
         self._learning_threshold = None  # Dynamic threshold from learning loop
         self._last_learning_sync = 0
@@ -127,6 +129,9 @@ class V3Filter:
         This closes the gap where learning_loop.py computed adjustments
         and wrote them to memory.json but nothing ever read them.
         Now the V3 filter dynamically adjusts based on recent accuracy.
+        
+        If min_confidence was explicitly provided to the constructor,
+        the learning loop will not override it — the caller is intentional.
         """
         import time as _time
         now = _time.time()
@@ -136,6 +141,10 @@ class V3Filter:
             return
         
         self._last_learning_sync = now
+        
+        # If min_confidence was explicitly set by the caller, respect it
+        if self._explicit_confidence:
+            return
         
         if not _LEARNING_LOOP_ENABLED:
             return
@@ -153,8 +162,8 @@ class V3Filter:
             new_threshold = config.get("confidence_threshold", None)
             if new_threshold and 0.50 <= new_threshold <= 0.90:
                 self._learning_threshold = new_threshold
-                # Don't go below the env var floor (safety)
-                effective = max(new_threshold, _V3_MIN_CONFIDENCE)
+                # Don't go below the constructor floor (safety)
+                effective = max(new_threshold, self._min_confidence_floor)
                 if abs(effective - self.min_confidence) > 0.01:
                     logger.info(
                         f"[V3] 🧠 Learning loop adjusted threshold: "

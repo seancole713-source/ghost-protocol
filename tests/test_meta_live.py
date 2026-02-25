@@ -6,7 +6,10 @@ Tests meta queries do NOT leak trading content
 
 import time
 
+import pytest
 import requests
+
+pytestmark = pytest.mark.skip(reason="Manual integration script — requires running server at localhost:5000")
 
 BASE_URL = "http://localhost:5000"
 AUTH_TOKEN = "supersecret123jamaica713"

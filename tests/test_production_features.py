@@ -4,9 +4,12 @@ Test production feature extraction by directly hitting Railway deployment.
 Compares local vs production feature availability.
 """
 
+import pytest
 import requests
 import json
 import time
+
+pytestmark = pytest.mark.skip(reason="Manual integration script — hits production Railway deployment")
 
 PRODUCTION_URL = "https://ghost-protocol-production.up.railway.app"
 

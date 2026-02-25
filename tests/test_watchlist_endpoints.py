@@ -6,9 +6,12 @@ Test Personal Watchlist Endpoints
 Quick validation that endpoints work correctly.
 """
 
+import pytest
 import requests
 import json
 import sys
+
+pytestmark = pytest.mark.skip(reason="Manual integration script — hits production Railway deployment")
 
 BASE_URL = "https://ghost-protocol-production.up.railway.app"
 

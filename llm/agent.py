@@ -60,7 +60,8 @@ TOOLS = [
 
 
 def _chat(payload: dict[str, Any]) -> dict[str, Any]:
-    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+    api_key = (os.getenv("OPENAI_AGENT_API_KEY") or os.getenv("OPENAI_API_KEY", "")).strip()
+    headers = {"Authorization": f"Bearer {api_key}"}
     # Simple backoff on 429/5xx
     last_err = None
     for attempt in range(1, 4):
@@ -175,6 +176,9 @@ def _build_card(tool_router, dec: dict[str, Any]) -> str:
 
 
 def run_once(tool_router) -> dict[str, Any]:
+    # Re-read API key at call time (tests may clear it after import)
+    api_key = (os.getenv("OPENAI_AGENT_API_KEY") or os.getenv("OPENAI_API_KEY", "")).strip()
+
     # Use AgentKit (Assistants API) if enabled, else fall back to chat completions
     if AGENTKIT_ENABLED:
         try:
@@ -184,7 +188,7 @@ def run_once(tool_router) -> dict[str, Any]:
         except ImportError:
             pass  # Fall back to chat completions
 
-    if not OPENAI_API_KEY:
+    if not api_key:
         return {
             "action": "HOLD",
             "confidence": 50,

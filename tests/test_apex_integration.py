@@ -2,13 +2,32 @@
 """
 APEX v2.0 Integration Test Suite
 Tests all 8 completed features end-to-end
+
+Requires a running server on localhost:5000.
 """
 
 from datetime import datetime
 
+import pytest
 import requests
 
 BASE_URL = "http://localhost:5000"
+
+
+def _server_available():
+    """Check if local server is running."""
+    try:
+        requests.get(f"{BASE_URL}/", timeout=1)
+        return True
+    except Exception:
+        return False
+
+
+# Skip all tests in this module if server is not running
+pytestmark = pytest.mark.skipif(
+    not _server_available(),
+    reason="localhost:5000 not available (integration test requires running server)"
+)
 
 
 def print_section(title):

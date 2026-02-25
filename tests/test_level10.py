@@ -5,9 +5,13 @@ Tests all new Smart Watcher, EDGAR, Polygon, and Algo Detection features
 
 import time
 
+import pytest
 import requests
 
 BASE_URL = "http://localhost:5000"
+
+# These tests hit external network APIs and localhost:5000
+pytestmark = pytest.mark.skip(reason="Network integration tests — require running server and external APIs")
 
 
 def print_section(title):

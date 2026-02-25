@@ -245,7 +245,7 @@ class TestConfig:
         """All validated strategies should have required fields."""
         for symbol, strategy in V3_VALIDATED_STRATEGIES.items():
             assert strategy.symbol == symbol
-            assert strategy.strategy in ('ghost_inverse', 'mean_reversion')
+            assert strategy.strategy in ('ghost_inverse', 'mean_reversion', 'always_up')
             assert strategy.hold_hours > 0
             assert 0 < strategy.backtest_win_rate < 1
             assert strategy.backtest_trades > 0

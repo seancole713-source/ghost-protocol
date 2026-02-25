@@ -1,9 +1,12 @@
 import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
 
 from wolf_app import APP
+
+_HAS_DB = bool(os.getenv("DATABASE_URL"))
 
 
 @pytest.fixture(scope="module")
@@ -20,6 +23,7 @@ def test_multi_predictions_endpoint_ok_field_present(client: TestClient) -> None
     assert "ok" in data
 
 
+@pytest.mark.skipif(not _HAS_DB, reason="Requires DATABASE_URL (PostgreSQL)")
 def test_multi_predictions_endpoint_shape_basic(client: TestClient) -> None:
     response = client.get("/api/predictions/multi/run")
     assert response.status_code == 200

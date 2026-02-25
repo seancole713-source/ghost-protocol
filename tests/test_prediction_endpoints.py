@@ -9,7 +9,11 @@ Tests the /api/predict/run endpoint for both stock and crypto symbols.
 import json
 import sys
 import time
+
+import pytest
 import requests
+
+pytestmark = pytest.mark.skip(reason="Manual integration script — hits production Railway deployment")
 
 # Configuration
 BASE_URL = "https://ghost-protocol-production.up.railway.app"

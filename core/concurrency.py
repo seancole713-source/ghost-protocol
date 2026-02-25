@@ -27,7 +27,7 @@ class ConcurrencyMetrics:
     total_failures: int = 0
     total_latency_s: float = 0.0
     last_latency_s: float = 0.0
-    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def record_start(self) -> None:
         with self._lock:

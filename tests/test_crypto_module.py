@@ -8,6 +8,10 @@ import asyncio
 import os
 import sys
 
+import pytest
+
+pytestmark = pytest.mark.skip(reason="Manual integration script — hits external crypto APIs (CoinGecko, Binance, Coinbase)")
+
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

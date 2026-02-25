@@ -10,52 +10,41 @@ import sys
 os.environ["AGENTKIT_ENABLED"] = "false"  # Test fallback first
 os.environ["OPENAI_API_KEY"] = "test-key-placeholder"
 
-sys.path.insert(0, "/workspaces/GHOST")
+sys.path.insert(0, "/workspaces/ghost-protocol")
 
 
 def test_agent_import():
     """Test that agent module imports without errors."""
-    try:
-        from llm import agent  # noqa: F401
-
-        print("✅ llm.agent imported successfully")
-        return True
-    except ImportError as e:
-        print(f"❌ Failed to import llm.agent: {e}")
-        return False
+    from llm import agent  # noqa: F401
 
 
 def test_agentkit_import():
     """Test that agentkit module exists and imports."""
-    try:
-        from llm import agentkit  # noqa: F401
-
-        print("✅ llm.agentkit imported successfully")
-        return True
-    except ImportError as e:
-        print(f"❌ Failed to import llm.agentkit: {e}")
-        return False
+    from llm import agentkit  # noqa: F401
 
 
 def test_agent_disabled():
     """Test agent with no API key returns disabled message."""
     from llm.agent import run_once
 
-    # Clear API key
+    # Clear API key so run_once sees empty key at call time
+    old_key = os.environ.get("OPENAI_API_KEY", "")
+    old_agent_key = os.environ.get("OPENAI_AGENT_API_KEY", "")
     os.environ["OPENAI_API_KEY"] = ""
     os.environ["OPENAI_AGENT_API_KEY"] = ""
 
-    def mock_tool_router(func_name, args):
-        return {"ok": True}
+    try:
+        def mock_tool_router(func_name, args):
+            return {"ok": True}
 
-    result = run_once(mock_tool_router)
+        result = run_once(mock_tool_router)
 
-    if result["action"] == "HOLD" and "disabled" in result["rationale"].lower():
-        print("✅ Agent correctly returns disabled when no API key")
-        return True
-    else:
-        print(f"❌ Unexpected result with no API key: {result}")
-        return False
+        assert result["action"] == "HOLD", f"Expected HOLD, got {result['action']}"
+        assert "disabled" in result["rationale"].lower(), f"Expected 'disabled' in rationale, got: {result['rationale']}"
+    finally:
+        # Restore keys
+        os.environ["OPENAI_API_KEY"] = old_key
+        os.environ["OPENAI_AGENT_API_KEY"] = old_agent_key
 
 
 def test_agentkit_client():

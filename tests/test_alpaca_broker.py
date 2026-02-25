@@ -7,6 +7,18 @@ Tests all critical broker functionality before enabling live trading.
 import os
 import sys
 from typing import Any
+import pytest
+
+
+# Pytest fixture for broker instance (used by test_health_check etc.)
+@pytest.fixture
+def broker():
+    """Create a broker instance for tests that need it."""
+    try:
+        from core.alpaca_broker import get_broker
+        return get_broker()
+    except Exception:
+        pytest.skip("Alpaca broker not available")
 
 
 # Set up environment for testing

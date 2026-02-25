@@ -25,7 +25,7 @@ class CPUTaskQueue:
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=name)
         self._metrics = ConcurrencyMetrics()
         self._max_workers = max_workers
-        LOGGER.info("CPUTaskQueue initialized", extra={"name": name, "max_workers": max_workers})
+        LOGGER.info("CPUTaskQueue initialized", extra={"queue_name": name, "max_workers": max_workers})
 
     @property
     def metrics(self) -> ConcurrencyMetrics:

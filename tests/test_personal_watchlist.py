@@ -23,6 +23,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+# This entire module requires PostgreSQL (uses %s params, information_schema, etc.)
+pytestmark = pytest.mark.skipif(
+    not os.getenv("DATABASE_URL"),
+    reason="Personal watchlist tests require DATABASE_URL (PostgreSQL)",
+)
+
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
