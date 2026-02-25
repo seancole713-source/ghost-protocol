@@ -291,7 +291,7 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
                 # FIX (Feb 24, 2026): Apply direction_override for always_up/always_down
                 # DDOG always_up should FORCE direction to UP regardless of Ghost signal
                 override = strategy_config.get('direction_override')
-                if override and override not in ('flip',):
+                if override and override not in (DIRECTION_FLIP,):
                     if direction != override:
                         LOGGER.info(f"[V3] ↕️ OVERRIDE: {symbol} {direction} → {override} (strategy={strategy_config['strategy']})")
                     direction = override
