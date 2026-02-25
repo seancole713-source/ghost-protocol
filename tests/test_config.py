@@ -21,7 +21,7 @@ class TestSettings:
     
     def test_default_values(self):
         """Default values should be set."""
-        assert settings.V3_MIN_CONFIDENCE == 0.70
+        assert settings.V3_MIN_CONFIDENCE == 0.78
         assert settings.V3_DEFAULT_HOLD_HOURS == 72
         assert settings.DEFAULT_TARGET_PCT == 0.066
         assert settings.DEFAULT_STOP_PCT == 0.033

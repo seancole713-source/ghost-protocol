@@ -206,14 +206,14 @@ class TestScoring:
         """ETH score should be win_rate * confidence."""
         result = v3_filter.filter_and_score([eth_down_high_conf])
         
-        expected_score = 0.615 * 0.75  # ETH win rate * confidence
+        expected_score = 0.615 * 0.80  # ETH win rate * confidence
         assert abs(result[0].score - expected_score) < 0.001
     
     def test_score_calculation_xrp(self, v3_filter, xrp_up_high_conf):
         """XRP score should be win_rate * confidence."""
         result = v3_filter.filter_and_score([xrp_up_high_conf])
         
-        expected_score = 0.565 * 0.75  # XRP win rate * confidence
+        expected_score = 0.565 * 0.80  # XRP win rate * confidence
         assert abs(result[0].score - expected_score) < 0.001
 
 

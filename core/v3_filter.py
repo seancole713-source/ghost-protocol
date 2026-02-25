@@ -23,7 +23,7 @@ from datetime import datetime
 logger = logging.getLogger("ghost")
 
 # Inline constants (avoids config/settings.py → pydantic_settings import chain)
-_V3_MIN_CONFIDENCE = float(os.getenv("V3_MIN_CONFIDENCE", "0.70"))
+_V3_MIN_CONFIDENCE = float(os.getenv("V3_MIN_CONFIDENCE", "0.78"))
 _DEFAULT_TARGET_PCT = 0.066  # 6.6%
 _DEFAULT_STOP_PCT = 0.033    # 3.3%
 
@@ -391,11 +391,11 @@ class V3Filter:
         """
         symbol = pred.symbol.upper()
         
-        # Confidence check: edge symbols use same floor as V3 validated (0.70)
-        # Raw 0.70 calibrates to display ~48%. Below this, picks look terrible
-        # and have no statistical edge. Previous 0.50 floor let 59-63% raw
-        # through which displayed as 40-43% — unacceptable for user trust.
-        _edge_min = self.min_confidence  # Same as V3 validated (default 0.70)
+        # Confidence check: edge symbols use same floor as V3 validated (0.78)
+        # Raw 0.78 calibrates to display ~57%. Below this, picks are too close
+        # to coin flip and erode user trust. Previous 0.70 floor let raw 70-77%
+        # through which displayed as 48-55% — indistinguishable from coin flip.
+        _edge_min = self.min_confidence  # Same as V3 validated (default 0.78)
         if pred.confidence < _edge_min:
             self._stats['rejected_low_confidence'] += 1
             return FilterResult(

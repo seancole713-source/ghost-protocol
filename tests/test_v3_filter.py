@@ -50,7 +50,7 @@ class TestV3FilterLogic:
         assert result[0]['v3_is_inverse'] == True, "Should be marked as inverse"
     
     def test_eth_inverse_requires_minimum_confidence(self):
-        """ETH inverse should require 70% confidence minimum."""
+        """ETH inverse should require 78% confidence minimum."""
         from core.ghost_notifications import v3_filter_and_score, V3_MIN_CONFIDENCE
         
         # Low confidence should be SKIPPED
@@ -74,7 +74,7 @@ class TestV3FilterLogic:
         assert len(result) == 1, f"ETH at exactly {V3_MIN_CONFIDENCE:.0%} should pass"
     
     def test_xrp_link_require_minimum_confidence(self):
-        """XRP and LINK (mean_reversion) should require 70% confidence."""
+        """XRP and LINK (mean_reversion) should require 78% confidence."""
         from core.ghost_notifications import v3_filter_and_score, V3_MIN_CONFIDENCE
         
         # XRP at low confidence should be SKIPPED

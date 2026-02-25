@@ -17,8 +17,8 @@ from core.v3_filter import V3Filter
 
 @pytest.fixture
 def v3_filter():
-    """V3 filter with default settings (70% min confidence)."""
-    f = V3Filter(min_confidence=0.70)
+    """V3 filter with default settings (78% min confidence)."""
+    f = V3Filter(min_confidence=0.78)
     f.reset_stats()
     return f
 
@@ -37,11 +37,11 @@ def v3_filter_low_threshold():
 
 @pytest.fixture
 def eth_down_high_conf() -> Prediction:
-    """ETH DOWN prediction at 75% confidence - should pass and flip."""
+    """ETH DOWN prediction at 80% confidence - should pass and flip."""
     return Prediction(
         symbol='ETH',
         direction=Direction.DOWN,
-        confidence=0.75,
+        confidence=0.80,
         current_price=2300.0,
         target_price=2200.0,
         stop_loss=2350.0,
@@ -65,11 +65,11 @@ def eth_down_low_conf() -> Prediction:
 
 @pytest.fixture
 def eth_down_exactly_70() -> Prediction:
-    """ETH DOWN prediction at exactly 70% confidence - should pass."""
+    """ETH DOWN prediction at exactly 78% confidence - should pass."""
     return Prediction(
         symbol='ETH',
         direction=Direction.DOWN,
-        confidence=0.70,
+        confidence=0.78,
         current_price=2300.0,
         target_price=2200.0,
         stop_loss=2350.0,
@@ -79,11 +79,11 @@ def eth_down_exactly_70() -> Prediction:
 
 @pytest.fixture
 def eth_down_just_below_70() -> Prediction:
-    """ETH DOWN prediction at 69.9% confidence - should be rejected."""
+    """ETH DOWN prediction at 77.9% confidence - should be rejected."""
     return Prediction(
         symbol='ETH',
         direction=Direction.DOWN,
-        confidence=0.699,
+        confidence=0.779,
         current_price=2300.0,
         target_price=2200.0,
         stop_loss=2350.0,
@@ -111,11 +111,11 @@ def eth_up_high_conf() -> Prediction:
 
 @pytest.fixture
 def xrp_up_high_conf() -> Prediction:
-    """XRP UP prediction at 75% confidence - should pass."""
+    """XRP UP prediction at 80% confidence - should pass."""
     return Prediction(
         symbol='XRP',
         direction=Direction.UP,
-        confidence=0.75,
+        confidence=0.80,
         current_price=1.65,
         target_price=1.75,
         stop_loss=1.58,
@@ -125,11 +125,11 @@ def xrp_up_high_conf() -> Prediction:
 
 @pytest.fixture
 def xrp_down_high_conf() -> Prediction:
-    """XRP DOWN prediction at 75% confidence - should pass (mean_reversion)."""
+    """XRP DOWN prediction at 80% confidence - should pass (mean_reversion)."""
     return Prediction(
         symbol='XRP',
         direction=Direction.DOWN,
-        confidence=0.75,
+        confidence=0.80,
         current_price=1.65,
         target_price=1.55,
         stop_loss=1.72,
@@ -157,11 +157,11 @@ def xrp_low_conf() -> Prediction:
 
 @pytest.fixture
 def link_up_high_conf() -> Prediction:
-    """LINK UP prediction at 72% confidence - should pass."""
+    """LINK UP prediction at 80% confidence - should pass."""
     return Prediction(
         symbol='LINK',
         direction=Direction.UP,
-        confidence=0.72,
+        confidence=0.80,
         current_price=12.50,
         target_price=13.25,
         stop_loss=12.00,

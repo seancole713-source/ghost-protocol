@@ -170,23 +170,23 @@ class TestFullPredictionFlow:
         """
         # Simulate production predictions (realistic mix)
         raw_predictions = [
-            # ETH DOWN 75% - should PASS (inverse strategy, will become BUY)
+            # ETH DOWN 82% - should PASS (inverse strategy, will become BUY)
             {
                 'ok': True,
                 'symbol': 'ETH',
                 'direction': 'DOWN',
-                'confidence': 0.75,
+                'confidence': 0.82,
                 'current_price': 2310.0,
                 'target_price': 2200.0,
                 'stop_loss': 2350.0,
                 'run_at': datetime.now().timestamp(),
             },
-            # XRP UP 72% - should PASS (mean reversion, 168h hold)
+            # XRP UP 80% - should PASS (mean reversion, 168h hold)
             {
                 'ok': True,
                 'symbol': 'XRP',
                 'direction': 'UP',
-                'confidence': 0.72,
+                'confidence': 0.80,
                 'current_price': 1.65,
                 'target_price': 1.75,
                 'stop_loss': 1.58,
@@ -214,23 +214,23 @@ class TestFullPredictionFlow:
                 'stop_loss': 175.0,
                 'run_at': datetime.now().timestamp(),
             },
-            # LINK DOWN 71% - should PASS (mean reversion, 72h hold)
+            # LINK DOWN 79% - should PASS (mean reversion, 72h hold)
             {
                 'ok': True,
                 'symbol': 'LINK',
                 'direction': 'DOWN',
-                'confidence': 0.71,
+                'confidence': 0.79,
                 'current_price': 22.0,
                 'target_price': 21.0,
                 'stop_loss': 22.50,
                 'run_at': datetime.now().timestamp(),
             },
-            # ETH UP 78% - should FAIL (inverse requires DOWN)
+            # ETH UP 85% - should FAIL (inverse requires DOWN)
             {
                 'ok': True,
                 'symbol': 'ETH',
                 'direction': 'UP',
-                'confidence': 0.78,
+                'confidence': 0.85,
                 'current_price': 2310.0,
                 'target_price': 2400.0,
                 'stop_loss': 2250.0,
@@ -260,7 +260,7 @@ class TestFullPredictionFlow:
         assert len(predictions) == 6, f"Expected 6 predictions, got {len(predictions)}"
         
         # Step 2: Filter through V3
-        v3_filter = V3Filter(min_confidence=0.70)
+        v3_filter = V3Filter(min_confidence=0.78)
         scored = v3_filter.filter_and_score(predictions)
         
         # Should pass: ETH DOWN (inverse), XRP UP, LINK DOWN
@@ -310,7 +310,7 @@ class TestFullPredictionFlow:
         predictions = batch_convert(raw_predictions)
         assert len(predictions) == 3
         
-        v3_filter = V3Filter(min_confidence=0.70)
+        v3_filter = V3Filter(min_confidence=0.78)
         scored = v3_filter.filter_and_score(predictions)
         
         assert len(scored) == 0, "All should be filtered"
@@ -332,7 +332,7 @@ class TestFullPredictionFlow:
             'ok': True,
             'symbol': 'ETH',
             'direction': 'DOWN',
-            'confidence': 0.76,
+            'confidence': 0.82,
             'current_price': 2310.0,
             'target_price': 2200.0,
             'stop_loss': 2350.0,
@@ -353,43 +353,43 @@ class TestFullPredictionFlow:
         assert '🎯 V3 SIGNAL' in alert
         assert 'ETH' in alert
         assert '🔄 INVERSE' in alert  # ETH uses inverse strategy
-        assert '76%' in alert or '76.0%' in alert  # Confidence shown
+        assert '82%' in alert or '82.0%' in alert  # Confidence shown
 
 
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""
     
     def test_confidence_at_threshold(self):
-        """Test exactly 70% confidence passes."""
+        """Test exactly 78% confidence passes."""
         raw = {
             'ok': True,
             'symbol': 'XRP',
             'direction': 'UP',
-            'confidence': 0.70,  # Exactly at threshold
+            'confidence': 0.78,  # Exactly at threshold
             'current_price': 1.65,
         }
         
         predictions = batch_convert([raw])
-        v3_filter = V3Filter(min_confidence=0.70)
+        v3_filter = V3Filter(min_confidence=0.78)
         scored = v3_filter.filter_and_score(predictions)
         
-        assert len(scored) == 1, "70% should pass (>= threshold)"
+        assert len(scored) == 1, "78% should pass (>= threshold)"
     
     def test_confidence_just_below_threshold(self):
-        """Test 69.9% confidence fails."""
+        """Test 77.9% confidence fails."""
         raw = {
             'ok': True,
             'symbol': 'XRP',
             'direction': 'UP',
-            'confidence': 0.699,  # Just below
+            'confidence': 0.779,  # Just below
             'current_price': 1.65,
         }
         
         predictions = batch_convert([raw])
-        v3_filter = V3Filter(min_confidence=0.70)
+        v3_filter = V3Filter(min_confidence=0.78)
         scored = v3_filter.filter_and_score(predictions)
         
-        assert len(scored) == 0, "69.9% should fail (< threshold)"
+        assert len(scored) == 0, "77.9% should fail (< threshold)"
     
     def test_empty_input(self):
         """Test empty prediction list."""

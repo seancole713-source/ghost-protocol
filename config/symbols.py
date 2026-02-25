@@ -185,7 +185,8 @@ CRYPTO_SYMBOLS: FrozenSet[str] = frozenset([
 # Single source of truth for the EDGE_SYMBOLS env var fallback.
 # All code should import this instead of hardcoding the CSV string.
 # =============================================================================
-DEFAULT_EDGE_SYMBOLS = "T,TURBO,RNDR,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+DEFAULT_EDGE_SYMBOLS = "T,TURBO,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+# REMOVED Feb 25, 2026: RNDR — 11% accuracy (1/9), in HARDCODED_EXCLUSIONS. Was bypassing exclusions via edge whitelist.
 
 
 # =============================================================================

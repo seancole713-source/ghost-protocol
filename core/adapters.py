@@ -306,7 +306,7 @@ def format_v3_alert_from_scored(scored: ScoredPrediction) -> str:
 
 def process_v3_predictions(
     raw_predictions: List[Dict[str, Any]],
-    min_confidence: float = 0.70
+    min_confidence: float = 0.78
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Complete V3 pipeline for production use.
@@ -316,7 +316,7 @@ def process_v3_predictions(
     Args:
         raw_predictions: List of dicts from wolf_app prediction engine
                          OR dict mapping symbol -> prediction (from _LATEST_PREDICTIONS)
-        min_confidence: Minimum confidence threshold (default 0.70)
+        min_confidence: Minimum confidence threshold (default 0.78)
         
     Returns:
         (stocks, crypto) tuple ready for format_top10_message()
@@ -347,7 +347,7 @@ def process_v3_predictions(
 
 def process_v3_from_cache(
     latest_predictions: Dict[str, Dict[str, Any]],
-    min_confidence: float = 0.70
+    min_confidence: float = 0.78
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Process V3 predictions from _LATEST_PREDICTIONS cache format.

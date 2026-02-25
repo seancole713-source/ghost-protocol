@@ -121,7 +121,7 @@ V3_BLACKLIST = ['TGTX', 'SOUN', 'ABCL', 'ZIL', 'MANA', 'SAND', 'RLC', '1INCH',
 V3_AVOID_STRATEGIES = ['RSI', 'RSI_extreme']
 
 # V3 minimum confidence threshold (lowered — V3 strategies are already backtest-validated)
-V3_MIN_CONFIDENCE = 0.70  # FIXED Feb 21, 2026: Was 0.50, letting 43-47% display picks through. Must match v3_filter.py _V3_MIN_CONFIDENCE
+V3_MIN_CONFIDENCE = 0.78  # RAISED Feb 25, 2026: 0.70 raw → 48% display (below coin flip!). 0.78 raw → 57% display. Must match v3_filter.py _V3_MIN_CONFIDENCE
 
 # DEFAULT HOLD PERIOD - Changed from 48h to 72h based on backtest
 # 72h had most statistically significant results
@@ -2172,16 +2172,19 @@ class GhostNotificationSystem:
                     top_conf = c
                     top_pred = sym
             
+            # Show calibrated confidence so user sees the real number
+            top_display = calibrate_display_confidence(top_conf, top_pred) if top_pred else 0
+            
             no_picks_msg = (
                 f"📊 <b>GHOST MARKET SCAN — {today}</b>\n"
                 f"\n"
                 f"⏰ 8:00 AM CT\n"
                 f"\n"
                 f"🔍 Scanned {len(latest_predictions)} symbols.\n"
-                f"⚠️ <b>No picks meet the 70% confidence threshold today.</b>\n"
+                f"⚠️ <b>No picks meet the minimum edge threshold today.</b>\n"
             )
-            if top_pred and top_conf > 0:
-                no_picks_msg += f"\nClosest: {top_pred} at {top_conf:.0%} (needs 70%)\n"
+            if top_pred and top_display > 0:
+                no_picks_msg += f"\nClosest: {top_pred} at {top_display:.0%} (needs ~57%)\n"
             no_picks_msg += (
                 f"\n"
                 f"🛡️ Ghost only trades when the edge is clear.\n"

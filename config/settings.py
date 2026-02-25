@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     POLYGON_API_KEY: Optional[str] = None
     
     # V3 Thresholds
-    V3_MIN_CONFIDENCE: float = 0.70
+    V3_MIN_CONFIDENCE: float = 0.78
     V3_DEFAULT_HOLD_HOURS: int = 72
     V3_ENABLED: bool = True
     

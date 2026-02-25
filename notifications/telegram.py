@@ -70,7 +70,7 @@ class TelegramConfig:
             symbol_cooldown_hours=int(os.getenv("SYMBOL_COOLDOWN_HOURS", "4")),
             max_alerts_per_hour=int(os.getenv("MAX_ALERTS_PER_HOUR", "5")),
             daily_alert_cap=int(os.getenv("DAILY_ALERT_CAP", "10")),
-            min_alert_confidence=float(os.getenv("V3_MIN_CONFIDENCE", "0.70")),
+            min_alert_confidence=float(os.getenv("V3_MIN_CONFIDENCE", "0.78")),
             timezone=os.getenv("TZ", "America/Chicago"),
         )
 

@@ -37,7 +37,7 @@ class TestTelegramConfig:
         assert config.symbol_cooldown_hours == 4
         assert config.max_alerts_per_hour == 5
         assert config.daily_alert_cap == 10
-        assert config.min_alert_confidence == 0.70
+        assert config.min_alert_confidence == 0.78
     
     def test_from_env_with_values(self, monkeypatch):
         """Test loading from environment with custom values"""
