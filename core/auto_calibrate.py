@@ -572,112 +572,115 @@ def run_calibration(
 
 def auto_update_config(validated: Dict, changes: Dict) -> bool:
     """
-    Automatically update V3_VALIDATED_STRATEGIES in ghost_notifications.py
+    Automatically update V3_VALIDATED_STRATEGIES in config/symbols.py.
+
+    The canonical source of truth is config/symbols.py which uses frozen
+    ValidatedStrategy dataclasses.  ghost_notifications.py auto-converts
+    these at import time via v3_strategies_as_dicts().
     """
     import re
-    
-    config_file = Path(__file__).parent / "ghost_notifications.py"
-    
+
+    config_file = Path(__file__).parent.parent / "config" / "symbols.py"
+
     if not config_file.exists():
         logger.error(f"Config file not found: {config_file}")
         return False
-    
-    # Generate new V3_VALIDATED_STRATEGIES block
-    new_block = generate_v3_block(validated)
-    
+
+    # Generate new V3_VALIDATED_STRATEGIES block (dataclass format)
+    new_block = _generate_dataclass_block(validated)
+
     # Read current file
     content = config_file.read_text()
-    
-    # Find and replace V3_VALIDATED_STRATEGIES block
-    # Pattern matches from "V3_VALIDATED_STRATEGIES = {" to the closing "}"
-    pattern = r'V3_VALIDATED_STRATEGIES\s*=\s*\{[^}]+(?:\{[^}]*\}[^}]*)*\}'
-    
-    if not re.search(pattern, content):
-        logger.error("Could not find V3_VALIDATED_STRATEGIES in config file")
+
+    # Match the V3_VALIDATED_STRATEGIES dict from opening brace to its
+    # closing brace + newline.  The dict spans many lines with nested
+    # ValidatedStrategy(...) calls.
+    pattern = (
+        r'(V3_VALIDATED_STRATEGIES:\s*Dict\[str,\s*ValidatedStrategy\]\s*=\s*\{)'
+        r'(.*?)'
+        r'(^\})'
+    )
+    m = re.search(pattern, content, re.DOTALL | re.MULTILINE)
+    if not m:
+        logger.error("Could not find V3_VALIDATED_STRATEGIES dict in config/symbols.py")
         return False
-    
+
     # Replace with new block
-    new_content = re.sub(pattern, new_block, content, count=1)
-    
+    new_content = content[:m.start()] + new_block + content[m.end():]
+
     # Backup original
-    backup_path = CALIBRATION_DIR / f"ghost_notifications_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
+    backup_path = CALIBRATION_DIR / f"symbols_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
     backup_path.write_text(content)
     logger.info(f"Backup saved to: {backup_path}")
-    
+
     # Write updated file
     config_file.write_text(new_content)
-    logger.info(f"Updated: {config_file}")
-    
+    logger.info(f"Updated canonical config: {config_file}")
+
     return True
 
 
 def generate_v3_block(validated: Dict) -> str:
-    """Generate the V3_VALIDATED_STRATEGIES dict as a string"""
+    """Generate the legacy dict-of-dicts V3_VALIDATED_STRATEGIES string.
+
+    Kept for backwards compatibility with generate_config_code().
+    For the canonical dataclass format, use _generate_dataclass_block().
+    """
+    return _generate_dataclass_block(validated)
+
+
+def _generate_dataclass_block(validated: Dict) -> str:
+    """Generate ValidatedStrategy dataclass entries for config/symbols.py."""
     lines = []
-    lines.append("V3_VALIDATED_STRATEGIES = {")
-    
+    lines.append("V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {")
+
     # Separate crypto and stocks
     crypto = {k: v for k, v in validated.items() if v.get('asset_type') != 'stock' and k in CRYPTO_SYMBOLS}
     stocks = {k: v for k, v in validated.items() if v.get('asset_type') == 'stock' or k in STOCK_SYMBOLS}
-    
-    # Add crypto
+
+    def _direction(config: Dict) -> str:
+        strat = config['strategy']
+        if strat in ('ghost_inverse', 'ghost_inverse_strong'):
+            return "'flip'"
+        elif strat == 'always_down':
+            return "'DOWN'"
+        elif strat == 'always_up':
+            return "'UP'"
+        return 'None'
+
+    def _emit(symbol: str, config: Dict, is_stock: bool = False) -> None:
+        ci = config.get('confidence_interval', (0.50, 0.60))
+        wr = config['win_rate']
+        lines.append(f"    # {symbol} {config['strategy']} @ {config['hold_hours']}h: "
+                     f"{wr*100:.1f}% win rate, {config['sample_size']} trades, p={config['p_value']}")
+        lines.append(f"    '{symbol}': ValidatedStrategy(")
+        lines.append(f"        symbol='{symbol}',")
+        lines.append(f"        strategy='{config['strategy']}',")
+        lines.append(f"        direction_override={_direction(config)},")
+        lines.append(f"        hold_hours={config['hold_hours']},")
+        lines.append(f"        backtest_win_rate={wr},")
+        lines.append(f"        backtest_trades={config['sample_size']},")
+        lines.append(f"        p_value={config['p_value']},")
+        lines.append(f"        confidence_interval={ci},")
+        if is_stock:
+            lines.append(f"        asset_type='stock',")
+        lines.append(f"    ),")
+
     if crypto:
         lines.append("    # =========================================================================")
         lines.append("    # CRYPTO - Auto-calibrated " + datetime.now().strftime('%Y-%m-%d'))
         lines.append("    # =========================================================================")
         for symbol in sorted(crypto.keys()):
-            config = crypto[symbol]
-            lines.append(f"    # {symbol} {config['strategy']} @ {config['hold_hours']}h: {config['win_rate']*100:.1f}% win rate, {config['sample_size']} trades, p={config['p_value']}")
-            lines.append(f"    '{symbol}': {{")
-            lines.append(f"        'strategy': '{config['strategy']}',")
-            
-            # Set direction override based on strategy
-            if config['strategy'] in ['ghost_inverse', 'ghost_inverse_strong']:
-                lines.append(f"        'direction_override': 'flip',")
-            elif config['strategy'] == 'always_down':
-                lines.append(f"        'direction_override': 'DOWN',")
-            elif config['strategy'] == 'always_up':
-                lines.append(f"        'direction_override': 'UP',")
-            else:
-                lines.append(f"        'direction_override': None,")
-            
-            lines.append(f"        'hold_hours': {config['hold_hours']},")
-            lines.append(f"        'win_rate': {config['win_rate']},")
-            lines.append(f"        'sample_size': {config['sample_size']},")
-            lines.append(f"        'p_value': {config['p_value']},")
-            ci = config.get('confidence_interval', (0.50, 0.60))
-            lines.append(f"        'confidence_interval': {ci},")
-            lines.append(f"    }},")
-    
-    # Add stocks
+            _emit(symbol, crypto[symbol], is_stock=False)
+
     if stocks:
         lines.append("    # =========================================================================")
         lines.append("    # STOCKS - Auto-calibrated " + datetime.now().strftime('%Y-%m-%d'))
         lines.append("    # =========================================================================")
         for symbol in sorted(stocks.keys()):
-            config = stocks[symbol]
-            lines.append(f"    # {symbol} {config['strategy']} @ {config['hold_hours']}h: {config['win_rate']*100:.1f}% win rate, {config['sample_size']} trades, p={config['p_value']}")
-            lines.append(f"    '{symbol}': {{")
-            lines.append(f"        'strategy': '{config['strategy']}',")
-            
-            if config['strategy'] in ['ghost_inverse', 'ghost_inverse_strong']:
-                lines.append(f"        'direction_override': 'flip',")
-            elif config['strategy'] == 'always_down':
-                lines.append(f"        'direction_override': 'DOWN',")
-            elif config['strategy'] == 'always_up':
-                lines.append(f"        'direction_override': 'UP',")
-            else:
-                lines.append(f"        'direction_override': None,")
-            
-            lines.append(f"        'hold_hours': {config['hold_hours']},")
-            lines.append(f"        'win_rate': {config['win_rate']},")
-            lines.append(f"        'sample_size': {config['sample_size']},")
-            lines.append(f"        'p_value': {config['p_value']},")
-            lines.append(f"        'asset_type': 'stock',")
-            lines.append(f"    }},")
-    
+            _emit(symbol, stocks[symbol], is_stock=True)
+
     lines.append("}")
-    
     return "\n".join(lines)
 
 

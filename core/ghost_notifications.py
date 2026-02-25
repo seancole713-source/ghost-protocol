@@ -74,7 +74,6 @@ TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
 # Only includes statistically significant results (p < 0.05)
 # Source of truth: config/symbols.py (frozen dataclasses)
 from config.symbols import (
-    V3_VALIDATED_STRATEGIES as _V3_CANONICAL,
     DEFAULT_EDGE_SYMBOLS,
     v3_strategies_as_dicts,
 )

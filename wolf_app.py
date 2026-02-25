@@ -4293,7 +4293,7 @@ async def _on_startup():
                                 # Parse metadata
                                 try:
                                     metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else (metadata_json or {})
-                                except:
+                                except (ValueError, TypeError):
                                     metadata = {}
                                 
                                 signals = metadata.get("signals", [])
@@ -4433,7 +4433,7 @@ async def _on_startup():
                                             f"resolved={stats.get('resolved_trades', 0)}, "
                                             f"win_rate={win_rate:.1%}"
                                         )
-                                    except:
+                                    except Exception:
                                         pass
                     else:
                         LOGGER.debug("[PAPER] No paper trades due for resolution yet")
@@ -5267,7 +5267,7 @@ async def _post_startup_init():
                                     else:
                                         r = turbo_stock_price(symbol, max_budget_s=2.0)
                                     return float(r.get("price", 0)) if r and r.get("ok") else 0
-                                except:
+                                except Exception:
                                     return 0
                             
                             notification_system.check_for_updates(get_price)
@@ -13259,7 +13259,7 @@ async def api_migrate_outcomes_table():
         try:
             cursor.execute("SELECT COUNT(*) FROM outcomes")
             old_count = cursor.fetchone()[0]
-        except:
+        except Exception:
             old_count = 0
         
         # Drop old table
@@ -29066,7 +29066,7 @@ async def v2_quality_crypto_only():
         quality._save_to_json()
         try:
             quality._save_to_postgres()
-        except:
+        except Exception:
             pass
         
         LOGGER.info(
@@ -33534,7 +33534,7 @@ async def debug_price_providers_diagnostic():
                                 "sample_data": str(data)[:200],
                                 "price_found": price,
                             }
-                        except:
+                        except (ValueError, KeyError):
                             return {
                                 "status": "OK_NOT_JSON",
                                 "http_code": resp.status,
@@ -33693,7 +33693,7 @@ async def debug_price_providers_diagnostic():
     # ═══════════════════════════════════════════════════════════════════════════
     try:
         results["circuit_breakers"] = dict(_PROVIDER_BREAKERS)
-    except:
+    except Exception:
         results["circuit_breakers"] = {"error": "Could not access _PROVIDER_BREAKERS"}
     
     # ═══════════════════════════════════════════════════════════════════════════
@@ -34713,7 +34713,7 @@ async def advisor_check_prices():
                     turbo = get_turbo_provider()
                     result = turbo.turbo_stock_price(symbol, max_budget_s=2.0)
                     return result.get("price", 0) if result.get("ok") else 0
-            except:
+            except Exception:
                 return 0
         
         # Telegram send function
@@ -34723,7 +34723,7 @@ async def advisor_check_prices():
                 if chat_id:
                     return _tg_send_chat_message(chat_id, msg)
                 return False
-            except:
+            except Exception:
                 return False
         
         # Check each position
@@ -35582,7 +35582,7 @@ async def api_stability_status():
             db_url = os.environ.get("DATABASE_URL")
             if db_url:
                 conn = psycopg2.connect(db_url)
-        except:
+        except Exception:
             pass
         
         if conn:
