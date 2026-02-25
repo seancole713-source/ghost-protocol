@@ -642,7 +642,7 @@ def _generate_dataclass_block(validated: Dict) -> str:
     def _direction(config: Dict) -> str:
         strat = config['strategy']
         if strat in ('ghost_inverse', 'ghost_inverse_strong'):
-            return "'flip'"
+            return "DIRECTION_FLIP"
         elif strat == 'always_down':
             return "'DOWN'"
         elif strat == 'always_up':
