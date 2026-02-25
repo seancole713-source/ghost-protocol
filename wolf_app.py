@@ -5147,6 +5147,14 @@ async def _post_startup_init():
                                     last_top10_date = current_date
                                     _NOTIFICATION_LOOP_STATUS["last_top10_date"] = current_date
                                     LOGGER.info(f"[DEAD-MAN] ✅ Catch-up TOP 10 sent at {now_central.strftime('%H:%M')} CT")
+                                else:
+                                    # FIX (Feb 25, 2026): If send_top10 returns False, check if
+                                    # the notification system already marked today as sent
+                                    # (e.g., "no picks" message). Prevents infinite retry loop.
+                                    if notification_system._last_top10_date == current_date:
+                                        last_top10_date = current_date
+                                        _NOTIFICATION_LOOP_STATUS["last_top10_date"] = current_date
+                                        LOGGER.info(f"[DEAD-MAN] Day already handled by notification system")
                             except Exception as e:
                                 LOGGER.error(f"[DEAD-MAN] Catch-up send failed: {e}")
                         
@@ -5242,6 +5250,11 @@ async def _post_startup_init():
                                 _LAST_TELEGRAM_STATUS = "error"
                                 _LAST_TELEGRAM_ERROR = "TOP 10 send failed or no predictions"
                                 LOGGER.warning(f"[NOTIFICATIONS] ⚠️ TOP 10 send failed or no predictions (count={len(_LATEST_PREDICTIONS)})")
+                                # FIX (Feb 25, 2026): If notification system handled the day
+                                # (e.g., sent "no picks" message), sync our local guard.
+                                if notification_system._last_top10_date == current_date:
+                                    last_top10_date = current_date
+                                    _NOTIFICATION_LOOP_STATUS["last_top10_date"] = current_date
                         
                         if current_time - last_check_time >= 900:
                             # FIX (Feb 13, 2026): TTL eviction for _LATEST_PREDICTIONS

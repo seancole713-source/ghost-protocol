@@ -2157,8 +2157,43 @@ class GhostNotificationSystem:
             stocks, crypto = self.get_top10_predictions(latest_predictions)
         
         if not stocks and not crypto:
-            LOGGER.warning("[NOTIFICATIONS] No predictions available for TOP 10")
-            return False
+            # FIX (Feb 25, 2026): NEVER go silent at 8 AM. If V3 filter rejects
+            # all predictions (low confidence), tell the user instead of returning
+            # False and leaving them with zero messages.
+            LOGGER.warning("[NOTIFICATIONS] No predictions passed V3 filter — sending low-confidence notice")
+            today = get_central_time().strftime("%Y-%m-%d")
+            
+            # Build a "no picks" message so user always gets 8 AM notification
+            top_pred = None
+            top_conf = 0.0
+            for sym, pred in latest_predictions.items():
+                c = pred.get('confidence', 0) if isinstance(pred, dict) else 0
+                if c > top_conf:
+                    top_conf = c
+                    top_pred = sym
+            
+            no_picks_msg = (
+                f"📊 <b>GHOST MARKET SCAN — {today}</b>\n"
+                f"\n"
+                f"⏰ 8:00 AM CT\n"
+                f"\n"
+                f"🔍 Scanned {len(latest_predictions)} symbols.\n"
+                f"⚠️ <b>No picks meet the 70% confidence threshold today.</b>\n"
+            )
+            if top_pred and top_conf > 0:
+                no_picks_msg += f"\nClosest: {top_pred} at {top_conf:.0%} (needs 70%)\n"
+            no_picks_msg += (
+                f"\n"
+                f"🛡️ Ghost only trades when the edge is clear.\n"
+                f"<i>Will resume when high-confidence setups appear.</i>"
+            )
+            
+            if self.send_telegram:
+                self.send_telegram(no_picks_msg)
+            
+            self._last_top10_date = today
+            self._persist_state('last_top10_date', today)
+            return True  # Day is handled — don't retry
         
         # ═══════════════════════════════════════════════════════════
         # REGIME FILTER (Feb 23, 2026): Gate BUY signals in dumps
