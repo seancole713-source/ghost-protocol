@@ -92,14 +92,16 @@ _KNOWN_CRYPTO = {
     "BTC", "ETH", "XRP", "SOL", "DOGE", "ADA", "AVAX", "LINK", "DOT",
     "MATIC", "SHIB", "UNI", "LTC", "BCH", "ATOM", "FIL", "NEAR", "ICP",
     "APT", "ARB", "OP", "INJ", "TIA", "SEI", "SUI", "TURBO", "JUP",
-    "IOTX", "GIGA", "CHZ", "ALICE", "YFI", "BRETT", "T", "HBAR", "ILV",
+    "IOTX", "GIGA", "CHZ", "ALICE", "YFI", "BRETT", "HBAR", "ILV",
     "BAND", "PEPE", "ENJ", "RNDR", "MANA", "SAND", "AXS", "THETA", "VET",
     "FTM", "EGLD", "ALGO", "FLOW", "STX", "DASH", "ZEC", "EOS", "XTZ",
     "AAVE", "CRV", "MKR", "COMP", "SNX", "SUSHI", "1INCH", "BAL", "REN",
     "ZRX", "BAT", "KNC", "OCEAN", "OMG", "RLC", "BNB", "DYDX", "WLD",
     "JTO", "BONK", "WIF", "FLOKI", "ORDI", "RUNE", "ROSE", "QTUM",
-    "ANT", "ZEN", "ONDO", "HOOD",
+    "ANT", "ZEN", "ONDO",
 }
+# NOTE: T (AT&T), HOOD (Robinhood), COIN (Coinbase) are STOCKS, not crypto.
+# They trade on NYSE/NASDAQ. Don't put them in _KNOWN_CRYPTO.
 
 
 # =============================================================================
@@ -127,6 +129,7 @@ class BrainDecision:
     direction: str                   # Final direction (may differ from model)
     confidence: float                # Adjusted confidence
     tier: str                        # 🟢HOT | 🟡WARM | ⚪NEUTRAL | 🔴COLD | 🔄INVERTED | ⛔EXCLUDED
+    asset_class: str = "unknown"     # crypto | stock — for separate tracking
     reasons: List[str] = field(default_factory=list)
     raw_accuracy: float = 50.0       # Model's actual accuracy
     effective_accuracy: float = 50.0  # After inversion: 100 - raw_accuracy
@@ -230,12 +233,16 @@ class GhostBrain:
         raw_accuracy = data.get("accuracy_pct", 50.0)
         total = data.get("total", 0)
 
+        # ── Classify asset type ──
+        asset_class = "crypto" if symbol.upper() in _KNOWN_CRYPTO else "stock"
+
         # ── INSUFFICIENT DATA → pass through (need enough to judge) ──
         if total < MIN_SAMPLES:
             reasons.append(f"insufficient_data ({total}/{MIN_SAMPLES} predictions)")
             decision = BrainDecision(
                 symbol=symbol, action="SEND", direction=direction,
                 confidence=confidence, tier="⚪NEUTRAL",
+                asset_class=asset_class,
                 reasons=reasons, raw_accuracy=raw_accuracy,
                 effective_accuracy=raw_accuracy, sample_size=total,
             )
@@ -299,7 +306,8 @@ class GhostBrain:
 
             decision = BrainDecision(
                 symbol=symbol, action=action, direction=direction,
-                confidence=0.0, tier=tier, reasons=reasons,
+                confidence=0.0, tier=tier, asset_class=asset_class,
+                reasons=reasons,
                 raw_accuracy=raw_accuracy, effective_accuracy=effective_accuracy,
                 sample_size=total,
             )
@@ -359,7 +367,8 @@ class GhostBrain:
 
         decision = BrainDecision(
             symbol=symbol, action=action, direction=final_direction,
-            confidence=final_confidence, tier=tier, reasons=reasons,
+            confidence=final_confidence, tier=tier, asset_class=asset_class,
+            reasons=reasons,
             raw_accuracy=raw_accuracy, effective_accuracy=effective_accuracy,
             inverted=inverted, sample_size=total,
         )
@@ -575,6 +584,37 @@ class GhostBrain:
                     f"n={d.sample_size}]"
                 )
 
+        # ── ASSET CLASS BREAKDOWN (stocks vs crypto) ──
+        for ac in ("stock", "crypto"):
+            ac_decisions = [
+                d for d in self._decisions.values()
+                if d.asset_class == ac and d.sample_size >= MIN_SAMPLES
+            ]
+            if not ac_decisions:
+                continue
+
+            ac_sent = [d for d in ac_decisions if d.action != "EXCLUDE"]
+            ac_inv = sum(1 for d in ac_decisions if d.inverted)
+            ac_exc = sum(1 for d in ac_decisions if d.action == "EXCLUDE")
+            ac_raw = sum(d.raw_accuracy for d in ac_decisions) / len(ac_decisions)
+            ac_eff = (
+                sum(d.effective_accuracy for d in ac_sent) / len(ac_sent)
+                if ac_sent else 0.0
+            )
+            label = "📈 STOCKS" if ac == "stock" else "🪙 CRYPTO"
+            lines.append(
+                f"\n{label} ({len(ac_decisions)} symbols): "
+                f"raw {ac_raw:.1f}% → eff {ac_eff:.1f}% "
+                f"| {ac_inv}🔄 {ac_exc}⛔"
+            )
+            # Verdict
+            if ac_eff >= 60:
+                lines.append(f"  → Ghost is GOOD at {ac} ✅")
+            elif ac_eff >= 50:
+                lines.append(f"  → Ghost is OKAY at {ac} 🟡")
+            else:
+                lines.append(f"  → Ghost is WEAK at {ac} ❌")
+
         lines.append("\n" + "=" * 44)
         return "\n".join(lines)
 
@@ -627,6 +667,27 @@ class GhostBrain:
             if sent_with_data else 0.0
         )
 
+        # Per-asset-class breakdowns
+        asset_class_stats = {}
+        for ac in ("stock", "crypto"):
+            ac_all = [d for d in self._decisions.values() if d.asset_class == ac and d.sample_size >= MIN_SAMPLES]
+            ac_sent = [d for d in ac_all if d.action != "EXCLUDE"]
+            if ac_all:
+                ac_raw = sum(d.raw_accuracy for d in ac_all) / len(ac_all)
+                ac_eff = sum(d.effective_accuracy for d in ac_sent) / len(ac_sent) if ac_sent else 0.0
+            else:
+                ac_raw = 0.0
+                ac_eff = 0.0
+            asset_class_stats[ac] = {
+                "total": len(ac_all),
+                "sent": len(ac_sent),
+                "inverted": sum(1 for d in ac_all if d.inverted),
+                "excluded": sum(1 for d in ac_all if d.action == "EXCLUDE"),
+                "avg_raw_accuracy": round(ac_raw, 1),
+                "avg_effective_accuracy": round(ac_eff, 1),
+                "accuracy_lift": round(ac_eff - ac_raw, 1),
+            }
+
         return {
             "status": "active" if BRAIN_ENABLED else "disabled",
             "enabled": BRAIN_ENABLED,
@@ -641,6 +702,7 @@ class GhostBrain:
             "avg_raw_accuracy": round(avg_raw, 1),
             "avg_effective_accuracy": round(avg_effective, 1),
             "accuracy_lift": round(avg_effective - avg_raw, 1),
+            "by_asset_class": asset_class_stats,
             "direction_bias": self._direction_bias,
             "correlation_warnings": len(self._correlation_warnings),
             "decisions": len(self._decisions),
