@@ -96,9 +96,9 @@ class V2AssetQualitySystem:
         return self._metrics
     
     def _get_postgres_connection(self):
-        """Get PostgreSQL connection"""
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        """Get PostgreSQL connection via shared pool bridge."""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection().__enter__()
     
     def _ensure_postgres_table(self):
         """Create v2_quality_config table if not exists"""

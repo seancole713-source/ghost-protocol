@@ -34,7 +34,8 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
             LOGGER.error("DATABASE_URL not set")
             return _empty_response(period, "DATABASE_URL not configured")
         
-        conn = psycopg2.connect(database_url)
+        from core.db_pool import get_sync_connection
+        conn = get_sync_connection().__enter__()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # Time filter

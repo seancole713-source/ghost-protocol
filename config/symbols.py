@@ -184,8 +184,24 @@ CRYPTO_SYMBOLS: FrozenSet[str] = frozenset([
 # DEFAULT EDGE SYMBOLS
 # Single source of truth for the EDGE_SYMBOLS env var fallback.
 # All code should import this instead of hardcoding the CSV string.
+#
+# Feb 26, 2026: Expanded from 13 → 50 symbols to increase prediction coverage.
+# Sources: V3_VALIDATED_STRATEGIES, V3_WHITELIST_STOCKS, top crypto by volume,
+# top stocks by liquidity. Excludes V3_BLACKLIST entries.
 # =============================================================================
-DEFAULT_EDGE_SYMBOLS = "T,TURBO,JUP,HOOD,IOTX,GIGA,COIN,BCH,CHZ,ALICE,YFI,ICP,BRETT"
+DEFAULT_EDGE_SYMBOLS = ",".join([
+    # ── V3 Validated (statistically proven) ──
+    "ETH", "XRP", "LINK", "CHZ", "PANW", "NET", "FTNT", "DDOG",
+    # ── V3 Whitelist Stocks (sweetspot analysis) ──
+    "T", "BMBL", "XPO",
+    # ── Top Crypto (high volume, liquid markets) ──
+    "BTC", "SOL", "BNB", "ADA", "AVAX", "DOGE", "ATOM", "UNI",
+    "AAVE", "ICP", "TURBO", "JUP", "BCH", "YFI", "IOTX", "GIGA",
+    "ALICE", "BRETT", "PEPE", "WIF", "BONK", "SEI", "FET",
+    # ── Top Stocks (high liquidity, strong analyst coverage) ──
+    "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META",
+    "HOOD", "COIN", "AMD", "CRM", "PLTR", "SNOW", "UBER",
+])
 # REMOVED Feb 25, 2026: RNDR — 11% accuracy (1/9), in HARDCODED_EXCLUSIONS. Was bypassing exclusions via edge whitelist.
 
 

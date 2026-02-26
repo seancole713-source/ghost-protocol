@@ -174,29 +174,29 @@ def link_up_high_conf() -> Prediction:
 # =============================================================================
 
 @pytest.fixture
-def btc_down_high_conf() -> Prediction:
-    """BTC DOWN prediction (not V3 validated) - should be rejected."""
+def zec_down_high_conf() -> Prediction:
+    """ZEC DOWN prediction (V3 removed, NOT in edge whitelist) - should be rejected."""
     return Prediction(
-        symbol='BTC',
+        symbol='ZEC',
         direction=Direction.DOWN,
         confidence=0.85,
-        current_price=75000.0,
-        target_price=72000.0,
-        stop_loss=76500.0,
+        current_price=50.0,
+        target_price=45.0,
+        stop_loss=53.0,
         timestamp=datetime.now(),
     )
 
 
 @pytest.fixture
-def sol_down_high_conf() -> Prediction:
-    """SOL DOWN prediction (removed from V3) - should be rejected."""
+def ltc_down_high_conf() -> Prediction:
+    """LTC DOWN prediction (V3 removed, NOT in edge whitelist) - should be rejected."""
     return Prediction(
-        symbol='SOL',
+        symbol='LTC',
         direction=Direction.DOWN,
         confidence=0.90,
-        current_price=120.0,
-        target_price=110.0,
-        stop_loss=125.0,
+        current_price=80.0,
+        target_price=72.0,
+        stop_loss=85.0,
         timestamp=datetime.now(),
     )
 
@@ -223,10 +223,10 @@ def blacklisted_prediction() -> Prediction:
 def sample_predictions(
     eth_down_high_conf,
     xrp_up_high_conf,
-    btc_down_high_conf,
+    zec_down_high_conf,
 ) -> List[Prediction]:
     """Mix of valid and invalid predictions."""
-    return [eth_down_high_conf, xrp_up_high_conf, btc_down_high_conf]
+    return [eth_down_high_conf, xrp_up_high_conf, zec_down_high_conf]
 
 
 @pytest.fixture
@@ -241,9 +241,9 @@ def all_valid_predictions(
 
 @pytest.fixture
 def all_invalid_predictions(
-    btc_down_high_conf,
-    sol_down_high_conf,
+    zec_down_high_conf,
+    ltc_down_high_conf,
     blacklisted_prediction,
 ) -> List[Prediction]:
     """All predictions that should be rejected."""
-    return [btc_down_high_conf, sol_down_high_conf, blacklisted_prediction]
+    return [zec_down_high_conf, ltc_down_high_conf, blacklisted_prediction]

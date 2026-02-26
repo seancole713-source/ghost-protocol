@@ -31,7 +31,7 @@ class TestV3FilterBasics:
         
         assert stats['total_processed'] == 3
         assert stats['passed'] == 2  # ETH and XRP
-        assert stats['rejected_not_validated'] == 1  # BTC
+        assert stats['rejected_not_validated'] == 1  # ZEC
     
     def test_reset_stats(self, v3_filter, sample_predictions):
         """reset_stats should clear all statistics."""
@@ -123,14 +123,14 @@ class TestLINKMeanReversion:
 class TestUnvalidatedSymbols:
     """Test that non-V3 symbols are rejected."""
     
-    def test_btc_rejected(self, v3_filter, btc_down_high_conf):
-        """BTC should be rejected (not in V3 validated)."""
-        result = v3_filter.filter_and_score([btc_down_high_conf])
+    def test_zec_rejected(self, v3_filter, zec_down_high_conf):
+        """ZEC should be rejected (V3 removed, not in edge whitelist)."""
+        result = v3_filter.filter_and_score([zec_down_high_conf])
         assert len(result) == 0
     
-    def test_sol_rejected_with_reason(self, v3_filter, sol_down_high_conf):
-        """SOL should be rejected (removed from V3)."""
-        result = v3_filter.filter_single(sol_down_high_conf)
+    def test_ltc_rejected_with_reason(self, v3_filter, ltc_down_high_conf):
+        """LTC should be rejected (V3 removed, not in edge whitelist)."""
+        result = v3_filter.filter_single(ltc_down_high_conf)
         
         assert result.passed == False
         assert 'REMOVED' in result.reason
@@ -229,12 +229,12 @@ class TestFilterSingle:
         assert 'PASSED' in result.reason
         assert result.prediction is not None
     
-    def test_filter_single_fail(self, v3_filter, btc_down_high_conf):
+    def test_filter_single_fail(self, v3_filter, zec_down_high_conf):
         """filter_single should return detailed fail result."""
-        result = v3_filter.filter_single(btc_down_high_conf)
+        result = v3_filter.filter_single(zec_down_high_conf)
         
         assert result.passed == False
-        assert result.symbol == 'BTC'
+        assert result.symbol == 'ZEC'
         assert result.prediction is None
 
 

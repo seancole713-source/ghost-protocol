@@ -28,9 +28,9 @@ class ShadowOutcomeResolver:
             LOGGER.warning("[RESOLVER] No DATABASE_URL - shadow resolution disabled")
     
     def _get_connection(self):
-        """Get PostgreSQL connection"""
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        """Get PostgreSQL connection via shared pool bridge."""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection().__enter__()
     
     async def resolve_pending(self, batch_size: int = 100) -> Dict:
         """

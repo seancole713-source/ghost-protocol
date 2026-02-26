@@ -263,23 +263,24 @@ class TestFullPredictionFlow:
         v3_filter = V3Filter(min_confidence=0.78)
         scored = v3_filter.filter_and_score(predictions)
         
-        # Should pass: ETH DOWN (inverse), XRP UP, LINK DOWN
-        # Should fail: BTC (not validated), SOL (removed), ETH UP (inverse requires DOWN)
-        assert len(scored) == 3, f"Expected 3 scored, got {len(scored)}: {[s.symbol for s in scored]}"
+        # Should pass: ETH DOWN (inverse), XRP UP, LINK DOWN, SOL (edge), BTC (edge)
+        # Should fail: ETH UP (inverse requires DOWN)
+        # Note: SOL and BTC now pass via expanded edge whitelist (Feb 2026)
+        assert len(scored) == 5, f"Expected 5 scored, got {len(scored)}: {[s.symbol for s in scored]}"
         
         symbols = [p.symbol for p in scored]
         assert 'ETH' in symbols, "ETH should pass (inverse DOWN→BUY)"
         assert 'XRP' in symbols, "XRP should pass (mean reversion)"
         assert 'LINK' in symbols, "LINK should pass (mean reversion)"
-        assert 'BTC' not in symbols, "BTC should be filtered (not V3 validated)"
-        assert 'SOL' not in symbols, "SOL should be filtered (removed from V3)"
+        assert 'SOL' in symbols, "SOL should pass (edge whitelist)"
+        assert 'BTC' in symbols, "BTC should pass (edge whitelist)"
         
         # Step 3: Convert to formatter format
         stocks, crypto = scored_list_to_formatter(scored)
         
         # All V3 symbols are crypto
         assert len(stocks) == 0, "No V3 stocks currently"
-        assert len(crypto) == 3, f"Expected 3 crypto, got {len(crypto)}"
+        assert len(crypto) == 5, f"Expected 5 crypto, got {len(crypto)}"
         
         # Step 4: Format message
         messages = format_top10_message(stocks, crypto)
@@ -290,19 +291,17 @@ class TestFullPredictionFlow:
         assert 'ETH' in message, "ETH should be in message"
         assert 'XRP' in message, "XRP should be in message"
         assert 'LINK' in message, "LINK should be in message"
+        assert 'BTC' in message, "BTC should be in message (edge whitelist)"
+        assert 'SOL' in message, "SOL should be in message (edge whitelist)"
         assert '🔄 INVERSE' in message, "ETH inverse should show badge"
-        
-        # Verify BTC and SOL NOT in message
-        assert 'BTC' not in message, "BTC should NOT be in message"
-        assert 'SOL' not in message, "SOL should NOT be in message"
     
     def test_flow_when_all_filtered(self):
         """Test when all predictions fail V3 validation."""
         raw_predictions = [
             # ETH UP - fails inverse (requires DOWN)
             {'ok': True, 'symbol': 'ETH', 'direction': 'UP', 'confidence': 0.80, 'current_price': 2300.0},
-            # BTC - not V3 validated
-            {'ok': True, 'symbol': 'BTC', 'direction': 'DOWN', 'confidence': 0.85, 'current_price': 75000.0},
+            # TGTX - V3 blacklisted
+            {'ok': True, 'symbol': 'TGTX', 'direction': 'DOWN', 'confidence': 0.85, 'current_price': 30.0},
             # XRP - below confidence threshold
             {'ok': True, 'symbol': 'XRP', 'direction': 'UP', 'confidence': 0.65, 'current_price': 1.65},
         ]
@@ -323,7 +322,7 @@ class TestFullPredictionFlow:
         # Verify no stocks/crypto symbols appear
         assert '🎯 GHOST TOP 10' in message, "Should have header"
         assert 'ETH' not in message, "ETH should not appear (wrong direction)"
-        assert 'BTC' not in message, "BTC should not appear (not V3 validated)"
+        assert 'TGTX' not in message, "TGTX should not appear (blacklisted)"
         assert 'XRP' not in message, "XRP should not appear (below threshold)"
     
     def test_v3_alert_formatting(self):

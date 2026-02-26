@@ -74,8 +74,9 @@ class V2VerificationSystem:
         LOGGER.info("[V2] Verification system initialized")
     
     def _get_conn(self):
-        """Get PostgreSQL connection"""
-        return psycopg2.connect(self.db_url)
+        """Get PostgreSQL connection via shared pool bridge."""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection().__enter__()
     
     def get_verified_win_rate(self, days: int = 14) -> Dict[str, Any]:
         """

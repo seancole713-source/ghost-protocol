@@ -1072,8 +1072,8 @@ class GameResolver:
         LOGGER.info("🏆 [RESOLVER] Ready to count the money!")
     
     def _get_connection(self):
-        import psycopg2
-        return psycopg2.connect(self.DATABASE_URL)
+        from core.db_pool import get_sync_connection
+        return get_sync_connection().__enter__()
     
     def resolve_pending_trades(self, hours_old: int = 24) -> Dict:
         """

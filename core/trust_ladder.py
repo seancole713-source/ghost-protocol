@@ -110,8 +110,9 @@ class TrustLadder:
         self._cache_ttl = 300  # 5 minutes
     
     def _get_postgres_connection(self):
-        """Get PostgreSQL connection."""
-        return psycopg2.connect(os.getenv("DATABASE_URL"))
+        """Get PostgreSQL connection via shared pool bridge."""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection().__enter__()
     
     def _ensure_table(self):
         """Create trust ladder table if not exists."""

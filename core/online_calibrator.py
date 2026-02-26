@@ -18,13 +18,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _get_pg_conn():
-    """Get a PostgreSQL connection using DATABASE_URL."""
-    import psycopg2
-
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url:
-        raise RuntimeError("DATABASE_URL not set — OnlineCalibrator requires PostgreSQL")
-    return psycopg2.connect(db_url)
+    """Get a PostgreSQL connection via shared pool bridge."""
+    from core.db_pool import get_sync_connection
+    return get_sync_connection().__enter__()
 
 
 @dataclass

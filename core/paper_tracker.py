@@ -47,9 +47,9 @@ class PaperTracker:
         self._ensure_table()
     
     def _get_postgres_connection(self):
-        """Get PostgreSQL connection"""
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        """Get PostgreSQL connection via shared pool bridge."""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection().__enter__()
     
     def _get_connection(self):
         """Get database connection (PostgreSQL or SQLite)"""

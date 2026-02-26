@@ -109,20 +109,45 @@ class TestV3FilterLogic:
         assert result[0]['v3_is_inverse'] == False, "XRP is not inverse strategy"
     
     def test_removed_symbols_are_filtered(self):
-        """Symbols in V3_REMOVED_SYMBOLS should never pass."""
+        """Symbols in V3_REMOVED_SYMBOLS (without edge whitelist override) should be filtered."""
         from core.ghost_notifications import v3_filter_and_score, V3_REMOVED_SYMBOLS
         
-        # SOL is explicitly removed
-        pred_sol = [{
-            'symbol': 'SOL',
+        # ZEC is explicitly removed and NOT in edge whitelist
+        pred_zec = [{
+            'symbol': 'ZEC',
             'direction': 'DOWN',
             'confidence': 0.95,  # Even high confidence
             'asset_type': 'crypto'
         }]
-        result = v3_filter_and_score(pred_sol)
-        assert len(result) == 0, "SOL should be filtered (in V3_REMOVED_SYMBOLS)"
+        result = v3_filter_and_score(pred_zec)
+        assert len(result) == 0, "ZEC should be filtered (in V3_REMOVED_SYMBOLS, not in edge whitelist)"
         
-        # BTC is explicitly removed
+        # LTC is explicitly removed and NOT in edge whitelist
+        pred_ltc = [{
+            'symbol': 'LTC',
+            'direction': 'DOWN',
+            'confidence': 0.99,
+            'asset_type': 'crypto'
+        }]
+        result = v3_filter_and_score(pred_ltc)
+        assert len(result) == 0, "LTC should be filtered (in V3_REMOVED_SYMBOLS, not in edge whitelist)"
+    
+    def test_removed_symbols_pass_via_edge_whitelist(self):
+        """Symbols in V3_REMOVED_SYMBOLS that are also in edge whitelist should pass."""
+        from core.ghost_notifications import v3_filter_and_score
+        
+        # SOL is in V3_REMOVED but also in edge whitelist — should pass
+        pred_sol = [{
+            'symbol': 'SOL',
+            'direction': 'DOWN',
+            'confidence': 0.95,
+            'asset_type': 'crypto'
+        }]
+        result = v3_filter_and_score(pred_sol)
+        assert len(result) == 1, "SOL should pass (edge whitelist overrides V3_REMOVED)"
+        assert result[0]['v3_strategy'] == 'edge_whitelist'
+        
+        # BTC is in V3_REMOVED but also in edge whitelist — should pass
         pred_btc = [{
             'symbol': 'BTC',
             'direction': 'DOWN',
@@ -130,7 +155,8 @@ class TestV3FilterLogic:
             'asset_type': 'crypto'
         }]
         result = v3_filter_and_score(pred_btc)
-        assert len(result) == 0, "BTC should be filtered (in V3_REMOVED_SYMBOLS)"
+        assert len(result) == 1, "BTC should pass (edge whitelist overrides V3_REMOVED)"
+        assert result[0]['v3_strategy'] == 'edge_whitelist'
     
     def test_blacklisted_symbols_are_filtered(self):
         """Symbols in V3_BLACKLIST should never pass."""

@@ -54,13 +54,13 @@ def get_real_accuracy_stats() -> dict:
     """
     try:
         # Try to get from outcome reconciler's Postgres data
-        import psycopg2
+        from core.db_pool import get_sync_connection
         database_url = os.getenv("DATABASE_URL")
         
         if not database_url:
             return {"status": "LEARNING", "wins": 0, "losses": 0, "accuracy_pct": 0, "total_verified": 0}
         
-        conn = psycopg2.connect(database_url)
+        conn = get_sync_connection().__enter__()
         cursor = conn.cursor()
         
         # First try ghost_prediction_outcomes (reconciled data)

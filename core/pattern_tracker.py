@@ -35,12 +35,12 @@ class PatternDetection:
 
 
 def _get_db_connection():
-    """Get PostgreSQL connection if available."""
+    """Get PostgreSQL connection via shared pool bridge."""
     try:
-        import psycopg2
+        from core.db_pool import get_sync_connection
         db_url = os.environ.get("DATABASE_URL")
         if db_url:
-            return psycopg2.connect(db_url)
+            return get_sync_connection().__enter__()
     except Exception as e:
         LOGGER.debug(f"[PATTERN_TRACKER] No PostgreSQL: {e}")
     return None

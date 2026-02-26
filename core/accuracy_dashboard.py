@@ -61,10 +61,14 @@ class AccuracyDashboard:
             LOGGER.warning("psycopg2 not installed, dashboard will return empty data")
 
     def _get_connection(self):
-        """Get PostgreSQL connection."""
-        if not self.database_url or not HAS_PSYCOPG2:
+        """Get PostgreSQL connection via shared pool bridge."""
+        if not self.database_url:
             return None
-        return psycopg2.connect(self.database_url)
+        try:
+            from core.db_pool import get_sync_connection
+            return get_sync_connection().__enter__()
+        except Exception:
+            return None
 
     def get_dashboard_summary(self, days: int = 30) -> dict[str, Any]:
         """

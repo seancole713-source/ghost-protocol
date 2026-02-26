@@ -111,9 +111,9 @@ class MoneyGameEngine:
         LOGGER.info(f"🎮 [MONEY GAME] Initialized: {len(self._stock_players)} stocks, {len(self._crypto_players)} crypto competing for the bag!")
     
     def _get_connection(self):
-        """Get PostgreSQL connection"""
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        """Get PostgreSQL connection via shared pool bridge."""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection().__enter__()
     
     def _ensure_tables(self):
         """Create money game tables"""

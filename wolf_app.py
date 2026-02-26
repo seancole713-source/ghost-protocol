@@ -1222,6 +1222,7 @@ async def health_check():
                 "price_providers": "unknown",
                 "btc_price": None,
                 "last_check": 0,
+                "predictions_stale": False,
             }
         
         cache = health_check._cache
@@ -1272,6 +1273,30 @@ async def health_check():
                     except Exception:
                         cache["price_providers"] = "timeout"
                     
+                    # Check 4: Prediction staleness
+                    # If no predictions in 6 hours, something is wrong
+                    try:
+                        _stale = False
+                        if _LATEST_PREDICTIONS:
+                            _newest = max(
+                                (p.get("run_at", 0) for p in _LATEST_PREDICTIONS.values()),
+                                default=0,
+                            )
+                            _age_h = (time.time() - _newest) / 3600.0 if _newest else 999
+                            _stale = _age_h > 6.0
+                        else:
+                            # No predictions at all after warmup
+                            _stale = uptime > 600  # Only flag after 10min
+                        cache["predictions_stale"] = _stale
+                        if _stale:
+                            LOGGER.warning(
+                                f"[HEALTH] Predictions stale — no new predictions in "
+                                f"{_age_h:.1f}h" if _LATEST_PREDICTIONS else
+                                f"[HEALTH] No predictions in memory after {uptime}s uptime"
+                            )
+                    except Exception:
+                        cache["predictions_stale"] = False
+
                     cache["last_check"] = time.time()
                 except Exception as bg_err:
                     LOGGER.debug(f"Health cache refresh error: {bg_err}")
@@ -1285,11 +1310,54 @@ async def health_check():
         health_status["database"] = cache["database"]
         health_status["prediction_store"] = cache["prediction_store"]
         health_status["price_providers"] = cache["price_providers"]
+        health_status["predictions_stale"] = cache.get("predictions_stale", False)
         if cache["btc_price"]:
             health_status["btc_price"] = cache["btc_price"]
         
-        # Return 503 if critical systems failed
-        if health_status["status"] == "unhealthy":
+        # ── Derive actual health status from component checks ──
+        _critical_failed = cache["database"] == "error"
+        _degraded = (
+            cache["prediction_store"] == "unavailable"
+            or cache["price_providers"] in ("timeout", "degraded")
+            or cache.get("predictions_stale", False)
+        )
+        if _critical_failed:
+            health_status["status"] = "unhealthy"
+            health_status["message"] = "Critical: database connection failed"
+        elif _degraded:
+            health_status["status"] = "degraded"
+            _reasons = []
+            if cache["prediction_store"] == "unavailable":
+                _reasons.append("prediction_store unavailable")
+            if cache["price_providers"] in ("timeout", "degraded"):
+                _reasons.append(f"price_providers {cache['price_providers']}")
+            if cache.get("predictions_stale", False):
+                _reasons.append("predictions stale (>6h old)")
+            health_status["message"] = f"Warning: {', '.join(_reasons)}"
+
+        # ── System-failure Telegram alert (max once per 15 min) ──
+        if health_status["status"] in ("unhealthy", "degraded"):
+            _now = time.time()
+            _last_alert = getattr(health_check, '_last_failure_alert', 0)
+            if _now - _last_alert > 900:  # 15-minute cooldown
+                health_check._last_failure_alert = _now
+                try:
+                    _alert_msg = (
+                        "🚨 <b>GHOST SYSTEM ALERT</b>\n\n"
+                        f"Status: <b>{health_status['status'].upper()}</b>\n"
+                        f"Message: {health_status.get('message', '')}\n"
+                        f"Database: {cache['database']}\n"
+                        f"Predictions: {cache['prediction_store']}\n"
+                        f"Price feeds: {cache['price_providers']}\n"
+                        f"Predictions stale: {cache.get('predictions_stale', False)}\n"
+                        f"Uptime: {uptime}s\n\n"
+                        "⚠️ Investigate immediately."
+                    )
+                    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+                        _tg_send_chat_message(TELEGRAM_CHAT_ID, _alert_msg)
+                        LOGGER.warning(f"[HEALTH] 🚨 System failure alert sent to Telegram")
+                except Exception:
+                    pass  # Don't let alert failure break health endpoint
             return JSONResponse(content=health_status, status_code=503)
         
         return health_status
