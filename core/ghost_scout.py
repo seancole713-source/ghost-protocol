@@ -34,9 +34,18 @@ from core.symbol_registry import (
     ALL_CRYPTO as _REGISTRY_CRYPTO,
     get_coingecko_id,
     get_all_coingecko_ids,
+    is_crypto,
 )
 
+# ── Brain v3: 25 cognitive abilities ──
+from core.ghost_brain import GhostBrain, BrainDecision
+from core.brain_data import BrainContext, load_brain_context, build_context_from_accuracy_data
+
 LOGGER = logging.getLogger("ghost.scout")
+
+# Direction mapping: Scout uses BUY/SELL, Brain uses UP/DOWN
+_DIR_TO_BRAIN = {"BUY": "UP", "SELL": "DOWN"}
+_DIR_FROM_BRAIN = {"UP": "BUY", "DOWN": "SELL"}
 
 
 # ALL ASSETS IN THE GAME - Everyone competes!
@@ -161,6 +170,181 @@ class GhostScout:
         if self.dynamic_movers_added:
             LOGGER.info(f"   🚀 Dynamic movers added: {self.dynamic_movers_added}")
     
+    # ══════════════════════════════════════════════════════════════
+    # BRAIN v3 INTEGRATION — Replaces hardcoded BUY/0.55 defaults
+    # ══════════════════════════════════════════════════════════════
+
+    def _load_brain_context_sync(self) -> Optional[BrainContext]:
+        """
+        Load BrainContext from PostgreSQL (sync bridge for async loader).
+
+        Falls back gracefully:
+          1. Full async load via load_brain_context() (rich data)
+          2. Empty BrainContext (Brain still works with basic data)
+          3. None (Brain disabled entirely)
+        """
+        import asyncio
+
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            LOGGER.debug("[SCOUT] No DATABASE_URL — Brain will use basic mode")
+            return BrainContext()  # Empty context, Brain passes through
+
+        # Gather live market data for Brain's regime/F&G/cross-asset abilities
+        market_data = self._gather_market_data()
+
+        try:
+            # Prefer existing event loop (if inside async runtime)
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                # Already in async context — use thread bridge
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    ctx = pool.submit(
+                        asyncio.run,
+                        load_brain_context(db_url, market_data=market_data),
+                    ).result(timeout=30)
+            else:
+                ctx = asyncio.run(
+                    load_brain_context(db_url, market_data=market_data)
+                )
+
+            LOGGER.info(
+                f"🧠 [SCOUT] Brain context loaded: {len(ctx.symbols)} symbols, "
+                f"regime={ctx.market_regime}, F&G={ctx.fear_greed_index}"
+            )
+            return ctx
+
+        except Exception as exc:
+            LOGGER.warning(f"🧠 [SCOUT] Brain context load failed: {exc} — using basic mode")
+            return BrainContext()
+
+    def _gather_market_data(self) -> dict:
+        """Gather live market data for BrainContext (VIX, Fear & Greed, cross-asset)."""
+        data = {}
+        try:
+            # Fear & Greed Index
+            resp = self._session.get(
+                "https://api.alternative.me/fng/?limit=1", timeout=5
+            )
+            if resp.status_code == 200:
+                fg = resp.json().get("data", [{}])[0]
+                data["fear_greed"] = int(fg.get("value", 50))
+                classification = fg.get("value_classification", "Neutral").lower()
+                if "extreme fear" in classification:
+                    data["regime"] = "panic"
+                elif "fear" in classification:
+                    data["regime"] = "fear"
+                elif "extreme greed" in classification:
+                    data["regime"] = "elevated"
+                elif "greed" in classification:
+                    data["regime"] = "calm"
+                else:
+                    data["regime"] = "neutral"
+        except Exception:
+            pass
+
+        try:
+            # BTC 24h change for cross-asset signal
+            resp = self._session.get(
+                "https://api.coingecko.com/api/v3/simple/price"
+                "?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true",
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                cg = resp.json()
+                data["btc_24h"] = cg.get("bitcoin", {}).get("usd_24h_change", 0.0)
+                data["eth_24h"] = cg.get("ethereum", {}).get("usd_24h_change", 0.0)
+        except Exception:
+            pass
+
+        return data
+
+    def _apply_brain_analysis(
+        self, raw_predictions: dict
+    ) -> dict:
+        """
+        Run Brain v3's 25 cognitive abilities on all raw predictions.
+
+        Args:
+            raw_predictions: {symbol: {"direction": "BUY"/"SELL", "confidence": float, ...}}
+
+        Returns:
+            {symbol: BrainDecision} — Brain's verdicts with adjusted direction,
+            confidence, tier, and action (SEND/EXCLUDE/INVERT).
+        """
+        if not raw_predictions:
+            return {}
+
+        # Load rich context from DB (accuracy history, streaks, calibration, etc.)
+        brain_context = self._load_brain_context_sync()
+
+        # Build predictions dict in Brain's format: {symbol: {direction: UP/DOWN, confidence: float}}
+        brain_input = {}
+        for sym, pred in raw_predictions.items():
+            scout_dir = pred.get("direction", "BUY")
+            brain_input[sym] = {
+                "direction": _DIR_TO_BRAIN.get(scout_dir, "UP"),
+                "confidence": pred.get("confidence", 0.55),
+            }
+
+        # Run Brain v3 batch analysis (25 abilities: invert, exclude, boost, calibrate, etc.)
+        brain = GhostBrain()
+        decisions = brain.analyze_batch(
+            predictions=brain_input,
+            context=brain_context,
+        )
+
+        # Log Brain summary
+        stats = brain._cycle_stats
+        LOGGER.info(
+            f"🧠 [BRAIN] Batch analysis complete: "
+            f"{stats['analyzed']} analyzed, {stats['sent']} sent, "
+            f"{stats['excluded']} excluded, {stats['inverted']} inverted, "
+            f"{stats['boosted']} boosted, {stats['penalized']} penalized"
+        )
+
+        return decisions
+
+    def _apply_decision_to_prediction(
+        self, pred: dict, decision: BrainDecision
+    ) -> dict:
+        """
+        Apply Brain's decision to a raw prediction dict.
+
+        Overwrites direction and confidence with Brain's analysis.
+        Recalculates target_price based on adjusted confidence.
+        Stores Brain metadata for downstream visibility.
+        """
+        entry = pred["entry_price"]
+
+        # Map Brain direction back to Scout format
+        new_dir = _DIR_FROM_BRAIN.get(decision.direction, pred["direction"])
+        new_conf = decision.confidence
+
+        pred["direction"] = new_dir
+        pred["confidence"] = new_conf
+
+        # Recalculate target with Brain's adjusted confidence
+        if new_dir == "BUY":
+            pred["target_price"] = entry * (1 + (new_conf * 0.08))
+        else:
+            pred["target_price"] = entry * (1 - (new_conf * 0.08))
+
+        # Store Brain metadata for visibility in cockpit/notifications
+        pred["brain_tier"] = decision.tier
+        pred["brain_action"] = decision.action
+        pred["brain_accuracy"] = decision.brain_accuracy
+        pred["brain_inverted"] = decision.inverted
+        pred["brain_reasons"] = decision.reasons[:5]  # Top 5 reasons
+        pred["brain_expected_value"] = decision.expected_value
+
+        return pred
+
     def _add_dynamic_movers(self):
         """Add today's biggest gainers to the scout list with BULLISH bias"""
         try:
@@ -181,16 +365,18 @@ class GhostScout:
     
     def scout_all(self, use_news: bool = True) -> Dict:
         """
-        Run a full scouting cycle.
-        
-        This makes predictions for EVERY asset so we can
-        track who's actually making money.
-        
+        Run a full scouting cycle with Brain v3 analysis.
+
+        Three-phase pipeline (sequential version of scout_all_fast):
+          Phase 1: Collect raw predictions for every asset
+          Phase 2: Brain v3 batch analysis (25 cognitive abilities)
+          Phase 3: Apply Brain decisions and record trades
+
         Args:
             use_news: If True, fetch news sentiment for each symbol (slower but accurate ✅)
         """
         from core.money_game_engine import get_money_game
-        
+
         game = get_money_game()
         results = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -198,131 +384,139 @@ class GhostScout:
             "crypto_scouted": 0,
             "news_influenced_count": 0,
             "dynamic_movers_found": len(self.dynamic_movers_added),
-            "trades_recorded": []
+            "trades_recorded": [],
+            "brain_excluded": 0,
+            "brain_inverted": 0,
+            "brain_boosted": 0,
         }
-        
-        # Import _LATEST_PREDICTIONS to populate it alongside Money Game
-        # This allows TOP 10 to find these predictions
+
         try:
             import wolf_app
             latest_predictions = wolf_app._LATEST_PREDICTIONS
         except ImportError:
             latest_predictions = {}
-        
+
         LOGGER.info("🔍 [SCOUT] Starting full scouting run...")
-        
-        # Scout all stocks
+
+        # ═══════════════════════════════════════════════════════
+        # PHASE 1: Collect raw predictions
+        # ═══════════════════════════════════════════════════════
+        raw_predictions = {}  # {symbol: pred_dict}
+        symbol_types = {}     # {symbol: asset_type}
+
         for symbol in self.stocks:
             try:
                 prediction = self._make_prediction(symbol, "stock", use_news=use_news)
                 if prediction:
-                    trade_id = game.record_trade(
-                        symbol=symbol,
-                        asset_type="stock",
-                        direction=prediction["direction"],
-                        entry_price=prediction["entry_price"],
-                        target_price=prediction["target_price"],
-                        confidence=prediction["confidence"]
-                    )
-                    if trade_id > 0:
-                        results["stocks_scouted"] += 1
-                        if prediction.get("news_influenced"):
-                            results["news_influenced_count"] += 1
-                        results["trades_recorded"].append({
-                            "trade_id": trade_id,
-                            "symbol": symbol,
-                            "direction": prediction["direction"],
-                            "news_influenced": prediction.get("news_influenced", False)
-                        })
-                        # ALSO populate _LATEST_PREDICTIONS for TOP 10
-                        if latest_predictions is not None:
-                            latest_predictions[symbol] = {
-                                "symbol": symbol,
-                                "direction": prediction["direction"],
-                                "confidence": prediction["confidence"],
-                                "price": prediction["entry_price"],
-                                "current_price": prediction["entry_price"],
-                                "entry_price": prediction["entry_price"],
-                                "target_price": prediction["target_price"],
-                                "asset_type": "stock",
-                                "run_at": time.time(),
-                                "source": "money_game_scout",
-                                # NEWS SENTIMENT DATA - for ✅ indicator
-                                "news_influenced": prediction.get("news_influenced", False),
-                                "sentiment_score": prediction.get("sentiment_score", 0),
-                                "sentiment_label": prediction.get("sentiment_label", "NEUTRAL"),
-                                # HOLD PERIOD - flexible, not just 48hr
-                                "hold_hours": prediction.get("hold_hours", 48),
-                                "hold_reason": prediction.get("hold_reason", "default")
-                            }
+                    raw_predictions[symbol] = prediction
+                    symbol_types[symbol] = "stock"
             except Exception as e:
                 LOGGER.error(f"🔍 [SCOUT] Error scouting {symbol}: {e}")
-        
-        # Scout all crypto
+
         for symbol in self.crypto:
             try:
                 prediction = self._make_prediction(symbol, "crypto", use_news=use_news)
                 if prediction:
-                    trade_id = game.record_trade(
-                        symbol=symbol,
-                        asset_type="crypto",
-                        direction=prediction["direction"],
-                        entry_price=prediction["entry_price"],
-                        target_price=prediction["target_price"],
-                        confidence=prediction["confidence"]
-                    )
-                    if trade_id > 0:
-                        results["crypto_scouted"] += 1
-                        if prediction.get("news_influenced"):
-                            results["news_influenced_count"] += 1
-                        results["trades_recorded"].append({
-                            "trade_id": trade_id,
-                            "symbol": symbol,
-                            "direction": prediction["direction"],
-                            "news_influenced": prediction.get("news_influenced", False)
-                        })
-                        # ALSO populate _LATEST_PREDICTIONS for TOP 10
-                        if latest_predictions is not None:
-                            latest_predictions[symbol] = {
-                                "symbol": symbol,
-                                "direction": prediction["direction"],
-                                "confidence": prediction["confidence"],
-                                "price": prediction["entry_price"],
-                                "current_price": prediction["entry_price"],
-                                "entry_price": prediction["entry_price"],
-                                "target_price": prediction["target_price"],
-                                "asset_type": "crypto",
-                                "run_at": time.time(),
-                                "source": "money_game_scout",
-                                # NEWS SENTIMENT DATA - for ✅ indicator
-                                "news_influenced": prediction.get("news_influenced", False),
-                                "sentiment_score": prediction.get("sentiment_score", 0),
-                                "sentiment_label": prediction.get("sentiment_label", "NEUTRAL"),
-                                # HOLD PERIOD - flexible
-                                "hold_hours": prediction.get("hold_hours", 48),
-                                "hold_reason": prediction.get("hold_reason", "default")
-                            }
+                    raw_predictions[symbol] = prediction
+                    symbol_types[symbol] = "crypto"
             except Exception as e:
                 LOGGER.error(f"🔍 [SCOUT] Error scouting {symbol}: {e}")
-        
+
+        LOGGER.info(f"🔍 [SCOUT] Phase 1 complete: {len(raw_predictions)} raw predictions")
+
+        # ═══════════════════════════════════════════════════════
+        # PHASE 2: Brain v3 batch analysis
+        # ═══════════════════════════════════════════════════════
+        brain_decisions = self._apply_brain_analysis(raw_predictions)
+
+        # ═══════════════════════════════════════════════════════
+        # PHASE 3: Apply Brain decisions and record trades
+        # ═══════════════════════════════════════════════════════
+        for sym, pred in raw_predictions.items():
+            atype = symbol_types[sym]
+            decision = brain_decisions.get(sym)
+
+            if decision:
+                if decision.action == "EXCLUDE":
+                    results["brain_excluded"] += 1
+                    continue
+                pred = self._apply_decision_to_prediction(pred, decision)
+                if decision.inverted:
+                    results["brain_inverted"] += 1
+                if decision.tier in ("🟢HOT", "🔥FIRE"):
+                    results["brain_boosted"] += 1
+
+            trade_id = game.record_trade(
+                symbol=sym,
+                asset_type=atype,
+                direction=pred["direction"],
+                entry_price=pred["entry_price"],
+                target_price=pred["target_price"],
+                confidence=pred["confidence"],
+            )
+            if trade_id > 0:
+                if atype == "stock":
+                    results["stocks_scouted"] += 1
+                else:
+                    results["crypto_scouted"] += 1
+                if pred.get("news_influenced"):
+                    results["news_influenced_count"] += 1
+                results["trades_recorded"].append({
+                    "trade_id": trade_id,
+                    "symbol": sym,
+                    "direction": pred["direction"],
+                    "brain_tier": pred.get("brain_tier", "⚪NEUTRAL"),
+                    "news_influenced": pred.get("news_influenced", False),
+                })
+                if latest_predictions is not None:
+                    latest_predictions[sym] = {
+                        "symbol": sym,
+                        "direction": pred["direction"],
+                        "confidence": pred["confidence"],
+                        "price": pred["entry_price"],
+                        "current_price": pred["entry_price"],
+                        "entry_price": pred["entry_price"],
+                        "target_price": pred["target_price"],
+                        "asset_type": atype,
+                        "run_at": time.time(),
+                        "source": "money_game_scout",
+                        "news_influenced": pred.get("news_influenced", False),
+                        "sentiment_score": pred.get("sentiment_score", 0),
+                        "sentiment_label": pred.get("sentiment_label", "NEUTRAL"),
+                        "hold_hours": pred.get("hold_hours", 48),
+                        "hold_reason": pred.get("hold_reason", "default"),
+                        "brain_tier": pred.get("brain_tier", "⚪NEUTRAL"),
+                        "brain_action": pred.get("brain_action", "SEND"),
+                        "brain_accuracy": pred.get("brain_accuracy", 0.0),
+                        "brain_inverted": pred.get("brain_inverted", False),
+                    }
+
         LOGGER.info(f"🔍 [SCOUT] Scouting complete!")
         LOGGER.info(f"   Stocks: {results['stocks_scouted']}")
         LOGGER.info(f"   Crypto: {results['crypto_scouted']}")
         LOGGER.info(f"   📰 News-influenced: {results['news_influenced_count']}")
+        LOGGER.info(f"   🧠 Brain: {results['brain_excluded']} excluded, "
+                    f"{results['brain_inverted']} inverted, "
+                    f"{results['brain_boosted']} boosted")
         if self.dynamic_movers_added:
             LOGGER.info(f"   🚀 Dynamic movers: {len(self.dynamic_movers_added)}")
         if latest_predictions:
             LOGGER.info(f"   Predictions in memory: {len(latest_predictions)}")
-        
+
         return results
 
     # ── #41-43: Concurrent scout with ThreadPoolExecutor ──────────────
     def scout_all_fast(self, use_news: bool = True, max_workers: int = 10) -> Dict:
         """
-        Run a full scouting cycle with PARALLEL price fetches.
+        Run a full scouting cycle with PARALLEL price fetches + BRAIN v3 analysis.
 
-        Uses ThreadPoolExecutor to scout up to `max_workers` symbols
-        simultaneously. Same logic as scout_all() but ~10x faster.
+        Three-phase pipeline:
+          Phase 1: Parallel raw prediction collection (ThreadPoolExecutor)
+          Phase 2: Brain v3 batch analysis (25 cognitive abilities)
+          Phase 3: Apply Brain decisions and record trades
+
+        Brain can INVERT direction, EXCLUDE weak symbols, BOOST confidence
+        for proven performers, apply calibration, circuit breaker, etc.
 
         Args:
             use_news: If True, fetch news sentiment (slower but accurate).
@@ -339,7 +533,10 @@ class GhostScout:
             "news_influenced_count": 0,
             "dynamic_movers_found": len(self.dynamic_movers_added),
             "trades_recorded": [],
-            "mode": "fast_parallel",
+            "brain_excluded": 0,
+            "brain_inverted": 0,
+            "brain_boosted": 0,
+            "mode": "fast_parallel_brain_v3",
         }
 
         try:
@@ -350,8 +547,12 @@ class GhostScout:
 
         LOGGER.info(f"⚡ [SCOUT-FAST] Starting parallel scouting ({max_workers} workers)...")
 
-        # Build a unified work list: (symbol, asset_type)
+        # ═══════════════════════════════════════════════════════
+        # PHASE 1: Collect raw predictions in parallel
+        # ═══════════════════════════════════════════════════════
         work = [(s, "stock") for s in self.stocks] + [(s, "crypto") for s in self.crypto]
+        raw_predictions = {}  # {symbol: {direction, confidence, entry_price, ...}}
+        symbol_types = {}     # {symbol: asset_type}
 
         def _scout_one(item):
             """Scout a single symbol — runs in a thread."""
@@ -373,54 +574,95 @@ class GhostScout:
                     continue
                 if not pred:
                     continue
+                raw_predictions[sym] = pred
+                symbol_types[sym] = atype
 
-                trade_id = game.record_trade(
-                    symbol=sym,
-                    asset_type=atype,
-                    direction=pred["direction"],
-                    entry_price=pred["entry_price"],
-                    target_price=pred["target_price"],
-                    confidence=pred["confidence"],
-                )
-                if trade_id <= 0:
+        LOGGER.info(f"⚡ [SCOUT-FAST] Phase 1 complete: {len(raw_predictions)} raw predictions")
+
+        # ═══════════════════════════════════════════════════════
+        # PHASE 2: Brain v3 batch analysis (25 cognitive abilities)
+        # ═══════════════════════════════════════════════════════
+        brain_decisions = self._apply_brain_analysis(raw_predictions)
+
+        # ═══════════════════════════════════════════════════════
+        # PHASE 3: Apply Brain decisions and record trades
+        # ═══════════════════════════════════════════════════════
+        for sym, pred in raw_predictions.items():
+            atype = symbol_types[sym]
+            decision = brain_decisions.get(sym)
+
+            if decision:
+                # Brain says EXCLUDE → skip this symbol entirely
+                if decision.action == "EXCLUDE":
+                    results["brain_excluded"] += 1
+                    LOGGER.debug(f"🧠 [BRAIN] EXCLUDED {sym}: {decision.reasons[:2]}")
                     continue
 
-                if atype == "stock":
-                    results["stocks_scouted"] += 1
-                else:
-                    results["crypto_scouted"] += 1
-                if pred.get("news_influenced"):
-                    results["news_influenced_count"] += 1
-                results["trades_recorded"].append({
-                    "trade_id": trade_id,
+                # Apply Brain's direction, confidence, and metadata
+                pred = self._apply_decision_to_prediction(pred, decision)
+
+                if decision.inverted:
+                    results["brain_inverted"] += 1
+                if decision.tier in ("🟢HOT", "🔥FIRE"):
+                    results["brain_boosted"] += 1
+
+            # Record trade with Brain-enhanced prediction
+            trade_id = game.record_trade(
+                symbol=sym,
+                asset_type=atype,
+                direction=pred["direction"],
+                entry_price=pred["entry_price"],
+                target_price=pred["target_price"],
+                confidence=pred["confidence"],
+            )
+            if trade_id <= 0:
+                continue
+
+            if atype == "stock":
+                results["stocks_scouted"] += 1
+            else:
+                results["crypto_scouted"] += 1
+            if pred.get("news_influenced"):
+                results["news_influenced_count"] += 1
+            results["trades_recorded"].append({
+                "trade_id": trade_id,
+                "symbol": sym,
+                "direction": pred["direction"],
+                "brain_tier": pred.get("brain_tier", "⚪NEUTRAL"),
+                "news_influenced": pred.get("news_influenced", False),
+            })
+
+            if latest_predictions is not None:
+                latest_predictions[sym] = {
                     "symbol": sym,
                     "direction": pred["direction"],
+                    "confidence": pred["confidence"],
+                    "price": pred["entry_price"],
+                    "current_price": pred["entry_price"],
+                    "entry_price": pred["entry_price"],
+                    "target_price": pred["target_price"],
+                    "asset_type": atype,
+                    "run_at": time.time(),
+                    "source": "money_game_scout_fast",
                     "news_influenced": pred.get("news_influenced", False),
-                })
-
-                if latest_predictions is not None:
-                    latest_predictions[sym] = {
-                        "symbol": sym,
-                        "direction": pred["direction"],
-                        "confidence": pred["confidence"],
-                        "price": pred["entry_price"],
-                        "current_price": pred["entry_price"],
-                        "entry_price": pred["entry_price"],
-                        "target_price": pred["target_price"],
-                        "asset_type": atype,
-                        "run_at": time.time(),
-                        "source": "money_game_scout_fast",
-                        "news_influenced": pred.get("news_influenced", False),
-                        "sentiment_score": pred.get("sentiment_score", 0),
-                        "sentiment_label": pred.get("sentiment_label", "NEUTRAL"),
-                        "hold_hours": pred.get("hold_hours", 48),
-                        "hold_reason": pred.get("hold_reason", "default"),
-                    }
+                    "sentiment_score": pred.get("sentiment_score", 0),
+                    "sentiment_label": pred.get("sentiment_label", "NEUTRAL"),
+                    "hold_hours": pred.get("hold_hours", 48),
+                    "hold_reason": pred.get("hold_reason", "default"),
+                    # Brain v3 metadata — visible in cockpit
+                    "brain_tier": pred.get("brain_tier", "⚪NEUTRAL"),
+                    "brain_action": pred.get("brain_action", "SEND"),
+                    "brain_accuracy": pred.get("brain_accuracy", 0.0),
+                    "brain_inverted": pred.get("brain_inverted", False),
+                }
 
         LOGGER.info(f"⚡ [SCOUT-FAST] Scouting complete!")
         LOGGER.info(f"   Stocks: {results['stocks_scouted']}")
         LOGGER.info(f"   Crypto: {results['crypto_scouted']}")
         LOGGER.info(f"   📰 News-influenced: {results['news_influenced_count']}")
+        LOGGER.info(f"   🧠 Brain: {results['brain_excluded']} excluded, "
+                    f"{results['brain_inverted']} inverted, "
+                    f"{results['brain_boosted']} boosted")
         if latest_predictions:
             LOGGER.info(f"   Predictions in memory: {len(latest_predictions)}")
 
@@ -676,97 +918,140 @@ class GhostScout:
     def _technical_prediction(self, symbol: str, asset_type: str, current_price: float) -> Dict:
         """
         Make a technical analysis based prediction.
-        
-        This is a simplified version - the real system would use
-        full technical analysis, sentiment, etc.
+
+        Uses multi-signal approach:
+          1. 5/10-day momentum (short-term trend)
+          2. 10/20-day momentum (medium-term trend)
+          3. Price position vs 20-day range (mean-reversion signal)
+          4. Dynamic mover detection (proven intraday momentum)
+
+        Direction is signal-driven, NOT hardcoded.
+        Confidence reflects signal strength, NOT a fixed 0.55.
+        Brain v3 further adjusts after this via analyze_batch().
         """
-        # Default to slight bullish bias (markets generally go up)
-        direction = "BUY"
-        confidence = 0.55
-        
-        # CRITICAL: Dynamic movers (up 5%+ today) should ALWAYS be BUY!
-        # They have proven momentum - ride the wave!
+        # CRITICAL: Dynamic movers (up 5%+ today) — proven momentum, ride the wave
         bullish_movers = getattr(self, '_bullish_movers', set())
         if symbol in bullish_movers:
-            LOGGER.info(f"🚀 [SCOUT] {symbol} is a dynamic mover - forcing BUY direction!")
-            direction = "BUY"
-            confidence = 0.70  # Higher confidence for momentum plays
-            target = current_price * 1.05  # 5% continuation target
+            LOGGER.info(f"🚀 [SCOUT] {symbol} is a dynamic mover — forcing BUY direction!")
+            target = current_price * 1.05
             return {
-                "direction": direction,
+                "direction": "BUY",
                 "entry_price": current_price,
                 "target_price": target,
-                "confidence": confidence
+                "confidence": 0.70,
             }
-        
-        polygon_key = os.getenv("POLYGON_API_KEY")
-        
-        try:
-            # Get some historical data to make a better prediction
-            if asset_type == "stock" and polygon_key:
-                # Polygon API for historical data
-                from datetime import datetime, timedelta
-                end = datetime.now().strftime("%Y-%m-%d")
-                start = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
-                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start}/{end}?apiKey={polygon_key}"
-                resp = self._session.get(url, timeout=10)
-                
-                if resp.status_code == 200:
-                    data = resp.json()
-                    results = data.get("results", [])
-                    closes = [r.get("c") for r in results if r.get("c")]
-                    
-                    if len(closes) >= 10:
-                        # Calculate momentum
-                        recent = sum(closes[-5:]) / 5
-                        older = sum(closes[-10:-5]) / 5
-                        momentum = (recent - older) / older
-                        
-                        if momentum > 0.02:  # Uptrend
-                            direction = "BUY"
-                            confidence = min(0.8, 0.55 + momentum)
-                        elif momentum < -0.02:  # Downtrend
-                            direction = "SELL"
-                            confidence = min(0.8, 0.55 + abs(momentum))
-            
-            elif asset_type == "crypto":
-                # CoinGecko historical — use centralized registry
-                cg_id = get_coingecko_id(symbol) or symbol.lower()
-                
-                url = f"https://api.coingecko.com/api/v3/coins/{cg_id}/market_chart?vs_currency=usd&days=30"
-                resp = self._session.get(url, timeout=5)
-                
-                if resp.status_code == 200:
-                    data = resp.json()
-                    prices = [p[1] for p in data.get("prices", [])]
-                    
-                    if len(prices) >= 10:
-                        recent = sum(prices[-5:]) / 5
-                        older = sum(prices[-10:-5]) / 5
-                        momentum = (recent - older) / older
-                        
-                        if momentum > 0.03:
-                            direction = "BUY"
-                            confidence = min(0.8, 0.55 + momentum)
-                        elif momentum < -0.03:
-                            direction = "SELL"
-                            confidence = min(0.8, 0.55 + abs(momentum))
-        
-        except Exception as e:
-            LOGGER.debug(f"Technical analysis fallback for {symbol}: {e}")
-        
+
+        # Collect price history for multi-signal analysis
+        closes = self._fetch_price_history(symbol, asset_type)
+
+        if len(closes) >= 20:
+            # ── Signal 1: Short-term momentum (5-day vs 10-day SMA) ──
+            sma5 = sum(closes[-5:]) / 5
+            sma10 = sum(closes[-10:]) / 10
+            short_momentum = (sma5 - sma10) / sma10
+
+            # ── Signal 2: Medium-term momentum (10-day vs 20-day SMA) ──
+            sma20 = sum(closes[-20:]) / 20
+            med_momentum = (sma10 - sma20) / sma20
+
+            # ── Signal 3: Mean reversion (current price vs 20-day range) ──
+            high_20 = max(closes[-20:])
+            low_20 = min(closes[-20:])
+            range_20 = high_20 - low_20 if high_20 != low_20 else 1.0
+            range_position = (current_price - low_20) / range_20  # 0=bottom, 1=top
+
+            # ── Combine signals into direction + confidence ──
+            # Positive score = bullish, negative = bearish
+            score = 0.0
+            # Short momentum: strong signal (weight 0.4)
+            score += short_momentum * 10.0 * 0.4  # Scale: ±2% momentum → ±0.08
+            # Medium momentum: trend confirmation (weight 0.35)
+            score += med_momentum * 8.0 * 0.35
+            # Mean reversion: contrarian edge (weight 0.25)
+            # Near bottom (pos < 0.3) → slight bullish, near top (pos > 0.7) → slight bearish
+            score += (0.5 - range_position) * 0.25
+
+            # Direction from composite score
+            if score > 0.02:
+                direction = "BUY"
+            elif score < -0.02:
+                direction = "SELL"
+            else:
+                # Weak/ambiguous signal — default to market drift (slight bullish)
+                direction = "BUY"
+
+            # Confidence from signal strength (0.40–0.80 range)
+            raw_conf = 0.50 + abs(score)
+            confidence = max(0.40, min(0.80, raw_conf))
+
+        elif len(closes) >= 10:
+            # Fallback: basic 5/10 momentum (less data available)
+            sma5 = sum(closes[-5:]) / 5
+            sma10 = sum(closes[-10:]) / 10
+            momentum = (sma5 - sma10) / sma10
+
+            threshold = 0.02 if asset_type == "stock" else 0.03
+            if momentum > threshold:
+                direction = "BUY"
+                confidence = min(0.75, 0.50 + abs(momentum))
+            elif momentum < -threshold:
+                direction = "SELL"
+                confidence = min(0.75, 0.50 + abs(momentum))
+            else:
+                direction = "BUY"  # Weak signal → slight bullish default
+                confidence = 0.45  # Low confidence reflects uncertainty
+
+        else:
+            # No meaningful price data — neutral low-confidence signal
+            direction = "BUY"
+            confidence = 0.40  # Very low confidence, Brain will likely penalize
+
         # Calculate target price
         if direction == "BUY":
-            target = current_price * (1 + (confidence * 0.08))  # Up to 8% target
+            target = current_price * (1 + (confidence * 0.08))
         else:
-            target = current_price * (1 - (confidence * 0.08))  # Down to -8%
-        
+            target = current_price * (1 - (confidence * 0.08))
+
         return {
             "direction": direction,
             "entry_price": current_price,
             "target_price": target,
-            "confidence": confidence
+            "confidence": confidence,
         }
+
+    def _fetch_price_history(self, symbol: str, asset_type: str) -> list:
+        """
+        Fetch 20-35 days of close prices for technical analysis.
+
+        Returns: list of float close prices (oldest first), empty on failure.
+        """
+        try:
+            if asset_type == "stock":
+                polygon_key = os.getenv("POLYGON_API_KEY")
+                if not polygon_key:
+                    return []
+                end = datetime.now().strftime("%Y-%m-%d")
+                start = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
+                url = (
+                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}"
+                    f"/range/1/day/{start}/{end}?apiKey={polygon_key}"
+                )
+                resp = self._session.get(url, timeout=10)
+                if resp.status_code == 200:
+                    results = resp.json().get("results", [])
+                    return [r["c"] for r in results if r.get("c")]
+            else:
+                cg_id = get_coingecko_id(symbol) or symbol.lower()
+                url = (
+                    f"https://api.coingecko.com/api/v3/coins/{cg_id}"
+                    f"/market_chart?vs_currency=usd&days=30"
+                )
+                resp = self._session.get(url, timeout=5)
+                if resp.status_code == 200:
+                    return [p[1] for p in resp.json().get("prices", [])]
+        except Exception as e:
+            LOGGER.debug(f"Price history fetch for {symbol}: {e}")
+        return []
 
 
 class GameResolver:
