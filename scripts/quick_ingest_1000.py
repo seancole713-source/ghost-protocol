@@ -4,11 +4,14 @@ Quick ingestion - Uses Ghost's existing 187 symbols + top 813 from a curated lis
 Total: 1000 stocks ready for predictions in ~5 minutes
 """
 
+import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 
-DATABASE_URL = "postgresql://postgres:jdkObNnbzRoxzsPicrsfDeNuSUIrTgLp@metro.proxy.rlwy.net:28328/railway"
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is required")
 
 # Top 1000 US stocks by market cap (manually curated list)
 TOP_1000_STOCKS = [

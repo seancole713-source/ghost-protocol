@@ -1103,6 +1103,10 @@ class PostgresBackend:
         - Uses RETURNING clause to get inserted ID
         - Batch inserts forecast points
         - Full transaction with rollback on error
+        
+        DEDUP GUARD: Rejects predictions for the same symbol created within
+        the last 5 minutes to prevent duplicate spam (e.g., 8 DOGE predictions
+        within milliseconds of each other).
         """
         run_at = time.time()
         horizon_h = params.get("horizon_h", 48)
@@ -1113,6 +1117,29 @@ class PostgresBackend:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+            
+            # ── DEDUP GUARD: Reject same symbol within 5 minutes ──────────
+            dedup_window_s = float(os.getenv("PREDICTION_DEDUP_WINDOW_S", "300"))
+            cursor.execute(
+                """
+                SELECT id, run_at FROM predictions
+                WHERE symbol = %s AND run_at > %s
+                ORDER BY run_at DESC LIMIT 1
+                """,
+                (symbol, run_at - dedup_window_s),
+            )
+            dup = cursor.fetchone()
+            if dup:
+                age_s = run_at - dup["run_at"]
+                LOGGER.warning(
+                    f"[DEDUP] Rejecting duplicate prediction for {symbol} — "
+                    f"existing prediction {dup['id']} created {age_s:.0f}s ago "
+                    f"(dedup window: {dedup_window_s:.0f}s)"
+                )
+                raise PredictionRejected(
+                    f"Duplicate: {symbol} already has prediction {dup['id']} "
+                    f"from {age_s:.0f}s ago (min gap: {dedup_window_s:.0f}s)"
+                )
             
             # Insert prediction and get ID using RETURNING clause
             cursor.execute(

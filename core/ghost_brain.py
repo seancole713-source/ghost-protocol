@@ -165,21 +165,25 @@ MAX_TOTAL_PENALTY = 0.35
 
 
 # ═══════════════════════════════════════════════════════════════════
-# KNOWN CRYPTO (for asset classification)
+# KNOWN CRYPTO (from centralized symbol registry #115)
 # ═══════════════════════════════════════════════════════════════════
 
-_KNOWN_CRYPTO = {
-    "BTC", "ETH", "XRP", "SOL", "DOGE", "ADA", "AVAX", "LINK", "DOT",
-    "MATIC", "SHIB", "UNI", "LTC", "BCH", "ATOM", "FIL", "NEAR", "ICP",
-    "APT", "ARB", "OP", "INJ", "TIA", "SEI", "SUI", "TURBO", "JUP",
-    "IOTX", "GIGA", "CHZ", "ALICE", "YFI", "BRETT", "HBAR", "ILV",
-    "BAND", "PEPE", "ENJ", "RNDR", "MANA", "SAND", "AXS", "THETA", "VET",
-    "FTM", "EGLD", "ALGO", "FLOW", "STX", "DASH", "ZEC", "EOS", "XTZ",
-    "AAVE", "CRV", "MKR", "COMP", "SNX", "SUSHI", "1INCH", "BAL", "REN",
-    "ZRX", "BAT", "KNC", "OCEAN", "OMG", "RLC", "BNB", "DYDX", "WLD",
-    "JTO", "BONK", "WIF", "FLOKI", "ORDI", "RUNE", "ROSE", "QTUM",
-    "ANT", "ZEN", "ONDO",
-}
+try:
+    from core.symbol_registry import KNOWN_CRYPTO as _KNOWN_CRYPTO
+except ImportError:
+    # Fallback for testing without full package structure
+    _KNOWN_CRYPTO = {
+        "BTC", "ETH", "XRP", "SOL", "DOGE", "ADA", "AVAX", "LINK", "DOT",
+        "MATIC", "SHIB", "UNI", "LTC", "BCH", "ATOM", "FIL", "NEAR", "ICP",
+        "APT", "ARB", "OP", "INJ", "TIA", "SEI", "SUI", "TURBO", "JUP",
+        "IOTX", "GIGA", "CHZ", "ALICE", "YFI", "BRETT", "HBAR", "ILV",
+        "BAND", "PEPE", "ENJ", "RNDR", "MANA", "SAND", "AXS", "THETA", "VET",
+        "FTM", "EGLD", "ALGO", "FLOW", "STX", "DASH", "ZEC", "EOS", "XTZ",
+        "AAVE", "CRV", "MKR", "COMP", "SNX", "SUSHI", "1INCH", "BAL", "REN",
+        "ZRX", "BAT", "KNC", "OCEAN", "OMG", "RLC", "BNB", "DYDX", "WLD",
+        "JTO", "BONK", "WIF", "FLOKI", "ORDI", "RUNE", "ROSE", "QTUM",
+        "ANT", "ZEN", "ONDO",
+    }
 # NOTE: T (AT&T), HOOD (Robinhood), COIN (Coinbase) are STOCKS.
 
 

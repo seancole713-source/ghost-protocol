@@ -30,13 +30,20 @@ from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Ghost Brain v2 — centralized learning intelligence
+# Ghost Brain v2/v3 — centralized learning intelligence
 try:
     from core.ghost_brain import GhostBrain, BrainDecision, BRAIN_ENABLED
     GHOST_BRAIN_AVAILABLE = True
 except ImportError:
     GHOST_BRAIN_AVAILABLE = False
     BRAIN_ENABLED = False
+
+# Brain v3 rich context loader (#71-73: wire full BrainContext)
+try:
+    from core.brain_data import load_brain_context, build_context_from_accuracy_data, BrainContext
+    BRAIN_CONTEXT_AVAILABLE = True
+except ImportError:
+    BRAIN_CONTEXT_AVAILABLE = False
 
 # PostgreSQL for learning data
 try:
@@ -1749,11 +1756,76 @@ class GhostNotificationSystem:
         boosted_symbols = []
         inverted_symbols = []
         
-        # GHOST BRAIN v2: Centralized learning intelligence
+        # ══════════════════════════════════════════════════════════════
+        # #71-73: Load FULL BrainContext (rich data) instead of basic dict
+        # Provides: direction splits, recency, streaks, market regime,
+        #           calibration curve, magnitude, DOW accuracy
+        # ══════════════════════════════════════════════════════════════
+        brain_context = None
+        if GHOST_BRAIN_AVAILABLE and BRAIN_ENABLED and BRAIN_CONTEXT_AVAILABLE:
+            try:
+                import asyncio
+                db_url = os.getenv("DATABASE_URL", "")
+                if db_url:
+                    # Gather live market data for context (#72)
+                    market_data = {}
+                    try:
+                        import wolf_app
+                        # VIX level
+                        vix = getattr(wolf_app, '_VIX_CACHE', {})
+                        if isinstance(vix, dict):
+                            market_data["vix"] = vix.get("value", 0.0)
+                        # Fear & Greed index
+                        fg = getattr(wolf_app, '_FEAR_GREED_CACHE', {})
+                        if isinstance(fg, dict):
+                            market_data["fear_greed"] = fg.get("value", 50)
+                        # BTC 24h change
+                        btc_pred = getattr(wolf_app, '_LATEST_PREDICTIONS', {}).get("BTC", {})
+                        if isinstance(btc_pred, dict):
+                            market_data["btc_24h"] = btc_pred.get("change_24h", 0.0)
+                        # SPY 24h change
+                        spy_pred = getattr(wolf_app, '_LATEST_PREDICTIONS', {}).get("SPY", {})
+                        if isinstance(spy_pred, dict):
+                            market_data["spy_24h"] = spy_pred.get("change_24h", 0.0)
+                    except Exception:
+                        pass  # Market data is optional enrichment
+                    
+                    # Load full brain context synchronously
+                    # (get_top10_predictions is sync, so we can't use await)
+                    try:
+                        loop = asyncio.get_running_loop()
+                    except RuntimeError:
+                        loop = None
+
+                    if loop and loop.is_running():
+                        # Inside an already-running event loop — use thread to avoid deadlock
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                            brain_context = executor.submit(
+                                asyncio.run,
+                                load_brain_context(db_url, market_data=market_data)
+                            ).result(timeout=10)
+                    else:
+                        # No event loop running — safe to asyncio.run directly
+                        brain_context = asyncio.run(load_brain_context(db_url, market_data=market_data))
+                    LOGGER.info(f"[BRAIN] 🧠 Full BrainContext loaded: {brain_context.total_symbols_tracked} symbols, regime={brain_context.market_regime}")
+            except Exception as e:
+                LOGGER.warning(f"[BRAIN] Full context load failed, falling back to basic: {e}")
+                brain_context = None
+        
+        # Fallback: build minimal context from accuracy_data
+        if brain_context is None and BRAIN_CONTEXT_AVAILABLE and accuracy_data:
+            try:
+                brain_context = build_context_from_accuracy_data(accuracy_data)
+                LOGGER.info(f"[BRAIN] Using basic BrainContext from accuracy_data ({len(accuracy_data)} symbols)")
+            except Exception as e:
+                LOGGER.warning(f"[BRAIN] Basic context build failed: {e}")
+        
+        # GHOST BRAIN v2/v3: Centralized learning intelligence
         brain = None
         if GHOST_BRAIN_AVAILABLE and BRAIN_ENABLED:
             brain = GhostBrain()
-            LOGGER.info("[BRAIN] 🧠 Ghost Brain v2 ACTIVE — unified learning intelligence")
+            LOGGER.info("[BRAIN] 🧠 Ghost Brain v3 ACTIVE — 25 cognitive abilities")
         else:
             LOGGER.info("[BRAIN] Ghost Brain disabled — using legacy learning system")
         
@@ -1812,13 +1884,18 @@ class GhostNotificationSystem:
             direction = pred.get("direction", "DOWN")
             
             # ══════════════════════════════════════════════════════════
-            # GHOST BRAIN v2: Unified learning decision
+            # GHOST BRAIN v3: Unified learning decision with FULL context
+            # #71-73: Pass BrainContext (direction splits, recency, streaks)
             # Replaces old separate exclude + boost with one smart call
-            # Adds INVERT ability (flip reliably-wrong symbols)
             # ══════════════════════════════════════════════════════════
             boost_multiplier = 1.0  # Default for candidate dict
             if brain:
-                brain_decision = brain.analyze_symbol(symbol, direction, confidence, accuracy_data)
+                # v3: Pass rich context if available, fall back to accuracy_data
+                brain_decision = brain.analyze_symbol(
+                    symbol, direction, confidence,
+                    accuracy_data,
+                    context=brain_context,  # #71: Full BrainContext with all 25 data points
+                )
                 
                 if brain_decision.action == "EXCLUDE":
                     learning_excluded += 1

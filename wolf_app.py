@@ -777,118 +777,53 @@ APP.add_middleware(
 # Fast-fail auth middleware: return 401 JSON immediately if Bearer token missing
 @APP.middleware("http")
 async def auth_fast_fail_middleware(request: Request, call_next):
-    """Return 401 JSON immediately on missing auth for protected endpoints."""
-    # Public endpoints (no auth required)
-    public_paths = [
+    """
+    Return 401 JSON immediately on missing auth for protected endpoints.
+    
+    #57: Consolidated from 35+ individual if-statements into ONE set lookup.
+    All read-only API endpoints are public. Write endpoints require Bearer token.
+    """
+    path = request.url.path
+    
+    # ── Exact-match public paths ──
+    PUBLIC_EXACT = {
         "/", "/health", "/metrics", "/docs", "/redoc", "/openapi.json",
         "/api/status", "/api/health", "/api/openapi.json",
-        "/api/predictions/multi/run",  # Multi-symbol predictions are public
-        "/api/predictions/run",  # Single-symbol on-demand predictions are public (supports 500+ stocks, 1000+ crypto)
-        "/api/predictions/symbols",  # Symbol discovery endpoint
-        "/api/health/predictions",  # Prediction health check is public
-        "/api/cockpit",  # Cockpit snapshot is public
-        "/api/recent_alerts"  # Recent alerts feed is public (no auth needed)
-    ]
-
-    path = request.url.path
-
-    # Also allow system/orchestrator endpoints (monitoring)
-    if path.startswith("/api/system/"):
-        LOGGER.info(f"✅ AUTH BYPASS: {path} (system endpoint)")
+        "/api/predictions/multi/run", "/api/predictions/run",
+        "/api/predictions/symbols", "/api/health/predictions",
+        "/api/cockpit", "/api/recent_alerts", "/retrain-trigger",
+    }
+    
+    if path in PUBLIC_EXACT:
         return await call_next(request)
-
-    # Allow TO THE MOON advanced system endpoints (monitoring/analysis - public)
-    if path.startswith("/api/walk_forward_analysis/"):
+    
+    # ── Prefix-match public paths (read-only data feeds) ──
+    # Consolidated from 35+ individual if-statements
+    PUBLIC_PREFIXES = (
+        "/api/system/", "/api/system_status",
+        "/api/walk_forward_analysis/", "/api/monte_carlo/",
+        "/api/momentum_shift/", "/api/research/", "/api/hedging/",
+        "/api/predict/", "/api/price/",
+        "/api/intel/", "/api/agentkit/",
+        "/api/stage1/", "/api/stage2/", "/api/stage3/",
+        "/api/stage4/", "/api/stage5/",
+        "/api/runtime/", "/api/watcher/", "/api/crypto/",
+        "/api/scan", "/api/opportunit", "/api/goals/",
+        "/api/cockpit/", "/api/v3/", "/api/v2/",
+        "/api/xrp/", "/api/presale/", "/api/config",
+        "/api/corporate_actions", "/api/portfolio/",
+        "/api/forecast/", "/api/movers/", "/api/gates/",
+        "/api/money-game/",
+        "/alerts/",
+        "/api/debug/crypto-check/",
+        "/static/",
+    )
+    
+    if path.startswith(PUBLIC_PREFIXES):
         return await call_next(request)
-    if path.startswith("/api/monte_carlo/"):
-        return await call_next(request)
-    if path.startswith("/api/momentum_shift/"):
-        return await call_next(request)
-    if path.startswith("/api/research/"):
-        return await call_next(request)
-    if path.startswith("/api/hedging/"):
-        return await call_next(request)
-    if path.startswith("/api/system_status"):
-        return await call_next(request)
-    if path.startswith("/api/agentkit/"):
-        return await call_next(request)
-
-    # Also allow prediction cockpit endpoints (read-only, no auth needed)
-    if request.url.path.startswith("/api/predict/"):
-        return await call_next(request)
-
-    # Also allow price endpoints (needed for predictions)
-    if request.url.path.startswith("/api/price/"):
-        return await call_next(request)
-
-    # Allow crypto-check debug endpoint (Fix 5 troubleshooting)
-    if request.url.path.startswith("/api/debug/crypto-check/"):
-        return await call_next(request)
-
-    # Allow Ghost Intel endpoints (institutional intelligence feeds - read-only)
-    if request.url.path.startswith("/api/intel/"):
-        return await call_next(request)
-
-    # Allow retrain trigger (one-time use, no auth)
-    if request.url.path == "/retrain-trigger":
-        return await call_next(request)
-
-    # Allow all Stage 1-5 endpoints (cockpit data feeds - read-only)
-    if request.url.path.startswith("/api/stage1/"):
-        return await call_next(request)
-    if request.url.path.startswith("/api/stage2/"):
-        return await call_next(request)
-    if request.url.path.startswith("/api/stage3/"):
-        return await call_next(request)
-    if request.url.path.startswith("/api/stage4/"):
-        return await call_next(request)
-    if request.url.path.startswith("/api/stage5/"):
-        return await call_next(request)
-
-    # Allow cockpit support endpoints (runtime config, watcher, crypto, scans, opportunities)
-    if request.url.path.startswith("/api/runtime/"):
-        return await call_next(request)
-    if request.url.path.startswith("/api/watcher/"):
-        return await call_next(request)
-    if request.url.path.startswith("/api/crypto/"):
-        return await call_next(request)
-    if request.url.path.startswith("/api/scan"):
-        return await call_next(request)
-    if request.url.path.startswith("/api/opportunit"):  # /api/opportunity or /api/opportunities
-        return await call_next(request)
-    if request.url.path.startswith("/api/goals/"):
-        return await call_next(request)
-    if request.url.path.startswith("/api/cockpit/"):  # All cockpit sub-endpoints (snapshot, stream, status)
-        return await call_next(request)
-    if request.url.path.startswith("/api/v3/"):  # All Cockpit V3 live endpoints (NO AUTH)
-        return await call_next(request)
-    if request.url.path.startswith("/api/v2/"):  # Ghost Protocol V2 monitoring endpoints (NO AUTH)
-        return await call_next(request)
-    if request.url.path.startswith("/api/xrp/"):  # XRP tracker for cockpit
-        return await call_next(request)
-    if request.url.path.startswith("/api/presale/"):  # Presale watch for cockpit
-        return await call_next(request)
-    if request.url.path.startswith("/api/config"):  # Runtime config endpoints
-        return await call_next(request)
-    if request.url.path.startswith("/api/corporate_actions"):  # Corporate actions feed
-        return await call_next(request)
-    if request.url.path.startswith("/api/portfolio/"):  # Portfolio state and positions
-        return await call_next(request)
-    if request.url.path.startswith("/api/forecast/"):  # Forecast overlays
-        return await call_next(request)
-    if request.url.path.startswith("/alerts/"):  # Alert self-tests
-        return await call_next(request)
-    if request.url.path.startswith("/api/movers/"):  # Real-time market movers scanner
-        return await call_next(request)
-    if request.url.path.startswith("/api/gates/"):  # Market gates status (regime filter, VIX gate, etc.)
-        return await call_next(request)
-    if request.url.path.startswith("/api/v3/competition/"):  # V3 Competition endpoints
-        return await call_next(request)
-    if request.url.path.startswith("/api/money-game/"):  # Money Game Engine (video game rankings)
-        return await call_next(request)
-
-    # Check if path requires auth
-    if request.url.path.startswith("/api/") and request.url.path not in public_paths:
+    
+    # ── Everything else under /api/ requires Bearer token ──
+    if path.startswith("/api/"):
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             return JSONResponse(
@@ -3964,6 +3899,14 @@ async def _on_startup():
 
     LOGGER.info("[GHOST STARTUP] Beginning initialization...")
 
+    # #21: Initialize shared asyncpg connection pool (replaces 20+ psycopg2.connect calls)
+    try:
+        from core.db_pool import init_pool
+        await init_pool()
+        LOGGER.info("[GHOST STARTUP] ✅ Shared asyncpg pool initialized")
+    except Exception as e:
+        LOGGER.error(f"[GHOST STARTUP] ⚠️ DB pool init failed (non-fatal): {e}")
+
     # Log critical environment configuration at boot
     try:
         env_config = {
@@ -6197,6 +6140,14 @@ async def _on_shutdown():
         LOGGER.info("[GHOST SHUTDOWN] Waited 2s for in-flight requests")
     except Exception:
         pass
+    
+    # ── #137: Close shared asyncpg pool first (drains connections) ──
+    try:
+        from core.db_pool import close_pool
+        await close_pool()
+        LOGGER.info("[GHOST SHUTDOWN] asyncpg pool closed")
+    except Exception as e:
+        LOGGER.warning(f"[GHOST SHUTDOWN] asyncpg pool close error: {e}")
     
     # Close database connections
     try:

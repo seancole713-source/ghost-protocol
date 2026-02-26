@@ -22,6 +22,13 @@ import psycopg2
 
 LOGGER = logging.getLogger("ghost.outcome_reconciler_v2")
 
+# ── Use centralized symbol registry for crypto detection ──
+try:
+    from core.symbol_registry import is_crypto as _is_crypto_registry
+    _REGISTRY_AVAILABLE = True
+except ImportError:
+    _REGISTRY_AVAILABLE = False
+
 # Lazy imports for learning systems (avoid circular imports)
 _feedback_loop = None
 _learning_loop = None
@@ -35,17 +42,21 @@ def get_symbol_price(symbol: str) -> Optional[float]:
     """
     symbol = symbol.upper()
     
-    # Known crypto symbols
-    CRYPTO_SYMBOLS = {
-        'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK',
-        'DOGE', 'SHIB', 'LTC', 'TRX', 'TON', 'XLM', 'ATOM', 'UNI', 'AAVE', 'MKR',
-        'PEPE', 'BONK', 'WIF', 'FLOKI', 'FET', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA',
-        'OP', 'ARB', 'APE', 'SAND', 'MANA', 'AXS', 'GRT', 'CRV', 'COMP', 'SNX',
-    }
+    # Known crypto symbols — prefer registry, fallback to inline set
+    if _REGISTRY_AVAILABLE:
+        _is_crypto = _is_crypto_registry(symbol)
+    else:
+        _CRYPTO_FALLBACK = {
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK',
+            'DOGE', 'SHIB', 'LTC', 'TRX', 'TON', 'XLM', 'ATOM', 'UNI', 'AAVE', 'MKR',
+            'PEPE', 'BONK', 'WIF', 'FLOKI', 'FET', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA',
+            'OP', 'ARB', 'APE', 'SAND', 'MANA', 'AXS', 'GRT', 'CRV', 'COMP', 'SNX',
+        }
+        _is_crypto = symbol in _CRYPTO_FALLBACK
     
     try:
         # Try Coinbase for crypto
-        if symbol in CRYPTO_SYMBOLS or symbol.endswith('-USD') or symbol.endswith('USDT'):
+        if _is_crypto or symbol.endswith('-USD') or symbol.endswith('USDT'):
             from core.coinbase_provider import get_crypto_price
             price = get_crypto_price(symbol)
             if price and price > 0:
@@ -55,7 +66,7 @@ def get_symbol_price(symbol: str) -> Optional[float]:
         from core.providers.turbo_provider import get_turbo_provider
         provider = get_turbo_provider()
         
-        if symbol in CRYPTO_SYMBOLS:
+        if _is_crypto:
             result = provider.turbo_crypto_price(symbol, max_budget_s=2.0)
         else:
             result = provider.turbo_stock_price(symbol, max_budget_s=2.0)
@@ -229,6 +240,27 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
     
     # Calculate resolution time (run_at + horizon_h)
     t_resolve = run_at + (horizon_h * 3600)
+    
+    # ── WEEKEND FIX: For stocks, shift resolution to next trading day ──
+    # Predictions created Friday with t+48h land on Sunday when markets
+    # are closed. Shift to Monday (or Tuesday if Monday is a holiday).
+    CRYPTO_SET = {
+        'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK',
+        'DOGE', 'SHIB', 'LTC', 'TRX', 'TON', 'XLM', 'ATOM', 'UNI', 'AAVE', 'MKR',
+        'PEPE', 'BONK', 'WIF', 'FLOKI', 'FET', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA',
+        'OP', 'ARB', 'APE', 'SAND', 'MANA', 'AXS', 'GRT', 'CRV', 'COMP', 'SNX',
+        'ETC', 'IMX', 'METIS', 'ALGO', 'HBAR', 'FLOW',
+        'CHZ', 'YFI', 'ICP', 'BRETT', 'GIGA', 'TURBO', 'JUP', 'IOTX', 'ALICE', 'BCH',
+    }
+    if symbol.upper() not in CRYPTO_SET:
+        resolve_dt = datetime.fromtimestamp(t_resolve)
+        weekday = resolve_dt.weekday()  # 5=Saturday, 6=Sunday
+        if weekday == 5:  # Saturday → shift to Monday 09:30 ET
+            t_resolve += 2 * 86400  # +2 days
+            LOGGER.debug(f"[WEEKEND-FIX] {symbol} resolution shifted Sat→Mon")
+        elif weekday == 6:  # Sunday → shift to Monday 09:30 ET
+            t_resolve += 1 * 86400  # +1 day
+            LOGGER.debug(f"[WEEKEND-FIX] {symbol} resolution shifted Sun→Mon")
     
     LOGGER.info(f"🔍 Reconciling prediction {pred_id} ({symbol}) - "
                 f"Created: {datetime.fromtimestamp(run_at)}, "
@@ -486,33 +518,37 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
         
         # FALLBACK 1: Try CoinGecko for crypto symbols (has unlimited historical data!)
         # This is CRITICAL for reconciling old predictions (>30 days)
-        CRYPTO_SYMBOLS = {
+        _sym_is_crypto = (_is_crypto_registry(symbol.upper()) if _REGISTRY_AVAILABLE
+                          else symbol.upper() in {
             'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK',
             'DOGE', 'SHIB', 'LTC', 'TRX', 'TON', 'XLM', 'ATOM', 'UNI', 'AAVE', 'MKR',
             'PEPE', 'BONK', 'WIF', 'FLOKI', 'FET', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA',
             'OP', 'ARB', 'APE', 'SAND', 'MANA', 'AXS', 'GRT', 'CRV', 'COMP', 'SNX',
             'ETC', 'IMX', 'METIS', 'ALGO', 'HBAR', 'FLOW',
-        }
+        })
         
-        if symbol.upper() in CRYPTO_SYMBOLS:
+        if _sym_is_crypto:
             # Try CoinGecko with API key if available
             coingecko_key = os.getenv("COINGECKO_API_KEY")
             try:
                 import requests
                 from datetime import datetime
                 
-                # CoinGecko coin ID mapping
-                coingecko_ids = {
-                    'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana', 'BNB': 'binancecoin',
-                    'XRP': 'ripple', 'ADA': 'cardano', 'AVAX': 'avalanche-2', 'DOT': 'polkadot',
-                    'MATIC': 'matic-network', 'LINK': 'chainlink', 'DOGE': 'dogecoin', 
-                    'SHIB': 'shiba-inu', 'LTC': 'litecoin', 'TRX': 'tron', 'TON': 'the-open-network',
-                    'XLM': 'stellar', 'ATOM': 'cosmos', 'UNI': 'uniswap', 'AAVE': 'aave',
-                    'MKR': 'maker', 'PEPE': 'pepe', 'OP': 'optimism', 'ARB': 'arbitrum',
-                    'ETC': 'ethereum-classic', 'IMX': 'immutable-x', 'METIS': 'metis-token',
-                }
-                
-                coin_id = coingecko_ids.get(symbol.upper())
+                # CoinGecko coin ID mapping — use registry if available
+                if _REGISTRY_AVAILABLE:
+                    from core.symbol_registry import get_coingecko_id
+                    coin_id = get_coingecko_id(symbol.upper())
+                else:
+                    _cg_fallback = {
+                        'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana', 'BNB': 'binancecoin',
+                        'XRP': 'ripple', 'ADA': 'cardano', 'AVAX': 'avalanche-2', 'DOT': 'polkadot',
+                        'MATIC': 'matic-network', 'LINK': 'chainlink', 'DOGE': 'dogecoin', 
+                        'SHIB': 'shiba-inu', 'LTC': 'litecoin', 'TRX': 'tron', 'TON': 'the-open-network',
+                        'XLM': 'stellar', 'ATOM': 'cosmos', 'UNI': 'uniswap', 'AAVE': 'aave',
+                        'MKR': 'maker', 'PEPE': 'pepe', 'OP': 'optimism', 'ARB': 'arbitrum',
+                        'ETC': 'ethereum-classic', 'IMX': 'immutable-x', 'METIS': 'metis-token',
+                    }
+                    coin_id = _cg_fallback.get(symbol.upper())
                 if coin_id:
                     dt = datetime.fromtimestamp(timestamp)
                     date_str = dt.strftime("%d-%m-%Y")  # CoinGecko format: DD-MM-YYYY
@@ -567,15 +603,15 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
         
         # STOCK FALLBACK: Use yfinance for historical stock prices (critical fix!)
         # This enables proper outcome evaluation for stocks
-        if symbol.upper() not in CRYPTO_SYMBOLS:
+        if not _sym_is_crypto:
             try:
                 import yfinance as yf
                 from datetime import datetime, timedelta
                 
                 dt = datetime.fromtimestamp(timestamp)
-                # Get 5-day range around target date
-                start_date = (dt - timedelta(days=2)).strftime("%Y-%m-%d")
-                end_date = (dt + timedelta(days=2)).strftime("%Y-%m-%d")
+                # Get 7-day range around target date (wider window catches weekends/holidays)
+                start_date = (dt - timedelta(days=3)).strftime("%Y-%m-%d")
+                end_date = (dt + timedelta(days=4)).strftime("%Y-%m-%d")
                 
                 ticker = yf.Ticker(symbol.upper())
                 hist = ticker.history(start=start_date, end=end_date)
@@ -591,8 +627,10 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
                     
                     LOGGER.info(f"✅ yfinance historical price for {symbol} at {dt.date()}: ${price:.2f}")
                     return price
+                else:
+                    LOGGER.warning(f"⚠️  yfinance returned empty history for {symbol} ({start_date} to {end_date})")
             except Exception as e:
-                LOGGER.debug(f"yfinance historical fetch failed for {symbol}: {e}")
+                LOGGER.warning(f"⚠️  yfinance historical fetch failed for {symbol}: {e}")
         
         # Last resort: if within 24h, use current price (acceptable approximation)
         if abs(now - timestamp) < 86400:

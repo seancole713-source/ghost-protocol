@@ -23,88 +23,26 @@ import os
 import time
 import logging
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import random
+
+# ── #111-116: Centralized Symbol Registry (replaces 4 duplicate lists) ──
+from core.symbol_registry import (
+    ALL_STOCKS as _REGISTRY_STOCKS,
+    ALL_CRYPTO as _REGISTRY_CRYPTO,
+    get_coingecko_id,
+    get_all_coingecko_ids,
+)
 
 LOGGER = logging.getLogger("ghost.scout")
 
 
 # ALL ASSETS IN THE GAME - Everyone competes!
-ALL_STOCKS = [
-    # Tech Giants
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "AMD", "TSLA",
-    "NFLX", "CRM", "ORCL", "ADBE", "INTC", "CSCO", "IBM",
-    
-    # Storage & Hardware (STX = Seagate, NOT the crypto!)
-    "STX", "WDC", "NTAP", "PSTG",
-    
-    # Semiconductors
-    "AVGO", "QCOM", "TXN", "MU", "LRCX", "AMAT", "KLAC", "MRVL",
-    "ON", "NXPI", "ADI", "MCHP"    
-    # AI & Innovation
-    "PLTR", "AI", "PATH", "UPST", "COIN", "HOOD", "SOFI",
-    
-    # Healthcare & Biotech
-    "JNJ", "UNH", "PFE", "ABBV", "MRK", "LLY", "AMGN",
-    "GILD", "BMY", "REGN", "VRTX", "MRNA", "BIIB",
-    
-    # Finance
-    "JPM", "BAC", "WFC", "GS", "MS", "C", "AXP", "V", "MA",
-    "PYPL", "SQ", "BLK", "SCHW",
-    
-    # Consumer
-    "NKE", "SBUX", "MCD", "KO", "PEP", "WMT", "COST", "TGT",
-    "HD", "LOW", "DIS", "CMCSA",
-    
-    # Energy & Industrial
-    "XOM", "CVX", "COP", "SLB", "CAT", "DE", "HON", "GE",
-    "BA", "RTX", "LMT", "UPS", "FDX",
-    
-    # Others
-    "ABNB", "UBER", "LYFT", "DASH", "SPOT", "ZM", "SHOP",
-    "ROKU", "SNAP", "PINS", "TWLO", "OKTA"
-]
-
-ALL_CRYPTO = [
-    # Majors
-    "BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT",
-    "MATIC", "LINK", "UNI", "LTC", "BCH", "ATOM", "XLM",
-    
-    # Layer 1
-    "NEAR", "APT", "SUI", "SEI", "FTM", "ALGO", "HBAR", "VET",
-    "ICP", "FIL", "THETA", "EOS", "XTZ", "EGLD",
-    
-    # DeFi
-    "AAVE", "CRV", "MKR", "SNX", "COMP", "SUSHI", "YFI",
-    "1INCH", "BAL", "LDO", "PENDLE", "GMX",
-    
-    # Layer 2
-    "ARB", "OP", "IMX", "LRC", "STRK", "ZK",
-    
-    # AI & Compute
-    "RNDR", "FET", "OCEAN", "AGIX", "TAO", "AKT",
-    
-    # Gaming & NFT
-    "AXS", "SAND", "MANA", "ENJ", "GALA", "ILV", "IMX", "MAGIC",
-    "GODS", "PRIME", "YGG", "RON",
-    
-    # Infrastructure
-    "GRT", "ROSE", "AR", "KAVA", "INJ", "TIA", "PYTH",
-    "JUP", "JTO", "BONK", "WIF",
-    
-    # Others
-    "SHIB", "PEPE", "FLOKI", "TURBO", "WLD", "BLUR",
-    "DYDX", "MASK", "ENS", "CHZ", "AUDIO", "SUPER",
-    
-    # Old Guard
-    # NOTE: DASH renamed to DASHCOIN to avoid collision with DoorDash (DASH stock)
-    "ZEC", "DASHCOIN", "NEO", "WAVES", "QTUM", "ZIL", "ICX",
-    "RLC", "OMG", "BAT", "KNC", "ZRX",
-    
-    # Renamed to avoid collision with Seagate (STX stock)
-    "STACKS"  # Stacks crypto (formerly STX)
-]
+# Source of truth: core/symbol_registry.py — NO duplicate lists here
+ALL_STOCKS = list(_REGISTRY_STOCKS)
+ALL_CRYPTO = list(_REGISTRY_CRYPTO)
 
 
 def fetch_daily_movers(min_gain_pct: float = 5.0) -> List[Dict]:
@@ -208,6 +146,10 @@ class GhostScout:
         self.crypto = ALL_CRYPTO[:]
         self.include_dynamic_movers = include_dynamic_movers
         self.dynamic_movers_added = []
+        
+        # #41: Reusable HTTP session — keeps TCP connections alive across calls
+        self._session = requests.Session()
+        self._session.headers.update({"Accept": "application/json"})
         
         # Add dynamic movers to stock list
         if include_dynamic_movers:
@@ -373,6 +315,116 @@ class GhostScout:
             LOGGER.info(f"   Predictions in memory: {len(latest_predictions)}")
         
         return results
+
+    # ── #41-43: Concurrent scout with ThreadPoolExecutor ──────────────
+    def scout_all_fast(self, use_news: bool = True, max_workers: int = 10) -> Dict:
+        """
+        Run a full scouting cycle with PARALLEL price fetches.
+
+        Uses ThreadPoolExecutor to scout up to `max_workers` symbols
+        simultaneously. Same logic as scout_all() but ~10x faster.
+
+        Args:
+            use_news: If True, fetch news sentiment (slower but accurate).
+            max_workers: Max concurrent HTTP requests (default 10,
+                         keeps CoinGecko/Polygon rate limits happy).
+        """
+        from core.money_game_engine import get_money_game
+
+        game = get_money_game()
+        results = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "stocks_scouted": 0,
+            "crypto_scouted": 0,
+            "news_influenced_count": 0,
+            "dynamic_movers_found": len(self.dynamic_movers_added),
+            "trades_recorded": [],
+            "mode": "fast_parallel",
+        }
+
+        try:
+            import wolf_app
+            latest_predictions = wolf_app._LATEST_PREDICTIONS
+        except ImportError:
+            latest_predictions = {}
+
+        LOGGER.info(f"⚡ [SCOUT-FAST] Starting parallel scouting ({max_workers} workers)...")
+
+        # Build a unified work list: (symbol, asset_type)
+        work = [(s, "stock") for s in self.stocks] + [(s, "crypto") for s in self.crypto]
+
+        def _scout_one(item):
+            """Scout a single symbol — runs in a thread."""
+            sym, atype = item
+            try:
+                pred = self._make_prediction(sym, atype, use_news=use_news)
+                if pred:
+                    return (sym, atype, pred, None)
+            except Exception as exc:
+                return (sym, atype, None, exc)
+            return (sym, atype, None, None)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(_scout_one, w): w for w in work}
+            for future in as_completed(futures):
+                sym, atype, pred, exc = future.result()
+                if exc:
+                    LOGGER.error(f"⚡ [SCOUT-FAST] Error scouting {sym}: {exc}")
+                    continue
+                if not pred:
+                    continue
+
+                trade_id = game.record_trade(
+                    symbol=sym,
+                    asset_type=atype,
+                    direction=pred["direction"],
+                    entry_price=pred["entry_price"],
+                    target_price=pred["target_price"],
+                    confidence=pred["confidence"],
+                )
+                if trade_id <= 0:
+                    continue
+
+                if atype == "stock":
+                    results["stocks_scouted"] += 1
+                else:
+                    results["crypto_scouted"] += 1
+                if pred.get("news_influenced"):
+                    results["news_influenced_count"] += 1
+                results["trades_recorded"].append({
+                    "trade_id": trade_id,
+                    "symbol": sym,
+                    "direction": pred["direction"],
+                    "news_influenced": pred.get("news_influenced", False),
+                })
+
+                if latest_predictions is not None:
+                    latest_predictions[sym] = {
+                        "symbol": sym,
+                        "direction": pred["direction"],
+                        "confidence": pred["confidence"],
+                        "price": pred["entry_price"],
+                        "current_price": pred["entry_price"],
+                        "entry_price": pred["entry_price"],
+                        "target_price": pred["target_price"],
+                        "asset_type": atype,
+                        "run_at": time.time(),
+                        "source": "money_game_scout_fast",
+                        "news_influenced": pred.get("news_influenced", False),
+                        "sentiment_score": pred.get("sentiment_score", 0),
+                        "sentiment_label": pred.get("sentiment_label", "NEUTRAL"),
+                        "hold_hours": pred.get("hold_hours", 48),
+                        "hold_reason": pred.get("hold_reason", "default"),
+                    }
+
+        LOGGER.info(f"⚡ [SCOUT-FAST] Scouting complete!")
+        LOGGER.info(f"   Stocks: {results['stocks_scouted']}")
+        LOGGER.info(f"   Crypto: {results['crypto_scouted']}")
+        LOGGER.info(f"   📰 News-influenced: {results['news_influenced_count']}")
+        if latest_predictions:
+            LOGGER.info(f"   Predictions in memory: {len(latest_predictions)}")
+
+        return results
     
     def _make_prediction(self, symbol: str, asset_type: str, use_news: bool = True) -> Optional[Dict]:
         """
@@ -531,35 +583,10 @@ class GhostScout:
     def _get_crypto_price(self, symbol: str) -> Optional[float]:
         """Get crypto price from CoinGecko"""
         
-        # Map symbol to CoinGecko ID
-        symbol_to_id = {
-            "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
-            "XRP": "ripple", "ADA": "cardano", "DOGE": "dogecoin",
-            "AVAX": "avalanche-2", "DOT": "polkadot", "MATIC": "matic-network",
-            "LINK": "chainlink", "UNI": "uniswap", "LTC": "litecoin",
-            "ATOM": "cosmos", "NEAR": "near", "ARB": "arbitrum",
-            "OP": "optimism", "RNDR": "render-token", "INJ": "injective-protocol",
-            "SUI": "sui", "APT": "aptos", "SEI": "sei-network",
-            "FET": "fetch-ai", "OCEAN": "ocean-protocol", "TAO": "bittensor",
-            "SHIB": "shiba-inu", "PEPE": "pepe", "WIF": "dogwifcoin",
-            "BONK": "bonk", "FLOKI": "floki", "TURBO": "turbo",
-            "AAVE": "aave", "MKR": "maker", "SNX": "havven",
-            "CRV": "curve-dao-token", "COMP": "compound-coin",
-            "IMX": "immutable-x", "AXS": "axie-infinity", "SAND": "the-sandbox",
-            "MANA": "decentraland", "GALA": "gala", "ILV": "illuvium",
-            "GRT": "the-graph", "FIL": "filecoin", "AR": "arweave",
-            "STACKS": "blockstack", "TIA": "celestia", "CHZ": "chiliz",  # STACKS not STX (avoid collision)
-            "EGLD": "elrond-erd-2", "ZEC": "zcash", "RLC": "iexec-rlc",
-            # Edge whitelist symbols (Feb 11, 2026)
-            "GIGA": "gigachad", "IOTX": "iotex", "ALICE": "my-neighbor-alice",
-            "JUP": "jupiter-exchange-solana", "IQ": "everipedia",
-            "BAND": "band-protocol", "BRETT": "brett", "ICP": "internet-computer",
-            "BCH": "bitcoin-cash", "YFI": "yearn-finance", "HBAR": "hedera-hashgraph"
-        }
-        
-        cg_id = symbol_to_id.get(symbol.upper())
+        # Use centralized symbol registry (#84: kill duplicate CoinGecko maps)
+        cg_id = get_coingecko_id(symbol)
         if not cg_id:
-            # Try lowercase
+            # Fallback for unknown symbols
             cg_id = symbol.lower()
         
         url = f"https://api.coingecko.com/api/v3/simple/price?ids={cg_id}&vs_currencies=usd"
@@ -567,7 +594,7 @@ class GhostScout:
         # Retry once on 429 rate-limit (CoinGecko free tier)
         for attempt in range(2):
             try:
-                resp = requests.get(url, timeout=5)
+                resp = self._session.get(url, timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
                     if cg_id in data:
@@ -586,8 +613,6 @@ class GhostScout:
     
     def _get_stock_price(self, symbol: str) -> Optional[float]:
         """Get stock price from Polygon API (Yahoo blocks server requests)"""
-        import requests
-        
         polygon_key = os.getenv("POLYGON_API_KEY")
         if not polygon_key:
             LOGGER.warning(f"No POLYGON_API_KEY - cannot fetch {symbol}")
@@ -596,7 +621,7 @@ class GhostScout:
         try:
             # Polygon prev close endpoint - most reliable
             url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev?apiKey={polygon_key}"
-            resp = requests.get(url, timeout=10)
+            resp = self._session.get(url, timeout=10)
             
             if resp.status_code == 200:
                 data = resp.json()
@@ -655,8 +680,6 @@ class GhostScout:
         This is a simplified version - the real system would use
         full technical analysis, sentiment, etc.
         """
-        import requests
-        
         # Default to slight bullish bias (markets generally go up)
         direction = "BUY"
         confidence = 0.55
@@ -686,7 +709,7 @@ class GhostScout:
                 end = datetime.now().strftime("%Y-%m-%d")
                 start = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
                 url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start}/{end}?apiKey={polygon_key}"
-                resp = requests.get(url, timeout=10)
+                resp = self._session.get(url, timeout=10)
                 
                 if resp.status_code == 200:
                     data = resp.json()
@@ -707,21 +730,11 @@ class GhostScout:
                             confidence = min(0.8, 0.55 + abs(momentum))
             
             elif asset_type == "crypto":
-                # CoinGecko historical
-                symbol_to_id = {
-                    "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
-                    "GIGA": "gigachad", "IOTX": "iotex", "ALICE": "my-neighbor-alice",
-                    "JUP": "jupiter-exchange-solana", "IQ": "everipedia",
-                    "BAND": "band-protocol", "BRETT": "brett", "ICP": "internet-computer",
-                    "RNDR": "render-token", "TURBO": "turbo", "ENJ": "enjincoin",
-                    "CHZ": "chiliz", "ILV": "illuvium", "BCH": "bitcoin-cash",
-                    "YFI": "yearn-finance", "HBAR": "hedera-hashgraph",
-                    "PEPE": "pepe", "LINK": "chainlink", "AVAX": "avalanche-2",
-                }
-                cg_id = symbol_to_id.get(symbol.upper(), symbol.lower())
+                # CoinGecko historical — use centralized registry
+                cg_id = get_coingecko_id(symbol) or symbol.lower()
                 
                 url = f"https://api.coingecko.com/api/v3/coins/{cg_id}/market_chart?vs_currency=usd&days=30"
-                resp = requests.get(url, timeout=5)
+                resp = self._session.get(url, timeout=5)
                 
                 if resp.status_code == 200:
                     data = resp.json()
@@ -866,9 +879,11 @@ class GameResolver:
 
 
 # Convenience functions
-def run_scouting_cycle() -> Dict:
-    """Run a full scouting cycle"""
+def run_scouting_cycle(fast: bool = True) -> Dict:
+    """Run a full scouting cycle (fast=True uses parallel ThreadPoolExecutor)"""
     scout = GhostScout()
+    if fast:
+        return scout.scout_all_fast()
     return scout.scout_all()
 
 

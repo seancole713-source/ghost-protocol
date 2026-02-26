@@ -5,14 +5,17 @@ Uses yfinance's screener API to get liquid, high-volume stocks
 Takes ~10-15 minutes instead of 2 hours
 """
 
+import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import yfinance as yf
 import time
 from datetime import datetime
 
-# PostgreSQL connection
-DATABASE_URL = "postgresql://postgres:jdkObNnbzRoxzsPicrsfDeNuSUIrTgLp@metro.proxy.rlwy.net:28328/railway"
+# PostgreSQL connection — NEVER hardcode credentials
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is required")
 
 def get_top_1000_stocks():
     """Get top 1000 US stocks by market cap from major indices"""

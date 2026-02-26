@@ -5,12 +5,15 @@ Uses CoinGecko API (free tier - no API key needed).
 Takes ~10-15 minutes with rate limiting.
 """
 
+import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import requests
 import time
 
-DATABASE_URL = "postgresql://postgres:jdkObNnbzRoxzsPicrsfDeNuSUIrTgLp@metro.proxy.rlwy.net:28328/railway"
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is required")
 
 def get_top_crypto_from_coingecko(limit=500):
     """Fetch top crypto assets from CoinGecko API"""
