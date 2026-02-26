@@ -245,8 +245,8 @@ class GhostScout:
                     data["regime"] = "calm"
                 else:
                     data["regime"] = "neutral"
-        except Exception:
-            pass
+        except Exception as e:
+            LOGGER.warning(f"[SCOUT] Fear & Greed API failed — Brain regime/F&G abilities disabled: {e}")
 
         try:
             # BTC 24h change for cross-asset signal
@@ -259,8 +259,8 @@ class GhostScout:
                 cg = resp.json()
                 data["btc_24h"] = cg.get("bitcoin", {}).get("usd_24h_change", 0.0)
                 data["eth_24h"] = cg.get("ethereum", {}).get("usd_24h_change", 0.0)
-        except Exception:
-            pass
+        except Exception as e:
+            LOGGER.warning(f"[SCOUT] CoinGecko cross-asset API failed — Brain cross-asset ability disabled: {e}")
 
         return data
 
@@ -752,12 +752,13 @@ class GhostScout:
         
         # RSI-based momentum exhaustion (from prediction if available)
         rsi = prediction.get("rsi", 50)
-        direction = prediction.get("direction", "UP")
+        # FIX: Scout uses BUY/SELL vocabulary, not UP/DOWN (Brain format)
+        direction = prediction.get("direction", "BUY")
         
-        if direction == "UP" and rsi > 75:
+        if direction == "BUY" and rsi > 75:
             # Overbought on bullish = momentum exhausting, take profits soon
             base_days = max(1, base_days - 1)
-        elif direction == "DOWN" and rsi < 25:
+        elif direction == "SELL" and rsi < 25:
             # Oversold on bearish = bounce coming, don't overstay short
             base_days = max(1, base_days - 1)
         
@@ -1042,9 +1043,12 @@ class GhostScout:
                     return [r["c"] for r in results if r.get("c")]
             else:
                 cg_id = get_coingecko_id(symbol) or symbol.lower()
+                # FIX: days=30 without interval returns HOURLY data (~720 points)
+                # Adding interval=daily returns actual daily closes (~30 points)
+                # Previous bug: "5-day SMA" was actually 5-HOUR SMA
                 url = (
                     f"https://api.coingecko.com/api/v3/coins/{cg_id}"
-                    f"/market_chart?vs_currency=usd&days=30"
+                    f"/market_chart?vs_currency=usd&days=30&interval=daily"
                 )
                 resp = self._session.get(url, timeout=5)
                 if resp.status_code == 200:

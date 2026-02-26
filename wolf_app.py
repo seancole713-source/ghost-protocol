@@ -542,18 +542,9 @@ async def api_news(symbol: str = None, limit: int = 50):
                 print(f"RSS feed {source_name} failed: {e}")
                 continue
 
-        # Fallback if no articles
+        # Fallback if no articles — return empty list, not fake news
         if not news_items:
-            news_items = [
-                {
-                    "title": "Market Update",
-                    "summary": "Real-time news feed initializing.",
-                    "url": "#",
-                    "published": datetime.now().isoformat(),
-                    "source": "Ghost Protocol",
-                    "sentiment": 0.0,
-                }
-            ]
+            news_items = []
 
         return {
             "news": news_items[:limit],
@@ -14845,10 +14836,11 @@ async def api_v3_health_metrics():
         LOGGER.error(f"Health metrics failed: {e}", exc_info=True)
         return {
             "ok": False,
-            "data_health": 50,
-            "ai_activity": 50,
-            "accuracy": 50,
-            "error": str(e)
+            "data_health": None,
+            "ai_activity": None,
+            "accuracy": None,
+            "error": str(e),
+            "note": "All metrics unavailable due to error — do NOT treat as 50%"
         }
 
 
@@ -15030,7 +15022,10 @@ async def api_v3_test_inject_trade(
     """
     Option 3: Inject a simulated high-confidence prediction for testing.
     Tests the entire trade pipeline end-to-end.
+    GUARD: Only works when SIM_MODE=1 to prevent polluting production data.
     """
+    if os.getenv("SIM_MODE", "0") != "1":
+        return {"ok": False, "error": "Test injection disabled in production (requires SIM_MODE=1)"}
     try:
         from core.autonomous_execution_engine import run_execution_cycle
         from core.prediction_store import get_prediction_store
@@ -30576,10 +30571,14 @@ async def telegram_webhook(update: TelegramUpdate):
                 try:
                     price, _, _ = get_wolf_price() if symbol == "WOLF" else (None, None, None)
                     if not price:
-                        # Try to get price from broker
-                        price = qty * 100  # Placeholder
+                        # Try to get price from broker — DO NOT use placeholder
+                        price = None
                 except Exception:
                     price = None
+
+                if price is None:
+                    await _tg_send_chat_message(chat_id, f"❌ Cannot execute /buy — unable to fetch current price for {symbol}. Order blocked for safety.")
+                    return {"ok": True}
 
                 # Risk check
                 allowed, reason = risk_engine.risk_check_order(
@@ -35137,32 +35136,8 @@ async def ai_preview():
 
     # Return analogs from AI inference
     if not analogs:
-        import time
-
-        # Generate empty analog structure
-        analogs = [
-            {
-                "ts": int(time.time() - 86400 * 7),
-                "label": 1,
-                "action": "BUY",
-                "confidence": 65,
-                "outcome_24h": "+2.3%",
-            },
-            {
-                "ts": int(time.time() - 86400 * 14),
-                "label": 1,
-                "action": "BUY",
-                "confidence": 72,
-                "outcome_24h": "+1.8%",
-            },
-            {
-                "ts": int(time.time() - 86400 * 21),
-                "label": -1,
-                "action": "SELL",
-                "confidence": 58,
-                "outcome_24h": "-1.2%",
-            },
-        ]
+        # No analogs available — return empty list instead of fabricated data
+        analogs = []
 
     return {
         "gps": float(f"{gps:.2f}"),
@@ -36513,15 +36488,7 @@ async def _get_news_feed(limit: int = 20):
     except Exception:
         pass
     if not news_items:
-        news_items = [
-            {
-                "title": "Market Update",
-                "summary": "Real-time news feed initializing...",
-                "published": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "source": "Ghost Protocol",
-                "link": "#",
-            }
-        ]
+        news_items = []  # Return empty, not fake news
     return {"news": news_items[-limit:], "count": len(news_items)}
 
 

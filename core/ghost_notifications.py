@@ -681,19 +681,19 @@ def get_symbol_accuracy_from_postgres() -> Dict[str, Dict]:
         return {}
     
     try:
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor()
-        
-        cur.execute("""
-            SELECT symbol, total_predictions, correct_predictions, accuracy_pct
-            FROM ghost_symbol_accuracy
-            WHERE total_predictions >= %s
-            ORDER BY total_predictions DESC
-        """, (LEARNING_MIN_PREDICTIONS,))
-        
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT symbol, total_predictions, correct_predictions, accuracy_pct
+                FROM ghost_symbol_accuracy
+                WHERE total_predictions >= %s
+                ORDER BY total_predictions DESC
+            """, (LEARNING_MIN_PREDICTIONS,))
+            
+            rows = cur.fetchall()
+            cur.close()
         
         result = {}
         for row in rows:
@@ -1512,12 +1512,12 @@ class GhostNotificationSystem:
             return False
     
     def _get_postgres_conn(self):
-        """Get PostgreSQL connection from DATABASE_URL"""
-        import psycopg2
-        database_url = os.getenv("DATABASE_URL", "")
-        if not database_url:
+        """Get PostgreSQL connection from db_pool"""
+        try:
+            from core.db_pool import get_sync_connection
+            return get_sync_connection().__enter__()
+        except Exception:
             return None
-        return psycopg2.connect(database_url)
     
     def _init_postgres(self) -> bool:
         """Initialize PostgreSQL tracking tables. Returns True if successful."""
@@ -1530,14 +1530,14 @@ class GhostNotificationSystem:
         LOGGER.info(f"[TRACKING] Attempting PostgreSQL connection (URL length: {len(database_url)} chars)")
         
         try:
-            import psycopg2
+            from core.db_pool import get_sync_connection
         except ImportError as ie:
-            self._last_postgres_error = f"psycopg2 not installed: {ie}"
-            LOGGER.warning(f"[TRACKING] psycopg2 import failed: {ie}")
+            self._last_postgres_error = f"db_pool not available: {ie}"
+            LOGGER.warning(f"[TRACKING] db_pool import failed: {ie}")
             return False
         
         try:
-            conn = psycopg2.connect(database_url)
+            conn = get_sync_connection().__enter__()
             LOGGER.info("[TRACKING] PostgreSQL connection successful!")
             cur = conn.cursor()
             
