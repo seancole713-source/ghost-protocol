@@ -1,29 +1,29 @@
 {
   "date": "2026-02-26",
-  "timestamp": 1772120586,
+  "timestamp": 1772122893,
   "spy": {
-    "price": 686.73,
-    "change_5d": -0.39,
-    "ma20": 687.81,
-    "ma50": 687.81
+    "price": 688.48,
+    "change_5d": -0.14,
+    "ma20": 688.16,
+    "ma50": 688.16
   },
   "qqq": {
-    "price": 606.9,
-    "change_5d": -0.31
+    "price": 608.36,
+    "change_5d": -0.07
   },
   "vix": {
-    "current": 20.43,
-    "interpretation": "elevated (caution)"
+    "current": 19.51,
+    "interpretation": "normal"
   },
-  "market_regime": "bear",
-  "sentiment": "risk-off",
+  "market_regime": "sideways",
+  "sentiment": "neutral",
   "confidence": 95,
-  "volatility": 0.162,
+  "volatility": 0.152,
   "signals": {
-    "short_term": "bearish (below 20MA)",
-    "medium_term": "bearish (below 50MA)",
+    "short_term": "bullish (above 20MA)",
+    "medium_term": "bullish (above 50MA)",
     "ma_crossover": "neutral",
     "volatility": "normal"
   },
-  "summary": "Bear market conditions. SPY under pressure (-0.4% over 5 days), VIX elevated (20.4). Risk-off positioning advised."
+  "summary": "Sideways/consolidation phase. SPY range-bound (-0.1% over 5 days), VIX 19.5. Neutral bias."
 }

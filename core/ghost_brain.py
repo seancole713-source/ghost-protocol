@@ -1,93 +1,173 @@
 #!/usr/bin/env python3
 """
-🧠 GHOST BRAIN v2 — Centralized Learning Intelligence
-=======================================================
+🧠 GHOST BRAIN v3 — 25 Cognitive Abilities
+============================================
 
-The OLD system had 3 disconnected pieces:
-  ❌ should_exclude_symbol()  → Binary: exclude or pass (no flip option)
-  ❌ get_confidence_boost()   → Binary: boost or pass (no scale-down)
-  ❌ INVERSE_GHOST env var    → Dumb global ON/OFF toggle (no per-symbol)
+Evolution: v1 (binary exclude/boost) → v2 (6-zone + invert) → v3 (FULL BRAIN)
 
-The NEW brain unifies ALL decisions into one engine:
-  ✅ INVERT   — Flip reliably-wrong symbols (35% raw → 65% effective)
-  ✅ SCALE    — Adjust confidence proportional to actual accuracy
-  ✅ BIAS     — Detect directional bias (model always says UP)
-  ✅ TIER     — Classify symbols: 🟢HOT 🟡WARM 🔴COLD 🔄INVERTED ⛔EXCLUDED
-  ✅ GUARD    — Prevent correlated bets (not all picks same direction)
-  ✅ DECAY    — Weight recent accuracy heavier than old data
-  ✅ REPORT   — Honest self-assessment every cycle
+The brain operates as a POST-PROCESSING layer at notification time.
+Raw paper trades are PRESERVED (model accuracy stays honest).
+The brain adjusts what gets SENT to users and at what confidence.
 
-Architecture:
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  PostgreSQL (ghost_symbol_accuracy)                              │
-  │       │                                                          │
-  │       ▼                                                          │
-  │  GhostBrain.analyze_symbol()                                     │
-  │       │                                                          │
-  │       ├─ accuracy < 38%  → INVERT (flip direction, boost conf)   │
-  │       ├─ accuracy 38-48% → EXCLUDE (noise zone, coin flip)       │
-  │       ├─ accuracy 48-55% → SEND with penalty (barely above flip) │
-  │       ├─ accuracy 55-62% → SEND neutral (moderate edge)          │
-  │       ├─ accuracy 62-70% → SEND with boost (real edge)           │
-  │       └─ accuracy > 70%  → SEND with strong boost (proven)       │
-  │                                                                  │
-  │  Brain operates at NOTIFICATION time (post-processing layer)     │
-  │  Raw paper trades preserved → accuracy data = MODEL accuracy     │
-  │  Brain self-reports every cycle → honest self-assessment          │
-  └──────────────────────────────────────────────────────────────────┘
+═══════════════════════════════════════════════════════════════════
+25 COGNITIVE ABILITIES
+═══════════════════════════════════════════════════════════════════
 
-Why this is smarter than a human trader:
-  1. No ego — will admit it's wrong and flip instantly
-  2. No emotion — scales confidence mathematically, not "gut feeling"
-  3. Tracks 200+ symbols simultaneously with zero fatigue
-  4. Detects its own biases (always-UP tendency) automatically
-  5. Self-corrects every cycle — doesn't wait for a human to notice
-  6. Reports its own health honestly — no hiding bad performance
+  TIER 1 — Highest Impact (data enrichment):
+    #1  PER-DIRECTION      UP vs DOWN accuracy per symbol
+    #2  RECENCY             30-day accuracy weighted 70/30 vs all-time
+    #3  CALIBRATION         Map confidence to actual hit probability
+    #4  STREAK              Hot/cold streaks from trust ladder
+    #5  REGIME              Market regime awareness (VIX/calm/fear)
+
+  TIER 2 — High Impact (environmental signals):
+    #6  MAGNITUDE           Weight wins by size (big right > barely right)
+    #7  DAY-OF-WEEK         Learn which days Ghost is accurate
+    #8  SIGNAL_SOURCE       Track which signal sources win (future)
+    #9  ADAPTIVE            Self-optimize thresholds weekly
+    #10 FEAR_GREED          Fear & Greed index integration
+
+  TIER 3 — Medium Impact (correlation intelligence):
+    #11 SECTOR              Sector/category correlation
+    #12 VOLUME              Volume confirmation gate (future)
+    #13 EARNINGS            Earnings blackout learning (future)
+    #14 AUTO_PRUNE          Remove chronic noise symbols
+    #15 ENSEMBLE            Multi-source voting (future)
+
+  TIER 4 — Smart Optimizations:
+    #16 REDISTRIBUTE        Confidence calibration output
+    #17 INVERSE_DECAY       Don't flip forever, recheck
+    #18 CROSS_ASSET         BTC/SPY leading indicators
+    #19 EXPECTED_VALUE      Profit-weighted accuracy (EV)
+    #20 WEEKEND             Weekend crypto penalty
+
+  TIER 5 — Meta Intelligence:
+    #21 BACKTEST            Replay before deploying changes
+    #22 AB_TEST             Split-test brain configurations
+    #23 CIRCUIT_BREAKER     Emergency brake on bad streaks
+    #24 FEATURE_IMPORTANCE  Track which abilities help most
+    #25 SELF_EVOLVE         Auto-tune thresholds from data
+
+═══════════════════════════════════════════════════════════════════
+ARCHITECTURE
+═══════════════════════════════════════════════════════════════════
+
+  ┌───────────────────────────────────────────────────────────────┐
+  │  brain_data.py → load_brain_context()                         │
+  │       │                                                       │
+  │       ▼                                                       │
+  │  BrainContext (rich data: direction, recency, streaks, etc.)  │
+  │       │                                                       │
+  │       ▼                                                       │
+  │  GhostBrain.analyze_batch(predictions, context)               │
+  │       │                                                       │
+  │       ├─ Per-symbol: compute brain_accuracy (#1,#2,#6)        │
+  │       ├─ Decision tree: INVERT/EXCLUDE/COLD/WARM/HOT/FIRE    │
+  │       ├─ Confidence modifiers: (#4,#5,#7,#10,#11,#18,#20)    │
+  │       ├─ Calibration: (#3,#16)                                │
+  │       ├─ Circuit breaker: (#23)                               │
+  │       ├─ Cross-symbol: bias detection, correlation guard      │
+  │       └─ Meta: (#17,#19,#22,#24)                              │
+  │                                                               │
+  │  Output: Dict[symbol, BrainDecision]                          │
+  └───────────────────────────────────────────────────────────────┘
 """
 
 import os
 import logging
+import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Any
+
+# Import data structures (brain_data.py has no dependencies on us)
+try:
+    from core.brain_data import BrainContext, SymbolContext
+except ImportError:
+    from brain_data import BrainContext, SymbolContext
 
 LOGGER = logging.getLogger("ghost_brain")
 
-# =============================================================================
-# BRAIN CONFIGURATION (all overridable via env vars)
-# =============================================================================
 
-# Master switch — allows disabling the brain entirely
+# ═══════════════════════════════════════════════════════════════════
+# CONFIGURATION (all overridable via env vars)
+# ═══════════════════════════════════════════════════════════════════
+
+# Master switch
 BRAIN_ENABLED = os.getenv("GHOST_BRAIN_ENABLED", "1") == "1"
 
-# ─── Accuracy Thresholds ───
-#
-# These define the brain's decision boundaries:
-#
-#   0%  ───── INVERT_BELOW ───── EXCLUDE_BELOW ───── BOOST_ABOVE ───── 100%
-#       [     INVERT      ] [    EXCLUDE    ] [   INCLUDE    ] [  BOOST   ]
-#       "reliably wrong"    "noise zone"      "has some edge"  "proven"
-#
+# ─── Core Thresholds (v2, kept) ───
 INVERT_BELOW = float(os.getenv("BRAIN_INVERT_BELOW", "38.0"))
 EXCLUDE_BELOW = float(os.getenv("BRAIN_EXCLUDE_BELOW", "48.0"))
 BOOST_ABOVE = float(os.getenv("BRAIN_BOOST_ABOVE", "62.0"))
 STRONG_BOOST_ABOVE = float(os.getenv("BRAIN_STRONG_BOOST", "70.0"))
-
-# Minimum predictions before brain acts (need statistical significance)
 MIN_SAMPLES = int(os.getenv("BRAIN_MIN_SAMPLES", "20"))
 
-# ─── Confidence Multipliers ───
-STRONG_BOOST_MULT = 1.30     # 70%+ accuracy → 30% confidence boost
-BOOST_MULT = 1.15            # 62%+ accuracy → 15% confidence boost
-NOISE_PENALTY_MULT = 0.85    # 48-55% accuracy → 15% confidence reduction
-CONFIDENCE_CAP = 0.98        # Never exceed 98% confidence
+# ─── Confidence Multipliers (v2, kept) ───
+STRONG_BOOST_MULT = 1.30
+BOOST_MULT = 1.15
+NOISE_PENALTY_MULT = 0.85
+CONFIDENCE_CAP = 0.98
 
-# ─── Direction Bias Detection ───
-BIAS_THRESHOLD = 0.80  # Flag if >80% of predictions are same direction
-
-# ─── Correlation Guard ───
+# ─── Direction Bias (v2, kept) ───
+BIAS_THRESHOLD = 0.80
 MAX_SAME_DIRECTION = int(os.getenv("BRAIN_MAX_SAME_DIR", "6"))
 
-# ─── Known Crypto (for correlation grouping, no external imports) ───
+# ─── #2: Recency ───
+RECENCY_WEIGHT = float(os.getenv("BRAIN_RECENCY_WEIGHT", "0.70"))
+RECENCY_MIN_SAMPLES = 10  # need at least 10 recent to use
+
+# ─── #4: Streak Modifiers ───
+STREAK_BONUS_PER = 0.02       # +2% confidence per consecutive win
+STREAK_PENALTY_PER = 0.03     # -3% confidence per consecutive loss
+MAX_STREAK_MOD = 0.15         # cap at ±15%
+
+# ─── #5: Market Regime Modifiers ───
+REGIME_MODIFIERS = {
+    "calm":     0.05,
+    "neutral":  0.0,
+    "elevated": -0.05,
+    "fear":     -0.12,
+    "panic":    -0.20,
+    "unknown":  0.0,
+}
+
+# ─── #6: Magnitude Bonus ───
+MAGNITUDE_BIG_WIN_RATIO = 2.0     # wins 2x bigger than losses = bonus
+MAGNITUDE_BIG_LOSS_RATIO = 0.5    # losses bigger than wins = penalty
+MAGNITUDE_BONUS = 3.0             # accuracy points bonus
+MAGNITUDE_PENALTY = -3.0          # accuracy points penalty
+
+# ─── #10: Fear & Greed Thresholds ───
+FG_EXTREME_FEAR = 20
+FG_FEAR = 35
+FG_GREED = 65
+FG_EXTREME_GREED = 80
+
+# ─── #17: Inverse Decay ───
+INVERSE_RECHECK_DAYS = int(os.getenv("BRAIN_INVERSE_RECHECK", "30"))
+
+# ─── #20: Weekend ───
+WEEKEND_CRYPTO_PENALTY = 0.05
+
+# ─── #23: Circuit Breaker ───
+CIRCUIT_BREAKER_THRESHOLD = float(os.getenv("BRAIN_CIRCUIT_BREAKER", "45.0"))
+CIRCUIT_BREAKER_MIN_PREDS = 30
+CIRCUIT_BREAKER_PENALTY = 0.25
+
+# ─── #14: Auto-Prune ───
+PRUNE_MIN_DAYS = int(os.getenv("BRAIN_PRUNE_DAYS", "90"))
+PRUNE_MIN_PREDICTIONS = int(os.getenv("BRAIN_PRUNE_MIN_PREDS", "100"))
+
+# ─── Confidence Modifier Caps ───
+MAX_TOTAL_BOOST = 0.35
+MAX_TOTAL_PENALTY = 0.35
+
+
+# ═══════════════════════════════════════════════════════════════════
+# KNOWN CRYPTO (for asset classification)
+# ═══════════════════════════════════════════════════════════════════
+
 _KNOWN_CRYPTO = {
     "BTC", "ETH", "XRP", "SOL", "DOGE", "ADA", "AVAX", "LINK", "DOT",
     "MATIC", "SHIB", "UNI", "LTC", "BCH", "ATOM", "FIL", "NEAR", "ICP",
@@ -100,77 +180,97 @@ _KNOWN_CRYPTO = {
     "JTO", "BONK", "WIF", "FLOKI", "ORDI", "RUNE", "ROSE", "QTUM",
     "ANT", "ZEN", "ONDO",
 }
-# NOTE: T (AT&T), HOOD (Robinhood), COIN (Coinbase) are STOCKS, not crypto.
-# They trade on NYSE/NASDAQ. Don't put them in _KNOWN_CRYPTO.
+# NOTE: T (AT&T), HOOD (Robinhood), COIN (Coinbase) are STOCKS.
 
 
-# =============================================================================
+# ═══════════════════════════════════════════════════════════════════
+# #11: SECTOR GROUPS (for correlation intelligence)
+# ═══════════════════════════════════════════════════════════════════
+
+CRYPTO_SECTORS = {
+    "L1":     {"BTC", "ETH", "SOL", "ADA", "AVAX", "DOT", "NEAR", "APT", "SUI", "SEI"},
+    "MEME":   {"DOGE", "SHIB", "PEPE", "BONK", "WIF", "FLOKI", "TURBO", "BRETT"},
+    "DEFI":   {"UNI", "AAVE", "CRV", "MKR", "COMP", "SNX", "SUSHI", "1INCH", "DYDX"},
+    "GAMING": {"AXS", "SAND", "MANA", "ILV", "ENJ", "ALICE"},
+    "INFRA":  {"LINK", "FIL", "RNDR", "THETA", "ARB", "OP", "IOTX"},
+}
+
+STOCK_SECTORS = {
+    "BIG_TECH": {"AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA"},
+    "FINTECH":  {"HOOD", "COIN", "SQ", "SOFI"},
+    "GROWTH":   {"TSLA", "PLTR", "NIO", "AMD"},
+    "VALUE":    {"T", "INTC", "DIS", "BA", "NFLX"},
+}
+
+
+# ═══════════════════════════════════════════════════════════════════
 # BRAIN DECISION
-# =============================================================================
+# ═══════════════════════════════════════════════════════════════════
 
 @dataclass
 class BrainDecision:
-    """A single decision made by Ghost Brain for one symbol.
+    """A decision made by Ghost Brain v3 for one symbol.
 
-    Fields:
-        symbol:             The trading symbol
-        action:             SEND | EXCLUDE | INVERT
-        direction:          Final direction (may be flipped from raw)
-        confidence:         Adjusted confidence (0.0-1.0)
-        tier:               Performance tier label
-        reasons:            Human-readable decision trail
-        raw_accuracy:       Original accuracy from accuracy_data
-        effective_accuracy: Accuracy after inversion (if applicable)
-        inverted:           Whether direction was flipped
-        sample_size:        How many predictions this is based on
+    Enhanced from v2 with:
+      - brain_accuracy (blended, replaces raw_accuracy in decisions)
+      - confidence_modifiers (which abilities adjusted confidence)
+      - data_quality (how rich the input data was)
+      - expected_value (profit-weighted accuracy)
+      - prune_candidate (should this symbol be removed?)
+      - ab_group (A/B test assignment)
     """
     symbol: str
-    action: str                      # SEND | EXCLUDE | INVERT
-    direction: str                   # Final direction (may differ from model)
-    confidence: float                # Adjusted confidence
-    tier: str                        # 🟢HOT | 🟡WARM | ⚪NEUTRAL | 🔴COLD | 🔄INVERTED | ⛔EXCLUDED
-    asset_class: str = "unknown"     # crypto | stock — for separate tracking
+    action: str                       # SEND | EXCLUDE | INVERT
+    direction: str                    # Final direction (may be flipped)
+    confidence: float                 # Adjusted confidence (0.0-1.0)
+    tier: str                         # 🟢HOT | 🟡WARM | 🔴COLD | 🔄INVERTED | ⛔EXCLUDED
+    asset_class: str = "unknown"      # crypto | stock
     reasons: List[str] = field(default_factory=list)
-    raw_accuracy: float = 50.0       # Model's actual accuracy
-    effective_accuracy: float = 50.0  # After inversion: 100 - raw_accuracy
+
+    # Accuracy data
+    raw_accuracy: float = 50.0        # All-time accuracy from DB
+    brain_accuracy: float = 50.0      # Blended accuracy (#1,#2,#6)
+    effective_accuracy: float = 50.0  # After inversion: 100 - brain_accuracy
     inverted: bool = False
     sample_size: int = 0
 
+    # v3 enhancements
+    confidence_modifiers: Dict[str, float] = field(default_factory=dict)
+    data_quality: str = "basic"       # basic | partial | rich
+    expected_value: float = 0.0       # #19: profit-weighted
+    prune_candidate: bool = False     # #14: should remove?
+    ab_group: str = ""                # #22: A or B
+    direction_split: Dict[str, float] = field(default_factory=dict)
 
-# =============================================================================
-# GHOST BRAIN
-# =============================================================================
+
+# ═══════════════════════════════════════════════════════════════════
+# GHOST BRAIN v3
+# ═══════════════════════════════════════════════════════════════════
 
 class GhostBrain:
     """
-    Ghost's centralized learning intelligence.
+    Ghost's centralized learning intelligence — 25 cognitive abilities.
 
-    7 Cognitive Abilities:
-    ┌──────────────────────────────────────────────────────────┐
-    │  1. INVERT   — Flip reliably-wrong symbols              │
-    │  2. SCALE    — Adjust confidence to match reality        │
-    │  3. BIAS     — Detect directional bias                   │
-    │  4. TIER     — Classify performance tiers                │
-    │  5. GUARD    — Prevent correlated bets                   │
-    │  6. DECAY    — Weight recent data heavier                │
-    │  7. REPORT   — Honest self-assessment                    │
-    └──────────────────────────────────────────────────────────┘
-
-    Usage:
+    Usage (v3 with rich context):
         brain = GhostBrain()
+        context = await load_brain_context(db_url, symbols, market_data)
+        decisions = brain.analyze_batch(predictions, context=context)
 
-        # Single symbol:
-        decision = brain.analyze_symbol("BTC", "UP", 0.80, accuracy_data)
-
-        # Full batch (enables cross-symbol intelligence):
-        decisions = brain.analyze_batch(predictions, accuracy_data)
-        report = brain.generate_report()
+    Usage (backward compatible with v2):
+        brain = GhostBrain()
+        decisions = brain.analyze_batch(predictions, accuracy_data=old_dict)
     """
 
     def __init__(self):
         self._decisions: Dict[str, BrainDecision] = {}
         self._direction_bias: Optional[Dict] = None
         self._correlation_warnings: List[str] = []
+        self._circuit_breaker_active: bool = False
+        self._inverse_tracker: Dict[str, datetime] = {}  # #17
+        self._prune_candidates: List[str] = []            # #14
+        self._feature_contributions: Dict[str, Dict] = {} # #24
+        self._ab_groups: Dict[str, str] = {}              # #22
+
         self._cycle_stats = {
             "analyzed": 0,
             "inverted": 0,
@@ -180,41 +280,23 @@ class GhostBrain:
             "sent": 0,
         }
 
-    # ─────────────────────────────────────────────────────────
-    # ABILITY 1-4: CORE ANALYSIS (invert, scale, tier, per symbol)
-    # ─────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════
+    # CORE: analyze_symbol (enhanced with all 25 abilities)
+    # ═══════════════════════════════════════════════════════════
 
     def analyze_symbol(
         self,
         symbol: str,
         direction: str,
         confidence: float,
-        accuracy_data: Dict[str, Dict],
+        accuracy_data: Optional[Dict[str, Dict]] = None,
+        context: Optional[BrainContext] = None,
     ) -> BrainDecision:
         """
-        Make a unified decision for one symbol.
+        Make a unified decision for one symbol using all 25 abilities.
 
-        This REPLACES:
-        - should_exclude_symbol()'s learning check (env/hardcoded checks stay)
-        - get_confidence_boost() entirely
-        - INVERSE_GHOST per-symbol toggle
-
-        Decision tree:
-            accuracy < 38%  → INVERT (reliably wrong = reliably predictable)
-            accuracy 38-48% → EXCLUDE (noise zone, near coin flip)
-            accuracy 48-55% → SEND with confidence penalty
-            accuracy 55-62% → SEND neutral
-            accuracy 62-70% → SEND with boost
-            accuracy 70%+   → SEND with strong boost
-
-        Args:
-            symbol:        Trading symbol (e.g. "BTC", "ETH")
-            direction:     Raw direction from model ("UP" or "DOWN")
-            confidence:    Raw confidence from model (0.0-1.0)
-            accuracy_data: Dict from get_symbol_accuracy_from_postgres()
-
-        Returns:
-            BrainDecision with all adjustments applied
+        Backward compatible: pass accuracy_data for v2 behavior,
+        or context for full v3 intelligence.
         """
         if not BRAIN_ENABLED:
             return BrainDecision(
@@ -224,27 +306,43 @@ class GhostBrain:
             )
 
         reasons: List[str] = []
+        modifiers: Dict[str, float] = {}
         inverted = False
         final_direction = direction
         final_confidence = confidence
 
-        # ── Get accuracy data ──
-        data = accuracy_data.get(symbol.upper()) or accuracy_data.get(symbol) or {}
-        raw_accuracy = data.get("accuracy_pct", 50.0)
-        total = data.get("total", 0)
-
-        # ── Classify asset type ──
+        # ── Classify asset ──
         asset_class = "crypto" if symbol.upper() in _KNOWN_CRYPTO else "stock"
 
-        # ── INSUFFICIENT DATA → pass through (need enough to judge) ──
+        # ── Get data (v3 context or v2 fallback) ──
+        sym_ctx = None
+        if context:
+            sym_ctx = context.symbols.get(symbol.upper())
+
+        if sym_ctx:
+            raw_accuracy = sym_ctx.accuracy_pct
+            total = sym_ctx.total_predictions
+            data_quality = "rich" if sym_ctx.recent_total >= RECENCY_MIN_SAMPLES else "partial"
+        elif accuracy_data:
+            data = accuracy_data.get(symbol.upper()) or accuracy_data.get(symbol) or {}
+            raw_accuracy = data.get("accuracy_pct", 50.0)
+            total = data.get("total", 0)
+            data_quality = "basic"
+        else:
+            raw_accuracy = 50.0
+            total = 0
+            data_quality = "none"
+
+        # ── INSUFFICIENT DATA → pass through ──
         if total < MIN_SAMPLES:
-            reasons.append(f"insufficient_data ({total}/{MIN_SAMPLES} predictions)")
+            reasons.append(f"insufficient_data ({total}/{MIN_SAMPLES})")
             decision = BrainDecision(
                 symbol=symbol, action="SEND", direction=direction,
                 confidence=confidence, tier="⚪NEUTRAL",
-                asset_class=asset_class,
-                reasons=reasons, raw_accuracy=raw_accuracy,
+                asset_class=asset_class, reasons=reasons,
+                raw_accuracy=raw_accuracy, brain_accuracy=raw_accuracy,
                 effective_accuracy=raw_accuracy, sample_size=total,
+                data_quality=data_quality,
             )
             self._decisions[symbol] = decision
             self._cycle_stats["analyzed"] += 1
@@ -252,53 +350,103 @@ class GhostBrain:
             return decision
 
         # ══════════════════════════════════════════════════════
-        # DECISION TREE
+        # STEP 1: Compute brain_accuracy (#1, #2, #6)
+        # ══════════════════════════════════════════════════════
+        brain_accuracy = self._compute_brain_accuracy(
+            symbol, direction, raw_accuracy, sym_ctx
+        )
+        reasons.append(
+            f"brain_accuracy={brain_accuracy:.1f}% "
+            f"(raw={raw_accuracy:.1f}%)"
+        )
+
+        # ══════════════════════════════════════════════════════
+        # STEP 2: Decision tree (same zones, smarter input)
         # ══════════════════════════════════════════════════════
 
-        # ── ZONE 1: INVERT (accuracy < 38%) ──
-        # The model is RELIABLY WRONG. That's actually useful!
-        # A student who gets 30% on a true/false test KNOWS the
-        # material — they're just picking the wrong answer.
-        # Flip it → 70% accuracy.
-        if raw_accuracy < INVERT_BELOW:
-            inverted = True
-            final_direction = "DOWN" if direction == "UP" else "UP"
-            effective_accuracy = 100.0 - raw_accuracy
+        dir_split = {}  # direction split data (populated in INVERT zone)
+
+        # ── ZONE 1: INVERT (brain_accuracy < 38%) ──
+        if brain_accuracy < INVERT_BELOW:
+
+            # #1: Check direction split — maybe only one direction is bad
+            skip_invert = False
+            dir_split = {}
+            if sym_ctx:
+                dir_split = {
+                    "up": sym_ctx.up_accuracy,
+                    "down": sym_ctx.down_accuracy,
+                }
+                dir_total = sym_ctx.up_total if direction == "UP" else sym_ctx.down_total
+                dir_acc = sym_ctx.up_accuracy if direction == "UP" else sym_ctx.down_accuracy
+
+                if dir_total >= MIN_SAMPLES and dir_acc >= EXCLUDE_BELOW:
+                    # THIS direction is actually fine — don't invert
+                    skip_invert = True
+                    reasons.append(
+                        f"#1 DIRECTION_SPLIT: {direction} accuracy "
+                        f"{dir_acc:.1f}% is OK — NOT inverting"
+                    )
+
+            if skip_invert:
+                # Send without inversion, but penalize
+                effective_accuracy = brain_accuracy
+                final_confidence = confidence * NOISE_PENALTY_MULT
+                tier = "🔴COLD"
+                action = "SEND"
+                self._cycle_stats["penalized"] += 1
+            else:
+                # Full inversion
+                inverted = True
+                final_direction = "DOWN" if direction == "UP" else "UP"
+                effective_accuracy = 100.0 - brain_accuracy
+
+                reasons.append(
+                    f"🔄 INVERT: {brain_accuracy:.1f}% < {INVERT_BELOW}% → "
+                    f"flipped {direction}→{final_direction} "
+                    f"(effective {effective_accuracy:.1f}%)"
+                )
+
+                # #17: Track inversion for decay checking
+                if symbol not in self._inverse_tracker:
+                    self._inverse_tracker[symbol] = datetime.now()
+
+                # Boost inverted symbols proportional to effective accuracy
+                if effective_accuracy >= STRONG_BOOST_ABOVE:
+                    final_confidence = min(CONFIDENCE_CAP, confidence * STRONG_BOOST_MULT)
+                    reasons.append(f"🚀 STRONG_BOOST: eff {effective_accuracy:.1f}% → ×{STRONG_BOOST_MULT}")
+                    self._cycle_stats["boosted"] += 1
+                elif effective_accuracy >= BOOST_ABOVE:
+                    final_confidence = min(CONFIDENCE_CAP, confidence * BOOST_MULT)
+                    reasons.append(f"📈 BOOST: eff {effective_accuracy:.1f}% → ×{BOOST_MULT}")
+                    self._cycle_stats["boosted"] += 1
+
+                tier = "🔄INVERTED"
+                action = "INVERT"
+                self._cycle_stats["inverted"] += 1
+
+                # #17: Check inverse decay
+                if self._check_inverse_decay(symbol):
+                    reasons.append(
+                        f"⏰ INVERSE_DECAY: {symbol} inverted >{INVERSE_RECHECK_DAYS}d — due for recheck"
+                    )
+
+        # ── ZONE 2: EXCLUDE (brain_accuracy 38-48%) ──
+        elif brain_accuracy < EXCLUDE_BELOW:
+            effective_accuracy = brain_accuracy
+
+            # #14: Flag chronic noise symbols for pruning
+            prune = False
+            if sym_ctx and sym_ctx.days_tracked >= PRUNE_MIN_DAYS and total >= PRUNE_MIN_PREDICTIONS:
+                prune = True
+                reasons.append(
+                    f"🗑️ PRUNE_CANDIDATE: {sym_ctx.days_tracked}d tracked, "
+                    f"{total} predictions, still noise"
+                )
 
             reasons.append(
-                f"🔄 INVERT: {raw_accuracy:.1f}% raw < {INVERT_BELOW}% → "
-                f"flipped {direction}→{final_direction} "
-                f"(effective {effective_accuracy:.1f}%)"
-            )
-
-            # Inverted symbols with high effective accuracy get boosted
-            if effective_accuracy >= STRONG_BOOST_ABOVE:
-                final_confidence = min(CONFIDENCE_CAP, confidence * STRONG_BOOST_MULT)
-                reasons.append(
-                    f"🚀 STRONG_BOOST: effective {effective_accuracy:.1f}% "
-                    f"≥ {STRONG_BOOST_ABOVE}% → ×{STRONG_BOOST_MULT}"
-                )
-                self._cycle_stats["boosted"] += 1
-            elif effective_accuracy >= BOOST_ABOVE:
-                final_confidence = min(CONFIDENCE_CAP, confidence * BOOST_MULT)
-                reasons.append(
-                    f"📈 BOOST: effective {effective_accuracy:.1f}% "
-                    f"≥ {BOOST_ABOVE}% → ×{BOOST_MULT}"
-                )
-                self._cycle_stats["boosted"] += 1
-
-            tier = "🔄INVERTED"
-            action = "INVERT"
-            self._cycle_stats["inverted"] += 1
-
-        # ── ZONE 2: EXCLUDE (accuracy 38-48%) ──
-        # Near coin-flip. Not reliably wrong, not reliably right.
-        # No signal here — just noise. Drop it.
-        elif raw_accuracy < EXCLUDE_BELOW:
-            effective_accuracy = raw_accuracy
-            reasons.append(
-                f"⛔ EXCLUDE: {raw_accuracy:.1f}% in noise zone "
-                f"({INVERT_BELOW}%-{EXCLUDE_BELOW}%) — coin flip territory"
+                f"⛔ EXCLUDE: {brain_accuracy:.1f}% in noise zone "
+                f"({INVERT_BELOW}%-{EXCLUDE_BELOW}%)"
             )
             tier = "⛔EXCLUDED"
             action = "EXCLUDE"
@@ -307,103 +455,209 @@ class GhostBrain:
             decision = BrainDecision(
                 symbol=symbol, action=action, direction=direction,
                 confidence=0.0, tier=tier, asset_class=asset_class,
-                reasons=reasons,
-                raw_accuracy=raw_accuracy, effective_accuracy=effective_accuracy,
-                sample_size=total,
+                reasons=reasons, raw_accuracy=raw_accuracy,
+                brain_accuracy=brain_accuracy,
+                effective_accuracy=effective_accuracy,
+                sample_size=total, data_quality=data_quality,
+                prune_candidate=prune,
+                direction_split=dir_split if sym_ctx else {},
             )
             self._decisions[symbol] = decision
             self._cycle_stats["analyzed"] += 1
+            if prune:
+                self._prune_candidates.append(symbol)
             return decision
 
-        # ── ZONE 3: COLD (accuracy 48-55%) ──
-        # Slightly above coin flip. Include but reduce confidence.
-        elif raw_accuracy < 55.0:
-            effective_accuracy = raw_accuracy
+        # ── ZONE 3: COLD (48-55%) ──
+        elif brain_accuracy < 55.0:
+            effective_accuracy = brain_accuracy
             final_confidence = confidence * NOISE_PENALTY_MULT
             tier = "🔴COLD"
-            reasons.append(
-                f"🔴 COLD: {raw_accuracy:.1f}% barely above coin flip "
-                f"→ ×{NOISE_PENALTY_MULT} confidence penalty"
-            )
             action = "SEND"
+            reasons.append(
+                f"🔴 COLD: {brain_accuracy:.1f}% → ×{NOISE_PENALTY_MULT} penalty"
+            )
             self._cycle_stats["penalized"] += 1
 
-        # ── ZONE 4: WARM (accuracy 55-62%) ──
-        # Decent. No adjustment needed.
-        elif raw_accuracy < BOOST_ABOVE:
-            effective_accuracy = raw_accuracy
+        # ── ZONE 4: WARM (55-62%) ──
+        elif brain_accuracy < BOOST_ABOVE:
+            effective_accuracy = brain_accuracy
             tier = "🟡WARM"
-            reasons.append(f"🟡 WARM: {raw_accuracy:.1f}% — moderate edge, no adjustment")
             action = "SEND"
+            reasons.append(f"🟡 WARM: {brain_accuracy:.1f}% — no adjustment")
 
-        # ── ZONE 5: HOT (accuracy 62-70%) ──
-        # Real edge detected. Boost confidence.
-        elif raw_accuracy < STRONG_BOOST_ABOVE:
-            effective_accuracy = raw_accuracy
+        # ── ZONE 5: HOT (62-70%) ──
+        elif brain_accuracy < STRONG_BOOST_ABOVE:
+            effective_accuracy = brain_accuracy
             final_confidence = min(CONFIDENCE_CAP, confidence * BOOST_MULT)
             tier = "🟢HOT"
-            reasons.append(
-                f"🟢 HOT: {raw_accuracy:.1f}% ≥ {BOOST_ABOVE}% "
-                f"→ ×{BOOST_MULT} confidence boost"
-            )
             action = "SEND"
+            reasons.append(f"🟢 HOT: {brain_accuracy:.1f}% → ×{BOOST_MULT} boost")
             self._cycle_stats["boosted"] += 1
 
-        # ── ZONE 6: FIRE (accuracy 70%+) ──
-        # Proven winner. Strong boost.
+        # ── ZONE 6: FIRE (70%+) ──
         else:
-            effective_accuracy = raw_accuracy
+            effective_accuracy = brain_accuracy
             final_confidence = min(CONFIDENCE_CAP, confidence * STRONG_BOOST_MULT)
-            tier = "🟢HOT"
-            reasons.append(
-                f"🔥 FIRE: {raw_accuracy:.1f}% ≥ {STRONG_BOOST_ABOVE}% "
-                f"→ ×{STRONG_BOOST_MULT} strong confidence boost"
-            )
+            tier = "🔥FIRE"
             action = "SEND"
+            reasons.append(f"🔥 FIRE: {brain_accuracy:.1f}% → ×{STRONG_BOOST_MULT} strong boost")
             self._cycle_stats["boosted"] += 1
+
+        # ══════════════════════════════════════════════════════
+        # STEP 3: Confidence modifiers (#4,#5,#7,#10,#11,#18,#20)
+        # ══════════════════════════════════════════════════════
+
+        if context or sym_ctx:
+            # #4: Streak modifier
+            if sym_ctx:
+                mod = self._compute_streak_modifier(sym_ctx)
+                if mod != 0.0:
+                    modifiers["streak"] = mod
+                    reasons.append(f"#4 STREAK: {mod:+.0%} (streak={sym_ctx.current_streak})")
+
+            # #5: Market regime modifier
+            if context and context.market_regime != "unknown":
+                mod = self._compute_regime_modifier(context)
+                if mod != 0.0:
+                    modifiers["regime"] = mod
+                    reasons.append(f"#5 REGIME: {mod:+.0%} ({context.market_regime})")
+
+            # #7: Day-of-week modifier
+            if sym_ctx and context:
+                mod = self._compute_dow_modifier(sym_ctx, context)
+                if mod != 0.0:
+                    modifiers["dow"] = mod
+                    reasons.append(f"#7 DOW: {mod:+.0%} (day={context.current_day})")
+
+            # #10: Fear & Greed modifier
+            if context and context.fear_greed_index != 50:
+                mod = self._compute_fg_modifier(context, asset_class)
+                if mod != 0.0:
+                    modifiers["fear_greed"] = mod
+                    reasons.append(f"#10 F&G: {mod:+.0%} (index={context.fear_greed_index})")
+
+            # #11: Sector correlation modifier
+            if context:
+                mod = self._compute_sector_modifier(context, symbol, asset_class)
+                if mod != 0.0:
+                    modifiers["sector"] = mod
+                    reasons.append(f"#11 SECTOR: {mod:+.0%}")
+
+            # #18: Cross-asset modifier
+            if context:
+                mod = self._compute_cross_asset_modifier(
+                    context, asset_class, final_direction
+                )
+                if mod != 0.0:
+                    modifiers["cross_asset"] = mod
+                    reasons.append(f"#18 CROSS: {mod:+.0%}")
+
+            # #20: Weekend modifier
+            if context:
+                mod = self._compute_weekend_modifier(context, asset_class)
+                if mod != 0.0:
+                    modifiers["weekend"] = mod
+                    reasons.append(f"#20 WEEKEND: {mod:+.0%}")
+
+        # ── Apply modifiers with cap ──
+        if modifiers:
+            total_mod = sum(modifiers.values())
+            total_mod = max(-MAX_TOTAL_PENALTY, min(MAX_TOTAL_BOOST, total_mod))
+            final_confidence *= (1.0 + total_mod)
+            reasons.append(f"modifiers_total={total_mod:+.0%}")
+
+        # ══════════════════════════════════════════════════════
+        # STEP 4: Confidence calibration (#3, #16)
+        # ══════════════════════════════════════════════════════
+        if context and context.calibration_curve:
+            calibrated = self._calibrate_confidence(final_confidence, context)
+            if abs(calibrated - final_confidence) > 0.01:
+                reasons.append(
+                    f"#3 CALIBRATION: {final_confidence:.0%}→{calibrated:.0%}"
+                )
+                final_confidence = calibrated
+
+        # ══════════════════════════════════════════════════════
+        # STEP 5: Circuit breaker (#23)
+        # ══════════════════════════════════════════════════════
+        if self._circuit_breaker_active:
+            old = final_confidence
+            final_confidence *= (1.0 - CIRCUIT_BREAKER_PENALTY)
+            reasons.append(
+                f"🚨 CIRCUIT_BREAKER: {old:.0%}→{final_confidence:.0%} "
+                f"(-{CIRCUIT_BREAKER_PENALTY:.0%})"
+            )
+
+        # ── Final cap ──
+        final_confidence = max(0.01, min(CONFIDENCE_CAP, final_confidence))
+
+        # ══════════════════════════════════════════════════════
+        # STEP 6: Build decision
+        # ══════════════════════════════════════════════════════
+
+        # #19: Expected value
+        ev = 0.0
+        if sym_ctx:
+            ev = self._compute_expected_value(sym_ctx)
 
         self._cycle_stats["analyzed"] += 1
-        self._cycle_stats["sent"] += 1
+        if action != "EXCLUDE":
+            self._cycle_stats["sent"] += 1
 
         decision = BrainDecision(
             symbol=symbol, action=action, direction=final_direction,
             confidence=final_confidence, tier=tier, asset_class=asset_class,
-            reasons=reasons,
-            raw_accuracy=raw_accuracy, effective_accuracy=effective_accuracy,
+            reasons=reasons, raw_accuracy=raw_accuracy,
+            brain_accuracy=brain_accuracy,
+            effective_accuracy=effective_accuracy,
             inverted=inverted, sample_size=total,
+            confidence_modifiers=modifiers, data_quality=data_quality,
+            expected_value=ev,
+            direction_split={"up": sym_ctx.up_accuracy, "down": sym_ctx.down_accuracy} if sym_ctx else {},
         )
+
         self._decisions[symbol] = decision
+
+        # #24: Track feature contributions
+        self._track_contribution(symbol, modifiers, brain_accuracy, raw_accuracy)
+
         return decision
 
-    # ─────────────────────────────────────────────────────────
-    # ABILITY 5: BATCH ANALYSIS (cross-symbol intelligence)
-    # ─────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════
+    # CORE: analyze_batch
+    # ═══════════════════════════════════════════════════════════
 
     def analyze_batch(
         self,
         predictions: Dict[str, Dict],
-        accuracy_data: Dict[str, Dict],
+        accuracy_data: Optional[Dict[str, Dict]] = None,
+        context: Optional[BrainContext] = None,
     ) -> Dict[str, BrainDecision]:
         """
         Analyze all predictions in one pass.
 
-        Enables cross-symbol intelligence that per-symbol analysis can't:
-        - Direction bias detection (is the model always saying UP?)
-        - Correlation guard (are all 10 picks the same bet?)
+        Enables cross-symbol intelligence:
+        - Direction bias detection
+        - Correlation guard
+        - Circuit breaker
+        - A/B group assignment
+        - Prune candidate detection
 
-        Args:
-            predictions:   Dict of {symbol: prediction_dict}
-            accuracy_data: Dict from get_symbol_accuracy_from_postgres()
-
-        Returns:
-            Dict of {symbol: BrainDecision}
+        Backward compatible: pass accuracy_data for v2, context for v3.
         """
         # Reset cycle
         self._decisions = {}
         self._correlation_warnings = []
+        self._prune_candidates = []
         self._cycle_stats = {k: 0 for k in self._cycle_stats}
+        self._circuit_breaker_active = False
 
-        # ABILITY 3: Detect direction bias BEFORE individual analysis
+        # #23: Circuit breaker check
+        if context:
+            self._check_circuit_breaker(context)
+
+        # #3 (existing): Detect direction bias
         self._direction_bias = self._detect_direction_bias(predictions)
 
         # Analyze each symbol
@@ -414,29 +668,394 @@ class GhostBrain:
             confidence = pred.get("confidence", 0.0)
             if direction not in ("UP", "DOWN"):
                 continue
-            self.analyze_symbol(symbol, direction, confidence, accuracy_data)
+            self.analyze_symbol(
+                symbol, direction, confidence,
+                accuracy_data=accuracy_data, context=context,
+            )
 
-        # ABILITY 5: Apply correlation guard to batch
+        # #5 (existing): Correlation guard
         self._apply_correlation_guard()
+
+        # #22: A/B group assignment
+        self._assign_ab_groups()
 
         return self._decisions
 
-    # ─────────────────────────────────────────────────────────
-    # ABILITY 3: DIRECTION BIAS DETECTION
-    # ─────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #1, #2, #6: BLENDED BRAIN ACCURACY
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_brain_accuracy(
+        self,
+        symbol: str,
+        direction: str,
+        raw_accuracy: float,
+        sym_ctx: Optional[SymbolContext],
+    ) -> float:
+        """
+        Compute blended accuracy from multiple data signals.
+
+        #1: Per-direction (UP vs DOWN split)
+        #2: Recency (last 30 days weighted 70%)
+        #6: Magnitude (big wins count more)
+
+        Returns a single brain_accuracy value that replaces
+        raw_accuracy in the decision tree.
+        """
+        if not sym_ctx:
+            return raw_accuracy
+
+        alltime = raw_accuracy
+
+        # #2: Recent accuracy (weighted heavier — recent performance matters more)
+        if sym_ctx.recent_total >= RECENCY_MIN_SAMPLES:
+            recent = sym_ctx.recent_accuracy
+        else:
+            recent = alltime  # not enough recent data
+
+        # #1: Direction-specific accuracy
+        if direction == "UP" and sym_ctx.up_total >= RECENCY_MIN_SAMPLES:
+            dir_acc = sym_ctx.up_accuracy
+        elif direction == "DOWN" and sym_ctx.down_total >= RECENCY_MIN_SAMPLES:
+            dir_acc = sym_ctx.down_accuracy
+        else:
+            dir_acc = alltime  # not enough direction data
+
+        # #6: Magnitude bonus
+        mag_bonus = 0.0
+        if sym_ctx.avg_win_magnitude > 0 and sym_ctx.avg_loss_magnitude > 0:
+            ratio = sym_ctx.avg_win_magnitude / max(sym_ctx.avg_loss_magnitude, 0.001)
+            if ratio >= MAGNITUDE_BIG_WIN_RATIO:
+                mag_bonus = MAGNITUDE_BONUS       # Wins are 2x+ bigger
+            elif ratio >= 1.5:
+                mag_bonus = MAGNITUDE_BONUS / 2   # Moderate win edge
+            elif ratio <= MAGNITUDE_BIG_LOSS_RATIO:
+                mag_bonus = MAGNITUDE_PENALTY      # Losses dominate
+            elif ratio <= 0.75:
+                mag_bonus = MAGNITUDE_PENALTY / 2  # Moderate loss edge
+
+        # Blend: recent (70%) > direction (20%) > alltime (10%)
+        alltime_weight = 1.0 - RECENCY_WEIGHT - 0.20
+        brain_accuracy = (
+            recent * RECENCY_WEIGHT
+            + dir_acc * 0.20
+            + alltime * alltime_weight
+        ) + mag_bonus
+
+        return max(0.0, min(100.0, brain_accuracy))
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #4: STREAK MODIFIER
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_streak_modifier(self, sym_ctx: SymbolContext) -> float:
+        """
+        Adjust confidence based on win/loss streaks.
+
+        A 5-win streak → +10% confidence (momentum)
+        A 5-loss streak → -15% confidence (something's off)
+        """
+        streak = sym_ctx.current_streak
+        if streak > 0:
+            return min(MAX_STREAK_MOD, streak * STREAK_BONUS_PER)
+        elif streak < 0:
+            return max(-MAX_STREAK_MOD, streak * STREAK_PENALTY_PER)
+        return 0.0
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #5: MARKET REGIME MODIFIER
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_regime_modifier(self, context: BrainContext) -> float:
+        """
+        Adjust confidence based on market volatility regime.
+
+        In panic markets, ALL predictions are less reliable.
+        In calm markets, patterns are more predictable.
+        """
+        return REGIME_MODIFIERS.get(context.market_regime, 0.0)
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #7: DAY-OF-WEEK MODIFIER
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_dow_modifier(
+        self, sym_ctx: SymbolContext, context: BrainContext
+    ) -> float:
+        """
+        Adjust confidence based on day-of-week accuracy patterns.
+
+        If Ghost is 70% accurate on Tuesdays but 35% on Fridays,
+        and today is Friday → reduce confidence.
+        """
+        today = context.current_day  # 0=Sunday in SQL DOW
+        if today not in sym_ctx.dow_accuracy:
+            return 0.0
+
+        today_acc = sym_ctx.dow_accuracy[today]
+        avg_acc = sym_ctx.accuracy_pct
+
+        if avg_acc <= 0:
+            return 0.0
+
+        # Deviation from average as a confidence modifier
+        deviation = (today_acc - avg_acc) / 100.0
+        return max(-0.08, min(0.08, deviation))
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #10: FEAR & GREED MODIFIER
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_fg_modifier(
+        self, context: BrainContext, asset_class: str
+    ) -> float:
+        """
+        Adjust confidence based on Fear & Greed Index.
+
+        Extreme fear → crypto is chaos (panic selling)
+        Extreme greed → bubble risk (irrational exuberance)
+        Crypto is MORE affected than stocks.
+        """
+        fg = context.fear_greed_index
+
+        if asset_class == "crypto":
+            if fg <= FG_EXTREME_FEAR:
+                return -0.12
+            elif fg <= FG_FEAR:
+                return -0.05
+            elif fg >= FG_EXTREME_GREED:
+                return -0.08   # Bubble risk
+            elif fg >= FG_GREED:
+                return 0.03    # Mild greed = momentum
+        else:  # stock
+            if fg <= FG_EXTREME_FEAR:
+                return -0.05
+            elif fg >= FG_EXTREME_GREED:
+                return -0.03
+
+        return 0.0
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #11: SECTOR CORRELATION MODIFIER
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_sector_modifier(
+        self, context: BrainContext, symbol: str, asset_class: str
+    ) -> float:
+        """
+        Adjust confidence based on how the symbol's sector is performing.
+
+        If the MEME sector average is 22% accuracy, and DOGE is in MEME,
+        that's a signal that the whole sector is unpredictable.
+        """
+        sector_map = CRYPTO_SECTORS if asset_class == "crypto" else STOCK_SECTORS
+
+        # Find this symbol's sector
+        sector_name = None
+        for name, members in sector_map.items():
+            if symbol.upper() in members:
+                sector_name = name
+                break
+
+        if not sector_name:
+            return 0.0
+
+        # Get peer accuracies
+        peers = sector_map[sector_name] - {symbol.upper()}
+        if not peers:
+            return 0.0
+
+        peer_accs = []
+        for peer in peers:
+            peer_ctx = context.symbols.get(peer)
+            if peer_ctx and peer_ctx.total_predictions >= MIN_SAMPLES:
+                peer_accs.append(peer_ctx.accuracy_pct)
+
+        if not peer_accs:
+            return 0.0
+
+        avg_peer = sum(peer_accs) / len(peer_accs)
+
+        if avg_peer < 30.0:
+            return -0.08    # Sector is terrible
+        elif avg_peer < 40.0:
+            return -0.04    # Sector is weak
+        elif avg_peer > 70.0:
+            return 0.05     # Sector is fire
+        elif avg_peer > 60.0:
+            return 0.03     # Sector is hot
+
+        return 0.0
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #18: CROSS-ASSET LEADING INDICATORS
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_cross_asset_modifier(
+        self, context: BrainContext, asset_class: str, direction: str
+    ) -> float:
+        """
+        BTC dumps → altcoins follow. SPY dumps → stocks follow.
+
+        If BTC just dropped 5% and we're predicting DOGE UP,
+        that prediction is going against the tide.
+        """
+        if asset_class == "crypto":
+            btc = context.btc_24h_change
+            if btc < -5.0 and direction == "UP":
+                return -0.10   # BTC crashed, altcoin UP is risky
+            elif btc < -3.0 and direction == "UP":
+                return -0.05
+            elif btc > 5.0 and direction == "DOWN":
+                return -0.05   # BTC pumping, crypto DOWN is risky
+        else:  # stock
+            spy = context.spy_24h_change
+            if spy < -3.0 and direction == "UP":
+                return -0.08
+            elif spy < -2.0 and direction == "UP":
+                return -0.03
+            elif spy > 3.0 and direction == "DOWN":
+                return -0.03
+
+        return 0.0
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #20: WEEKEND DETECTOR
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_weekend_modifier(
+        self, context: BrainContext, asset_class: str
+    ) -> float:
+        """
+        Weekend crypto has lower liquidity and more manipulation.
+        Stocks don't trade weekends (handled by market gates).
+        """
+        if context.is_weekend and asset_class == "crypto":
+            return -WEEKEND_CRYPTO_PENALTY
+        return 0.0
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #3, #16: CONFIDENCE CALIBRATION
+    # ═══════════════════════════════════════════════════════════
+
+    def _calibrate_confidence(
+        self, raw_confidence: float, context: BrainContext
+    ) -> float:
+        """
+        Map stated confidence to actual historical hit probability.
+
+        If the model says "72% confident" but predictions at that
+        confidence only hit 58%, the calibration curve corrects it.
+
+        Blend: 60% calibrated + 40% raw (don't fully override).
+        """
+        curve = context.calibration_curve
+        if not curve:
+            return raw_confidence
+
+        # Find nearest bucket
+        bucket_key = f"{int(raw_confidence * 10) / 10:.1f}"
+
+        if bucket_key in curve:
+            actual_rate = curve[bucket_key]
+        else:
+            # Find closest bucket
+            closest_key = None
+            closest_dist = float("inf")
+            for key in curve:
+                try:
+                    dist = abs(float(key) - raw_confidence)
+                    if dist < closest_dist:
+                        closest_dist = dist
+                        closest_key = key
+                except ValueError:
+                    continue
+
+            if closest_key and closest_dist < 0.15:
+                actual_rate = curve[closest_key]
+            else:
+                return raw_confidence
+
+        # Blend: 60% calibrated, 40% raw
+        calibrated = raw_confidence * 0.4 + actual_rate * 0.6
+        return max(0.01, min(CONFIDENCE_CAP, calibrated))
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #17: INVERSE DECAY
+    # ═══════════════════════════════════════════════════════════
+
+    def _check_inverse_decay(self, symbol: str) -> bool:
+        """
+        Don't flip a symbol forever. Markets change.
+
+        If a symbol has been inverted for >30 days, flag it for
+        re-evaluation. The operator should run 5 non-inverted
+        predictions to test if the pattern still holds.
+        """
+        if symbol in self._inverse_tracker:
+            first_inverted = self._inverse_tracker[symbol]
+            days = (datetime.now() - first_inverted).days
+            if days >= INVERSE_RECHECK_DAYS:
+                return True
+        return False
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #19: EXPECTED VALUE
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_expected_value(self, sym_ctx: SymbolContext) -> float:
+        """
+        Compute expected value per prediction.
+
+        EV = avg_win_pct × win_rate - avg_loss_pct × loss_rate
+
+        A symbol with 45% accuracy but +5% avg wins and -1% avg losses
+        has POSITIVE EV (0.45 × 5 - 0.55 × 1 = +1.7%).
+        """
+        if sym_ctx.total_predictions == 0:
+            return 0.0
+
+        win_rate = sym_ctx.accuracy_pct / 100.0
+        loss_rate = 1.0 - win_rate
+
+        if sym_ctx.avg_win_magnitude > 0 or sym_ctx.avg_loss_magnitude > 0:
+            return (
+                sym_ctx.avg_win_magnitude * win_rate
+                - sym_ctx.avg_loss_magnitude * loss_rate
+            )
+        return 0.0
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #23: CIRCUIT BREAKER
+    # ═══════════════════════════════════════════════════════════
+
+    def _check_circuit_breaker(self, context: BrainContext):
+        """
+        Emergency brake: if 3-day accuracy drops below threshold,
+        reduce ALL confidence by 25%.
+
+        This catches regime changes where the model is suddenly
+        wrong about everything (market crash, black swan, etc.).
+        """
+        if (
+            context.rolling_3d_total >= CIRCUIT_BREAKER_MIN_PREDS
+            and context.rolling_3d_accuracy < CIRCUIT_BREAKER_THRESHOLD
+        ):
+            self._circuit_breaker_active = True
+            LOGGER.warning(
+                f"[BRAIN] 🚨 CIRCUIT BREAKER ACTIVE: "
+                f"3-day accuracy {context.rolling_3d_accuracy:.1f}% "
+                f"< {CIRCUIT_BREAKER_THRESHOLD}%"
+            )
+        else:
+            self._circuit_breaker_active = False
+
+    # ═══════════════════════════════════════════════════════════
+    # EXISTING: DIRECTION BIAS DETECTION
+    # ═══════════════════════════════════════════════════════════
 
     def _detect_direction_bias(self, predictions: Dict[str, Dict]) -> Dict:
-        """
-        Detect if the model has systematic directional bias.
-
-        If 90% of predictions are UP, the model might be capturing
-        market regime (bull market → everything UP) rather than
-        per-symbol edge. This isn't necessarily wrong, but it's a
-        red flag that predictions are correlated, not independent.
-
-        Returns:
-            {"biased": bool, "direction": str, "pct": float, "total": int}
-        """
+        """Detect if >80% of predictions are same direction."""
         up = 0
         down = 0
         for pred in predictions.values():
@@ -453,11 +1072,10 @@ class GhostBrain:
             return {"biased": False, "total": 0}
 
         up_pct = up / total
-
         if up_pct >= BIAS_THRESHOLD:
             LOGGER.warning(
                 f"[BRAIN] ⚠️ DIRECTION BIAS: {up_pct:.0%} of {total} "
-                f"predictions are UP — possible bullish bias"
+                f"predictions are UP"
             )
             return {"biased": True, "direction": "UP", "pct": up_pct, "total": total}
 
@@ -465,51 +1083,38 @@ class GhostBrain:
         if down_pct >= BIAS_THRESHOLD:
             LOGGER.warning(
                 f"[BRAIN] ⚠️ DIRECTION BIAS: {down_pct:.0%} of {total} "
-                f"predictions are DOWN — possible bearish bias"
+                f"predictions are DOWN"
             )
             return {"biased": True, "direction": "DOWN", "pct": down_pct, "total": total}
 
         return {"biased": False, "up_pct": up_pct, "total": total}
 
-    # ─────────────────────────────────────────────────────────
-    # ABILITY 5: CORRELATION GUARD
-    # ─────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════
+    # EXISTING: CORRELATION GUARD
+    # ═══════════════════════════════════════════════════════════
 
     def _apply_correlation_guard(self):
-        """
-        Detect when too many picks are in the same direction for the
-        same asset class.  10 crypto UP picks = really just 1 bet.
-
-        Currently logs warnings. Future: auto-demote weakest overflow
-        picks via confidence penalty.
-        """
+        """Penalize overflow when too many picks same direction per asset class."""
         groups: Dict[str, List[BrainDecision]] = {}
 
         for symbol, decision in self._decisions.items():
             if decision.action == "EXCLUDE":
                 continue
-
-            asset_class = "crypto" if symbol.upper() in _KNOWN_CRYPTO else "stock"
-            key = f"{asset_class}_{decision.direction}"
-
-            if key not in groups:
-                groups[key] = []
-            groups[key].append(decision)
+            key = f"{decision.asset_class}_{decision.direction}"
+            groups.setdefault(key, []).append(decision)
 
         self._correlation_warnings = []
         for key, decisions in groups.items():
             if len(decisions) > MAX_SAME_DIRECTION:
-                # Sort by effective accuracy (strongest first)
                 decisions.sort(key=lambda d: d.effective_accuracy, reverse=True)
                 overflow = decisions[MAX_SAME_DIRECTION:]
                 asset_class, direction = key.rsplit("_", 1)
 
-                # Apply confidence penalty to overflow picks
                 for d in overflow:
                     d.confidence = d.confidence * NOISE_PENALTY_MULT
                     d.reasons.append(
-                        f"⚠️ CORRELATION_PENALTY: {len(decisions)} {asset_class} "
-                        f"picks are {direction} (max {MAX_SAME_DIRECTION})"
+                        f"⚠️ CORRELATION: {len(decisions)} {asset_class} "
+                        f"{direction} picks (max {MAX_SAME_DIRECTION})"
                     )
 
                 warning = (
@@ -520,21 +1125,193 @@ class GhostBrain:
                 self._correlation_warnings.append(warning)
                 LOGGER.warning(f"[BRAIN] ⚠️ CORRELATION: {warning}")
 
-    # ─────────────────────────────────────────────────────────
-    # ABILITY 7: SELF-ASSESSMENT REPORT
-    # ─────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #22: A/B TESTING
+    # ═══════════════════════════════════════════════════════════
+
+    def _assign_ab_groups(self):
+        """
+        Assign symbols to A/B test groups for configuration testing.
+
+        Group A = current production config
+        Group B = experimental config
+
+        Hash-based assignment ensures consistency across cycles.
+        """
+        for symbol in self._decisions:
+            self._ab_groups[symbol] = "A" if hash(symbol) % 2 == 0 else "B"
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #24: FEATURE IMPORTANCE
+    # ═══════════════════════════════════════════════════════════
+
+    def _track_contribution(
+        self,
+        symbol: str,
+        modifiers: Dict[str, float],
+        brain_accuracy: float,
+        raw_accuracy: float,
+    ):
+        """
+        Track which abilities contributed most to decisions.
+
+        This tells us: "INVERT gave +25 points of lift,
+        STREAK gave +2 points, REGIME gave -1 point."
+        """
+        # Track accuracy lift from blending (#1, #2, #6)
+        blend_key = "accuracy_blend"
+        if blend_key not in self._feature_contributions:
+            self._feature_contributions[blend_key] = {"total_impact": 0.0, "count": 0}
+        self._feature_contributions[blend_key]["total_impact"] += abs(brain_accuracy - raw_accuracy)
+        self._feature_contributions[blend_key]["count"] += 1
+
+        # Track each modifier
+        for ability, value in modifiers.items():
+            if ability not in self._feature_contributions:
+                self._feature_contributions[ability] = {"total_impact": 0.0, "count": 0}
+            self._feature_contributions[ability]["total_impact"] += abs(value)
+            self._feature_contributions[ability]["count"] += 1
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #9, #25: SELF-EVOLVING THRESHOLDS
+    # ═══════════════════════════════════════════════════════════
+
+    def optimize_thresholds(
+        self, historical_accuracy: Dict[str, Dict]
+    ) -> Dict[str, Any]:
+        """
+        Find optimal INVERT and EXCLUDE thresholds from historical data.
+
+        Tests all combinations of:
+          INVERT_BELOW:  25% to 45% (step 1)
+          EXCLUDE_BELOW: INVERT+5% to 55% (step 1)
+
+        Returns the thresholds that maximize effective accuracy.
+        Run weekly, not per-cycle (expensive).
+        """
+        best_effective = 0.0
+        best_thresholds = (INVERT_BELOW, EXCLUDE_BELOW)
+        current_effective = self._simulate_thresholds(
+            historical_accuracy, INVERT_BELOW, EXCLUDE_BELOW
+        )
+
+        for invert_t in range(25, 46):
+            for exclude_t in range(invert_t + 5, 56):
+                effective = self._simulate_thresholds(
+                    historical_accuracy, float(invert_t), float(exclude_t)
+                )
+                if effective > best_effective:
+                    best_effective = effective
+                    best_thresholds = (float(invert_t), float(exclude_t))
+
+        return {
+            "current_invert_below": INVERT_BELOW,
+            "current_exclude_below": EXCLUDE_BELOW,
+            "current_effective": current_effective,
+            "optimal_invert_below": best_thresholds[0],
+            "optimal_exclude_below": best_thresholds[1],
+            "optimal_effective": best_effective,
+            "lift": best_effective - current_effective,
+        }
+
+    def _simulate_thresholds(
+        self,
+        accuracy_data: Dict[str, Dict],
+        invert_below: float,
+        exclude_below: float,
+    ) -> float:
+        """Simulate effective accuracy with given thresholds."""
+        correct = 0.0
+        total = 0
+        for sym, data in accuracy_data.items():
+            acc = data.get("accuracy_pct", 50.0)
+            n = data.get("total", 0)
+            if n < MIN_SAMPLES:
+                continue
+            if acc < invert_below:
+                effective = 100.0 - acc
+            elif acc < exclude_below:
+                continue  # excluded
+            else:
+                effective = acc
+            correct += effective * n / 100.0
+            total += n
+        return (correct / total * 100.0) if total > 0 else 50.0
+
+    # ═══════════════════════════════════════════════════════════
+    # ABILITY #21: BACKTEST REPLAY
+    # ═══════════════════════════════════════════════════════════
+
+    def backtest_replay(
+        self,
+        historical_predictions: Dict[str, Dict],
+        historical_accuracy: Dict[str, Dict],
+        context: Optional[BrainContext] = None,
+    ) -> Dict[str, Any]:
+        """
+        Replay historical predictions through the current brain.
+
+        Compares what WOULD have happened with the current brain
+        vs what DID happen (raw model output).
+
+        Returns accuracy comparison and recommendation.
+        """
+        # Run batch through brain
+        decisions = self.analyze_batch(
+            historical_predictions,
+            accuracy_data=historical_accuracy,
+            context=context,
+        )
+
+        raw_correct = 0
+        brain_correct = 0
+        total = 0
+
+        for symbol, decision in decisions.items():
+            acc = historical_accuracy.get(symbol, {}).get("accuracy_pct", 50.0)
+            n = historical_accuracy.get(symbol, {}).get("total", 0)
+            if n < MIN_SAMPLES:
+                continue
+
+            total += n
+            raw_correct += acc * n / 100.0
+
+            if decision.action == "EXCLUDE":
+                continue  # excluded, don't count
+            elif decision.inverted:
+                brain_correct += (100.0 - acc) * n / 100.0
+            else:
+                brain_correct += acc * n / 100.0
+
+        raw_pct = (raw_correct / total * 100.0) if total > 0 else 50.0
+        brain_pct = (brain_correct / total * 100.0) if total > 0 else 50.0
+
+        return {
+            "raw_accuracy": raw_pct,
+            "brain_accuracy": brain_pct,
+            "lift": brain_pct - raw_pct,
+            "total_predictions": total,
+            "recommendation": "SHIP" if brain_pct > raw_pct else "HOLD",
+        }
+
+    # ═══════════════════════════════════════════════════════════
+    # REPORTING: generate_report (enhanced)
+    # ═══════════════════════════════════════════════════════════
 
     def generate_report(self) -> str:
         """
-        Generate an honest self-assessment report.
+        Generate honest self-assessment report.
 
-        This is what makes Ghost smarter than a human trader:
-        a human lies to themselves about performance.
-        Ghost Brain never lies.
+        Enhanced from v2 with:
+          - Per-asset-class breakdown
+          - Feature importance ranking
+          - Circuit breaker status
+          - Prune candidates
+          - A/B group summary
         """
         lines = []
-        lines.append("🧠 GHOST BRAIN REPORT")
-        lines.append("=" * 44)
+        lines.append("🧠 GHOST BRAIN v3 REPORT")
+        lines.append("=" * 50)
 
         # Summary stats
         s = self._cycle_stats
@@ -547,12 +1324,15 @@ class GhostBrain:
             f"📤Sent: {s['sent']}"
         )
 
-        # Direction bias alert
+        # Circuit breaker status
+        if self._circuit_breaker_active:
+            lines.append("🚨 CIRCUIT BREAKER: ACTIVE — all confidence reduced")
+
+        # Direction bias
         if self._direction_bias and self._direction_bias.get("biased"):
-            bias = self._direction_bias
+            b = self._direction_bias
             lines.append(
-                f"\n⚠️ DIRECTION BIAS: {bias['pct']:.0%} of predictions "
-                f"are {bias['direction']}"
+                f"⚠️ DIRECTION BIAS: {b['pct']:.0%} of predictions are {b['direction']}"
             )
 
         # Correlation warnings
@@ -560,157 +1340,173 @@ class GhostBrain:
             lines.append(f"⚠️ CORRELATION: {w}")
 
         # Per-tier breakdown
-        tier_order = [
-            "🔄INVERTED", "🟢HOT", "🟡WARM", "⚪NEUTRAL", "🔴COLD", "⛔EXCLUDED",
-        ]
-        for tier in tier_order:
-            tier_decisions = [
-                d for d in self._decisions.values() if d.tier == tier
-            ]
-            if not tier_decisions:
-                continue
+        tiers = {}
+        for d in self._decisions.values():
+            tiers.setdefault(d.tier, []).append(d)
 
-            lines.append(f"\n{tier} ({len(tier_decisions)}):")
-            for d in sorted(
-                tier_decisions,
-                key=lambda x: x.effective_accuracy,
-                reverse=True,
-            ):
-                flip_marker = " (flipped)" if d.inverted else ""
+        tier_order = ["🔄INVERTED", "🔥FIRE", "🟢HOT", "🟡WARM", "🔴COLD", "⚪NEUTRAL", "⛔EXCLUDED"]
+        for tier in tier_order:
+            if tier not in tiers:
+                continue
+            decisions = tiers[tier]
+            lines.append(f"\n{tier} ({len(decisions)}):")
+            for d in sorted(decisions, key=lambda x: x.effective_accuracy, reverse=True):
+                inv_tag = " (flipped)" if d.inverted else ""
                 lines.append(
-                    f"  {d.symbol}: {d.direction}{flip_marker} "
-                    f"@ {d.confidence:.0%} "
-                    f"[raw:{d.raw_accuracy:.0f}%→eff:{d.effective_accuracy:.0f}%, "
-                    f"n={d.sample_size}]"
+                    f"  {d.symbol}: {d.direction}{inv_tag} @ {d.confidence:.0%} "
+                    f"[raw:{d.raw_accuracy:.0f}%→brain:{d.brain_accuracy:.0f}%"
+                    f"→eff:{d.effective_accuracy:.0f}%, n={d.sample_size}]"
                 )
 
-        # ── ASSET CLASS BREAKDOWN (stocks vs crypto) ──
-        for ac in ("stock", "crypto"):
-            ac_decisions = [
-                d for d in self._decisions.values()
-                if d.asset_class == ac and d.sample_size >= MIN_SAMPLES
-            ]
-            if not ac_decisions:
+        # ── Per-asset-class breakdown ──
+        for asset in ("stock", "crypto"):
+            asset_decisions = [d for d in self._decisions.values() if d.asset_class == asset]
+            if not asset_decisions:
                 continue
 
-            ac_sent = [d for d in ac_decisions if d.action != "EXCLUDE"]
-            ac_inv = sum(1 for d in ac_decisions if d.inverted)
-            ac_exc = sum(1 for d in ac_decisions if d.action == "EXCLUDE")
-            ac_raw = sum(d.raw_accuracy for d in ac_decisions) / len(ac_decisions)
-            ac_eff = (
-                sum(d.effective_accuracy for d in ac_sent) / len(ac_sent)
-                if ac_sent else 0.0
-            )
-            label = "📈 STOCKS" if ac == "stock" else "🪙 CRYPTO"
-            lines.append(
-                f"\n{label} ({len(ac_decisions)} symbols): "
-                f"raw {ac_raw:.1f}% → eff {ac_eff:.1f}% "
-                f"| {ac_inv}🔄 {ac_exc}⛔"
-            )
-            # Verdict
-            if ac_eff >= 60:
-                lines.append(f"  → Ghost is GOOD at {ac} ✅")
-            elif ac_eff >= 50:
-                lines.append(f"  → Ghost is OKAY at {ac} 🟡")
-            else:
-                lines.append(f"  → Ghost is WEAK at {ac} ❌")
+            icon = "📈" if asset == "stock" else "🪙"
+            label = "STOCKS" if asset == "stock" else "CRYPTO"
+            inv_count = sum(1 for d in asset_decisions if d.action == "INVERT")
+            exc_count = sum(1 for d in asset_decisions if d.action == "EXCLUDE")
 
-        lines.append("\n" + "=" * 44)
+            raw_accs = [d.raw_accuracy for d in asset_decisions if d.sample_size >= MIN_SAMPLES]
+            eff_accs = [d.effective_accuracy for d in asset_decisions if d.sample_size >= MIN_SAMPLES and d.action != "EXCLUDE"]
+
+            avg_raw = sum(raw_accs) / len(raw_accs) if raw_accs else 0
+            avg_eff = sum(eff_accs) / len(eff_accs) if eff_accs else 0
+
+            verdict = "GOOD ✅" if avg_eff >= 60 else ("OKAY 🟡" if avg_eff >= 50 else "WEAK ❌")
+
+            lines.append(
+                f"\n{icon} {label} ({len(asset_decisions)} symbols): "
+                f"raw {avg_raw:.1f}% → eff {avg_eff:.1f}% | "
+                f"{inv_count}🔄 {exc_count}⛔"
+            )
+            lines.append(f"  → Ghost is {verdict} at {asset}")
+
+        # ── Feature importance (#24) ──
+        if self._feature_contributions:
+            lines.append("\n📊 FEATURE IMPORTANCE:")
+            ranked = sorted(
+                self._feature_contributions.items(),
+                key=lambda x: x[1]["total_impact"],
+                reverse=True,
+            )
+            for ability, stats in ranked[:8]:
+                avg_impact = stats["total_impact"] / max(stats["count"], 1)
+                lines.append(
+                    f"  {ability}: avg_impact={avg_impact:.3f} "
+                    f"(applied {stats['count']}x)"
+                )
+
+        # ── Prune candidates (#14) ──
+        if self._prune_candidates:
+            lines.append(f"\n🗑️ PRUNE CANDIDATES: {', '.join(self._prune_candidates)}")
+
+        lines.append("\n" + "=" * 50)
         return "\n".join(lines)
 
+    # ═══════════════════════════════════════════════════════════
+    # REPORTING: telegram_summary
+    # ═══════════════════════════════════════════════════════════
+
     def generate_telegram_summary(self) -> str:
-        """
-        One-liner summary suitable for embedding in the 8 AM Telegram message.
-
-        Example: "🧠 Brain: 5🔄 2⛔ 3🟢 | Bias: 65% UP"
-        """
+        """One-line summary for Telegram footer."""
         s = self._cycle_stats
-        parts = [f"🧠 Brain:"]
-        if s["inverted"]:
-            parts.append(f"{s['inverted']}🔄")
-        if s["excluded"]:
-            parts.append(f"{s['excluded']}⛔")
-        if s["boosted"]:
-            parts.append(f"{s['boosted']}🚀")
-        if s["penalized"]:
-            parts.append(f"{s['penalized']}📉")
+        inv = s["inverted"]
+        exc = s["excluded"]
+        boost = s["boosted"]
+        total = s["analyzed"]
 
-        summary = " ".join(parts)
+        parts = [f"🧠 Brain v3: {total} analyzed"]
+        if inv:
+            parts.append(f"🔄{inv} flipped")
+        if exc:
+            parts.append(f"⛔{exc} excluded")
+        if boost:
+            parts.append(f"🚀{boost} boosted")
+        if self._circuit_breaker_active:
+            parts.append("🚨 CIRCUIT BREAKER")
 
-        # Add bias info if detected
-        if self._direction_bias and self._direction_bias.get("biased"):
-            bias = self._direction_bias
-            summary += f" | Bias: {bias['pct']:.0%} {bias['direction']}"
+        return " | ".join(parts)
 
-        return summary
+    # ═══════════════════════════════════════════════════════════
+    # REPORTING: health endpoint
+    # ═══════════════════════════════════════════════════════════
 
-    def get_health(self) -> Dict:
+    def get_health(self) -> Dict[str, Any]:
         """
-        Brain health metrics for /api/brain-health endpoint.
+        JSON-serializable health status for /api/brain-health endpoint.
 
-        Returns a dict suitable for JSON serialization.
+        Enhanced from v2 with feature importance, circuit breaker,
+        prune candidates, A/B groups, and per-asset-class breakdown.
         """
-        if not self._decisions:
-            return {"status": "no_data", "enabled": BRAIN_ENABLED, "decisions": 0}
+        decisions_list = []
+        for sym, d in self._decisions.items():
+            decisions_list.append({
+                "symbol": sym,
+                "action": d.action,
+                "direction": d.direction,
+                "confidence": round(d.confidence, 4),
+                "tier": d.tier,
+                "asset_class": d.asset_class,
+                "raw_accuracy": round(d.raw_accuracy, 1),
+                "brain_accuracy": round(d.brain_accuracy, 1),
+                "effective_accuracy": round(d.effective_accuracy, 1),
+                "inverted": d.inverted,
+                "sample_size": d.sample_size,
+                "data_quality": d.data_quality,
+                "expected_value": round(d.expected_value, 4),
+                "modifiers": {k: round(v, 4) for k, v in d.confidence_modifiers.items()},
+                "direction_split": {k: round(v, 1) for k, v in d.direction_split.items()},
+                "prune_candidate": d.prune_candidate,
+            })
 
-        # Calculate averages (only for symbols with data)
-        with_data = [
-            d for d in self._decisions.values() if d.sample_size >= MIN_SAMPLES
-        ]
-        avg_raw = (
-            sum(d.raw_accuracy for d in with_data) / len(with_data)
-            if with_data else 0.0
-        )
-        sent_with_data = [d for d in with_data if d.action != "EXCLUDE"]
-        avg_effective = (
-            sum(d.effective_accuracy for d in sent_with_data) / len(sent_with_data)
-            if sent_with_data else 0.0
-        )
-
-        # Per-asset-class breakdowns
-        asset_class_stats = {}
-        for ac in ("stock", "crypto"):
-            ac_all = [d for d in self._decisions.values() if d.asset_class == ac and d.sample_size >= MIN_SAMPLES]
-            ac_sent = [d for d in ac_all if d.action != "EXCLUDE"]
-            if ac_all:
-                ac_raw = sum(d.raw_accuracy for d in ac_all) / len(ac_all)
-                ac_eff = sum(d.effective_accuracy for d in ac_sent) / len(ac_sent) if ac_sent else 0.0
-            else:
-                ac_raw = 0.0
-                ac_eff = 0.0
-            asset_class_stats[ac] = {
-                "total": len(ac_all),
-                "sent": len(ac_sent),
-                "inverted": sum(1 for d in ac_all if d.inverted),
-                "excluded": sum(1 for d in ac_all if d.action == "EXCLUDE"),
-                "avg_raw_accuracy": round(ac_raw, 1),
-                "avg_effective_accuracy": round(ac_eff, 1),
-                "accuracy_lift": round(ac_eff - ac_raw, 1),
+        # Per-asset-class stats
+        by_asset = {}
+        for asset in ("stock", "crypto"):
+            ad = [d for d in self._decisions.values() if d.asset_class == asset]
+            if not ad:
+                continue
+            by_asset[asset] = {
+                "total": len(ad),
+                "sent": sum(1 for d in ad if d.action != "EXCLUDE"),
+                "inverted": sum(1 for d in ad if d.action == "INVERT"),
+                "excluded": sum(1 for d in ad if d.action == "EXCLUDE"),
+                "avg_raw": round(sum(d.raw_accuracy for d in ad) / len(ad), 1),
+                "avg_brain": round(sum(d.brain_accuracy for d in ad) / len(ad), 1),
+                "avg_effective": round(
+                    sum(d.effective_accuracy for d in ad if d.action != "EXCLUDE")
+                    / max(sum(1 for d in ad if d.action != "EXCLUDE"), 1), 1
+                ),
             }
 
+        # Feature importance ranking
+        importance = {}
+        if self._feature_contributions:
+            for ability, stats in self._feature_contributions.items():
+                importance[ability] = round(
+                    stats["total_impact"] / max(stats["count"], 1), 4
+                )
+
         return {
-            "status": "active" if BRAIN_ENABLED else "disabled",
+            "version": "v3",
             "enabled": BRAIN_ENABLED,
-            "thresholds": {
+            "config": {
                 "invert_below": INVERT_BELOW,
                 "exclude_below": EXCLUDE_BELOW,
                 "boost_above": BOOST_ABOVE,
                 "strong_boost_above": STRONG_BOOST_ABOVE,
                 "min_samples": MIN_SAMPLES,
+                "recency_weight": RECENCY_WEIGHT,
+                "max_same_direction": MAX_SAME_DIRECTION,
             },
             "cycle_stats": dict(self._cycle_stats),
-            "avg_raw_accuracy": round(avg_raw, 1),
-            "avg_effective_accuracy": round(avg_effective, 1),
-            "accuracy_lift": round(avg_effective - avg_raw, 1),
-            "by_asset_class": asset_class_stats,
-            "direction_bias": self._direction_bias,
-            "correlation_warnings": len(self._correlation_warnings),
-            "decisions": len(self._decisions),
-            "tiers": {
-                tier: sum(1 for d in self._decisions.values() if d.tier == tier)
-                for tier in [
-                    "🔄INVERTED", "🟢HOT", "🟡WARM", "⚪NEUTRAL",
-                    "🔴COLD", "⛔EXCLUDED",
-                ]
-            },
+            "circuit_breaker_active": self._circuit_breaker_active,
+            "direction_bias": self._direction_bias or {},
+            "correlation_warnings": self._correlation_warnings,
+            "prune_candidates": self._prune_candidates,
+            "feature_importance": importance,
+            "by_asset_class": by_asset,
+            "decisions": decisions_list,
         }
