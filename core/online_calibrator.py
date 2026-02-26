@@ -57,6 +57,14 @@ class OnlineCalibrator:
     def __init__(self, lookback_days: int = 30):
         self.lookback_days = lookback_days
         self.min_samples = 10  # Minimum samples needed for calibration
+        # Store latest calibration results for consumer access
+        self._latest_horizon_weights: dict[str, float] = {
+            "nowcast": 0.20, "swing": 0.40, "position": 0.40
+        }
+        self._latest_strategy_weights: dict[str, float] = {
+            "Momentum": 0.50, "NewsShock": 0.40, "PairsTrading": 0.10
+        }
+        self._load_latest_weights()  # Restore from DB on init
         self._init_db()
 
     def _init_db(self):
@@ -128,6 +136,51 @@ class OnlineCalibrator:
 
         except Exception as e:
             LOGGER.error(f"Online Calibrator DB init failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Weight access (for consumers)
+    # ------------------------------------------------------------------
+
+    def _load_latest_weights(self):
+        """Restore latest calibration weights from DB on startup."""
+        try:
+            conn = _get_pg_conn()
+            cur = conn.cursor()
+            for cal_type, attr in [
+                ("horizon_weights", "_latest_horizon_weights"),
+                ("strategy_weights", "_latest_strategy_weights"),
+            ]:
+                cur.execute(
+                    """
+                    SELECT new_weights FROM calibrator_calibration_history
+                    WHERE calibration_type LIKE %s
+                    ORDER BY timestamp DESC LIMIT 1
+                    """,
+                    (f"{cal_type}%",),
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    weights = json.loads(row[0])
+                    if isinstance(weights, dict) and len(weights) >= 2:
+                        setattr(self, attr, weights)
+                        LOGGER.info(f"Restored {cal_type} from DB: {weights}")
+            cur.close()
+            conn.close()
+        except Exception as e:
+            LOGGER.warning(f"Could not restore calibration weights: {e}")
+
+    def get_latest_weights(self, weight_type: str = "horizon") -> dict[str, float]:
+        """Get the latest calibrated weights.
+
+        Args:
+            weight_type: 'horizon' or 'strategy'
+
+        Returns:
+            Dict of weight name → float, summing to 1.0
+        """
+        if weight_type == "strategy":
+            return dict(self._latest_strategy_weights)
+        return dict(self._latest_horizon_weights)
 
     # ------------------------------------------------------------------
     # Logging helpers
@@ -313,6 +366,9 @@ class OnlineCalibrator:
 
             self._log_calibration(result)
 
+            # Store weights so consumers can access them
+            self._latest_horizon_weights = dict(new_weights)
+
             LOGGER.info(f"✅ Horizon calibration: {performance_gain * 100:.1f}% improvement expected")
             LOGGER.info(f"   Old weights: {old_weights}")
             LOGGER.info(f"   New weights: {new_weights}")
@@ -409,6 +465,9 @@ class OnlineCalibrator:
             )
 
             self._log_calibration(result)
+
+            # Store weights so consumers can access them
+            self._latest_strategy_weights = dict(new_weights)
 
             LOGGER.info(f"✅ Strategy calibration: {performance_gain * 100:.1f}% improvement expected")
             LOGGER.info(f"   Old weights: {old_weights}")

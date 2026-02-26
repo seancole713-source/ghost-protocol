@@ -158,30 +158,86 @@ async def pool_health_check() -> dict:
 # SYNC FALLBACK (for gradual migration of psycopg2 code)
 # ═══════════════════════════════════════════════════════════════════
 
+_sync_pool = None  # psycopg2 ThreadedConnectionPool
+_sync_pool_lock = __import__("threading").Lock()
+
+SYNC_POOL_MIN = int(os.getenv("DB_SYNC_POOL_MIN", "2"))
+SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "10"))
+
+
+def _get_sync_pool():
+    """Get or create the shared psycopg2 ThreadedConnectionPool (singleton)."""
+    global _sync_pool
+    if _sync_pool is not None:
+        return _sync_pool
+
+    with _sync_pool_lock:
+        # Double-check inside lock
+        if _sync_pool is not None:
+            return _sync_pool
+
+        db_url = _get_db_url()
+        if not db_url:
+            return None
+
+        try:
+            import psycopg2.pool
+            _sync_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=SYNC_POOL_MIN,
+                maxconn=SYNC_POOL_MAX,
+                dsn=db_url,
+            )
+            LOGGER.info(
+                f"[DB_POOL] ✅ psycopg2 sync pool created: "
+                f"min={SYNC_POOL_MIN}, max={SYNC_POOL_MAX}"
+            )
+            return _sync_pool
+        except Exception as e:
+            LOGGER.error(f"[DB_POOL] ❌ Sync pool creation failed: {e}")
+            return None
+
+
 @contextmanager
 def get_sync_connection():
     """
-    Get a synchronous psycopg2 connection.
+    Get a synchronous psycopg2 connection from the shared pool.
 
-    This is a MIGRATION BRIDGE — use for legacy code that hasn't
-    been converted to async yet. New code should use get_pool().
+    Uses a ThreadedConnectionPool for connection reuse instead of
+    creating a new TCP connection on every call.
 
     Usage:
         with get_sync_connection() as conn:
             cur = conn.cursor()
             cur.execute("SELECT 1")
     """
-    import psycopg2
-    db_url = _get_db_url()
-    if not db_url:
-        raise RuntimeError("DATABASE_URL not set")
+    pool = _get_sync_pool()
 
-    conn = psycopg2.connect(db_url)
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    if pool is not None:
+        conn = None
+        try:
+            conn = pool.getconn()
+            yield conn
+            conn.commit()
+        except Exception:
+            if conn is not None:
+                conn.rollback()
+            raise
+        finally:
+            if conn is not None:
+                pool.putconn(conn)
+    else:
+        # Fallback: direct connection if pool creation failed
+        import psycopg2
+        db_url = _get_db_url()
+        if not db_url:
+            raise RuntimeError("DATABASE_URL not set")
+
+        conn = psycopg2.connect(db_url)
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()

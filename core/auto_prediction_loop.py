@@ -164,7 +164,7 @@ async def _run_all_predictions_async():
     # Now: filter full list to edge symbols first → then cap
     TOP_CRYPTO_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "25"))
     # CRYPTO_ENABLED gate: skip crypto predictions when disabled
-    _crypto_enabled = os.getenv("CRYPTO_ENABLED", "0") == "1"
+    _crypto_enabled = os.getenv("CRYPTO_ENABLED", "1") == "1"
     if not _crypto_enabled:
         crypto_symbols_to_process = []
         if LOGGER:
@@ -339,7 +339,7 @@ def _run_all_predictions_sync():
     # EDGE FILTER (Feb 9, 2026): Only predict proven edge symbols
     # CRYPTO_ENABLED gate: skip crypto predictions when disabled
     TOP_CRYPTO_LIMIT = 25
-    _sync_crypto_enabled = os.getenv("CRYPTO_ENABLED", "0") == "1"
+    _sync_crypto_enabled = os.getenv("CRYPTO_ENABLED", "1") == "1"
     if not _sync_crypto_enabled:
         crypto_symbols_to_process = []
         if LOGGER:

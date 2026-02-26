@@ -700,7 +700,7 @@ except NameError:
                             },
                         )
                     except Exception:
-                        pass
+                        pass  # logging meta-failure - nothing to fall back to
                 return response
             except Exception as e:  # noqa: BLE001
                 tb = traceback.format_exc(limit=6)
@@ -715,7 +715,7 @@ except NameError:
                         },
                     )
                 except Exception:
-                    pass
+                    pass  # logging meta-failure - nothing to fall back to
                 from starlette.responses import JSONResponse
 
                 return JSONResponse(
@@ -729,8 +729,9 @@ except NameError:
                 )
 
         _APP_INSTRUMENTED = True  # type: ignore
-    except Exception:
-        pass
+    except Exception as e:
+        import logging as _inst_logging
+        _inst_logging.getLogger("ghost").warning(f"app_instrumentation_failed: {e}")
 
 
 def _parse_origins(val: str) -> list[str]:
@@ -1347,8 +1348,8 @@ async def health_check():
                     if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
                         _tg_send_chat_message(TELEGRAM_CHAT_ID, _alert_msg)
                         LOGGER.warning(f"[HEALTH] 🚨 System failure alert sent to Telegram")
-                except Exception:
-                    pass  # Don't let alert failure break health endpoint
+                except Exception as e:
+                    LOGGER.warning(f"health_alert_send_failed: {e}")
             return JSONResponse(content=health_status, status_code=503)
         
         return health_status
@@ -1854,8 +1855,8 @@ try:
 
     _register_crypto_symbols(CRYPTO_SYMBOLS)
     _register_crypto_symbols(HUNTER_CRYPTO_SYMBOLS)
-except Exception:
-    pass
+except Exception as e:
+    LOGGER.warning(f"crypto_symbol_registration_failed: {e}")
 
 def _classify_symbol_category(symbol: str) -> str:
     """
@@ -2477,8 +2478,8 @@ def _generate_forecast_grid(symbol: str = WOLF) -> dict[str, Any]:
     ns = None
     try:
         ns = (get_wolf_news(limit=1).get("news_signal") or {}).get("score")
-    except Exception:
-        pass
+    except Exception as e:
+        LOGGER.debug(f"news_signal_fetch_failed: {e}")
     # Provide defaults for events/urgency so signature is satisfied
     drift_daily, conf = _estimate_drift_and_conf(
         price if price is not None else p0,
@@ -2792,8 +2793,8 @@ def _legacy_snapshot_to_decision(row: tuple[Any, ...]) -> dict[str, Any]:
         features.setdefault("qty", float(qty or 0.0))
         features.setdefault("avg_cost", float(avg or 0.0))
         features.setdefault("news_score", float(news_score or 0.0))
-    except Exception:
-        pass
+    except Exception as e:
+        LOGGER.warning(f"feature_enrichment_failed: {e}")
     label = int(label_next_move or 0)
     action = "HOLD"
     if label > 0:
@@ -2920,8 +2921,8 @@ def _ai_memory_append(row: dict[str, Any]) -> None:
         feats.setdefault("qty", float(row.get("qty") or 0.0))
         feats.setdefault("avg_cost", float(row.get("avg") or 0.0))
         decision["features"] = feats
-    except Exception:
-        pass
+    except Exception as e:
+        LOGGER.warning(f"decision_feature_enrichment_failed: {e}")
     # Maintain small ring buffer for quick access/fallbacks
     try:
         ring_entry = {
@@ -2938,8 +2939,8 @@ def _ai_memory_append(row: dict[str, Any]) -> None:
             "confidence": int(round((decision.get("confidence") or 0.0) * 100)),
         }
         AI_MEMORY_RING.append(ring_entry)
-    except Exception:
-        pass
+    except Exception as e:
+        LOGGER.warning(f"memory_ring_append_failed: {e}")
     _ai_memory_store_decision(decision)
 
 
@@ -3063,8 +3064,8 @@ def _ai_infer(
             if ns > 0.2
             else ("News tilt bearish" if ns < -0.2 else "News neutral")
         )
-    except Exception:
-        pass
+    except Exception as e:
+        LOGGER.warning(f"prediction_reasoning_build_failed: {e}")
     analogs = []
     try:
         for n in neighbors[:3]:
@@ -3077,8 +3078,8 @@ def _ai_infer(
                     "outcome_24h": n.get("outcome_24h"),
                 }
             )
-    except Exception:
-        pass
+    except Exception as e:
+        LOGGER.warning(f"analog_neighbors_build_failed: {e}")
     return float(gps), float(conf), reasons, analogs
 
 
@@ -3727,14 +3728,14 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
             # Include recent news sentiment score
             ns = (get_wolf_news(limit=3).get("news_signal") or {}).get("score")
             research_features["news_score"] = ns
-        except Exception:
-            pass
+        except Exception as e:
+            LOGGER.warning(f"research_news_score_fetch_failed for {symbol}: {e}")
         try:
             f = _get_filings_signal(symbol)
             if f:
                 research_features["filings"] = f
-        except Exception:
-            pass
+        except Exception as e:
+            LOGGER.warning(f"filings_signal_fetch_failed for {symbol}: {e}")
         try:
             if RESEARCH_BLUEPRINT_ON:
                 snap = build_research_snapshot(symbol, asset_type="stock")
@@ -3744,8 +3745,8 @@ def _generate_48h_forecast(symbol: str) -> dict[str, Any]:
                 rc = agg.get("confidence") if isinstance(agg, dict) else None
                 if isinstance(rc, (int, float)):
                     confidence = max(0.3, min(0.85, 0.8 * confidence + 0.2 * (float(rc) / 100.0)))  # HARD CAP 85%
-        except Exception:
-            pass
+        except Exception as e:
+            LOGGER.warning(f"research_snapshot_failed for {symbol}: {e}")
 
         # Store forecast
         model = "simple-vol"  # Change to "gpt-4o" when integrated
@@ -4435,8 +4436,8 @@ async def _on_startup():
                                             f"resolved={stats.get('resolved_trades', 0)}, "
                                             f"win_rate={win_rate:.1%}"
                                         )
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        LOGGER.warning(f"paper_trade_stats_log_failed: {e}")
                     else:
                         LOGGER.debug("[PAPER] No paper trades due for resolution yet")
                 
@@ -5042,8 +5043,8 @@ async def _post_startup_init():
                         result = turbo_stock_price(symbol, max_budget_s=2.0)
                     if result and result.get("ok") and result.get("price"):
                         return float(result["price"])
-                except Exception:
-                    pass
+                except Exception as e:
+                    LOGGER.debug(f"price_fetch_failed for {symbol}: {e}")
                 return 0.0
             
             async def _ghost_notification_loop():
@@ -5128,8 +5129,8 @@ async def _post_startup_init():
                                 for sym in _dm_symbols:
                                     try:
                                         run_single_prediction(sym)
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        LOGGER.warning(f"[DEAD-MAN] Emergency prediction failed for {sym}: {e}")
                                 last_prescan_date = current_date
                                 LOGGER.info(f"[DEAD-MAN] Emergency scan done, {len(_LATEST_PREDICTIONS)} predictions cached")
                             except Exception as e:
@@ -5969,8 +5970,8 @@ async def _post_startup_init():
                         pred = predictor.get_latest_prediction(sym)
                         if pred and (time.time() - pred.run_at) < 86400:  # Last 24h
                             stock_count += 1
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        LOGGER.debug(f"stock_prediction_check_failed for {sym}: {e}")
 
                 # Count recent predictions for crypto
                 for sym in CRYPTO_SYMBOLS[:10]:  # Check first 10 crypto
@@ -5978,8 +5979,8 @@ async def _post_startup_init():
                         pred = predictor.get_latest_prediction(sym)
                         if pred and (time.time() - pred.run_at) < 86400:  # Last 24h
                             crypto_count += 1
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        LOGGER.debug(f"crypto_prediction_check_failed for {sym}: {e}")
 
                 # Update global counters if we found predictions
                 if stock_count > 0 or crypto_count > 0:
@@ -6171,8 +6172,8 @@ async def _trigger_prediction_for_mover(symbol: str, mover_info: dict):
                 )
                 try:
                     enqueue_alert_text(alert_text)
-                except Exception:
-                    pass
+                except Exception as e:
+                    LOGGER.warning(f"mover_alert_enqueue_failed for {symbol}: {e}")
             
             LOGGER.info(f"✅ Prediction generated for mover {symbol}: {direction} ({confidence:.0%})")
         
@@ -6573,8 +6574,8 @@ try:
             )
         except Exception:
             pass
-except Exception:
-    pass
+except Exception as e:
+    LOGGER.warning(f"sqlite_path_setup_failed: {e}")
 
 
 def _init_security_tables():
@@ -8666,6 +8667,101 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 f"Models agree: {len([p for p in ensemble_prediction.individual_predictions if p.direction == direction])}/3"
             )
         
+        # =====================================================================
+        # BRAIN v3: 25 Cognitive Abilities (Feb 26, 2026)
+        # Applies per-symbol accuracy intelligence to EVERY prediction:
+        #   - Invert bad symbols (<38% accuracy → flip direction)
+        #   - Exclude trash (<48% accuracy → HOLD)
+        #   - Boost proven winners (>62% accuracy → confidence up)
+        #   - Streak modifiers, regime gates, F&G, sector correlation
+        #   - Circuit breaker (system-wide accuracy crash → halt)
+        # =====================================================================
+        _brain_applied = False
+        _brain_decision = None
+        _brain_conf_delta = 0.0
+        try:
+            if os.getenv("GHOST_BRAIN_ENABLED", "1") == "1":
+                from core.ghost_brain import GhostBrain
+                from core.brain_data import load_brain_context
+                import asyncio as _brain_asyncio
+
+                _brain = GhostBrain()
+
+                # Load rich context (accuracy history, streaks, regime, F&G)
+                _brain_db_url = os.getenv("DATABASE_URL", "")
+                _brain_market_data = {
+                    "fear_greed_index": features.get("FEAR_GREED_INDEX", 50),
+                    "btc_24h_change": features.get("BTC_24H_CHANGE", 0.0),
+                    "eth_24h_change": features.get("ETH_24H_CHANGE", 0.0),
+                    "spy_24h_change": features.get("SPY_24H_CHANGE", 0.0),
+                    "vix_level": features.get("VIX_LEVEL", 20),
+                }
+
+                # Load context in a thread-safe way
+                def _load_brain_ctx():
+                    _loop = _brain_asyncio.new_event_loop()
+                    try:
+                        return _loop.run_until_complete(
+                            load_brain_context(_brain_db_url, [symbol], _brain_market_data)
+                        )
+                    finally:
+                        _loop.close()
+
+                try:
+                    _running = _brain_asyncio.get_running_loop()
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _bp:
+                        _brain_ctx = _bp.submit(_load_brain_ctx).result(timeout=5)
+                except RuntimeError:
+                    _brain_ctx = _load_brain_ctx()
+
+                _brain_decision = _brain.analyze_symbol(
+                    symbol=symbol,
+                    direction=direction,
+                    confidence=ensemble_prediction.confidence if ensemble_prediction.confidence > 0.45 else base_confidence if 'base_confidence' in dir() else 0.52,
+                    context=_brain_ctx,
+                )
+
+                if _brain_decision:
+                    _brain_applied = True
+                    _old_dir = direction
+                    _old_conf = ensemble_prediction.confidence if ensemble_prediction.confidence > 0.45 else 0.52
+
+                    # Apply Brain's direction (may invert)
+                    if _brain_decision.direction in ("UP", "DOWN"):
+                        direction = _brain_decision.direction
+
+                    # Apply Brain's confidence modifier
+                    if _brain_decision.confidence and _brain_decision.confidence > 0:
+                        # Blend: 70% ensemble + 30% brain
+                        _ensemble_c = ensemble_prediction.confidence if ensemble_prediction.confidence > 0.45 else 0.52
+                        # Use brain confidence as a modifier, not replacement
+                        _brain_conf_delta = _brain_decision.confidence - _old_conf
+                        # Brain can adjust up to ±15%
+                        _brain_conf_delta = max(-0.15, min(0.15, _brain_conf_delta))
+
+                    # Apply Brain's action (EXCLUDE → force HOLD)
+                    if _brain_decision.action == "EXCLUDE":
+                        direction = "HOLD"
+                        LOGGER.warning(
+                            f"[{symbol}] 🧠 BRAIN EXCLUDED: {_brain_decision.tier} "
+                            f"(reasons: {', '.join(_brain_decision.reasons[:3])})"
+                        )
+                    elif _brain_decision.action == "INVERT":
+                        LOGGER.info(
+                            f"[{symbol}] 🧠 BRAIN INVERTED: {_old_dir} → {direction} "
+                            f"(brain_accuracy={_brain_decision.brain_accuracy:.1f}%, "
+                            f"reasons: {', '.join(_brain_decision.reasons[:3])})"
+                        )
+                    elif _brain_decision.action in ("BOOST", "SEND"):
+                        LOGGER.info(
+                            f"[{symbol}] 🧠 BRAIN {_brain_decision.action}: {_brain_decision.tier} "
+                            f"(brain_accuracy={_brain_decision.brain_accuracy:.1f}%, "
+                            f"conf_mod={_brain_conf_delta:+.1%})"
+                        )
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Brain v3 analysis failed (continuing without): {e}")
+
         # Step 2.5a: ADAPTIVE DIRECTIONAL CONFIDENCE ADJUSTMENT (Feb 8, 2026)
         # Auto-adjusts UP/DOWN penalties based on LIVE paper trade performance.
         # If market regime flips (bear→bull), penalties auto-reverse within 1 hour.
@@ -8780,7 +8876,18 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             pattern_boost = min(pattern_boost, 0.05)  # Cap pattern boost at 5%
             base_confidence = min(base_confidence + pattern_boost, MAX_CONFIDENCE)
             LOGGER.info(f"[{symbol}] 📊 Pattern Intelligence boost: +{pattern_boost:.1%} (final: {base_confidence:.1%})")
-        
+
+        # Apply Brain v3 confidence modifier (capped ±15%)
+        if _brain_applied and _brain_conf_delta != 0:
+            _pre_brain_conf = base_confidence
+            base_confidence = base_confidence + _brain_conf_delta
+            base_confidence = max(base_confidence, 0.25)  # Floor at 25%
+            base_confidence = min(base_confidence, MAX_CONFIDENCE)  # Respect cap
+            LOGGER.info(
+                f"[{symbol}] 🧠 Brain v3 confidence: {_pre_brain_conf:.1%} → {base_confidence:.1%} "
+                f"(delta={_brain_conf_delta:+.1%})"
+            )
+
         # =====================================================================
         # MULTI-HORIZON CONSENSUS CHECK (Feb 25, 2026)
         # Uses already-extracted features to compute a quick multi-timeframe

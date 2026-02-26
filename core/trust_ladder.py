@@ -108,6 +108,10 @@ class TrustLadder:
         self._cache: Dict[str, SymbolTrust] = {}
         self._cache_time = 0
         self._cache_ttl = 300  # 5 minutes
+        # Reconnection tracking for memory-only fallback
+        self._memory_only = not self.use_postgres
+        self._last_reconnect_attempt = 0
+        self._reconnect_interval = 300  # Try reconnecting every 5 minutes
     
     def _get_postgres_connection(self):
         """Get PostgreSQL connection via shared pool bridge."""
@@ -117,7 +121,10 @@ class TrustLadder:
     def _ensure_table(self):
         """Create trust ladder table if not exists."""
         if not self.use_postgres:
-            LOGGER.warning("[TRUST] PostgreSQL not available, using memory only")
+            LOGGER.warning(
+                "[TRUST] PostgreSQL not available, using memory-only mode. "
+                "Trust data will be LOST on restart. Set DATABASE_URL to persist."
+            )
             return
         
         try:
@@ -145,6 +152,23 @@ class TrustLadder:
     def get_trust(self, symbol: str) -> SymbolTrust:
         """Get trust data for a symbol (creates default if not exists)."""
         symbol = symbol.upper()
+        
+        # Periodic reconnection attempt if in memory-only mode
+        if self._memory_only and PSYCOPG2_AVAILABLE and os.getenv("DATABASE_URL"):
+            import time as _time
+            _now = _time.time()
+            if _now - self._last_reconnect_attempt > self._reconnect_interval:
+                self._last_reconnect_attempt = _now
+                try:
+                    conn = self._get_postgres_connection()
+                    conn.cursor().execute("SELECT 1")
+                    conn.close()
+                    self.use_postgres = True
+                    self._memory_only = False
+                    self._ensure_table()
+                    LOGGER.info("[TRUST] ✅ PostgreSQL reconnected! Switching from memory-only to persistent mode.")
+                except Exception as e:
+                    LOGGER.debug(f"[TRUST] Reconnection attempt failed: {e}")
         
         if not self.use_postgres:
             # Memory-only mode

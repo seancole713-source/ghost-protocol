@@ -655,8 +655,16 @@ class PaperTracker:
                 from core.online_calibrator import get_online_calibrator
                 
                 calibrator = get_online_calibrator()
+                # Derive horizon from actual trade metadata instead of hardcoding
+                _hold_hours = trade.get('v3_hold_hours') or 0
+                if _hold_hours <= 12:
+                    _cal_horizon = "nowcast"
+                elif _hold_hours <= 72:
+                    _cal_horizon = "swing"
+                else:
+                    _cal_horizon = "position"
                 calibrator.log_forecast_result(
-                    horizon="swing",  # Default 48h horizon
+                    horizon=_cal_horizon,
                     symbol=trade['symbol'],
                     predicted_price=float(trade.get('target_price') or entry_price),
                     actual_price=float(current_price),
