@@ -30,6 +30,14 @@ from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Ghost Brain v2 — centralized learning intelligence
+try:
+    from core.ghost_brain import GhostBrain, BrainDecision, BRAIN_ENABLED
+    GHOST_BRAIN_AVAILABLE = True
+except ImportError:
+    GHOST_BRAIN_AVAILABLE = False
+    BRAIN_ENABLED = False
+
 # PostgreSQL for learning data
 try:
     import psycopg2
@@ -745,6 +753,11 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
             return True, f"HARDCODED: {HARDCODED_EXCLUSIONS[symbol]}"
     
     # PRIORITY 2: Check learning data (only if LEARNING_EXCLUDE_ENABLED)
+    # When Ghost Brain v2 is active, it handles learning decisions (invert/exclude/boost)
+    # This legacy path only runs when the brain is disabled
+    if BRAIN_ENABLED:
+        return False, "brain_handles_learning"
+    
     if not LEARNING_EXCLUDE_ENABLED:
         return False, "learning_exclusions_disabled"
     
@@ -777,6 +790,10 @@ def get_confidence_boost(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
         (boost_multiplier: float, reason: str)
     """
     # Check if boosts are enabled
+    # When Ghost Brain v2 is active, it handles confidence scaling
+    if BRAIN_ENABLED:
+        return 1.0, "brain_handles_confidence"
+    
     if not LEARNING_BOOST_ENABLED:
         return 1.0, "boosts_disabled"
     
@@ -1727,8 +1744,18 @@ class GhostNotificationSystem:
         accuracy_data = get_symbol_accuracy_from_postgres()
         learning_excluded = 0
         learning_boosted = 0
+        learning_inverted = 0
         excluded_symbols = []
         boosted_symbols = []
+        inverted_symbols = []
+        
+        # GHOST BRAIN v2: Centralized learning intelligence
+        brain = None
+        if GHOST_BRAIN_AVAILABLE and BRAIN_ENABLED:
+            brain = GhostBrain()
+            LOGGER.info("[BRAIN] 🧠 Ghost Brain v2 ACTIVE — unified learning intelligence")
+        else:
+            LOGGER.info("[BRAIN] Ghost Brain disabled — using legacy learning system")
         
         # EVENT MEMORY: Load learned event patterns
         try:
@@ -1772,7 +1799,7 @@ class GhostNotificationSystem:
                     v2_excluded_symbols.append(f"{symbol} ({v2_reason})")
                     continue
             
-            # LEARNING: Check if symbol should be excluded due to low accuracy
+            # LEARNING: Check if symbol should be excluded (env + hardcoded checks)
             should_exclude, exclude_reason = should_exclude_symbol(symbol, accuracy_data)
             if should_exclude:
                 learning_excluded += 1
@@ -1781,18 +1808,54 @@ class GhostNotificationSystem:
             
             confidence = pred.get("confidence", 0)
             
+            # Direction is ALREADY inverted in _LATEST_PREDICTIONS when INVERSE_GHOST=1
+            direction = pred.get("direction", "DOWN")
+            
+            # ══════════════════════════════════════════════════════════
+            # GHOST BRAIN v2: Unified learning decision
+            # Replaces old separate exclude + boost with one smart call
+            # Adds INVERT ability (flip reliably-wrong symbols)
+            # ══════════════════════════════════════════════════════════
+            boost_multiplier = 1.0  # Default for candidate dict
+            if brain:
+                brain_decision = brain.analyze_symbol(symbol, direction, confidence, accuracy_data)
+                
+                if brain_decision.action == "EXCLUDE":
+                    learning_excluded += 1
+                    excluded_symbols.append(f"{symbol} ({'; '.join(brain_decision.reasons)})")
+                    continue
+                
+                if brain_decision.inverted:
+                    learning_inverted += 1
+                    inverted_symbols.append(
+                        f"{symbol} ({direction}→{brain_decision.direction} "
+                        f"[raw:{brain_decision.raw_accuracy:.0f}%→eff:{brain_decision.effective_accuracy:.0f}%])"
+                    )
+                
+                # Apply brain's adjusted direction and confidence
+                original_confidence = confidence
+                direction = brain_decision.direction
+                confidence = brain_decision.confidence
+                
+                if confidence > original_confidence:
+                    learning_boosted += 1
+                    boosted_symbols.append(
+                        f"{symbol} ({original_confidence:.0%}→{confidence:.0%} {brain_decision.tier})"
+                    )
+                    boost_multiplier = confidence / max(original_confidence, 0.01)
+            else:
+                # Legacy path: old separate exclude + boost (when brain disabled)
+                boost_multiplier, boost_reason = get_confidence_boost(symbol, accuracy_data)
+                original_confidence = confidence
+                if boost_multiplier > 1.0:
+                    confidence = min(1.0, confidence * boost_multiplier)
+                    learning_boosted += 1
+                    boosted_symbols.append(f"{symbol} ({original_confidence:.0%}→{confidence:.0%})")
+            
             # MONEY GAME: Always include TOP 10 symbols regardless of confidence
             is_money_game_elite = symbol in money_game_stocks or symbol in money_game_crypto
             if not is_money_game_elite and confidence < 0.40:  # Only filter non-elite symbols
                 continue
-            
-            # LEARNING: Apply confidence boost for high-accuracy symbols
-            boost_multiplier, boost_reason = get_confidence_boost(symbol, accuracy_data)
-            original_confidence = confidence
-            if boost_multiplier > 1.0:
-                confidence = min(1.0, confidence * boost_multiplier)  # Cap at 100%
-                learning_boosted += 1
-                boosted_symbols.append(f"{symbol} ({original_confidence:.0%}→{confidence:.0%})")
             
             # Get cached price from prediction (DO NOT refresh yet)
             cached_price = (pred.get("price") or 
@@ -1806,9 +1869,6 @@ class GhostNotificationSystem:
             if asset_class == "stablecoin":
                 stablecoins_skipped += 1
                 continue
-            
-            # Direction is ALREADY inverted in _LATEST_PREDICTIONS when INVERSE_GHOST=1
-            direction = pred.get("direction", "DOWN")
             
             # EVENT MEMORY: Check if recent events should adjust prediction
             event_warning = None
@@ -1848,8 +1908,13 @@ class GhostNotificationSystem:
             LOGGER.debug(f"[V2-FILTER] Excluded: {', '.join(v2_excluded_symbols[:10])}")
         if learning_excluded > 0:
             LOGGER.info(f"[LEARNING] 🚫 EXCLUDED {learning_excluded} low-accuracy symbols")
+        if learning_inverted > 0:
+            LOGGER.info(f"[BRAIN] 🔄 INVERTED {learning_inverted} reliably-wrong symbols: {', '.join(inverted_symbols)}")
         if learning_boosted > 0:
             LOGGER.info(f"[LEARNING] 🚀 BOOSTED {learning_boosted} high-accuracy symbols")
+        if brain:
+            LOGGER.info(f"[BRAIN] 📊 {brain.generate_telegram_summary()}")
+            LOGGER.info(f"[BRAIN] Full report:\n{brain.generate_report()}")
         if event_memory_active and event_adjusted > 0:
             LOGGER.info(f"[EVENT_MEMORY] ⚠️ ADJUSTED {event_adjusted} predictions due to recent events")
         
