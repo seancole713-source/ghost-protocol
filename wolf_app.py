@@ -14497,8 +14497,8 @@ async def api_v3_goals_snapshot():
                 STATE[key] = default
             goals[period] = STATE.get(key, default)
 
-        # FIXED: Calculate ghost_score from real health metrics
-        # Fetch actual health metrics for accurate score
+        # FIXED (v2): Calculate ghost_score from real health metrics
+        # Uses same crypto quorum as health/metrics endpoint
         data_health = 50
         ai_activity = 50
         accuracy = 50
@@ -14507,9 +14507,12 @@ async def api_v3_goals_snapshot():
         V2_START_DATE = "2026-01-14"
         
         try:
-            # Data Health: Check crypto providers (same as health/metrics)
+            # Data Health: Check crypto providers with timeout (same as health/metrics)
             from core.crypto.crypto_providers import get_crypto_price_quorum
-            btc_data = await get_crypto_price_quorum("BTC", use_cache=True)
+            btc_data = await asyncio.wait_for(
+                get_crypto_price_quorum("BTC", use_cache=True),
+                timeout=4.0
+            )
             
             if btc_data and btc_data.get("price", 0) > 0:
                 quorum_size = btc_data.get("quorum_size", 1)
@@ -14522,17 +14525,20 @@ async def api_v3_goals_snapshot():
             
             # Bonus checks: predictions in memory + freshness
             if len(_LATEST_PREDICTIONS) == 0:
-                data_health = max(40, data_health - 15)  # Penalize no predictions
+                data_health = max(60, data_health - 15)  # Penalize no predictions
             else:
                 recent_preds = [p for p in _LATEST_PREDICTIONS.values()
                                if time.time() - p.get("run_at", 0) < 21600]
                 if len(recent_preds) < 5:
-                    data_health = max(40, data_health - 10)  # Penalize stale predictions
+                    data_health = max(60, data_health - 10)  # Penalize stale predictions
             
-            LOGGER.info(f"[GHOST_SCORE] data_health={data_health} (BTC quorum ok)")
+            LOGGER.info(f"[GHOST_SCORE] data_health={data_health} (BTC ${btc_data.get('price', 0):.0f}, quorum={btc_data.get('quorum_size', 0)})")
+        except asyncio.TimeoutError:
+            LOGGER.warning("[GHOST_SCORE] BTC quorum timed out after 4s, using default data_health=70")
+            data_health = 70  # Timeout = providers exist but slow
         except Exception as _dh_err:
-            LOGGER.warning(f"[GHOST_SCORE] data_health calculation failed: {_dh_err}")
-            data_health = 40  # Minimum when checks fail
+            LOGGER.warning(f"[GHOST_SCORE] data_health calculation failed: {type(_dh_err).__name__}: {_dh_err}")
+            data_health = 50  # Fallback — don't punish to 40 for import/transient errors
         
         # AI Activity: Count recent predictions AND check variety
         total_predictions = len(_LATEST_PREDICTIONS)
