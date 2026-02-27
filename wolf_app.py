@@ -14562,11 +14562,15 @@ async def api_v3_goals_snapshot():
             tracker = get_paper_tracker()
             # CRITICAL: Use since=V2_START_DATE to get 60% accuracy, not 29%
             stats = tracker.get_stats(since=V2_START_DATE, v2_only=True)
-            if stats.get("resolved_trades", 0) > 0:
+            _resolved = stats.get("resolved_trades", 0)
+            _wins = stats.get("wins", 0)
+            _losses = stats.get("losses", 0)
+            LOGGER.info(f"[GHOST_SCORE] Paper tracker: resolved={_resolved}, wins={_wins}, losses={_losses}, total={stats.get('total_trades', 0)}")
+            if _resolved > 0:
                 accuracy = round(stats.get("win_rate_pct", 50), 1)
-                LOGGER.debug(f"[GHOST_SCORE] Paper trade accuracy: {accuracy}% ({stats.get('wins',0)}W/{stats.get('losses',0)}L)")
+                LOGGER.info(f"[GHOST_SCORE] Paper trade accuracy: {accuracy}% ({_wins}W/{_losses}L)")
             else:
-                LOGGER.debug("[GHOST_SCORE] No resolved paper trades since V2 start date")
+                LOGGER.info("[GHOST_SCORE] No resolved paper trades since V2 start date")
         except Exception as _acc_err:
             LOGGER.warning(f"[GHOST_SCORE] accuracy from paper_tracker failed: {_acc_err}")
         
@@ -14587,13 +14591,42 @@ async def api_v3_goals_snapshot():
                           AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
                     """)
                     _gs_row = _gs_cur.fetchone()
+                    _gs_total = _gs_row[0] if _gs_row else 0
+                    _gs_wins = _gs_row[1] if _gs_row and _gs_row[1] else 0
+                    LOGGER.info(f"[GHOST_SCORE] PostgreSQL ghost_predictions: checked={_gs_total}, correct={_gs_wins}")
                     _gs_cur.close()
                     _gs_conn.close()
-                    if _gs_row and _gs_row[0] and _gs_row[0] > 0:
-                        accuracy = round((_gs_row[1] / _gs_row[0]) * 100, 1)
-                        LOGGER.info(f"[GHOST_SCORE] PostgreSQL direct accuracy: {accuracy}% ({_gs_row[1]}/{_gs_row[0]})")
+                    if _gs_total and _gs_total > 0:
+                        accuracy = round((_gs_wins / _gs_total) * 100, 1)
+                        LOGGER.info(f"[GHOST_SCORE] PostgreSQL direct accuracy: {accuracy}% ({_gs_wins}/{_gs_total})")
+                    else:
+                        LOGGER.info("[GHOST_SCORE] PostgreSQL: 0 checked predictions in last 30 days")
             except Exception as _pg_err:
-                LOGGER.debug(f"[GHOST_SCORE] PostgreSQL direct fallback failed: {_pg_err}")
+                LOGGER.warning(f"[GHOST_SCORE] PostgreSQL direct fallback failed: {_pg_err}")
+        
+        # Third fallback: ghost_accuracy_stats table (written by prediction_evaluator)
+        if accuracy == 50:
+            try:
+                import psycopg2 as _gs_pg2
+                _gs_url2 = os.getenv("DATABASE_URL")
+                if _gs_url2:
+                    _gs_conn2 = _gs_pg2.connect(_gs_url2)
+                    _gs_cur2 = _gs_conn2.cursor()
+                    _gs_cur2.execute("""
+                        SELECT accuracy_pct, total_predictions, correct_predictions
+                        FROM ghost_accuracy_stats
+                        WHERE period = 'all_time'
+                    """)
+                    _gs_row2 = _gs_cur2.fetchone()
+                    _gs_cur2.close()
+                    _gs_conn2.close()
+                    if _gs_row2 and _gs_row2[1] and _gs_row2[1] > 0:
+                        accuracy = round(float(_gs_row2[0]), 1)
+                        LOGGER.info(f"[GHOST_SCORE] accuracy_stats table: {accuracy}% ({_gs_row2[2]}/{_gs_row2[1]})")
+                    else:
+                        LOGGER.info("[GHOST_SCORE] ghost_accuracy_stats: no all_time entry")
+            except Exception as _stats_err:
+                LOGGER.warning(f"[GHOST_SCORE] ghost_accuracy_stats fallback failed: {_stats_err}")
         
         LOGGER.info(f"[GHOST_SCORE] Components: accuracy={accuracy}, data_health={data_health}, ai_activity={ai_activity}, predictions={total_predictions}")
         
