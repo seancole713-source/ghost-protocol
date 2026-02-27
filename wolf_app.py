@@ -14645,11 +14645,154 @@ async def api_v3_goals_snapshot():
             "ghost_score": ghost_score,
             "daily_goal_pct": round(daily_pct, 2),
             "weekly_goal_pct": round(weekly_pct, 2),
-            "monthly_goal_pct": round(monthly_pct, 2)
+            "monthly_goal_pct": round(monthly_pct, 2),
+            "components": {
+                "accuracy": accuracy,
+                "data_health": data_health,
+                "ai_activity": ai_activity,
+                "total_predictions": total_predictions,
+            }
         }
     
     except Exception as e:
         LOGGER.error(f"Goals snapshot failed: {e}", exc_info=True)
+
+
+@APP.get("/api/v3/debug/accuracy")
+async def api_v3_debug_accuracy():
+    """
+    Diagnostic endpoint: shows raw data from ALL accuracy sources.
+    Hit this URL to see exactly why ghost_score is stuck at 50.
+    """
+    import psycopg2 as _dbg_pg
+    result = {"sources": {}, "errors": []}
+    _db_url = os.getenv("DATABASE_URL", "")
+
+    # Source 1: Paper tracker
+    try:
+        from core.paper_tracker import get_paper_tracker
+        tracker = get_paper_tracker()
+        stats = tracker.get_stats(since="2026-01-14", v2_only=True)
+        result["sources"]["paper_tracker"] = {
+            "total_trades": stats.get("total_trades", 0),
+            "resolved_trades": stats.get("resolved_trades", 0),
+            "pending_trades": stats.get("pending_trades", 0),
+            "wins": stats.get("wins", 0),
+            "losses": stats.get("losses", 0),
+            "win_rate_pct": stats.get("win_rate_pct", 0),
+        }
+    except Exception as e:
+        result["sources"]["paper_tracker"] = {"error": str(e)}
+        result["errors"].append(f"paper_tracker: {e}")
+
+    # Source 2: ghost_predictions table
+    try:
+        if _db_url:
+            conn = _dbg_pg.connect(_db_url)
+            cur = conn.cursor()
+
+            # Total rows
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions")
+            total_rows = cur.fetchone()[0]
+
+            # Checked rows (all time)
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1")
+            checked_all = cur.fetchone()[0]
+
+            # Checked rows (last 30 days)
+            cur.execute("""
+                SELECT COUNT(*) as total,
+                       SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) as losses
+                FROM ghost_predictions
+                WHERE checked = 1
+                  AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
+            """)
+            row30 = cur.fetchone()
+
+            # Unchecked (pending evaluation)
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 0")
+            unchecked = cur.fetchone()[0]
+
+            # Oldest and newest prediction
+            cur.execute("SELECT MIN(predicted_at), MAX(predicted_at) FROM ghost_predictions")
+            ts_range = cur.fetchone()
+
+            cur.close()
+            conn.close()
+
+            result["sources"]["ghost_predictions"] = {
+                "total_rows": total_rows,
+                "checked_all_time": checked_all,
+                "unchecked_pending": unchecked,
+                "checked_last_30d": row30[0] if row30 else 0,
+                "correct_last_30d": row30[1] if row30 and row30[1] else 0,
+                "incorrect_last_30d": row30[2] if row30 and row30[2] else 0,
+                "accuracy_30d_pct": round((row30[1] / row30[0] * 100), 1) if row30 and row30[0] and row30[0] > 0 and row30[1] else 0,
+                "oldest_prediction_epoch": ts_range[0] if ts_range else None,
+                "newest_prediction_epoch": ts_range[1] if ts_range else None,
+            }
+        else:
+            result["sources"]["ghost_predictions"] = {"error": "DATABASE_URL not set"}
+    except Exception as e:
+        result["sources"]["ghost_predictions"] = {"error": str(e)}
+        result["errors"].append(f"ghost_predictions: {e}")
+
+    # Source 3: ghost_accuracy_stats table
+    try:
+        if _db_url:
+            conn = _dbg_pg.connect(_db_url)
+            cur = conn.cursor()
+            cur.execute("SELECT period, total_predictions, correct_predictions, accuracy_pct, updated_at FROM ghost_accuracy_stats")
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            result["sources"]["ghost_accuracy_stats"] = [
+                {
+                    "period": r[0],
+                    "total": r[1],
+                    "correct": r[2],
+                    "accuracy_pct": r[3],
+                    "updated_at": r[4],
+                }
+                for r in rows
+            ] if rows else "empty_table"
+        else:
+            result["sources"]["ghost_accuracy_stats"] = {"error": "DATABASE_URL not set"}
+    except Exception as e:
+        result["sources"]["ghost_accuracy_stats"] = {"error": str(e)}
+        result["errors"].append(f"ghost_accuracy_stats: {e}")
+
+    # Which accuracy value would ghost_score use?
+    accuracy = 50
+    source_used = "default_50"
+    pt = result["sources"].get("paper_tracker", {})
+    if isinstance(pt, dict) and pt.get("resolved_trades", 0) > 0:
+        accuracy = pt["win_rate_pct"]
+        source_used = "paper_tracker"
+    elif isinstance(result["sources"].get("ghost_predictions"), dict):
+        gp = result["sources"]["ghost_predictions"]
+        if gp.get("checked_last_30d", 0) > 0:
+            accuracy = gp.get("accuracy_30d_pct", 50)
+            source_used = "ghost_predictions"
+    if accuracy == 50:
+        stats_data = result["sources"].get("ghost_accuracy_stats")
+        if isinstance(stats_data, list):
+            for s in stats_data:
+                if s.get("period") == "all_time" and s.get("total", 0) > 0:
+                    accuracy = s["accuracy_pct"]
+                    source_used = "ghost_accuracy_stats"
+                    break
+
+    result["resolved_accuracy"] = accuracy
+    result["accuracy_source"] = source_used
+    result["diagnosis"] = (
+        "All three accuracy sources returned zero data — system needs time to accumulate evaluated predictions"
+        if source_used == "default_50"
+        else f"Accuracy resolved from {source_used}: {accuracy}%"
+    )
+
+    return result
 
 
 # ============================================================================
@@ -14977,15 +15120,66 @@ async def api_v3_health_metrics():
             ai_activity = 40  # Minimum activity (system is running)
         
         # Accuracy: Calculate from V2-filtered paper trades (not _PREDICTION_STORE)
+        # Uses same 3-source fallback as goals/snapshot for consistency
         accuracy = 50  # Default
+        accuracy_source = "default"
         try:
             from core.paper_tracker import get_paper_tracker
             tracker = get_paper_tracker()
             stats = tracker.get_stats(since=V2_START_DATE, v2_only=True)
             if stats.get("resolved_trades", 0) > 0:
                 accuracy = round(stats.get("win_rate_pct", 50), 1)
+                accuracy_source = "paper_tracker"
         except Exception:
             pass
+        
+        # Fallback: ghost_predictions table
+        if accuracy == 50:
+            try:
+                import psycopg2 as _hm_pg
+                _hm_url = os.getenv("DATABASE_URL")
+                if _hm_url:
+                    _hm_conn = _hm_pg.connect(_hm_url)
+                    _hm_cur = _hm_conn.cursor()
+                    _hm_cur.execute("""
+                        SELECT COUNT(*) as total,
+                               SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
+                        FROM ghost_predictions
+                        WHERE checked = 1
+                          AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
+                    """)
+                    _hm_row = _hm_cur.fetchone()
+                    _hm_cur.close()
+                    _hm_conn.close()
+                    _hm_total = _hm_row[0] if _hm_row else 0
+                    _hm_wins = _hm_row[1] if _hm_row and _hm_row[1] else 0
+                    if _hm_total and _hm_total > 0:
+                        accuracy = round((_hm_wins / _hm_total) * 100, 1)
+                        accuracy_source = "ghost_predictions"
+            except Exception:
+                pass
+        
+        # Fallback: ghost_accuracy_stats table
+        if accuracy == 50:
+            try:
+                import psycopg2 as _hm_pg2
+                _hm_url2 = os.getenv("DATABASE_URL")
+                if _hm_url2:
+                    _hm_conn2 = _hm_pg2.connect(_hm_url2)
+                    _hm_cur2 = _hm_conn2.cursor()
+                    _hm_cur2.execute("""
+                        SELECT accuracy_pct, total_predictions
+                        FROM ghost_accuracy_stats
+                        WHERE period = 'all_time'
+                    """)
+                    _hm_row2 = _hm_cur2.fetchone()
+                    _hm_cur2.close()
+                    _hm_conn2.close()
+                    if _hm_row2 and _hm_row2[1] and _hm_row2[1] > 0:
+                        accuracy = round(float(_hm_row2[0]), 1)
+                        accuracy_source = "ghost_accuracy_stats"
+            except Exception:
+                pass
         
         # Cache Performance: Get price cache statistics
         cache_stats = {}
@@ -15000,6 +15194,7 @@ async def api_v3_health_metrics():
             "data_health": data_health,
             "ai_activity": ai_activity,
             "accuracy": accuracy,
+            "accuracy_source": accuracy_source,
             "cache_performance": cache_stats,
             "v2_start_date": V2_START_DATE,
             "timestamp": datetime.now(UTC).isoformat()
