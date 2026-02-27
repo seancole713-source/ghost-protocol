@@ -14507,31 +14507,29 @@ async def api_v3_goals_snapshot():
         V2_START_DATE = "2026-01-14"
         
         try:
-            # Data Health: Check multiple providers, not just BTC
-            health_checks = 0
-            health_passes = 0
+            # Data Health: Check crypto providers (same as health/metrics)
+            from core.crypto.crypto_providers import get_crypto_price_quorum
+            btc_data = await get_crypto_price_quorum("BTC", use_cache=True)
             
-            # Check BTC price
-            btc_data = await fetch_price_async("BTC", STATE)
-            health_checks += 1
             if btc_data and btc_data.get("price", 0) > 0:
-                health_passes += 1
+                quorum_size = btc_data.get("quorum_size", 1)
+                if quorum_size >= 2:
+                    data_health = 95  # Strong quorum
+                else:
+                    data_health = 80  # Single provider working
+            else:
+                data_health = 50  # Provider returned no data
             
-            # Check database connectivity (predictions in memory = good)
-            health_checks += 1
-            if len(_LATEST_PREDICTIONS) > 0:
-                health_passes += 1
+            # Bonus checks: predictions in memory + freshness
+            if len(_LATEST_PREDICTIONS) == 0:
+                data_health = max(40, data_health - 15)  # Penalize no predictions
+            else:
+                recent_preds = [p for p in _LATEST_PREDICTIONS.values()
+                               if time.time() - p.get("run_at", 0) < 21600]
+                if len(recent_preds) < 5:
+                    data_health = max(40, data_health - 10)  # Penalize stale predictions
             
-            # Check if predictions are recent (within 6 hours)
-            health_checks += 1
-            recent_preds = [p for p in _LATEST_PREDICTIONS.values() 
-                           if time.time() - p.get("run_at", 0) < 21600]
-            if len(recent_preds) >= 5:
-                health_passes += 1
-            
-            # Data health = percentage of checks passing, scaled to 40-95 range
-            health_ratio = health_passes / max(health_checks, 1)
-            data_health = round(40 + (health_ratio * 55), 1)  # 40-95 range
+            LOGGER.info(f"[GHOST_SCORE] data_health={data_health} (BTC quorum ok)")
         except Exception as _dh_err:
             LOGGER.warning(f"[GHOST_SCORE] data_health calculation failed: {_dh_err}")
             data_health = 40  # Minimum when checks fail

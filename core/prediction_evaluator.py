@@ -332,7 +332,7 @@ def evaluate_pending_predictions() -> Dict:
         FROM ghost_predictions
         WHERE checked = 0 AND check_at < %s
         ORDER BY check_at ASC
-        LIMIT 100
+        LIMIT 500
     """, (now,))
     pending = cur.fetchall()
 
