@@ -9769,12 +9769,13 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             db_path = WOLF_SQLITE_PATH
             conn = sqlite3.connect(db_path)
 
-            # Ensure schema supports touch-target + gating columns
+            # Ensure schema supports touch-target + gating columns + features
             _touch_cols = [
                 ("touch_calibrated_1pct", "REAL"),
                 ("touch_calibrated_0_5pct", "REAL"),
                 ("touch_calibration_samples", "INTEGER DEFAULT 0"),
                 ("touch_conf_band", "TEXT"),
+                ("features_json", "TEXT"),
             ]
             for _col_name, _col_type in _touch_cols:
                 try:
