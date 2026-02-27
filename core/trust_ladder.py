@@ -185,6 +185,7 @@ class TrustLadder:
                 )
             return self._cache[symbol]
         
+        conn = None
         try:
             conn = self._get_postgres_connection()
             cur = conn.cursor()
@@ -229,7 +230,6 @@ class TrustLadder:
                 )
             
             cur.close()
-            conn.close()
             return trust
             
         except Exception as e:
@@ -244,6 +244,12 @@ class TrustLadder:
                 total_wins=0,
                 last_updated=datetime.utcnow()
             )
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def record_outcome(self, symbol: str, is_win: bool, is_checkpoint: bool = False) -> Dict:
         """
@@ -351,6 +357,7 @@ class TrustLadder:
             self._cache[trust.symbol] = trust
             return
         
+        conn = None
         try:
             conn = self._get_postgres_connection()
             cur = conn.cursor()
@@ -379,9 +386,14 @@ class TrustLadder:
             ))
             conn.commit()
             cur.close()
-            conn.close()
         except Exception as e:
             LOGGER.error(f"[TRUST] Failed to save trust for {trust.symbol}: {e}")
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def get_prediction_window(self, symbol: str) -> Dict:
         """
@@ -416,6 +428,7 @@ class TrustLadder:
         if not self.use_postgres:
             return [s for s, t in self._cache.items() if t.trust_level >= 3]
         
+        conn = None
         try:
             conn = self._get_postgres_connection()
             cur = conn.cursor()
@@ -427,12 +440,17 @@ class TrustLadder:
             """)
             rows = cur.fetchall()
             cur.close()
-            conn.close()
             
             return [{"symbol": r[0], "consecutive_wins": r[1]} for r in rows]
         except Exception as e:
             LOGGER.error(f"[TRUST] Failed to get focused symbols: {e}")
             return []
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def get_leaderboard(self, limit: int = 20) -> list:
         """Get trust leaderboard sorted by level and accuracy."""
@@ -454,6 +472,7 @@ class TrustLadder:
                 for t in trusts
             ]
         
+        conn = None
         try:
             conn = self._get_postgres_connection()
             cur = conn.cursor()
@@ -467,7 +486,6 @@ class TrustLadder:
             """, (limit,))
             rows = cur.fetchall()
             cur.close()
-            conn.close()
             
             return [
                 {
@@ -484,6 +502,12 @@ class TrustLadder:
         except Exception as e:
             LOGGER.error(f"[TRUST] Failed to get leaderboard: {e}")
             return []
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
 
 # Global instance

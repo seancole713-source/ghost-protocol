@@ -14570,17 +14570,30 @@ async def api_v3_goals_snapshot():
         except Exception as _acc_err:
             LOGGER.warning(f"[GHOST_SCORE] accuracy from paper_tracker failed: {_acc_err}")
         
-        # Fallback: If accuracy is still the default 50, try PostgreSQL accuracy table
+        # Fallback: If accuracy is still the default 50, try PostgreSQL directly
+        # (bypasses connection pool which may be exhausted during prediction cycles)
         if accuracy == 50:
             try:
-                from core.postgres_accuracy import calculate_accuracy_postgres
-                pg_acc = calculate_accuracy_postgres(period="30d")
-                _pg_total = pg_acc.get("total_predictions", 0)
-                if _pg_total > 0:
-                    accuracy = round(pg_acc.get("accuracy_pct", 50), 1)
-                    LOGGER.debug(f"[GHOST_SCORE] PostgreSQL accuracy fallback: {accuracy}% ({_pg_total} predictions)")
+                import psycopg2 as _gs_pg
+                _gs_url = os.getenv("DATABASE_URL")
+                if _gs_url:
+                    _gs_conn = _gs_pg.connect(_gs_url)
+                    _gs_cur = _gs_conn.cursor()
+                    _gs_cur.execute("""
+                        SELECT COUNT(*) as total,
+                               SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
+                        FROM ghost_predictions
+                        WHERE checked = 1
+                          AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
+                    """)
+                    _gs_row = _gs_cur.fetchone()
+                    _gs_cur.close()
+                    _gs_conn.close()
+                    if _gs_row and _gs_row[0] and _gs_row[0] > 0:
+                        accuracy = round((_gs_row[1] / _gs_row[0]) * 100, 1)
+                        LOGGER.info(f"[GHOST_SCORE] PostgreSQL direct accuracy: {accuracy}% ({_gs_row[1]}/{_gs_row[0]})")
             except Exception as _pg_err:
-                LOGGER.debug(f"[GHOST_SCORE] PostgreSQL accuracy fallback failed: {_pg_err}")
+                LOGGER.debug(f"[GHOST_SCORE] PostgreSQL direct fallback failed: {_pg_err}")
         
         LOGGER.info(f"[GHOST_SCORE] Components: accuracy={accuracy}, data_health={data_health}, ai_activity={ai_activity}, predictions={total_predictions}")
         

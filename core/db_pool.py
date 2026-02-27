@@ -162,7 +162,7 @@ _sync_pool = None  # psycopg2 ThreadedConnectionPool
 _sync_pool_lock = __import__("threading").Lock()
 
 SYNC_POOL_MIN = int(os.getenv("DB_SYNC_POOL_MIN", "5"))
-SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "25"))
+SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "50"))
 
 
 def _get_sync_pool():
@@ -252,25 +252,58 @@ def get_sync_connection_raw():
     done — it will return the connection to the pool rather than
     destroying the TCP socket.
 
+    Retries up to 3 times with backoff on pool exhaustion.
+
     This replaces the broken pattern:
         conn = get_sync_connection().__enter__()   # WRONG — leaks CM
     With:
         conn = get_sync_connection_raw()           # CORRECT
     """
+    import time as _time
+
     pool = _get_sync_pool()
 
     if pool is not None:
-        conn = pool.getconn()
+        _max_retries = 3
+        _backoff = [0.2, 0.5, 1.0]
+        _last_err = None
 
-        # Monkey-patch .close() so callers return to pool
-        def _pool_return():
+        for _attempt in range(_max_retries):
             try:
-                conn.rollback()
-            except Exception:
-                pass
-            pool.putconn(conn)
-        conn.close = _pool_return  # type: ignore[assignment]
-        return conn
+                conn = pool.getconn()
+
+                # Monkey-patch .close() so callers return to pool
+                def _pool_return(_c=conn):
+                    try:
+                        _c.rollback()
+                    except Exception:
+                        pass
+                    try:
+                        pool.putconn(_c)
+                    except Exception:
+                        pass
+                conn.close = _pool_return  # type: ignore[assignment]
+                return conn
+            except Exception as e:
+                _last_err = e
+                if _attempt < _max_retries - 1:
+                    _wait = _backoff[_attempt]
+                    LOGGER.warning(
+                        f"[DB_POOL] Pool exhausted (attempt {_attempt + 1}/{_max_retries}), "
+                        f"retrying in {_wait}s..."
+                    )
+                    _time.sleep(_wait)
+
+        # All retries failed — fall back to direct connection
+        LOGGER.error(
+            f"[DB_POOL] Pool exhausted after {_max_retries} retries, "
+            f"falling back to direct connection: {_last_err}"
+        )
+        import psycopg2
+        db_url = _get_db_url()
+        if db_url:
+            return psycopg2.connect(db_url)
+        raise _last_err  # type: ignore[misc]
     else:
         import psycopg2
         db_url = _get_db_url()
