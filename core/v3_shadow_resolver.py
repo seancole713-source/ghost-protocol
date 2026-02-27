@@ -29,8 +29,8 @@ class ShadowOutcomeResolver:
     
     def _get_connection(self):
         """Get PostgreSQL connection via shared pool bridge."""
-        from core.db_pool import get_sync_connection
-        return get_sync_connection().__enter__()
+        from core.db_pool import get_sync_connection_raw
+        return get_sync_connection_raw()
     
     async def resolve_pending(self, batch_size: int = 100) -> Dict:
         """

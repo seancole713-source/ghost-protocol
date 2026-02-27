@@ -34,8 +34,8 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
             LOGGER.error("DATABASE_URL not set")
             return _empty_response(period, "DATABASE_URL not configured")
         
-        from core.db_pool import get_sync_connection
-        conn = get_sync_connection().__enter__()
+        from core.db_pool import get_sync_connection_raw
+        conn = get_sync_connection_raw()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # Time filter

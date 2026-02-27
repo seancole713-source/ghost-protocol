@@ -241,3 +241,39 @@ def get_sync_connection():
             raise
         finally:
             conn.close()
+
+
+def get_sync_connection_raw():
+    """
+    Get a psycopg2 connection whose .close() returns it to the pool.
+
+    Unlike get_sync_connection() (a context manager), this returns
+    a plain connection object.  Callers MUST call conn.close() when
+    done — it will return the connection to the pool rather than
+    destroying the TCP socket.
+
+    This replaces the broken pattern:
+        conn = get_sync_connection().__enter__()   # WRONG — leaks CM
+    With:
+        conn = get_sync_connection_raw()           # CORRECT
+    """
+    pool = _get_sync_pool()
+
+    if pool is not None:
+        conn = pool.getconn()
+
+        # Monkey-patch .close() so callers return to pool
+        def _pool_return():
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            pool.putconn(conn)
+        conn.close = _pool_return  # type: ignore[assignment]
+        return conn
+    else:
+        import psycopg2
+        db_url = _get_db_url()
+        if not db_url:
+            raise RuntimeError("DATABASE_URL not set")
+        return psycopg2.connect(db_url)

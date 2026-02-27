@@ -115,8 +115,8 @@ class TrustLadder:
     
     def _get_postgres_connection(self):
         """Get PostgreSQL connection via shared pool bridge."""
-        from core.db_pool import get_sync_connection
-        return get_sync_connection().__enter__()
+        from core.db_pool import get_sync_connection_raw
+        return get_sync_connection_raw()
     
     def _ensure_table(self):
         """Create trust ladder table if not exists."""

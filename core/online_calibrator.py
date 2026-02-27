@@ -19,8 +19,8 @@ LOGGER = logging.getLogger(__name__)
 
 def _get_pg_conn():
     """Get a PostgreSQL connection via shared pool bridge."""
-    from core.db_pool import get_sync_connection
-    return get_sync_connection().__enter__()
+    from core.db_pool import get_sync_connection_raw
+    return get_sync_connection_raw()
 
 
 @dataclass

@@ -65,8 +65,8 @@ class AccuracyDashboard:
         if not self.database_url:
             return None
         try:
-            from core.db_pool import get_sync_connection
-            return get_sync_connection().__enter__()
+            from core.db_pool import get_sync_connection_raw
+            return get_sync_connection_raw()
         except Exception:
             return None
 

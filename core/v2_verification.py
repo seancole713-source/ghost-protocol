@@ -75,8 +75,8 @@ class V2VerificationSystem:
     
     def _get_conn(self):
         """Get PostgreSQL connection via shared pool bridge."""
-        from core.db_pool import get_sync_connection
-        return get_sync_connection().__enter__()
+        from core.db_pool import get_sync_connection_raw
+        return get_sync_connection_raw()
     
     def get_verified_win_rate(self, days: int = 14) -> Dict[str, Any]:
         """

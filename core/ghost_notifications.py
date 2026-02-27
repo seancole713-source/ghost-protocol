@@ -1514,8 +1514,8 @@ class GhostNotificationSystem:
     def _get_postgres_conn(self):
         """Get PostgreSQL connection from db_pool"""
         try:
-            from core.db_pool import get_sync_connection
-            return get_sync_connection().__enter__()
+            from core.db_pool import get_sync_connection_raw
+            return get_sync_connection_raw()
         except Exception:
             return None
     
@@ -1530,14 +1530,14 @@ class GhostNotificationSystem:
         LOGGER.info(f"[TRACKING] Attempting PostgreSQL connection (URL length: {len(database_url)} chars)")
         
         try:
-            from core.db_pool import get_sync_connection
+            from core.db_pool import get_sync_connection_raw
         except ImportError as ie:
             self._last_postgres_error = f"db_pool not available: {ie}"
             LOGGER.warning(f"[TRACKING] db_pool import failed: {ie}")
             return False
         
         try:
-            conn = get_sync_connection().__enter__()
+            conn = get_sync_connection_raw()
             LOGGER.info("[TRACKING] PostgreSQL connection successful!")
             cur = conn.cursor()
             

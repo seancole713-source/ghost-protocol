@@ -9774,11 +9774,17 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             conn = sqlite3.connect(db_path)
 
             # Ensure schema supports touch-target + gating columns
-            try:
-                from core.prediction_evaluator import _ensure_touch_columns
-                _ensure_touch_columns(conn)
-            except Exception:
-                pass
+            _touch_cols = [
+                ("touch_calibrated_1pct", "REAL"),
+                ("touch_calibrated_0_5pct", "REAL"),
+                ("touch_calibration_samples", "INTEGER DEFAULT 0"),
+                ("touch_conf_band", "TEXT"),
+            ]
+            for _col_name, _col_type in _touch_cols:
+                try:
+                    conn.execute(f"ALTER TABLE ghost_predictions ADD COLUMN {_col_name} {_col_type}")
+                except Exception:
+                    pass  # Column already exists
 
             # Align target with returned trade params
             predicted_price = take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price

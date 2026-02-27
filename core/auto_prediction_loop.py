@@ -91,14 +91,30 @@ async def _run_all_predictions_async():
     # Stock edge: 158W/36L = 81.4% — BEST edge in the system
     # No point wasting compute on symbols the model can't predict
     _EDGE_FILTER_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-    _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-    _EDGE_SET = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
+    _env_edge = os.getenv("EDGE_SYMBOLS", "")
+    _default_set = set(s.strip().upper() for s in DEFAULT_EDGE_SYMBOLS.split(",") if s.strip())
+    if _env_edge:
+        _env_set = set(s.strip().upper() for s in _env_edge.split(",") if s.strip())
+        if len(_env_set) < len(_default_set):
+            # Stale Railway env var — merge with default to avoid missing symbols
+            if LOGGER:
+                LOGGER.warning(
+                    f"[AUTO-PREDICT] EDGE_SYMBOLS env var has {len(_env_set)} symbols, "
+                    f"default has {len(_default_set)} — using union of both"
+                )
+            _EDGE_SET = _default_set | _env_set
+        else:
+            _EDGE_SET = _env_set
+    else:
+        _EDGE_SET = _default_set
+    if LOGGER:
+        LOGGER.info(f"[AUTO-PREDICT] Edge filter: {len(_EDGE_SET)} symbols active")
     
     # Run stock predictions (during market hours OR when forced for TOP 10)
     # FIX (Feb 9, 2026): Apply edge filter BEFORE limit cap, not after.
     # Previously: took first 15 from 200+ list → filtered → got 0 stock edge symbols
     # Now: filter full list to edge symbols first → then cap → gets all 7 stock edge symbols
-    TOP_STOCK_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "15"))
+    TOP_STOCK_ASYNC_LIMIT = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "25"))
     if _EDGE_FILTER_ENABLED:
         stock_symbols_to_process = [s for s in HUNTER_STOCK_SYMBOLS if s.upper() in _EDGE_SET][:TOP_STOCK_ASYNC_LIMIT]
     else:

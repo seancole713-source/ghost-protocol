@@ -1076,8 +1076,8 @@ class GameResolver:
         LOGGER.info("🏆 [RESOLVER] Ready to count the money!")
     
     def _get_connection(self):
-        from core.db_pool import get_sync_connection
-        return get_sync_connection().__enter__()
+        from core.db_pool import get_sync_connection_raw
+        return get_sync_connection_raw()
     
     def resolve_pending_trades(self, hours_old: int = 24) -> Dict:
         """
