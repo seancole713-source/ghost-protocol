@@ -73,7 +73,7 @@ from pydantic import BaseModel
 from core.concurrency import AsyncRateLimiter
 from core.price_quorum import PriceDecision, PriceProvider, get_price_quorum
 from core.providers.turbo_provider import turbo_stock_price, turbo_crypto_price
-from config.symbols import DEFAULT_EDGE_SYMBOLS
+from config.symbols import DEFAULT_EDGE_SYMBOLS, get_edge_set
 
 
 def _is_truthy(v: str | None) -> bool:
@@ -4613,8 +4613,7 @@ async def _on_startup():
                 # EDGE WHITELIST (Feb 10, 2026): Only cache edge symbols on startup
                 # Previously loaded 50 random predictions → polluted cache with ETH, XRP, LINK
                 _warmup_edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-                _warmup_edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-                _warmup_edge_set = set(s.strip().upper() for s in _warmup_edge_csv.split(",") if s.strip())
+                _warmup_edge_set = get_edge_set()
                 
                 # Populate cache with most recent prediction per symbol
                 warmup_blocked = 0
@@ -5124,8 +5123,7 @@ async def _post_startup_init():
                             LOGGER.warning(f"[DEAD-MAN] ⚠️ Missed 8 AM window — running emergency scan ({now_central.strftime('%H:%M')} CT)")
                             try:
                                 from core.asset_classifier import get_asset_type
-                                _DM_EDGE_CSV = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-                                _dm_symbols = [s.strip().upper() for s in _DM_EDGE_CSV.split(",") if s.strip()]
+                                _dm_symbols = list(get_edge_set())
                                 for sym in _dm_symbols:
                                     try:
                                         run_single_prediction(sym)
@@ -5170,8 +5168,7 @@ async def _post_startup_init():
                                 from core.asset_classifier import get_asset_type
                                 
                                 _PS_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-                                _PS_EDGE_CSV = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-                                _PS_EDGE_SET = set(s.strip().upper() for s in _PS_EDGE_CSV.split(",") if s.strip())
+                                _PS_EDGE_SET = get_edge_set()
                                 
                                 if _PS_EDGE_ENABLED:
                                     prescan_symbols = list(_PS_EDGE_SET)
@@ -5210,8 +5207,7 @@ async def _post_startup_init():
                                     from core.asset_classifier import get_asset_type
                                     
                                     _TOP10_EDGE_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-                                    _TOP10_EDGE_CSV = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-                                    _TOP10_EDGE_SET = set(s.strip().upper() for s in _TOP10_EDGE_CSV.split(",") if s.strip())
+                                    _TOP10_EDGE_SET = get_edge_set()
                                     
                                     if _TOP10_EDGE_ENABLED:
                                         scan_symbols = list(_TOP10_EDGE_SET)
@@ -9894,8 +9890,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # Only trade symbols with PROVEN edge. Updated via env var for easy tuning.
         # =====================================================================
         _PAPER_TRADE_MIN_CONFIDENCE = float(os.getenv("PAPER_TRADE_MIN_CONFIDENCE", "0.55"))
-        _EDGE_SYMBOLS_CSV = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-        EDGE_SYMBOLS = set(s.strip().upper() for s in _EDGE_SYMBOLS_CSV.split(",") if s.strip())
+        EDGE_SYMBOLS = get_edge_set()
         _EDGE_WHITELIST_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
         
         if _EDGE_WHITELIST_ENABLED and symbol.upper() not in EDGE_SYMBOLS:
@@ -28154,8 +28149,7 @@ async def force_send_top10():
             
             # Step 1: Check edge filter
             import os as _os
-            _edge_csv = _os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-            _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
+            _edge_set = get_edge_set()
             edge_preds = {sym: p for sym, p in _LATEST_PREDICTIONS.items() if sym.upper() in _edge_set}
             
             # Step 2: Check batch_convert

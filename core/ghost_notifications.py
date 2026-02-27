@@ -91,6 +91,7 @@ TRACKING_DB = os.getenv("GHOST_TRACKING_DB", "data/ghost_tracking.db")
 from config.symbols import (
     DEFAULT_EDGE_SYMBOLS,
     DIRECTION_FLIP,
+    get_edge_set,
     v3_strategies_as_dicts,
 )
 
@@ -243,8 +244,7 @@ def v3_filter_and_score(predictions: List[Dict]) -> List[Dict]:
     
     # Load edge whitelist so edge symbols bypass V3_REMOVED_SYMBOLS blocking
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-    _edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-    _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip()) if _edge_enabled else set()
+    _edge_set = get_edge_set() if _edge_enabled else frozenset()
     
     for pred in predictions:
         symbol = pred.get('symbol', '').upper()
@@ -737,8 +737,7 @@ def should_exclude_symbol(symbol: str, accuracy_data: Dict[str, Dict]) -> tuple:
     # EDGE WHITELIST BYPASS (Feb 12, 2026): Edge symbols skip HARDCODED_EXCLUSIONS
     # 7 edge symbols (HBAR, ILV, BAND, PEPE, ENJ, YFI, RNDR) were silently blocked
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-    _edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-    _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
+    _edge_set = get_edge_set()
     is_edge = _edge_enabled and symbol_upper in _edge_set
     
     # PRIORITY 0: Check environment variable exclusions FIRST (Railway config)
@@ -1285,8 +1284,7 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     
     # Add legend at end
     # Compute dynamic symbol counts from EDGE_SYMBOLS env var
-    _edge_raw = os.environ.get("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-    _edge_list = [s.strip().upper() for s in _edge_raw.split(",") if s.strip()]
+    _edge_list = list(get_edge_set())
     _STOCK_SYMBOLS = {"T", "HOOD", "COIN", "XPO"}  # known stock tickers in edge list
     _n_stocks = sum(1 for s in _edge_list if s in _STOCK_SYMBOLS)
     _n_crypto = len(_edge_list) - _n_stocks
@@ -1698,8 +1696,7 @@ class GhostNotificationSystem:
         
         # EDGE WHITELIST (Feb 9, 2026): Only recommend proven edge symbols
         _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
-        _edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-        _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
+        _edge_set = get_edge_set()
         
         if _edge_enabled:
             filtered_predictions = {sym: pred for sym, pred in latest_predictions.items() if sym.upper() in _edge_set}
@@ -2666,8 +2663,7 @@ class GhostNotificationSystem:
         try:
             _evict_edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
             if _evict_edge_enabled and self._use_postgres:
-                _evict_edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-                _evict_edge_set = set(s.strip().upper() for s in _evict_edge_csv.split(",") if s.strip())
+                _evict_edge_set = get_edge_set()
                 # V3 validated symbols must NEVER be evicted — they are the
                 # highest-conviction picks and need target/stop monitoring.
                 _v3_set = set(V3_VALIDATED_STRATEGIES.keys())

@@ -40,12 +40,11 @@ from config.symbols import (
     is_removed,
 )
 from core.models import Prediction, ScoredPrediction, Direction, FilterResult
-from config.symbols import DEFAULT_EDGE_SYMBOLS
+from config.symbols import DEFAULT_EDGE_SYMBOLS, get_edge_set
 
 # Edge whitelist: symbols with proven paper trade performance
 # These bypass V3_VALIDATED_STRATEGIES gate and get scored at 0.55 × confidence
-_EDGE_CSV = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-_EDGE_SET = frozenset(s.strip().upper() for s in _EDGE_CSV.split(",") if s.strip())
+_EDGE_SET = get_edge_set()
 
 
 class V3Filter:

@@ -17,7 +17,7 @@ Core format:
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from core.models import Prediction, Direction
-from config.symbols import DEFAULT_EDGE_SYMBOLS
+from config.symbols import DEFAULT_EDGE_SYMBOLS, get_edge_set
 
 
 def _parse_direction(raw: str) -> Direction:
@@ -373,8 +373,7 @@ def process_v3_from_cache(
     # EDGE WHITELIST: Filter predictions to proven edge symbols only
     _edge_enabled = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     if _edge_enabled:
-        _edge_csv = os.getenv("EDGE_SYMBOLS", DEFAULT_EDGE_SYMBOLS)
-        _edge_set = set(s.strip().upper() for s in _edge_csv.split(",") if s.strip())
+        _edge_set = get_edge_set()
         filtered = {sym: pred for sym, pred in latest_predictions.items() if sym.upper() in _edge_set}
         blocked = len(latest_predictions) - len(filtered)
         _logger.info(f"[V3-CLEAN] 🎯 EDGE WHITELIST: {len(filtered)} edge kept, {blocked} non-edge blocked")

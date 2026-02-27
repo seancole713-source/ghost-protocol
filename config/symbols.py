@@ -190,19 +190,58 @@ CRYPTO_SYMBOLS: FrozenSet[str] = frozenset([
 # top stocks by liquidity. Excludes V3_BLACKLIST entries.
 # =============================================================================
 DEFAULT_EDGE_SYMBOLS = ",".join([
-    # ── V3 Validated (statistically proven) ──
+    # ── V3 Validated (statistically proven p<0.05) ──
     "ETH", "XRP", "LINK", "CHZ", "PANW", "NET", "FTNT", "DDOG",
     # ── V3 Whitelist Stocks (sweetspot analysis) ──
     "T", "BMBL", "XPO",
-    # ── Top Crypto (high volume, liquid markets) ──
-    "BTC", "SOL", "BNB", "ADA", "AVAX", "DOGE", "ATOM", "UNI",
-    "AAVE", "ICP", "TURBO", "JUP", "BCH", "YFI", "IOTX", "GIGA",
-    "ALICE", "BRETT", "PEPE", "WIF", "BONK", "SEI", "FET",
+    # ── Top Crypto (high volume, liquid, NOT in HARDCODED_EXCLUSIONS) ──
+    "BTC", "SOL", "ATOM", "UNI", "AAVE", "ICP", "TURBO", "JUP",
+    "BCH", "IOTX", "GIGA", "ALICE", "BRETT", "SEI", "FET",
     # ── Top Stocks (high liquidity, strong analyst coverage) ──
     "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META",
     "HOOD", "COIN", "AMD", "CRM", "PLTR", "SNOW", "UBER",
 ])
-# REMOVED Feb 25, 2026: RNDR — 11% accuracy (1/9), in HARDCODED_EXCLUSIONS. Was bypassing exclusions via edge whitelist.
+# REMOVED Feb 25, 2026: RNDR — 11% accuracy (1/9), in HARDCODED_EXCLUSIONS.
+# REMOVED Feb 27, 2026: ADA(20%), AVAX(30%), BNB(30%), DOGE(30%), YFI(11%)
+#   — all in HARDCODED_EXCLUSIONS with <40% accuracy. Wasted compute.
+# REMOVED Feb 27, 2026: BONK, PEPE, WIF — meme coins in HARDCODED_EXCLUSIONS.
+
+# Cached resolved edge set (computed once, used everywhere)
+_RESOLVED_EDGE_SET: Optional[FrozenSet[str]] = None
+
+
+def get_edge_set() -> FrozenSet[str]:
+    """
+    Return the resolved edge symbol set.
+
+    If the EDGE_SYMBOLS env var exists but is *smaller* than the code default,
+    use the union of both (prevents a stale Railway env var from silently
+    shrinking coverage).  Result is cached after first call.
+    """
+    global _RESOLVED_EDGE_SET
+    if _RESOLVED_EDGE_SET is not None:
+        return _RESOLVED_EDGE_SET
+
+    import os
+    default_set = frozenset(
+        s.strip().upper() for s in DEFAULT_EDGE_SYMBOLS.split(",") if s.strip()
+    )
+    env_raw = os.getenv("EDGE_SYMBOLS", "")
+    if env_raw:
+        env_set = frozenset(s.strip().upper() for s in env_raw.split(",") if s.strip())
+        if len(env_set) >= len(default_set):
+            _RESOLVED_EDGE_SET = env_set
+        else:
+            # Stale env var — merge both to avoid losing symbols
+            _RESOLVED_EDGE_SET = default_set | env_set
+    else:
+        _RESOLVED_EDGE_SET = default_set
+    return _RESOLVED_EDGE_SET
+
+
+def get_edge_csv() -> str:
+    """Return the resolved edge symbols as a comma-separated string."""
+    return ",".join(sorted(get_edge_set()))
 
 
 # =============================================================================
