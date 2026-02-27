@@ -14531,7 +14531,8 @@ async def api_v3_goals_snapshot():
             # Data health = percentage of checks passing, scaled to 40-95 range
             health_ratio = health_passes / max(health_checks, 1)
             data_health = round(40 + (health_ratio * 55), 1)  # 40-95 range
-        except Exception:
+        except Exception as _dh_err:
+            LOGGER.warning(f"[GHOST_SCORE] data_health calculation failed: {_dh_err}")
             data_health = 40  # Minimum when checks fail
         
         # AI Activity: Count recent predictions AND check variety
@@ -14562,8 +14563,25 @@ async def api_v3_goals_snapshot():
             stats = tracker.get_stats(since=V2_START_DATE, v2_only=True)
             if stats.get("resolved_trades", 0) > 0:
                 accuracy = round(stats.get("win_rate_pct", 50), 1)
-        except Exception:
-            pass
+                LOGGER.debug(f"[GHOST_SCORE] Paper trade accuracy: {accuracy}% ({stats.get('wins',0)}W/{stats.get('losses',0)}L)")
+            else:
+                LOGGER.debug("[GHOST_SCORE] No resolved paper trades since V2 start date")
+        except Exception as _acc_err:
+            LOGGER.warning(f"[GHOST_SCORE] accuracy from paper_tracker failed: {_acc_err}")
+        
+        # Fallback: If accuracy is still the default 50, try PostgreSQL accuracy table
+        if accuracy == 50:
+            try:
+                from core.postgres_accuracy import calculate_accuracy_postgres
+                pg_acc = calculate_accuracy_postgres(period="30d")
+                _pg_total = pg_acc.get("total_predictions", 0)
+                if _pg_total > 0:
+                    accuracy = round(pg_acc.get("accuracy_pct", 50), 1)
+                    LOGGER.debug(f"[GHOST_SCORE] PostgreSQL accuracy fallback: {accuracy}% ({_pg_total} predictions)")
+            except Exception as _pg_err:
+                LOGGER.debug(f"[GHOST_SCORE] PostgreSQL accuracy fallback failed: {_pg_err}")
+        
+        LOGGER.info(f"[GHOST_SCORE] Components: accuracy={accuracy}, data_health={data_health}, ai_activity={ai_activity}, predictions={total_predictions}")
         
         # Ghost Score = weighted average (accuracy: 50%, data_health: 30%, ai_activity: 20%)
         # With improved health/activity calculations, score should reflect reality better

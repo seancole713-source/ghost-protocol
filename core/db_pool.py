@@ -161,8 +161,8 @@ async def pool_health_check() -> dict:
 _sync_pool = None  # psycopg2 ThreadedConnectionPool
 _sync_pool_lock = __import__("threading").Lock()
 
-SYNC_POOL_MIN = int(os.getenv("DB_SYNC_POOL_MIN", "2"))
-SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "10"))
+SYNC_POOL_MIN = int(os.getenv("DB_SYNC_POOL_MIN", "5"))
+SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "25"))
 
 
 def _get_sync_pool():
