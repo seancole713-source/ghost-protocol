@@ -7,12 +7,18 @@ Created Dec 22, 2025 - Stock targets were 6-7% (too aggressive for large caps)
 - Need different targets for: crypto, large cap stocks, volatile stocks
 
 Realistic Move Ranges (48 hours):
-| Asset Type        | Daily Avg | 48h Expected | Target | Stop |
-|-------------------|-----------|--------------|--------|------|
-| Crypto            | 3-5%      | 5-10%        | 6%     | 4.5% |
-| Stock (Large Cap) | 0.5-1.5%  | 1-3%         | 2.5%   | 2%   |
-| Stock (Mid Cap)   | 1-2%      | 2-4%         | 3.5%   | 2.5% |
-| Stock (Volatile)  | 2-5%      | 4-8%         | 5%     | 4%   |
+| Asset Type          | Daily Avg | 48h Expected | Target | Stop |
+|---------------------|-----------|--------------|--------|------|
+| Crypto Major (BTC)  | 3-5%      | 5-10%        | 6%     | 4.5% |
+| Crypto Mid (UNI)    | 5-8%      | 8-15%        | 8%     | 6%   |
+| Crypto Micro (ICP)  | 8-20%     | 12-25%       | 12%    | 8.5% |
+| Stock (Large Cap)   | 0.5-1.5%  | 1-3%         | 2.5%   | 2%   |
+| Stock (Mid Cap)     | 1-2%      | 2-4%         | 3.5%   | 2.5% |
+| Stock (Volatile)    | 2-5%      | 4-8%         | 5%     | 4%   |
+
+ICP FIX (Feb 27, 2026): ICP at $2.44 was getting 4.5% stop ($0.11 room).
+Daily vol of ICP is 8-15%. Stop was eaten by noise in 30 minutes.
+Split crypto into major/mid/micro tiers with appropriate stops.
 """
 
 import os
@@ -55,57 +61,53 @@ class AssetClassifier:
         'AFRM', 'UPST', 'PATH', 'IONQ', 'SMCI', 'ARM', 'MBLY', 'CELH',
     }
     
-    # Crypto assets (highest volatility)
-    CRYPTO = {
-        # Major cryptos
-        'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'DOT', 'MATIC',
-        'AVAX', 'LINK', 'UNI', 'AAVE', 'LTC', 'BCH', 'ATOM', 'FIL',
-        'NEAR', 'APT', 'ARB', 'OP', 'IMX', 'INJ', 'SUI', 'SEI',
-        # Meme coins
-        'PEPE', 'SHIB', 'BONK', 'WIF', 'FLOKI', 'MEME',
-        'TURBO', 'SAMO', 'ELON', 'LADYS', 'WOJAK', 'CHAD',
-        'NEIRO', 'TOSHI', 'POPCAT', 'PNUT', 'MOODENG', 'GIGA',  # Missing meme coins!
-        'SPX',  # SPX6900 meme coin
-        'BRETT',  # Brett meme coin (Base chain)
-        # DeFi tokens - IMPORTANT: These are CRYPTO, not stocks!
-        'MKR', 'SNX', 'CRV', 'COMP', 'YFI', 'SUSHI', '1INCH',
-        'LDO', 'AAVE', 'UNI', 'CAKE', 'JOE', 'GMX', 'DYDX',
-        'BAL',   # Balancer - DeFi AMM
-        'CVX',   # Convex Finance
-        'FXS',   # Frax Share
-        'RPL',   # Rocket Pool
-        'LQTY',  # Liquity
-        'VELO',  # Velodrome
-        'CLV',   # Clover Finance - DeFi
-        'ORCA',  # Orca DEX - Solana DeFi
-        'SRM',   # Serum DEX
-        'HNT',   # Helium
-        'IOTX',  # IoTeX
-        'GLM',   # Golem
-        'VOXEL', # Voxies gaming token
-        # Gaming/Metaverse
-        'LRC', 'ENJ', 'SAND', 'MANA', 'AXS', 'GALA', 'ILV',
-        'IMX', 'MAGIC', 'PRIME', 'BEAM', 'PIXEL', 'PORTAL',
-        # Layer 1s
-        'FTM', 'ALGO', 'HBAR', 'VET', 'EOS', 'XLM', 'TRX',
-        'KAVA', 'ZEN', 'ZEC', 'DASH', 'XMR', 'ETC',
-        'ICP', 'THETA', 'EGLD', 'QNT', 'QTUM', 'XTZ', 'RUNE',
+    # Crypto assets — tiered by volatility/market cap
+    # Major cryptos (daily vol ~3-5%, like BTC/ETH/SOL)
+    CRYPTO_MAJOR = {
+        'BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'TON', 'ADA', 'DOT',
+        'AVAX', 'LINK', 'MATIC', 'LTC', 'BCH',
+    }
+
+    # Mid-cap cryptos (daily vol ~5-8%)
+    CRYPTO_MID = {
+        'UNI', 'AAVE', 'ATOM', 'FIL', 'NEAR', 'APT', 'ARB', 'OP',
+        'IMX', 'INJ', 'SUI', 'SEI', 'MKR', 'LDO', 'RNDR', 'FET',
+        'GRT', 'STX', 'TIA', 'HBAR', 'VET', 'ALGO', 'FTM',
+        'DYDX', 'ETC', 'XLM', 'TRX', 'RUNE', 'AR',
+    }
+
+    # Micro/meme cryptos (daily vol ~8-20%, very noisy)
+    CRYPTO_MICRO = {
+        # Low-cap altcoins
+        'ICP', 'THETA', 'EGLD', 'QNT', 'QTUM', 'XTZ',
         'ROSE', 'CELO', 'ONE', 'FLOW', 'MINA', 'CFX', 'KAS',
-        # Exchange tokens
-        'BNB', 'TON', 'LEO', 'OKB', 'CRO', 'FTT', 'HT', 'GT',
-        # Utility/Infrastructure
+        'KAVA', 'ZEN', 'ZEC', 'DASH', 'XMR', 'EOS',
+        'CHZ', 'ENJ', 'SAND', 'MANA', 'AXS', 'GALA', 'ILV',
+        'MAGIC', 'PRIME', 'BEAM', 'PIXEL', 'PORTAL', 'LRC',
         'ONDO', 'RLC', 'BAT', 'ZRX', 'ANT', 'LOOM', 'OMG',
-        'GRT', 'STORJ', 'FET', 'OCEAN', 'AGIX', 'RNDR', 'AR',
-        # Fan/Sports tokens
-        'CHZ', 'SANTOS', 'PSG', 'BAR', 'JUV', 'CITY', 'ASR',
-        # More altcoins
-        'APE', 'BLUR', 'ID', 'MASK', 'ENS', 'LPT', 'SSV',
-        'STX', 'ORDI', 'SATS', 'RATS', 'TRAC', 'TIA', 'PYTH',
-        'JTO', 'JUP', 'W', 'STRK', 'ETHFI', 'ENA', 'PENDLE',
+        'STORJ', 'OCEAN', 'AGIX', 'APE', 'BLUR', 'ID', 'MASK',
+        'ENS', 'LPT', 'SSV', 'ORDI', 'SATS', 'RATS', 'TRAC',
+        'PYTH', 'JTO', 'JUP', 'W', 'STRK', 'ETHFI', 'ENA', 'PENDLE',
         'RSR', 'ANKR', 'API3', 'BAND', 'DIA', 'TRB', 'UMA',
         'SKL', 'CTSI', 'NMR', 'RAD', 'MLN', 'REN', 'KNC',
         'ZIL', 'ICX', 'ONT', 'NEO', 'WAVES', 'LSK', 'ARK',
         'METIS', 'BOBA', 'CELR', 'ACH', 'ALICE', 'TLM', 'SLP',
+        'CLV', 'ORCA', 'SRM', 'HNT', 'IOTX', 'GLM', 'VOXEL',
+        'SANTOS', 'PSG', 'BAR', 'JUV', 'CITY', 'ASR',
+        # DeFi mid/small
+        'SNX', 'CRV', 'COMP', 'YFI', 'SUSHI', '1INCH',
+        'CAKE', 'JOE', 'GMX', 'BAL', 'CVX', 'FXS', 'RPL', 'LQTY', 'VELO',
+        # Meme coins (widest stops — pure noise)
+        'PEPE', 'SHIB', 'BONK', 'WIF', 'FLOKI', 'MEME',
+        'TURBO', 'SAMO', 'ELON', 'LADYS', 'WOJAK', 'CHAD',
+        'NEIRO', 'TOSHI', 'POPCAT', 'PNUT', 'MOODENG', 'GIGA',
+        'SPX', 'BRETT', 'DOGE',
+    }
+
+    # Combined set for is_crypto checks (union of all tiers + common suffixes)
+    CRYPTO = CRYPTO_MAJOR | CRYPTO_MID | CRYPTO_MICRO | {
+        # Exchange tokens not in tiers above
+        'LEO', 'OKB', 'CRO', 'FTT', 'HT', 'GT',
         # Common trading pairs suffixes
         'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT',
     }
@@ -113,10 +115,26 @@ class AssetClassifier:
     # Target/stop percentages by asset type and horizon
     # Format: {asset_type: {horizon: (target_pct, stop_pct)}}
     TARGET_MATRIX = {
+        'crypto_major': {
+            6: (1.5, 1.5),    # BTC/ETH: tight stops OK
+            24: (3.5, 3.0),
+            48: (6.0, 4.5),
+        },
+        'crypto_mid': {
+            6: (2.5, 2.5),    # Mid-caps: wider stops
+            24: (5.0, 4.5),
+            48: (8.0, 6.0),
+        },
+        'crypto_micro': {
+            6: (4.0, 4.0),    # Micro/meme: WIDE stops — daily vol 8-20%
+            24: (8.0, 7.0),   # ICP at $2.44 needs $0.17+ room, not $0.11
+            48: (12.0, 8.5),  # A 4.5% stop gets eaten by noise
+        },
+        # Backward compat alias
         'crypto': {
-            6: (1.5, 1.5),    # 6h: validated Dec 21-22
-            24: (3.5, 3.0),   # 24h: scaled
-            48: (6.0, 4.5),   # 48h: production
+            6: (1.5, 1.5),
+            24: (3.5, 3.0),
+            48: (6.0, 4.5),
         },
         'stock_large': {
             6: (0.8, 0.7),    # Large caps barely move in 6h
@@ -147,7 +165,8 @@ class AssetClassifier:
     @classmethod
     def get_asset_type(cls, symbol: str) -> str:
         """
-        Returns asset type: 'crypto', 'stock_large', 'stock_volatile', 'stock_mid', 'stablecoin'
+        Returns asset type: 'crypto_major', 'crypto_mid', 'crypto_micro',
+        'stock_large', 'stock_volatile', 'stock_mid', 'stablecoin'
         """
         # Clean symbol (remove USDT, USD, etc.)
         clean = symbol.upper().replace('USDT', '').replace('USD', '').replace('/USD', '')
@@ -156,8 +175,15 @@ class AssetClassifier:
         if clean in cls.STABLECOINS or symbol.upper() in cls.STABLECOINS:
             return 'stablecoin'  # Special type - should be filtered out
         
-        if clean in cls.CRYPTO or symbol.upper() in cls.CRYPTO:
-            return 'crypto'
+        # Tiered crypto classification
+        if clean in cls.CRYPTO_MAJOR or symbol.upper() in cls.CRYPTO_MAJOR:
+            return 'crypto_major'
+        elif clean in cls.CRYPTO_MID or symbol.upper() in cls.CRYPTO_MID:
+            return 'crypto_mid'
+        elif clean in cls.CRYPTO_MICRO or symbol.upper() in cls.CRYPTO_MICRO:
+            return 'crypto_micro'
+        elif clean in cls.CRYPTO or symbol.upper() in cls.CRYPTO:
+            return 'crypto_mid'  # Unknown crypto → default to mid
         elif clean in cls.VOLATILE_STOCKS:
             return 'stock_volatile'
         elif clean in cls.LARGE_CAP_STOCKS:
@@ -169,12 +195,12 @@ class AssetClassifier:
     @classmethod
     def is_crypto(cls, symbol: str) -> bool:
         """Check if symbol is a crypto asset"""
-        return cls.get_asset_type(symbol) == 'crypto'
+        return cls.get_asset_type(symbol).startswith('crypto')
     
     @classmethod
     def is_stock(cls, symbol: str) -> bool:
         """Check if symbol is a stock"""
-        return cls.get_asset_type(symbol) != 'crypto'
+        return not cls.get_asset_type(symbol).startswith('crypto')
     
     @classmethod
     def get_target_stop(cls, symbol: str, horizon_hours: int = 48) -> Dict:

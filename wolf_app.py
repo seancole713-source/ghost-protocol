@@ -4397,7 +4397,7 @@ async def _on_startup():
                         for (symbol,) in symbols:
                             try:
                                 asset_type = get_asset_type(symbol)
-                                if asset_type == 'crypto':
+                                if asset_type.startswith('crypto'):
                                     result = await get_crypto_price_quorum(symbol, use_cache=True)
                                     if result and result.get("price"):
                                         price_data[symbol] = result["price"]
@@ -4723,8 +4723,8 @@ async def _on_startup():
             
             if edge_enabled and edge_raw:
                 edge_set = {s.strip().upper() for s in edge_raw.split(",") if s.strip()}
-                EDGE_STOCKS = [s for s in edge_set if get_asset_type(s) != 'crypto']
-                EDGE_CRYPTO = [s for s in edge_set if get_asset_type(s) == 'crypto']
+                EDGE_STOCKS = [s for s in edge_set if not get_asset_type(s).startswith('crypto')]
+                EDGE_CRYPTO = [s for s in edge_set if get_asset_type(s).startswith('crypto')]
             else:
                 # Fallback: hardcode the 24 edge symbols
                 EDGE_STOCKS = ["T", "HOOD", "COIN"]
@@ -5037,7 +5037,7 @@ async def _post_startup_init():
                 try:
                     from core.asset_classifier import get_asset_type
                     asset_class = get_asset_type(symbol)
-                    if asset_class == "crypto":
+                    if asset_class.startswith("crypto"):
                         result = turbo_crypto_price(symbol, max_budget_s=2.0)
                     else:
                         result = turbo_stock_price(symbol, max_budget_s=2.0)
@@ -5184,7 +5184,7 @@ async def _post_startup_init():
                                         result = run_single_prediction(symbol)
                                         if result.get("ok"):
                                             asset_type = get_asset_type(symbol)
-                                            if asset_type == "crypto":
+                                            if asset_type.startswith("crypto"):
                                                 _ps_crypto_count += 1
                                             else:
                                                 _ps_stock_count += 1
@@ -5223,7 +5223,7 @@ async def _post_startup_init():
                                             result = run_single_prediction(symbol)
                                             if result.get("ok"):
                                                 asset_type = get_asset_type(symbol)
-                                                if asset_type == "crypto":
+                                                if asset_type.startswith("crypto"):
                                                     crypto_count += 1
                                                 else:
                                                     stock_count += 1
@@ -5278,7 +5278,7 @@ async def _post_startup_init():
                             def get_price(symbol: str) -> float:
                                 try:
                                     from core.asset_classifier import get_asset_type
-                                    if get_asset_type(symbol) == "crypto":
+                                    if get_asset_type(symbol).startswith("crypto"):
                                         r = turbo_crypto_price(symbol, max_budget_s=2.0)
                                     else:
                                         r = turbo_stock_price(symbol, max_budget_s=2.0)
@@ -28671,7 +28671,7 @@ async def _watchdog_background_check():
             # Try live fetch
             try:
                 asset_class = get_asset_type(symbol)
-                if asset_class == "crypto":
+                if asset_class.startswith("crypto"):
                     from core.crypto.crypto_providers import get_crypto_price_quorum
                     fresh = await get_crypto_price_quorum(symbol, use_cache=False)
                     if fresh and fresh.get("price", 0) > 0:
@@ -29321,7 +29321,7 @@ async def notifications_debug():
         for symbol, pred in list(_LATEST_PREDICTIONS.items())[:50]:
             if isinstance(pred, dict):
                 asset = get_asset_type(symbol)
-                if asset == 'crypto':
+                if asset.startswith('crypto'):
                     raw_crypto.append({
                         'symbol': symbol,
                         'asset_type': asset,
@@ -29500,7 +29500,7 @@ async def force_tracking_check():
                 from core.asset_classifier import get_asset_type
                 asset_class = get_asset_type(symbol)
                 
-                if asset_class == "crypto":
+                if asset_class.startswith("crypto"):
                     result = turbo_crypto_price(symbol, max_budget_s=2.0)
                 else:
                     result = turbo_stock_price(symbol, max_budget_s=2.0)
@@ -42205,7 +42205,7 @@ try:
             for (symbol,) in symbols[:100]:  # Cap at 100 symbols per batch
                 try:
                     asset_type = get_asset_type(symbol)
-                    if asset_type == 'crypto':
+                    if asset_type.startswith('crypto'):
                         result = await asyncio.wait_for(
                             get_crypto_price_quorum(symbol, use_cache=True), 
                             timeout=5.0
@@ -42416,7 +42416,7 @@ try:
             for symbol in symbols:
                 try:
                     asset_type = get_asset_type(symbol)
-                    if asset_type == 'crypto':
+                    if asset_type.startswith('crypto'):
                         result = await get_crypto_price_quorum(symbol, use_cache=True)
                         if result and result.get("price"):
                             price_data[symbol] = result["price"]
