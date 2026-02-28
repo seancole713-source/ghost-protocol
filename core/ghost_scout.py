@@ -916,18 +916,37 @@ class GhostScout:
         # Fallback: Technical analysis based prediction
         return self._technical_prediction(symbol, asset_type, current_price)
     
+    def _compute_rsi(self, closes: list, period: int = 14) -> float:
+        """Compute RSI (Relative Strength Index). Returns 0-100."""
+        if len(closes) < period + 1:
+            return 50.0  # neutral
+        deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+        recent = deltas[-(period):]
+        gains = [d for d in recent if d > 0]
+        losses_vals = [-d for d in recent if d < 0]
+        avg_gain = sum(gains) / period if gains else 0.0
+        avg_loss = sum(losses_vals) / period if losses_vals else 0.0
+        if avg_gain == 0 and avg_loss == 0:
+            return 50.0  # No movement = neutral
+        if avg_loss == 0:
+            return 100.0  # All gains, no losses
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
+
     def _technical_prediction(self, symbol: str, asset_type: str, current_price: float) -> Dict:
         """
         Make a technical analysis based prediction.
 
         Uses multi-signal approach:
-          1. 5/10-day momentum (short-term trend)
-          2. 10/20-day momentum (medium-term trend)
-          3. Price position vs 20-day range (mean-reversion signal)
-          4. Dynamic mover detection (proven intraday momentum)
+          1. 5/10-day momentum (short-term trend)       — weight 0.35
+          2. 10/20-day momentum (medium-term trend)      — weight 0.25
+          3. RSI (overbought/oversold)                   — weight 0.25
+          4. Price position vs 20-day range (mean-rev)   — weight 0.15
+          5. Dynamic mover detection (intraday momentum)
 
         Direction is signal-driven, NOT hardcoded.
-        Confidence reflects signal strength, NOT a fixed 0.55.
+        Ambiguous signals → HOLD (blocked by paper_tracker).
+        Confidence reflects signal agreement, capped at 0.92.
         Brain v3 further adjusts after this via analyze_batch().
         """
         # CRITICAL: Dynamic movers (up 5%+ today) — proven momentum, ride the wave
@@ -939,7 +958,7 @@ class GhostScout:
                 "direction": "BUY",
                 "entry_price": current_price,
                 "target_price": target,
-                "confidence": 0.70,
+                "confidence": 0.72,
             }
 
         # Collect price history for multi-signal analysis
@@ -955,57 +974,91 @@ class GhostScout:
             sma20 = sum(closes[-20:]) / 20
             med_momentum = (sma10 - sma20) / sma20
 
-            # ── Signal 3: Mean reversion (current price vs 20-day range) ──
+            # ── Signal 3: RSI — overbought/oversold indicator ──
+            rsi = self._compute_rsi(closes)
+            # RSI > 70 = overbought (bearish), RSI < 30 = oversold (bullish)
+            # Normalize to -1..+1 range: 50 = neutral, 30 = +0.5, 70 = -0.5
+            rsi_signal = (50.0 - rsi) / 40.0  # Positive = bullish, negative = bearish
+            rsi_signal = max(-1.0, min(1.0, rsi_signal))
+
+            # ── Signal 4: Mean reversion (current price vs 20-day range) ──
             high_20 = max(closes[-20:])
             low_20 = min(closes[-20:])
             range_20 = high_20 - low_20 if high_20 != low_20 else 1.0
             range_position = (current_price - low_20) / range_20  # 0=bottom, 1=top
 
-            # ── Combine signals into direction + confidence ──
-            # Positive score = bullish, negative = bearish
-            score = 0.0
-            # Short momentum: strong signal (weight 0.4)
-            score += short_momentum * 10.0 * 0.4  # Scale: ±2% momentum → ±0.08
-            # Medium momentum: trend confirmation (weight 0.35)
-            score += med_momentum * 8.0 * 0.35
-            # Mean reversion: contrarian edge (weight 0.25)
-            # Near bottom (pos < 0.3) → slight bullish, near top (pos > 0.7) → slight bearish
-            score += (0.5 - range_position) * 0.25
+            # ── Signal agreement check ──
+            # Count how many signals agree on direction
+            signals = []
+            if short_momentum > 0.005:
+                signals.append(1)   # bullish
+            elif short_momentum < -0.005:
+                signals.append(-1)  # bearish
+            else:
+                signals.append(0)   # neutral
 
-            # Direction from composite score
+            if med_momentum > 0.005:
+                signals.append(1)
+            elif med_momentum < -0.005:
+                signals.append(-1)
+            else:
+                signals.append(0)
+
+            if rsi < 40:
+                signals.append(1)   # oversold → bullish
+            elif rsi > 60:
+                signals.append(-1)  # overbought → bearish
+            else:
+                signals.append(0)
+
+            signal_sum = sum(signals)
+            agreeing = sum(1 for s in signals if s != 0 and s == (1 if signal_sum > 0 else -1))
+
+            # ── Combine signals into direction + confidence ──
+            score = 0.0
+            score += short_momentum * 10.0 * 0.35   # weight 0.35
+            score += med_momentum * 8.0 * 0.25      # weight 0.25
+            score += rsi_signal * 0.25               # weight 0.25
+            score += (0.5 - range_position) * 0.15   # weight 0.15 (reduced)
+
+            # Direction: require conviction, else HOLD
             if score > 0.02:
                 direction = "BUY"
             elif score < -0.02:
                 direction = "SELL"
             else:
-                # Weak/ambiguous signal — default to market drift (slight bullish)
-                direction = "BUY"
+                # Ambiguous signal — HOLD (paper_tracker will skip this)
+                direction = "HOLD"
 
-            # Confidence from signal strength (0.40–0.80 range)
+            # Confidence: base + signal strength + agreement bonus
             raw_conf = 0.50 + abs(score)
-            confidence = max(0.40, min(0.80, raw_conf))
+            # Bonus for signal agreement (up to +0.10)
+            agreement_bonus = agreeing * 0.033
+            raw_conf += agreement_bonus
+            confidence = max(0.40, min(0.92, raw_conf))
 
         elif len(closes) >= 10:
-            # Fallback: basic 5/10 momentum (less data available)
+            # Fallback: basic 5/10 momentum + RSI (less data available)
             sma5 = sum(closes[-5:]) / 5
             sma10 = sum(closes[-10:]) / 10
             momentum = (sma5 - sma10) / sma10
+            rsi = self._compute_rsi(closes)
 
             threshold = 0.02 if asset_type == "stock" else 0.03
-            if momentum > threshold:
+            if momentum > threshold and rsi < 65:
                 direction = "BUY"
-                confidence = min(0.75, 0.50 + abs(momentum))
-            elif momentum < -threshold:
+                confidence = min(0.80, 0.55 + abs(momentum) + (0.05 if rsi < 40 else 0))
+            elif momentum < -threshold and rsi > 35:
                 direction = "SELL"
-                confidence = min(0.75, 0.50 + abs(momentum))
+                confidence = min(0.80, 0.55 + abs(momentum) + (0.05 if rsi > 60 else 0))
             else:
-                direction = "BUY"  # Weak signal → slight bullish default
-                confidence = 0.45  # Low confidence reflects uncertainty
+                direction = "HOLD"  # Conflicting or weak signals → skip
+                confidence = 0.40
 
         else:
-            # No meaningful price data — neutral low-confidence signal
-            direction = "BUY"
-            confidence = 0.40  # Very low confidence, Brain will likely penalize
+            # No meaningful price data — HOLD, don't guess
+            direction = "HOLD"
+            confidence = 0.35
 
         # Calculate target price
         if direction == "BUY":

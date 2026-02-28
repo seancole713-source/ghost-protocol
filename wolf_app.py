@@ -11440,21 +11440,26 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
         
         total = stats.get("resolved_trades", 0)
         wins = stats.get("wins", 0)
+        losses = stats.get("losses", 0)
         
-        # Calculate accuracy
-        accuracy_pct = round((wins / total) * 100, 1) if total > 0 else 0.0
+        # Calculate accuracy — use wins/(wins+losses), NOT wins/total
+        # BREAK_EVEN, EXPIRED trades should NOT count against accuracy
+        decided = wins + losses
+        accuracy_pct = round((wins / decided) * 100, 1) if decided > 0 else 0.0
         
         # Calculate daily/weekly/monthly breakdowns (all using V2 date filter)
         daily_stats = tracker.get_stats(days=1, since=V2_START_DATE, v2_only=v2_only)
         weekly_stats = tracker.get_stats(days=7, since=V2_START_DATE, v2_only=v2_only)
         
-        daily_total = daily_stats.get("resolved_trades", 0)
         daily_wins = daily_stats.get("wins", 0)
-        daily_acc = round((daily_wins / daily_total) * 100, 1) if daily_total > 0 else 0.0
+        daily_losses = daily_stats.get("losses", 0)
+        daily_decided = daily_wins + daily_losses
+        daily_acc = round((daily_wins / daily_decided) * 100, 1) if daily_decided > 0 else 0.0
         
-        weekly_total = weekly_stats.get("resolved_trades", 0)
         weekly_wins = weekly_stats.get("wins", 0)
-        weekly_acc = round((weekly_wins / weekly_total) * 100, 1) if weekly_total > 0 else 0.0
+        weekly_losses = weekly_stats.get("losses", 0)
+        weekly_decided = weekly_wins + weekly_losses
+        weekly_acc = round((weekly_wins / weekly_decided) * 100, 1) if weekly_decided > 0 else 0.0
         
         # Compute avg_confidence from live predictions
         _live_confs_acc = [p.get("confidence", 0) for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("confidence")]
@@ -27812,7 +27817,8 @@ async def debug_learning_status():
                     postgres_stats["wins"] = row[1] or 0
                     postgres_stats["losses"] = row[2] or 0
                     if postgres_stats["total"] > 0:
-                        postgres_stats["accuracy_pct"] = (postgres_stats["wins"] / postgres_stats["total"]) * 100
+                        decided = postgres_stats["wins"] + postgres_stats["losses"]
+                        postgres_stats["accuracy_pct"] = (postgres_stats["wins"] / decided) * 100 if decided > 0 else 0
                 conn.close()
         except Exception as pg_err:
             postgres_stats["error"] = str(pg_err)
