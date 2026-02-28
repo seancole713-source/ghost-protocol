@@ -1285,9 +1285,13 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
     # Add legend at end
     # Compute dynamic symbol counts from EDGE_SYMBOLS env var
     _edge_list = list(get_edge_set())
-    _STOCK_SYMBOLS = {"T", "HOOD", "COIN", "XPO"}  # known stock tickers in edge list
-    _n_stocks = sum(1 for s in _edge_list if s in _STOCK_SYMBOLS)
-    _n_crypto = len(_edge_list) - _n_stocks
+    # Dynamically classify: known crypto symbols
+    _KNOWN_CRYPTO = {"ETH", "XRP", "LINK", "CHZ", "BTC", "SOL", "ATOM", "UNI",
+                     "AAVE", "ICP", "TURBO", "JUP", "BCH", "IOTX", "GIGA",
+                     "ALICE", "BRETT", "SEI", "FET", "ADA", "AVAX", "BNB",
+                     "DOGE", "YFI", "BONK", "PEPE", "WIF", "RNDR"}
+    _n_crypto = sum(1 for s in _edge_list if s in _KNOWN_CRYPTO)
+    _n_stocks = len(_edge_list) - _n_crypto
     all_lines.extend([
         "━━━━━━━━━━━━━━━━━━━━━━",
         "📖 LEGEND",

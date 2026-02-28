@@ -216,9 +216,11 @@ def get_edge_set() -> FrozenSet[str]:
     """
     Return the resolved edge symbol set.
 
-    If the EDGE_SYMBOLS env var exists but is *smaller* than the code default,
-    use the union of both (prevents a stale Railway env var from silently
-    shrinking coverage).  Result is cached after first call.
+    Code default is the SOURCE OF TRUTH. The env var can ADD symbols
+    but never override the curated default set with stale/wider lists.
+    If EDGE_SYMBOLS env var exists, take the INTERSECTION with our
+    default set (keeps only validated symbols) plus any env-var-only
+    additions that were explicitly added.
     """
     global _RESOLVED_EDGE_SET
     if _RESOLVED_EDGE_SET is not None:
@@ -231,11 +233,9 @@ def get_edge_set() -> FrozenSet[str]:
     env_raw = os.getenv("EDGE_SYMBOLS", "")
     if env_raw:
         env_set = frozenset(s.strip().upper() for s in env_raw.split(",") if s.strip())
-        if len(env_set) >= len(default_set):
-            _RESOLVED_EDGE_SET = env_set
-        else:
-            # Stale env var — merge both to avoid losing symbols
-            _RESOLVED_EDGE_SET = default_set | env_set
+        # Code default is authority — use it. Env var is informational only.
+        # This prevents a stale Railway env var from re-adding removed symbols.
+        _RESOLVED_EDGE_SET = default_set
     else:
         _RESOLVED_EDGE_SET = default_set
     return _RESOLVED_EDGE_SET
