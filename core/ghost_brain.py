@@ -337,12 +337,12 @@ class GhostBrain:
             total = 0
             data_quality = "none"
 
-        # ── INSUFFICIENT DATA → pass through ──
+        # ── INSUFFICIENT DATA → EXCLUDE (don't gamble on unproven symbols) ──
         if total < MIN_SAMPLES:
-            reasons.append(f"insufficient_data ({total}/{MIN_SAMPLES})")
+            reasons.append(f"insufficient_data ({total}/{MIN_SAMPLES}) → EXCLUDE")
             decision = BrainDecision(
-                symbol=symbol, action="SEND", direction=direction,
-                confidence=confidence, tier="⚪NEUTRAL",
+                symbol=symbol, action="EXCLUDE", direction=direction,
+                confidence=0.0, tier="⚪NO_DATA",
                 asset_class=asset_class, reasons=reasons,
                 raw_accuracy=raw_accuracy, brain_accuracy=raw_accuracy,
                 effective_accuracy=raw_accuracy, sample_size=total,
@@ -350,7 +350,7 @@ class GhostBrain:
             )
             self._decisions[symbol] = decision
             self._cycle_stats["analyzed"] += 1
-            self._cycle_stats["sent"] += 1
+            self._cycle_stats["excluded"] += 1
             return decision
 
         # ══════════════════════════════════════════════════════

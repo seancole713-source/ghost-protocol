@@ -153,9 +153,9 @@ class TestBackwardCompat:
         brain = GhostBrain()
         accuracy_data = {"NEW": make_accuracy(30.0, total=5)}
         d = brain.analyze_symbol("NEW", "UP", 0.72, accuracy_data=accuracy_data)
-        assert d.action == "SEND"
-        assert d.tier == "⚪NEUTRAL"
-        assert d.confidence == 0.72
+        assert d.action == "EXCLUDE"  # Insufficient data → don't gamble
+        assert d.tier == "⚪NO_DATA"
+        assert d.confidence == 0.0
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1047,11 +1047,11 @@ class TestEdgeCases:
         assert d.confidence >= 0.01
 
     def test_no_data_returns_neutral(self):
-        """No accuracy data at all → neutral passthrough."""
+        """No accuracy data at all → EXCLUDE (don't gamble on unproven symbols)."""
         brain = GhostBrain()
         d = brain.analyze_symbol("UNKNOWN", "UP", 0.72)
-        assert d.action == "SEND"
-        assert d.tier == "⚪NEUTRAL"
+        assert d.action == "EXCLUDE"
+        assert d.tier == "⚪NO_DATA"
 
 
 # ═══════════════════════════════════════════════════════════════

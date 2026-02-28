@@ -59,13 +59,40 @@ class LearningLoop:
         self._load_memory()
 
     def _load_memory(self):
-        """Load learning history from disk."""
+        """Load learning history from PostgreSQL first, then disk fallback."""
+        import os
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            try:
+                import psycopg2
+                conn = psycopg2.connect(database_url)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS ghost_kv_store (
+                        key TEXT PRIMARY KEY,
+                        value JSONB NOT NULL,
+                        updated_at TIMESTAMP DEFAULT NOW()
+                    )
+                """)
+                cursor.execute("SELECT value FROM ghost_kv_store WHERE key = 'learning_memory'")
+                row = cursor.fetchone()
+                conn.close()
+                if row:
+                    self.memory = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                    logger.info(
+                        f"Loaded learning memory from PostgreSQL: {len(self.memory.get('history', []))} entries"
+                    )
+                    return
+            except Exception as e:
+                logger.warning(f"PostgreSQL memory load failed, trying disk: {e}")
+        
+        # Disk fallback
         if Path(self.memory_path).exists():
             try:
                 with open(self.memory_path) as f:
                     self.memory = json.load(f)
                 logger.info(
-                    f"Loaded learning memory: {len(self.memory.get('history', []))} entries"
+                    f"Loaded learning memory from disk: {len(self.memory.get('history', []))} entries"
                 )
             except Exception as e:
                 logger.warning(f"Failed to load memory: {e}")
@@ -90,7 +117,35 @@ class LearningLoop:
         }
 
     def _save_memory(self):
-        """Save learning history to disk."""
+        """Save learning history to PostgreSQL (survives Railway redeploys) + disk fallback."""
+        # Try PostgreSQL first (production)
+        import os
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            try:
+                import psycopg2
+                conn = psycopg2.connect(database_url)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS ghost_kv_store (
+                        key TEXT PRIMARY KEY,
+                        value JSONB NOT NULL,
+                        updated_at TIMESTAMP DEFAULT NOW()
+                    )
+                """)
+                cursor.execute("""
+                    INSERT INTO ghost_kv_store (key, value, updated_at)
+                    VALUES ('learning_memory', %s, NOW())
+                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+                """, (json.dumps(self.memory),))
+                conn.commit()
+                conn.close()
+                logger.info("Saved learning memory to PostgreSQL")
+                return
+            except Exception as e:
+                logger.warning(f"PostgreSQL memory save failed, falling back to disk: {e}")
+        
+        # Disk fallback (development)
         MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
         try:
             with open(self.memory_path, "w") as f:
@@ -114,15 +169,16 @@ class LearningLoop:
             conn = psycopg2.connect(database_url)
             cursor = conn.cursor()
             
-            # Get accuracy from Postgres direction outcomes
+            # Get accuracy from paper_trades (the primary accuracy source)
+            # This aligns with paper_tracker.get_stats() and /api/v3/accuracy/summary
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total,
-                    COUNT(*) FILTER (WHERE hit_direction = 1) as correct,
-                    COUNT(*) FILTER (WHERE hit_direction = 0) as incorrect
-                FROM ghost_prediction_outcomes
-                WHERE status = 'closed'
-                AND closed_at > NOW() - INTERVAL '%s days'
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as correct,
+                    SUM(CASE WHEN outcome IN ('LOSS', 'STOPPED') THEN 1 ELSE 0 END) as incorrect
+                FROM paper_trades
+                WHERE outcome IN ('WIN', 'LOSS', 'STOPPED')
+                AND created_at > NOW() - INTERVAL '%s days'
             """, (days,))
             
             row = cursor.fetchone()

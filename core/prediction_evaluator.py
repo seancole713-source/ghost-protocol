@@ -374,7 +374,13 @@ def evaluate_pending_predictions() -> Dict:
             )
             continue
 
-        is_correct = int(eval_result.get("correct_1pct") or 0)
+        # PRIMARY: Direction accuracy — did price move in the predicted direction?
+        # This aligns with paper_tracker's WIN/LOSS logic (direction + 1% threshold)
+        # SECONDARY: Touch-target (correct_1pct) is tracked but NOT the primary metric
+        is_direction_correct = int(eval_result.get("direction_consistent") or 0)
+        # Also require meaningful move (>1% in right direction) to match paper_tracker
+        outcome_pct = abs(eval_result.get("outcome_pct", 0))
+        is_correct = 1 if (is_direction_correct == 1 and outcome_pct >= 1.0) else 0
         is_correct_exec = int(eval_result.get("correct_0_5pct") or 0)
 
         cur.execute("""

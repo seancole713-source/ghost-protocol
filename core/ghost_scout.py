@@ -44,7 +44,7 @@ from core.brain_data import BrainContext, load_brain_context, build_context_from
 LOGGER = logging.getLogger("ghost.scout")
 
 # Direction mapping: Scout uses BUY/SELL, Brain uses UP/DOWN
-_DIR_TO_BRAIN = {"BUY": "UP", "SELL": "DOWN"}
+_DIR_TO_BRAIN = {"BUY": "UP", "SELL": "DOWN", "HOLD": "HOLD"}
 _DIR_FROM_BRAIN = {"UP": "BUY", "DOWN": "SELL"}
 
 
@@ -287,8 +287,13 @@ class GhostScout:
         brain_input = {}
         for sym, pred in raw_predictions.items():
             scout_dir = pred.get("direction", "BUY")
+            brain_dir = _DIR_TO_BRAIN.get(scout_dir, "UP")
+            # Skip HOLD predictions — no conviction, don't feed to brain
+            if brain_dir == "HOLD":
+                LOGGER.debug(f"[BRAIN] Skipping {sym}: HOLD direction — no conviction")
+                continue
             brain_input[sym] = {
-                "direction": _DIR_TO_BRAIN.get(scout_dir, "UP"),
+                "direction": brain_dir,
                 "confidence": pred.get("confidence", 0.55),
             }
 
