@@ -345,10 +345,12 @@ class IntelligenceHub:
                 LOGGER.debug(f"Killswitch check failed: {e}")
 
         # ── 18. QUALITY GATE ──
+        # Quality gate is advisory in the hub — it informs but doesn't block.
+        # Actual gating for Telegram alerts happens downstream.
         gate_result = self._check_quality_gate(symbol, confidence + report.confidence_adjustment)
         if gate_result and not gate_result.get("allowed", True):
-            report.should_block = True
-            report.block_reason = f"Quality Gate: {gate_result.get('reason', 'blocked')}"
+            LOGGER.info(f"🔍 [HUB] Quality Gate advisory for {symbol}: {gate_result.get('reason', '')}")
+            # Don't block — just log. The quality gate is for Telegram/alert filtering.
 
         # ── 19. GUARDIAN ORACLE — risk context ──
         # Guardian is a formatter/reporter, not a gate. Info only.
