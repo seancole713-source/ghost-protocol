@@ -9715,10 +9715,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 direction = "DOWN" if direction == "UP" else "UP"
                 LOGGER.info(f"🔄 [HUB] {symbol}: Turbo direction FLIPPED {old_dir} → {direction}")
 
-            # Apply confidence adjustment
+            # Apply confidence adjustment (trust_boost excluded — already applied multiplicatively pre-hub)
             _old_turbo_conf = confidence
-            confidence += _turbo_hub_report.confidence_adjustment + _turbo_hub_report.trust_boost
-            confidence = max(0.10, min(0.85, confidence))  # Keep engine's 0.85 cap — was 0.92, inflating all predictions
+            confidence += _turbo_hub_report.confidence_adjustment  # No trust_boost — already applied at line ~9583
+            confidence = max(0.10, min(0.85, confidence))  # Keep engine's 0.85 cap
             if abs(confidence - _old_turbo_conf) > 0.01:
                 LOGGER.info(f"🧠 [HUB] {symbol}: Turbo conf {_old_turbo_conf:.2f} → {confidence:.2f} "
                             f"(news_risk={_turbo_hub_report.news_risk}, "
