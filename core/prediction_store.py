@@ -241,14 +241,17 @@ class PredictionStore:
         # =====================================================================
         # VALIDATION: Reject invalid predictions before saving
         # =====================================================================
-        # BUGFIX: Reject FLAT directions - they're not actionable trades
+        # FIX (Mar 1, 2026): HOLD/FLAT are NOT actionable — reject entirely.
+        # Old code force-converted HOLD→UP, creating fake bullish predictions
+        # that destroyed accuracy (47.8%). Now we skip them properly.
         if direction not in ("UP", "DOWN"):
             LOGGER.warning(
-                f"[PREDICTION_STORE] Rejecting {symbol} prediction with invalid direction '{direction}' - "
-                f"must be UP or DOWN. Converting to UP with reduced confidence."
+                f"[PREDICTION_STORE] Skipping {symbol} — direction '{direction}' is not actionable. "
+                f"Only UP/DOWN predictions are stored."
             )
-            direction = "UP"  # Default to bullish
-            confidence = max(0.50, confidence * 0.8) if confidence else 0.50
+            raise PredictionRejected(
+                f"{symbol}: direction '{direction}' is not actionable (only UP/DOWN). Skipped."
+            )
         
         # BUGFIX: Ensure confidence is valid (not 0.0 or None)
         if confidence is None or confidence <= 0.0:

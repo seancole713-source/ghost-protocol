@@ -4713,21 +4713,14 @@ async def _on_startup():
             """Trigger stock + crypto predictions 60s after startup to ensure TOP 10 is ready"""
             await asyncio.sleep(60)  # Wait for app to fully initialize
             
-            # CRITICAL FIX (Feb 10, 2025): Use EDGE_SYMBOLS for startup predictions!
-            # V2 whitelist includes non-edge symbols (AAPL, MSFT, etc.) that leak into _LATEST_PREDICTIONS
-            from core.asset_classifier import get_asset_type
+            # FIX (Mar 1, 2026): Use get_edge_set() — single source of truth.
+            # Old code read EDGE_SYMBOLS env var with stale hardcoded fallback
+            # (GIGA, TURBO, RNDR, etc.) that aren't edge symbols anymore.
+            from config.symbols import get_edge_set, is_crypto
             
-            edge_raw = _os_module.getenv("EDGE_SYMBOLS", "")
-            edge_enabled = _os_module.getenv("EDGE_WHITELIST_ENABLED", "0") == "1"
-            
-            if edge_enabled and edge_raw:
-                edge_set = {s.strip().upper() for s in edge_raw.split(",") if s.strip()}
-                EDGE_STOCKS = [s for s in edge_set if not get_asset_type(s).startswith('crypto')]
-                EDGE_CRYPTO = [s for s in edge_set if get_asset_type(s).startswith('crypto')]
-            else:
-                # Fallback: hardcode the 24 edge symbols
-                EDGE_STOCKS = ["T", "HOOD", "COIN"]
-                EDGE_CRYPTO = ["TURBO", "RNDR", "JUP", "IOTX", "GIGA", "BCH", "CHZ", "ALICE", "YFI", "ICP", "BRETT"]
+            edge_set = get_edge_set()
+            EDGE_STOCKS = sorted([s for s in edge_set if not is_crypto(s)])
+            EDGE_CRYPTO = sorted([s for s in edge_set if is_crypto(s)])
             
             TOP_STOCKS = EDGE_STOCKS[:5]  # Max 5 for startup
             TOP_CRYPTO = EDGE_CRYPTO[:5]  # Max 5 for startup
@@ -8363,6 +8356,18 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 #   - Ghost Score calculations
                 # ================================================================
                 se_action = "BUY" if se_direction == "UP" else "SELL" if se_direction == "DOWN" else "HOLD"
+                
+                # FIX (Mar 1, 2026): Don't store HOLD predictions — not actionable
+                if se_direction == "HOLD":
+                    duration_ms_held = int((time.monotonic() - start) * 1000)
+                    LOGGER.info(f"[{symbol}] ⏸️ Stock Engine → HOLD, skipping storage (conf={se_confidence:.2f})")
+                    return {
+                        "ok": False, "symbol": symbol, "direction": "HOLD",
+                        "confidence": se_confidence, "current_price": se_entry_price,
+                        "duration_ms": duration_ms_held, "engine": "stock_v2",
+                        "error": "HOLD — not actionable",
+                    }
+                
                 with _LATEST_PREDICTIONS_LOCK:
                     _LATEST_PREDICTIONS[symbol] = {
                         "prediction_id": None,
@@ -9740,6 +9745,20 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
 
         except Exception as _turbo_hub_err:
             LOGGER.warning(f"🧠 [HUB] Turbo engine hub error for {symbol}: {_turbo_hub_err}")
+
+        # =====================================================================
+        # GUARD: Skip storage for HOLD predictions (not actionable)
+        # FIX (Mar 1, 2026): HOLD means brain excluded or no edge.
+        # Don't store — it creates fake predictions that tank accuracy.
+        # =====================================================================
+        if direction == "HOLD":
+            duration_ms = int((time.monotonic() - start) * 1000)
+            LOGGER.info(f"[{symbol}] ⏸️ HOLD — not actionable, skipping DB storage (conf={confidence:.2f})")
+            return {
+                "ok": False, "symbol": symbol, "direction": "HOLD",
+                "confidence": confidence, "current_price": current_price,
+                "duration_ms": duration_ms, "error": "HOLD — not actionable",
+            }
 
         # Create prediction with rich features
         from core.prediction_store import PredictionRejected
