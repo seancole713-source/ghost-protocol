@@ -288,11 +288,15 @@ def _run_news_analysis():
             risk_count = len(result.get("predictions_at_risk", []))
             LOGGER.info(f"🧠 News analysis complete: {events_count} events, {risk_count} predictions at risk")
         
-        # Send alert if needed
-        if result.get("action_required"):
-            loop.run_until_complete(brain.send_alert(result))
+        # Feed Intelligence Hub cache so predictions get adjusted
+        try:
+            from core.intelligence_hub import update_news_brain_cache
+            update_news_brain_cache(result)
             if LOGGER:
-                LOGGER.info("🧠 News alert sent to Telegram")
+                LOGGER.info("🧠 Intelligence Hub news cache updated")
+        except Exception as hub_err:
+            if LOGGER:
+                LOGGER.warning(f"🧠 Hub cache update failed: {hub_err}")
             
     except Exception as e:
         if LOGGER:
