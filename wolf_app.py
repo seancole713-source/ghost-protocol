@@ -8335,7 +8335,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     # Apply confidence adjustment
                     old_conf = se_confidence
                     se_confidence += _hub_report.confidence_adjustment + _hub_report.trust_boost
-                    se_confidence = max(0.10, min(0.92, se_confidence))
+                    se_confidence = max(0.10, min(0.85, se_confidence))  # Keep engine's 0.85 cap — was 0.92, inflating all predictions
                     if abs(se_confidence - old_conf) > 0.01:
                         LOGGER.info(f"🧠 [HUB] {symbol}: Stock conf {old_conf:.2f} → {se_confidence:.2f} "
                                     f"(systems={_hub_report.active_systems}/{_hub_report.total_systems})")
@@ -9718,7 +9718,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             # Apply confidence adjustment
             _old_turbo_conf = confidence
             confidence += _turbo_hub_report.confidence_adjustment + _turbo_hub_report.trust_boost
-            confidence = max(0.10, min(0.92, confidence))
+            confidence = max(0.10, min(0.85, confidence))  # Keep engine's 0.85 cap — was 0.92, inflating all predictions
             if abs(confidence - _old_turbo_conf) > 0.01:
                 LOGGER.info(f"🧠 [HUB] {symbol}: Turbo conf {_old_turbo_conf:.2f} → {confidence:.2f} "
                             f"(news_risk={_turbo_hub_report.news_risk}, "
