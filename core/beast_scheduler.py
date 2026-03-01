@@ -375,6 +375,25 @@ def _check_schedule():
         time.sleep(60)
         return
 
+    # ── System Doctor: 7 AM CT daily ─────────────────────────────────
+    if hour == 7 and minute == 0:
+        if LOGGER:
+            LOGGER.info("🩺 Running daily System Doctor check")
+        try:
+            from core.system_doctor import run_and_notify
+            report = run_and_notify()
+            if LOGGER:
+                LOGGER.info(
+                    f"🩺 Doctor complete: {report['overall']} "
+                    f"({report['passed']}/{report['passed'] + report['failed']} passed) "
+                    f"telegram={'sent' if report.get('telegram_sent') else 'not sent'}"
+                )
+        except Exception as e:
+            if LOGGER:
+                LOGGER.error(f"🩺 System Doctor failed: {e}")
+        time.sleep(60)
+        return
+
 
 def _scheduler_loop():
     """Main scheduler loop"""

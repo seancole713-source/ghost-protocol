@@ -5473,6 +5473,35 @@ async def _post_startup_init():
             LOGGER.error(f"[POST-STARTUP] ❌ Master Orchestrator failed: {e}", exc_info=True)
     else:
         LOGGER.info("[POST-STARTUP] ℹ️  Master Orchestrator disabled (set ORCHESTRATOR_ENABLED=1 to enable)")
+
+    # ── Wire System Doctor (7 AM daily health check) ────────────────
+    try:
+        from core import system_doctor as _doc
+        _doc.GET_PREDICTIONS_FUNC = lambda: dict(_LATEST_PREDICTIONS)
+        _doc.GET_EDGE_SET_FUNC = get_edge_set
+
+        # Price func: reuse beast_fetch_price if orchestrator is on, otherwise build one
+        def _doctor_price_func(symbol, market):
+            try:
+                if market == "crypto":
+                    from core.crypto.crypto_providers import get_crypto_price_quorum
+                    result = get_crypto_price_quorum(symbol)
+                    if result and result.get("price"):
+                        return (result["price"], result["price"], result.get("provider", "unknown"), False)
+                else:
+                    from core.providers.turbo_provider import turbo_stock_price
+                    price_data = turbo_stock_price(symbol)
+                    if price_data and price_data.get("price"):
+                        return (price_data["price"], price_data.get("prev_close"), price_data.get("provider", "unknown"), False)
+                return None
+            except Exception:
+                return None
+
+        _doc.GET_PRICE_FUNC = _doctor_price_func
+        _doc.TELEGRAM_SEND_FUNC = lambda msg: _send_telegram_internal(msg)[0]
+        LOGGER.info("[POST-STARTUP] 🩺 System Doctor wired (7 AM CT daily via beast_scheduler)")
+    except Exception as e:
+        LOGGER.warning(f"[POST-STARTUP] System Doctor wire failed (non-fatal): {e}")
     
     # Stage 4: Initialize Portfolio Optimization & Advanced Strategies
     if STAGE4_ENABLED:
@@ -22296,17 +22325,16 @@ async def api_health_predictions():
     try:
         from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
 
-        # Use actual prediction LIMITS (auto_prediction_loop caps: 50 stocks + 25 crypto + VIP)
-        # NOT the full DEFAULT_ watchlists (272 stocks + 340 crypto = 612 — way more than we predict)
-        _PREDICTION_CAP_STOCKS = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "50"))
-        _PREDICTION_CAP_CRYPTO = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "25"))
-        total_symbols = _PREDICTION_CAP_STOCKS + _PREDICTION_CAP_CRYPTO + len(VIP_COINS)
+        # FIX (Mar 1, 2026): Use edge set size as denominator, not scanner caps.
+        # Old code: 50 stocks + 25 crypto + 5 VIP = 80 → coverage always ~30%.
+        # Reality: edge whitelist has 13 symbols → 13/13 = 100% when all predicted.
+        from config.symbols import get_edge_set as _gs_edge_set
+        _edge_symbols = _gs_edge_set()
+        total_symbols = len(_edge_symbols)  # 13 proven symbols
         # Use live counts from _LATEST_PREDICTIONS as primary (always up-to-date)
         _ls = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") == "stock_v2")
         _lc = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") != "stock_v2")
-        symbols_with_data = max(_ls, _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0)) + \
-                           max(_lc, _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0)) + \
-                           vip_provider_health.get("symbols_with_data", 0)
+        symbols_with_data = _ls + _lc
 
         # Compute live avg_confidence from actual predictions
         _live_confs = [p.get("confidence", 0) for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("confidence")]
@@ -22340,15 +22368,15 @@ async def api_health_predictions():
         LOGGER.warning(f"Could not compute Ghost Score V2: {e}")
         # Provide basic fallback score
         ghost_score_v2 = {
-            "score": 72.5,
-            "status": "operational",
-            "grade": "B+",
+            "score": 0,
+            "status": "degraded",
+            "grade": "?",
             "components": {
-                "data_quality": 75.0,
-                "prediction_coverage": 65.0,
-                "risk_behavior": 80.0
+                "data_quality": 0,
+                "prediction_coverage": 0,
+                "risk_behavior": 0
             },
-            "note": "Fallback score - module unavailable"
+            "note": f"Ghost Score V2 unavailable: {e}"
         }
 
     # Get risk guard status
@@ -22406,16 +22434,13 @@ async def api_cockpit_snapshot():
         try:
             from core.metrics.ghost_score import compute_ghost_score_v2, get_current_risk_status
 
-            # Use actual prediction LIMITS (auto_prediction_loop caps: 50 stocks + 25 crypto + VIP)
-            _PREDICTION_CAP_STOCKS = int(os.getenv("AUTO_PREDICT_STOCK_LIMIT", "50"))
-            _PREDICTION_CAP_CRYPTO = int(os.getenv("AUTO_PREDICT_CRYPTO_LIMIT", "25"))
-            total_symbols = _PREDICTION_CAP_STOCKS + _PREDICTION_CAP_CRYPTO + len(VIP_COINS)
-            # Use live counts from _LATEST_PREDICTIONS as primary (always up-to-date)
+            # FIX (Mar 1, 2026): Use edge set size as denominator
+            from config.symbols import get_edge_set as _gs_edge_set2
+            _edge_symbols2 = _gs_edge_set2()
+            total_symbols = len(_edge_symbols2)
             _ls = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") == "stock_v2")
             _lc = sum(1 for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("engine") != "stock_v2")
-            symbols_with_data = max(_ls, _LAST_MULTI_PREDICTION_COUNTS.get("stocks", 0)) + \
-                               max(_lc, _LAST_MULTI_PREDICTION_COUNTS.get("crypto", 0)) + \
-                               vip_provider_health.get("symbols_with_data", 0)
+            symbols_with_data = _ls + _lc
 
             # Compute live avg_confidence from actual predictions
             _live_confs = [p.get("confidence", 0) for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("confidence")]
@@ -22449,15 +22474,15 @@ async def api_cockpit_snapshot():
             LOGGER.warning(f"Could not compute Ghost Score V2: {e}")
             # Provide basic fallback score
             ghost_score_v2 = {
-                "score": 72.5,
-                "status": "operational",
-                "grade": "B+",
+                "score": 0,
+                "status": "degraded",
+                "grade": "?",
                 "components": {
-                    "data_quality": 75.0,
-                    "prediction_coverage": 65.0,
-                    "risk_behavior": 80.0
+                    "data_quality": 0,
+                    "prediction_coverage": 0,
+                    "risk_behavior": 0
                 },
-                "note": "Fallback score - module unavailable"
+                "note": f"Ghost Score V2 unavailable: {e}"
             }
 
         # Get risk guard status
@@ -36174,6 +36199,26 @@ async def api_status():
 async def api_health():
     """Simple health check endpoint for monitoring systems."""
     return {"ok": True, "ts": int(time.time() * 1000), "version": "feb7-no-flat-v6"}
+
+
+@APP.get("/api/doctor")
+async def api_doctor():
+    """Run System Doctor health check on demand (same as 7 AM daily)."""
+    try:
+        from core.system_doctor import run_system_doctor
+        return run_system_doctor()
+    except Exception as e:
+        return {"overall": "ERROR", "error": str(e)}
+
+
+@APP.post("/api/doctor/notify")
+async def api_doctor_notify():
+    """Run System Doctor and send Telegram report."""
+    try:
+        from core.system_doctor import run_and_notify
+        return run_and_notify()
+    except Exception as e:
+        return {"overall": "ERROR", "error": str(e)}
 
 
 @APP.get("/api/stability/status")

@@ -472,27 +472,14 @@ async def _send_premarket_alert(symbol: str, prediction: dict[str, Any], hours_b
         2.5h before market open
     """
     try:
-        from core.telegram_alerts import send_mover_alert
-        
+        # FIX (Mar 1, 2026): Disabled Telegram send — pre-market predictions
+        # are not trade signals. Also had wrong send_mover_alert signature.
         direction = prediction.get('direction', 'FLAT')
         confidence = prediction.get('confidence', 0)
-        
-        # Send alert with special pre-market formatting
-        send_mover_alert(
-            symbol=symbol,
-            market="stock",
-            current_price=prediction.get('current_price', 0),
-            change_pct=0,  # No change yet (market closed)
-            volume=0,
-            volume_avg=0,
-            tier="PREMARKET",
-            provider="ghost-predictor"
-        )
-        
-        LOGGER.info(f"Pre-market alert sent for {symbol}: {direction} ({confidence:.0%})")
+        LOGGER.info(f"[PREMARKET] {symbol}: {direction} ({confidence:.0%}) — internal only, no Telegram")
     
     except Exception as e:
-        LOGGER.error(f"Failed to send pre-market alert for {symbol}: {e}")
+        LOGGER.error(f"Failed to log pre-market prediction for {symbol}: {e}")
 
 
 def get_premarket_status() -> dict[str, Any]:

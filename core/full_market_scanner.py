@@ -682,28 +682,13 @@ async def check_hourly_movers() -> List[Dict]:
 
 
 async def _send_mover_alert(mover: Dict):
-    """Send alert for a significant mover."""
-    try:
-        from core.telegram_alerts import send_telegram_message
-        
-        symbol = mover["symbol"]
-        change = mover.get("recent_move", 0)
-        direction = mover.get("direction", "UP")
-        conf = mover.get("confidence", 0) * 100
-        
-        arrow = "📈" if change > 0 else "📉"
-        signal = "🟢" if direction == "UP" else "🔴"
-        
-        message = f"""🚨 **MOVER ALERT: {symbol}**
-
-{arrow} Move: {change:+.1f}% in 1 hour
-{signal} Ghost says: {direction}
-📊 Confidence: {conf:.0f}%
-
-_Unusual activity detected_"""
-        
-        await send_telegram_message(message)
-        LOGGER.info(f"Sent mover alert for {symbol}")
-        
-    except Exception as e:
-        LOGGER.error(f"Mover alert failed: {e}")
+    """Log significant mover internally.
+    
+    FIX (Mar 1, 2026): Disabled Telegram send — mover alerts are informational,
+    not trade signals. Ghost uses them internally.
+    """
+    symbol = mover.get("symbol", "?")
+    change = mover.get("recent_move", 0)
+    direction = mover.get("direction", "?")
+    LOGGER.info(f"[MOVER] {symbol}: {change:+.1f}% → {direction} (internal only, no Telegram)")
+    return

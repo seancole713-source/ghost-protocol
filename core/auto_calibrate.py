@@ -686,40 +686,13 @@ def _generate_dataclass_block(validated: Dict) -> str:
 
 
 def send_calibration_alert(alert: str, changes: Dict) -> bool:
-    """Send calibration results to Telegram"""
-    try:
-        import requests
-        
-        bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
-        chat_id = os.environ.get('TELEGRAM_CHAT_ID')
-        
-        if not bot_token or not chat_id:
-            logger.warning("Telegram credentials not set, skipping alert")
-            return False
-        
-        # Truncate if too long
-        if len(alert) > 4000:
-            alert = alert[:3900] + "\n\n... (truncated)"
-        
-        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        payload = {
-            'chat_id': chat_id,
-            'text': alert,
-            'parse_mode': 'HTML'
-        }
-        
-        response = requests.post(url, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            logger.info("✅ Telegram alert sent")
-            return True
-        else:
-            logger.error(f"Telegram error: {response.text}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"Failed to send Telegram alert: {e}")
-        return False
+    """Log calibration results internally.
+    
+    FIX (Mar 1, 2026): Disabled Telegram send — calibration results are
+    system internals, not trade signals. Logged for observability.
+    """
+    logger.info(f"[CALIBRATION] Results (internal only): {alert[:200]}...")
+    return True
 
 
 def auto_deploy(changes: Dict) -> bool:

@@ -93,6 +93,9 @@ class DynamicExitManager:
         trailing_activation = exit_levels["trailing_activation_price"]
         
         # Calculate current P&L
+        if not entry_price or entry_price <= 0:
+            return {"should_exit": False, "reason": "Invalid entry_price", "exit_type": None}
+        
         if direction == "UP":
             pnl_pct = ((current_price - entry_price) / entry_price) * 100
             hit_target = current_price >= target

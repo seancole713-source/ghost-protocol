@@ -129,6 +129,8 @@ class BacktestEngine:
             exit_price = self.data['Close'].iloc[exit_idx]
             
             # Calculate actual move
+            if not entry_price or entry_price <= 0:
+                continue
             pct_change = (exit_price - entry_price) / entry_price
             
             # Determine outcome

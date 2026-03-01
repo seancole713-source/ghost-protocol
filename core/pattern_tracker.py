@@ -212,6 +212,9 @@ async def reconcile_pattern_outcomes():
                 
                 # Calculate actual change
                 hours_elapsed = (datetime.utcnow() - detected_at).total_seconds() / 3600
+                if not entry_price or entry_price <= 0:
+                    LOGGER.warning(f"[PATTERN_TRACKER] Skipping {symbol}: entry_price={entry_price}")
+                    continue
                 price_change_pct = ((current_price - entry_price) / entry_price) * 100
                 
                 # Determine if profitable based on direction

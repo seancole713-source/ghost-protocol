@@ -426,57 +426,16 @@ async def spike_scanner_loop(base_symbols: list[str]):
 
 async def send_spike_alerts(opportunities: list[dict[str, Any]]):
     """
-    Send Telegram alerts for spike opportunities
+    Log spike opportunities internally.
     
-    Args:
-        opportunities: List of spike opportunities
+    FIX (Mar 1, 2026): Disabled Telegram sends — these are informational,
+    not trade signals. Ghost uses them internally via Intelligence Hub.
     """
-    try:
-        from core.telegram_alerts import send_alert
-        
-        for opp in opportunities:
-            symbol = opp["symbol"]
-            
-            # Check alert cooldown
-            last_alert = _LAST_ALERTS.get(symbol, 0)
-            if time.time() - last_alert < _ALERT_COOLDOWN:
-                continue
-            
-            # Format alert message
-            if opp["type"] == "premarket_spike":
-                message = (
-                    f"🌅 PRE-MARKET SPIKE\n"
-                    f"Symbol: {symbol}\n"
-                    f"Change: {opp['change_pct']:+.2f}%\n"
-                    f"Price: ${opp['current_price']:.2f}\n"
-                    f"Time: {datetime.now().strftime('%H:%M:%S')}"
-                )
-            elif opp["type"] == "unusual_volume":
-                message = (
-                    f"🔊 UNUSUAL VOLUME\n"
-                    f"Symbol: {symbol}\n"
-                    f"Volume: {opp['volume_ratio']:.1f}x average\n"
-                    f"Time: {datetime.now().strftime('%H:%M:%S')}"
-                )
-            elif opp["type"] == "news_catalyst":
-                message = (
-                    f"📰 NEWS CATALYST\n"
-                    f"Symbol: {symbol}\n"
-                    f"Articles: {opp['article_count']}\n"
-                    f"Sentiment: {opp['sentiment_score']:+.2f}\n"
-                    f"Headline: {opp['top_headline']}\n"
-                    f"Time: {datetime.now().strftime('%H:%M:%S')}"
-                )
-            else:
-                continue
-            
-            await send_alert(message, priority="high")
-            _LAST_ALERTS[symbol] = time.time()
-            
-            LOGGER.info(f"📤 Sent spike alert for {symbol}")
-            
-    except Exception as e:
-        LOGGER.error(f"Failed to send spike alerts: {e}", exc_info=True)
+    for opp in opportunities:
+        symbol = opp.get("symbol", "?")
+        opp_type = opp.get("type", "unknown")
+        LOGGER.info(f"[SPIKE] {symbol}: {opp_type} detected (internal only, no Telegram)")
+    return
 
 
 # ============================================================================

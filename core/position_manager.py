@@ -209,6 +209,10 @@ class PositionManager:
         entry_price = position['entry_price']
         direction = position['direction']
         
+        if not entry_price or entry_price <= 0:
+            LOGGER.warning(f"Position {symbol} has invalid entry_price={entry_price}")
+            return None
+        
         if direction == "UP":
             pnl_pct = ((current_price - entry_price) / entry_price) * 100
         else:
@@ -269,7 +273,10 @@ class PositionManager:
         direction = position['direction']
         
         # Calculate realized PnL from LOCKED entry
-        if direction == "UP":
+        if not entry_price or entry_price <= 0:
+            LOGGER.warning(f"Position {symbol} has invalid entry_price={entry_price} for close")
+            realized_pnl_pct = 0.0
+        elif direction == "UP":
             realized_pnl_pct = ((exit_price - entry_price) / entry_price) * 100
         else:
             realized_pnl_pct = ((entry_price - exit_price) / entry_price) * 100

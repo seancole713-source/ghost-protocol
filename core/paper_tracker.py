@@ -552,6 +552,9 @@ class PaperTracker:
             signal_direction = trade["signal_direction"]
             position_size = trade["position_size"]
             
+            if not entry_price or entry_price <= 0:
+                LOGGER.warning(f"[PAPER_TRACKER] Skipping trade with entry_price={entry_price}")
+                continue
             price_change_pct = (current_price - entry_price) / entry_price
             
             # Determine actual direction at target time

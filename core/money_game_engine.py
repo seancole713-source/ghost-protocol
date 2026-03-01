@@ -360,6 +360,9 @@ class MoneyGameEngine:
             symbol, asset_type, direction, entry_price, target_price = row
             
             # CALCULATE PROFIT/LOSS
+            if not entry_price or entry_price <= 0:
+                conn.close()
+                return {"error": f"Invalid entry_price={entry_price} for trade {trade_id}"}
             if direction == "BUY":
                 profit_pct = ((final_price - entry_price) / entry_price) * 100
                 is_win = final_price >= target_price
