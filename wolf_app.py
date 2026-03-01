@@ -4988,10 +4988,36 @@ async def _post_startup_init():
                             f"📰 [CYCLE {cycle_count}] News analysis complete: {len(major_events)} events, "
                             f"{len(predictions_at_risk)} predictions at risk"
                         )
-                        
-                        # NOTE: Telegram alerts DISABLED - News Brain runs silently for internal use only
-                        # Ghost uses this data to improve predictions, but doesn't spam user with every analysis
-                        # User gets alerts only for: targets hit, stops hit, TOP 10 updates, and price path warnings
+
+                        # ═══ WIRED: Feed results into Intelligence Hub ═══
+                        # This bridges news brain → scout predictions pipeline.
+                        # The hub reads this cache when making predictions.
+                        try:
+                            from core.intelligence_hub import update_news_brain_cache
+                            update_news_brain_cache(result)
+                            LOGGER.info(f"📰 [CYCLE {cycle_count}] ✅ Intelligence Hub cache updated")
+                        except Exception as hub_err:
+                            LOGGER.warning(f"📰 [CYCLE {cycle_count}] Hub cache update failed: {hub_err}")
+
+                        # ═══ WIRED: Auto-pause on CRITICAL events ═══
+                        for event in major_events:
+                            if event.get("severity") == "CRITICAL":
+                                LOGGER.warning(f"🚨 CRITICAL EVENT: {event.get('headline', 'Unknown')}")
+                                try:
+                                    actions = await brain.handle_critical_event(event, auto_pause=True)
+                                    if actions.get("trading_paused"):
+                                        LOGGER.warning("🛑 Trading AUTO-PAUSED due to critical news event")
+                                except Exception as crit_err:
+                                    LOGGER.error(f"Critical event handling failed: {crit_err}")
+
+                        # ═══ WIRED: Telegram alerts for HIGH risk predictions ═══
+                        high_risk = [p for p in predictions_at_risk
+                                     if p.get("risk_level") in ("HIGH", "CRITICAL")]
+                        if high_risk:
+                            try:
+                                await brain.send_alert(result)
+                            except Exception as alert_err:
+                                LOGGER.debug(f"Alert send failed: {alert_err}")
                         
                     except Exception as e:
                         LOGGER.error(f"News analysis error: {e}", exc_info=True)
@@ -5002,7 +5028,44 @@ async def _post_startup_init():
             LOGGER.info(f"✅ Automatic News Analysis: STARTED (every {NEWS_ANALYSIS_INTERVAL_MINUTES} min)")
     except Exception as e:
         LOGGER.error(f"🚨 News Brain FAILED TO START: {e}", extra={"component": "startup"}, exc_info=True)
-    
+
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # SELF-IMPROVEMENT ENGINE — Auto-tune thresholds every 6 hours
+    # ═══════════════════════════════════════════════════════════════════════════════
+    try:
+        SELF_IMPROVE_ENABLED = os.getenv("SELF_IMPROVE_ENABLED", "1") == "1"
+        if SELF_IMPROVE_ENABLED:
+            async def _self_improvement_loop():
+                """Run self-improvement cycle every 6 hours."""
+                LOGGER.info("🔧 Self-Improvement Engine: STARTING (every 6 hours)")
+                await asyncio.sleep(300)  # Wait 5 min after startup
+                while True:
+                    try:
+                        from core.self_improvement_engine import run_improvement_cycle
+                        result = run_improvement_cycle()
+                        LOGGER.info(f"🔧 Self-improvement cycle complete: {result.get('improvements_made', 0)} improvements")
+                    except Exception as e:
+                        LOGGER.error(f"Self-improvement error: {e}")
+                    await asyncio.sleep(6 * 3600)  # Every 6 hours
+
+            asyncio.create_task(_self_improvement_loop())
+            LOGGER.info("✅ Self-Improvement Engine: SCHEDULED (every 6 hours)")
+    except Exception as e:
+        LOGGER.error(f"Self-Improvement Engine failed to start: {e}")
+
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # INTELLIGENCE HUB — Pre-initialize on startup
+    # ═══════════════════════════════════════════════════════════════════════════════
+    try:
+        from core.intelligence_hub import get_intelligence_hub
+        hub = get_intelligence_hub()
+        hub._lazy_init()
+        hub_status = hub.get_status()
+        loaded = sum(1 for v in hub_status.values() if v is True)
+        LOGGER.info(f"🧠 Intelligence Hub: {loaded} systems loaded at startup")
+    except Exception as e:
+        LOGGER.error(f"Intelligence Hub startup failed: {e}")
+
     # ═══════════════════════════════════════════════════════════════════════════════
     # GHOST NOTIFICATION SYSTEM - Runs in WEB mode ONLY (not worker)
     # FIX (Feb 12, 2026): Was running in BOTH web + worker processes, causing
@@ -15219,6 +15282,21 @@ async def api_v3_health_metrics():
             "error": str(e),
             "note": "All metrics unavailable due to error — do NOT treat as 50%"
         }
+
+
+@APP.get("/api/v3/intelligence/status")
+async def api_v3_intelligence_status():
+    """Get Intelligence Hub status — shows which of the 20 systems are active."""
+    try:
+        from core.intelligence_hub import get_intelligence_hub, get_news_brain_cache
+        hub = get_intelligence_hub()
+        status = hub.get_status()
+        cache, cache_ts = get_news_brain_cache()
+        status["news_brain_events"] = len(cache.get("major_events", [])) if cache else 0
+        status["news_brain_at_risk"] = len(cache.get("predictions_at_risk", [])) if cache else 0
+        return {"ok": True, **status}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @APP.get("/api/v3/phase5/status")

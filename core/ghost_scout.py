@@ -676,43 +676,119 @@ class GhostScout:
     def _make_prediction(self, symbol: str, asset_type: str, use_news: bool = True) -> Optional[Dict]:
         """
         Make a prediction for a symbol.
-        
-        Integrates:
-        - Technical analysis
-        - News sentiment (for ✅ indicator)
-        - Dynamic hold period calculation
+
+        Full intelligence pipeline:
+        1. Technical analysis (SMA + RSI)
+        2. News sentiment (Alpha Vantage)
+        3. 🧠 Intelligence Hub — 20 systems aggregated
+        4. Dynamic hold period calculation
         """
         try:
             # Get current price
             current_price = self._get_current_price(symbol, asset_type)
             if not current_price:
                 return None
-            
+
+            # Fetch price history (needed by technical + intelligence hub)
+            price_history = self._fetch_price_history(symbol, asset_type)
+
             # Get base prediction from the engine
             prediction = self._get_prediction_from_engine(symbol, asset_type, current_price)
             if not prediction:
                 return None
-            
+
             # Add news sentiment if enabled (this makes ✅ real!)
             if use_news:
                 news_data = get_news_sentiment_for_symbol(symbol)
                 prediction["news_influenced"] = news_data.get("news_influenced", False)
                 prediction["sentiment_score"] = news_data.get("sentiment_score", 0)
                 prediction["sentiment_label"] = news_data.get("sentiment_label", "NEUTRAL")
-                
+
                 # Boost confidence if news agrees with direction
                 if news_data["news_influenced"]:
                     sentiment = news_data["sentiment_score"]
                     if (prediction["direction"] == "BUY" and sentiment > 0) or \
                        (prediction["direction"] == "SELL" and sentiment < 0):
-                        # News confirms direction - boost confidence!
                         prediction["confidence"] = min(0.85, prediction["confidence"] * 1.15)
                         LOGGER.info(f"📰 [NEWS] {symbol}: News confirms {prediction['direction']} (sentiment: {sentiment:.2f})")
-            
+
+            # ═══════════════════════════════════════════════════════
+            # 🧠 INTELLIGENCE HUB — 20 systems aggregated
+            # ═══════════════════════════════════════════════════════
+            try:
+                from core.intelligence_hub import get_intelligence_hub
+                hub = get_intelligence_hub()
+                report = hub.analyze(
+                    symbol=symbol,
+                    direction=prediction["direction"],
+                    confidence=prediction["confidence"],
+                    entry_price=current_price,
+                    asset_type=asset_type,
+                    price_history=price_history,
+                )
+
+                # Store intelligence metadata on prediction
+                prediction["intel_active_systems"] = report.active_systems
+                prediction["intel_total_systems"] = report.total_systems
+                prediction["intel_news_risk"] = report.news_risk
+                prediction["intel_direction_adj"] = report.direction_adjustment
+                prediction["intel_confidence_adj"] = report.confidence_adjustment
+                prediction["intel_trust_boost"] = report.trust_boost
+
+                # Apply direction adjustment
+                if report.should_block:
+                    LOGGER.info(f"🛑 [HUB] {symbol}: BLOCKED — {report.block_reason}")
+                    return None
+
+                if report.direction_adjustment == "FLIP":
+                    old_dir = prediction["direction"]
+                    prediction["direction"] = "SELL" if old_dir == "BUY" else "BUY"
+                    LOGGER.info(f"🔄 [HUB] {symbol}: Direction FLIPPED {old_dir} → {prediction['direction']}")
+                elif report.direction_adjustment == "WEAKEN":
+                    LOGGER.info(f"⚠️ [HUB] {symbol}: Direction WEAKENED (signals disagree)")
+
+                # Apply confidence adjustment
+                old_conf = prediction["confidence"]
+                prediction["confidence"] += report.confidence_adjustment
+                prediction["confidence"] += report.trust_boost
+                prediction["confidence"] = max(0.10, min(0.92, prediction["confidence"]))
+
+                if abs(report.confidence_adjustment) > 0.01 or report.trust_boost > 0:
+                    LOGGER.info(f"🧠 [HUB] {symbol}: Confidence {old_conf:.2f} → {prediction['confidence']:.2f} "
+                                f"(adj={report.confidence_adjustment:+.2f}, trust={report.trust_boost:+.2f}, "
+                                f"systems={report.active_systems}/{report.total_systems})")
+
+                # Apply dynamic exit levels (override basic SL/TP)
+                if report.exit_levels:
+                    if "target_price" in report.exit_levels:
+                        prediction["target_price"] = report.exit_levels["target_price"]
+                    if "stop_loss" in report.exit_levels:
+                        prediction["stop_loss"] = report.exit_levels["stop_loss"]
+                    if "trailing_stop_pct" in report.exit_levels:
+                        prediction["trailing_stop_pct"] = report.exit_levels["trailing_stop_pct"]
+
+                # Store regime info
+                if report.regime_info:
+                    prediction["market_regime"] = report.regime_info.get("regime", "UNKNOWN")
+
+                # Log signal summary
+                active_signals = [s for s in report.signals if s.active]
+                if active_signals:
+                    signal_summary = ", ".join(
+                        f"{s.source}={s.direction}@{s.confidence:.0%}"
+                        for s in active_signals[:6]
+                    )
+                    LOGGER.info(f"🧠 [HUB] {symbol}: Signals: {signal_summary}")
+
+            except Exception as e:
+                LOGGER.warning(f"🧠 [HUB] Intelligence hub error for {symbol}: {e}")
+                prediction["intel_active_systems"] = 0
+                prediction["intel_total_systems"] = 0
+
             # Calculate smart hold period based on volatility and momentum
             prediction["hold_hours"] = self._calculate_hold_period(symbol, asset_type, prediction)
             prediction["hold_reason"] = self._get_hold_reason(prediction["hold_hours"])
-            
+
             return prediction
         except Exception as e:
             LOGGER.error(f"🔍 [SCOUT] Prediction error for {symbol}: {e}")
