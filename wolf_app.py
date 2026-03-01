@@ -9756,8 +9756,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             )
         except PredictionRejected as e:
             duration_ms = int((time.monotonic() - start) * 1000)
+            _reject_str = str(e)
+            _is_dedup = "Duplicate" in _reject_str or "already has prediction" in _reject_str
             LOGGER.warning(
-                f"[{symbol}] FAIL-CLOSED (store): {e}",
+                f"[{symbol}] {'DEDUP (still caching)' if _is_dedup else 'FAIL-CLOSED (store)'}: {e}",
                 extra={
                     "symbol": symbol,
                     "duration_ms": duration_ms,
@@ -9765,6 +9767,40 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     "pillar_breakdown": pillar_availability,
                 },
             )
+            # BUG FIX: Dedup rejection means DB already has the prediction, but
+            # _LATEST_PREDICTIONS (in-memory) may be empty after a deploy/restart.
+            # Still store the computed prediction so cockpit + Telegram see it.
+            if _is_dedup and direction and confidence > 0:
+                from core.asset_classification import is_crypto_symbol as _is_crypto_dedup
+                _dedup_action = "BUY" if direction == "UP" else "SELL" if direction == "DOWN" else "HOLD"
+                with _LATEST_PREDICTIONS_LOCK:
+                    _LATEST_PREDICTIONS[symbol] = {
+                        "prediction_id": None,  # Dedup — original ID is in DB
+                        "symbol": symbol,
+                        "run_at": time.time(),
+                        "confidence": confidence,
+                        "direction": direction,
+                        "action": _dedup_action,
+                        "horizon_h": horizon_h,
+                        "price": current_price,
+                        "price_at_prediction": current_price,
+                        "market": "crypto" if _is_crypto_dedup(symbol) else "stock",
+                        "engine": "turbo",
+                        **_turbo_hub_meta,
+                    }
+                LOGGER.info(f"[{symbol}] ✅ Dedup prediction cached in _LATEST_PREDICTIONS (conf={confidence:.2f})")
+                return {
+                    "ok": True,
+                    "symbol": symbol,
+                    "direction": direction,
+                    "confidence": confidence,
+                    "current_price": current_price,
+                    "feature_count": int(feature_data.get("feature_count") or 0),
+                    "available_count": int(feature_data.get("available_count") or 0),
+                    "duration_ms": duration_ms,
+                    "error": None,
+                    "dedup": True,
+                }
             return {
                 "ok": False,
                 "symbol": symbol,
