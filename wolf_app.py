@@ -8296,6 +8296,58 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 se_horizon = stock_result.get("horizon_hours", 24)
                 
                 # ================================================================
+                # 🧠 INTELLIGENCE HUB — Apply 20-system intelligence to stock predictions
+                # ================================================================
+                hub_meta = {}
+                try:
+                    from core.intelligence_hub import get_intelligence_hub
+                    _hub = get_intelligence_hub()
+                    _hub_report = _hub.analyze(
+                        symbol=symbol,
+                        direction=se_direction,
+                        confidence=se_confidence,
+                        entry_price=se_entry_price or 0,
+                        asset_type="stock",
+                    )
+                    hub_meta = {
+                        "intel_active_systems": _hub_report.active_systems,
+                        "intel_total_systems": _hub_report.total_systems,
+                        "intel_news_risk": _hub_report.news_risk,
+                        "intel_direction_adj": _hub_report.direction_adjustment,
+                        "intel_confidence_adj": _hub_report.confidence_adjustment,
+                        "intel_trust_boost": _hub_report.trust_boost,
+                        "market_regime": _hub_report.regime_info.get("regime", "UNKNOWN"),
+                    }
+
+                    if _hub_report.should_block:
+                        LOGGER.info(f"🛑 [HUB] {symbol}: Stock prediction BLOCKED — {_hub_report.block_reason}")
+                        duration_ms = int((time.monotonic() - start) * 1000)
+                        return {"ok": False, "symbol": symbol, "direction": "BLOCKED",
+                                "confidence": 0.0, "current_price": se_entry_price,
+                                "duration_ms": duration_ms, "error": _hub_report.block_reason}
+
+                    # Apply direction flip
+                    if _hub_report.direction_adjustment == "FLIP":
+                        old_dir = se_direction
+                        se_direction = "DOWN" if se_direction == "UP" else "UP"
+                        LOGGER.info(f"🔄 [HUB] {symbol}: Stock direction FLIPPED {old_dir} → {se_direction}")
+
+                    # Apply confidence adjustment
+                    old_conf = se_confidence
+                    se_confidence += _hub_report.confidence_adjustment + _hub_report.trust_boost
+                    se_confidence = max(0.10, min(0.92, se_confidence))
+                    if abs(se_confidence - old_conf) > 0.01:
+                        LOGGER.info(f"🧠 [HUB] {symbol}: Stock conf {old_conf:.2f} → {se_confidence:.2f} "
+                                    f"(systems={_hub_report.active_systems}/{_hub_report.total_systems})")
+
+                    # Apply dynamic exits
+                    if _hub_report.exit_levels:
+                        stock_result["target_price"] = _hub_report.exit_levels.get("target_price", stock_result.get("target_price"))
+                        stock_result["stop_loss"] = _hub_report.exit_levels.get("stop_loss", stock_result.get("stop_loss"))
+                except Exception as _hub_err:
+                    LOGGER.warning(f"🧠 [HUB] Stock engine hub error for {symbol}: {_hub_err}")
+
+                # ================================================================
                 # WIRE STOCK ENGINE → _LATEST_PREDICTIONS (cockpit + Telegram)
                 # Without this, Stock Engine predictions are invisible to:
                 #   - /api/cockpit dashboard
@@ -8322,6 +8374,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         "gates_passed": stock_result.get("gates_passed", []),
                         "reasons": stock_result.get("reasons", []),
                         "should_predict": se_direction != "HOLD",
+                        # Intelligence Hub metadata
+                        **hub_meta,
                     }
                 LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → cockpit: {se_direction} {se_confidence:.0%} ({stock_result.get('confirmations', 0)} confirmations)")
                 
@@ -9610,6 +9664,75 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 "alert_worthy": False
             }
 
+        # =====================================================================
+        # 🧠 INTELLIGENCE HUB — Apply 20-system intelligence to crypto predictions
+        # =====================================================================
+        _turbo_hub_meta = {}
+        try:
+            from core.intelligence_hub import get_intelligence_hub
+            _turbo_hub = get_intelligence_hub()
+
+            # Get price history for hub analysis
+            _turbo_price_history = []
+            try:
+                from core.ghost_scout import GhostScout as _GS
+                _gs_instance = _GS()
+                _turbo_price_history = _gs_instance._fetch_price_history(
+                    symbol, "crypto" if is_crypto else "stock"
+                ) or []
+            except Exception:
+                pass
+
+            _turbo_hub_report = _turbo_hub.analyze(
+                symbol=symbol,
+                direction=direction,
+                confidence=confidence,
+                entry_price=current_price or 0,
+                asset_type="crypto" if is_crypto else "stock",
+                price_history=_turbo_price_history,
+            )
+
+            _turbo_hub_meta = {
+                "intel_active_systems": _turbo_hub_report.active_systems,
+                "intel_total_systems": _turbo_hub_report.total_systems,
+                "intel_news_risk": _turbo_hub_report.news_risk,
+                "intel_direction_adj": _turbo_hub_report.direction_adjustment,
+                "intel_confidence_adj": _turbo_hub_report.confidence_adjustment,
+                "intel_trust_boost": _turbo_hub_report.trust_boost,
+                "market_regime": _turbo_hub_report.regime_info.get("regime", "UNKNOWN"),
+            }
+
+            if _turbo_hub_report.should_block:
+                LOGGER.info(f"🛑 [HUB] {symbol}: Turbo prediction BLOCKED — {_turbo_hub_report.block_reason}")
+                duration_ms = int((time.monotonic() - start) * 1000)
+                return {"ok": False, "symbol": symbol, "direction": "BLOCKED",
+                        "confidence": 0.0, "current_price": current_price,
+                        "duration_ms": duration_ms, "error": _turbo_hub_report.block_reason}
+
+            # Apply direction flip
+            if _turbo_hub_report.direction_adjustment == "FLIP":
+                old_dir = direction
+                direction = "DOWN" if direction == "UP" else "UP"
+                LOGGER.info(f"🔄 [HUB] {symbol}: Turbo direction FLIPPED {old_dir} → {direction}")
+
+            # Apply confidence adjustment
+            _old_turbo_conf = confidence
+            confidence += _turbo_hub_report.confidence_adjustment + _turbo_hub_report.trust_boost
+            confidence = max(0.10, min(0.92, confidence))
+            if abs(confidence - _old_turbo_conf) > 0.01:
+                LOGGER.info(f"🧠 [HUB] {symbol}: Turbo conf {_old_turbo_conf:.2f} → {confidence:.2f} "
+                            f"(news_risk={_turbo_hub_report.news_risk}, "
+                            f"systems={_turbo_hub_report.active_systems}/{_turbo_hub_report.total_systems})")
+
+            # Log active signals
+            _active_sigs = [s for s in _turbo_hub_report.signals if s.active]
+            if _active_sigs:
+                _sig_summary = ", ".join(f"{s.source}={s.direction}@{s.confidence:.0%}" for s in _active_sigs[:6])
+                LOGGER.info(f"🧠 [HUB] {symbol}: Signals: {_sig_summary}")
+
+        except Exception as _turbo_hub_err:
+            LOGGER.warning(f"🧠 [HUB] Turbo engine hub error for {symbol}: {_turbo_hub_err}")
+
         # Create prediction with rich features
         from core.prediction_store import PredictionRejected
         
@@ -9686,6 +9809,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 "confidence_metadata": confidence_metadata,
                 "should_predict": bool(should_predict),
                 "momentum": momentum_data,  # Add momentum tracking data
+                # Intelligence Hub metadata
+                **_turbo_hub_meta,
             }
 
             if expected_move_pct is not None:
@@ -13638,6 +13763,14 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                     "stage5_ok": bool(pred.get("stage5_ok", False)),
                     "stage6_ok": bool(pred.get("stage6_ok", False)),
                     "gate": pred.get("gate", "MONITOR"),
+                    # Intelligence Hub metadata
+                    "intel_active_systems": pred.get("intel_active_systems"),
+                    "intel_total_systems": pred.get("intel_total_systems"),
+                    "intel_news_risk": pred.get("intel_news_risk"),
+                    "intel_direction_adj": pred.get("intel_direction_adj"),
+                    "intel_confidence_adj": pred.get("intel_confidence_adj"),
+                    "intel_trust_boost": pred.get("intel_trust_boost"),
+                    "market_regime": pred.get("market_regime"),
                 })
                 LOGGER.info(
                     f"[API] Served prediction {prediction_id} for {symbol.upper()} from cache "
@@ -13663,6 +13796,14 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                     "stage5_ok": bool(pred.get("stage5_ok", False)),
                     "stage6_ok": bool(pred.get("stage6_ok", False)),
                     "gate": pred.get("gate", "MONITOR"),
+                    # Intelligence Hub metadata
+                    "intel_active_systems": pred.get("intel_active_systems"),
+                    "intel_total_systems": pred.get("intel_total_systems"),
+                    "intel_news_risk": pred.get("intel_news_risk"),
+                    "intel_direction_adj": pred.get("intel_direction_adj"),
+                    "intel_confidence_adj": pred.get("intel_confidence_adj"),
+                    "intel_trust_boost": pred.get("intel_trust_boost"),
+                    "market_regime": pred.get("market_regime"),
                 })
         
         return {

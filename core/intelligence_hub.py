@@ -249,6 +249,9 @@ class IntelligenceHub:
         """
         self._lazy_init()
 
+        # Normalize direction (UP/DOWN ↔ BUY/SELL)
+        direction = self._normalize_direction(direction)
+
         report = IntelligenceReport()
         report.total_systems = 20
 
@@ -891,6 +894,19 @@ class IntelligenceHub:
     # ───────────────────────────────────────────────────────
     # UTILITIES
     # ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _normalize_direction(d: str) -> str:
+        """Normalize direction to BUY/SELL/HOLD/NEUTRAL.
+        Handles both UP/DOWN and BUY/SELL conventions."""
+        d = (d or "").upper().strip()
+        if d in ("UP", "BUY", "LONG"):
+            return "BUY"
+        elif d in ("DOWN", "SELL", "SHORT"):
+            return "SELL"
+        elif d in ("HOLD", "FLAT"):
+            return "HOLD"
+        return "NEUTRAL"
 
     def _build_ml_features(self, closes: list) -> Dict:
         """Build feature dict from price history for ML model."""
