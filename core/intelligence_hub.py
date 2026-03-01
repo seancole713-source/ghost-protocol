@@ -779,7 +779,11 @@ class IntelligenceHub:
             if trust:
                 # Level 2 = +10%, Level 3 = +20%
                 window = self._trust_ladder.get_prediction_window(symbol)
-                return window.get("confidence_boost", 0.0)
+                boost = window.get("confidence_boost", 1.0)
+                # Trust ladder returns MULTIPLIER (1.0=no boost, 1.10=+10%, 1.20=+20%)
+                # Convert to additive delta and cap
+                delta = boost - 1.0
+                return max(0.0, min(0.20, delta))
         except Exception as e:
             LOGGER.debug(f"Trust ladder failed for {symbol}: {e}")
         return 0.0

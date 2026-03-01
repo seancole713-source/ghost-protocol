@@ -330,10 +330,11 @@ class TestTrustLadder:
         hub = IntelligenceHub()
         mock_ladder = MagicMock()
         mock_ladder.get_trust.return_value = MagicMock(trust_level=2)
-        mock_ladder.get_prediction_window.return_value = {"confidence_boost": 0.10}
+        # Trust ladder returns MULTIPLIER: 1.10 = +10% boost, 1.20 = +20%
+        mock_ladder.get_prediction_window.return_value = {"confidence_boost": 1.10}
         hub._trust_ladder = mock_ladder
         boost = hub._check_trust_ladder("ETH")
-        assert boost == 0.10
+        assert abs(boost - 0.10) < 1e-6  # 1.10 - 1.0 = 0.10 additive delta
 
 
 class TestQualityGate:
