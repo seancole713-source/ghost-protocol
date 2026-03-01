@@ -13649,12 +13649,14 @@ async def api_migrate_outcomes_table():
 # ============================================================================
 
 @APP.get("/api/v3/predictions/latest")
-async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
+async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 25):
     """
     Get latest predictions for cockpit forecast panel.
     
     Returns predictions with confidence, direction, and expected_move for UI.
     FIXED: Query database if _LATEST_PREDICTIONS is empty
+    FIXED: Default limit raised from 10→25 so all edge symbols are visible.
+    FIXED: Edge symbols sorted first, then by confidence descending.
     """
     try:
         predictions_list = []
@@ -13776,71 +13778,62 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 10):
                     "error": "No predictions available"
                 }
         
+        # Helper: round floats safely
+        def _rnd(v, decimals=4):
+            return round(v, decimals) if isinstance(v, float) else v
+
+        # Helper: build one prediction dict from cache entry
+        def _build_pred(sym: str, pred: dict) -> dict:
+            current_price = pred.get("price", pred.get("price_at_prediction", 0))
+            return {
+                "prediction_id": pred.get("prediction_id"),
+                "symbol": sym,
+                "direction": pred.get("direction", "FLAT"),
+                "confidence": _rnd(pred.get("confidence", 0)),
+                "expected_move": _rnd(pred.get("confidence", 0) * 5),
+                "horizon_h": pred.get("horizon_h", 48),
+                "run_at": pred.get("run_at", 0),
+                "price_at_prediction": current_price,
+                "entry_price": pred.get("entry_price", current_price),
+                "stop_loss": pred.get("stop_loss"),
+                "take_profit": pred.get("take_profit"),
+                "target_price": pred.get("target_price"),
+                "stage5_ok": bool(pred.get("stage5_ok", False)),
+                "stage6_ok": bool(pred.get("stage6_ok", False)),
+                "gate": pred.get("gate", "MONITOR"),
+                # Intelligence Hub metadata — rounded
+                "intel_active_systems": pred.get("intel_active_systems"),
+                "intel_total_systems": pred.get("intel_total_systems"),
+                "intel_news_risk": pred.get("intel_news_risk"),
+                "intel_direction_adj": pred.get("intel_direction_adj"),
+                "intel_confidence_adj": _rnd(pred.get("intel_confidence_adj")),
+                "intel_trust_boost": _rnd(pred.get("intel_trust_boost")),
+                "market_regime": pred.get("market_regime"),
+            }
+
         # Original logic for _LATEST_PREDICTIONS
         # If symbol specified, get just that one
         if symbol:
             pred = _LATEST_PREDICTIONS.get(symbol.upper())
             if pred:
-                prediction_id = pred.get("prediction_id")
-                current_price = pred.get("price", pred.get("price_at_prediction", 0))
-                predictions_list.append({
-                    "prediction_id": prediction_id,
-                    "symbol": symbol.upper(),
-                    "direction": pred.get("direction", "FLAT"),
-                    "confidence": pred.get("confidence", 0),
-                    "expected_move": pred.get("confidence", 0) * 5,  # Estimate 5% move at full confidence
-                    "horizon_h": pred.get("horizon_h", 48),
-                    "run_at": pred.get("run_at", 0),
-                    "price_at_prediction": current_price,
-                    "entry_price": pred.get("entry_price", current_price),
-                    "stop_loss": pred.get("stop_loss"),
-                    "take_profit": pred.get("take_profit"),
-                    "target_price": pred.get("target_price"),
-                    "stage5_ok": bool(pred.get("stage5_ok", False)),
-                    "stage6_ok": bool(pred.get("stage6_ok", False)),
-                    "gate": pred.get("gate", "MONITOR"),
-                    # Intelligence Hub metadata
-                    "intel_active_systems": pred.get("intel_active_systems"),
-                    "intel_total_systems": pred.get("intel_total_systems"),
-                    "intel_news_risk": pred.get("intel_news_risk"),
-                    "intel_direction_adj": pred.get("intel_direction_adj"),
-                    "intel_confidence_adj": pred.get("intel_confidence_adj"),
-                    "intel_trust_boost": pred.get("intel_trust_boost"),
-                    "market_regime": pred.get("market_regime"),
-                })
+                predictions_list.append(_build_pred(symbol.upper(), pred))
                 LOGGER.info(
-                    f"[API] Served prediction {prediction_id} for {symbol.upper()} from cache "
+                    f"[API] Served prediction {pred.get('prediction_id')} for {symbol.upper()} from cache "
                     f"(run_at={pred.get('run_at', 0):.0f})"
                 )
         else:
             # Get latest N predictions from in-memory store
-            for sym, pred in list(_LATEST_PREDICTIONS.items())[:limit]:
-                current_price = pred.get("price", pred.get("price_at_prediction", 0))
-                predictions_list.append({
-                    "prediction_id": pred.get("prediction_id"),
-                    "symbol": sym,
-                    "direction": pred.get("direction", "FLAT"),
-                    "confidence": pred.get("confidence", 0),
-                    "expected_move": pred.get("confidence", 0) * 5,
-                    "horizon_h": pred.get("horizon_h", 48),
-                    "run_at": pred.get("run_at", 0),
-                    "price_at_prediction": current_price,
-                    "entry_price": pred.get("entry_price", current_price),
-                    "stop_loss": pred.get("stop_loss"),
-                    "take_profit": pred.get("take_profit"),
-                    "target_price": pred.get("target_price"),
-                    "stage5_ok": bool(pred.get("stage5_ok", False)),
-                    "stage6_ok": bool(pred.get("stage6_ok", False)),
-                    "gate": pred.get("gate", "MONITOR"),
-                    # Intelligence Hub metadata
-                    "intel_active_systems": pred.get("intel_active_systems"),
-                    "intel_total_systems": pred.get("intel_total_systems"),
-                    "intel_news_risk": pred.get("intel_news_risk"),
-                    "intel_direction_adj": pred.get("intel_direction_adj"),
-                    "intel_confidence_adj": pred.get("intel_confidence_adj"),
-                    "intel_trust_boost": pred.get("intel_trust_boost"),
-                    "market_regime": pred.get("market_regime"),
-                })
+            # Sort: edge symbols first (by confidence desc), then non-edge (by confidence desc)
+            _edge_set_api = get_edge_set()
+            _all_items = list(_LATEST_PREDICTIONS.items())
+            _all_items.sort(
+                key=lambda kv: (
+                    0 if kv[0] in _edge_set_api else 1,        # edge first
+                    -(kv[1].get("confidence", 0)),               # highest confidence first
+                ),
+            )
+            for sym, pred in _all_items[:limit]:
+                predictions_list.append(_build_pred(sym, pred))
         
         return {
             "ok": True,
