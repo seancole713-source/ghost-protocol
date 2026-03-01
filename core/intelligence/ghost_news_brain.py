@@ -455,82 +455,22 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             LOGGER.error(f"Failed to log analysis: {e}")
     
     async def send_alert(self, analysis: Dict) -> bool:
-        """Send Telegram alert if action required"""
-        if not analysis.get("action_required"):
-            return False
+        """Log news alert internally — NO Telegram sends.
         
-        if not HTTPX_AVAILABLE:
-            LOGGER.warning("httpx not available for Telegram")
+        Ghost consumes news through the Intelligence Hub, not via
+        Telegram spam to the user. The user can get their own news.
+        Hub cache is updated by the caller before this is invoked.
+        """
+        if not analysis.get("action_required"):
             return False
         
         events = analysis.get("major_events", [])
         at_risk = analysis.get("predictions_at_risk", [])
-        
-        severity_emoji = {
-            "CRITICAL": "🚨🚨🚨",
-            "HIGH": "⚠️⚠️",
-            "MEDIUM": "📰",
-            "LOW": "📋"
-        }
-        
-        max_severity = "LOW"
-        for event in events:
-            sev = event.get("severity", "LOW")
-            if sev == "CRITICAL":
-                max_severity = "CRITICAL"
-                break
-            elif sev == "HIGH" and max_severity not in ["CRITICAL"]:
-                max_severity = "HIGH"
-            elif sev == "MEDIUM" and max_severity not in ["CRITICAL", "HIGH"]:
-                max_severity = "MEDIUM"
-        
-        emoji = severity_emoji.get(max_severity, "📋")
-        
-        message = f"""{emoji} GHOST NEWS BRAIN ALERT {emoji}
-
-📅 {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
-📰 Headlines Analyzed: {analysis.get('headlines_fetched', 0)}
-
-"""
-        
-        if events:
-            message += "🌍 MAJOR EVENTS:\n\n"
-            for event in events[:3]:
-                message += f"▸ {event.get('headline', 'Unknown')}\n"
-                message += f"  Severity: {event.get('severity', '?')} | Type: {event.get('event_type', '?')}\n"
-                if event.get('summary'):
-                    message += f"  {event['summary'][:100]}\n"
-                message += "\n"
-        
-        if at_risk:
-            message += f"⚠️ {len(at_risk)} PREDICTIONS AT RISK:\n\n"
-            for pred in at_risk[:5]:
-                message += f"• {pred['symbol']}: Predicted {pred['our_prediction']}, "
-                message += f"likely {pred['likely_actual']}\n"
-                message += f"  → {pred['reason'][:80]}\n"
-        
-        rec = analysis.get('recommendation', 'Review affected predictions')
-        message += f"\n💡 RECOMMENDATION:\n{rec}"
-        
-        try:
-            bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-            chat_id = os.getenv("TELEGRAM_CHAT_ID")
-            
-            if bot_token and chat_id:
-                async with httpx.AsyncClient() as client:
-                    await client.post(
-                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                        json={
-                            "chat_id": chat_id,
-                            "text": message,
-                            "parse_mode": "HTML"
-                        }
-                    )
-                return True
-        except Exception as e:
-            LOGGER.error(f"Failed to send Telegram alert: {e}")
-        
-        return False
+        LOGGER.info(
+            f"📰 News alert logged internally — {len(events)} events, "
+            f"{len(at_risk)} predictions at risk. Hub will adjust."
+        )
+        return True  # Alert consumed internally, not sent to Telegram
     
     def get_status(self) -> Dict:
         """Get current status of the News Brain"""
@@ -886,33 +826,15 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             if self._set_trading_paused(True, pause_reason, duration_hours=4):
                 actions_taken["trading_paused"] = True
         
-        # Send urgent Telegram
-        try:
-            bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-            chat_id = os.getenv("TELEGRAM_CHAT_ID")
-            
-            if bot_token and chat_id and HTTPX_AVAILABLE:
-                message = f"""🚨🚨🚨 CRITICAL NEWS EVENT 🚨🚨🚨
-
-⚡ {event.get('headline', 'Unknown')}
-
-📊 Type: {event.get('event_type', 'Unknown')}
-📝 {event.get('summary', 'No summary')}
-
-🎯 Affected: {', '.join(affected[:10])}
-
-{'🛑 TRADING AUTO-PAUSED FOR 4 HOURS' if actions_taken['trading_paused'] else '⚠️ MANUAL ACTION REQUIRED'}
-
-⏰ {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"""
-                
-                async with httpx.AsyncClient() as client:
-                    await client.post(
-                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                        json={"chat_id": chat_id, "text": message}
-                    )
-                actions_taken["telegram_sent"] = True
-        except Exception as e:
-            LOGGER.error(f"Failed to send critical event telegram: {e}")
+        # Log critical event internally — Ghost acts on it via Hub + auto-pause.
+        # NO Telegram send — the user doesn't need raw news dumps.
+        LOGGER.warning(
+            f"🚨 CRITICAL NEWS processed internally: {event.get('headline', 'Unknown')[:100]} | "
+            f"Affected: {', '.join(affected[:10])} | "
+            f"Paused: {actions_taken['trading_paused']} | "
+            f"Alerts: {len(actions_taken['alerts_created'])}"
+        )
+        actions_taken["telegram_sent"] = False  # Intentionally disabled
         
         return actions_taken
     
@@ -923,8 +845,10 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
         This is the main entry point for production use - it:
         1. Analyzes all news
         2. Auto-pauses trading on CRITICAL events
-        3. Creates guardian alerts
-        4. Sends Telegram notifications
+        3. Creates guardian alerts for affected symbols
+        4. Feeds Intelligence Hub (caller is responsible for cache update)
+        
+        NOTE: No Telegram sends. Ghost consumes news internally via Hub.
         
         Returns:
             Dict with analysis results and any auto-pause actions taken

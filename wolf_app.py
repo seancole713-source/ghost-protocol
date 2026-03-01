@@ -5000,6 +5000,11 @@ async def _post_startup_init():
                             LOGGER.warning(f"📰 [CYCLE {cycle_count}] Hub cache update failed: {hub_err}")
 
                         # ═══ WIRED: Auto-pause on CRITICAL events ═══
+                        # Ghost acts on critical news internally:
+                        #   - Creates guardian alerts for affected symbols
+                        #   - Auto-pauses trading for safety
+                        #   - Feeds Intelligence Hub (done above)
+                        # NO Telegram spam — Ghost uses the data, user doesn't need raw news dumps.
                         for event in major_events:
                             if event.get("severity") == "CRITICAL":
                                 LOGGER.warning(f"🚨 CRITICAL EVENT: {event.get('headline', 'Unknown')}")
@@ -5010,14 +5015,17 @@ async def _post_startup_init():
                                 except Exception as crit_err:
                                     LOGGER.error(f"Critical event handling failed: {crit_err}")
 
-                        # ═══ WIRED: Telegram alerts for HIGH risk predictions ═══
+                        # ═══ NEWS → INTELLIGENCE HUB (internal only) ═══
+                        # No Telegram alerts for news — Ghost consumes news through the Hub.
+                        # The hub cache was already updated above. Predictions at risk
+                        # are handled by the hub's confidence/direction adjustments.
                         high_risk = [p for p in predictions_at_risk
                                      if p.get("risk_level") in ("HIGH", "CRITICAL")]
                         if high_risk:
-                            try:
-                                await brain.send_alert(result)
-                            except Exception as alert_err:
-                                LOGGER.debug(f"Alert send failed: {alert_err}")
+                            LOGGER.info(
+                                f"📰 [CYCLE {cycle_count}] {len(high_risk)} predictions at risk — "
+                                f"Hub will adjust: {[p.get('symbol') for p in high_risk]}"
+                            )
                         
                     except Exception as e:
                         LOGGER.error(f"News analysis error: {e}", exc_info=True)
@@ -43521,9 +43529,12 @@ try:
             # analyze_news is now async
             result = await brain.analyze_news()
             
-            # Send alert if action required
-            if result.get("action_required"):
-                await brain.send_alert(result)
+            # Feed Intelligence Hub cache (was missing from this endpoint)
+            try:
+                from core.intelligence_hub import update_news_brain_cache
+                update_news_brain_cache(result)
+            except Exception:
+                pass
             
             return {
                 "ok": result.get("ok", False),
@@ -43613,23 +43624,32 @@ try:
     async def analyze_news_with_auto_pause():
         """
         Analyze news AND automatically pause trading on CRITICAL events.
-        This is the PRODUCTION endpoint - use this for scheduled analysis.
         
         What it does:
         - Fetches all news from 14+ RSS feeds + CryptoPanic
         - Sends to Claude for analysis
+        - Feeds Intelligence Hub cache (so predictions get adjusted)
         - If CRITICAL event detected:
             - AUTO-PAUSES trading for 4 hours
             - Creates guardian alerts for affected symbols
-            - Sends urgent Telegram notification
         - If HIGH event detected:
             - Creates guardian alerts (no pause)
+        
+        NOTE: No Telegram sends. Ghost consumes news internally via Hub.
         
         Returns full analysis plus auto-pause actions taken.
         """
         try:
             brain = get_news_brain()
             result = await brain.analyze_news_with_auto_pause()
+            
+            # Feed Intelligence Hub cache (was missing from this endpoint)
+            try:
+                from core.intelligence_hub import update_news_brain_cache
+                update_news_brain_cache(result)
+            except Exception:
+                pass
+            
             return result
         except Exception as e:
             LOGGER.error(f"News analysis with auto-pause failed: {e}")
