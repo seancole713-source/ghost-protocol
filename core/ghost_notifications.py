@@ -863,6 +863,10 @@ def determine_action(current_price: float, prediction_48h: float, confidence: fl
     if confidence < MIN_CONFIDENCE:
         return ("WATCH", "🟡", "watch")
     
+    # FIX (Mar 1, 2026): Guard against division by zero
+    if not current_price or current_price <= 0:
+        return ("WATCH", "🟡", "watch")
+    
     pct_change = (prediction_48h - current_price) / current_price
     
     # If move is too small, it's a WATCH

@@ -42,17 +42,13 @@ def get_symbol_price(symbol: str) -> Optional[float]:
     """
     symbol = symbol.upper()
     
-    # Known crypto symbols — prefer registry, fallback to inline set
+    # FIX (Mar 1, 2026): Use centralized crypto set — single source of truth.
+    # Old 40-symbol fallback missed edge crypto (CHZ, ICP, etc.)
+    from config.symbols import CRYPTO_SYMBOLS as _CRYPTO_CANONICAL
     if _REGISTRY_AVAILABLE:
         _is_crypto = _is_crypto_registry(symbol)
     else:
-        _CRYPTO_FALLBACK = {
-            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK',
-            'DOGE', 'SHIB', 'LTC', 'TRX', 'TON', 'XLM', 'ATOM', 'UNI', 'AAVE', 'MKR',
-            'PEPE', 'BONK', 'WIF', 'FLOKI', 'FET', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA',
-            'OP', 'ARB', 'APE', 'SAND', 'MANA', 'AXS', 'GRT', 'CRV', 'COMP', 'SNX',
-        }
-        _is_crypto = symbol in _CRYPTO_FALLBACK
+        _is_crypto = symbol in _CRYPTO_CANONICAL
     
     try:
         # Try Coinbase for crypto
@@ -244,15 +240,10 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
     # ── WEEKEND FIX: For stocks, shift resolution to next trading day ──
     # Predictions created Friday with t+48h land on Sunday when markets
     # are closed. Shift to Monday (or Tuesday if Monday is a holiday).
-    CRYPTO_SET = {
-        'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK',
-        'DOGE', 'SHIB', 'LTC', 'TRX', 'TON', 'XLM', 'ATOM', 'UNI', 'AAVE', 'MKR',
-        'PEPE', 'BONK', 'WIF', 'FLOKI', 'FET', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA',
-        'OP', 'ARB', 'APE', 'SAND', 'MANA', 'AXS', 'GRT', 'CRV', 'COMP', 'SNX',
-        'ETC', 'IMX', 'METIS', 'ALGO', 'HBAR', 'FLOW',
-        'CHZ', 'YFI', 'ICP', 'BRETT', 'GIGA', 'TURBO', 'JUP', 'IOTX', 'ALICE', 'BCH',
-    }
-    if symbol.upper() not in CRYPTO_SET:
+    # FIX (Mar 1, 2026): Use centralized crypto set from config/symbols.py
+    # Old 56-symbol inline set drifted from the canonical list.
+    from config.symbols import CRYPTO_SYMBOLS as _CRYPTO_WEEKEND
+    if symbol.upper() not in _CRYPTO_WEEKEND:
         resolve_dt = datetime.fromtimestamp(t_resolve)
         weekday = resolve_dt.weekday()  # 5=Saturday, 6=Sunday
         if weekday == 5:  # Saturday → shift to Monday 09:30 ET

@@ -4623,13 +4623,16 @@ async def _on_startup():
                     if _warmup_edge_enabled and symbol and symbol.upper() not in _warmup_edge_set:
                         warmup_blocked += 1
                         continue
-                    if symbol and symbol not in _LATEST_PREDICTIONS:
+                    _warmup_dir = pred.get("direction", "")
+                    # FIX (Mar 1, 2026): Skip predictions with no direction or non-actionable
+                    # Old code defaulted to "FLAT" which created garbage cache entries
+                    if symbol and symbol not in _LATEST_PREDICTIONS and _warmup_dir in ("UP", "DOWN"):
                         _LATEST_PREDICTIONS[symbol] = {
                             "prediction_id": pred.get("id"),
                             "symbol": symbol,
                             "run_at": pred.get("run_at", time.time()),
-                            "confidence": pred.get("confidence", 0),
-                            "direction": pred.get("direction", "FLAT"),
+                            "confidence": pred.get("confidence", 0.5),
+                            "direction": _warmup_dir,
                             "horizon_h": pred.get("horizon_h", 6),
                             "method": pred.get("method", "unknown"),
                             "price_at_prediction": pred.get("price_at_prediction"),

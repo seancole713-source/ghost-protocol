@@ -32,13 +32,9 @@ def get_current_price(symbol: str) -> Optional[float]:
     """
     symbol = symbol.upper()
     
-    # Known crypto symbols
-    CRYPTO_SYMBOLS = {
-        'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK',
-        'DOGE', 'SHIB', 'LTC', 'TRX', 'TON', 'XLM', 'ATOM', 'UNI', 'AAVE', 'MKR',
-        'PEPE', 'BONK', 'WIF', 'FLOKI', 'FET', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA',
-        'OP', 'ARB', 'APE', 'SAND', 'MANA', 'AXS', 'GRT', 'CRV', 'COMP', 'SNX',
-    }
+    # FIX (Mar 1, 2026): Use centralized crypto set from config/symbols.py
+    # Old hardcoded 40-symbol set missed edge crypto like CHZ, ICP, GIGA, etc.
+    from config.symbols import CRYPTO_SYMBOLS
     
     try:
         # Try Coinbase for crypto

@@ -177,11 +177,16 @@ class V2VerificationSystem:
         
         LOGGER.info(f"[V2] Using cutoff {cutoff.isoformat()} (V2 floor: {V2_START_DATE.isoformat()})")
         
-        cur.execute("""
+        # FIX (Mar 1, 2026): Build crypto IN clause from config/symbols.py
+        # Old hardcoded 13-symbol SQL list misclassified all other crypto as 'stock'
+        from config.symbols import CRYPTO_SYMBOLS as _V2_CRYPTO
+        _crypto_sql_list = ", ".join(f"'{s}'" for s in _V2_CRYPTO)
+        
+        cur.execute(f"""
             SELECT 
                 symbol,
                 CASE 
-                    WHEN symbol IN ('BTC', 'ETH', 'SOL', 'ADA', 'AVAX', 'BNB', 'DOGE', 'DOT', 'LINK', 'LTC', 'VET', 'XLM', 'XRP')
+                    WHEN symbol IN ({_crypto_sql_list})
                     THEN 'crypto'
                     ELSE 'stock'
                 END as asset_type,
@@ -191,13 +196,13 @@ class V2VerificationSystem:
                 ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate,
                 AVG(signal_confidence) as avg_confidence
             FROM paper_trades
-            WHERE CAST(created_at AS TIMESTAMP) > CAST(%s AS TIMESTAMP)
+            WHERE CAST(created_at AS TIMESTAMP) > CAST(%(cutoff)s AS TIMESTAMP)
             AND outcome IS NOT NULL
             AND outcome != 'PENDING'
             GROUP BY symbol
-            HAVING COUNT(*) >= %s
+            HAVING COUNT(*) >= %(min_preds)s
             ORDER BY win_rate DESC
-        """, (cutoff, min_predictions))
+        """, {"cutoff": cutoff, "min_preds": min_predictions})
         
         rows = cur.fetchall()
         cur.close()
