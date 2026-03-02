@@ -10324,6 +10324,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     v3_hold_hours=v3_hold_hours,
                     v3_backtest_win_rate=v3_win_rate,
                     v3_is_inverse=v3_is_inverse,
+                    expected_move_pct=expected_move_pct,  # FIX: was missing — target_price needs this
                 )
                 v3_tag = f" [V3: {v3_strategy}]" if v3_validated else ""
                 LOGGER.info(f"[{symbol}] 📝 Paper trade auto-logged: {paper_trade_id} ({direction} @ ${current_price:,.2f}){v3_tag}")
@@ -41308,6 +41309,50 @@ async def api_paper_trades_recent_alias(
 ):
     """Alias for /api/v3/paper/trades — recent paper trades."""
     return await api_v3_paper_get_trades(symbol=symbol, days=days, outcome=outcome, limit=limit)
+
+@APP.post("/api/v3/paper-trades/backfill-targets")
+async def api_paper_trades_backfill_targets():
+    """
+    One-shot backfill: compute target_price for all PENDING trades that have
+    take_profit_pct but no target_price.  Safe to call multiple times.
+    """
+    try:
+        from core.paper_tracker import get_paper_tracker
+        tracker = get_paper_tracker()
+        conn = tracker._get_connection()
+        cur = tracker._execute(conn, """
+            SELECT paper_trade_id, symbol, signal_direction, entry_price,
+                   take_profit_pct, expected_move_pct
+            FROM paper_trades
+            WHERE outcome = 'PENDING'
+              AND (target_price IS NULL OR target_price = 0)
+        """, ())
+        rows = tracker._fetchall(cur)
+        updated = 0
+        for row in rows:
+            ep = float(row.get("entry_price") or 0)
+            if ep <= 0:
+                continue
+            move_pct = row.get("expected_move_pct")
+            tp_pct = row.get("take_profit_pct")
+            if not move_pct and tp_pct and float(tp_pct) > 0:
+                move_pct = float(tp_pct) * 100.0  # fraction → %
+            if not move_pct:
+                continue
+            move_pct = float(move_pct)
+            direction = (row.get("signal_direction") or "UP").upper()
+            move_dir = 1.0 if direction in ("UP", "LONG", "BULLISH") else -1.0
+            target = ep * (1.0 + move_dir * abs(move_pct) / 100.0)
+            tracker._execute(conn,
+                "UPDATE paper_trades SET target_price = ? WHERE paper_trade_id = ?",
+                (target, row["paper_trade_id"]))
+            updated += 1
+        conn.commit()
+        conn.close()
+        return {"ok": True, "backfilled": updated, "checked": len(rows)}
+    except Exception as e:
+        LOGGER.error(f"Backfill targets failed: {e}")
+        return {"ok": False, "error": str(e)}
 
 @APP.get("/api/world/context")
 async def api_world_context():

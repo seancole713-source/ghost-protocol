@@ -487,10 +487,15 @@ class PaperTracker:
                 f"@ ${entry_price:,.2f} (conf={signal_confidence:.1%}, trust_level={trust_level}{v3_info}{mag_info})"
             )
             
-            # Set target_price from expected_move_pct so UI can show it while PENDING
-            if expected_move_pct and entry_price:
+            # Set target_price from expected_move_pct (or take_profit_pct fallback)
+            # so UI can show TARGET while trade is PENDING instead of "--"
+            _move_pct = expected_move_pct  # preferred: raw expected move in %
+            if not _move_pct and take_profit_pct and take_profit_pct > 0:
+                # Fallback: take_profit_pct is stored as a fraction (e.g. 0.03 = 3%)
+                _move_pct = take_profit_pct * 100.0
+            if _move_pct and entry_price:
                 move_dir = 1.0 if signal_direction.upper() in ("UP", "LONG", "BULLISH") else -1.0
-                computed_target = entry_price * (1.0 + move_dir * abs(expected_move_pct) / 100.0)
+                computed_target = entry_price * (1.0 + move_dir * abs(_move_pct) / 100.0)
                 try:
                     update_conn = self._get_connection()
                     self._execute(update_conn,
@@ -499,6 +504,7 @@ class PaperTracker:
                     )
                     update_conn.commit()
                     update_conn.close()
+                    LOGGER.debug(f"[{symbol}] target_price set to ${computed_target:,.4f} (move={_move_pct:+.2f}%)")
                 except Exception as tp_err:
                     LOGGER.debug(f"[{symbol}] Could not set target_price: {tp_err}")
             
