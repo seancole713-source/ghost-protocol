@@ -184,7 +184,7 @@ function startIntervals() {
     window.updateInterval = setInterval(updateSystemTime, 1000);
     window.statusInterval = setInterval(() => loadCockpitStatus(), 10000);
     window.topMoversInterval = setInterval(() => loadTopMovers(), 15000);
-    window.vipInterval = setInterval(() => loadVIPWatch(), 30000);
+    window.vipInterval = setInterval(() => loadVIPCoins(), 30000);
     window.watchlistInterval = setInterval(() => loadWatchlistByMode(), 20000);
     window.forecastInterval = setInterval(() => loadForecast(), 60000);
     window.healthInterval = setInterval(() => loadHealthScore(), 30000);
@@ -1209,10 +1209,10 @@ function renderAccuracyChart(accuracyData) {
         return;
     }
     
-    // Extract metrics - use accuracy_pct as fallback for all timeframes
-    const dailyAcc = accuracyData.daily_accuracy_pct || accuracyData.accuracy_pct || 0;
-    const weeklyAcc = accuracyData.weekly_accuracy_pct || accuracyData.accuracy_pct || 0;
-    const monthlyAcc = accuracyData.monthly_accuracy_pct || accuracyData.accuracy_pct || 0;
+    // Extract metrics - use ?? (nullish coalescing) so 0% doesn't falsely fall back
+    const dailyAcc = accuracyData.daily_accuracy_pct ?? accuracyData.accuracy_pct ?? 0;
+    const weeklyAcc = accuracyData.weekly_accuracy_pct ?? accuracyData.accuracy_pct ?? 0;
+    const monthlyAcc = accuracyData.monthly_accuracy_pct ?? accuracyData.accuracy_pct ?? 0;
     const status = accuracyData.accuracy_status || 'NO_DATA';
     const meetsThreshold = accuracyData.meets_70pct_threshold || false;
     
@@ -1277,18 +1277,21 @@ function renderAccuracyChart(accuracyData) {
     
     let statusText = status;
     let statusColor = COLORS.accentRed;
-    if (status === 'ACCURATE') {
-        statusText = '✅ ACCURATE';
+    if (status === 'MEETS_TARGET' || status === 'ACCURATE') {
+        statusText = '✅ MEETS TARGET';
         statusColor = COLORS.accentGreen;
     } else if (status === 'IMPROVING') {
         statusText = '📈 IMPROVING';
         statusColor = COLORS.accentYellow;
-    } else if (status === 'BELOW_TARGET') {
-        statusText = '⚠️ BELOW TARGET';
-        statusColor = COLORS.accentYellow;
-    } else {
-        statusText = '❌ NO DATA';
+    } else if (status === 'DEVELOPING' || status === 'BELOW_TARGET') {
+        statusText = '⚠️ DEVELOPING';
+        statusColor = COLORS.accentRed;
+    } else if (status === 'NO_DATA') {
+        statusText = '⏳ NO DATA YET';
         statusColor = COLORS.textSecondary;
+    } else {
+        statusText = '⚠️ ' + status;
+        statusColor = COLORS.accentYellow;
     }
     
     ctx.fillStyle = statusColor;
@@ -2245,8 +2248,27 @@ document.getElementById('btn-save-entry')?.addEventListener('click', async () =>
             parseFloat(document.getElementById('entry-target').value) : null;
         const notes = document.getElementById('entry-notes').value;
         
-        if (!symbol || !entryPrice || !positionSize) {
-            alert('Please fill in all required fields');
+        // Validate required fields with visual feedback
+        const requiredFields = [
+            { el: document.getElementById('entry-symbol'), val: symbol, name: 'Symbol' },
+            { el: document.getElementById('entry-price'), val: entryPrice, name: 'Entry Price' },
+            { el: document.getElementById('entry-size'), val: positionSize, name: 'Position Size' }
+        ];
+        
+        let hasErrors = false;
+        requiredFields.forEach(f => {
+            if (!f.val || (typeof f.val === 'number' && isNaN(f.val))) {
+                f.el.style.border = '1px solid #ff4444';
+                f.el.style.boxShadow = '0 0 5px rgba(255, 68, 68, 0.3)';
+                hasErrors = true;
+            } else {
+                f.el.style.border = '';
+                f.el.style.boxShadow = '';
+            }
+        });
+        
+        if (hasErrors) {
+            alert('⚠️ Please fill in all required fields (highlighted in red)');
             return;
         }
         
