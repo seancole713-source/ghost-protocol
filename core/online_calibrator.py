@@ -313,7 +313,7 @@ class OnlineCalibrator:
             for row in cur.fetchall():
                 horizon, mape, count, accuracy = row
                 if count >= self.min_samples:
-                    horizon_metrics[horizon] = {"mape": mape, "accuracy": accuracy, "count": count}
+                    horizon_metrics[horizon] = {"mape": float(mape), "accuracy": float(accuracy), "count": int(count)}
 
             cur.close()
             conn.close()
@@ -409,9 +409,9 @@ class OnlineCalibrator:
                 strategy, avg_return, win_rate, count = row
                 if count >= self.min_samples:
                     strategy_metrics[strategy] = {
-                        "avg_return": avg_return,
-                        "win_rate": win_rate,
-                        "count": count,
+                        "avg_return": float(avg_return),
+                        "win_rate": float(win_rate),
+                        "count": int(count),
                     }
 
             cur.close()
@@ -606,7 +606,7 @@ class OnlineCalibrator:
                         "calibration_type": row[1],
                         "old_weights": json.loads(row[2]) if row[2] else {},
                         "new_weights": json.loads(row[3]) if row[3] else {},
-                        "performance_gain": row[4],
+                        "performance_gain": float(row[4]) if row[4] is not None else 0.0,
                         "reason": row[5],
                     }
                 )
@@ -643,7 +643,7 @@ class OnlineCalibrator:
 
             forecast_perf: dict[str, dict] = {}
             for row in cur.fetchall():
-                forecast_perf[row[0]] = {"total": row[1], "mape": row[2], "accuracy": row[3]}
+                forecast_perf[row[0]] = {"total": int(row[1]), "mape": float(row[2]), "accuracy": float(row[3])}
 
             # Strategy performance
             cur.execute(
@@ -662,7 +662,7 @@ class OnlineCalibrator:
 
             strategy_perf: dict[str, dict] = {}
             for row in cur.fetchall():
-                strategy_perf[row[0]] = {"total": row[1], "avg_return": row[2], "win_rate": row[3]}
+                strategy_perf[row[0]] = {"total": int(row[1]), "avg_return": float(row[2]), "win_rate": float(row[3])}
 
             # Recent calibrations
             cur.execute(
