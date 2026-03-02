@@ -553,8 +553,8 @@ class PaperTracker:
             position_size = trade["position_size"]
             
             if not entry_price or entry_price <= 0:
-                LOGGER.warning(f"[PAPER_TRACKER] Skipping trade with entry_price={entry_price}")
-                continue
+                LOGGER.warning(f"[PAPER_TRACKER] Trade {paper_trade_id} has invalid entry_price={entry_price}")
+                return {"resolved": False, "error": f"Invalid entry_price={entry_price}"}
             price_change_pct = (current_price - entry_price) / entry_price
             
             # Determine actual direction at target time
