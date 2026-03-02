@@ -39,21 +39,8 @@ function initializeApp() {
     // PERFORMANCE FIX: Defer health score load by 500ms to prevent blocking page load
     setTimeout(() => loadHealthScore(), 500);
     
-    // OPTIMIZED: Set smart update intervals (reduced from 5s to prevent hammering)
-    // Goals/Stats: 30s (slow-changing data)
-    // Predictions/Forecast: 15s (medium-priority)
-    // Top Movers/Hunter: 10s (fast-moving opportunities)
-    // Time display: 1s (real-time clock)
-    
-    // Store intervals in window so handleModeChange can clear them for FIXED mode
-    window.updateInterval = setInterval(() => updateSystemTime(), 1000);  // Clock: every 1s
-    window.statusInterval = setInterval(() => loadCockpitStatus(), 30000);  // Status: every 30s
-    window.healthInterval = setInterval(() => loadHealthScore(), 30000);  // Goals/Health: every 30s
-    window.accuracyInterval = setInterval(() => loadAccuracyChart(), 30000);  // Accuracy Chart: every 30s
-    window.forecastInterval = setInterval(() => loadForecast(), 15000);  // Forecast: every 15s
-    window.topMoversInterval = setInterval(() => loadTopMovers(), 10000);  // Top Movers: every 10s (includes hunter feed)
-    window.watchlistInterval = setInterval(() => loadWatchlistByMode(), 15000);  // Watchlist: every 15s (mode-aware)
-    window.vipInterval = setInterval(() => loadVIPCoins(), 15000);  // VIP Coins: every 15s
+    // Start unified interval system (single source of truth for all timings)
+    startIntervals();
     
     console.log('✅ Ghost Protocol Cockpit v3 initialized');
 }
@@ -168,7 +155,8 @@ function handleModeChange(e) {
     }
 }
 
-// BUG 5 FIX: Separate function to start intervals (called by mode change)
+// SINGLE SOURCE OF TRUTH for all refresh intervals
+// Optimized to prevent server hammering (was 20+ req/s, now ~1 req/2s)
 function startIntervals() {
     // Clear any existing intervals first
     if (window.updateInterval) clearInterval(window.updateInterval);
@@ -180,15 +168,18 @@ function startIntervals() {
     if (window.healthInterval) clearInterval(window.healthInterval);
     if (window.accuracyInterval) clearInterval(window.accuracyInterval);
     
-    // Restart intervals
-    window.updateInterval = setInterval(updateSystemTime, 1000);
-    window.statusInterval = setInterval(() => loadCockpitStatus(), 10000);
-    window.topMoversInterval = setInterval(() => loadTopMovers(), 15000);
-    window.vipInterval = setInterval(() => loadVIPCoins(), 30000);
-    window.watchlistInterval = setInterval(() => loadWatchlistByMode(), 20000);
-    window.forecastInterval = setInterval(() => loadForecast(), 60000);
-    window.healthInterval = setInterval(() => loadHealthScore(), 30000);
-    window.accuracyInterval = setInterval(() => loadAccuracyChart(), 60000);
+    // ═══════════════════════════════════════════════════════════
+    // CANONICAL INTERVALS — change timings HERE and only here
+    // Staggered to avoid burst requests at the same second
+    // ═══════════════════════════════════════════════════════════
+    window.updateInterval   = setInterval(updateSystemTime, 1000);            // Clock: 1s
+    window.statusInterval   = setInterval(() => loadCockpitStatus(), 30000);  // Status: 30s
+    window.topMoversInterval= setInterval(() => loadTopMovers(), 30000);      // Movers: 30s (was 10s!)
+    window.vipInterval      = setInterval(() => loadVIPCoins(), 30000);       // VIP: 30s
+    window.watchlistInterval= setInterval(() => loadWatchlistByMode(), 30000);// Watchlist: 30s
+    window.forecastInterval = setInterval(() => loadForecast(), 60000);       // Forecast: 60s
+    window.healthInterval   = setInterval(() => loadHealthScore(), 60000);    // Health: 60s
+    window.accuracyInterval = setInterval(() => loadAccuracyChart(), 60000);  // Accuracy: 60s
 }
 
 function updateStatusIndicator(isActive) {
