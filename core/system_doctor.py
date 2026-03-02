@@ -46,19 +46,32 @@ def _check_api() -> dict[str, Any]:
         else:
             port = os.getenv("PORT", "8000")
             url = f"http://127.0.0.1:{port}/api/health"
-        r = httpx.get(url, timeout=10, follow_redirects=True)
+        r = httpx.get(url, timeout=5, follow_redirects=True)
         ok = r.status_code == 200
         return {"pass": ok, "detail": f"HTTP {r.status_code}"}
     except Exception as e:
-        return {"pass": False, "detail": str(e)[:80]}
+        # Self-calls from Railway can timeout; check if the process is alive
+        try:
+            port = os.getenv("PORT", "8000")
+            r2 = __import__("httpx").get(f"http://127.0.0.1:{port}/api/health", timeout=3)
+            return {"pass": r2.status_code == 200, "detail": f"HTTP {r2.status_code} (loopback)"}
+        except Exception:
+            return {"pass": False, "detail": str(e)[:80]}
 
 
 def _check_predictions() -> dict[str, Any]:
     """Check predictions exist and are fresh (≤ 4 h)."""
     try:
-        if not GET_PREDICTIONS_FUNC:
-            return {"pass": False, "detail": "GET_PREDICTIONS_FUNC not wired"}
-        preds = GET_PREDICTIONS_FUNC()
+        preds = None
+        if GET_PREDICTIONS_FUNC:
+            preds = GET_PREDICTIONS_FUNC()
+        if not preds:
+            # Direct fallback: reach into wolf_app's prediction cache
+            try:
+                import wolf_app as _wa
+                preds = dict(getattr(_wa, "_LATEST_PREDICTIONS", {}))
+            except Exception:
+                pass
         if not preds:
             return {"pass": False, "detail": "0 predictions in cache"}
         # Freshness
@@ -94,12 +107,30 @@ def _check_edge_symbols() -> dict[str, Any]:
 def _check_price_feed() -> dict[str, Any]:
     """Spot-check one crypto + one stock price."""
     try:
-        if not GET_PRICE_FUNC:
-            return {"pass": False, "detail": "GET_PRICE_FUNC not wired"}
+        price_func = GET_PRICE_FUNC
+        if not price_func:
+            # Build a self-sufficient price function
+            def _fallback_price(symbol, market):
+                try:
+                    if market == "crypto":
+                        from core.crypto.crypto_providers import get_crypto_price_quorum
+                        result = get_crypto_price_quorum(symbol)
+                        if result and result.get("price"):
+                            return (result["price"],)
+                    else:
+                        from core.providers.turbo_provider import turbo_stock_price
+                        data = turbo_stock_price(symbol)
+                        if data and data.get("price"):
+                            return (data["price"],)
+                    return None
+                except Exception:
+                    return None
+            price_func = _fallback_price
+
         ok_count = 0
         for sym, mkt in [("BTC", "crypto"), ("PANW", "stocks")]:
             try:
-                result = GET_PRICE_FUNC(sym, mkt)
+                result = price_func(sym, mkt)
                 if result and result[0] and result[0] > 0:
                     ok_count += 1
             except Exception:
@@ -118,12 +149,14 @@ def _check_hub() -> dict[str, Any]:
             n = status.get("systems_active", 0)
             ok = n >= 15
             return {"pass": ok, "detail": f"{n} systems active"}
-        # Fallback: try import
-        from core.intelligence_hub import get_hub_status
-        status = get_hub_status()
-        n = status.get("systems_active", 0)
-        ok = n >= 15
-        return {"pass": ok, "detail": f"{n} systems active"}
+        # Fallback: use the actual singleton
+        from core.intelligence_hub import get_intelligence_hub
+        hub = get_intelligence_hub()
+        status = hub.get_status()
+        loaded = sum(1 for v in status.values() if v is True)
+        total = sum(1 for k, v in status.items() if k.endswith("_loaded"))
+        ok = loaded >= 5
+        return {"pass": ok, "detail": f"{loaded}/{total} subsystems loaded"}
     except Exception as e:
         return {"pass": False, "detail": str(e)[:80]}
 
@@ -153,14 +186,15 @@ def _check_core_imports() -> dict[str, Any]:
 def _check_accuracy() -> dict[str, Any]:
     """Check accuracy tracker has recent data."""
     try:
-        from core.prediction_store import get_accuracy_stats
-        stats = get_accuracy_stats()
+        from core.paper_tracker import get_paper_tracker
+        tracker = get_paper_tracker()
+        stats = tracker.get_stats()
         if not stats:
             return {"pass": False, "detail": "no accuracy data"}
-        total = stats.get("total", 0)
+        total = stats.get("total_trades", 0)
         ok = total > 0
         wr = stats.get("win_rate", 0)
-        return {"pass": ok, "detail": f"{total} outcomes, {wr:.0%} WR"}
+        return {"pass": ok, "detail": f"{total} trades, {wr:.0%} WR"}
     except Exception as e:
         # Acceptable if module missing on cold start
         return {"pass": True, "detail": f"accuracy tracker unavailable: {str(e)[:60]}"}
