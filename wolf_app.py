@@ -5499,7 +5499,38 @@ async def _post_startup_init():
 
         _doc.GET_PRICE_FUNC = _doctor_price_func
         _doc.TELEGRAM_SEND_FUNC = lambda msg: _send_telegram_internal(msg)[0]
-        LOGGER.info("[POST-STARTUP] 🩺 System Doctor wired (7 AM CT daily via beast_scheduler)")
+
+        # ── Start independent 7 AM CT doctor cron (no orchestrator needed) ──
+        async def _doctor_cron_loop():
+            """Run System Doctor + Telegram at 7:00 AM CT every day."""
+            from zoneinfo import ZoneInfo
+            _CT = ZoneInfo("America/Chicago")
+            await asyncio.sleep(30)  # let startup finish
+            LOGGER.info("[DOCTOR-CRON] 🩺 7 AM CT doctor cron started")
+            while True:
+                try:
+                    now_ct = datetime.now(_CT)
+                    # Next 7:00 AM CT
+                    target = now_ct.replace(hour=7, minute=0, second=0, microsecond=0)
+                    if now_ct >= target:
+                        target += timedelta(days=1)
+                    wait_secs = (target - now_ct).total_seconds()
+                    LOGGER.info(f"[DOCTOR-CRON] Next check in {wait_secs/3600:.1f}h at {target.isoformat()}")
+                    await asyncio.sleep(wait_secs)
+                    # Fire!
+                    LOGGER.info("[DOCTOR-CRON] 🩺 Running 7 AM System Doctor...")
+                    from core.system_doctor import run_and_notify as _doctor_notify
+                    loop = asyncio.get_event_loop()
+                    report = await loop.run_in_executor(None, _doctor_notify)
+                    _tg = 'sent' if report.get('telegram_sent') else 'NOT sent'
+                    LOGGER.info(f"[DOCTOR-CRON] 🩺 {report['overall']} ({report['passed']}/{report['passed']+report['failed']}) telegram={_tg}")
+                    await asyncio.sleep(120)  # skip past the minute boundary
+                except Exception as _de:
+                    LOGGER.error(f"[DOCTOR-CRON] Error: {_de}", exc_info=True)
+                    await asyncio.sleep(300)
+
+        asyncio.create_task(_doctor_cron_loop())
+        LOGGER.info("[POST-STARTUP] 🩺 System Doctor wired + independent 7 AM cron started")
     except Exception as e:
         LOGGER.warning(f"[POST-STARTUP] System Doctor wire failed (non-fatal): {e}")
     
