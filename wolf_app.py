@@ -11730,9 +11730,15 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
         decided = wins + losses
         accuracy_pct = round((wins / decided) * 100, 1) if decided > 0 else 0.0
         
-        # Calculate daily/weekly/monthly breakdowns (all using V2 date filter)
-        daily_stats = tracker.get_stats(days=1, since=V2_START_DATE, v2_only=v2_only)
-        weekly_stats = tracker.get_stats(days=7, since=V2_START_DATE, v2_only=v2_only)
+        # Calculate daily/weekly/monthly breakdowns
+        # NOTE: 'since' overrides 'days' in get_stats(), so we use max()
+        # to ensure we never go before V2_START_DATE but still get period-specific data
+        from datetime import timedelta as _td_acc
+        v2_cutoff_dt = datetime.fromisoformat(V2_START_DATE)
+        daily_cutoff = max(v2_cutoff_dt, datetime.utcnow() - _td_acc(days=1))
+        weekly_cutoff = max(v2_cutoff_dt, datetime.utcnow() - _td_acc(days=7))
+        daily_stats = tracker.get_stats(since=daily_cutoff.isoformat(), v2_only=v2_only)
+        weekly_stats = tracker.get_stats(since=weekly_cutoff.isoformat(), v2_only=v2_only)
         
         daily_wins = daily_stats.get("wins", 0)
         daily_losses = daily_stats.get("losses", 0)

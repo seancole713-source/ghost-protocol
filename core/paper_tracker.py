@@ -487,6 +487,21 @@ class PaperTracker:
                 f"@ ${entry_price:,.2f} (conf={signal_confidence:.1%}, trust_level={trust_level}{v3_info}{mag_info})"
             )
             
+            # Set target_price from expected_move_pct so UI can show it while PENDING
+            if expected_move_pct and entry_price:
+                move_dir = 1.0 if signal_direction.upper() in ("UP", "LONG", "BULLISH") else -1.0
+                computed_target = entry_price * (1.0 + move_dir * abs(expected_move_pct) / 100.0)
+                try:
+                    update_conn = self._get_connection()
+                    self._execute(update_conn,
+                        "UPDATE paper_trades SET target_price = ? WHERE paper_trade_id = ?",
+                        (computed_target, paper_trade_id)
+                    )
+                    update_conn.commit()
+                    update_conn.close()
+                except Exception as tp_err:
+                    LOGGER.debug(f"[{symbol}] Could not set target_price: {tp_err}")
+            
             return paper_trade_id
         
         except Exception as e:

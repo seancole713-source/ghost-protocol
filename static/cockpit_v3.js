@@ -593,7 +593,7 @@ function renderBTCCascade(cascade, momentum) {
 async function loadTopMovers() {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);  // 3s timeout (hunter can be slow on first load)
+        const timeoutId = setTimeout(() => controller.abort(), 15000);  // 15s timeout (hunter aggregates multiple sources)
         
         const response = await fetch('/api/v3/hunter/feed', { signal: controller.signal });
         clearTimeout(timeoutId);
@@ -655,7 +655,28 @@ async function loadTopMovers() {
         console.error('[MOVERS] Error:', error);
         const container = document.getElementById('movers-list');
         if (error.name === 'AbortError') {
-            container.innerHTML = '<p style="color: var(--accent-orange); text-align: center; padding: 20px;">⏱️ Connection timeout - retrying...</p>';
+            container.innerHTML = '<p style="color: var(--accent-orange); text-align: center; padding: 20px;">⏱️ Loading movers...</p>';
+            // Actual retry after 3s with longer timeout
+            setTimeout(async () => {
+                try {
+                    const resp = await fetch('/api/v3/hunter/feed');
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        const movers = data.movers || [];
+                        if (movers.length > 0) {
+                            container.innerHTML = movers.slice(0, 10).map(item => {
+                                const hasRealPrediction = item.confidence && item.confidence !== 50;
+                                const confidenceDisplay = hasRealPrediction ? `Ghost: ${item.confidence}%` : `Ghost: --`;
+                                return `<div class="mover-card"><div class="mover-left"><div class="mover-icon">${getSymbolIcon(item.symbol)}</div><div class="mover-info"><div class="mover-name">${item.symbol}</div><div class="mover-symbol">${item.name || item.symbol}</div></div></div><div class="mover-right"><div class="mover-change ${item.change >= 0 ? 'positive' : 'negative'}">${item.change >= 0 ? '+' : ''}${item.change?.toFixed(2)}%</div><div class="mover-confidence">${confidenceDisplay}</div></div></div>`;
+                            }).join('');
+                        } else {
+                            container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);"><div style="font-size:48px;margin-bottom:20px;">👁️</div><div style="font-size:18px;font-weight:600;">Ghost is scanning...</div></div>';
+                        }
+                    }
+                } catch (retryErr) {
+                    console.warn('[MOVERS] Retry also failed:', retryErr);
+                }
+            }, 3000);
         } else {
             container.innerHTML = '<p style="color: var(--accent-red); text-align: center; padding: 20px;">❌ Failed to load movers</p>';
         }
@@ -1288,23 +1309,21 @@ function renderAccuracyChart(accuracyData) {
 
 // Panel 5: Watchlist - Master loader
 async function loadWatchlistByMode() {
-    // NUCLEAR FIX: ALWAYS use market watchlist until personal API is stable
-    // Personal watchlist API causes cascade failures when it has issues
-    console.log('[WATCHLIST] Forcing market mode (personal disabled)');
-    await loadMarketWatchlist();
-    return;
-    
-    // DISABLED - Personal watchlist code below
-    // if (watchlistMode === 'personal') {
-    //     if (typeof loadPersonalWatchlist === 'function') {
-    //         await loadPersonalWatchlist();
-    //     } else {
-    //         console.error('[WATCHLIST] personal_watchlist_ui.js not loaded');
-    //         renderWatchlist([]);
-    //     }
-    // } else {
-    //     await loadMarketWatchlist();
-    // }
+    if (watchlistMode === 'personal') {
+        if (typeof loadPersonalWatchlist === 'function') {
+            try {
+                await loadPersonalWatchlist();
+            } catch (e) {
+                console.warn('[WATCHLIST] Personal watchlist failed, falling back to market:', e);
+                await loadMarketWatchlist();
+            }
+        } else {
+            console.warn('[WATCHLIST] personal_watchlist_ui.js not loaded, using market');
+            await loadMarketWatchlist();
+        }
+    } else {
+        await loadMarketWatchlist();
+    }
 }
 
 // Panel 5: Market Watchlist (existing default watchlist)
@@ -1530,7 +1549,7 @@ function renderHealthMetrics(metrics) {
 async function loadCockpitSnapshot() {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);  // 5s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 12000);  // 12s timeout
         
         const response = await fetch('/api/v3/cockpit/status', { signal: controller.signal });
         clearTimeout(timeoutId);
