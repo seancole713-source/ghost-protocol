@@ -167,19 +167,46 @@ function startIntervals() {
     if (window.forecastInterval) clearInterval(window.forecastInterval);
     if (window.healthInterval) clearInterval(window.healthInterval);
     if (window.accuracyInterval) clearInterval(window.accuracyInterval);
+    if (window.cascadeInterval) clearInterval(window.cascadeInterval);
+    if (window.paperTradeInterval) clearInterval(window.paperTradeInterval);
     
     // ═══════════════════════════════════════════════════════════
     // CANONICAL INTERVALS — change timings HERE and only here
-    // Staggered to avoid burst requests at the same second
+    // STAGGERED with setTimeout offsets to prevent burst requests
+    // Every 30s group is offset by 5s so max 1-2 requests/second
     // ═══════════════════════════════════════════════════════════
-    window.updateInterval   = setInterval(updateSystemTime, 1000);            // Clock: 1s
-    window.statusInterval   = setInterval(() => loadCockpitStatus(), 30000);  // Status: 30s
-    window.topMoversInterval= setInterval(() => loadTopMovers(), 30000);      // Movers: 30s (was 10s!)
-    window.vipInterval      = setInterval(() => loadVIPCoins(), 30000);       // VIP: 30s
-    window.watchlistInterval= setInterval(() => loadWatchlistByMode(), 30000);// Watchlist: 30s
-    window.forecastInterval = setInterval(() => loadForecast(), 60000);       // Forecast: 60s
-    window.healthInterval   = setInterval(() => loadHealthScore(), 60000);    // Health: 60s
-    window.accuracyInterval = setInterval(() => loadAccuracyChart(), 60000);  // Accuracy: 60s
+    window.updateInterval = setInterval(updateSystemTime, 1000); // Clock: 1s (lightweight)
+    
+    // --- 30-second group: staggered by 5s offsets ---
+    setTimeout(() => {
+        window.statusInterval = setInterval(() => loadCockpitStatus(), 30000);
+    }, 0);       // :00
+    setTimeout(() => {
+        window.topMoversInterval = setInterval(() => loadTopMovers(), 30000);
+    }, 5000);    // :05
+    setTimeout(() => {
+        window.vipInterval = setInterval(() => loadVIPCoins(), 30000);
+    }, 10000);   // :10
+    setTimeout(() => {
+        window.watchlistInterval = setInterval(() => loadWatchlistByMode(), 30000);
+    }, 15000);   // :15
+    
+    // --- 60-second group: staggered by 10s offsets ---
+    setTimeout(() => {
+        window.forecastInterval = setInterval(() => loadForecast(), 60000);
+    }, 20000);   // :20
+    setTimeout(() => {
+        window.healthInterval = setInterval(() => loadHealthScore(), 60000);
+    }, 30000);   // :30
+    setTimeout(() => {
+        window.accuracyInterval = setInterval(() => loadAccuracyChart(), 60000);
+    }, 40000);   // :40
+    setTimeout(() => {
+        window.cascadeInterval = setInterval(() => updateCascadeView(), 60000);
+    }, 45000);   // :45
+    setTimeout(() => {
+        window.paperTradeInterval = setInterval(() => { updatePaperTrades(); updateJournal(); }, 60000);
+    }, 50000);   // :50
 }
 
 function updateStatusIndicator(isActive) {
@@ -295,7 +322,8 @@ async function loadAllPanels() {
     }
     
     // NOW safe to load panels that depend on sharedWatchlistData
-    loadCockpitSnapshot().catch(e => console.error('Snapshot error:', e));
+    // NOTE: loadCockpitSnapshot removed — same /api/v3/cockpit/status as loadCockpitStatus()
+    loadCockpitStatus().catch(e => console.error('Status error:', e));
     loadLatestBTCPrediction().catch(e => console.error('BTC prediction error:', e));
     loadForecast().catch(e => console.error('Forecast error:', e));
     loadVIPCoins().catch(e => console.error('VIP coins error:', e));
@@ -1945,10 +1973,9 @@ function renderCascadeCard(cascade, timing) {
     cascadeCard.style.display = 'block';
 }
 
-// Add cascade update to intervals
+// Cascade initial load — interval is managed by startIntervals()
 function initializeCascadeUpdates() {
-    updateCascadeView(); // Initial load
-    window.cascadeInterval = setInterval(() => updateCascadeView(), 60000); // Update every minute
+    updateCascadeView(); // Initial load only, no interval here
 }
 
 // Call on app init
@@ -1960,12 +1987,16 @@ if (document.readyState === 'loading') {
 
 // Cleanup on unload
 window.addEventListener('beforeunload', () => {
-    if (updateInterval) {
-        clearInterval(updateInterval);
-    }
-    if (window.cascadeInterval) {
-        clearInterval(window.cascadeInterval);
-    }
+    if (window.updateInterval) clearInterval(window.updateInterval);
+    if (window.statusInterval) clearInterval(window.statusInterval);
+    if (window.topMoversInterval) clearInterval(window.topMoversInterval);
+    if (window.vipInterval) clearInterval(window.vipInterval);
+    if (window.watchlistInterval) clearInterval(window.watchlistInterval);
+    if (window.forecastInterval) clearInterval(window.forecastInterval);
+    if (window.healthInterval) clearInterval(window.healthInterval);
+    if (window.accuracyInterval) clearInterval(window.accuracyInterval);
+    if (window.cascadeInterval) clearInterval(window.cascadeInterval);
+    if (window.paperTradeInterval) clearInterval(window.paperTradeInterval);
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2304,16 +2335,11 @@ function clearJournalForm() {
     document.getElementById('entry-notes').value = '';
 }
 
-// Initialize updates
+// Trade tracking initial load — interval is managed by startIntervals()
 function initializeTradeTracking() {
     updatePaperTrades();
     updateJournal();
-    
-    // Update every 60 seconds
-    setInterval(() => {
-        updatePaperTrades();
-        updateJournal();
-    }, 60000);
+    // No setInterval here — managed by startIntervals()
 }
 
 // Start tracking when page loads
