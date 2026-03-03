@@ -16,51 +16,89 @@ let isInitialized = false;       // BUG 5 FIX: Guard against double initializati
 // ═══════════════════════════════════════════════════════════════
 const GHOST_TAB_ID = `ghost_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 let isLeaderTab = false;
+const LEADER_KEY = 'ghost_leader';
+const LEADER_STALE_MS = 20000;  // 20s — leader must heartbeat within this window
+const LEADER_HEARTBEAT_MS = 8000; // 8s — heartbeat frequency (well within stale window)
 
 function claimLeadership() {
     const now = Date.now();
-    const stored = JSON.parse(localStorage.getItem('ghost_leader') || '{}');
-    // Claim if no leader or leader stale (>45s without heartbeat)
-    if (!stored.id || (now - (stored.ts || 0)) > 45000) {
-        localStorage.setItem('ghost_leader', JSON.stringify({ id: GHOST_TAB_ID, ts: now }));
+    const stored = JSON.parse(localStorage.getItem(LEADER_KEY) || '{}');
+    // Claim if no leader or leader stale
+    if (!stored.id || (now - (stored.ts || 0)) > LEADER_STALE_MS) {
+        localStorage.setItem(LEADER_KEY, JSON.stringify({ id: GHOST_TAB_ID, ts: now }));
         isLeaderTab = true;
         return true;
     }
     // Already leader? Renew heartbeat
     if (stored.id === GHOST_TAB_ID) {
-        localStorage.setItem('ghost_leader', JSON.stringify({ id: GHOST_TAB_ID, ts: now }));
+        localStorage.setItem(LEADER_KEY, JSON.stringify({ id: GHOST_TAB_ID, ts: now }));
         isLeaderTab = true;
         return true;
     }
     return false; // Another tab is leader
 }
 
+function stopPollingIntervals() {
+    // Clear all polling intervals (but NOT updateInterval — clock always runs)
+    ['statusInterval','topMoversInterval','vipInterval','watchlistInterval',
+     'forecastInterval','healthInterval','accuracyInterval','cascadeInterval',
+     'paperTradeInterval'].forEach(key => {
+        if (window[key]) { clearInterval(window[key]); window[key] = null; }
+    });
+}
+
+function promoteToLeader() {
+    if (isLeaderTab) return; // Already leader
+    isLeaderTab = true;
+    localStorage.setItem(LEADER_KEY, JSON.stringify({ id: GHOST_TAB_ID, ts: Date.now() }));
+    console.log('✅ LEADER — polling active');
+    startIntervals();
+}
+
 function startLeaderHeartbeat() {
     setInterval(() => {
         if (isLeaderTab) {
-            localStorage.setItem('ghost_leader', JSON.stringify({ id: GHOST_TAB_ID, ts: Date.now() }));
+            localStorage.setItem(LEADER_KEY, JSON.stringify({ id: GHOST_TAB_ID, ts: Date.now() }));
         }
-    }, 15000); // Heartbeat every 15s
+    }, LEADER_HEARTBEAT_MS);
 }
+
+// INSTANT re-election: listen for leader key removal/change
+window.addEventListener('storage', (e) => {
+    if (e.key !== LEADER_KEY) return;
+    if (!e.newValue || e.newValue === '') {
+        // Leader key was REMOVED (leader tab closed) — race to claim
+        setTimeout(() => claimLeadership() && promoteToLeader(), Math.random() * 500);
+    } else {
+        // Another tab claimed leadership — check if we lost it
+        const data = JSON.parse(e.newValue || '{}');
+        if (isLeaderTab && data.id !== GHOST_TAB_ID) {
+            console.log('⚠️ Lost leadership to another tab');
+            isLeaderTab = false;
+            stopPollingIntervals();
+        }
+    }
+});
+
+// Fallback re-election poll (in case storage event missed)
+setInterval(() => {
+    if (isLeaderTab) return;
+    const stored = JSON.parse(localStorage.getItem(LEADER_KEY) || '{}');
+    if (!stored.id || (Date.now() - (stored.ts || 0)) > LEADER_STALE_MS) {
+        promoteToLeader();
+    }
+}, 10000); // Check every 10s
 
 // Release leadership + clean up all intervals on tab close
 window.addEventListener('beforeunload', () => {
     // Leader election cleanup
-    const stored = JSON.parse(localStorage.getItem('ghost_leader') || '{}');
+    const stored = JSON.parse(localStorage.getItem(LEADER_KEY) || '{}');
     if (stored.id === GHOST_TAB_ID) {
-        localStorage.removeItem('ghost_leader');
+        localStorage.removeItem(LEADER_KEY);
     }
     // Interval cleanup
+    stopPollingIntervals();
     if (window.updateInterval) clearInterval(window.updateInterval);
-    if (window.statusInterval) clearInterval(window.statusInterval);
-    if (window.topMoversInterval) clearInterval(window.topMoversInterval);
-    if (window.vipInterval) clearInterval(window.vipInterval);
-    if (window.watchlistInterval) clearInterval(window.watchlistInterval);
-    if (window.forecastInterval) clearInterval(window.forecastInterval);
-    if (window.healthInterval) clearInterval(window.healthInterval);
-    if (window.accuracyInterval) clearInterval(window.accuracyInterval);
-    if (window.cascadeInterval) clearInterval(window.cascadeInterval);
-    if (window.paperTradeInterval) clearInterval(window.paperTradeInterval);
 });
 
 // Initialize on DOM load
@@ -72,7 +110,7 @@ function initializeApp() {
     // BUG 5 FIX: Prevent duplicate intervals on LIVE/FIXED toggle
     if (isInitialized) {
         console.log('[INIT] Already initialized, restarting intervals only');
-        startIntervals();
+        if (isLeaderTab) startIntervals();
         return;
     }
     isInitialized = true;
@@ -83,27 +121,21 @@ function initializeApp() {
     // Sync forecast input with default symbol
     document.getElementById('forecast-symbol').value = currentForecastSymbol;
     
-    // Load all panels IMMEDIATELY on startup (don't wait for intervals)
-    // Every tab gets the initial load so the page renders
-    loadAllPanels();
+    // Clock runs on EVERY tab (lightweight, no network)
+    window.updateInterval = setInterval(updateSystemTime, 1000);
     
-    // MULTI-TAB: Only the leader tab runs polling intervals
+    // MULTI-TAB LEADER ELECTION — decide BEFORE any network requests
     if (claimLeadership()) {
+        // LEADER: full init + polling intervals
+        console.log('✅ LEADER — polling active');
+        loadAllPanels();
         startIntervals();
         startLeaderHeartbeat();
-        console.log('✅ Ghost Protocol Cockpit v3 initialized (LEADER — polling active)');
     } else {
-        // Follower tab: clock only, no server polling
-        window.updateInterval = setInterval(updateSystemTime, 1000);
-        console.log('✅ Ghost Protocol Cockpit v3 initialized (FOLLOWER — polling disabled, another tab is polling)');
-        // Try to become leader every 30s in case leader tab closes
-        setInterval(() => {
-            if (!isLeaderTab && claimLeadership()) {
-                console.log('[GHOST] Promoted to LEADER — starting intervals');
-                startIntervals();
-                startLeaderHeartbeat();
-            }
-        }, 30000);
+        // FOLLOWER: one-time init load only, NO polling intervals
+        console.log('✅ FOLLOWER — polling disabled');
+        loadAllPanels();
+        // No startIntervals() — re-election handled by storage event + fallback poll
     }
 }
 
@@ -194,14 +226,8 @@ function handleModeChange(e) {
     
     if (mode === 'fixed') {
         // FIXED MODE: Freeze all auto-refresh intervals
-        if (window.updateInterval) clearInterval(window.updateInterval);
-        if (window.statusInterval) clearInterval(window.statusInterval);
-        if (window.topMoversInterval) clearInterval(window.topMoversInterval);
-        if (window.vipInterval) clearInterval(window.vipInterval);
-        if (window.watchlistInterval) clearInterval(window.watchlistInterval);
-        if (window.forecastInterval) clearInterval(window.forecastInterval);
-        if (window.healthInterval) clearInterval(window.healthInterval);
-        if (window.accuracyInterval) clearInterval(window.accuracyInterval);
+        stopPollingIntervals();
+        if (window.updateInterval) { clearInterval(window.updateInterval); window.updateInterval = null; }
         
         document.getElementById('status-text').textContent = 'FIXED MODE';
         document.getElementById('status-text').style.color = 'var(--accent-yellow)';
@@ -212,7 +238,8 @@ function handleModeChange(e) {
         document.getElementById('status-text').style.color = 'var(--accent-green)';
         
         // BUG 5 FIX: Only restart intervals, don't re-init event listeners
-        startIntervals();
+        window.updateInterval = setInterval(updateSystemTime, 1000);
+        if (isLeaderTab) startIntervals();
         console.log('[MODE] All intervals resumed');
     }
 }
@@ -220,55 +247,42 @@ function handleModeChange(e) {
 // SINGLE SOURCE OF TRUTH for all refresh intervals
 // Optimized to prevent server hammering (was 20+ req/s, now ~1 req/2s)
 function startIntervals() {
-    // Clear any existing intervals first
-    if (window.updateInterval) clearInterval(window.updateInterval);
-    if (window.statusInterval) clearInterval(window.statusInterval);
-    if (window.topMoversInterval) clearInterval(window.topMoversInterval);
-    if (window.vipInterval) clearInterval(window.vipInterval);
-    if (window.watchlistInterval) clearInterval(window.watchlistInterval);
-    if (window.forecastInterval) clearInterval(window.forecastInterval);
-    if (window.healthInterval) clearInterval(window.healthInterval);
-    if (window.accuracyInterval) clearInterval(window.accuracyInterval);
-    if (window.cascadeInterval) clearInterval(window.cascadeInterval);
-    if (window.paperTradeInterval) clearInterval(window.paperTradeInterval);
+    // Clear any existing polling intervals first
+    stopPollingIntervals();
     
     // ═══════════════════════════════════════════════════════════
     // CANONICAL INTERVALS — change timings HERE and only here
     // STAGGERED with setTimeout offsets to prevent burst requests
     // Every 30s group is offset by 5s so max 1-2 requests/second
     // ═══════════════════════════════════════════════════════════
-    window.updateInterval = setInterval(updateSystemTime, 1000); // Clock: 1s (lightweight)
+    // Clock handled in initializeApp() — not here
     
-    // --- 30-second group: staggered by 5s offsets ---
-    setTimeout(() => {
-        window.statusInterval = setInterval(() => loadCockpitStatus(), 30000);
-    }, 0);       // :00
-    setTimeout(() => {
-        window.topMoversInterval = setInterval(() => loadTopMovers(), 30000);
-    }, 5000);    // :05
-    setTimeout(() => {
-        window.vipInterval = setInterval(() => loadVIPCoins(), 30000);
-    }, 10000);   // :10
-    setTimeout(() => {
-        window.watchlistInterval = setInterval(() => loadWatchlistByMode(), 30000);
-    }, 15000);   // :15
+    // Stagger schedule: [name, fn, intervalMs, offsetMs]
+    // IMPORTANT: name + 'Interval' must match keys in stopPollingIntervals()
+    const schedule = [
+        ['status',      () => loadCockpitStatus(),                        30000,  0],
+        ['topMovers',   () => loadTopMovers(),                            30000,  5000],
+        ['vip',         () => loadVIPCoins(),                             30000,  10000],
+        ['watchlist',   () => loadWatchlistByMode(),                      30000,  15000],
+        ['forecast',    () => loadForecast(),                             60000,  20000],
+        ['health',      () => loadHealthScore(),                          60000,  30000],
+        ['accuracy',    () => loadAccuracyChart(),                        60000,  40000],
+        ['cascade',     () => updateCascadeView(),                        60000,  45000],
+        ['paperTrade',  () => { updatePaperTrades(); updateJournal(); },  60000,  50000],
+    ];
     
-    // --- 60-second group: staggered by 10s offsets ---
-    setTimeout(() => {
-        window.forecastInterval = setInterval(() => loadForecast(), 60000);
-    }, 20000);   // :20
-    setTimeout(() => {
-        window.healthInterval = setInterval(() => loadHealthScore(), 60000);
-    }, 30000);   // :30
-    setTimeout(() => {
-        window.accuracyInterval = setInterval(() => loadAccuracyChart(), 60000);
-    }, 40000);   // :40
-    setTimeout(() => {
-        window.cascadeInterval = setInterval(() => updateCascadeView(), 60000);
-    }, 45000);   // :45
-    setTimeout(() => {
-        window.paperTradeInterval = setInterval(() => { updatePaperTrades(); updateJournal(); }, 60000);
-    }, 50000);   // :50
+    console.log('[Polling] Stagger schedule starting:');
+    schedule.forEach(([name, fn, intervalMs, offsetMs]) => {
+        const windowKey = `${name}Interval`;
+        console.log(`[Polling] ${name} — offset ${offsetMs/1000}s, every ${intervalMs/1000}s`);
+        setTimeout(() => {
+            console.log(`[Polling] ${name} — first tick`);
+            window[windowKey] = setInterval(() => {
+                console.log(`[Polling] ${name} — tick`);
+                fn();
+            }, intervalMs);
+        }, offsetMs);
+    });
 }
 
 function updateStatusIndicator(isActive) {
@@ -402,6 +416,10 @@ async function loadAllPanels() {
         loadTopMovers().catch(e => console.error('Top movers error:', e));
         loadNews().catch(e => console.error('News error:', e));
         loadHealthScore().catch(e => console.error('Health score error:', e));
+        // Cascade + paper tracking init (was separate DOMContentLoaded, now unified)
+        updateCascadeView().catch(e => console.error('Cascade error:', e));
+        updatePaperTrades().catch(e => console.error('Paper trades error:', e));
+        updateJournal().catch(e => console.error('Journal error:', e));
     }, 100);
     
     console.log('✅ All panels loaded (watchlist first, then parallel)');
@@ -2035,17 +2053,7 @@ function renderCascadeCard(cascade, timing) {
 }
 
 // Cascade initial load — interval is managed by startIntervals()
-function initializeCascadeUpdates() {
-    updateCascadeView(); // Initial load only, no interval here
-}
-
-// Call on app init
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeCascadeUpdates);
-} else {
-    initializeCascadeUpdates();
-}
-
+// NOTE: Loaded once during loadAllPanels flow, no separate DOMContentLoaded needed
 // NOTE: beforeunload cleanup is at top of file (consolidated with leader election)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2385,15 +2393,4 @@ function clearJournalForm() {
 }
 
 // Trade tracking initial load — interval is managed by startIntervals()
-function initializeTradeTracking() {
-    updatePaperTrades();
-    updateJournal();
-    // No setInterval here — managed by startIntervals()
-}
-
-// Start tracking when page loads
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeTradeTracking);
-} else {
-    initializeTradeTracking();
-}
+// NOTE: Loaded once during loadAllPanels flow, no separate DOMContentLoaded needed
