@@ -769,6 +769,47 @@ APP.add_middleware(
     allow_credentials=True,
 )
 
+# ═══════════════════════════════════════════════════════════════════
+# PER-IP API THROTTLE — Protects DB from chatty browsers / duplicate tabs
+# Max 30 API requests per 10-second window per IP (3 req/s average).
+# Only throttles /api/ paths — static files, cockpit page, health unaffected.
+# ═══════════════════════════════════════════════════════════════════
+_THROTTLE_WINDOW = 10       # seconds
+_THROTTLE_MAX = 30          # max requests per window
+_throttle_buckets: dict = {}  # ip -> [count, window_start]
+
+@APP.middleware("http")
+async def api_throttle_middleware(request: Request, call_next):
+    """Per-IP rate limiter for /api/ endpoints to prevent DB exhaustion."""
+    path = request.url.path
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+
+    bucket = _throttle_buckets.get(client_ip)
+    if bucket is None or (now - bucket[1]) > _THROTTLE_WINDOW:
+        # New window
+        _throttle_buckets[client_ip] = [1, now]
+    else:
+        bucket[0] += 1
+        if bucket[0] > _THROTTLE_MAX:
+            LOGGER.warning(f"[THROTTLE] {client_ip} exceeded {_THROTTLE_MAX} reqs/{_THROTTLE_WINDOW}s — throttled")
+            return JSONResponse(
+                status_code=429,
+                content={"error": "too_many_requests", "retry_after": _THROTTLE_WINDOW}
+            )
+
+    # Evict stale IPs every ~100 requests to prevent memory leak
+    if len(_throttle_buckets) > 100:
+        cutoff = now - _THROTTLE_WINDOW * 3
+        stale = [ip for ip, b in _throttle_buckets.items() if b[1] < cutoff]
+        for ip in stale:
+            del _throttle_buckets[ip]
+
+    return await call_next(request)
+
 # Fast-fail auth middleware: return 401 JSON immediately if Bearer token missing
 @APP.middleware("http")
 async def auth_fast_fail_middleware(request: Request, call_next):

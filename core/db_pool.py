@@ -36,8 +36,8 @@ LOGGER = logging.getLogger("db_pool")
 # POOL CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════
 
-POOL_MIN_SIZE = int(os.getenv("DB_POOL_MIN", "5"))
-POOL_MAX_SIZE = int(os.getenv("DB_POOL_MAX", "20"))
+POOL_MIN_SIZE = int(os.getenv("DB_POOL_MIN", "2"))
+POOL_MAX_SIZE = int(os.getenv("DB_POOL_MAX", "8"))
 POOL_COMMAND_TIMEOUT = float(os.getenv("DB_COMMAND_TIMEOUT", "30"))
 
 # ═══════════════════════════════════════════════════════════════════
@@ -161,8 +161,8 @@ async def pool_health_check() -> dict:
 _sync_pool = None  # psycopg2 ThreadedConnectionPool
 _sync_pool_lock = __import__("threading").Lock()
 
-SYNC_POOL_MIN = int(os.getenv("DB_SYNC_POOL_MIN", "5"))
-SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "50"))
+SYNC_POOL_MIN = int(os.getenv("DB_SYNC_POOL_MIN", "2"))
+SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "10"))
 
 
 def _get_sync_pool():
@@ -294,19 +294,16 @@ def get_sync_connection_raw():
                     )
                     _time.sleep(_wait)
 
-        # All retries failed — fall back to direct connection
+        # All retries failed — DO NOT fall back to raw connect (causes 'too many clients')
         LOGGER.error(
-            f"[DB_POOL] Pool exhausted after {_max_retries} retries, "
-            f"falling back to direct connection: {_last_err}"
+            f"[DB_POOL] Pool exhausted after {_max_retries} retries: {_last_err}"
         )
-        import psycopg2
-        db_url = _get_db_url()
-        if db_url:
-            return psycopg2.connect(db_url)
-        raise _last_err  # type: ignore[misc]
+        raise RuntimeError(f"DB pool exhausted after {_max_retries} retries") from _last_err
     else:
+        # Pool not initialized — try to create it on-demand
         import psycopg2
         db_url = _get_db_url()
         if not db_url:
             raise RuntimeError("DATABASE_URL not set")
+        LOGGER.warning("[DB_POOL] Sync pool not initialized, creating single connection")
         return psycopg2.connect(db_url)
