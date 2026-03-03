@@ -9,6 +9,60 @@ let watchlistFilter = 'all';     // 'all', 'stocks', 'crypto'
 let sharedWatchlistData = [];    // Shared cache for cross-panel data (Major Caps, XRP VIP)
 let isInitialized = false;       // BUG 5 FIX: Guard against double initialization
 
+// ═══════════════════════════════════════════════════════════════
+// MULTI-TAB LEADER ELECTION
+// Only ONE tab polls the server. Other tabs get initial load only.
+// Uses localStorage heartbeat — if leader dies, another tab takes over.
+// ═══════════════════════════════════════════════════════════════
+const GHOST_TAB_ID = `ghost_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+let isLeaderTab = false;
+
+function claimLeadership() {
+    const now = Date.now();
+    const stored = JSON.parse(localStorage.getItem('ghost_leader') || '{}');
+    // Claim if no leader or leader stale (>45s without heartbeat)
+    if (!stored.id || (now - (stored.ts || 0)) > 45000) {
+        localStorage.setItem('ghost_leader', JSON.stringify({ id: GHOST_TAB_ID, ts: now }));
+        isLeaderTab = true;
+        return true;
+    }
+    // Already leader? Renew heartbeat
+    if (stored.id === GHOST_TAB_ID) {
+        localStorage.setItem('ghost_leader', JSON.stringify({ id: GHOST_TAB_ID, ts: now }));
+        isLeaderTab = true;
+        return true;
+    }
+    return false; // Another tab is leader
+}
+
+function startLeaderHeartbeat() {
+    setInterval(() => {
+        if (isLeaderTab) {
+            localStorage.setItem('ghost_leader', JSON.stringify({ id: GHOST_TAB_ID, ts: Date.now() }));
+        }
+    }, 15000); // Heartbeat every 15s
+}
+
+// Release leadership + clean up all intervals on tab close
+window.addEventListener('beforeunload', () => {
+    // Leader election cleanup
+    const stored = JSON.parse(localStorage.getItem('ghost_leader') || '{}');
+    if (stored.id === GHOST_TAB_ID) {
+        localStorage.removeItem('ghost_leader');
+    }
+    // Interval cleanup
+    if (window.updateInterval) clearInterval(window.updateInterval);
+    if (window.statusInterval) clearInterval(window.statusInterval);
+    if (window.topMoversInterval) clearInterval(window.topMoversInterval);
+    if (window.vipInterval) clearInterval(window.vipInterval);
+    if (window.watchlistInterval) clearInterval(window.watchlistInterval);
+    if (window.forecastInterval) clearInterval(window.forecastInterval);
+    if (window.healthInterval) clearInterval(window.healthInterval);
+    if (window.accuracyInterval) clearInterval(window.accuracyInterval);
+    if (window.cascadeInterval) clearInterval(window.cascadeInterval);
+    if (window.paperTradeInterval) clearInterval(window.paperTradeInterval);
+});
+
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
@@ -26,23 +80,31 @@ function initializeApp() {
     setupEventListeners();
     updateSystemTime();
     
-    // Load status indicator immediately
-    loadCockpitStatus();
-    
     // Sync forecast input with default symbol
     document.getElementById('forecast-symbol').value = currentForecastSymbol;
     
     // Load all panels IMMEDIATELY on startup (don't wait for intervals)
+    // Every tab gets the initial load so the page renders
     loadAllPanels();
     
-    // Pre-load goals for modal (silent load, no UI update needed)
-    // PERFORMANCE FIX: Defer health score load by 500ms to prevent blocking page load
-    setTimeout(() => loadHealthScore(), 500);
-    
-    // Start unified interval system (single source of truth for all timings)
-    startIntervals();
-    
-    console.log('✅ Ghost Protocol Cockpit v3 initialized');
+    // MULTI-TAB: Only the leader tab runs polling intervals
+    if (claimLeadership()) {
+        startIntervals();
+        startLeaderHeartbeat();
+        console.log('✅ Ghost Protocol Cockpit v3 initialized (LEADER — polling active)');
+    } else {
+        // Follower tab: clock only, no server polling
+        window.updateInterval = setInterval(updateSystemTime, 1000);
+        console.log('✅ Ghost Protocol Cockpit v3 initialized (FOLLOWER — polling disabled, another tab is polling)');
+        // Try to become leader every 30s in case leader tab closes
+        setInterval(() => {
+            if (!isLeaderTab && claimLeadership()) {
+                console.log('[GHOST] Promoted to LEADER — starting intervals');
+                startIntervals();
+                startLeaderHeartbeat();
+            }
+        }, 30000);
+    }
 }
 
 // Event Listeners
@@ -322,8 +384,6 @@ async function loadAllPanels() {
     }
     
     // NOW safe to load panels that depend on sharedWatchlistData
-    // NOTE: loadCockpitSnapshot removed — same /api/v3/cockpit/status as loadCockpitStatus()
-    loadCockpitStatus().catch(e => console.error('Status error:', e));
     loadLatestBTCPrediction().catch(e => console.error('BTC prediction error:', e));
     loadForecast().catch(e => console.error('Forecast error:', e));
     loadVIPCoins().catch(e => console.error('VIP coins error:', e));
@@ -338,6 +398,7 @@ async function loadAllPanels() {
     
     // Slow panels - load in background (may take 10-30s on first load)
     setTimeout(() => {
+        loadCockpitStatus().catch(e => console.error('Status error:', e));
         loadTopMovers().catch(e => console.error('Top movers error:', e));
         loadNews().catch(e => console.error('News error:', e));
         loadHealthScore().catch(e => console.error('Health score error:', e));
@@ -1985,19 +2046,7 @@ if (document.readyState === 'loading') {
     initializeCascadeUpdates();
 }
 
-// Cleanup on unload
-window.addEventListener('beforeunload', () => {
-    if (window.updateInterval) clearInterval(window.updateInterval);
-    if (window.statusInterval) clearInterval(window.statusInterval);
-    if (window.topMoversInterval) clearInterval(window.topMoversInterval);
-    if (window.vipInterval) clearInterval(window.vipInterval);
-    if (window.watchlistInterval) clearInterval(window.watchlistInterval);
-    if (window.forecastInterval) clearInterval(window.forecastInterval);
-    if (window.healthInterval) clearInterval(window.healthInterval);
-    if (window.accuracyInterval) clearInterval(window.accuracyInterval);
-    if (window.cascadeInterval) clearInterval(window.cascadeInterval);
-    if (window.paperTradeInterval) clearInterval(window.paperTradeInterval);
-});
+// NOTE: beforeunload cleanup is at top of file (consolidated with leader election)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PAPER TRADING TRACKER
