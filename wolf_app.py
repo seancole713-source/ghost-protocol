@@ -18,6 +18,9 @@ import uuid
 from collections import deque
 from datetime import UTC, datetime, timedelta
 
+# Cache-bust token for static JS – changes on every process (re)start / deploy
+_STATIC_CACHE_BUST: str = str(int(time.time()))
+
 # Import anyio for timeout control
 try:
     import anyio
@@ -1571,7 +1574,8 @@ async def _cockpit_page(request: Request):
             "cockpit_v3.html",
             {
                 "request": request,
-                "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", "")
+                "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", ""),
+                "cache_bust": _STATIC_CACHE_BUST,
             }
         )
         # CRITICAL: Prevent browser caching to force fresh JS load

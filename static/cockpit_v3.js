@@ -23,19 +23,28 @@ const LEADER_HEARTBEAT_MS = 8000; // 8s — heartbeat frequency (well within sta
 function claimLeadership() {
     const now = Date.now();
     const stored = JSON.parse(localStorage.getItem(LEADER_KEY) || '{}');
-    // Claim if no leader or leader stale
-    if (!stored.id || (now - (stored.ts || 0)) > LEADER_STALE_MS) {
-        localStorage.setItem(LEADER_KEY, JSON.stringify({ id: GHOST_TAB_ID, ts: now }));
+    
+    // Can we claim? (no leader, stale leader, or we ARE the leader)
+    const canClaim = !stored.id 
+        || (now - (stored.ts || 0)) > LEADER_STALE_MS 
+        || stored.id === GHOST_TAB_ID;
+    
+    if (!canClaim) return false; // Another active tab is leader
+    
+    // Write our claim
+    localStorage.setItem(LEADER_KEY, JSON.stringify({ id: GHOST_TAB_ID, ts: now }));
+    
+    // READ-BACK VERIFY: prevent race where 2 tabs both write simultaneously
+    // The last writer wins in localStorage, so read back to confirm it's us
+    const verify = JSON.parse(localStorage.getItem(LEADER_KEY) || '{}');
+    if (verify.id === GHOST_TAB_ID) {
         isLeaderTab = true;
         return true;
     }
-    // Already leader? Renew heartbeat
-    if (stored.id === GHOST_TAB_ID) {
-        localStorage.setItem(LEADER_KEY, JSON.stringify({ id: GHOST_TAB_ID, ts: now }));
-        isLeaderTab = true;
-        return true;
-    }
-    return false; // Another tab is leader
+    
+    // Another tab overwrote us between write and read-back
+    console.log('[GHOST] Lost leadership race to another tab');
+    return false;
 }
 
 function stopPollingIntervals() {
@@ -85,7 +94,10 @@ setInterval(() => {
     if (isLeaderTab) return;
     const stored = JSON.parse(localStorage.getItem(LEADER_KEY) || '{}');
     if (!stored.id || (Date.now() - (stored.ts || 0)) > LEADER_STALE_MS) {
-        promoteToLeader();
+        // Use race-safe claimLeadership first, THEN promote
+        if (claimLeadership()) {
+            promoteToLeader();
+        }
     }
 }, 10000); // Check every 10s
 
