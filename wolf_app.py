@@ -15685,6 +15685,52 @@ async def api_v3_intelligence_cache():
         return {"ok": False, "error": str(e)}
 
 
+@APP.get("/api/v3/intelligence/analyze")
+async def api_v3_intelligence_analyze(symbol: str, direction: str = "UP",
+                                       confidence: float = 0.50):
+    """
+    Run the Intelligence Hub against a symbol and return ALL signal details.
+    Debug endpoint — shows what each of the 20 systems says.
+    """
+    try:
+        from core.intelligence_hub import get_intelligence_hub
+        hub = get_intelligence_hub()
+
+        # Fetch price history for regime detection
+        _ph: list = []
+        try:
+            from core.ghost_scout import GhostScout as _GS
+            _gs = _GS()
+            _edge_set = get_edge_set()
+            is_crypto = symbol.upper() not in {"T", "DDOG", "BMBL", "FTNT", "XPO",
+                                                "NET", "PANW"}
+            _ph = _gs._fetch_price_history(
+                symbol.upper(), "crypto" if is_crypto else "stock"
+            ) or []
+        except Exception:
+            pass
+
+        report = hub.analyze(
+            symbol=symbol.upper(),
+            direction=direction.upper(),
+            confidence=confidence,
+            entry_price=0.0,
+            asset_type="crypto",
+            price_history=_ph,
+        )
+
+        return {
+            "ok": True,
+            "symbol": symbol.upper(),
+            "input": {"direction": direction.upper(), "confidence": confidence},
+            "price_history_len": len(_ph),
+            "report": report.to_dict(),
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()[-500:]}
+
+
 @APP.get("/api/v3/phase5/status")
 async def api_v3_phase5_status():
     """

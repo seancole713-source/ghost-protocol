@@ -119,6 +119,33 @@ class IntelligenceReport:
     regime_info: Dict = field(default_factory=dict)
     news_risk: str = "NONE"             # NONE / LOW / MEDIUM / HIGH / CRITICAL
 
+    def to_dict(self) -> Dict:
+        """Serialize report including all individual signal details."""
+        return {
+            "active_systems": self.active_systems,
+            "total_systems": self.total_systems,
+            "direction_adjustment": self.direction_adjustment,
+            "confidence_adjustment": round(self.confidence_adjustment, 4),
+            "trust_boost": round(self.trust_boost, 4),
+            "news_risk": self.news_risk,
+            "regime": self.regime_info,
+            "should_block": self.should_block,
+            "block_reason": self.block_reason,
+            "exit_levels": self.exit_levels,
+            "signals": [
+                {
+                    "source": s.source,
+                    "active": s.active,
+                    "direction": s.direction,
+                    "confidence": round(s.confidence, 4),
+                    "weight": round(s.weight, 4),
+                    "reasoning": s.reasoning[:200],
+                    "error": s.error,
+                }
+                for s in self.signals
+            ],
+        }
+
 
 # ═══════════════════════════════════════════════════════════════
 # CACHED NEWS BRAIN STATE — updated by background loop in wolf_app
