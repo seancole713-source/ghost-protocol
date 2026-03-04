@@ -127,6 +127,7 @@ class TrustLadder:
             )
             return
         
+        conn = None
         try:
             conn = self._get_postgres_connection()
             cur = conn.cursor()
@@ -144,10 +145,15 @@ class TrustLadder:
             """)
             conn.commit()
             cur.close()
-            conn.close()
             LOGGER.info("[TRUST] ✅ ghost_symbol_trust table ready")
         except Exception as e:
             LOGGER.error(f"[TRUST] Failed to create table: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def get_trust(self, symbol: str) -> SymbolTrust:
         """Get trust data for a symbol (creates default if not exists)."""
@@ -159,16 +165,22 @@ class TrustLadder:
             _now = _time.time()
             if _now - self._last_reconnect_attempt > self._reconnect_interval:
                 self._last_reconnect_attempt = _now
+                _reconn = None
                 try:
-                    conn = self._get_postgres_connection()
-                    conn.cursor().execute("SELECT 1")
-                    conn.close()
+                    _reconn = self._get_postgres_connection()
+                    _reconn.cursor().execute("SELECT 1")
                     self.use_postgres = True
                     self._memory_only = False
                     self._ensure_table()
                     LOGGER.info("[TRUST] ✅ PostgreSQL reconnected! Switching from memory-only to persistent mode.")
                 except Exception as e:
                     LOGGER.debug(f"[TRUST] Reconnection attempt failed: {e}")
+                finally:
+                    if _reconn:
+                        try:
+                            _reconn.close()
+                        except Exception:
+                            pass
         
         if not self.use_postgres:
             # Memory-only mode

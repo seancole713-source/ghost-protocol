@@ -98,6 +98,7 @@ class PaperTracker:
     
     def _ensure_table(self):
         """Create paper_trades table if not exists"""
+        conn = None
         try:
             if self.use_postgres:
                 conn = self._get_postgres_connection()
@@ -140,7 +141,6 @@ class PaperTracker:
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome ON paper_trades(outcome)")
                 conn.commit()
-                conn.close()
                 LOGGER.info("✅ paper_trades table ready (PostgreSQL)")
             else:
                 conn = sqlite3.connect(self.db_path)
@@ -183,11 +183,16 @@ class PaperTracker:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome ON paper_trades(outcome)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_target_time ON paper_trades(target_time)")
                 conn.commit()
-                conn.close()
                 LOGGER.info("✅ paper_trades table ready (SQLite)")
         except Exception as e:
             LOGGER.error(f"Failed to create paper_trades table: {e}")
             # Don't raise - table might already exist
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
         
         # Run migrations to add columns that might be missing on existing tables
         self._run_migrations()
@@ -212,6 +217,7 @@ class PaperTracker:
             ("magnitude_error_pct", "REAL"),
         ]
         
+        conn = None
         try:
             conn = self._get_connection()
             
@@ -239,10 +245,14 @@ class PaperTracker:
                                 raise
                 except Exception as col_err:
                     LOGGER.debug(f"Column {col_name} migration skipped: {col_err}")
-            
-            conn.close()
         except Exception as e:
             LOGGER.warning(f"Migration check failed (non-fatal): {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def log_signal(
         self,
@@ -340,6 +350,7 @@ class PaperTracker:
         # go through log_signal(), so dedup here catches ALL paths
         # =====================================================================
         _dedup_minutes = int(os.environ.get("PAPER_TRADE_DEDUP_MINUTES", "90"))
+        dedup_conn = None
         try:
             dedup_conn = self._get_connection()
             dedup_cutoff = (datetime.utcnow() - timedelta(minutes=_dedup_minutes)).isoformat()
@@ -348,13 +359,18 @@ class PaperTracker:
                 (symbol.upper(), dedup_cutoff)
             )
             dedup_row = self._fetchall(dedup_cur)
-            dedup_conn.close()
             recent_count = dedup_row[0]["cnt"] if dedup_row and dedup_row[0] else 0
             if recent_count > 0:
                 LOGGER.info(f"[{symbol}] ⏭️ DEDUP (centralized): Already {recent_count} trade(s) in last {_dedup_minutes}min — skipping")
                 return None
         except Exception as dedup_err:
             LOGGER.debug(f"[{symbol}] Centralized dedup check failed (continuing): {dedup_err}")
+        finally:
+            if dedup_conn:
+                try:
+                    dedup_conn.close()
+                except Exception:
+                    pass
         
         import uuid
         
@@ -436,6 +452,7 @@ class PaperTracker:
             expected_move_pct
         )
         
+        conn = None
         try:
             if self.use_postgres:
                 conn = self._get_postgres_connection()
@@ -455,7 +472,6 @@ class PaperTracker:
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, params)
                 conn.commit()
-                conn.close()
             else:
                 conn = sqlite3.connect(self.db_path)
                 conn.execute("""
@@ -473,7 +489,6 @@ class PaperTracker:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, params)
                 conn.commit()
-                conn.close()
             
             # Enhanced logging for V3 trades
             v3_info = ""
@@ -496,6 +511,7 @@ class PaperTracker:
             if _move_pct and entry_price:
                 move_dir = 1.0 if signal_direction.upper() in ("UP", "LONG", "BULLISH") else -1.0
                 computed_target = entry_price * (1.0 + move_dir * abs(_move_pct) / 100.0)
+                update_conn = None
                 try:
                     update_conn = self._get_connection()
                     self._execute(update_conn,
@@ -503,16 +519,27 @@ class PaperTracker:
                         (computed_target, paper_trade_id)
                     )
                     update_conn.commit()
-                    update_conn.close()
                     LOGGER.debug(f"[{symbol}] target_price set to ${computed_target:,.4f} (move={_move_pct:+.2f}%)")
                 except Exception as tp_err:
                     LOGGER.debug(f"[{symbol}] Could not set target_price: {tp_err}")
+                finally:
+                    if update_conn:
+                        try:
+                            update_conn.close()
+                        except Exception:
+                            pass
             
             return paper_trade_id
         
         except Exception as e:
             LOGGER.error(f"Failed to log paper trade: {e}")
             raise
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def check_outcome(self, paper_trade_id: str, current_price: float) -> dict:
         """
@@ -902,6 +929,7 @@ class PaperTracker:
                 
                 # Save checkpoint updates to database
                 if checkpoints_updated:
+                    update_conn = None
                     try:
                         if self.use_postgres:
                             update_conn = self._get_postgres_connection()
@@ -919,7 +947,6 @@ class PaperTracker:
                                 paper_trade_id
                             ))
                             update_conn.commit()
-                            update_conn.close()
                         else:
                             update_conn = sqlite3.connect(self.db_path)
                             update_conn.execute("""
@@ -935,13 +962,18 @@ class PaperTracker:
                                 paper_trade_id
                             ))
                             update_conn.commit()
-                            update_conn.close()
                             
                         LOGGER.info(
                             f"[{symbol}] Checkpoint data saved: {checkpoint_results}"
                         )
                     except Exception as e:
                         LOGGER.error(f"Failed to save checkpoint data: {e}")
+                    finally:
+                        if update_conn:
+                            try:
+                                update_conn.close()
+                            except Exception:
+                                pass
                 
                 # =====================================================================
                 # FINAL RESOLUTION: Check if target time reached for final outcome
