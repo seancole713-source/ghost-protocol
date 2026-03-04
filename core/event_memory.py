@@ -349,12 +349,12 @@ class EventMemory:
             return
             
         try:
-            import psycopg2
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+              cur = conn.cursor()
             
-            # Events table - individual events Ghost observed
-            cur.execute('''
+              # Events table - individual events Ghost observed
+              cur.execute('''
                 CREATE TABLE IF NOT EXISTS ghost_events (
                     event_id TEXT PRIMARY KEY,
                     event_type TEXT NOT NULL,
@@ -399,9 +399,7 @@ class EventMemory:
                 )
             ''')
             
-            conn.commit()
             cur.close()
-            conn.close()
             LOGGER.info("[EVENT_MEMORY] ✅ Database tables initialized")
             
         except Exception as e:
@@ -1934,41 +1932,39 @@ class EventMemory:
             return
         
         try:
-            import psycopg2
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor()
-            
-            cur.execute("""
-                INSERT INTO ghost_event_patterns 
-                (event_type, keywords, affected_symbols, immediate_reaction, peak_reaction,
-                 recovery_time_hours, typical_direction, times_observed, last_observed,
-                 accuracy, notes, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-                ON CONFLICT (event_type) DO UPDATE SET
-                    immediate_reaction = EXCLUDED.immediate_reaction,
-                    peak_reaction = EXCLUDED.peak_reaction,
-                    times_observed = EXCLUDED.times_observed,
-                    last_observed = EXCLUDED.last_observed,
-                    accuracy = EXCLUDED.accuracy,
-                    notes = EXCLUDED.notes,
-                    updated_at = NOW()
-            """, (
-                pattern.event_type,
-                json.dumps(pattern.keywords),
-                json.dumps(pattern.affected_symbols),
-                pattern.immediate_reaction,
-                pattern.peak_reaction,
-                pattern.recovery_time_hours,
-                pattern.typical_direction,
-                pattern.times_observed,
-                pattern.last_observed,
-                pattern.accuracy,
-                pattern.notes,
-            ))
-            
-            conn.commit()
-            cur.close()
-            conn.close()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    INSERT INTO ghost_event_patterns 
+                    (event_type, keywords, affected_symbols, immediate_reaction, peak_reaction,
+                     recovery_time_hours, typical_direction, times_observed, last_observed,
+                     accuracy, notes, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (event_type) DO UPDATE SET
+                        immediate_reaction = EXCLUDED.immediate_reaction,
+                        peak_reaction = EXCLUDED.peak_reaction,
+                        times_observed = EXCLUDED.times_observed,
+                        last_observed = EXCLUDED.last_observed,
+                        accuracy = EXCLUDED.accuracy,
+                        notes = EXCLUDED.notes,
+                        updated_at = NOW()
+                """, (
+                    pattern.event_type,
+                    json.dumps(pattern.keywords),
+                    json.dumps(pattern.affected_symbols),
+                    pattern.immediate_reaction,
+                    pattern.peak_reaction,
+                    pattern.recovery_time_hours,
+                    pattern.typical_direction,
+                    pattern.times_observed,
+                    pattern.last_observed,
+                    pattern.accuracy,
+                    pattern.notes,
+                ))
+                
+                cur.close()
             
             LOGGER.debug(f"[EVENT_MEMORY] 💾 Persisted pattern {event_type} to PostgreSQL")
             
@@ -1987,37 +1983,36 @@ class EventMemory:
             return
         
         try:
-            import psycopg2
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor()
-            
-            cur.execute("""
-                SELECT event_type, immediate_reaction, peak_reaction, times_observed,
-                       last_observed, accuracy, notes
-                FROM ghost_event_patterns
-                WHERE times_observed > 0
-            """)
-            
-            rows = cur.fetchall()
-            updated = 0
-            
-            for event_type, imm_react, peak_react, times_obs, last_obs, accuracy, notes in rows:
-                if event_type in self.patterns:
-                    pattern = self.patterns[event_type]
-                    # Only override if DB has more observations than the hardcoded default
-                    if times_obs > pattern.times_observed or pattern.times_observed <= 500:
-                        pattern.immediate_reaction = imm_react
-                        pattern.peak_reaction = peak_react
-                        pattern.times_observed = times_obs
-                        pattern.accuracy = accuracy
-                        if last_obs:
-                            pattern.last_observed = str(last_obs)
-                        if notes:
-                            pattern.notes = notes
-                        updated += 1
-            
-            cur.close()
-            conn.close()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    SELECT event_type, immediate_reaction, peak_reaction, times_observed,
+                           last_observed, accuracy, notes
+                    FROM ghost_event_patterns
+                    WHERE times_observed > 0
+                """)
+                
+                rows = cur.fetchall()
+                updated = 0
+                
+                for event_type, imm_react, peak_react, times_obs, last_obs, accuracy, notes in rows:
+                    if event_type in self.patterns:
+                        pattern = self.patterns[event_type]
+                        # Only override if DB has more observations than the hardcoded default
+                        if times_obs > pattern.times_observed or pattern.times_observed <= 500:
+                            pattern.immediate_reaction = imm_react
+                            pattern.peak_reaction = peak_react
+                            pattern.times_observed = times_obs
+                            pattern.accuracy = accuracy
+                            if last_obs:
+                                pattern.last_observed = str(last_obs)
+                            if notes:
+                                pattern.notes = notes
+                            updated += 1
+                
+                cur.close()
             
             if updated > 0:
                 LOGGER.info(f"[EVENT_MEMORY] 🧠 Loaded {updated} refined patterns from PostgreSQL (survive deploys)")
@@ -2088,11 +2083,11 @@ class EventMemory:
             return
             
         try:
-            import psycopg2
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+              cur = conn.cursor()
             
-            cur.execute('''
+              cur.execute('''
                 INSERT INTO ghost_events 
                 (event_id, event_type, timestamp, trigger, source, primary_symbol,
                  related_symbols, price_at_event, price_1h_later, price_4h_later,
@@ -2121,9 +2116,7 @@ class EventMemory:
                 event.ghost_was_right, event.lesson
             ))
             
-            conn.commit()
-            cur.close()
-            conn.close()
+              cur.close()
             
         except Exception as e:
             LOGGER.error(f"[EVENT_MEMORY] Failed to save event: {e}")

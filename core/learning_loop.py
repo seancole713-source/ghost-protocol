@@ -63,34 +63,27 @@ class LearningLoop:
         import os
         database_url = os.getenv("DATABASE_URL")
         if database_url:
-            conn = None
             try:
-                import psycopg2
-                conn = psycopg2.connect(database_url)
-                cursor = conn.cursor()
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS ghost_kv_store (
-                        key TEXT PRIMARY KEY,
-                        value JSONB NOT NULL,
-                        updated_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-                cursor.execute("SELECT value FROM ghost_kv_store WHERE key = 'learning_memory'")
-                row = cursor.fetchone()
-                if row:
-                    self.memory = row[0] if isinstance(row[0], dict) else json.loads(row[0])
-                    logger.info(
-                        f"Loaded learning memory from PostgreSQL: {len(self.memory.get('history', []))} entries"
-                    )
-                    return
+                from core.db_pool import get_sync_connection
+                with get_sync_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS ghost_kv_store (
+                            key TEXT PRIMARY KEY,
+                            value JSONB NOT NULL,
+                            updated_at TIMESTAMP DEFAULT NOW()
+                        )
+                    """)
+                    cursor.execute("SELECT value FROM ghost_kv_store WHERE key = 'learning_memory'")
+                    row = cursor.fetchone()
+                    if row:
+                        self.memory = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                        logger.info(
+                            f"Loaded learning memory from PostgreSQL: {len(self.memory.get('history', []))} entries"
+                        )
+                        return
             except Exception as e:
                 logger.warning(f"PostgreSQL memory load failed, trying disk: {e}")
-            finally:
-                if conn is not None:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
         
         # Disk fallback
         if Path(self.memory_path).exists():
@@ -128,34 +121,26 @@ class LearningLoop:
         import os
         database_url = os.getenv("DATABASE_URL")
         if database_url:
-            conn = None
             try:
-                import psycopg2
-                conn = psycopg2.connect(database_url)
-                cursor = conn.cursor()
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS ghost_kv_store (
-                        key TEXT PRIMARY KEY,
-                        value JSONB NOT NULL,
-                        updated_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-                cursor.execute("""
-                    INSERT INTO ghost_kv_store (key, value, updated_at)
-                    VALUES ('learning_memory', %s, NOW())
-                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-                """, (json.dumps(self.memory),))
-                conn.commit()
-                logger.info("Saved learning memory to PostgreSQL")
-                return
+                from core.db_pool import get_sync_connection
+                with get_sync_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS ghost_kv_store (
+                            key TEXT PRIMARY KEY,
+                            value JSONB NOT NULL,
+                            updated_at TIMESTAMP DEFAULT NOW()
+                        )
+                    """)
+                    cursor.execute("""
+                        INSERT INTO ghost_kv_store (key, value, updated_at)
+                        VALUES ('learning_memory', %s, NOW())
+                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+                    """, (json.dumps(self.memory),))
+                    logger.info("Saved learning memory to PostgreSQL")
+                    return
             except Exception as e:
                 logger.warning(f"PostgreSQL memory save failed, falling back to disk: {e}")
-            finally:
-                if conn is not None:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
         
         # Disk fallback (development)
         MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -173,13 +158,12 @@ class LearningLoop:
         """
         import os
         try:
-            import psycopg2
+            from core.db_pool import get_sync_connection
             database_url = os.getenv("DATABASE_URL")
             if not database_url:
                 return {"error": "DATABASE_URL not set", "count": 0}
             
-            conn = psycopg2.connect(database_url)
-            try:
+            with get_sync_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Get accuracy from paper_trades (the primary accuracy source)
@@ -198,11 +182,6 @@ class LearningLoop:
                 total = row[0] or 0
                 correct = row[1] or 0
                 incorrect = row[2] or 0
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
             
             if total == 0:
                 return {"error": "No outcomes found", "count": 0}

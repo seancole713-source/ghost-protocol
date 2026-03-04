@@ -170,20 +170,19 @@ def _append_actual_point_direct(symbol: str, timestamp: int, price: float):
     db_url = os.getenv("DATABASE_URL")
     if db_url and os.getenv("PREDICTION_STORE_ENGINE") == "postgres":
         try:
-            import psycopg2
-            conn = psycopg2.connect(db_url)
-            cur = conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO ghost_actual_prices (symbol, timestamp, price, created_at)
-                VALUES (%s, %s, %s, NOW())
-                ON CONFLICT (symbol, timestamp) DO UPDATE SET price = EXCLUDED.price
-                """,
-                (symbol, timestamp, price)
-            )
-            conn.commit()
-            cur.close()
-            conn.close()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO ghost_actual_prices (symbol, timestamp, price, created_at)
+                    VALUES (%s, %s, %s, NOW())
+                    ON CONFLICT (symbol, timestamp) DO UPDATE SET price = EXCLUDED.price
+                    """,
+                    (symbol, timestamp, price)
+                )
+                conn.commit()
+                cur.close()
             return
         except Exception as e:
             LOGGER.debug(f"Postgres append failed: {e}")

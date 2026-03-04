@@ -108,9 +108,9 @@ class V3CompetitionSystem:
         LOGGER.info(f"[V3-COMPETITION] 🏆 Initialized: {len(self._stock_pool)} stocks, {len(self._crypto_pool)} crypto competing")
     
     def _get_connection(self):
-        """Get PostgreSQL connection"""
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        """Get PostgreSQL connection from pool"""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection()
     
     def _ensure_tables(self):
         """Create competition tables"""
@@ -118,7 +118,7 @@ class V3CompetitionSystem:
             return
         
         try:
-            conn = self._get_connection()
+          with self._get_connection() as conn:
             cur = conn.cursor()
             
             # Main competition pool table
@@ -178,8 +178,6 @@ class V3CompetitionSystem:
                 ON v3_competition_pool(asset_type, rank)
             """)
             
-            conn.commit()
-            conn.close()
             LOGGER.info("[V3-COMPETITION] ✅ PostgreSQL tables ready")
         except Exception as e:
             LOGGER.error(f"[V3-COMPETITION] Failed to create tables: {e}")
@@ -190,7 +188,7 @@ class V3CompetitionSystem:
             return
         
         try:
-            conn = self._get_connection()
+          with self._get_connection() as conn:
             cur = conn.cursor()
             
             cur.execute("""
@@ -233,7 +231,6 @@ class V3CompetitionSystem:
             # Rebuild TOP 10 lists
             self._rebuild_top_lists()
             
-            conn.close()
             LOGGER.info(f"[V3-COMPETITION] Loaded {len(self._stock_pool)} stocks, {len(self._crypto_pool)} crypto")
         except Exception as e:
             LOGGER.error(f"[V3-COMPETITION] Failed to load pools: {e}")
@@ -317,7 +314,7 @@ class V3CompetitionSystem:
             return -1
         
         try:
-            conn = self._get_connection()
+          with self._get_connection() as conn:
             cur = conn.cursor()
             
             cur.execute("""
@@ -330,8 +327,6 @@ class V3CompetitionSystem:
                   confidence, target_time))
             
             pred_id = cur.fetchone()[0]
-            conn.commit()
-            conn.close()
             
             LOGGER.debug(f"[V3-COMPETITION] 📊 Shadow prediction #{pred_id}: {symbol} {direction}")
             return pred_id
@@ -350,7 +345,7 @@ class V3CompetitionSystem:
             return
         
         try:
-            conn = self._get_connection()
+          with self._get_connection() as conn:
             cur = conn.cursor()
             
             # Update the prediction
@@ -363,7 +358,6 @@ class V3CompetitionSystem:
             
             row = cur.fetchone()
             if not row:
-                conn.close()
                 return
             
             symbol, asset_type = row
@@ -379,9 +373,6 @@ class V3CompetitionSystem:
                     last_updated = NOW()
                 WHERE symbol = %s
             """, (outcome, outcome, symbol))
-            
-            conn.commit()
-            conn.close()
             
             LOGGER.info(f"[V3-COMPETITION] ✅ Resolved #{pred_id}: {symbol} = {outcome}")
         except Exception as e:
@@ -406,7 +397,7 @@ class V3CompetitionSystem:
         }
         
         try:
-            conn = self._get_connection()
+          with self._get_connection() as conn:
             cur = conn.cursor()
             
             # Calculate metrics from shadow predictions (last 30 days)
@@ -574,9 +565,6 @@ class V3CompetitionSystem:
                         pool[symbol].win_rate = entry["win_rate"]
                         pool[symbol].trend = entry["trend"]
             
-            conn.commit()
-            conn.close()
-            
             # Rebuild TOP 10 lists
             self._rebuild_top_lists()
             
@@ -595,7 +583,7 @@ class V3CompetitionSystem:
             return
         
         try:
-            conn = self._get_connection()
+          with self._get_connection() as conn:
             cur = conn.cursor()
             
             cur.execute("""
@@ -623,9 +611,6 @@ class V3CompetitionSystem:
                 metrics.last_prediction,
                 metrics.last_updated
             ))
-            
-            conn.commit()
-            conn.close()
         except Exception as e:
             LOGGER.error(f"[V3-COMPETITION] Failed to save competitor: {e}")
     

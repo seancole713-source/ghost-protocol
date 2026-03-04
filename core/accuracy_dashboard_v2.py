@@ -36,10 +36,11 @@ class AccuracyDashboardV2:
             LOGGER.warning("psycopg2 not installed")
 
     def _get_connection(self):
-        """Get PostgreSQL connection."""
+        """Get PostgreSQL connection from pool."""
         if not self.database_url or not HAS_PSYCOPG2:
             return None
-        return psycopg2.connect(self.database_url)
+        from core.db_pool import get_sync_connection
+        return get_sync_connection()
 
     def get_dashboard_summary(self, days: int = 30) -> dict[str, Any]:
         """
@@ -83,14 +84,14 @@ class AccuracyDashboardV2:
             "recent_predictions": []
         }
 
-        conn = self._get_connection()
-        if not conn:
+        _conn_cm = self._get_connection()
+        if not _conn_cm:
             LOGGER.warning("No database connection, returning empty summary")
             return summary
 
         try:
-            with conn:
-                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+          with _conn_cm as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
                     # Total reconciled predictions
                     cursor.execute("""
                         SELECT COUNT(*) as count FROM ghost_prediction_outcomes
@@ -262,8 +263,6 @@ class AccuracyDashboardV2:
 
         except Exception as e:
             LOGGER.error(f"Dashboard query failed: {e}", exc_info=True)
-        finally:
-            conn.close()
 
         return summary
 
@@ -289,8 +288,8 @@ class AccuracyDashboardV2:
         Note: Full implementation requires historical price tracking.
         For now, returns basic win/loss metrics.
         """
-        conn = self._get_connection()
-        if not conn:
+        _conn_cm = self._get_connection()
+        if not _conn_cm:
             return {
                 "win_rate": 0.0,
                 "total_trades": 0,
@@ -301,8 +300,8 @@ class AccuracyDashboardV2:
         cutoff_dt = datetime.now() - timedelta(days=days)
 
         try:
-            with conn:
-                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+          with _conn_cm as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
                     # Overall win rate
                     cursor.execute("""
                         SELECT
@@ -381,8 +380,6 @@ class AccuracyDashboardV2:
                 "total_trades": 0,
                 "error": str(e)
             }
-        finally:
-            conn.close()
 
 
 # Singleton instance

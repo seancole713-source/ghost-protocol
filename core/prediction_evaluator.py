@@ -39,13 +39,12 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 # ---------------------------------------------------------------------------
 
 def _get_pg_conn():
-    """Return a psycopg2 connection to the production PostgreSQL database."""
-    import psycopg2
-    import psycopg2.extras
+    """Return a psycopg2 connection context manager from the pool."""
+    from core.db_pool import get_sync_connection
 
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL not configured - evaluator cannot run")
-    return psycopg2.connect(DATABASE_URL)
+    return get_sync_connection()
 
 
 def _ensure_pg_tables(conn) -> None:
@@ -320,7 +319,8 @@ def evaluate_pending_predictions() -> Dict:
     Evaluate all predictions that are past their check_at timestamp.
     Reads from and writes to PostgreSQL.
     """
-    conn = _get_pg_conn()
+    _conn_cm = _get_pg_conn()
+    conn = _conn_cm.__enter__()
     _ensure_pg_tables(conn)
     cur = conn.cursor()
 
@@ -473,7 +473,7 @@ def evaluate_pending_predictions() -> Dict:
             f"({total_correct}/{total_checked} correct)"
         )
 
-    conn.close()
+    _conn_cm.__exit__(None, None, None)
 
     return {
         "evaluated": evaluated_count,

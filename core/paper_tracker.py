@@ -11,6 +11,7 @@ Purpose: Prove Ghost's accuracy with 30+ days of tracked signals.
 import sqlite3
 import json
 import os
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -49,20 +50,25 @@ class PaperTracker:
     def _get_postgres_connection(self):
         """Get PostgreSQL connection from shared pool.
         
-        Returns a connection whose .close() returns it to the pool
-        instead of destroying the underlying TCP socket.
+        Returns a context manager whose __exit__ returns the connection
+        to the pool instead of destroying the underlying TCP socket.
         """
-        from core.db_pool import get_sync_connection_raw
-        return get_sync_connection_raw()
+        from core.db_pool import get_sync_connection
+        return get_sync_connection()
     
+    @contextmanager
     def _get_connection(self):
         """Get database connection (PostgreSQL or SQLite)"""
         if self.use_postgres:
-            return self._get_postgres_connection()
+            with self._get_postgres_connection() as conn:
+                yield conn
         else:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
-            return conn
+            try:
+                yield conn
+            finally:
+                conn.close()
     
     def _execute(self, conn, query: str, params: tuple = ()):
         """Execute query with proper placeholder substitution for PostgreSQL"""
@@ -98,101 +104,93 @@ class PaperTracker:
     
     def _ensure_table(self):
         """Create paper_trades table if not exists"""
-        conn = None
         try:
-            if self.use_postgres:
-                conn = self._get_postgres_connection()
-                cur = conn.cursor()
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS paper_trades (
-                        paper_trade_id TEXT PRIMARY KEY,
-                        cascade_id TEXT NOT NULL,
-                        symbol TEXT NOT NULL,
-                        signal_direction TEXT NOT NULL,
-                        signal_confidence REAL NOT NULL,
-                        signal_time TIMESTAMP WITH TIME ZONE NOT NULL,
-                        entry_price REAL NOT NULL,
-                        entry_time TIMESTAMP WITH TIME ZONE NOT NULL,
-                        target_time TIMESTAMP WITH TIME ZONE NOT NULL,
-                        target_price REAL,
-                        position_size REAL DEFAULT 1000.0,
-                        stop_loss_pct REAL DEFAULT 0.05,
-                        take_profit_pct REAL DEFAULT 0.10,
-                        actual_direction TEXT,
-                        outcome TEXT,
-                        profit_loss REAL,
-                        profit_loss_pct REAL,
-                        checked_at TIMESTAMP WITH TIME ZONE,
-                        notes TEXT,
-                        created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                        trust_level INTEGER DEFAULT 1,
-                        checkpoint_times JSONB DEFAULT '[]',
-                        checkpoint_results JSONB DEFAULT '[]',
-                        checkpoint_evaluated JSONB DEFAULT '[]',
-                        checkpoint_prices JSONB DEFAULT '[]',
-                        v3_validated BOOLEAN DEFAULT FALSE,
-                        v3_strategy TEXT,
-                        v3_is_inverse BOOLEAN DEFAULT FALSE,
-                        v3_original_direction TEXT,
-                        v3_hold_hours INTEGER,
-                        v3_backtest_win_rate REAL
-                    )
-                """)
-                cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
-                cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome ON paper_trades(outcome)")
-                conn.commit()
-                LOGGER.info("✅ paper_trades table ready (PostgreSQL)")
-            else:
-                conn = sqlite3.connect(self.db_path)
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS paper_trades (
-                        paper_trade_id TEXT PRIMARY KEY,
-                        cascade_id TEXT NOT NULL,
-                        symbol TEXT NOT NULL,
-                        signal_direction TEXT NOT NULL,
-                        signal_confidence REAL NOT NULL,
-                        signal_time TEXT NOT NULL,
-                        entry_price REAL NOT NULL,
-                        entry_time TEXT NOT NULL,
-                        target_time TEXT NOT NULL,
-                        target_price REAL,
-                        position_size REAL DEFAULT 1000.0,
-                        stop_loss_pct REAL DEFAULT 0.05,
-                        take_profit_pct REAL DEFAULT 0.10,
-                        actual_direction TEXT,
-                        outcome TEXT,
-                        profit_loss REAL,
-                        profit_loss_pct REAL,
-                        checked_at TEXT,
-                        notes TEXT,
-                        created_at TEXT NOT NULL,
-                        trust_level INTEGER DEFAULT 1,
-                        checkpoint_times TEXT,
-                        checkpoint_results TEXT,
-                        checkpoint_evaluated TEXT,
-                        checkpoint_prices TEXT,
-                        v3_validated INTEGER DEFAULT 0,
-                        v3_strategy TEXT,
-                        v3_is_inverse INTEGER DEFAULT 0,
-                        v3_original_direction TEXT,
-                        v3_hold_hours INTEGER,
-                        v3_backtest_win_rate REAL
-                    )
-                """)
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome ON paper_trades(outcome)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_target_time ON paper_trades(target_time)")
-                conn.commit()
-                LOGGER.info("✅ paper_trades table ready (SQLite)")
+            with self._get_connection() as conn:
+                if self.use_postgres:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS paper_trades (
+                            paper_trade_id TEXT PRIMARY KEY,
+                            cascade_id TEXT NOT NULL,
+                            symbol TEXT NOT NULL,
+                            signal_direction TEXT NOT NULL,
+                            signal_confidence REAL NOT NULL,
+                            signal_time TIMESTAMP WITH TIME ZONE NOT NULL,
+                            entry_price REAL NOT NULL,
+                            entry_time TIMESTAMP WITH TIME ZONE NOT NULL,
+                            target_time TIMESTAMP WITH TIME ZONE NOT NULL,
+                            target_price REAL,
+                            position_size REAL DEFAULT 1000.0,
+                            stop_loss_pct REAL DEFAULT 0.05,
+                            take_profit_pct REAL DEFAULT 0.10,
+                            actual_direction TEXT,
+                            outcome TEXT,
+                            profit_loss REAL,
+                            profit_loss_pct REAL,
+                            checked_at TIMESTAMP WITH TIME ZONE,
+                            notes TEXT,
+                            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                            trust_level INTEGER DEFAULT 1,
+                            checkpoint_times JSONB DEFAULT '[]',
+                            checkpoint_results JSONB DEFAULT '[]',
+                            checkpoint_evaluated JSONB DEFAULT '[]',
+                            checkpoint_prices JSONB DEFAULT '[]',
+                            v3_validated BOOLEAN DEFAULT FALSE,
+                            v3_strategy TEXT,
+                            v3_is_inverse BOOLEAN DEFAULT FALSE,
+                            v3_original_direction TEXT,
+                            v3_hold_hours INTEGER,
+                            v3_backtest_win_rate REAL
+                        )
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome ON paper_trades(outcome)")
+                    conn.commit()
+                    LOGGER.info("✅ paper_trades table ready (PostgreSQL)")
+                else:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS paper_trades (
+                            paper_trade_id TEXT PRIMARY KEY,
+                            cascade_id TEXT NOT NULL,
+                            symbol TEXT NOT NULL,
+                            signal_direction TEXT NOT NULL,
+                            signal_confidence REAL NOT NULL,
+                            signal_time TEXT NOT NULL,
+                            entry_price REAL NOT NULL,
+                            entry_time TEXT NOT NULL,
+                            target_time TEXT NOT NULL,
+                            target_price REAL,
+                            position_size REAL DEFAULT 1000.0,
+                            stop_loss_pct REAL DEFAULT 0.05,
+                            take_profit_pct REAL DEFAULT 0.10,
+                            actual_direction TEXT,
+                            outcome TEXT,
+                            profit_loss REAL,
+                            profit_loss_pct REAL,
+                            checked_at TEXT,
+                            notes TEXT,
+                            created_at TEXT NOT NULL,
+                            trust_level INTEGER DEFAULT 1,
+                            checkpoint_times TEXT,
+                            checkpoint_results TEXT,
+                            checkpoint_evaluated TEXT,
+                            checkpoint_prices TEXT,
+                            v3_validated INTEGER DEFAULT 0,
+                            v3_strategy TEXT,
+                            v3_is_inverse INTEGER DEFAULT 0,
+                            v3_original_direction TEXT,
+                            v3_hold_hours INTEGER,
+                            v3_backtest_win_rate REAL
+                        )
+                    """)
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_outcome ON paper_trades(outcome)")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_trades_target_time ON paper_trades(target_time)")
+                    conn.commit()
+                    LOGGER.info("✅ paper_trades table ready (SQLite)")
         except Exception as e:
             LOGGER.error(f"Failed to create paper_trades table: {e}")
             # Don't raise - table might already exist
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
         
         # Run migrations to add columns that might be missing on existing tables
         self._run_migrations()
@@ -217,42 +215,34 @@ class PaperTracker:
             ("magnitude_error_pct", "REAL"),
         ]
         
-        conn = None
         try:
-            conn = self._get_connection()
-            
-            for col_name, col_type in migrations:
-                try:
-                    if self.use_postgres:
-                        cur = conn.cursor()
-                        # PostgreSQL: Check if column exists
-                        cur.execute("""
-                            SELECT column_name FROM information_schema.columns 
-                            WHERE table_name = 'paper_trades' AND column_name = %s
-                        """, (col_name,))
-                        if not cur.fetchone():
-                            cur.execute(f"ALTER TABLE paper_trades ADD COLUMN {col_name} {col_type}")
-                            conn.commit()
-                            LOGGER.info(f"🔧 Migration: Added column {col_name} to paper_trades")
-                    else:
-                        # SQLite: Try to add, ignore if exists
-                        try:
-                            conn.execute(f"ALTER TABLE paper_trades ADD COLUMN {col_name} {col_type}")
-                            conn.commit()
-                            LOGGER.info(f"🔧 Migration: Added column {col_name} to paper_trades")
-                        except sqlite3.OperationalError as e:
-                            if "duplicate column" not in str(e).lower():
-                                raise
-                except Exception as col_err:
-                    LOGGER.debug(f"Column {col_name} migration skipped: {col_err}")
+            with self._get_connection() as conn:
+                for col_name, col_type in migrations:
+                    try:
+                        if self.use_postgres:
+                            cur = conn.cursor()
+                            # PostgreSQL: Check if column exists
+                            cur.execute("""
+                                SELECT column_name FROM information_schema.columns 
+                                WHERE table_name = 'paper_trades' AND column_name = %s
+                            """, (col_name,))
+                            if not cur.fetchone():
+                                cur.execute(f"ALTER TABLE paper_trades ADD COLUMN {col_name} {col_type}")
+                                conn.commit()
+                                LOGGER.info(f"🔧 Migration: Added column {col_name} to paper_trades")
+                        else:
+                            # SQLite: Try to add, ignore if exists
+                            try:
+                                conn.execute(f"ALTER TABLE paper_trades ADD COLUMN {col_name} {col_type}")
+                                conn.commit()
+                                LOGGER.info(f"🔧 Migration: Added column {col_name} to paper_trades")
+                            except sqlite3.OperationalError as e:
+                                if "duplicate column" not in str(e).lower():
+                                    raise
+                    except Exception as col_err:
+                        LOGGER.debug(f"Column {col_name} migration skipped: {col_err}")
         except Exception as e:
             LOGGER.warning(f"Migration check failed (non-fatal): {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def log_signal(
         self,
@@ -350,27 +340,20 @@ class PaperTracker:
         # go through log_signal(), so dedup here catches ALL paths
         # =====================================================================
         _dedup_minutes = int(os.environ.get("PAPER_TRADE_DEDUP_MINUTES", "90"))
-        dedup_conn = None
         try:
-            dedup_conn = self._get_connection()
-            dedup_cutoff = (datetime.utcnow() - timedelta(minutes=_dedup_minutes)).isoformat()
-            dedup_cur = self._execute(dedup_conn,
-                "SELECT COUNT(*) as cnt FROM paper_trades WHERE symbol = ? AND entry_time > ?",
-                (symbol.upper(), dedup_cutoff)
-            )
-            dedup_row = self._fetchall(dedup_cur)
-            recent_count = dedup_row[0]["cnt"] if dedup_row and dedup_row[0] else 0
-            if recent_count > 0:
-                LOGGER.info(f"[{symbol}] ⏭️ DEDUP (centralized): Already {recent_count} trade(s) in last {_dedup_minutes}min — skipping")
-                return None
+            with self._get_connection() as dedup_conn:
+                dedup_cutoff = (datetime.utcnow() - timedelta(minutes=_dedup_minutes)).isoformat()
+                dedup_cur = self._execute(dedup_conn,
+                    "SELECT COUNT(*) as cnt FROM paper_trades WHERE symbol = ? AND entry_time > ?",
+                    (symbol.upper(), dedup_cutoff)
+                )
+                dedup_row = self._fetchall(dedup_cur)
+                recent_count = dedup_row[0]["cnt"] if dedup_row and dedup_row[0] else 0
+                if recent_count > 0:
+                    LOGGER.info(f"[{symbol}] ⏭️ DEDUP (centralized): Already {recent_count} trade(s) in last {_dedup_minutes}min — skipping")
+                    return None
         except Exception as dedup_err:
             LOGGER.debug(f"[{symbol}] Centralized dedup check failed (continuing): {dedup_err}")
-        finally:
-            if dedup_conn:
-                try:
-                    dedup_conn.close()
-                except Exception:
-                    pass
         
         import uuid
         
@@ -452,43 +435,41 @@ class PaperTracker:
             expected_move_pct
         )
         
-        conn = None
         try:
-            if self.use_postgres:
-                conn = self._get_postgres_connection()
-                cur = conn.cursor()
-                cur.execute("""
-                    INSERT INTO paper_trades (
-                        paper_trade_id, cascade_id, symbol,
-                        signal_direction, signal_confidence, signal_time,
-                        entry_price, entry_time, target_time,
-                        position_size, stop_loss_pct, take_profit_pct,
-                        outcome, created_at,
-                        trust_level, checkpoint_times, checkpoint_results,
-                        checkpoint_evaluated, checkpoint_prices,
-                        v3_validated, v3_strategy, v3_is_inverse,
-                        v3_original_direction, v3_hold_hours, v3_backtest_win_rate,
-                        expected_move_pct
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, params)
-                conn.commit()
-            else:
-                conn = sqlite3.connect(self.db_path)
-                conn.execute("""
-                    INSERT INTO paper_trades (
-                        paper_trade_id, cascade_id, symbol,
-                        signal_direction, signal_confidence, signal_time,
-                        entry_price, entry_time, target_time,
-                        position_size, stop_loss_pct, take_profit_pct,
-                        outcome, created_at,
-                        trust_level, checkpoint_times, checkpoint_results,
-                        checkpoint_evaluated, checkpoint_prices,
-                        v3_validated, v3_strategy, v3_is_inverse,
-                        v3_original_direction, v3_hold_hours, v3_backtest_win_rate,
-                        expected_move_pct
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, params)
-                conn.commit()
+            with self._get_connection() as conn:
+                if self.use_postgres:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        INSERT INTO paper_trades (
+                            paper_trade_id, cascade_id, symbol,
+                            signal_direction, signal_confidence, signal_time,
+                            entry_price, entry_time, target_time,
+                            position_size, stop_loss_pct, take_profit_pct,
+                            outcome, created_at,
+                            trust_level, checkpoint_times, checkpoint_results,
+                            checkpoint_evaluated, checkpoint_prices,
+                            v3_validated, v3_strategy, v3_is_inverse,
+                            v3_original_direction, v3_hold_hours, v3_backtest_win_rate,
+                            expected_move_pct
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, params)
+                    conn.commit()
+                else:
+                    conn.execute("""
+                        INSERT INTO paper_trades (
+                            paper_trade_id, cascade_id, symbol,
+                            signal_direction, signal_confidence, signal_time,
+                            entry_price, entry_time, target_time,
+                            position_size, stop_loss_pct, take_profit_pct,
+                            outcome, created_at,
+                            trust_level, checkpoint_times, checkpoint_results,
+                            checkpoint_evaluated, checkpoint_prices,
+                            v3_validated, v3_strategy, v3_is_inverse,
+                            v3_original_direction, v3_hold_hours, v3_backtest_win_rate,
+                            expected_move_pct
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, params)
+                    conn.commit()
             
             # Enhanced logging for V3 trades
             v3_info = ""
@@ -513,33 +494,21 @@ class PaperTracker:
                 computed_target = entry_price * (1.0 + move_dir * abs(_move_pct) / 100.0)
                 update_conn = None
                 try:
-                    update_conn = self._get_connection()
-                    self._execute(update_conn,
-                        "UPDATE paper_trades SET target_price = ? WHERE paper_trade_id = ?",
-                        (computed_target, paper_trade_id)
-                    )
-                    update_conn.commit()
-                    LOGGER.debug(f"[{symbol}] target_price set to ${computed_target:,.4f} (move={_move_pct:+.2f}%)")
+                    with self._get_connection() as update_conn:
+                        self._execute(update_conn,
+                            "UPDATE paper_trades SET target_price = ? WHERE paper_trade_id = ?",
+                            (computed_target, paper_trade_id)
+                        )
+                        update_conn.commit()
+                        LOGGER.debug(f"[{symbol}] target_price set to ${computed_target:,.4f} (move={_move_pct:+.2f}%)")
                 except Exception as tp_err:
                     LOGGER.debug(f"[{symbol}] Could not set target_price: {tp_err}")
-                finally:
-                    if update_conn:
-                        try:
-                            update_conn.close()
-                        except Exception:
-                            pass
             
             return paper_trade_id
         
         except Exception as e:
             LOGGER.error(f"Failed to log paper trade: {e}")
             raise
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def check_outcome(self, paper_trade_id: str, current_price: float) -> dict:
         """
@@ -557,9 +526,8 @@ class PaperTracker:
                 "profit_loss_pct": float
             }
         """
-        conn = self._get_connection()
-        
-        try:
+        with self._get_connection() as conn:
+          try:
             cur = self._execute(conn, """
                 SELECT * FROM paper_trades
                 WHERE paper_trade_id = ?
@@ -760,11 +728,9 @@ class PaperTracker:
                 "trust_update": trust_result
             }
         
-        except Exception as e:
+          except Exception as e:
             LOGGER.error(f"Failed to check paper trade outcome: {e}")
             return {"resolved": False, "error": str(e)}
-        finally:
-            conn.close()
     
     def check_all_pending(self, price_data: dict) -> list:
         """
@@ -781,9 +747,8 @@ class PaperTracker:
         Returns:
             List of resolved trades (final outcomes only)
         """
-        conn = self._get_connection()
-        
-        try:
+        with self._get_connection() as conn:
+          try:
             cur = self._execute(conn, """
                 SELECT paper_trade_id, symbol, target_time, signal_direction, entry_price,
                        trust_level, checkpoint_times, checkpoint_results, checkpoint_evaluated, checkpoint_prices
@@ -929,51 +894,43 @@ class PaperTracker:
                 
                 # Save checkpoint updates to database
                 if checkpoints_updated:
-                    update_conn = None
                     try:
-                        if self.use_postgres:
-                            update_conn = self._get_postgres_connection()
-                            update_cur = update_conn.cursor()
-                            update_cur.execute("""
-                                UPDATE paper_trades
-                                SET checkpoint_results = %s,
-                                    checkpoint_evaluated = %s,
-                                    checkpoint_prices = %s
-                                WHERE paper_trade_id = %s
-                            """, (
-                                json.dumps(checkpoint_results),
-                                json.dumps(checkpoint_evaluated),
-                                json.dumps(checkpoint_prices),
-                                paper_trade_id
-                            ))
-                            update_conn.commit()
-                        else:
-                            update_conn = sqlite3.connect(self.db_path)
-                            update_conn.execute("""
-                                UPDATE paper_trades
-                                SET checkpoint_results = ?,
-                                    checkpoint_evaluated = ?,
-                                    checkpoint_prices = ?
-                                WHERE paper_trade_id = ?
-                            """, (
-                                json.dumps(checkpoint_results),
-                                json.dumps(checkpoint_evaluated),
-                                json.dumps(checkpoint_prices),
-                                paper_trade_id
-                            ))
-                            update_conn.commit()
+                        with self._get_connection() as update_conn:
+                            if self.use_postgres:
+                                update_cur = update_conn.cursor()
+                                update_cur.execute("""
+                                    UPDATE paper_trades
+                                    SET checkpoint_results = %s,
+                                        checkpoint_evaluated = %s,
+                                        checkpoint_prices = %s
+                                    WHERE paper_trade_id = %s
+                                """, (
+                                    json.dumps(checkpoint_results),
+                                    json.dumps(checkpoint_evaluated),
+                                    json.dumps(checkpoint_prices),
+                                    paper_trade_id
+                                ))
+                                update_conn.commit()
+                            else:
+                                update_conn.execute("""
+                                    UPDATE paper_trades
+                                    SET checkpoint_results = ?,
+                                        checkpoint_evaluated = ?,
+                                        checkpoint_prices = ?
+                                    WHERE paper_trade_id = ?
+                                """, (
+                                    json.dumps(checkpoint_results),
+                                    json.dumps(checkpoint_evaluated),
+                                    json.dumps(checkpoint_prices),
+                                    paper_trade_id
+                                ))
+                                update_conn.commit()
                             
-                        LOGGER.info(
-                            f"[{symbol}] Checkpoint data saved: {checkpoint_results}"
-                        )
+                            LOGGER.info(
+                                f"[{symbol}] Checkpoint data saved: {checkpoint_results}"
+                            )
                     except Exception as e:
                         LOGGER.error(f"Failed to save checkpoint data: {e}")
-                    finally:
-                        if update_conn:
-                            try:
-                                update_conn.close()
-                            except Exception:
-                                pass
                 
                 # =====================================================================
                 # FINAL RESOLUTION: Check if target time reached for final outcome
@@ -998,13 +955,11 @@ class PaperTracker:
             
             return resolved
         
-        except Exception as e:
+          except Exception as e:
             LOGGER.error(f"Failed to check pending trades: {e}")
             import traceback
             LOGGER.error(traceback.format_exc())
             return []
-        finally:
-            conn.close()
     
     def get_trades(
         self,
@@ -1014,9 +969,7 @@ class PaperTracker:
         limit: int = 50
     ) -> list:
         """Get paper trades with filters"""
-        conn = self._get_connection()
-        
-        try:
+        with self._get_connection() as conn:
             query = "SELECT * FROM paper_trades WHERE 1=1"
             params = []
             
@@ -1038,9 +991,6 @@ class PaperTracker:
             
             cur = self._execute(conn, query, tuple(params))
             return self._fetchall(cur)
-        
-        finally:
-            conn.close()
     
     def get_stats(self, days: int = 30, since: str = None, v2_only: bool = False) -> dict:
         """
@@ -1069,9 +1019,8 @@ class PaperTracker:
                 "accuracy_by_symbol": {...}
             }
         """
-        conn = self._get_connection()
-        
-        try:
+        with self._get_connection() as conn:
+          try:
             # Use 'since' parameter if provided, otherwise calculate from 'days'
             if since:
                 cutoff = since
@@ -1181,11 +1130,9 @@ class PaperTracker:
                 "money_game_mode": True  # Using Money Game, not V2 whitelist
             }
         
-        except Exception as e:
+          except Exception as e:
             LOGGER.error(f"Failed to calculate stats: {e}")
             return {}
-        finally:
-            conn.close()
 
 
 # Singleton

@@ -29,8 +29,8 @@ class ShadowOutcomeResolver:
     
     def _get_connection(self):
         """Get PostgreSQL connection via shared pool bridge."""
-        from core.db_pool import get_sync_connection_raw
-        return get_sync_connection_raw()
+        from core.db_pool import get_sync_connection
+        return get_sync_connection()
     
     async def resolve_pending(self, batch_size: int = 100) -> Dict:
         """
@@ -53,100 +53,94 @@ class ShadowOutcomeResolver:
         }
         
         try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            # Get pending predictions where target_time has passed
-            cur.execute("""
-                SELECT id, symbol, asset_type, direction, entry_price, target_price, target_time
-                FROM v3_shadow_predictions
-                WHERE outcome IS NULL
-                  AND target_time <= NOW()
-                ORDER BY target_time ASC
-                LIMIT %s
-            """, (batch_size,))
-            
-            pending = cur.fetchall()
-            LOGGER.info(f"[RESOLVER] Found {len(pending)} shadow predictions to resolve")
-            
-            competition = get_competition_system()
-            
-            for pred in pending:
-                pred_id, symbol, asset_type, direction, entry_price, target_price, target_time = pred
+            with self._get_connection() as conn:
+                cur = conn.cursor()
                 
-                try:
-                    # Get current price
-                    current_price = await self._get_current_price(symbol, asset_type)
+                # Get pending predictions where target_time has passed
+                cur.execute("""
+                    SELECT id, symbol, asset_type, direction, entry_price, target_price, target_time
+                    FROM v3_shadow_predictions
+                    WHERE outcome IS NULL
+                      AND target_time <= NOW()
+                    ORDER BY target_time ASC
+                    LIMIT %s
+                """, (batch_size,))
+                
+                pending = cur.fetchall()
+                LOGGER.info(f"[RESOLVER] Found {len(pending)} shadow predictions to resolve")
+                
+                competition = get_competition_system()
+                
+                for pred in pending:
+                    pred_id, symbol, asset_type, direction, entry_price, target_price, target_time = pred
                     
-                    if current_price is None:
+                    try:
+                        # Get current price
+                        current_price = await self._get_current_price(symbol, asset_type)
+                        
+                        if current_price is None:
+                            results["errors"] += 1
+                            continue
+                        
+                        # Determine outcome
+                        if direction == "BUY":
+                            # BUY wins if price went up toward target
+                            outcome = "WIN" if current_price >= target_price else "LOSS"
+                        else:
+                            # SELL wins if price went down toward target  
+                            outcome = "WIN" if current_price <= target_price else "LOSS"
+                        
+                        # Update database
+                        cur.execute("""
+                            UPDATE v3_shadow_predictions
+                            SET outcome = %s, final_price = %s, resolved_at = NOW()
+                            WHERE id = %s
+                        """, (outcome, current_price, pred_id))
+                        
+                        # Update competitor metrics
+                        cur.execute("""
+                            UPDATE v3_competition_pool
+                            SET 
+                                total_predictions = total_predictions + 1,
+                                wins = wins + CASE WHEN %s = 'WIN' THEN 1 ELSE 0 END,
+                                losses = losses + CASE WHEN %s = 'LOSS' THEN 1 ELSE 0 END,
+                                last_prediction = NOW(),
+                                last_updated = NOW()
+                            WHERE symbol = %s
+                        """, (outcome, outcome, symbol))
+                        
+                        results["resolved"] += 1
+                        if outcome == "WIN":
+                            results["wins"] += 1
+                        else:
+                            results["losses"] += 1
+                        
+                        results["details"].append({
+                            "symbol": symbol,
+                            "direction": direction,
+                            "entry": entry_price,
+                            "target": target_price,
+                            "final": current_price,
+                            "outcome": outcome
+                        })
+                        
+                    except Exception as e:
+                        LOGGER.error(f"[RESOLVER] Failed to resolve {symbol}: {e}")
                         results["errors"] += 1
-                        continue
-                    
-                    # Determine outcome
-                    if direction == "BUY":
-                        # BUY wins if price went up toward target
-                        outcome = "WIN" if current_price >= target_price else "LOSS"
-                    else:
-                        # SELL wins if price went down toward target  
-                        outcome = "WIN" if current_price <= target_price else "LOSS"
-                    
-                    # Update database
-                    cur.execute("""
-                        UPDATE v3_shadow_predictions
-                        SET outcome = %s, final_price = %s, resolved_at = NOW()
-                        WHERE id = %s
-                    """, (outcome, current_price, pred_id))
-                    
-                    # Update competitor metrics
-                    cur.execute("""
-                        UPDATE v3_competition_pool
-                        SET 
-                            total_predictions = total_predictions + 1,
-                            wins = wins + CASE WHEN %s = 'WIN' THEN 1 ELSE 0 END,
-                            losses = losses + CASE WHEN %s = 'LOSS' THEN 1 ELSE 0 END,
-                            last_prediction = NOW(),
-                            last_updated = NOW()
-                        WHERE symbol = %s
-                    """, (outcome, outcome, symbol))
-                    
-                    results["resolved"] += 1
-                    if outcome == "WIN":
-                        results["wins"] += 1
-                    else:
-                        results["losses"] += 1
-                    
-                    results["details"].append({
-                        "symbol": symbol,
-                        "direction": direction,
-                        "entry": entry_price,
-                        "target": target_price,
-                        "final": current_price,
-                        "outcome": outcome
-                    })
-                    
-                except Exception as e:
-                    LOGGER.error(f"[RESOLVER] Failed to resolve {symbol}: {e}")
-                    results["errors"] += 1
-            
-            conn.commit()
-            
-            # Update rankings after resolving batch
-            if results["resolved"] > 0:
-                LOGGER.info("[RESOLVER] Triggering ranking update...")
-                competition.update_rankings()
-            
-            LOGGER.info(f"[RESOLVER] ✅ Resolved {results['resolved']}: {results['wins']} wins, {results['losses']} losses")
-            return results
+                
+                conn.commit()
+                
+                # Update rankings after resolving batch
+                if results["resolved"] > 0:
+                    LOGGER.info("[RESOLVER] Triggering ranking update...")
+                    competition.update_rankings()
+                
+                LOGGER.info(f"[RESOLVER] ✅ Resolved {results['resolved']}: {results['wins']} wins, {results['losses']} losses")
+                return results
             
         except Exception as e:
             LOGGER.error(f"[RESOLVER] Failed to resolve pending: {e}")
             return {"error": str(e)}
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     async def _get_current_price(self, symbol: str, asset_type: str) -> Optional[float]:
         """Get current price for symbol"""
@@ -226,37 +220,30 @@ class ShadowOutcomeResolver:
         if not self.use_postgres:
             return {"error": "No database"}
         
-        conn = None
         try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            cur.execute("""
-                SELECT 
-                    COUNT(*) FILTER (WHERE outcome IS NULL) as pending,
-                    COUNT(*) FILTER (WHERE outcome = 'WIN') as wins,
-                    COUNT(*) FILTER (WHERE outcome = 'LOSS') as losses,
-                    COUNT(*) as total
-                FROM v3_shadow_predictions
-            """)
-            
-            row = cur.fetchone()
-            
-            return {
-                "pending": row[0],
-                "wins": row[1],
-                "losses": row[2],
-                "total": row[3],
-                "win_rate": f"{(row[1]/(row[1]+row[2])*100):.1f}%" if (row[1]+row[2]) > 0 else "N/A"
-            }
+            with self._get_connection() as conn:
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    SELECT 
+                        COUNT(*) FILTER (WHERE outcome IS NULL) as pending,
+                        COUNT(*) FILTER (WHERE outcome = 'WIN') as wins,
+                        COUNT(*) FILTER (WHERE outcome = 'LOSS') as losses,
+                        COUNT(*) as total
+                    FROM v3_shadow_predictions
+                """)
+                
+                row = cur.fetchone()
+                
+                return {
+                    "pending": row[0],
+                    "wins": row[1],
+                    "losses": row[2],
+                    "total": row[3],
+                    "win_rate": f"{(row[1]/(row[1]+row[2])*100):.1f}%" if (row[1]+row[2]) > 0 else "N/A"
+                }
         except Exception as e:
             return {"error": str(e)}
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
 
 
 # Singleton

@@ -43,54 +43,39 @@ class ModelStore:
         self._ensure_table_exists()
     
     def _get_connection(self):
-        """Get PostgreSQL connection."""
-        try:
-            result = urlparse(self.db_url)
-            conn = psycopg2.connect(
-                database=result.path[1:],
-                user=result.username,
-                password=result.password,
-                host=result.hostname,
-                port=result.port
-            )
-            return conn
-        except Exception as e:
-            LOGGER.error(f"Failed to connect to PostgreSQL: {e}")
-            raise
+        """Get PostgreSQL connection from pool."""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection()
     
     def _ensure_table_exists(self):
         """Create model_store table if it doesn't exist."""
-        conn = self._get_connection()
-        
-        try:
-            cur = conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS model_store (
-                    model_id SERIAL PRIMARY KEY,
-                    model_name VARCHAR(100) NOT NULL UNIQUE,
-                    model_version VARCHAR(50),
-                    model_data BYTEA NOT NULL,
-                    metadata JSONB,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+        with self._get_connection() as conn:
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS model_store (
+                        model_id SERIAL PRIMARY KEY,
+                        model_name VARCHAR(100) NOT NULL UNIQUE,
+                        model_version VARCHAR(50),
+                        model_data BYTEA NOT NULL,
+                        metadata JSONB,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # Create index for fast lookups
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_model_store_name 
+                    ON model_store(model_name)
+                """)
+                
+                LOGGER.info("✅ model_store table ready")
             
-            # Create index for fast lookups
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_model_store_name 
-                ON model_store(model_name)
-            """)
-            
-            conn.commit()
-            LOGGER.info("✅ model_store table ready")
-        
-        except Exception as e:
-            LOGGER.error(f"Failed to create model_store table: {e}")
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+            except Exception as e:
+                LOGGER.error(f"Failed to create model_store table: {e}")
+                conn.rollback()
+                raise
     
     def save_model(
         self,
@@ -111,51 +96,46 @@ class ModelStore:
         Returns:
             True if saved successfully, False otherwise
         """
-        conn = self._get_connection()
-        
-        try:
-            # Serialize model
-            model_bytes = pickle.dumps(model)
+        with self._get_connection() as conn:
+            try:
+                # Serialize model
+                model_bytes = pickle.dumps(model)
+                
+                # Prepare metadata
+                meta = metadata or {}
+                meta.update({
+                    "saved_at": datetime.now().isoformat(),
+                    "size_bytes": len(model_bytes)
+                })
+                
+                # Upsert (insert or update if exists)
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO model_store (model_name, model_version, model_data, metadata, updated_at)
+                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (model_name) 
+                    DO UPDATE SET 
+                        model_version = EXCLUDED.model_version,
+                        model_data = EXCLUDED.model_data,
+                        metadata = EXCLUDED.metadata,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (
+                    model_name,
+                    model_version or "latest",
+                    psycopg2.Binary(model_bytes),
+                    psycopg2.extras.Json(meta)
+                ))
+                
+                LOGGER.info(
+                    f"✅ Model saved: {model_name} v{model_version} "
+                    f"({len(model_bytes):,} bytes)"
+                )
+                return True
             
-            # Prepare metadata
-            meta = metadata or {}
-            meta.update({
-                "saved_at": datetime.now().isoformat(),
-                "size_bytes": len(model_bytes)
-            })
-            
-            # Upsert (insert or update if exists)
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO model_store (model_name, model_version, model_data, metadata, updated_at)
-                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT (model_name) 
-                DO UPDATE SET 
-                    model_version = EXCLUDED.model_version,
-                    model_data = EXCLUDED.model_data,
-                    metadata = EXCLUDED.metadata,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (
-                model_name,
-                model_version or "latest",
-                psycopg2.Binary(model_bytes),
-                psycopg2.extras.Json(meta)
-            ))
-            
-            conn.commit()
-            
-            LOGGER.info(
-                f"✅ Model saved: {model_name} v{model_version} "
-                f"({len(model_bytes):,} bytes)"
-            )
-            return True
-        
-        except Exception as e:
-            LOGGER.error(f"Failed to save model: {e}")
-            conn.rollback()
-            return False
-        finally:
-            conn.close()
+            except Exception as e:
+                LOGGER.error(f"Failed to save model: {e}")
+                conn.rollback()
+                return False
     
     def load_model(self, model_name: str) -> Optional[Any]:
         """
@@ -167,9 +147,7 @@ class ModelStore:
         Returns:
             Deserialized model object, or None if not found
         """
-        conn = self._get_connection()
-        
-        try:
+        with self._get_connection() as conn:
             cur = conn.cursor()
             cur.execute("""
                 SELECT model_data, model_version, metadata
@@ -194,12 +172,6 @@ class ModelStore:
             )
             
             return model
-        
-        except Exception as e:
-            LOGGER.error(f"Failed to load model: {e}")
-            return None
-        finally:
-            conn.close()
     
     def get_metadata(self, model_name: str) -> Optional[Dict]:
         """
@@ -211,9 +183,7 @@ class ModelStore:
         Returns:
             Metadata dict, or None if not found
         """
-        conn = self._get_connection()
-        
-        try:
+        with self._get_connection() as conn:
             cur = conn.cursor()
             cur.execute("""
                 SELECT model_version, metadata, updated_at
@@ -234,12 +204,6 @@ class ModelStore:
                 "updated_at": updated_at.isoformat() if updated_at else None,
                 **metadata
             }
-        
-        except Exception as e:
-            LOGGER.error(f"Failed to get metadata: {e}")
-            return None
-        finally:
-            conn.close()
     
     def list_models(self) -> list:
         """
@@ -248,9 +212,7 @@ class ModelStore:
         Returns:
             List of model metadata dicts
         """
-        conn = self._get_connection()
-        
-        try:
+        with self._get_connection() as conn:
             cur = conn.cursor()
             cur.execute("""
                 SELECT model_name, model_version, metadata, updated_at,
@@ -273,12 +235,6 @@ class ModelStore:
                 })
             
             return models
-        
-        except Exception as e:
-            LOGGER.error(f"Failed to list models: {e}")
-            return []
-        finally:
-            conn.close()
 
 
 # Singleton instance

@@ -57,8 +57,9 @@ class AccuracyTracker:
         LOGGER.info("AccuracyTracker initialized with PostgreSQL")
     
     def _get_conn(self):
-        """Get PostgreSQL connection"""
-        return psycopg2.connect(self.database_url)
+        """Get PostgreSQL connection from pool"""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection()
     
     def _init_tables(self):
         """Create tables if they don't exist"""

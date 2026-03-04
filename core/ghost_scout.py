@@ -1210,8 +1210,8 @@ class GameResolver:
         LOGGER.info("🏆 [RESOLVER] Ready to count the money!")
     
     def _get_connection(self):
-        from core.db_pool import get_sync_connection_raw
-        return get_sync_connection_raw()
+        from core.db_pool import get_sync_connection
+        return get_sync_connection()
     
     def resolve_pending_trades(self, hours_old: int = 24) -> Dict:
         """
@@ -1234,32 +1234,25 @@ class GameResolver:
             "timestamp": datetime.utcnow().isoformat()
         }
         
-        conn = None
         try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            cutoff = datetime.utcnow() - timedelta(hours=hours_old)
-            
-            # Get unresolved trades
-            cur.execute("""
-                SELECT id, symbol, asset_type, direction, entry_price, target_price
-                FROM money_game_trades
-                WHERE resolved_at IS NULL AND created_at < %s
-                ORDER BY created_at
-                LIMIT 100
-            """, (cutoff,))
-            
-            trades = cur.fetchall()
+            with self._get_connection() as conn:
+                cur = conn.cursor()
+                
+                cutoff = datetime.utcnow() - timedelta(hours=hours_old)
+                
+                # Get unresolved trades
+                cur.execute("""
+                    SELECT id, symbol, asset_type, direction, entry_price, target_price
+                    FROM money_game_trades
+                    WHERE resolved_at IS NULL AND created_at < %s
+                    ORDER BY created_at
+                    LIMIT 100
+                """, (cutoff,))
+                
+                trades = cur.fetchall()
         except Exception as e:
             LOGGER.error(f"🏆 [RESOLVER] DB error fetching trades: {e}")
             return {"error": str(e)}
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
         
         LOGGER.info(f"🏆 [RESOLVER] Found {len(trades)} trades to resolve...")
         

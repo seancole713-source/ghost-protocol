@@ -75,8 +75,8 @@ class V2VerificationSystem:
     
     def _get_conn(self):
         """Get PostgreSQL connection via shared pool bridge."""
-        from core.db_pool import get_sync_connection_raw
-        return get_sync_connection_raw()
+        from core.db_pool import get_sync_connection
+        return get_sync_connection()
     
     def get_verified_win_rate(self, days: int = 14) -> Dict[str, Any]:
         """
@@ -97,36 +97,35 @@ class V2VerificationSystem:
                 "period_end": datetime
             }
         """
-        conn = None
         try:
-          conn = self._get_conn()
-          cur = conn.cursor()
+          with self._get_conn() as conn:
+            cur = conn.cursor()
         
-          cutoff = datetime.utcnow() - timedelta(days=days)
-          cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column comparison
+            cutoff = datetime.utcnow() - timedelta(days=days)
+            cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column comparison
         
-          # Query paper_trades for verified outcomes
-          # Note: created_at might be TEXT, so use CAST to ensure proper comparison
-          cur.execute("""
-            SELECT 
-                symbol,
-                signal_direction,
-                entry_price,
-                target_price,
-                outcome,
-                profit_loss_pct,
-                created_at
-            FROM paper_trades
-            WHERE CAST(created_at AS TIMESTAMP) > CAST(%s AS TIMESTAMP)
-            AND outcome IS NOT NULL
-            AND outcome != 'PENDING'
-            AND entry_price > 0
-            AND target_price > 0
-            ORDER BY created_at DESC
-          """, (cutoff_str,))
+            # Query paper_trades for verified outcomes
+            # Note: created_at might be TEXT, so use CAST to ensure proper comparison
+            cur.execute("""
+              SELECT 
+                  symbol,
+                  signal_direction,
+                  entry_price,
+                  target_price,
+                  outcome,
+                  profit_loss_pct,
+                  created_at
+              FROM paper_trades
+              WHERE CAST(created_at AS TIMESTAMP) > CAST(%s AS TIMESTAMP)
+              AND outcome IS NOT NULL
+              AND outcome != 'PENDING'
+              AND entry_price > 0
+              AND target_price > 0
+              ORDER BY created_at DESC
+            """, (cutoff_str,))
         
-          rows = cur.fetchall()
-          cur.close()
+            rows = cur.fetchall()
+            cur.close()
         except Exception as e:
           LOGGER.error(f"[V2] Failed to get verified win rate: {e}")
           return {
@@ -135,12 +134,6 @@ class V2VerificationSystem:
               "period_start": datetime.utcnow() - timedelta(days=days),
               "period_end": datetime.utcnow()
           }
-        finally:
-          if conn:
-              try:
-                  conn.close()
-              except Exception:
-                  pass
         
         if not rows:
             LOGGER.warning(f"[V2] No verified predictions found in last {days} days")
@@ -181,57 +174,50 @@ class V2VerificationSystem:
         IMPORTANT: Only uses V2-era data (since Jan 14, 2026) to avoid
         polluting results with pre-V2 garbage predictions.
         """
-        conn = None
         try:
-          conn = self._get_conn()
-          cur = conn.cursor()
+          with self._get_conn() as conn:
+            cur = conn.cursor()
         
-          # Use the LATER of (days ago) or V2_START_DATE
-          # This ensures we NEVER use pre-V2 garbage data
-          days_ago = datetime.utcnow() - timedelta(days=days)
-          cutoff = max(days_ago, V2_START_DATE)
-          cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column
+            # Use the LATER of (days ago) or V2_START_DATE
+            # This ensures we NEVER use pre-V2 garbage data
+            days_ago = datetime.utcnow() - timedelta(days=days)
+            cutoff = max(days_ago, V2_START_DATE)
+            cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column
         
-          LOGGER.info(f"[V2] Using cutoff {cutoff.isoformat()} (V2 floor: {V2_START_DATE.isoformat()})")
+            LOGGER.info(f"[V2] Using cutoff {cutoff.isoformat()} (V2 floor: {V2_START_DATE.isoformat()})")
         
-          # FIX (Mar 1, 2026): Build crypto IN clause from config/symbols.py
-          # Old hardcoded 13-symbol SQL list misclassified all other crypto as 'stock'
-          from config.symbols import CRYPTO_SYMBOLS as _V2_CRYPTO
-          _crypto_sql_list = ", ".join(f"'{s}'" for s in _V2_CRYPTO)
+            # FIX (Mar 1, 2026): Build crypto IN clause from config/symbols.py
+            # Old hardcoded 13-symbol SQL list misclassified all other crypto as 'stock'
+            from config.symbols import CRYPTO_SYMBOLS as _V2_CRYPTO
+            _crypto_sql_list = ", ".join(f"'{s}'" for s in _V2_CRYPTO)
         
-          cur.execute(f"""
-            SELECT 
-                symbol,
-                CASE 
-                    WHEN symbol IN ({_crypto_sql_list})
-                    THEN 'crypto'
-                    ELSE 'stock'
-                END as asset_type,
-                COUNT(*) as total_predictions,
-                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
-                ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate,
-                AVG(signal_confidence) as avg_confidence
-            FROM paper_trades
-            WHERE CAST(created_at AS TIMESTAMP) > CAST(%(cutoff)s AS TIMESTAMP)
-            AND outcome IS NOT NULL
-            AND outcome != 'PENDING'
-            GROUP BY symbol
-            HAVING COUNT(*) >= %(min_preds)s
-            ORDER BY win_rate DESC
-          """, {"cutoff": cutoff, "min_preds": min_predictions})
+            cur.execute(f"""
+              SELECT 
+                  symbol,
+                  CASE 
+                      WHEN symbol IN ({_crypto_sql_list})
+                      THEN 'crypto'
+                      ELSE 'stock'
+                  END as asset_type,
+                  COUNT(*) as total_predictions,
+                  SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                  SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
+                  ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate,
+                  AVG(signal_confidence) as avg_confidence
+              FROM paper_trades
+              WHERE CAST(created_at AS TIMESTAMP) > CAST(%(cutoff)s AS TIMESTAMP)
+              AND outcome IS NOT NULL
+              AND outcome != 'PENDING'
+              GROUP BY symbol
+              HAVING COUNT(*) >= %(min_preds)s
+              ORDER BY win_rate DESC
+            """, {"cutoff": cutoff, "min_preds": min_predictions})
         
-          rows = cur.fetchall()
-          cur.close()
+            rows = cur.fetchall()
+            cur.close()
         except Exception as e:
           LOGGER.error(f"[V2] Symbol performance query failed: {e}")
           return []
-        finally:
-          if conn:
-              try:
-                  conn.close()
-              except Exception:
-                  pass
         
         results = []
         for row in rows:
@@ -260,64 +246,57 @@ class V2VerificationSystem:
         Compares first half vs second half of period.
         """
         try:
-            conn = None
-            conn = self._get_conn()
-            cur = conn.cursor()
-            
-            cutoff = datetime.utcnow() - timedelta(days=days)
-            midpoint = cutoff + timedelta(days=days // 2)
-            cutoff_str = cutoff.isoformat()
-            midpoint_str = midpoint.isoformat()
-            
-            # First half win rate
-            cur.execute("""
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
-                FROM paper_trades
-                WHERE symbol = %s
-                AND CAST(created_at AS TIMESTAMP) BETWEEN CAST(%s AS TIMESTAMP) AND CAST(%s AS TIMESTAMP)
-                AND outcome IS NOT NULL
-                AND outcome != 'PENDING'
-            """, (symbol, cutoff_str, midpoint_str))
-            
-            first_half = cur.fetchone()
-            first_wr = (first_half[1] / first_half[0]) if first_half[0] > 0 else 0
-            
-            # Second half win rate
-            cur.execute("""
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
-                FROM paper_trades
-                WHERE symbol = %s
-                AND CAST(created_at AS TIMESTAMP) > CAST(%s AS TIMESTAMP)
-                AND outcome IS NOT NULL
-                AND outcome != 'PENDING'
-            """, (symbol, midpoint_str))
-            
-            second_half = cur.fetchone()
-            second_wr = (second_half[1] / second_half[0]) if second_half[0] > 0 else 0
-            
-            cur.close()
-            
-            # Determine trend
-            if second_wr > first_wr + 0.1:  # 10% improvement
-                return "improving"
-            elif second_wr < first_wr - 0.1:  # 10% decline
-                return "declining"
-            else:
-                return "stable"
+            with self._get_conn() as conn:
+                cur = conn.cursor()
+                
+                cutoff = datetime.utcnow() - timedelta(days=days)
+                midpoint = cutoff + timedelta(days=days // 2)
+                cutoff_str = cutoff.isoformat()
+                midpoint_str = midpoint.isoformat()
+                
+                # First half win rate
+                cur.execute("""
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
+                    FROM paper_trades
+                    WHERE symbol = %s
+                    AND CAST(created_at AS TIMESTAMP) BETWEEN CAST(%s AS TIMESTAMP) AND CAST(%s AS TIMESTAMP)
+                    AND outcome IS NOT NULL
+                    AND outcome != 'PENDING'
+                """, (symbol, cutoff_str, midpoint_str))
+                
+                first_half = cur.fetchone()
+                first_wr = (first_half[1] / first_half[0]) if first_half[0] > 0 else 0
+                
+                # Second half win rate
+                cur.execute("""
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
+                    FROM paper_trades
+                    WHERE symbol = %s
+                    AND CAST(created_at AS TIMESTAMP) > CAST(%s AS TIMESTAMP)
+                    AND outcome IS NOT NULL
+                    AND outcome != 'PENDING'
+                """, (symbol, midpoint_str))
+                
+                second_half = cur.fetchone()
+                second_wr = (second_half[1] / second_half[0]) if second_half[0] > 0 else 0
+                
+                cur.close()
+                
+                # Determine trend
+                if second_wr > first_wr + 0.1:  # 10% improvement
+                    return "improving"
+                elif second_wr < first_wr - 0.1:  # 10% decline
+                    return "declining"
+                else:
+                    return "stable"
         
         except Exception as e:
             LOGGER.debug(f"[V2] Trend analysis failed for {symbol}: {e}")
             return "unknown"
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def get_top_performers(self, days: int = 30, min_predictions: int = 20, top_n: int = 20) -> List[str]:
         """

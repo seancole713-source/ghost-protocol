@@ -174,10 +174,10 @@ class FeedbackLoop:
             return
         
         # Load outcomes from PostgreSQL
-        conn = None
         try:
-            conn = psycopg2.connect(database_url)
-            cursor = conn.cursor()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+              cursor = conn.cursor()
             
             # Get recent outcomes (last 7 days) to rebuild learning state
             cursor.execute("""
@@ -266,13 +266,13 @@ class FeedbackLoop:
         if not database_url:
             return
         
-        conn = None
         try:
-            conn = psycopg2.connect(database_url)
-            cursor = conn.cursor()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+              cursor = conn.cursor()
             
-            # Create table if not exists
-            cursor.execute("""
+              # Create table if not exists
+              cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ghost_learned_weights (
                     feature_name TEXT PRIMARY KEY,
                     weight_multiplier REAL NOT NULL,
@@ -281,18 +281,17 @@ class FeedbackLoop:
                     accuracy_rate REAL DEFAULT 0.5,
                     updated_at TIMESTAMP DEFAULT NOW()
                 )
-            """)
-            conn.commit()
+              """)
             
-            # Load weights
-            cursor.execute("""
+              # Load weights
+              cursor.execute("""
                 SELECT feature_name, weight_multiplier, total_predictions, correct_predictions, accuracy_rate
                 FROM ghost_learned_weights
                 WHERE total_predictions >= 10
-            """)
+              """)
             
-            rows = cursor.fetchall()
-            if rows:
+              rows = cursor.fetchall()
+              if rows:
                 loaded = 0
                 for name, weight, total, correct, accuracy in rows:
                     # Only override if we don't already have better local data
@@ -304,12 +303,6 @@ class FeedbackLoop:
             
         except Exception as e:
             logger.warning(f"⚠️ Failed to load weights from PostgreSQL: {e}")
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def _persist_weights_to_postgres(self):
         """
@@ -329,13 +322,13 @@ class FeedbackLoop:
         if not database_url:
             return
         
-        conn = None
         try:
-            conn = psycopg2.connect(database_url)
-            cursor = conn.cursor()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+              cursor = conn.cursor()
             
-            # Ensure table exists
-            cursor.execute("""
+              # Ensure table exists
+              cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ghost_learned_weights (
                     feature_name TEXT PRIMARY KEY,
                     weight_multiplier REAL NOT NULL,
@@ -344,10 +337,10 @@ class FeedbackLoop:
                     accuracy_rate REAL DEFAULT 0.5,
                     updated_at TIMESTAMP DEFAULT NOW()
                 )
-            """)
+              """)
             
-            # Upsert all weights
-            for feature_name, weight in self.feature_weights.items():
+              # Upsert all weights
+              for feature_name, weight in self.feature_weights.items():
                 # Get stats from SQLite
                 with sqlite3.connect(self.db_path) as local_conn:
                     row = local_conn.execute(
@@ -371,18 +364,10 @@ class FeedbackLoop:
                         updated_at = NOW()
                 """, (feature_name, weight, total, correct, accuracy))
             
-            conn.commit()
-            
-            logger.info(f"💾 Persisted {len(self.feature_weights)} feature weights to PostgreSQL")
+              logger.info(f"💾 Persisted {len(self.feature_weights)} feature weights to PostgreSQL")
             
         except Exception as e:
             logger.warning(f"⚠️ Failed to persist weights to PostgreSQL: {e}")
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def _compute_symbol_performance(self):
         """

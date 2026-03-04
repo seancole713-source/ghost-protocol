@@ -23,6 +23,7 @@ import logging
 import os
 import sqlite3
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -60,15 +61,18 @@ class AccuracyDashboard:
         elif not HAS_PSYCOPG2:
             LOGGER.warning("psycopg2 not installed, dashboard will return empty data")
 
+    @contextmanager
     def _get_connection(self):
         """Get PostgreSQL connection via shared pool bridge."""
         if not self.database_url:
-            return None
+            yield None
+            return
         try:
-            from core.db_pool import get_sync_connection_raw
-            return get_sync_connection_raw()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                yield conn
         except Exception:
-            return None
+            yield None
 
     def get_dashboard_summary(self, days: int = 30) -> dict[str, Any]:
         """
@@ -110,57 +114,52 @@ class AccuracyDashboard:
         }
 
         # Get overall stats from PostgreSQL
-        conn = self._get_connection()
-        if not conn:
-            LOGGER.warning("No database connection, returning empty summary")
-            summary.update({
-                "accuracy_trend": {"7d": None, "30d": None, "90d": None},
-                "by_symbol": {},
-                "by_confidence_band": self._empty_confidence_bands(),
-                "calibration": self._empty_calibration(),
-                "recent_predictions": []
-            })
-            return summary
+        with self._get_connection() as conn:
+            if not conn:
+                LOGGER.warning("No database connection, returning empty summary")
+                summary.update({
+                    "accuracy_trend": {"7d": None, "30d": None, "90d": None},
+                    "by_symbol": {},
+                    "by_confidence_band": self._empty_confidence_bands(),
+                    "calibration": self._empty_calibration(),
+                    "recent_predictions": []
+                })
+                return summary
 
-        try:
-            with conn:
-                cursor = conn.cursor()
-
-                # Outcome summary from PostgreSQL outcomes table
-                cursor.execute(
-                    """
-                    SELECT
-                        COUNT(*) AS total_outcomes,
-                        SUM(CASE WHEN status = 'completed' AND hit_direction IS NOT NULL THEN 1 ELSE 0 END) AS evaluated,
-                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) AS correct,
-                        SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) AS incorrect
-                    FROM ghost_prediction_outcomes
-                    WHERE closed_at >= %s
-                    """,
-                    (cutoff_dt,),
-                )
-                row = cursor.fetchone() or (0, 0, 0, 0)
-                total_outcomes, evaluated, correct, incorrect = [int(x or 0) for x in row]
-
-                summary["total_predictions"] = total_outcomes
-                summary["reconciled"] = evaluated
-                summary["correct"] = correct
-                summary["incorrect"] = incorrect
-                summary["pending"] = max(0, total_outcomes - evaluated)
-
-                # Calculate accuracy
-                if summary["reconciled"] > 0:
-                    summary["overall_accuracy"] = round(
-                        summary["correct"] / summary["reconciled"], 3
-                    )
-
-        except Exception as e:
-            LOGGER.error(f"Failed to get overall stats: {e}")
-        finally:
             try:
-                conn.close()
-            except Exception:
-                pass
+                with conn:
+                    cursor = conn.cursor()
+
+                    # Outcome summary from PostgreSQL outcomes table
+                    cursor.execute(
+                        """
+                        SELECT
+                            COUNT(*) AS total_outcomes,
+                            SUM(CASE WHEN status = 'completed' AND hit_direction IS NOT NULL THEN 1 ELSE 0 END) AS evaluated,
+                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) AS correct,
+                            SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) AS incorrect
+                        FROM ghost_prediction_outcomes
+                        WHERE closed_at >= %s
+                        """,
+                        (cutoff_dt,),
+                    )
+                    row = cursor.fetchone() or (0, 0, 0, 0)
+                    total_outcomes, evaluated, correct, incorrect = [int(x or 0) for x in row]
+
+                    summary["total_predictions"] = total_outcomes
+                    summary["reconciled"] = evaluated
+                    summary["correct"] = correct
+                    summary["incorrect"] = incorrect
+                    summary["pending"] = max(0, total_outcomes - evaluated)
+
+                    # Calculate accuracy
+                    if summary["reconciled"] > 0:
+                        summary["overall_accuracy"] = round(
+                            summary["correct"] / summary["reconciled"], 3
+                        )
+
+            except Exception as e:
+                LOGGER.error(f"Failed to get overall stats: {e}")
 
         # Add accuracy trends
         summary["accuracy_trend"] = self._get_accuracy_trends()
@@ -199,88 +198,76 @@ class AccuracyDashboard:
             "90d": None
         }
 
-        conn = self._get_connection()
-        if not conn:
-            return trends
+        with self._get_connection() as conn:
+            if not conn:
+                return trends
 
-        try:
-            cursor = conn.cursor()
-            for period, days in [("7d", 7), ("30d", 30), ("90d", 90)]:
-                cutoff_dt = datetime.now() - timedelta(days=days)
-                cursor.execute("""
-                    SELECT
-                        COUNT(*) as total,
-                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct_count
-                    FROM ghost_prediction_outcomes
-                    WHERE closed_at >= %s
-                    AND hit_direction IS NOT NULL
-                """, (cutoff_dt,))
+            try:
+                cursor = conn.cursor()
+                for period, days in [("7d", 7), ("30d", 30), ("90d", 90)]:
+                    cutoff_dt = datetime.now() - timedelta(days=days)
+                    cursor.execute("""
+                        SELECT
+                            COUNT(*) as total,
+                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct_count
+                        FROM ghost_prediction_outcomes
+                        WHERE closed_at >= %s
+                        AND hit_direction IS NOT NULL
+                    """, (cutoff_dt,))
 
-                row = cursor.fetchone()
-                if row and row[0] and row[0] > 0:
-                    trends[period] = round((row[1] or 0) / row[0], 3)
-            cursor.close()
-        except Exception as e:
-            LOGGER.error(f"Failed to get accuracy trends: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                    row = cursor.fetchone()
+                    if row and row[0] and row[0] > 0:
+                        trends[period] = round((row[1] or 0) / row[0], 3)
+                cursor.close()
+            except Exception as e:
+                LOGGER.error(f"Failed to get accuracy trends: {e}")
 
         return trends
 
     def _get_accuracy_by_symbol(self, days: int) -> dict[str, dict[str, Any]]:
         """Get accuracy breakdown by symbol from PostgreSQL."""
         by_symbol = {}
-        conn = self._get_connection()
-        if not conn:
-            return by_symbol
+        with self._get_connection() as conn:
+            if not conn:
+                return by_symbol
 
-        try:
-            cutoff_dt = datetime.now() - timedelta(days=days)
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT
-                    symbol,
-                    COUNT(*) as total,
-                    SUM(CASE WHEN hit_direction IS NOT NULL THEN 1 ELSE 0 END) as reconciled,
-                    SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct,
-                    AVG(predicted_confidence) as avg_confidence
-                FROM ghost_prediction_outcomes
-                WHERE closed_at >= %s
-                GROUP BY symbol
-                ORDER BY total DESC
-            """, (cutoff_dt,))
+            try:
+                cutoff_dt = datetime.now() - timedelta(days=days)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT
+                        symbol,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN hit_direction IS NOT NULL THEN 1 ELSE 0 END) as reconciled,
+                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct,
+                        AVG(predicted_confidence) as avg_confidence
+                    FROM ghost_prediction_outcomes
+                    WHERE closed_at >= %s
+                    GROUP BY symbol
+                    ORDER BY total DESC
+                """, (cutoff_dt,))
 
-            for row in cursor.fetchall():
-                symbol, total, reconciled, correct, avg_conf = row
-                reconciled = int(reconciled or 0)
-                correct = int(correct or 0)
+                for row in cursor.fetchall():
+                    symbol, total, reconciled, correct, avg_conf = row
+                    reconciled = int(reconciled or 0)
+                    correct = int(correct or 0)
 
-                accuracy = 0.0
-                if reconciled > 0:
-                    accuracy = round(correct / reconciled, 3)
+                    accuracy = 0.0
+                    if reconciled > 0:
+                        accuracy = round(correct / reconciled, 3)
 
-                by_symbol[symbol] = {
-                    "total_predictions": int(total or 0),
-                    "reconciled": reconciled,
-                    "pending": int(total or 0) - reconciled,
-                    "correct": correct,
-                    "incorrect": reconciled - correct,
-                    "accuracy": accuracy,
-                    "avg_confidence": round(float(avg_conf or 0), 3)
-                }
-            cursor.close()
-        except Exception as e:
-            LOGGER.error(f"Failed to get accuracy by symbol: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                    by_symbol[symbol] = {
+                        "total_predictions": int(total or 0),
+                        "reconciled": reconciled,
+                        "pending": int(total or 0) - reconciled,
+                        "correct": correct,
+                        "incorrect": reconciled - correct,
+                        "accuracy": accuracy,
+                        "avg_confidence": round(float(avg_conf or 0), 3)
+                    }
+                cursor.close()
+            except Exception as e:
+                LOGGER.error(f"Failed to get accuracy by symbol: {e}")
 
         return by_symbol
 
@@ -293,52 +280,46 @@ class AccuracyDashboard:
         }
 
         results = {}
-        conn = self._get_connection()
-        if not conn:
-            return results
+        with self._get_connection() as conn:
+            if not conn:
+                return results
 
-        try:
-            cutoff_dt = datetime.now() - timedelta(days=days)
-            cursor = conn.cursor()
-            for band_name, band_range in bands.items():
-                cursor.execute("""
-                    SELECT
-                        COUNT(*) as total,
-                        SUM(CASE WHEN hit_direction IS NOT NULL THEN 1 ELSE 0 END) as reconciled,
-                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct,
-                        AVG(predicted_confidence) as avg_confidence
-                    FROM ghost_prediction_outcomes
-                    WHERE closed_at >= %s
-                    AND predicted_confidence >= %s
-                    AND predicted_confidence < %s
-                """, (cutoff_dt, band_range["min"], band_range["max"]))
+            try:
+                cutoff_dt = datetime.now() - timedelta(days=days)
+                cursor = conn.cursor()
+                for band_name, band_range in bands.items():
+                    cursor.execute("""
+                        SELECT
+                            COUNT(*) as total,
+                            SUM(CASE WHEN hit_direction IS NOT NULL THEN 1 ELSE 0 END) as reconciled,
+                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct,
+                            AVG(predicted_confidence) as avg_confidence
+                        FROM ghost_prediction_outcomes
+                        WHERE closed_at >= %s
+                        AND predicted_confidence >= %s
+                        AND predicted_confidence < %s
+                    """, (cutoff_dt, band_range["min"], band_range["max"]))
 
-                row = cursor.fetchone()
-                if row:
-                    total, reconciled, correct, avg_conf = row
-                    reconciled = int(reconciled or 0)
-                    correct = int(correct or 0)
+                    row = cursor.fetchone()
+                    if row:
+                        total, reconciled, correct, avg_conf = row
+                        reconciled = int(reconciled or 0)
+                        correct = int(correct or 0)
 
-                    accuracy = 0.0
-                    if reconciled > 0:
-                        accuracy = round(correct / reconciled, 3)
+                        accuracy = 0.0
+                        if reconciled > 0:
+                            accuracy = round(correct / reconciled, 3)
 
-                    results[band_name] = {
-                        "total": int(total or 0),
-                        "reconciled": reconciled,
-                        "correct": correct,
-                        "accuracy": accuracy,
-                        "avg_confidence": round(float(avg_conf or 0), 3)
-                    }
-            cursor.close()
-        except Exception as e:
-            LOGGER.error(f"Failed to get accuracy by confidence: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                        results[band_name] = {
+                            "total": int(total or 0),
+                            "reconciled": reconciled,
+                            "correct": correct,
+                            "accuracy": accuracy,
+                            "avg_confidence": round(float(avg_conf or 0), 3)
+                        }
+                cursor.close()
+            except Exception as e:
+                LOGGER.error(f"Failed to get accuracy by confidence: {e}")
 
         return results
 
@@ -358,112 +339,100 @@ class AccuracyDashboard:
             "interpretation": ""
         }
 
-        conn = self._get_connection()
-        if not conn:
-            return calibration
+        with self._get_connection() as conn:
+            if not conn:
+                return calibration
 
-        try:
-            cutoff_dt = datetime.now() - timedelta(days=days)
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT
-                    AVG(predicted_confidence) as avg_conf,
-                    COUNT(*) as total,
-                    SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
-                FROM ghost_prediction_outcomes
-                WHERE closed_at >= %s
-                AND hit_direction IS NOT NULL
-            """, (cutoff_dt,))
+            try:
+                cutoff_dt = datetime.now() - timedelta(days=days)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT
+                        AVG(predicted_confidence) as avg_conf,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+                    FROM ghost_prediction_outcomes
+                    WHERE closed_at >= %s
+                    AND hit_direction IS NOT NULL
+                """, (cutoff_dt,))
 
-            row = cursor.fetchone()
-            if row and row[1] and row[1] > 0:
-                avg_conf = float(row[0] or 0)
-                total = int(row[1])
-                correct = int(row[2] or 0)
-                actual_acc = correct / total
+                row = cursor.fetchone()
+                if row and row[1] and row[1] > 0:
+                    avg_conf = float(row[0] or 0)
+                    total = int(row[1])
+                    correct = int(row[2] or 0)
+                    actual_acc = correct / total
 
-                calibration["avg_claimed_confidence"] = round(avg_conf, 3)
-                calibration["actual_accuracy"] = round(actual_acc, 3)
-                calibration["calibration_error"] = round(avg_conf - actual_acc, 3)
-                calibration["is_overconfident"] = (avg_conf > actual_acc)
+                    calibration["avg_claimed_confidence"] = round(avg_conf, 3)
+                    calibration["actual_accuracy"] = round(actual_acc, 3)
+                    calibration["calibration_error"] = round(avg_conf - actual_acc, 3)
+                    calibration["is_overconfident"] = (avg_conf > actual_acc)
 
-                # Interpretation
-                error_pct = abs(calibration["calibration_error"] * 100)
-                if error_pct < 3:
-                    calibration["interpretation"] = "Well calibrated"
-                elif error_pct < 5:
-                    calibration["interpretation"] = "Slightly miscalibrated"
-                elif calibration["is_overconfident"]:
-                    calibration["interpretation"] = f"Overconfident by {error_pct:.1f}%"
-                else:
-                    calibration["interpretation"] = f"Underconfident by {error_pct:.1f}%"
-            cursor.close()
-        except Exception as e:
-            LOGGER.error(f"Failed to get calibration analysis: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                    # Interpretation
+                    error_pct = abs(calibration["calibration_error"] * 100)
+                    if error_pct < 3:
+                        calibration["interpretation"] = "Well calibrated"
+                    elif error_pct < 5:
+                        calibration["interpretation"] = "Slightly miscalibrated"
+                    elif calibration["is_overconfident"]:
+                        calibration["interpretation"] = f"Overconfident by {error_pct:.1f}%"
+                    else:
+                        calibration["interpretation"] = f"Underconfident by {error_pct:.1f}%"
+                cursor.close()
+            except Exception as e:
+                LOGGER.error(f"Failed to get calibration analysis: {e}")
 
         return calibration
 
     def _get_recent_predictions(self, limit: int = 20) -> list[dict[str, Any]]:
         """Get recent predictions with outcomes from PostgreSQL."""
         predictions = []
-        conn = self._get_connection()
-        if not conn:
-            return predictions
+        with self._get_connection() as conn:
+            if not conn:
+                return predictions
 
-        try:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT
-                    symbol,
-                    EXTRACT(EPOCH FROM created_at) as predicted_at,
-                    EXTRACT(EPOCH FROM closed_at) as check_at,
-                    predicted_direction,
-                    actual_direction,
-                    predicted_confidence,
-                    predicted_price,
-                    close_price,
-                    hit_direction
-                FROM ghost_prediction_outcomes
-                ORDER BY created_at DESC
-                LIMIT %s
-            """, (limit,))
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT
+                        symbol,
+                        EXTRACT(EPOCH FROM created_at) as predicted_at,
+                        EXTRACT(EPOCH FROM closed_at) as check_at,
+                        predicted_direction,
+                        actual_direction,
+                        predicted_confidence,
+                        predicted_price,
+                        close_price,
+                        hit_direction
+                    FROM ghost_prediction_outcomes
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (limit,))
 
-            for row in cursor.fetchall():
-                (symbol, pred_at, check_at, pred_dir, actual_dir,
-                 conf, pred_price, actual_price, correct) = row
+                for row in cursor.fetchall():
+                    (symbol, pred_at, check_at, pred_dir, actual_dir,
+                     conf, pred_price, actual_price, correct) = row
 
-                pred_at = float(pred_at or 0)
-                check_at = float(check_at or 0)
+                    pred_at = float(pred_at or 0)
+                    check_at = float(check_at or 0)
 
-                predictions.append({
-                    "symbol": symbol,
-                    "predicted_at": int(pred_at),
-                    "check_at": int(check_at),
-                    "predicted_direction": pred_dir,
-                    "actual_direction": actual_dir,
-                    "confidence": round(float(conf or 0), 3),
-                    "predicted_price": float(pred_price) if pred_price else None,
-                    "actual_price": float(actual_price) if actual_price else None,
-                    "correct": int(correct) if correct is not None else None,
-                    "outcome_status": self._get_outcome_status(
-                        check_at, actual_price, correct
-                    )
-                })
-            cursor.close()
-        except Exception as e:
-            LOGGER.error(f"Failed to get recent predictions: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                    predictions.append({
+                        "symbol": symbol,
+                        "predicted_at": int(pred_at),
+                        "check_at": int(check_at),
+                        "predicted_direction": pred_dir,
+                        "actual_direction": actual_dir,
+                        "confidence": round(float(conf or 0), 3),
+                        "predicted_price": float(pred_price) if pred_price else None,
+                        "actual_price": float(actual_price) if actual_price else None,
+                        "correct": int(correct) if correct is not None else None,
+                        "outcome_status": self._get_outcome_status(
+                            check_at, actual_price, correct
+                        )
+                    })
+                cursor.close()
+            except Exception as e:
+                LOGGER.error(f"Failed to get recent predictions: {e}")
 
         return predictions
 
@@ -505,77 +474,71 @@ class AccuracyDashboard:
             "worst_symbol": None
         }
 
-        conn = self._get_connection()
-        if not conn:
-            return metrics
+        with self._get_connection() as conn:
+            if not conn:
+                return metrics
 
-        try:
-            cutoff_dt = datetime.now() - timedelta(days=days)
-            cursor = conn.cursor()
+            try:
+                cutoff_dt = datetime.now() - timedelta(days=days)
+                cursor = conn.cursor()
 
-            # Get basic stats
-            cursor.execute("""
-                SELECT
-                    COUNT(*) as total,
-                    AVG(CASE
-                        WHEN hit_direction = 1 THEN 1.0
-                        ELSE 0.0
-                    END) as win_rate,
-                    AVG(CASE
-                        WHEN close_price IS NOT NULL AND predicted_price > 0
-                        THEN ((close_price - predicted_price) / predicted_price) * 100
-                        ELSE NULL
-                    END) as avg_return
-                FROM ghost_prediction_outcomes
-                WHERE closed_at >= %s
-                AND hit_direction IS NOT NULL
-            """, (cutoff_dt,))
+                # Get basic stats
+                cursor.execute("""
+                    SELECT
+                        COUNT(*) as total,
+                        AVG(CASE
+                            WHEN hit_direction = 1 THEN 1.0
+                            ELSE 0.0
+                        END) as win_rate,
+                        AVG(CASE
+                            WHEN close_price IS NOT NULL AND predicted_price > 0
+                            THEN ((close_price - predicted_price) / predicted_price) * 100
+                            ELSE NULL
+                        END) as avg_return
+                    FROM ghost_prediction_outcomes
+                    WHERE closed_at >= %s
+                    AND hit_direction IS NOT NULL
+                """, (cutoff_dt,))
 
-            row = cursor.fetchone()
-            if row:
-                metrics["total_predictions"] = int(row[0] or 0)
-                metrics["win_rate"] = round(float(row[1] or 0), 3)
-                metrics["avg_return_pct"] = round(float(row[2] or 0), 2)
+                row = cursor.fetchone()
+                if row:
+                    metrics["total_predictions"] = int(row[0] or 0)
+                    metrics["win_rate"] = round(float(row[1] or 0), 3)
+                    metrics["avg_return_pct"] = round(float(row[2] or 0), 2)
 
-            # Find best and worst performing symbols
-            cursor.execute("""
-                SELECT
-                    symbol,
-                    AVG(CASE WHEN hit_direction = 1 THEN 1.0 ELSE 0.0 END) as accuracy,
-                    COUNT(*) as count
-                FROM ghost_prediction_outcomes
-                WHERE closed_at >= %s
-                AND hit_direction IS NOT NULL
-                GROUP BY symbol
-                HAVING COUNT(*) >= 5
-                ORDER BY accuracy DESC
-            """, (cutoff_dt,))
+                # Find best and worst performing symbols
+                cursor.execute("""
+                    SELECT
+                        symbol,
+                        AVG(CASE WHEN hit_direction = 1 THEN 1.0 ELSE 0.0 END) as accuracy,
+                        COUNT(*) as count
+                    FROM ghost_prediction_outcomes
+                    WHERE closed_at >= %s
+                    AND hit_direction IS NOT NULL
+                    GROUP BY symbol
+                    HAVING COUNT(*) >= 5
+                    ORDER BY accuracy DESC
+                """, (cutoff_dt,))
 
-            results = cursor.fetchall()
-            if results:
-                best = results[0]
-                worst = results[-1]
+                results = cursor.fetchall()
+                if results:
+                    best = results[0]
+                    worst = results[-1]
 
-                metrics["best_symbol"] = {
-                    "symbol": best[0],
-                    "accuracy": round(float(best[1] or 0), 3),
-                    "count": int(best[2])
-                }
+                    metrics["best_symbol"] = {
+                        "symbol": best[0],
+                        "accuracy": round(float(best[1] or 0), 3),
+                        "count": int(best[2])
+                    }
 
-                metrics["worst_symbol"] = {
-                    "symbol": worst[0],
-                    "accuracy": round(float(worst[1] or 0), 3),
-                    "count": int(worst[2])
-                }
-            cursor.close()
-        except Exception as e:
-            LOGGER.error(f"Failed to get performance metrics: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                    metrics["worst_symbol"] = {
+                        "symbol": worst[0],
+                        "accuracy": round(float(worst[1] or 0), 3),
+                        "count": int(worst[2])
+                    }
+                cursor.close()
+            except Exception as e:
+                LOGGER.error(f"Failed to get performance metrics: {e}")
 
         return metrics
 

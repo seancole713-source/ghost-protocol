@@ -105,11 +105,12 @@ class GhostNewsBrain:
             return
         
         try:
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor()
-            
-            # News analysis table
-            cur.execute("""
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                
+                # News analysis table
+                cur.execute("""
                 CREATE TABLE IF NOT EXISTS news_analysis (
                     analysis_id SERIAL PRIMARY KEY,
                     analysis_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -145,8 +146,6 @@ class GhostNewsBrain:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_guardian_severity ON guardian_alerts(severity);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_guardian_created ON guardian_alerts(created_at);")
             
-            conn.commit()
-            conn.close()
             LOGGER.info("[NEWS BRAIN] Database tables ensured (news_analysis, guardian_alerts)")
         except Exception as e:
             LOGGER.error(f"Failed to create tables: {e}")
@@ -257,18 +256,18 @@ class GhostNewsBrain:
             return []
         
         try:
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute("""
-                SELECT symbol, signal_direction, signal_confidence, entry_price, entry_time
-                FROM paper_trades 
-                WHERE outcome = 'PENDING'
-                ORDER BY entry_time DESC
-                LIMIT 100
-            """)
-            trades = cur.fetchall()
-            conn.close()
-            return [dict(t) for t in trades]
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("""
+                    SELECT symbol, signal_direction, signal_confidence, entry_price, entry_time
+                    FROM paper_trades 
+                    WHERE outcome = 'PENDING'
+                    ORDER BY entry_time DESC
+                    LIMIT 100
+                """)
+                trades = cur.fetchall()
+                return [dict(t) for t in trades]
         except Exception as e:
             LOGGER.error(f"Failed to fetch predictions: {e}")
             return []
@@ -436,21 +435,20 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             return
         
         try:
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO news_analysis 
-                (headlines_fetched, raw_response, events_found, predictions_affected, summary)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                analysis.get("headlines_fetched", 0),
-                raw_response[:10000] if raw_response else "",
-                len(analysis.get("major_events", [])),
-                len(analysis.get("predictions_at_risk", [])),
-                analysis.get("market_summary", "")
-            ))
-            conn.commit()
-            conn.close()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO news_analysis 
+                    (headlines_fetched, raw_response, events_found, predictions_affected, summary)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    analysis.get("headlines_fetched", 0),
+                    raw_response[:10000] if raw_response else "",
+                    len(analysis.get("major_events", [])),
+                    len(analysis.get("predictions_at_risk", [])),
+                    analysis.get("market_summary", "")
+                ))
         except Exception as e:
             LOGGER.error(f"Failed to log analysis: {e}")
     
@@ -515,26 +513,26 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             return {"ok": False, "error": "Database not available"}
         
         try:
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            
-            # Get most recent analysis (should be < 30 minutes old)
-            cur.execute("""
-                SELECT 
-                    analysis_id,
-                    analysis_time,
-                    headlines_fetched,
-                    raw_response,
-                    events_found,
-                    summary,
-                    EXTRACT(EPOCH FROM (NOW() - analysis_time))/60 as age_minutes
-                FROM news_analysis 
-                ORDER BY analysis_time DESC 
-                LIMIT 1
-            """)
-            
-            row = cur.fetchone()
-            conn.close()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                
+                # Get most recent analysis (should be < 30 minutes old)
+                cur.execute("""
+                    SELECT 
+                        analysis_id,
+                        analysis_time,
+                        headlines_fetched,
+                        raw_response,
+                        events_found,
+                        summary,
+                        EXTRACT(EPOCH FROM (NOW() - analysis_time))/60 as age_minutes
+                    FROM news_analysis 
+                    ORDER BY analysis_time DESC 
+                    LIMIT 1
+                """)
+                
+                row = cur.fetchone()
             
             if not row:
                 return {"ok": False, "error": "No cached analysis found"}
@@ -639,18 +637,18 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             return {"status": "no_database", "message": "Database not configured"}
         
         try:
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute("""
-                SELECT * FROM news_analysis 
-                ORDER BY analysis_time DESC 
-                LIMIT 1
-            """)
-            row = cur.fetchone()
-            conn.close()
-            if row:
-                return dict(row)
-            return {"status": "no_analysis", "message": "No analyses yet"}
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("""
+                    SELECT * FROM news_analysis 
+                    ORDER BY analysis_time DESC 
+                    LIMIT 1
+                """)
+                row = cur.fetchone()
+                if row:
+                    return dict(row)
+                return {"status": "no_analysis", "message": "No analyses yet"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
     
@@ -660,18 +658,18 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             return []
         
         try:
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute("""
-                SELECT analysis_id, analysis_time, headlines_fetched, events_found, 
-                       predictions_affected, alert_sent, summary
-                FROM news_analysis 
-                ORDER BY analysis_time DESC 
-                LIMIT %s
-            """, (limit,))
-            rows = cur.fetchall()
-            conn.close()
-            return [dict(r) for r in rows]
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("""
+                    SELECT analysis_id, analysis_time, headlines_fetched, events_found, 
+                           predictions_affected, alert_sent, summary
+                    FROM news_analysis 
+                    ORDER BY analysis_time DESC 
+                    LIMIT %s
+                """, (limit,))
+                rows = cur.fetchall()
+                return [dict(r) for r in rows]
         except Exception as e:
             LOGGER.error(f"Failed to get history: {e}")
             return []
@@ -689,11 +687,12 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             return False
         
         try:
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor()
-            
-            # Create system_state table if not exists
-            cur.execute("""
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                
+                # Create system_state table if not exists
+                cur.execute("""
                 CREATE TABLE IF NOT EXISTS system_state (
                     key VARCHAR(50) PRIMARY KEY,
                     value TEXT,
@@ -719,9 +718,6 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
                 ON CONFLICT (key) DO UPDATE SET value = %s, updated_at = CURRENT_TIMESTAMP
             """, (state, state))
             
-            conn.commit()
-            conn.close()
-            
             LOGGER.warning(f"🛑 TRADING {'PAUSED' if paused else 'RESUMED'}: {reason}")
             return True
         except Exception as e:
@@ -734,11 +730,11 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             return {"paused": False, "reason": "Database not available"}
         
         try:
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor()
-            cur.execute("SELECT value FROM system_state WHERE key = 'trading_pause'")
-            row = cur.fetchone()
-            conn.close()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT value FROM system_state WHERE key = 'trading_pause'")
+                row = cur.fetchone()
             
             if not row:
                 return {"paused": False, "reason": "No pause state set"}
@@ -763,22 +759,21 @@ Only set action_required=true if there are HIGH or CRITICAL events affecting our
             return
         
         try:
-            conn = psycopg2.connect(self.db_url)
-            cur = conn.cursor()
-            
-            cur.execute("""
-                INSERT INTO guardian_alerts 
-                (symbol, alert_type, severity, message, created_at)
-                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
-                RETURNING alert_id
-            """, (symbol, alert_type, severity, message))
-            
-            alert_id = cur.fetchone()[0]
-            conn.commit()
-            conn.close()
-            
-            LOGGER.info(f"[GUARDIAN ALERT] Created alert {alert_id}: {severity} - {message[:50]}")
-            return alert_id
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    INSERT INTO guardian_alerts 
+                    (symbol, alert_type, severity, message, created_at)
+                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    RETURNING alert_id
+                """, (symbol, alert_type, severity, message))
+                
+                alert_id = cur.fetchone()[0]
+                
+                LOGGER.info(f"[GUARDIAN ALERT] Created alert {alert_id}: {severity} - {message[:50]}")
+                return alert_id
         except Exception as e:
             LOGGER.error(f"Failed to create guardian alert: {e}")
             return None

@@ -56,7 +56,8 @@ def reconcile_pending_predictions() -> Dict[str, Any]:
         return {"reconciled": 0, "error": "No psycopg2"}
     
     try:
-        conn = psycopg2.connect(database_url)
+      from core.db_pool import get_sync_connection
+      with get_sync_connection() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # Find predictions past their horizon (48h default)
@@ -140,8 +141,6 @@ def reconcile_pending_predictions() -> Dict[str, Any]:
             WHERE created_at > NOW() - INTERVAL '7 days'
         """)
         stats = cur.fetchone()
-        
-        conn.close()
         
         return {
             "reconciled": reconciled,

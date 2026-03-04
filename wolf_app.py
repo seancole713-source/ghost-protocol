@@ -24080,13 +24080,12 @@ async def api_system_health_check():
         
         # 4. Last Prediction
         try:
-            import psycopg2
             from psycopg2.extras import RealDictCursor
+            from core.db_pool import get_sync_connection
             
             db_url = os.getenv("DATABASE_URL")
             if db_url:
-                conn = psycopg2.connect(db_url)
-                try:
+                with get_sync_connection() as conn:
                     cur = conn.cursor(cursor_factory=RealDictCursor)
                     cur.execute("""
                         SELECT symbol, direction, confidence, created_at
@@ -24103,11 +24102,6 @@ async def api_system_health_check():
                             "confidence": float(row["confidence"]) if row["confidence"] else 0,
                             "timestamp": row["created_at"].isoformat() if row["created_at"] else None
                         }
-                finally:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
         except Exception as e:
             LOGGER.debug(f"Dashboard last_prediction error: {e}")
         
@@ -25759,172 +25753,171 @@ async def debug_outcome_data_audit():
     3. Date range of data
     4. Why symbol_accuracy only has 477 predictions
     """
-    import psycopg2
     from datetime import datetime
+    from core.db_pool import get_sync_connection
     
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         return {"ok": False, "error": "DATABASE_URL not configured"}
     
     try:
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor()
-        
-        audit = {}
-        
-        # 1. Total outcomes and symbol coverage
-        cur.execute("""
-            SELECT 
-                COUNT(*) as total,
-                COUNT(symbol) as with_symbol,
-                COUNT(CASE WHEN symbol IS NULL OR symbol = '' THEN 1 END) as missing_symbol,
-                COUNT(DISTINCT symbol) as unique_symbols
-            FROM ghost_prediction_outcomes
-        """)
-        row = cur.fetchone()
-        audit["total_outcomes"] = row[0]
-        audit["with_symbol"] = row[1]
-        audit["missing_symbol"] = row[2]
-        audit["unique_symbols"] = row[3]
-        
-        # 2. NULL column analysis
-        cur.execute("""
-            SELECT 
-                COUNT(CASE WHEN predicted_direction IS NULL THEN 1 END) as null_predicted_dir,
-                COUNT(CASE WHEN actual_direction IS NULL THEN 1 END) as null_actual_dir,
-                COUNT(CASE WHEN hit_direction IS NULL THEN 1 END) as null_hit_dir,
-                COUNT(CASE WHEN price_at_prediction IS NULL OR price_at_prediction = 0 THEN 1 END) as null_entry_price,
-                COUNT(CASE WHEN price_at_resolution IS NULL OR price_at_resolution = 0 THEN 1 END) as null_exit_price,
-                COUNT(CASE WHEN closed_at IS NULL THEN 1 END) as null_closed_at
-            FROM ghost_prediction_outcomes
-        """)
-        row = cur.fetchone()
-        audit["null_columns"] = {
-            "predicted_direction": row[0],
-            "actual_direction": row[1],
-            "hit_direction": row[2],
-            "entry_price_missing": row[3],
-            "exit_price_missing": row[4],
-            "closed_at": row[5]
-        }
-        
-        # 3. Date range
-        cur.execute("""
-            SELECT 
-                MIN(closed_at) as earliest,
-                MAX(closed_at) as latest,
-                COUNT(DISTINCT DATE(closed_at)) as days_with_data
-            FROM ghost_prediction_outcomes
-            WHERE closed_at IS NOT NULL
-        """)
-        row = cur.fetchone()
-        audit["date_range"] = {
-            "earliest": row[0].isoformat() if row[0] else None,
-            "latest": row[1].isoformat() if row[1] else None,
-            "days_with_data": row[2]
-        }
-        
-        # 4. Symbol distribution - top 10 symbols by count
-        cur.execute("""
-            SELECT symbol, COUNT(*) as count
-            FROM ghost_prediction_outcomes
-            WHERE symbol IS NOT NULL AND symbol != ''
-            GROUP BY symbol
-            ORDER BY count DESC
-            LIMIT 10
-        """)
-        audit["top_symbols"] = [{"symbol": r[0], "count": r[1]} for r in cur.fetchall()]
-        
-        # 5. Check hit_direction distribution (this is what accuracy is based on)
-        cur.execute("""
-            SELECT 
-                hit_direction,
-                COUNT(*) as count
-            FROM ghost_prediction_outcomes
-            GROUP BY hit_direction
-            ORDER BY hit_direction
-        """)
-        audit["hit_direction_distribution"] = [{"hit_direction": r[0], "count": r[1]} for r in cur.fetchall()]
-        
-        # 5b. Check STATUS distribution - this is the KEY insight!
-        cur.execute("""
-            SELECT 
-                status,
-                COUNT(*) as count
-            FROM ghost_prediction_outcomes
-            GROUP BY status
-            ORDER BY count DESC
-        """)
-        audit["status_distribution"] = [{"status": r[0], "count": r[1]} for r in cur.fetchall()]
-        
-        # 6. Compare with ghost_symbol_accuracy table
-        cur.execute("""
-            SELECT 
-                COUNT(*) as symbols_tracked,
-                SUM(total_predictions) as total_in_accuracy_table,
-                SUM(correct_predictions) as correct_in_accuracy_table
-            FROM ghost_symbol_accuracy
-        """)
-        row = cur.fetchone()
-        audit["symbol_accuracy_table"] = {
-            "symbols_tracked": row[0],
-            "total_predictions": row[1],
-            "correct_predictions": row[2]
-        }
-        
-        # 7. Check if there's a predictions table that should link to outcomes
-        cur.execute("""
-            SELECT COUNT(*) FROM information_schema.tables 
-            WHERE table_name = 'predictions'
-        """)
-        predictions_table_exists = cur.fetchone()[0] > 0
-        audit["predictions_table_exists"] = predictions_table_exists
-        
-        if predictions_table_exists:
-            cur.execute("SELECT COUNT(*) FROM predictions")
-            audit["predictions_count"] = cur.fetchone()[0]
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
             
-            # Check predictions table schema
+            audit = {}
+        
+            # 1. Total outcomes and symbol coverage
             cur.execute("""
-                SELECT column_name, data_type 
-                FROM information_schema.columns 
-                WHERE table_name = 'predictions'
-                ORDER BY ordinal_position
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(symbol) as with_symbol,
+                    COUNT(CASE WHEN symbol IS NULL OR symbol = '' THEN 1 END) as missing_symbol,
+                    COUNT(DISTINCT symbol) as unique_symbols
+                FROM ghost_prediction_outcomes
             """)
-            audit["predictions_schema"] = [{"col": r[0], "type": r[1]} for r in cur.fetchall()]
+            row = cur.fetchone()
+            audit["total_outcomes"] = row[0]
+            audit["with_symbol"] = row[1]
+            audit["missing_symbol"] = row[2]
+            audit["unique_symbols"] = row[3]
             
-            # Sample prediction to see what data we have
+            # 2. NULL column analysis
             cur.execute("""
-                SELECT * FROM predictions
-                ORDER BY run_at DESC
-                LIMIT 3
+                SELECT 
+                    COUNT(CASE WHEN predicted_direction IS NULL THEN 1 END) as null_predicted_dir,
+                    COUNT(CASE WHEN actual_direction IS NULL THEN 1 END) as null_actual_dir,
+                    COUNT(CASE WHEN hit_direction IS NULL THEN 1 END) as null_hit_dir,
+                    COUNT(CASE WHEN price_at_prediction IS NULL OR price_at_prediction = 0 THEN 1 END) as null_entry_price,
+                    COUNT(CASE WHEN price_at_resolution IS NULL OR price_at_resolution = 0 THEN 1 END) as null_exit_price,
+                    COUNT(CASE WHEN closed_at IS NULL THEN 1 END) as null_closed_at
+                FROM ghost_prediction_outcomes
             """)
-            cols = [desc[0] for desc in cur.description]
-            audit["sample_predictions"] = [dict(zip(cols, r)) for r in cur.fetchall()]
+            row = cur.fetchone()
+            audit["null_columns"] = {
+                "predicted_direction": row[0],
+                "actual_direction": row[1],
+                "hit_direction": row[2],
+                "entry_price_missing": row[3],
+                "exit_price_missing": row[4],
+                "closed_at": row[5]
+            }
             
-            # Check outcomes table too
+            # 3. Date range
+            cur.execute("""
+                SELECT 
+                    MIN(closed_at) as earliest,
+                    MAX(closed_at) as latest,
+                    COUNT(DISTINCT DATE(closed_at)) as days_with_data
+                FROM ghost_prediction_outcomes
+                WHERE closed_at IS NOT NULL
+            """)
+            row = cur.fetchone()
+            audit["date_range"] = {
+                "earliest": row[0].isoformat() if row[0] else None,
+                "latest": row[1].isoformat() if row[1] else None,
+                "days_with_data": row[2]
+            }
+            
+            # 4. Symbol distribution - top 10 symbols by count
+            cur.execute("""
+                SELECT symbol, COUNT(*) as count
+                FROM ghost_prediction_outcomes
+                WHERE symbol IS NOT NULL AND symbol != ''
+                GROUP BY symbol
+                ORDER BY count DESC
+                LIMIT 10
+            """)
+            audit["top_symbols"] = [{"symbol": r[0], "count": r[1]} for r in cur.fetchall()]
+            
+            # 5. Check hit_direction distribution (this is what accuracy is based on)
+            cur.execute("""
+                SELECT 
+                    hit_direction,
+                    COUNT(*) as count
+                FROM ghost_prediction_outcomes
+                GROUP BY hit_direction
+                ORDER BY hit_direction
+            """)
+            audit["hit_direction_distribution"] = [{"hit_direction": r[0], "count": r[1]} for r in cur.fetchall()]
+            
+            # 5b. Check STATUS distribution - this is the KEY insight!
+            cur.execute("""
+                SELECT 
+                    status,
+                    COUNT(*) as count
+                FROM ghost_prediction_outcomes
+                GROUP BY status
+                ORDER BY count DESC
+            """)
+            audit["status_distribution"] = [{"status": r[0], "count": r[1]} for r in cur.fetchall()]
+            
+            # 6. Compare with ghost_symbol_accuracy table
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as symbols_tracked,
+                    SUM(total_predictions) as total_in_accuracy_table,
+                    SUM(correct_predictions) as correct_in_accuracy_table
+                FROM ghost_symbol_accuracy
+            """)
+            row = cur.fetchone()
+            audit["symbol_accuracy_table"] = {
+                "symbols_tracked": row[0],
+                "total_predictions": row[1],
+                "correct_predictions": row[2]
+            }
+            
+            # 7. Check if there's a predictions table that should link to outcomes
             cur.execute("""
                 SELECT COUNT(*) FROM information_schema.tables 
-                WHERE table_name = 'outcomes'
+                WHERE table_name = 'predictions'
             """)
-            outcomes_table_exists = cur.fetchone()[0] > 0
-            if outcomes_table_exists:
-                cur.execute("SELECT COUNT(*) FROM outcomes")
-                audit["outcomes_table_count"] = cur.fetchone()[0]
-        
-        cur.close()
-        conn.close()
-        
-        # Calculate the gap
-        audit["data_gap_analysis"] = {
-            "total_in_ghost_prediction_outcomes": audit["total_outcomes"],
-            "with_valid_symbol": audit["with_symbol"],
-            "percentage_with_symbol": f"{(audit['with_symbol'] / audit['total_outcomes'] * 100):.1f}%" if audit['total_outcomes'] > 0 else "0%",
-            "in_symbol_accuracy_table": audit["symbol_accuracy_table"]["total_predictions"],
-            "gap": audit["with_symbol"] - (audit["symbol_accuracy_table"]["total_predictions"] or 0)
-        }
-        
-        return {"ok": True, "audit": audit}
+            predictions_table_exists = cur.fetchone()[0] > 0
+            audit["predictions_table_exists"] = predictions_table_exists
+            
+            if predictions_table_exists:
+                cur.execute("SELECT COUNT(*) FROM predictions")
+                audit["predictions_count"] = cur.fetchone()[0]
+                
+                # Check predictions table schema
+                cur.execute("""
+                    SELECT column_name, data_type 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'predictions'
+                    ORDER BY ordinal_position
+                """)
+                audit["predictions_schema"] = [{"col": r[0], "type": r[1]} for r in cur.fetchall()]
+                
+                # Sample prediction to see what data we have
+                cur.execute("""
+                    SELECT * FROM predictions
+                    ORDER BY run_at DESC
+                    LIMIT 3
+                """)
+                cols = [desc[0] for desc in cur.description]
+                audit["sample_predictions"] = [dict(zip(cols, r)) for r in cur.fetchall()]
+                
+                # Check outcomes table too
+                cur.execute("""
+                    SELECT COUNT(*) FROM information_schema.tables 
+                    WHERE table_name = 'outcomes'
+                """)
+                outcomes_table_exists = cur.fetchone()[0] > 0
+                if outcomes_table_exists:
+                    cur.execute("SELECT COUNT(*) FROM outcomes")
+                    audit["outcomes_table_count"] = cur.fetchone()[0]
+            
+            cur.close()
+            
+            # Calculate the gap
+            audit["data_gap_analysis"] = {
+                "total_in_ghost_prediction_outcomes": audit["total_outcomes"],
+                "with_valid_symbol": audit["with_symbol"],
+                "percentage_with_symbol": f"{(audit['with_symbol'] / audit['total_outcomes'] * 100):.1f}%" if audit['total_outcomes'] > 0 else "0%",
+                "in_symbol_accuracy_table": audit["symbol_accuracy_table"]["total_predictions"],
+                "gap": audit["with_symbol"] - (audit["symbol_accuracy_table"]["total_predictions"] or 0)
+            }
+            
+            return {"ok": True, "audit": audit}
         
     except Exception as e:
         import traceback
@@ -25970,121 +25963,120 @@ async def backfill_no_data_outcomes(
         return {"ok": False, "error": "DATABASE_URL not configured"}
     
     try:
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        
-        # Get 'no_data' outcomes that have corresponding predictions
-        cur.execute("""
-            SELECT 
-                o.prediction_id,
-                o.symbol,
-                o.predicted_direction,
-                o.closed_at,
-                p.run_at,
-                p.features_json,
-                p.confidence
-            FROM ghost_prediction_outcomes o
-            JOIN predictions p ON o.prediction_id = p.id
-            WHERE o.status = 'no_data'
-            LIMIT %s
-        """, (batch_size,))
-        
-        no_data_outcomes = cur.fetchall()
-        
-        if not no_data_outcomes:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Get 'no_data' outcomes that have corresponding predictions
+            cur.execute("""
+                SELECT 
+                    o.prediction_id,
+                    o.symbol,
+                    o.predicted_direction,
+                    o.closed_at,
+                    p.run_at,
+                    p.features_json,
+                    p.confidence
+                FROM ghost_prediction_outcomes o
+                JOIN predictions p ON o.prediction_id = p.id
+                WHERE o.status = 'no_data'
+                LIMIT %s
+            """, (batch_size,))
+            
+            no_data_outcomes = cur.fetchall()
+            
+            if not no_data_outcomes:
+                return {
+                    "ok": True,
+                    "message": "No 'no_data' outcomes to backfill",
+                    "processed": 0
+                }
+            
+            processed = 0
+            skipped = 0
+            errors = []
+            
+            # Direction threshold
+            DIRECTION_THRESHOLD_PCT = float(os.getenv("ACCURACY_DIRECTION_THRESHOLD_PCT", "0.25"))
+            
+            for outcome in no_data_outcomes:
+                try:
+                    # Extract price_at_prediction from features_json
+                    features_json = outcome.get("features_json")
+                    if not features_json:
+                        skipped += 1
+                        continue
+                    
+                    features = json.loads(features_json) if isinstance(features_json, str) else features_json
+                    price_t0 = features.get("current_price") or features.get("PRICE")
+                    
+                    if not price_t0:
+                        skipped += 1
+                        continue
+                    
+                    price_t0 = float(price_t0)
+                    symbol = outcome["symbol"]
+                    pred_id = outcome["prediction_id"]
+                    pred_direction = outcome["predicted_direction"]
+                    pred_confidence = outcome.get("confidence", 0.5)
+                    
+                    # Get current price for resolution
+                    from services.outcome_reconciler_v2 import get_symbol_price
+                    price_t1 = get_symbol_price(symbol)
+                    
+                    if price_t1 is None:
+                        skipped += 1
+                        continue
+                    
+                    # Compute realized movement
+                    realized_move_pct = ((price_t1 - price_t0) / price_t0) * 100
+                    
+                    # Determine actual direction
+                    if realized_move_pct > DIRECTION_THRESHOLD_PCT:
+                        actual_direction = "UP"
+                    elif realized_move_pct < -DIRECTION_THRESHOLD_PCT:
+                        actual_direction = "DOWN"
+                    else:
+                        actual_direction = "FLAT"
+                    
+                    # Determine if prediction was correct
+                    hit_direction = 1 if actual_direction == pred_direction else 0
+                    
+                    # Update the outcome
+                    cur.execute("""
+                        UPDATE ghost_prediction_outcomes
+                        SET 
+                            price_at_prediction = %s,
+                            price_at_resolution = %s,
+                            realized_move_pct = %s,
+                            actual_direction = %s,
+                            hit_direction = %s,
+                            status = 'completed',
+                            notes = 'Backfilled from features_json'
+                        WHERE prediction_id = %s
+                    """, (
+                        price_t0,
+                        price_t1,
+                        realized_move_pct,
+                        actual_direction,
+                        hit_direction,
+                        pred_id
+                    ))
+                    
+                    processed += 1
+                    
+                except Exception as e:
+                    errors.append(f"pred {outcome['prediction_id']}: {str(e)[:50]}")
+            
+            cur.close()
+            
             return {
                 "ok": True,
-                "message": "No 'no_data' outcomes to backfill",
-                "processed": 0
+                "message": f"Backfilled {processed} outcomes",
+                "processed": processed,
+                "skipped": skipped,
+                "errors": errors[:10] if errors else []
             }
-        
-        processed = 0
-        skipped = 0
-        errors = []
-        
-        # Direction threshold
-        DIRECTION_THRESHOLD_PCT = float(os.getenv("ACCURACY_DIRECTION_THRESHOLD_PCT", "0.25"))
-        
-        for outcome in no_data_outcomes:
-            try:
-                # Extract price_at_prediction from features_json
-                features_json = outcome.get("features_json")
-                if not features_json:
-                    skipped += 1
-                    continue
-                
-                features = json.loads(features_json) if isinstance(features_json, str) else features_json
-                price_t0 = features.get("current_price") or features.get("PRICE")
-                
-                if not price_t0:
-                    skipped += 1
-                    continue
-                
-                price_t0 = float(price_t0)
-                symbol = outcome["symbol"]
-                pred_id = outcome["prediction_id"]
-                pred_direction = outcome["predicted_direction"]
-                pred_confidence = outcome.get("confidence", 0.5)
-                
-                # Get current price for resolution
-                from services.outcome_reconciler_v2 import get_symbol_price
-                price_t1 = get_symbol_price(symbol)
-                
-                if price_t1 is None:
-                    skipped += 1
-                    continue
-                
-                # Compute realized movement
-                realized_move_pct = ((price_t1 - price_t0) / price_t0) * 100
-                
-                # Determine actual direction
-                if realized_move_pct > DIRECTION_THRESHOLD_PCT:
-                    actual_direction = "UP"
-                elif realized_move_pct < -DIRECTION_THRESHOLD_PCT:
-                    actual_direction = "DOWN"
-                else:
-                    actual_direction = "FLAT"
-                
-                # Determine if prediction was correct
-                hit_direction = 1 if actual_direction == pred_direction else 0
-                
-                # Update the outcome
-                cur.execute("""
-                    UPDATE ghost_prediction_outcomes
-                    SET 
-                        price_at_prediction = %s,
-                        price_at_resolution = %s,
-                        realized_move_pct = %s,
-                        actual_direction = %s,
-                        hit_direction = %s,
-                        status = 'completed',
-                        notes = 'Backfilled from features_json'
-                    WHERE prediction_id = %s
-                """, (
-                    price_t0,
-                    price_t1,
-                    realized_move_pct,
-                    actual_direction,
-                    hit_direction,
-                    pred_id
-                ))
-                
-                processed += 1
-                
-            except Exception as e:
-                errors.append(f"pred {outcome['prediction_id']}: {str(e)[:50]}")
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        return {
-            "ok": True,
-            "message": f"Backfilled {processed} outcomes",
-            "processed": processed,
-            "skipped": skipped,
-            "errors": errors[:10] if errors else []
-        }
         
     except Exception as e:
         import traceback
@@ -26268,48 +26260,47 @@ async def debug_migrate_v3_columns():
     """
     try:
         import psycopg2
+        from core.db_pool import get_sync_connection
         
         DATABASE_URL = os.getenv("DATABASE_URL")
         if not DATABASE_URL:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        
-        # V3 columns to add
-        v3_columns = [
-            ("v3_validated", "BOOLEAN DEFAULT FALSE"),
-            ("v3_strategy", "TEXT"),
-            ("v3_is_inverse", "BOOLEAN DEFAULT FALSE"),
-            ("v3_original_direction", "TEXT"),
-            ("v3_hold_hours", "INTEGER"),
-            ("v3_backtest_win_rate", "REAL"),
-        ]
-        
-        added = []
-        skipped = []
-        
-        for col_name, col_type in v3_columns:
-            try:
-                cur.execute(f"ALTER TABLE paper_trades ADD COLUMN {col_name} {col_type}")
-                added.append(col_name)
-            except psycopg2.errors.DuplicateColumn:
-                conn.rollback()  # Reset transaction state
-                skipped.append(col_name)
-            except Exception as e:
-                conn.rollback()
-                skipped.append(f"{col_name}: {e}")
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        return {
-            "ok": True,
-            "added_columns": added,
-            "already_existed": skipped,
-            "message": f"Migration complete. Added {len(added)} columns, {len(skipped)} already existed."
-        }
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            
+            # V3 columns to add
+            v3_columns = [
+                ("v3_validated", "BOOLEAN DEFAULT FALSE"),
+                ("v3_strategy", "TEXT"),
+                ("v3_is_inverse", "BOOLEAN DEFAULT FALSE"),
+                ("v3_original_direction", "TEXT"),
+                ("v3_hold_hours", "INTEGER"),
+                ("v3_backtest_win_rate", "REAL"),
+            ]
+            
+            added = []
+            skipped = []
+            
+            for col_name, col_type in v3_columns:
+                try:
+                    cur.execute(f"ALTER TABLE paper_trades ADD COLUMN {col_name} {col_type}")
+                    added.append(col_name)
+                except psycopg2.errors.DuplicateColumn:
+                    conn.rollback()  # Reset transaction state
+                    skipped.append(col_name)
+                except Exception as e:
+                    conn.rollback()
+                    skipped.append(f"{col_name}: {e}")
+            
+            cur.close()
+            
+            return {
+                "ok": True,
+                "added_columns": added,
+                "already_existed": skipped,
+                "message": f"Migration complete. Added {len(added)} columns, {len(skipped)} already existed."
+            }
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
@@ -26423,112 +26414,109 @@ async def debug_db_audit():
     - ghost_prediction_outcomes: price_at_prediction, price_at_resolution, hit_direction, status
     """
     try:
-        import psycopg2
-        
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        # Price validation thresholds
-        MIN_VALID = {
-            'BTC': 10000, 'ETH': 500, 'SOL': 5, 'BNB': 100,
-            'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001
-        }
-        
-        # 1. Get outcomes overview
-        cursor.execute("""
-            SELECT COUNT(*) as total,
-                   COUNT(DISTINCT symbol) as symbols,
-                   MIN(closed_at) as earliest,
-                   MAX(closed_at) as latest,
-                   SUM(CASE WHEN symbol IS NULL OR symbol = '' THEN 1 ELSE 0 END) as missing_symbol,
-                   SUM(CASE WHEN price_at_prediction IS NULL THEN 1 ELSE 0 END) as missing_entry
-            FROM ghost_prediction_outcomes
-        """)
-        overview = cursor.fetchone()
-        
-        # 2. Find corrupt outcomes by symbol (check price_at_prediction in ghost_prediction_outcomes)
-        corrupt_entry = {}
-        for symbol, min_price in MIN_VALID.items():
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Price validation thresholds
+            MIN_VALID = {
+                'BTC': 10000, 'ETH': 500, 'SOL': 5, 'BNB': 100,
+                'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001
+            }
+            
+            # 1. Get outcomes overview
             cursor.execute("""
-                SELECT COUNT(*) as cnt,
-                       MIN(price_at_prediction) as min_p,
-                       MAX(price_at_prediction) as max_p
+                SELECT COUNT(*) as total,
+                       COUNT(DISTINCT symbol) as symbols,
+                       MIN(closed_at) as earliest,
+                       MAX(closed_at) as latest,
+                       SUM(CASE WHEN symbol IS NULL OR symbol = '' THEN 1 ELSE 0 END) as missing_symbol,
+                       SUM(CASE WHEN price_at_prediction IS NULL THEN 1 ELSE 0 END) as missing_entry
                 FROM ghost_prediction_outcomes
-                WHERE symbol = %s AND price_at_prediction IS NOT NULL AND price_at_prediction < %s
-            """, (symbol, min_price))
-            row = cursor.fetchone()
-            if row[0] > 0:
-                corrupt_entry[symbol] = {
-                    "corrupt_count": row[0],
-                    "min_price": float(row[1]) if row[1] else 0,
-                    "max_price": float(row[2]) if row[2] else 0,
-                    "threshold": min_price
-                }
-        
-        # 3. Find corrupt exit prices
-        corrupt_exit = {}
-        for symbol, min_price in MIN_VALID.items():
+            """)
+            overview = cursor.fetchone()
+            
+            # 2. Find corrupt outcomes by symbol (check price_at_prediction in ghost_prediction_outcomes)
+            corrupt_entry = {}
+            for symbol, min_price in MIN_VALID.items():
+                cursor.execute("""
+                    SELECT COUNT(*) as cnt,
+                           MIN(price_at_prediction) as min_p,
+                           MAX(price_at_prediction) as max_p
+                    FROM ghost_prediction_outcomes
+                    WHERE symbol = %s AND price_at_prediction IS NOT NULL AND price_at_prediction < %s
+                """, (symbol, min_price))
+                row = cursor.fetchone()
+                if row[0] > 0:
+                    corrupt_entry[symbol] = {
+                        "corrupt_count": row[0],
+                        "min_price": float(row[1]) if row[1] else 0,
+                        "max_price": float(row[2]) if row[2] else 0,
+                        "threshold": min_price
+                    }
+            
+            # 3. Find corrupt exit prices
+            corrupt_exit = {}
+            for symbol, min_price in MIN_VALID.items():
+                cursor.execute("""
+                    SELECT COUNT(*) as cnt,
+                           MIN(price_at_resolution) as min_p,
+                           MAX(price_at_resolution) as max_p
+                    FROM ghost_prediction_outcomes
+                    WHERE symbol = %s AND price_at_resolution IS NOT NULL AND price_at_resolution < %s
+                """, (symbol, min_price))
+                row = cursor.fetchone()
+                if row[0] > 0:
+                    corrupt_exit[symbol] = {
+                        "corrupt_count": row[0],
+                        "min_price": float(row[1]) if row[1] else 0,
+                        "max_price": float(row[2]) if row[2] else 0,
+                        "threshold": min_price
+                    }
+            
+            # 4. Get outcomes stats
             cursor.execute("""
-                SELECT COUNT(*) as cnt,
-                       MIN(price_at_resolution) as min_p,
-                       MAX(price_at_resolution) as max_p
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses,
+                    SUM(CASE WHEN status = 'no_data' THEN 1 ELSE 0 END) as no_data,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
                 FROM ghost_prediction_outcomes
-                WHERE symbol = %s AND price_at_resolution IS NOT NULL AND price_at_resolution < %s
-            """, (symbol, min_price))
-            row = cursor.fetchone()
-            if row[0] > 0:
-                corrupt_exit[symbol] = {
-                    "corrupt_count": row[0],
-                    "min_price": float(row[1]) if row[1] else 0,
-                    "max_price": float(row[2]) if row[2] else 0,
-                    "threshold": min_price
-                }
-        
-        # 4. Get outcomes stats
-        cursor.execute("""
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN status = 'no_data' THEN 1 ELSE 0 END) as no_data,
-                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
-            FROM ghost_prediction_outcomes
-        """)
-        outcomes = cursor.fetchone()
-        
-        # 5. Sample of corrupt BTC entry prices
-        cursor.execute("""
-            SELECT id, symbol, price_at_prediction, price_at_resolution, status, predicted_direction
-            FROM ghost_prediction_outcomes
-            WHERE symbol = 'BTC' AND price_at_prediction IS NOT NULL AND price_at_prediction < 10000
-            ORDER BY id DESC
-            LIMIT 10
-        """)
-        btc_entry_samples = [
-            {"id": r[0], "symbol": r[1], "entry": float(r[2]) if r[2] else 0, 
-             "exit": float(r[3]) if r[3] else 0, "status": r[4], "direction": r[5]}
-            for r in cursor.fetchall()
-        ]
-        
-        # 6. Sample of corrupt BTC exit prices
-        cursor.execute("""
-            SELECT id, symbol, price_at_prediction, price_at_resolution, status, predicted_direction
-            FROM ghost_prediction_outcomes
-            WHERE symbol = 'BTC' AND price_at_resolution IS NOT NULL AND price_at_resolution < 10000
-            ORDER BY id DESC
-            LIMIT 10
-        """)
-        btc_exit_samples = [
-            {"id": r[0], "symbol": r[1], "entry": float(r[2]) if r[2] else 0, 
-             "exit": float(r[3]) if r[3] else 0, "status": r[4], "direction": r[5]}
-            for r in cursor.fetchall()
-        ]
-        
-        conn.close()
+            """)
+            outcomes = cursor.fetchone()
+            
+            # 5. Sample of corrupt BTC entry prices
+            cursor.execute("""
+                SELECT id, symbol, price_at_prediction, price_at_resolution, status, predicted_direction
+                FROM ghost_prediction_outcomes
+                WHERE symbol = 'BTC' AND price_at_prediction IS NOT NULL AND price_at_prediction < 10000
+                ORDER BY id DESC
+                LIMIT 10
+            """)
+            btc_entry_samples = [
+                {"id": r[0], "symbol": r[1], "entry": float(r[2]) if r[2] else 0, 
+                 "exit": float(r[3]) if r[3] else 0, "status": r[4], "direction": r[5]}
+                for r in cursor.fetchall()
+            ]
+            
+            # 6. Sample of corrupt BTC exit prices
+            cursor.execute("""
+                SELECT id, symbol, price_at_prediction, price_at_resolution, status, predicted_direction
+                FROM ghost_prediction_outcomes
+                WHERE symbol = 'BTC' AND price_at_resolution IS NOT NULL AND price_at_resolution < 10000
+                ORDER BY id DESC
+                LIMIT 10
+            """)
+            btc_exit_samples = [
+                {"id": r[0], "symbol": r[1], "entry": float(r[2]) if r[2] else 0, 
+                 "exit": float(r[3]) if r[3] else 0, "status": r[4], "direction": r[5]}
+                for r in cursor.fetchall()
+            ]
         
         total_corrupt = sum(d["corrupt_count"] for d in corrupt_entry.values())
         total_corrupt += sum(d["corrupt_count"] for d in corrupt_exit.values())
@@ -26572,146 +26560,145 @@ async def debug_sweetspot():
     Uses 'outcome' column with values: WIN, LOSS, PENDING, BREAK_EVEN
     """
     try:
-        import psycopg2
         from psycopg2.extras import RealDictCursor
         
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor(cursor_factory=RealDictCursor)
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            results = {}
+            
+            # Known crypto symbols
+            crypto_symbols = ['BTC', 'ETH', 'SOL', 'XRP', 'AVAX', 'ADA', 'DOT', 'LINK', 'MATIC',
+                             'DOGE', 'SHIB', 'LTC', 'BCH', 'ATOM', 'UNI', 'AAVE', 'MKR', 'CRV',
+                             'RNDR', 'TURBO', 'CHZ', 'ILV', 'ZEC', 'INJ', 'SUI', 'APT', 'ARB', 
+                             'OP', 'TIA', 'SEI', 'FET', 'PEPE', 'WIF', 'BONK', 'FIL', 'ICP',
+                             'NEAR', 'ALGO', 'VET', 'HBAR', 'GRT', 'ENS', 'SAND', 'MANA', 'AXS',
+                             'GALA', 'IMX', 'BLUR', 'APE', 'LDO', 'SNX', 'COMP', 'SUSHI', 'YFI',
+                             '1INCH', 'BAT', 'ZRX', 'DASH', 'XMR', 'ETC', 'ENJ', 'IQ', 'LPT',
+                             'API3', 'BAND', 'MASK', 'CELO', 'JUP', 'IOTX', 'RLC', 'EGLD', 'QNT',
+                             'BRETT', 'SSV', 'RPL', 'BNB', 'KAVA', 'JASMY', 'ROSE', 'FTM', 'ONE']
+            crypto_list = "', '".join(crypto_symbols)
+            
+            # 1. ALL SYMBOLS RANKED (min 20 trades)
+            cur.execute("""
+                SELECT symbol, 
+                       COUNT(*) as trades,
+                       SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                       ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                FROM paper_trades  
+                WHERE outcome IN ('WIN', 'LOSS')
+                GROUP BY symbol
+                HAVING COUNT(*) >= 20
+                ORDER BY win_rate DESC
+            """)
+            all_symbols = [dict(r) for r in cur.fetchall()]
+            results['all_symbols_ranked'] = all_symbols
+            
+            # 2. STOCKS ONLY (min 15 trades)
+            cur.execute(f"""
+                SELECT symbol, 
+                       COUNT(*) as trades,
+                       SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                       ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                FROM paper_trades  
+                WHERE outcome IN ('WIN', 'LOSS')
+                  AND symbol NOT IN ('{crypto_list}')
+                GROUP BY symbol
+                HAVING COUNT(*) >= 15
+                ORDER BY win_rate DESC
+            """)
+            stocks_only = [dict(r) for r in cur.fetchall()]
+            results['stocks_only'] = stocks_only
+            
+            # 3. CRYPTO ONLY (min 15 trades)
+            cur.execute(f"""
+                SELECT symbol, 
+                       COUNT(*) as trades,
+                       SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                       ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                FROM paper_trades  
+                WHERE outcome IN ('WIN', 'LOSS')
+                  AND symbol IN ('{crypto_list}')
+                GROUP BY symbol
+                HAVING COUNT(*) >= 15
+                ORDER BY win_rate DESC
+            """)
+            crypto_only = [dict(r) for r in cur.fetchall()]
+            results['crypto_only'] = crypto_only
+            
+            # 4. BEST SYMBOL+DIRECTION COMBOS (min 10 trades, top 50)
+            cur.execute("""
+                SELECT symbol, 
+                       signal_direction as direction,
+                       COUNT(*) as trades,
+                       SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                       ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                FROM paper_trades  
+                WHERE outcome IN ('WIN', 'LOSS')
+                GROUP BY symbol, signal_direction
+                HAVING COUNT(*) >= 10
+                ORDER BY win_rate DESC
+                LIMIT 50
+            """)
+            best_combos = [dict(r) for r in cur.fetchall()]
+            results['best_direction_combos'] = best_combos
+            
+            # 5. WORST PERFORMERS - INVERSE CANDIDATES (min 10 trades, bottom 30)
+            cur.execute("""
+                SELECT symbol, 
+                       signal_direction as direction,
+                       COUNT(*) as trades,
+                       SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                       ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
+                FROM paper_trades  
+                WHERE outcome IN ('WIN', 'LOSS')
+                GROUP BY symbol, signal_direction
+                HAVING COUNT(*) >= 10
+                ORDER BY win_rate ASC
+                LIMIT 30
+            """)
+            worst_combos = [dict(r) for r in cur.fetchall()]
+            results['inverse_candidates'] = worst_combos
+            
+            # 6. Overall stats
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
+                    SUM(CASE WHEN outcome = 'PENDING' THEN 1 ELSE 0 END) as pending
+                FROM paper_trades
+            """)
+            overall = dict(cur.fetchone())
+            wins = overall['wins'] or 0
+            losses = overall['losses'] or 0
+            resolved = wins + losses
+            overall['win_rate'] = round((wins / resolved * 100), 1) if resolved > 0 else 0
+            results['overall'] = overall
+            
+            # Build recommendations
+            tradeable_stocks = [s for s in stocks_only if float(s['win_rate']) >= 60]
+            tradeable_crypto = [s for s in crypto_only if float(s['win_rate']) >= 60]
+            avoid_stocks = [s for s in stocks_only if float(s['win_rate']) < 50]
+            avoid_crypto = [s for s in crypto_only if float(s['win_rate']) < 50]
+            inverse_candidates = [c for c in worst_combos if float(c['win_rate']) <= 20]
+            
+            results['recommendations'] = {
+                'tradeable_stocks': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in tradeable_stocks],
+                'tradeable_crypto': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in tradeable_crypto],
+                'avoid_stocks': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in avoid_stocks],
+                'avoid_crypto': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in avoid_crypto],
+                'inverse_candidates': [{'symbol': c['symbol'], 'direction': c['direction'], 'win_rate': float(c['win_rate']), 'trades': c['trades']} for c in inverse_candidates],
+                'v3_whitelist_stocks': [s['symbol'] for s in tradeable_stocks[:10]],
+                'v3_whitelist_crypto': [s['symbol'] for s in tradeable_crypto[:10]],
+                'v3_blacklist': [s['symbol'] for s in avoid_stocks + avoid_crypto if float(s['win_rate']) < 30]
+            }
         
-        results = {}
-        
-        # Known crypto symbols
-        crypto_symbols = ['BTC', 'ETH', 'SOL', 'XRP', 'AVAX', 'ADA', 'DOT', 'LINK', 'MATIC',
-                         'DOGE', 'SHIB', 'LTC', 'BCH', 'ATOM', 'UNI', 'AAVE', 'MKR', 'CRV',
-                         'RNDR', 'TURBO', 'CHZ', 'ILV', 'ZEC', 'INJ', 'SUI', 'APT', 'ARB', 
-                         'OP', 'TIA', 'SEI', 'FET', 'PEPE', 'WIF', 'BONK', 'FIL', 'ICP',
-                         'NEAR', 'ALGO', 'VET', 'HBAR', 'GRT', 'ENS', 'SAND', 'MANA', 'AXS',
-                         'GALA', 'IMX', 'BLUR', 'APE', 'LDO', 'SNX', 'COMP', 'SUSHI', 'YFI',
-                         '1INCH', 'BAT', 'ZRX', 'DASH', 'XMR', 'ETC', 'ENJ', 'IQ', 'LPT',
-                         'API3', 'BAND', 'MASK', 'CELO', 'JUP', 'IOTX', 'RLC', 'EGLD', 'QNT',
-                         'BRETT', 'SSV', 'RPL', 'BNB', 'KAVA', 'JASMY', 'ROSE', 'FTM', 'ONE']
-        crypto_list = "', '".join(crypto_symbols)
-        
-        # 1. ALL SYMBOLS RANKED (min 20 trades)
-        cur.execute("""
-            SELECT symbol, 
-                   COUNT(*) as trades,
-                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades  
-            WHERE outcome IN ('WIN', 'LOSS')
-            GROUP BY symbol
-            HAVING COUNT(*) >= 20
-            ORDER BY win_rate DESC
-        """)
-        all_symbols = [dict(r) for r in cur.fetchall()]
-        results['all_symbols_ranked'] = all_symbols
-        
-        # 2. STOCKS ONLY (min 15 trades)
-        cur.execute(f"""
-            SELECT symbol, 
-                   COUNT(*) as trades,
-                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades  
-            WHERE outcome IN ('WIN', 'LOSS')
-              AND symbol NOT IN ('{crypto_list}')
-            GROUP BY symbol
-            HAVING COUNT(*) >= 15
-            ORDER BY win_rate DESC
-        """)
-        stocks_only = [dict(r) for r in cur.fetchall()]
-        results['stocks_only'] = stocks_only
-        
-        # 3. CRYPTO ONLY (min 15 trades)
-        cur.execute(f"""
-            SELECT symbol, 
-                   COUNT(*) as trades,
-                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades  
-            WHERE outcome IN ('WIN', 'LOSS')
-              AND symbol IN ('{crypto_list}')
-            GROUP BY symbol
-            HAVING COUNT(*) >= 15
-            ORDER BY win_rate DESC
-        """)
-        crypto_only = [dict(r) for r in cur.fetchall()]
-        results['crypto_only'] = crypto_only
-        
-        # 4. BEST SYMBOL+DIRECTION COMBOS (min 10 trades, top 50)
-        cur.execute("""
-            SELECT symbol, 
-                   signal_direction as direction,
-                   COUNT(*) as trades,
-                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades  
-            WHERE outcome IN ('WIN', 'LOSS')
-            GROUP BY symbol, signal_direction
-            HAVING COUNT(*) >= 10
-            ORDER BY win_rate DESC
-            LIMIT 50
-        """)
-        best_combos = [dict(r) for r in cur.fetchall()]
-        results['best_direction_combos'] = best_combos
-        
-        # 5. WORST PERFORMERS - INVERSE CANDIDATES (min 10 trades, bottom 30)
-        cur.execute("""
-            SELECT symbol, 
-                   signal_direction as direction,
-                   COUNT(*) as trades,
-                   SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                   ROUND(100.0 * SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) / COUNT(*), 1) as win_rate
-            FROM paper_trades  
-            WHERE outcome IN ('WIN', 'LOSS')
-            GROUP BY symbol, signal_direction
-            HAVING COUNT(*) >= 10
-            ORDER BY win_rate ASC
-            LIMIT 30
-        """)
-        worst_combos = [dict(r) for r in cur.fetchall()]
-        results['inverse_candidates'] = worst_combos
-        
-        # 6. Overall stats
-        cur.execute("""
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN outcome = 'PENDING' THEN 1 ELSE 0 END) as pending
-            FROM paper_trades
-        """)
-        overall = dict(cur.fetchone())
-        wins = overall['wins'] or 0
-        losses = overall['losses'] or 0
-        resolved = wins + losses
-        overall['win_rate'] = round((wins / resolved * 100), 1) if resolved > 0 else 0
-        results['overall'] = overall
-        
-        # Build recommendations
-        tradeable_stocks = [s for s in stocks_only if float(s['win_rate']) >= 60]
-        tradeable_crypto = [s for s in crypto_only if float(s['win_rate']) >= 60]
-        avoid_stocks = [s for s in stocks_only if float(s['win_rate']) < 50]
-        avoid_crypto = [s for s in crypto_only if float(s['win_rate']) < 50]
-        inverse_candidates = [c for c in worst_combos if float(c['win_rate']) <= 20]
-        
-        results['recommendations'] = {
-            'tradeable_stocks': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in tradeable_stocks],
-            'tradeable_crypto': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in tradeable_crypto],
-            'avoid_stocks': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in avoid_stocks],
-            'avoid_crypto': [{'symbol': s['symbol'], 'win_rate': float(s['win_rate']), 'trades': s['trades']} for s in avoid_crypto],
-            'inverse_candidates': [{'symbol': c['symbol'], 'direction': c['direction'], 'win_rate': float(c['win_rate']), 'trades': c['trades']} for c in inverse_candidates],
-            'v3_whitelist_stocks': [s['symbol'] for s in tradeable_stocks[:10]],
-            'v3_whitelist_crypto': [s['symbol'] for s in tradeable_crypto[:10]],
-            'v3_blacklist': [s['symbol'] for s in avoid_stocks + avoid_crypto if float(s['win_rate']) < 30]
-        }
-        
-        conn.close()
         return {"ok": True, **results}
         
     except Exception as e:
@@ -26730,86 +26717,82 @@ async def debug_checkpoint_status():
     - Recent checkpoint evaluations from logs
     """
     try:
-        import psycopg2
-        
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        # 1. Check if checkpoint columns exist
-        cursor.execute("""
-            SELECT column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_name = 'paper_trades'
-            AND column_name IN ('trust_level', 'checkpoint_times', 'checkpoint_results', 'checkpoint_evaluated', 'checkpoint_prices')
-            ORDER BY column_name
-        """)
-        columns = {row[0]: row[1] for row in cursor.fetchall()}
-        
-        expected_columns = ['trust_level', 'checkpoint_times', 'checkpoint_results', 'checkpoint_evaluated', 'checkpoint_prices']
-        missing_columns = [c for c in expected_columns if c not in columns]
-        
-        # 2. Get pending trades with checkpoint data
-        cursor.execute("""
-            SELECT symbol, trust_level, entry_time, target_time, 
-                   checkpoint_times, checkpoint_results, checkpoint_evaluated
-            FROM paper_trades
-            WHERE outcome = 'PENDING'
-            AND checkpoint_times IS NOT NULL
-            AND checkpoint_times != '[]'
-            ORDER BY trust_level DESC, entry_time DESC
-            LIMIT 10
-        """)
-        pending_with_checkpoints = []
-        for row in cursor.fetchall():
-            # Handle both datetime objects and strings
-            entry_time = row[2].isoformat() if hasattr(row[2], 'isoformat') else str(row[2]) if row[2] else None
-            target_time = row[3].isoformat() if hasattr(row[3], 'isoformat') else str(row[3]) if row[3] else None
-            pending_with_checkpoints.append({
-                "symbol": row[0],
-                "trust_level": row[1],
-                "entry_time": entry_time,
-                "target_time": target_time,
-                "checkpoint_times": row[4],
-                "checkpoint_results": row[5],
-                "checkpoint_evaluated": row[6]
-            })
-        
-        # 3. Get trades with evaluated checkpoints
-        cursor.execute("""
-            SELECT symbol, trust_level, checkpoint_results, checkpoint_evaluated, outcome
-            FROM paper_trades
-            WHERE checkpoint_evaluated IS NOT NULL
-            AND checkpoint_evaluated != '[]'
-            AND checkpoint_evaluated::text LIKE '%true%'
-            ORDER BY entry_time DESC
-            LIMIT 5
-        """)
-        evaluated_checkpoints = []
-        for row in cursor.fetchall():
-            evaluated_checkpoints.append({
-                "symbol": row[0],
-                "trust_level": row[1],
-                "checkpoint_results": row[2],
-                "checkpoint_evaluated": row[3],
-                "final_outcome": row[4]
-            })
-        
-        # 4. Count trades by trust level
-        cursor.execute("""
-            SELECT trust_level, COUNT(*) as count
-            FROM paper_trades
-            WHERE trust_level IS NOT NULL
-            GROUP BY trust_level
-            ORDER BY trust_level
-        """)
-        trades_by_level = {row[0]: row[1] for row in cursor.fetchall()}
-        
-        cursor.close()
-        conn.close()
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            # 1. Check if checkpoint columns exist
+            cursor.execute("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'paper_trades'
+                AND column_name IN ('trust_level', 'checkpoint_times', 'checkpoint_results', 'checkpoint_evaluated', 'checkpoint_prices')
+                ORDER BY column_name
+            """)
+            columns = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            expected_columns = ['trust_level', 'checkpoint_times', 'checkpoint_results', 'checkpoint_evaluated', 'checkpoint_prices']
+            missing_columns = [c for c in expected_columns if c not in columns]
+            
+            # 2. Get pending trades with checkpoint data
+            cursor.execute("""
+                SELECT symbol, trust_level, entry_time, target_time, 
+                       checkpoint_times, checkpoint_results, checkpoint_evaluated
+                FROM paper_trades
+                WHERE outcome = 'PENDING'
+                AND checkpoint_times IS NOT NULL
+                AND checkpoint_times != '[]'
+                ORDER BY trust_level DESC, entry_time DESC
+                LIMIT 10
+            """)
+            pending_with_checkpoints = []
+            for row in cursor.fetchall():
+                # Handle both datetime objects and strings
+                entry_time = row[2].isoformat() if hasattr(row[2], 'isoformat') else str(row[2]) if row[2] else None
+                target_time = row[3].isoformat() if hasattr(row[3], 'isoformat') else str(row[3]) if row[3] else None
+                pending_with_checkpoints.append({
+                    "symbol": row[0],
+                    "trust_level": row[1],
+                    "entry_time": entry_time,
+                    "target_time": target_time,
+                    "checkpoint_times": row[4],
+                    "checkpoint_results": row[5],
+                    "checkpoint_evaluated": row[6]
+                })
+            
+            # 3. Get trades with evaluated checkpoints
+            cursor.execute("""
+                SELECT symbol, trust_level, checkpoint_results, checkpoint_evaluated, outcome
+                FROM paper_trades
+                WHERE checkpoint_evaluated IS NOT NULL
+                AND checkpoint_evaluated != '[]'
+                AND checkpoint_evaluated::text LIKE '%true%'
+                ORDER BY entry_time DESC
+                LIMIT 5
+            """)
+            evaluated_checkpoints = []
+            for row in cursor.fetchall():
+                evaluated_checkpoints.append({
+                    "symbol": row[0],
+                    "trust_level": row[1],
+                    "checkpoint_results": row[2],
+                    "checkpoint_evaluated": row[3],
+                    "final_outcome": row[4]
+                })
+            
+            # 4. Count trades by trust level
+            cursor.execute("""
+                SELECT trust_level, COUNT(*) as count
+                FROM paper_trades
+                WHERE trust_level IS NOT NULL
+                GROUP BY trust_level
+                ORDER BY trust_level
+            """)
+            trades_by_level = {row[0]: row[1] for row in cursor.fetchall()}
         
         return {
             "ok": True,
@@ -26854,49 +26837,47 @@ async def debug_promote_symbol(symbol: str, level: int = 2):
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        # Upsert the symbol to the specified trust level
-        cursor.execute("""
-            INSERT INTO ghost_symbol_trust (symbol, trust_level, consecutive_wins, checkpoint_wins, total_predictions, total_wins, last_updated)
-            VALUES (%s, %s, %s, 0, 0, 0, NOW())
-            ON CONFLICT (symbol) DO UPDATE SET 
-                trust_level = %s,
-                consecutive_wins = %s,
-                last_updated = NOW()
-        """, (symbol, level, level - 1, level, level - 1))  # consecutive_wins = level-1 to show progression
-        
-        conn.commit()
-        
-        # Verify the update
-        cursor.execute("""
-            SELECT symbol, trust_level, consecutive_wins, checkpoint_wins
-            FROM ghost_symbol_trust
-            WHERE symbol = %s
-        """, (symbol,))
-        
-        row = cursor.fetchone()
-        
-        cursor.close()
-        conn.close()
-        
-        level_names = {1: "Standard (48hr)", 2: "Extended (60hr+120hr)", 3: "Focused (72hr+168hr)"}
-        
-        return {
-            "ok": True,
-            "symbol": symbol,
-            "promoted_to": level,
-            "level_name": level_names.get(level),
-            "current_state": {
-                "symbol": row[0],
-                "trust_level": row[1],
-                "consecutive_wins": row[2],
-                "checkpoint_wins": row[3]
-            } if row else None,
-            "next_trade_will_have": f"checkpoint_times with {2 if level >= 2 else 1} checkpoints",
-            "message": f"✅ {symbol} promoted to Level {level}. Next trade will use multi-checkpoint evaluation."
-        }
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Upsert the symbol to the specified trust level
+            cursor.execute("""
+                INSERT INTO ghost_symbol_trust (symbol, trust_level, consecutive_wins, checkpoint_wins, total_predictions, total_wins, last_updated)
+                VALUES (%s, %s, %s, 0, 0, 0, NOW())
+                ON CONFLICT (symbol) DO UPDATE SET 
+                    trust_level = %s,
+                    consecutive_wins = %s,
+                    last_updated = NOW()
+            """, (symbol, level, level - 1, level, level - 1))  # consecutive_wins = level-1 to show progression
+            
+            # Verify the update
+            cursor.execute("""
+                SELECT symbol, trust_level, consecutive_wins, checkpoint_wins
+                FROM ghost_symbol_trust
+                WHERE symbol = %s
+            """, (symbol,))
+            
+            row = cursor.fetchone()
+            
+            cursor.close()
+            
+            level_names = {1: "Standard (48hr)", 2: "Extended (60hr+120hr)", 3: "Focused (72hr+168hr)"}
+            
+            return {
+                "ok": True,
+                "symbol": symbol,
+                "promoted_to": level,
+                "level_name": level_names.get(level),
+                "current_state": {
+                    "symbol": row[0],
+                    "trust_level": row[1],
+                    "consecutive_wins": row[2],
+                    "checkpoint_wins": row[3]
+                } if row else None,
+                "next_trade_will_have": f"checkpoint_times with {2 if level >= 2 else 1} checkpoints",
+                "message": f"✅ {symbol} promoted to Level {level}. Next trade will use multi-checkpoint evaluation."
+            }
         
     except Exception as e:
         import traceback
@@ -26949,21 +26930,19 @@ async def debug_create_test_trade(symbol: str, direction: str = "UP", confidence
         )
         
         # Fetch the created trade to show checkpoint details
-        import psycopg2
-        database_url = os.getenv("DATABASE_URL")
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT paper_trade_id, symbol, trust_level, entry_time, target_time,
-                   checkpoint_times, checkpoint_results, checkpoint_evaluated
-            FROM paper_trades
-            WHERE paper_trade_id = %s
-        """, (paper_trade_id,))
-        
-        row = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT paper_trade_id, symbol, trust_level, entry_time, target_time,
+                       checkpoint_times, checkpoint_results, checkpoint_evaluated
+                FROM paper_trades
+                WHERE paper_trade_id = %s
+            """, (paper_trade_id,))
+            
+            row = cursor.fetchone()
+            cursor.close()
         
         if row:
             return {
@@ -27010,179 +26989,173 @@ async def debug_db_clean(
         /debug/db-clean?mode=all&confirm=yes      - Delete everything bad
     """
     try:
-        import psycopg2
         from datetime import datetime
         
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        # Price validation thresholds
-        MIN_PRICES = {
-            'BTC': 10000, 'ETH': 500, 'SOL': 5, 'BNB': 100,
-            'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001, 'AVAX': 5,
-            'DOT': 1, 'LINK': 2, 'MATIC': 0.10, 'LTC': 20,
-        }
-        
-        results = {
-            "ok": True,
-            "mode": mode,
-            "confirm": confirm,
-            "timestamp": datetime.utcnow().isoformat(),
-            "actions": [],
-            "deleted": {},
-        }
-        
-        # Build corrupt price conditions
-        corrupt_conditions = []
-        for symbol, min_price in MIN_PRICES.items():
-            corrupt_conditions.append(
-                f"(symbol = '{symbol}' AND (price_at_prediction < {min_price} OR price_at_resolution < {min_price}))"
-            )
-        corrupt_where = " OR ".join(corrupt_conditions)
-        
-        # ================================================================
-        # PREVIEW MODE - Show what would be deleted
-        # ================================================================
-        if mode == "preview":
-            # Count corrupt
-            cursor.execute(f"""
-                SELECT COUNT(*) FROM ghost_prediction_outcomes
-                WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
-            """)
-            corrupt_count = cursor.fetchone()[0]
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
             
-            # Count no_data
-            cursor.execute("""
-                SELECT COUNT(*) FROM ghost_prediction_outcomes
-                WHERE status = 'no_data' OR hit_direction IS NULL
-            """)
-            no_data_count = cursor.fetchone()[0]
+            # Price validation thresholds
+            MIN_PRICES = {
+                'BTC': 10000, 'ETH': 500, 'SOL': 5, 'BNB': 100,
+                'XRP': 0.10, 'ADA': 0.05, 'DOGE': 0.001, 'AVAX': 5,
+                'DOT': 1, 'LINK': 2, 'MATIC': 0.10, 'LTC': 20,
+            }
             
-            # Count total
-            cursor.execute("SELECT COUNT(*) FROM ghost_prediction_outcomes")
-            total_count = cursor.fetchone()[0]
-            
-            # Sample corrupt records
-            cursor.execute(f"""
-                SELECT id, symbol, price_at_prediction, price_at_resolution, status
-                FROM ghost_prediction_outcomes
-                WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
-                LIMIT 10
-            """)
-            corrupt_samples = [
-                {"id": r[0], "symbol": r[1], "entry": float(r[2]) if r[2] else 0, "exit": float(r[3]) if r[3] else 0, "status": r[4]}
-                for r in cursor.fetchall()
-            ]
-            
-            conn.close()
-            
-            return {
+            results = {
                 "ok": True,
-                "mode": "preview",
-                "preview": {
-                    "total_outcomes": total_count,
-                    "corrupt_prices": corrupt_count,
-                    "no_data_status": no_data_count,
-                    "would_remain_after_all": total_count - corrupt_count - no_data_count + (corrupt_count if no_data_count > corrupt_count else 0),
-                    "corrupt_samples": corrupt_samples,
-                },
-                "actions": ["Preview complete - no changes made"],
-                "instructions": {
-                    "to_delete_corrupt": "/debug/db-clean?mode=corrupt&confirm=yes",
-                    "to_delete_no_data": "/debug/db-clean?mode=no_data&confirm=yes",
-                    "to_delete_all": "/debug/db-clean?mode=all&confirm=yes",
-                }
+                "mode": mode,
+                "confirm": confirm,
+                "timestamp": datetime.utcnow().isoformat(),
+                "actions": [],
+                "deleted": {},
             }
-        
-        # ================================================================
-        # DESTRUCTIVE MODES - Require confirmation
-        # ================================================================
-        if confirm != "yes":
-            conn.close()
-            return {
-                "ok": False,
-                "error": "Destructive operation requires confirm=yes parameter",
-                "instruction": f"Use: /debug/db-clean?mode={mode}&confirm=yes"
-            }
-        
-        # ================================================================
-        # DELETE CORRUPT PRICES
-        # ================================================================
-        if mode in ["corrupt", "all"]:
-            cursor.execute(f"""
-                SELECT COUNT(*) FROM ghost_prediction_outcomes
-                WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
-            """)
-            corrupt_count = cursor.fetchone()[0]
             
-            if corrupt_count > 0:
+            # Build corrupt price conditions
+            corrupt_conditions = []
+            for symbol, min_price in MIN_PRICES.items():
+                corrupt_conditions.append(
+                    f"(symbol = '{symbol}' AND (price_at_prediction < {min_price} OR price_at_resolution < {min_price}))"
+                )
+            corrupt_where = " OR ".join(corrupt_conditions)
+            
+            # ================================================================
+            # PREVIEW MODE - Show what would be deleted
+            # ================================================================
+            if mode == "preview":
+                # Count corrupt
                 cursor.execute(f"""
-                    DELETE FROM ghost_prediction_outcomes
+                    SELECT COUNT(*) FROM ghost_prediction_outcomes
                     WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
                 """)
-                deleted = cursor.rowcount
-                results["deleted"]["corrupt_prices"] = deleted
-                results["actions"].append(f"Deleted {deleted} outcomes with corrupt prices")
-                LOGGER.warning(f"[DB-CLEAN] Deleted {deleted} corrupt price outcomes")
-            else:
-                results["actions"].append("No corrupt price records found")
-        
-        # ================================================================
-        # DELETE NO_DATA STATUS
-        # ================================================================
-        if mode in ["no_data", "all"]:
-            cursor.execute("""
-                SELECT COUNT(*) FROM ghost_prediction_outcomes
-                WHERE status = 'no_data' OR hit_direction IS NULL
-            """)
-            no_data_count = cursor.fetchone()[0]
-            
-            if no_data_count > 0:
+                corrupt_count = cursor.fetchone()[0]
+                
+                # Count no_data
                 cursor.execute("""
-                    DELETE FROM ghost_prediction_outcomes
+                    SELECT COUNT(*) FROM ghost_prediction_outcomes
                     WHERE status = 'no_data' OR hit_direction IS NULL
                 """)
-                deleted = cursor.rowcount
-                results["deleted"]["no_data"] = deleted
-                results["actions"].append(f"Deleted {deleted} outcomes with no_data status")
-                LOGGER.warning(f"[DB-CLEAN] Deleted {deleted} no_data outcomes")
-            else:
-                results["actions"].append("No no_data records found")
-        
-        # ================================================================
-        # COMMIT AND GET FINAL STATE
-        # ================================================================
-        conn.commit()
-        
-        # Get remaining count
-        cursor.execute("SELECT COUNT(*) FROM ghost_prediction_outcomes")
-        remaining = cursor.fetchone()[0]
-        
-        # Get accuracy of remaining
-        cursor.execute("""
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses
-            FROM ghost_prediction_outcomes
-            WHERE hit_direction IS NOT NULL
-        """)
-        acc = cursor.fetchone()
-        
-        results["after_cleanup"] = {
-            "total_remaining": remaining,
-            "with_outcome": acc[0] or 0,
-            "wins": acc[1] or 0,
-            "losses": acc[2] or 0,
-            "accuracy_pct": round((acc[1] or 0) / max(1, acc[0] or 1) * 100, 2),
-        }
-        
-        conn.close()
-        return results
+                no_data_count = cursor.fetchone()[0]
+                
+                # Count total
+                cursor.execute("SELECT COUNT(*) FROM ghost_prediction_outcomes")
+                total_count = cursor.fetchone()[0]
+                
+                # Sample corrupt records
+                cursor.execute(f"""
+                    SELECT id, symbol, price_at_prediction, price_at_resolution, status
+                    FROM ghost_prediction_outcomes
+                    WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
+                    LIMIT 10
+                """)
+                corrupt_samples = [
+                    {"id": r[0], "symbol": r[1], "entry": float(r[2]) if r[2] else 0, "exit": float(r[3]) if r[3] else 0, "status": r[4]}
+                    for r in cursor.fetchall()
+                ]
+                
+                return {
+                    "ok": True,
+                    "mode": "preview",
+                    "preview": {
+                        "total_outcomes": total_count,
+                        "corrupt_prices": corrupt_count,
+                        "no_data_status": no_data_count,
+                        "would_remain_after_all": total_count - corrupt_count - no_data_count + (corrupt_count if no_data_count > corrupt_count else 0),
+                        "corrupt_samples": corrupt_samples,
+                    },
+                    "actions": ["Preview complete - no changes made"],
+                    "instructions": {
+                        "to_delete_corrupt": "/debug/db-clean?mode=corrupt&confirm=yes",
+                        "to_delete_no_data": "/debug/db-clean?mode=no_data&confirm=yes",
+                        "to_delete_all": "/debug/db-clean?mode=all&confirm=yes",
+                    }
+                }
+            
+            # ================================================================
+            # DESTRUCTIVE MODES - Require confirmation
+            # ================================================================
+            if confirm != "yes":
+                return {
+                    "ok": False,
+                    "error": "Destructive operation requires confirm=yes parameter",
+                    "instruction": f"Use: /debug/db-clean?mode={mode}&confirm=yes"
+                }
+            
+            # ================================================================
+            # DELETE CORRUPT PRICES
+            # ================================================================
+            if mode in ["corrupt", "all"]:
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM ghost_prediction_outcomes
+                    WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
+                """)
+                corrupt_count = cursor.fetchone()[0]
+                
+                if corrupt_count > 0:
+                    cursor.execute(f"""
+                        DELETE FROM ghost_prediction_outcomes
+                        WHERE ({corrupt_where}) AND price_at_prediction IS NOT NULL
+                    """)
+                    deleted = cursor.rowcount
+                    results["deleted"]["corrupt_prices"] = deleted
+                    results["actions"].append(f"Deleted {deleted} outcomes with corrupt prices")
+                    LOGGER.warning(f"[DB-CLEAN] Deleted {deleted} corrupt price outcomes")
+                else:
+                    results["actions"].append("No corrupt price records found")
+            
+            # ================================================================
+            # DELETE NO_DATA STATUS
+            # ================================================================
+            if mode in ["no_data", "all"]:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM ghost_prediction_outcomes
+                    WHERE status = 'no_data' OR hit_direction IS NULL
+                """)
+                no_data_count = cursor.fetchone()[0]
+                
+                if no_data_count > 0:
+                    cursor.execute("""
+                        DELETE FROM ghost_prediction_outcomes
+                        WHERE status = 'no_data' OR hit_direction IS NULL
+                    """)
+                    deleted = cursor.rowcount
+                    results["deleted"]["no_data"] = deleted
+                    results["actions"].append(f"Deleted {deleted} outcomes with no_data status")
+                    LOGGER.warning(f"[DB-CLEAN] Deleted {deleted} no_data outcomes")
+                else:
+                    results["actions"].append("No no_data records found")
+            
+            # ================================================================
+            # GET FINAL STATE (commit handled by context manager)
+            # ================================================================
+            # Get remaining count
+            cursor.execute("SELECT COUNT(*) FROM ghost_prediction_outcomes")
+            remaining = cursor.fetchone()[0]
+            
+            # Get accuracy of remaining
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses
+                FROM ghost_prediction_outcomes
+                WHERE hit_direction IS NOT NULL
+            """)
+            acc = cursor.fetchone()
+            
+            results["after_cleanup"] = {
+                "total_remaining": remaining,
+                "with_outcome": acc[0] or 0,
+                "wins": acc[1] or 0,
+                "losses": acc[2] or 0,
+                "accuracy_pct": round((acc[1] or 0) / max(1, acc[0] or 1) * 100, 2),
+            }
+            
+            return results
         
     except Exception as e:
         import traceback
@@ -27206,83 +27179,78 @@ async def debug_paper_trades_clean(
         /debug/paper-trades-clean?mode=delete&confirm=yes
     """
     try:
-        import psycopg2
         from datetime import datetime
 
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
 
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
 
-        corrupt_where = "entry_price IS NULL OR entry_price = 0"
+            corrupt_where = "entry_price IS NULL OR entry_price = 0"
 
-        # Always show preview info
-        cursor.execute(f"SELECT COUNT(*) FROM paper_trades WHERE {corrupt_where}")
-        corrupt_count = cursor.fetchone()[0]
+            # Always show preview info
+            cursor.execute(f"SELECT COUNT(*) FROM paper_trades WHERE {corrupt_where}")
+            corrupt_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM paper_trades")
-        total_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM paper_trades")
+            total_count = cursor.fetchone()[0]
 
-        cursor.execute(f"""
-            SELECT paper_trade_id, symbol, signal_direction, entry_price, signal_confidence, created_at
-            FROM paper_trades
-            WHERE {corrupt_where}
-            ORDER BY created_at DESC
-            LIMIT 20
-        """)
-        samples = [
-            {
-                "id": str(r[0]),
-                "symbol": r[1],
-                "direction": r[2],
-                "entry_price": float(r[3]) if r[3] else None,
-                "confidence": float(r[4]) if r[4] else None,
-                "created_at": str(r[5]) if r[5] else None,
-            }
-            for r in cursor.fetchall()
-        ]
+            cursor.execute(f"""
+                SELECT paper_trade_id, symbol, signal_direction, entry_price, signal_confidence, created_at
+                FROM paper_trades
+                WHERE {corrupt_where}
+                ORDER BY created_at DESC
+                LIMIT 20
+            """)
+            samples = [
+                {
+                    "id": str(r[0]),
+                    "symbol": r[1],
+                    "direction": r[2],
+                    "entry_price": float(r[3]) if r[3] else None,
+                    "confidence": float(r[4]) if r[4] else None,
+                    "created_at": str(r[5]) if r[5] else None,
+                }
+                for r in cursor.fetchall()
+            ]
 
-        if mode == "preview":
-            conn.close()
-            return {
-                "ok": True,
-                "mode": "preview",
-                "total_paper_trades": total_count,
-                "corrupt_count": corrupt_count,
-                "corrupt_samples": samples,
-                "instruction": "/debug/paper-trades-clean?mode=delete&confirm=yes",
-            }
-
-        if mode == "delete":
-            if confirm != "yes":
-                conn.close()
+            if mode == "preview":
                 return {
-                    "ok": False,
-                    "error": "Requires confirm=yes",
+                    "ok": True,
+                    "mode": "preview",
+                    "total_paper_trades": total_count,
+                    "corrupt_count": corrupt_count,
+                    "corrupt_samples": samples,
                     "instruction": "/debug/paper-trades-clean?mode=delete&confirm=yes",
                 }
 
-            cursor.execute(f"DELETE FROM paper_trades WHERE {corrupt_where}")
-            deleted = cursor.rowcount
-            conn.commit()
+            if mode == "delete":
+                if confirm != "yes":
+                    return {
+                        "ok": False,
+                        "error": "Requires confirm=yes",
+                        "instruction": "/debug/paper-trades-clean?mode=delete&confirm=yes",
+                    }
 
-            cursor.execute("SELECT COUNT(*) FROM paper_trades")
-            remaining = cursor.fetchone()[0]
-            conn.close()
+                cursor.execute(f"DELETE FROM paper_trades WHERE {corrupt_where}")
+                deleted = cursor.rowcount
 
-            LOGGER.warning(f"[PAPER-TRADES-CLEAN] Deleted {deleted} corrupt paper trades")
-            return {
-                "ok": True,
-                "mode": "delete",
-                "deleted": deleted,
-                "remaining": remaining,
-                "samples_deleted": samples,
-            }
+                cursor.execute("SELECT COUNT(*) FROM paper_trades")
+                remaining = cursor.fetchone()[0]
 
-        conn.close()
-        return {"ok": False, "error": f"Unknown mode: {mode}"}
+                LOGGER.warning(f"[PAPER-TRADES-CLEAN] Deleted {deleted} corrupt paper trades")
+                return {
+                    "ok": True,
+                    "mode": "delete",
+                    "deleted": deleted,
+                    "remaining": remaining,
+                    "samples_deleted": samples,
+                }
+
+            return {"ok": False, "error": f"Unknown mode: {mode}"}
 
     except Exception as e:
         import traceback
@@ -27300,56 +27268,55 @@ async def debug_tracked_picks(symbol: str = ""):
         /debug/tracked-picks?symbol=GME — just GME
     """
     try:
-        import psycopg2
+        from core.db_pool import get_sync_connection
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
 
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor()
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
 
-        where = "WHERE status = 'active'"
-        params = ()
-        if symbol:
-            where = "WHERE symbol = %s"
-            params = (symbol.upper().strip(),)
+            where = "WHERE status = 'active'"
+            params = ()
+            if symbol:
+                where = "WHERE symbol = %s"
+                params = (symbol.upper().strip(),)
 
-        cur.execute(f"""
-            SELECT symbol, asset_type, direction, entry_price, target_price,
-                   stop_price, confidence, entry_time, expires_at, status
-            FROM ghost_tracked_picks
-            {where}
-            ORDER BY entry_time DESC
-            LIMIT 50
-        """, params)
+            cur.execute(f"""
+                SELECT symbol, asset_type, direction, entry_price, target_price,
+                       stop_price, confidence, entry_time, expires_at, status
+                FROM ghost_tracked_picks
+                {where}
+                ORDER BY entry_time DESC
+                LIMIT 50
+            """, params)
 
-        rows = cur.fetchall()
-        cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'active'")
-        active_count = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks")
-        total_count = cur.fetchone()[0]
-        conn.close()
+            rows = cur.fetchall()
+            cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'active'")
+            active_count = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks")
+            total_count = cur.fetchone()[0]
 
-        picks = []
-        for r in rows:
-            picks.append({
-                "symbol": r[0], "asset_type": r[1], "direction": r[2],
-                "entry_price": float(r[3]) if r[3] else None,
-                "target_price": float(r[4]) if r[4] else None,
-                "stop_price": float(r[5]) if r[5] else None,
-                "confidence": float(r[6]) if r[6] else None,
-                "entry_time": str(r[7]) if r[7] else None,
-                "expires_at": str(r[8]) if r[8] else None,
-                "status": r[9],
-            })
+            picks = []
+            for r in rows:
+                picks.append({
+                    "symbol": r[0], "asset_type": r[1], "direction": r[2],
+                    "entry_price": float(r[3]) if r[3] else None,
+                    "target_price": float(r[4]) if r[4] else None,
+                    "stop_price": float(r[5]) if r[5] else None,
+                    "confidence": float(r[6]) if r[6] else None,
+                    "entry_time": str(r[7]) if r[7] else None,
+                    "expires_at": str(r[8]) if r[8] else None,
+                    "status": r[9],
+                })
 
-        return {
-            "ok": True,
-            "active_count": active_count,
-            "total_count": total_count,
-            "filter": symbol.upper() if symbol else "all active",
-            "picks": picks,
-        }
+            return {
+                "ok": True,
+                "active_count": active_count,
+                "total_count": total_count,
+                "filter": symbol.upper() if symbol else "all active",
+                "picks": picks,
+            }
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
@@ -27372,52 +27339,51 @@ async def debug_paper_trades_lookup(symbol: str = "", limit: int = 20):
         if not symbol:
             return {"ok": False, "error": "symbol parameter required"}
 
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor()
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
 
-        cur.execute("""
-            SELECT paper_trade_id, symbol, signal_direction, entry_price,
-                   signal_confidence, created_at, outcome, profit_loss_pct,
-                   v3_validated, v3_strategy
-            FROM paper_trades
-            WHERE symbol = %s
-            ORDER BY created_at DESC
-            LIMIT %s
-        """, (symbol.upper().strip(), limit))
+            cur.execute("""
+                SELECT paper_trade_id, symbol, signal_direction, entry_price,
+                       signal_confidence, created_at, outcome, profit_loss_pct,
+                       v3_validated, v3_strategy
+                FROM paper_trades
+                WHERE symbol = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (symbol.upper().strip(), limit))
 
-        rows = cur.fetchall()
-        cur.execute("SELECT COUNT(*) FROM paper_trades WHERE symbol = %s",
-                    (symbol.upper().strip(),))
-        total = cur.fetchone()[0]
+            rows = cur.fetchall()
+            cur.execute("SELECT COUNT(*) FROM paper_trades WHERE symbol = %s",
+                        (symbol.upper().strip(),))
+            total = cur.fetchone()[0]
 
-        # Also run the exact corrupt check
-        cur.execute("""
-            SELECT COUNT(*) FROM paper_trades
-            WHERE symbol = %s AND entry_price < 0.01
-        """, (symbol.upper().strip(),))
-        suspect_count = cur.fetchone()[0]
+            # Also run the exact corrupt check
+            cur.execute("""
+                SELECT COUNT(*) FROM paper_trades
+                WHERE symbol = %s AND entry_price < 0.01
+            """, (symbol.upper().strip(),))
+            suspect_count = cur.fetchone()[0]
 
-        conn.close()
+            trades = []
+            for r in rows:
+                trades.append({
+                    "id": str(r[0])[:12], "symbol": r[1], "direction": r[2],
+                    "entry_price": float(r[3]) if r[3] else None,
+                    "confidence": float(r[4]) if r[4] else None,
+                    "created_at": str(r[5]) if r[5] else None,
+                    "outcome": r[6], "pnl_pct": float(r[7]) if r[7] else None,
+                    "v3": r[8], "strategy": r[9],
+                })
 
-        trades = []
-        for r in rows:
-            trades.append({
-                "id": str(r[0])[:12], "symbol": r[1], "direction": r[2],
-                "entry_price": float(r[3]) if r[3] else None,
-                "confidence": float(r[4]) if r[4] else None,
-                "created_at": str(r[5]) if r[5] else None,
-                "outcome": r[6], "pnl_pct": float(r[7]) if r[7] else None,
-                "v3": r[8], "strategy": r[9],
-            })
-
-        return {
-            "ok": True,
-            "symbol": symbol.upper(),
-            "total_trades": total,
-            "suspect_below_001": suspect_count,
-            "showing": len(trades),
-            "trades": trades,
-        }
+            return {
+                "ok": True,
+                "symbol": symbol.upper(),
+                "total_trades": total,
+                "suspect_below_001": suspect_count,
+                "showing": len(trades),
+                "trades": trades,
+            }
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
@@ -27433,30 +27399,28 @@ async def debug_revert_false_stops(confirm: str = "no"):
         /debug/revert-false-stops           → preview
         /debug/revert-false-stops?confirm=yes → execute
     """
-    import os, psycopg2
+    import os
+    from core.db_pool import get_sync_connection
     symbols = ["JUP", "BAND", "GME"]
     try:
-        conn = psycopg2.connect(os.getenv("DATABASE_URL"))
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT symbol, status, entry_price, stop_price FROM ghost_tracked_picks WHERE symbol = ANY(%s) AND status = 'stop_hit'",
-            (symbols,)
-        )
-        rows = cur.fetchall()
-        preview = [{"symbol": r[0], "status": r[1], "entry": float(r[2]), "stop": float(r[3])} for r in rows]
-        if confirm == "yes":
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
             cur.execute(
-                "UPDATE ghost_tracked_picks SET status = 'active' WHERE symbol = ANY(%s) AND status = 'stop_hit'",
+                "SELECT symbol, status, entry_price, stop_price FROM ghost_tracked_picks WHERE symbol = ANY(%s) AND status = 'stop_hit'",
                 (symbols,)
             )
-            reverted = cur.rowcount
-            conn.commit()
+            rows = cur.fetchall()
+            preview = [{"symbol": r[0], "status": r[1], "entry": float(r[2]), "stop": float(r[3])} for r in rows]
+            if confirm == "yes":
+                cur.execute(
+                    "UPDATE ghost_tracked_picks SET status = 'active' WHERE symbol = ANY(%s) AND status = 'stop_hit'",
+                    (symbols,)
+                )
+                reverted = cur.rowcount
+                cur.close()
+                return {"ok": True, "reverted": reverted, "symbols": symbols}
             cur.close()
-            conn.close()
-            return {"ok": True, "reverted": reverted, "symbols": symbols}
-        cur.close()
-        conn.close()
-        return {"ok": True, "preview": preview, "count": len(preview), "note": "Add ?confirm=yes to execute"}
+            return {"ok": True, "preview": preview, "count": len(preview), "note": "Add ?confirm=yes to execute"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -27471,31 +27435,29 @@ async def debug_fix_watch_zombies(confirm: str = "no"):
         /debug/fix-watch-zombies           → preview
         /debug/fix-watch-zombies?confirm=yes → execute
     """
-    import os, psycopg2
+    import os
+    from core.db_pool import get_sync_connection
     try:
-        conn = psycopg2.connect(os.getenv("DATABASE_URL"))
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT symbol, entry_price, target_price FROM ghost_tracked_picks WHERE status = 'active' AND direction = 'WATCH'"
-        )
-        rows = cur.fetchall()
-        fixes = []
-        for sym, entry, target in rows:
-            correct = "BUY" if float(target) >= float(entry) else "SELL"
-            fixes.append({"symbol": sym, "from": "WATCH", "to": correct, "entry": float(entry), "target": float(target)})
-        if confirm == "yes":
-            for f in fixes:
-                cur.execute(
-                    "UPDATE ghost_tracked_picks SET direction = %s WHERE symbol = %s AND status = 'active' AND direction = 'WATCH'",
-                    (f["to"], f["symbol"])
-                )
-            conn.commit()
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT symbol, entry_price, target_price FROM ghost_tracked_picks WHERE status = 'active' AND direction = 'WATCH'"
+            )
+            rows = cur.fetchall()
+            fixes = []
+            for sym, entry, target in rows:
+                correct = "BUY" if float(target) >= float(entry) else "SELL"
+                fixes.append({"symbol": sym, "from": "WATCH", "to": correct, "entry": float(entry), "target": float(target)})
+            if confirm == "yes":
+                for f in fixes:
+                    cur.execute(
+                        "UPDATE ghost_tracked_picks SET direction = %s WHERE symbol = %s AND status = 'active' AND direction = 'WATCH'",
+                        (f["to"], f["symbol"])
+                    )
+                cur.close()
+                return {"ok": True, "fixed": len(fixes), "fixes": fixes}
             cur.close()
-            conn.close()
-            return {"ok": True, "fixed": len(fixes), "fixes": fixes}
-        cur.close()
-        conn.close()
-        return {"ok": True, "preview": fixes, "count": len(fixes), "note": "Add ?confirm=yes to execute"}
+            return {"ok": True, "preview": fixes, "count": len(fixes), "note": "Add ?confirm=yes to execute"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -27509,7 +27471,7 @@ async def debug_db_reset_accuracy(confirm: str = "no"):
     Requires confirm=yes parameter.
     """
     try:
-        import psycopg2
+        from core.db_pool import get_sync_connection
         
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
@@ -27522,36 +27484,33 @@ async def debug_db_reset_accuracy(confirm: str = "no"):
                 "instruction": "Use /debug/db-reset-accuracy?confirm=yes to proceed"
             }
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        # Check if table exists
-        cursor.execute("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = 'ghost_symbol_accuracy'
-            )
-        """)
-        exists = cursor.fetchone()[0]
-        
-        if not exists:
-            conn.close()
-            return {"ok": True, "message": "Table ghost_symbol_accuracy does not exist - nothing to reset"}
-        
-        # Get count before
-        cursor.execute("SELECT COUNT(*) FROM ghost_symbol_accuracy")
-        before = cursor.fetchone()[0]
-        
-        # Truncate
-        cursor.execute("TRUNCATE ghost_symbol_accuracy")
-        conn.commit()
-        conn.close()
-        
-        return {
-            "ok": True,
-            "deleted_rows": before,
-            "message": "Symbol accuracy table reset. Reconciler will rebuild from outcomes."
-        }
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if table exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'ghost_symbol_accuracy'
+                )
+            """)
+            exists = cursor.fetchone()[0]
+            
+            if not exists:
+                return {"ok": True, "message": "Table ghost_symbol_accuracy does not exist - nothing to reset"}
+            
+            # Get count before
+            cursor.execute("SELECT COUNT(*) FROM ghost_symbol_accuracy")
+            before = cursor.fetchone()[0]
+            
+            # Truncate
+            cursor.execute("TRUNCATE ghost_symbol_accuracy")
+            
+            return {
+                "ok": True,
+                "deleted_rows": before,
+                "message": "Symbol accuracy table reset. Reconciler will rebuild from outcomes."
+            }
         
     except Exception as e:
         import traceback
@@ -28047,39 +28006,37 @@ async def debug_watchlist_raw(secret: str = ""):
         return {"error": "Invalid secret"}
     
     try:
-        import psycopg2
+        from core.db_pool import get_sync_connection
         
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT symbol, asset_type, active
-            FROM ghost_watchlist_items
-            WHERE active = TRUE
-            ORDER BY asset_type, symbol
-        """)
-        
-        items = []
-        for row in cursor.fetchall():
-            items.append({"symbol": row[0], "type": row[1], "active": row[2]})
-        
-        stocks = [i["symbol"] for i in items if i["type"] == "stock"]
-        cryptos = [i["symbol"] for i in items if i["type"] == "crypto"]
-        
-        conn.close()
-        
-        return {
-            "ok": True,
-            "total": len(items),
-            "stocks": stocks,
-            "cryptos": cryptos,
-            "stock_count": len(stocks),
-            "crypto_count": len(cryptos)
-        }
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT symbol, asset_type, active
+                FROM ghost_watchlist_items
+                WHERE active = TRUE
+                ORDER BY asset_type, symbol
+            """)
+            
+            items = []
+            for row in cursor.fetchall():
+                items.append({"symbol": row[0], "type": row[1], "active": row[2]})
+            
+            stocks = [i["symbol"] for i in items if i["type"] == "stock"]
+            cryptos = [i["symbol"] for i in items if i["type"] == "crypto"]
+            
+            return {
+                "ok": True,
+                "total": len(items),
+                "stocks": stocks,
+                "cryptos": cryptos,
+                "stock_count": len(stocks),
+                "crypto_count": len(cryptos)
+            }
         
     except Exception as e:
         import traceback
@@ -28099,46 +28056,43 @@ async def debug_watchlist_add(symbol: str = "", asset_type: str = "stock", secre
         return {"error": "symbol required"}
     
     try:
-        import psycopg2
+        from core.db_pool import get_sync_connection
         
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            symbol = symbol.upper().strip()
+            asset_type = asset_type.lower().strip()
         
-        symbol = symbol.upper().strip()
-        asset_type = asset_type.lower().strip()
-        
-        # Check if exists
-        cursor.execute("""
-            SELECT id, active FROM ghost_watchlist_items 
-            WHERE symbol = %s AND asset_type = %s
-        """, (symbol, asset_type))
-        existing = cursor.fetchone()
-        
-        if existing:
-            item_id, was_active = existing
+            # Check if exists
             cursor.execute("""
-                UPDATE ghost_watchlist_items
-                SET active = TRUE, updated_at = NOW()
-                WHERE id = %s
-            """, (item_id,))
-            conn.commit()
-            action = "re-activated" if not was_active else "updated"
-        else:
-            cursor.execute("""
-                INSERT INTO ghost_watchlist_items (symbol, asset_type, owns_position, notes)
-                VALUES (%s, %s, FALSE, '')
-                RETURNING id
+                SELECT id, active FROM ghost_watchlist_items 
+                WHERE symbol = %s AND asset_type = %s
             """, (symbol, asset_type))
-            item_id = cursor.fetchone()[0]
-            conn.commit()
-            action = "added"
-        
-        conn.close()
-        return {"ok": True, "action": action, "symbol": symbol, "asset_type": asset_type, "id": item_id}
+            existing = cursor.fetchone()
+            
+            if existing:
+                item_id, was_active = existing
+                cursor.execute("""
+                    UPDATE ghost_watchlist_items
+                    SET active = TRUE, updated_at = NOW()
+                    WHERE id = %s
+                """, (item_id,))
+                action = "re-activated" if not was_active else "updated"
+            else:
+                cursor.execute("""
+                    INSERT INTO ghost_watchlist_items (symbol, asset_type, owns_position, notes)
+                    VALUES (%s, %s, FALSE, '')
+                    RETURNING id
+                """, (symbol, asset_type))
+                item_id = cursor.fetchone()[0]
+                action = "added"
+            
+            return {"ok": True, "action": action, "symbol": symbol, "asset_type": asset_type, "id": item_id}
         
     except Exception as e:
         import traceback
@@ -28164,58 +28118,57 @@ async def debug_watchlist_bulk_add(request: Request, secret: str = ""):
         if not symbols:
             return {"error": "symbols list required"}
         
+        from core.db_pool import get_sync_connection
+        
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        added = []
-        updated = []
-        errors = []
-        
-        for symbol in symbols:
-            try:
-                symbol = symbol.upper().strip()
-                
-                cursor.execute("""
-                    SELECT id, active FROM ghost_watchlist_items 
-                    WHERE symbol = %s AND asset_type = %s
-                """, (symbol, asset_type))
-                existing = cursor.fetchone()
-                
-                if existing:
-                    item_id, was_active = existing
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            added = []
+            updated = []
+            errors = []
+            
+            for symbol in symbols:
+                try:
+                    symbol = symbol.upper().strip()
+                    
                     cursor.execute("""
-                        UPDATE ghost_watchlist_items
-                        SET active = TRUE, updated_at = NOW()
-                        WHERE id = %s
-                    """, (item_id,))
-                    if was_active:
-                        updated.append(symbol)
-                    else:
-                        added.append(symbol)
-                else:
-                    cursor.execute("""
-                        INSERT INTO ghost_watchlist_items (symbol, asset_type, owns_position, notes)
-                        VALUES (%s, %s, FALSE, '')
+                        SELECT id, active FROM ghost_watchlist_items 
+                        WHERE symbol = %s AND asset_type = %s
                     """, (symbol, asset_type))
-                    added.append(symbol)
-            except Exception as e:
-                errors.append(f"{symbol}: {e}")
-        
-        conn.commit()
-        conn.close()
-        
-        return {
-            "ok": True,
-            "added": added,
-            "updated": updated,
-            "errors": errors,
-            "total_added": len(added),
-            "total_updated": len(updated)
-        }
+                    existing = cursor.fetchone()
+                    
+                    if existing:
+                        item_id, was_active = existing
+                        cursor.execute("""
+                            UPDATE ghost_watchlist_items
+                            SET active = TRUE, updated_at = NOW()
+                            WHERE id = %s
+                        """, (item_id,))
+                        if was_active:
+                            updated.append(symbol)
+                        else:
+                            added.append(symbol)
+                    else:
+                        cursor.execute("""
+                            INSERT INTO ghost_watchlist_items (symbol, asset_type, owns_position, notes)
+                            VALUES (%s, %s, FALSE, '')
+                        """, (symbol, asset_type))
+                        added.append(symbol)
+                except Exception as e:
+                    errors.append(f"{symbol}: {e}")
+            
+            return {
+                "ok": True,
+                "added": added,
+                "updated": updated,
+                "errors": errors,
+                "total_added": len(added),
+                "total_updated": len(updated)
+            }
         
     except Exception as e:
         import traceback
@@ -28232,84 +28185,80 @@ async def debug_watchlist_schema(secret: str = ""):
         return {"error": "Invalid secret"}
     
     try:
-        import psycopg2
+        from core.db_pool import get_sync_connection
         
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not set"}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        # Check if table exists
-        cursor.execute("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = 'ghost_watchlist_items'
-            )
-        """)
-        exists = cursor.fetchone()[0]
-        
-        if not exists:
-            # Create the table
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if table exists
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS ghost_watchlist_items (
-                    id BIGSERIAL PRIMARY KEY,
-                    symbol TEXT NOT NULL,
-                    asset_type TEXT NOT NULL CHECK (asset_type IN ('crypto', 'stock')),
-                    owns_position BOOLEAN DEFAULT FALSE,
-                    notes TEXT DEFAULT '',
-                    added_at TIMESTAMPTZ DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ DEFAULT NOW(),
-                    active BOOLEAN DEFAULT TRUE,
-                    price_at_add REAL,
-                    alert_threshold_pct REAL DEFAULT 5.0,
-                    priority INTEGER DEFAULT 1,
-                    CHECK (LENGTH(symbol) > 0 AND LENGTH(symbol) <= 20)
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'ghost_watchlist_items'
                 )
             """)
-            cursor.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_unique_active 
-                ON ghost_watchlist_items(symbol, asset_type) WHERE active = TRUE
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_watchlist_symbol 
-                ON ghost_watchlist_items(symbol) WHERE active = TRUE
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_watchlist_asset_type 
-                ON ghost_watchlist_items(asset_type) WHERE active = TRUE
-            """)
-            conn.commit()
+            exists = cursor.fetchone()[0]
             
-            conn.close()
+            if not exists:
+                # Create the table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS ghost_watchlist_items (
+                        id BIGSERIAL PRIMARY KEY,
+                        symbol TEXT NOT NULL,
+                        asset_type TEXT NOT NULL CHECK (asset_type IN ('crypto', 'stock')),
+                        owns_position BOOLEAN DEFAULT FALSE,
+                        notes TEXT DEFAULT '',
+                        added_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW(),
+                        active BOOLEAN DEFAULT TRUE,
+                        price_at_add REAL,
+                        alert_threshold_pct REAL DEFAULT 5.0,
+                        priority INTEGER DEFAULT 1,
+                        CHECK (LENGTH(symbol) > 0 AND LENGTH(symbol) <= 20)
+                    )
+                """)
+                cursor.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_unique_active 
+                    ON ghost_watchlist_items(symbol, asset_type) WHERE active = TRUE
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_watchlist_symbol 
+                    ON ghost_watchlist_items(symbol) WHERE active = TRUE
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_watchlist_asset_type 
+                    ON ghost_watchlist_items(asset_type) WHERE active = TRUE
+                """)
+                
+                return {
+                    "ok": True,
+                    "created": True,
+                    "message": "ghost_watchlist_items table created successfully!"
+                }
+            
+            # Get current count
+            cursor.execute("SELECT COUNT(*) FROM ghost_watchlist_items WHERE active = TRUE")
+            active_count = cursor.fetchone()[0]
+            
+            # Get breakdown
+            cursor.execute("""
+                SELECT asset_type, COUNT(*) as cnt 
+                FROM ghost_watchlist_items 
+                WHERE active = TRUE 
+                GROUP BY asset_type
+            """)
+            breakdown = dict(cursor.fetchall())
+            
             return {
                 "ok": True,
-                "created": True,
-                "message": "ghost_watchlist_items table created successfully!"
+                "table_exists": True,
+                "active_items": active_count,
+                "breakdown": breakdown
             }
-        
-        # Get current count
-        cursor.execute("SELECT COUNT(*) FROM ghost_watchlist_items WHERE active = TRUE")
-        active_count = cursor.fetchone()[0]
-        
-        # Get breakdown
-        cursor.execute("""
-            SELECT asset_type, COUNT(*) as cnt 
-            FROM ghost_watchlist_items 
-            WHERE active = TRUE 
-            GROUP BY asset_type
-        """)
-        breakdown = dict(cursor.fetchall())
-        
-        conn.close()
-        
-        return {
-            "ok": True,
-            "table_exists": True,
-            "active_items": active_count,
-            "breakdown": breakdown
-        }
         
     except Exception as e:
         import traceback
@@ -28344,25 +28293,25 @@ async def debug_learning_status():
         try:
             database_url = os.getenv("DATABASE_URL")
             if database_url:
-                conn = psycopg2.connect(database_url)
-                cursor = conn.cursor()
-                # Don't filter by status - just count all outcomes
-                cursor.execute("""
-                    SELECT 
-                        COUNT(*) as total,
-                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
-                        SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses
-                    FROM ghost_prediction_outcomes
-                """)
-                row = cursor.fetchone()
-                if row:
-                    postgres_stats["total"] = row[0] or 0
-                    postgres_stats["wins"] = row[1] or 0
-                    postgres_stats["losses"] = row[2] or 0
-                    if postgres_stats["total"] > 0:
-                        decided = postgres_stats["wins"] + postgres_stats["losses"]
-                        postgres_stats["accuracy_pct"] = (postgres_stats["wins"] / decided) * 100 if decided > 0 else 0
-                conn.close()
+                from core.db_pool import get_sync_connection
+                with get_sync_connection() as conn:
+                    cursor = conn.cursor()
+                    # Don't filter by status - just count all outcomes
+                    cursor.execute("""
+                        SELECT 
+                            COUNT(*) as total,
+                            SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as wins,
+                            SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as losses
+                        FROM ghost_prediction_outcomes
+                    """)
+                    row = cursor.fetchone()
+                    if row:
+                        postgres_stats["total"] = row[0] or 0
+                        postgres_stats["wins"] = row[1] or 0
+                        postgres_stats["losses"] = row[2] or 0
+                        if postgres_stats["total"] > 0:
+                            decided = postgres_stats["wins"] + postgres_stats["losses"]
+                            postgres_stats["accuracy_pct"] = (postgres_stats["wins"] / decided) * 100 if decided > 0 else 0
         except Exception as pg_err:
             postgres_stats["error"] = str(pg_err)
         
@@ -28457,7 +28406,6 @@ async def reconcile_predictions_now(request: Request):
         - reconciler_result: Result from the outcome reconciler
         - symbol_accuracy_updated: How many symbols had their accuracy computed
     """
-    import psycopg2
     from datetime import datetime
     
     # Check cron secret for authentication
@@ -28491,104 +28439,99 @@ async def reconcile_predictions_now(request: Request):
             reconciler_result = {"error": str(rec_err)}
         
         # Step 2: Compute symbol accuracy from outcomes table
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor()
-        
-        # Create ghost_symbol_accuracy table if it doesn't exist
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
-                symbol VARCHAR(20) PRIMARY KEY,
-                total_predictions INTEGER DEFAULT 0,
-                correct_predictions INTEGER DEFAULT 0,
-                accuracy_pct NUMERIC(5, 2) DEFAULT 0,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
-        
-        # Check if we're in INVERSE_GHOST mode - FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
-        inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
-        
-        # Compute per-symbol accuracy from ghost_prediction_outcomes table
-        # In INVERSE_GHOST mode, hit_direction=0 (raw wrong) is actually CORRECT
-        # because we invert the raw predictions
-        if inverse_mode:
-            # Inverted accuracy: count when hit_direction=0 as correct
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            
+            # Create ghost_symbol_accuracy table if it doesn't exist
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
+                    symbol VARCHAR(20) PRIMARY KEY,
+                    total_predictions INTEGER DEFAULT 0,
+                    correct_predictions INTEGER DEFAULT 0,
+                    accuracy_pct NUMERIC(5, 2) DEFAULT 0,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Check if we're in INVERSE_GHOST mode - FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
+            inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
+            
+            # Compute per-symbol accuracy from ghost_prediction_outcomes table
+            # In INVERSE_GHOST mode, hit_direction=0 (raw wrong) is actually CORRECT
+            # because we invert the raw predictions
+            if inverse_mode:
+                # Inverted accuracy: count when hit_direction=0 as correct
+                cur.execute("""
+                    SELECT 
+                        symbol,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as correct
+                    FROM ghost_prediction_outcomes
+                    WHERE symbol IS NOT NULL
+                    GROUP BY symbol
+                    HAVING COUNT(*) >= 1
+                """)
+            else:
+                # Normal mode: hit_direction=1 means correct
+                cur.execute("""
+                    SELECT 
+                        symbol,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+                    FROM ghost_prediction_outcomes
+                    WHERE symbol IS NOT NULL
+                    GROUP BY symbol
+                    HAVING COUNT(*) >= 1
+                """)
+            
+            symbol_stats = cur.fetchall()
+            symbols_updated = 0
+            
+            for stat in symbol_stats:
+                symbol, total, correct = stat
+                accuracy = (correct / total * 100) if total > 0 else 0
+                
+                cur.execute("""
+                    INSERT INTO ghost_symbol_accuracy (symbol, total_predictions, correct_predictions, accuracy_pct, last_updated)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (symbol) DO UPDATE SET
+                        total_predictions = EXCLUDED.total_predictions,
+                        correct_predictions = EXCLUDED.correct_predictions,
+                        accuracy_pct = EXCLUDED.accuracy_pct,
+                        last_updated = NOW()
+                """, (symbol, total, correct, accuracy))
+                symbols_updated += 1
+            
+            # Get summary stats
             cur.execute("""
                 SELECT 
-                    symbol,
-                    COUNT(*) as total,
-                    SUM(CASE WHEN hit_direction = 0 THEN 1 ELSE 0 END) as correct
-                FROM ghost_prediction_outcomes
-                WHERE symbol IS NOT NULL
-                GROUP BY symbol
-                HAVING COUNT(*) >= 1
+                    COUNT(*) as symbols_tracked,
+                    AVG(accuracy_pct) as avg_accuracy,
+                    COUNT(CASE WHEN accuracy_pct < 40 AND total_predictions >= 10 THEN 1 END) as excluded_count,
+                    COUNT(CASE WHEN accuracy_pct >= 70 AND total_predictions >= 10 THEN 1 END) as boosted_count
+                FROM ghost_symbol_accuracy
             """)
-        else:
-            # Normal mode: hit_direction=1 means correct
+            summary = cur.fetchone()
+            
+            # Get lists of excluded and boosted symbols
             cur.execute("""
-                SELECT 
-                    symbol,
-                    COUNT(*) as total,
-                    SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
-                FROM ghost_prediction_outcomes
-                WHERE symbol IS NOT NULL
-                GROUP BY symbol
-                HAVING COUNT(*) >= 1
+                SELECT symbol, accuracy_pct, total_predictions
+                FROM ghost_symbol_accuracy
+                WHERE total_predictions >= 10 AND accuracy_pct < 40
+                ORDER BY accuracy_pct ASC
+                LIMIT 20
             """)
-        
-        symbol_stats = cur.fetchall()
-        symbols_updated = 0
-        
-        for stat in symbol_stats:
-            symbol, total, correct = stat
-            accuracy = (correct / total * 100) if total > 0 else 0
+            excluded = [{"symbol": r[0], "accuracy": float(r[1]), "predictions": r[2]} for r in cur.fetchall()]
             
             cur.execute("""
-                INSERT INTO ghost_symbol_accuracy (symbol, total_predictions, correct_predictions, accuracy_pct, last_updated)
-                VALUES (%s, %s, %s, %s, NOW())
-                ON CONFLICT (symbol) DO UPDATE SET
-                    total_predictions = EXCLUDED.total_predictions,
-                    correct_predictions = EXCLUDED.correct_predictions,
-                    accuracy_pct = EXCLUDED.accuracy_pct,
-                    last_updated = NOW()
-            """, (symbol, total, correct, accuracy))
-            symbols_updated += 1
-        
-        conn.commit()
-        
-        # Get summary stats
-        cur.execute("""
-            SELECT 
-                COUNT(*) as symbols_tracked,
-                AVG(accuracy_pct) as avg_accuracy,
-                COUNT(CASE WHEN accuracy_pct < 40 AND total_predictions >= 10 THEN 1 END) as excluded_count,
-                COUNT(CASE WHEN accuracy_pct >= 70 AND total_predictions >= 10 THEN 1 END) as boosted_count
-            FROM ghost_symbol_accuracy
-        """)
-        summary = cur.fetchone()
-        
-        # Get lists of excluded and boosted symbols
-        cur.execute("""
-            SELECT symbol, accuracy_pct, total_predictions
-            FROM ghost_symbol_accuracy
-            WHERE total_predictions >= 10 AND accuracy_pct < 40
-            ORDER BY accuracy_pct ASC
-            LIMIT 20
-        """)
-        excluded = [{"symbol": r[0], "accuracy": float(r[1]), "predictions": r[2]} for r in cur.fetchall()]
-        
-        cur.execute("""
-            SELECT symbol, accuracy_pct, total_predictions
-            FROM ghost_symbol_accuracy
-            WHERE total_predictions >= 10 AND accuracy_pct >= 70
-            ORDER BY accuracy_pct DESC
-            LIMIT 20
-        """)
-        boosted = [{"symbol": r[0], "accuracy": float(r[1]), "predictions": r[2]} for r in cur.fetchall()]
-        
-        cur.close()
-        conn.close()
+                SELECT symbol, accuracy_pct, total_predictions
+                FROM ghost_symbol_accuracy
+                WHERE total_predictions >= 10 AND accuracy_pct >= 70
+                ORDER BY accuracy_pct DESC
+                LIMIT 20
+            """)
+            boosted = [{"symbol": r[0], "accuracy": float(r[1]), "predictions": r[2]} for r in cur.fetchall()]
         
         LOGGER.info(f"[RECONCILE] ✅ Updated accuracy for {symbols_updated} symbols")
         
@@ -28625,7 +28568,6 @@ async def learning_dashboard():
     - Symbols boosted in TOP 10 (high accuracy)
     - Recent outcomes
     """
-    import psycopg2
     from datetime import datetime, timedelta
     
     database_url = os.getenv("DATABASE_URL")
@@ -28633,129 +28575,126 @@ async def learning_dashboard():
         return {"ok": False, "error": "DATABASE_URL not configured"}
     
     try:
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor()
-        
-        # Create ghost_symbol_accuracy table if not exists
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
-                symbol VARCHAR(20) PRIMARY KEY,
-                total_predictions INTEGER DEFAULT 0,
-                correct_predictions INTEGER DEFAULT 0,
-                accuracy_pct NUMERIC(5, 2) DEFAULT 0,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
-        
-        # Get overall stats from ghost_prediction_outcomes table (the actual reconciled data)
-        cur.execute("""
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct,
-                AVG(CASE WHEN hit_direction = 1 THEN 1.0 ELSE 0.0 END) * 100 as accuracy_pct
-            FROM ghost_prediction_outcomes
-        """)
-        row = cur.fetchone()
-        overall_stats = {
-            "total_evaluated": row[0] or 0,
-            "total_correct": row[1] or 0,
-            "raw_accuracy_pct": float(row[2]) if row[2] else 0,
-        }
-        
-        # With INVERSE_GHOST=1, if raw is X%, inverted is 100-X% - FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
-        inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
-        if inverse_mode:
-            overall_stats["inverted_accuracy_pct"] = 100 - overall_stats["raw_accuracy_pct"]
-            overall_stats["mode"] = "INVERSE_GHOST (raw predictions inverted)"
-        else:
-            overall_stats["inverted_accuracy_pct"] = overall_stats["raw_accuracy_pct"]
-            overall_stats["mode"] = "NORMAL"
-        
-        # Get symbols to exclude (accuracy < 40% with 10+ predictions)
-        cur.execute("""
-            SELECT symbol, total_predictions, correct_predictions, accuracy_pct
-            FROM ghost_symbol_accuracy
-            WHERE total_predictions >= 10 AND accuracy_pct < 40
-            ORDER BY accuracy_pct ASC
-        """)
-        excluded_symbols = []
-        for row in cur.fetchall():
-            excluded_symbols.append({
-                "symbol": row[0],
-                "total": row[1],
-                "correct": row[2],
-                "accuracy_pct": float(row[3]) if row[3] else 0,
-                "reason": "accuracy < 40%"
-            })
-        
-        # Get symbols to boost (accuracy >= 70% with 10+ predictions)
-        cur.execute("""
-            SELECT symbol, total_predictions, correct_predictions, accuracy_pct
-            FROM ghost_symbol_accuracy
-            WHERE total_predictions >= 10 AND accuracy_pct >= 70
-            ORDER BY accuracy_pct DESC
-        """)
-        boosted_symbols = []
-        for row in cur.fetchall():
-            boosted_symbols.append({
-                "symbol": row[0],
-                "total": row[1],
-                "correct": row[2],
-                "accuracy_pct": float(row[3]) if row[3] else 0,
-                "boost": "+15% confidence"
-            })
-        
-        # Get all symbol accuracy (top 50 by total predictions)
-        cur.execute("""
-            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, last_updated
-            FROM ghost_symbol_accuracy
-            ORDER BY total_predictions DESC
-            LIMIT 50
-        """)
-        all_symbols = []
-        for row in cur.fetchall():
-            all_symbols.append({
-                "symbol": row[0],
-                "total": row[1],
-                "correct": row[2],
-                "accuracy_pct": float(row[3]) if row[3] else 0,
-                "last_updated": row[4].isoformat() if row[4] else None
-            })
-        
-        # Get recent outcomes (last 20) from ghost_prediction_outcomes table
-        cur.execute("""
-            SELECT symbol, predicted_direction, actual_direction, hit_direction, 
-                   price_at_prediction, price_at_resolution, realized_move_pct, closed_at
-            FROM ghost_prediction_outcomes
-            ORDER BY closed_at DESC NULLS LAST
-            LIMIT 20
-        """)
-        recent_outcomes = []
-        for row in cur.fetchall():
-            # closed_at is a timestamp (could be datetime or float)
-            evaluated_at = None
-            if row[7]:
-                if isinstance(row[7], datetime):
-                    evaluated_at = row[7].isoformat()
-                elif isinstance(row[7], (int, float)):
-                    evaluated_at = datetime.fromtimestamp(row[7]).isoformat()
-                else:
-                    evaluated_at = str(row[7])
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
             
-            recent_outcomes.append({
-                "symbol": row[0],
-                "predicted": row[1],
-                "actual": row[2],
-                "correct": row[3] == 1,
-                "entry_price": float(row[4]) if row[4] else 0,
-                "exit_price": float(row[5]) if row[5] else 0,
-                "change_pct": float(row[6]) if row[6] else 0,
-                "evaluated_at": evaluated_at
-            })
-        
-        cur.close()
-        conn.close()
+            # Create ghost_symbol_accuracy table if not exists
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
+                    symbol VARCHAR(20) PRIMARY KEY,
+                    total_predictions INTEGER DEFAULT 0,
+                    correct_predictions INTEGER DEFAULT 0,
+                    accuracy_pct NUMERIC(5, 2) DEFAULT 0,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Get overall stats from ghost_prediction_outcomes table (the actual reconciled data)
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct,
+                    AVG(CASE WHEN hit_direction = 1 THEN 1.0 ELSE 0.0 END) * 100 as accuracy_pct
+                FROM ghost_prediction_outcomes
+            """)
+            row = cur.fetchone()
+            overall_stats = {
+                "total_evaluated": row[0] or 0,
+                "total_correct": row[1] or 0,
+                "raw_accuracy_pct": float(row[2]) if row[2] else 0,
+            }
+            
+            # With INVERSE_GHOST=1, if raw is X%, inverted is 100-X% - FIXED: Use INVERSE_GHOST (not INVERSE_GHOST_MODE) - default to OFF (0)
+            inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
+            if inverse_mode:
+                overall_stats["inverted_accuracy_pct"] = 100 - overall_stats["raw_accuracy_pct"]
+                overall_stats["mode"] = "INVERSE_GHOST (raw predictions inverted)"
+            else:
+                overall_stats["inverted_accuracy_pct"] = overall_stats["raw_accuracy_pct"]
+                overall_stats["mode"] = "NORMAL"
+            
+            # Get symbols to exclude (accuracy < 40% with 10+ predictions)
+            cur.execute("""
+                SELECT symbol, total_predictions, correct_predictions, accuracy_pct
+                FROM ghost_symbol_accuracy
+                WHERE total_predictions >= 10 AND accuracy_pct < 40
+                ORDER BY accuracy_pct ASC
+            """)
+            excluded_symbols = []
+            for row in cur.fetchall():
+                excluded_symbols.append({
+                    "symbol": row[0],
+                    "total": row[1],
+                    "correct": row[2],
+                    "accuracy_pct": float(row[3]) if row[3] else 0,
+                    "reason": "accuracy < 40%"
+                })
+            
+            # Get symbols to boost (accuracy >= 70% with 10+ predictions)
+            cur.execute("""
+                SELECT symbol, total_predictions, correct_predictions, accuracy_pct
+                FROM ghost_symbol_accuracy
+                WHERE total_predictions >= 10 AND accuracy_pct >= 70
+                ORDER BY accuracy_pct DESC
+            """)
+            boosted_symbols = []
+            for row in cur.fetchall():
+                boosted_symbols.append({
+                    "symbol": row[0],
+                    "total": row[1],
+                    "correct": row[2],
+                    "accuracy_pct": float(row[3]) if row[3] else 0,
+                    "boost": "+15% confidence"
+                })
+            
+            # Get all symbol accuracy (top 50 by total predictions)
+            cur.execute("""
+                SELECT symbol, total_predictions, correct_predictions, accuracy_pct, last_updated
+                FROM ghost_symbol_accuracy
+                ORDER BY total_predictions DESC
+                LIMIT 50
+            """)
+            all_symbols = []
+            for row in cur.fetchall():
+                all_symbols.append({
+                    "symbol": row[0],
+                    "total": row[1],
+                    "correct": row[2],
+                    "accuracy_pct": float(row[3]) if row[3] else 0,
+                    "last_updated": row[4].isoformat() if row[4] else None
+                })
+            
+            # Get recent outcomes (last 20) from ghost_prediction_outcomes table
+            cur.execute("""
+                SELECT symbol, predicted_direction, actual_direction, hit_direction, 
+                       price_at_prediction, price_at_resolution, realized_move_pct, closed_at
+                FROM ghost_prediction_outcomes
+                ORDER BY closed_at DESC NULLS LAST
+                LIMIT 20
+            """)
+            recent_outcomes = []
+            for row in cur.fetchall():
+                # closed_at is a timestamp (could be datetime or float)
+                evaluated_at = None
+                if row[7]:
+                    if isinstance(row[7], datetime):
+                        evaluated_at = row[7].isoformat()
+                    elif isinstance(row[7], (int, float)):
+                        evaluated_at = datetime.fromtimestamp(row[7]).isoformat()
+                    else:
+                        evaluated_at = str(row[7])
+                
+                recent_outcomes.append({
+                    "symbol": row[0],
+                    "predicted": row[1],
+                    "actual": row[2],
+                    "correct": row[3] == 1,
+                    "entry_price": float(row[4]) if row[4] else 0,
+                    "exit_price": float(row[5]) if row[5] else 0,
+                    "change_pct": float(row[6]) if row[6] else 0,
+                    "evaluated_at": evaluated_at
+                })
         
         # Import learning config from ghost_notifications
         try:
@@ -28810,7 +28749,6 @@ async def learning_symbol_accuracy(symbol: str):
     """
     Get detailed accuracy information for a specific symbol.
     """
-    import psycopg2
     from datetime import datetime
     
     database_url = os.getenv("DATABASE_URL")
@@ -28818,100 +28756,98 @@ async def learning_symbol_accuracy(symbol: str):
         return {"ok": False, "error": "DATABASE_URL not configured"}
     
     try:
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor()
-        
-        # Get symbol accuracy from ghost_symbol_accuracy table
-        cur.execute("""
-            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, last_updated
-            FROM ghost_symbol_accuracy
-            WHERE symbol = %s
-        """, (symbol.upper(),))
-        
-        row = cur.fetchone()
-        if not row:
-            # Try to compute from ghost_prediction_outcomes table directly
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            
+            # Get symbol accuracy from ghost_symbol_accuracy table
             cur.execute("""
-                SELECT 
-                    symbol,
-                    COUNT(*) as total,
-                    SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+                SELECT symbol, total_predictions, correct_predictions, accuracy_pct, last_updated
+                FROM ghost_symbol_accuracy
+                WHERE symbol = %s
+            """, (symbol.upper(),))
+            
+            row = cur.fetchone()
+            if not row:
+                # Try to compute from ghost_prediction_outcomes table directly
+                cur.execute("""
+                    SELECT 
+                        symbol,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN hit_direction = 1 THEN 1 ELSE 0 END) as correct
+                    FROM ghost_prediction_outcomes
+                    WHERE symbol = %s
+                    GROUP BY symbol
+                """, (symbol.upper(),))
+                outcome_row = cur.fetchone()
+                if not outcome_row:
+                    return {"ok": False, "error": f"No accuracy data for {symbol}"}
+                
+                symbol_data = {
+                    "symbol": outcome_row[0],
+                    "total_predictions": outcome_row[1],
+                    "correct_predictions": outcome_row[2],
+                    "accuracy_pct": (outcome_row[2] / outcome_row[1] * 100) if outcome_row[1] > 0 else 0,
+                    "last_updated": None,
+                    "source": "computed_from_ghost_prediction_outcomes"
+                }
+            else:
+                symbol_data = {
+                    "symbol": row[0],
+                    "total_predictions": row[1],
+                    "correct_predictions": row[2],
+                    "accuracy_pct": float(row[3]) if row[3] else 0,
+                    "last_updated": row[4].isoformat() if row[4] else None,
+                    "source": "ghost_symbol_accuracy"
+                }
+            
+            # Determine status
+            if symbol_data["total_predictions"] < 10:
+                symbol_data["status"] = "insufficient_data"
+                symbol_data["learning_action"] = "none"
+            elif symbol_data["accuracy_pct"] < 40:
+                symbol_data["status"] = "low_accuracy"
+                symbol_data["learning_action"] = "EXCLUDED from TOP 10"
+            elif symbol_data["accuracy_pct"] >= 70:
+                symbol_data["status"] = "high_accuracy"
+                symbol_data["learning_action"] = "BOOSTED +15% confidence"
+            else:
+                symbol_data["status"] = "normal"
+                symbol_data["learning_action"] = "none"
+            
+            # Get recent outcomes for this symbol from ghost_prediction_outcomes table
+            cur.execute("""
+                SELECT predicted_direction, actual_direction, hit_direction, 
+                       price_at_prediction, price_at_resolution, realized_move_pct, closed_at
                 FROM ghost_prediction_outcomes
                 WHERE symbol = %s
-                GROUP BY symbol
+                ORDER BY closed_at DESC NULLS LAST
+                LIMIT 10
             """, (symbol.upper(),))
-            outcome_row = cur.fetchone()
-            if not outcome_row:
-                return {"ok": False, "error": f"No accuracy data for {symbol}"}
             
-            symbol_data = {
-                "symbol": outcome_row[0],
-                "total_predictions": outcome_row[1],
-                "correct_predictions": outcome_row[2],
-                "accuracy_pct": (outcome_row[2] / outcome_row[1] * 100) if outcome_row[1] > 0 else 0,
-                "last_updated": None,
-                "source": "computed_from_ghost_prediction_outcomes"
-            }
-        else:
-            symbol_data = {
-                "symbol": row[0],
-                "total_predictions": row[1],
-                "correct_predictions": row[2],
-                "accuracy_pct": float(row[3]) if row[3] else 0,
-                "last_updated": row[4].isoformat() if row[4] else None,
-                "source": "ghost_symbol_accuracy"
-            }
-        
-        # Determine status
-        if symbol_data["total_predictions"] < 10:
-            symbol_data["status"] = "insufficient_data"
-            symbol_data["learning_action"] = "none"
-        elif symbol_data["accuracy_pct"] < 40:
-            symbol_data["status"] = "low_accuracy"
-            symbol_data["learning_action"] = "EXCLUDED from TOP 10"
-        elif symbol_data["accuracy_pct"] >= 70:
-            symbol_data["status"] = "high_accuracy"
-            symbol_data["learning_action"] = "BOOSTED +15% confidence"
-        else:
-            symbol_data["status"] = "normal"
-            symbol_data["learning_action"] = "none"
-        
-        # Get recent outcomes for this symbol from ghost_prediction_outcomes table
-        cur.execute("""
-            SELECT predicted_direction, actual_direction, hit_direction, 
-                   price_at_prediction, price_at_resolution, realized_move_pct, closed_at
-            FROM ghost_prediction_outcomes
-            WHERE symbol = %s
-            ORDER BY closed_at DESC NULLS LAST
-            LIMIT 10
-        """, (symbol.upper(),))
-        
-        recent = []
-        for r in cur.fetchall():
-            # closed_at is a timestamp (could be datetime or float)
-            evaluated_at = None
-            if r[6]:
-                if isinstance(r[6], datetime):
-                    evaluated_at = r[6].isoformat()
-                elif isinstance(r[6], (int, float)):
-                    evaluated_at = datetime.fromtimestamp(r[6]).isoformat()
-                else:
-                    evaluated_at = str(r[6])
+            recent = []
+            for r in cur.fetchall():
+                # closed_at is a timestamp (could be datetime or float)
+                evaluated_at = None
+                if r[6]:
+                    if isinstance(r[6], datetime):
+                        evaluated_at = r[6].isoformat()
+                    elif isinstance(r[6], (int, float)):
+                        evaluated_at = datetime.fromtimestamp(r[6]).isoformat()
+                    else:
+                        evaluated_at = str(r[6])
+                
+                recent.append({
+                    "predicted": r[0],
+                    "actual": r[1],
+                    "correct": r[2] == 1,
+                    "entry": float(r[3]) if r[3] else 0,
+                    "exit": float(r[4]) if r[4] else 0,
+                    "change_pct": float(r[5]) if r[5] else 0,
+                    "evaluated_at": evaluated_at
+                })
             
-            recent.append({
-                "predicted": r[0],
-                "actual": r[1],
-                "correct": r[2] == 1,
-                "entry": float(r[3]) if r[3] else 0,
-                "exit": float(r[4]) if r[4] else 0,
-                "change_pct": float(r[5]) if r[5] else 0,
-                "evaluated_at": evaluated_at
-            })
-        
-        symbol_data["recent_outcomes"] = recent
-        
-        cur.close()
-        conn.close()
+            symbol_data["recent_outcomes"] = recent
         
         return {"ok": True, **symbol_data}
         
@@ -29154,24 +29090,22 @@ async def debug_tracking_status(secret: str = ""):
         database_url = os.getenv("DATABASE_URL", "")
         if database_url:
             try:
-                import psycopg2
-                conn = psycopg2.connect(database_url)
-                cur = conn.cursor()
-                
-                cur.execute("""
-                    SELECT symbol, asset_type, direction, entry_price, target_price, stop_price, 
-                           confidence, entry_time, expires_at, status
-                    FROM ghost_tracked_picks 
-                    WHERE status = 'active'
-                    ORDER BY entry_time DESC
-                """)
-                active_picks = cur.fetchall()
-                
-                cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks")
-                all_picks = cur.fetchone()[0]
-                
-                cur.close()
-                conn.close()
+                from core.db_pool import get_sync_connection
+                with get_sync_connection() as conn:
+                    cur = conn.cursor()
+                    
+                    cur.execute("""
+                        SELECT symbol, asset_type, direction, entry_price, target_price, stop_price, 
+                               confidence, entry_time, expires_at, status
+                        FROM ghost_tracked_picks 
+                        WHERE status = 'active'
+                        ORDER BY entry_time DESC
+                    """)
+                    active_picks = cur.fetchall()
+                    
+                    cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks")
+                    all_picks = cur.fetchone()[0]
+                    
                 db_source = "postgresql (persistent)"
                 
                 for p in active_picks:
@@ -30362,17 +30296,15 @@ async def close_tracked_pick(request: Request, symbol: str, status: str = "stop_
     database_url = os.getenv("DATABASE_URL", "")
     if database_url:
         try:
-            import psycopg2
-            conn = psycopg2.connect(database_url)
-            cur = conn.cursor()
-            cur.execute(
-                "UPDATE ghost_tracked_picks SET status = %s WHERE symbol = %s AND status = 'active'",
-                (status, symbol)
-            )
-            rows_affected = cur.rowcount
-            conn.commit()
-            cur.close()
-            conn.close()
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE ghost_tracked_picks SET status = %s WHERE symbol = %s AND status = 'active'",
+                    (status, symbol)
+                )
+                rows_affected = cur.rowcount
+                cur.close()
             updated_pg = rows_affected > 0
             LOGGER.info(f"[TRACKING] Updated {symbol} to {status} in PostgreSQL ({rows_affected} rows)")
         except Exception as e:
@@ -30421,33 +30353,32 @@ async def get_tracking_accuracy(days: int = 7):
     }
     
     try:
-        import psycopg2
+        from core.db_pool import get_sync_connection
         database_url = os.getenv("DATABASE_URL", "")
         
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not configured"}
         
-        conn = psycopg2.connect(database_url)
-        cur = conn.cursor()
-        
-        # Get resolved picks
-        cur.execute("""
-            SELECT symbol, direction, entry_price, target_price, stop_price, status, entry_time
-            FROM ghost_tracked_picks
-            WHERE status IN ('target_hit', 'stop_hit')
-            AND entry_time > NOW() - INTERVAL '%s days'
-            ORDER BY entry_time DESC
-        """, (days,))
-        
-        columns = ['symbol', 'direction', 'entry_price', 'target_price', 'stop_price', 'status', 'entry_time']
-        resolved = [dict(zip(columns, row)) for row in cur.fetchall()]
-        
-        # Get active picks count
-        cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'active'")
-        active_count = cur.fetchone()[0]
-        
-        cur.close()
-        conn.close()
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            
+            # Get resolved picks
+            cur.execute("""
+                SELECT symbol, direction, entry_price, target_price, stop_price, status, entry_time
+                FROM ghost_tracked_picks
+                WHERE status IN ('target_hit', 'stop_hit')
+                AND entry_time > NOW() - INTERVAL '%s days'
+                ORDER BY entry_time DESC
+            """, (days,))
+            
+            columns = ['symbol', 'direction', 'entry_price', 'target_price', 'stop_price', 'status', 'entry_time']
+            resolved = [dict(zip(columns, row)) for row in cur.fetchall()]
+            
+            # Get active picks count
+            cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'active'")
+            active_count = cur.fetchone()[0]
+            
+            cur.close()
         
         if not resolved:
             return {
@@ -30539,45 +30470,43 @@ async def learning_symbol_accuracy():
     Returns list of symbols with accuracy stats, sorted by prediction count.
     """
     try:
-        import psycopg2
+        from core.db_pool import get_sync_connection
         
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"ok": False, "error": "DATABASE_URL not configured"}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT symbol, total_predictions, correct_predictions, accuracy_pct, status, last_updated
-            FROM ghost_symbol_accuracy
-            ORDER BY total_predictions DESC
-        """)
-        
-        symbols = []
-        for row in cursor.fetchall():
-            symbol, total, correct, acc, status, updated = row
-            symbols.append({
-                "symbol": symbol,
-                "total_predictions": total,
-                "correct_predictions": correct,
-                "accuracy_pct": float(acc) if acc else 0,
-                "status": status,
-                "last_updated": updated.isoformat() if updated else None,
-                "recommendation": (
-                    "EXCLUDE" if acc and acc < 40 and total >= 10 else
-                    "BOOST" if acc and acc > 70 and total >= 10 else
-                    "NORMAL"
-                )
-            })
-        
-        conn.close()
-        
-        return {
-            "ok": True,
-            "symbols": symbols,
-            "total_symbols": len(symbols)
-        }
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT symbol, total_predictions, correct_predictions, accuracy_pct, status, last_updated
+                FROM ghost_symbol_accuracy
+                ORDER BY total_predictions DESC
+            """)
+            
+            symbols = []
+            for row in cursor.fetchall():
+                symbol, total, correct, acc, status, updated = row
+                symbols.append({
+                    "symbol": symbol,
+                    "total_predictions": total,
+                    "correct_predictions": correct,
+                    "accuracy_pct": float(acc) if acc else 0,
+                    "status": status,
+                    "last_updated": updated.isoformat() if updated else None,
+                    "recommendation": (
+                        "EXCLUDE" if acc and acc < 40 and total >= 10 else
+                        "BOOST" if acc and acc > 70 and total >= 10 else
+                        "NORMAL"
+                    )
+                })
+            
+            return {
+                "ok": True,
+                "symbols": symbols,
+                "total_symbols": len(symbols)
+            }
         
     except Exception as e:
         LOGGER.error(f"[LEARNING] Symbol accuracy error: {e}", exc_info=True)
@@ -30597,54 +30526,52 @@ def get_learning_adjustments():
         }
     """
     try:
-        import psycopg2
+        from core.db_pool import get_sync_connection
         
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             return {"excluded_symbols": [], "boosted_symbols": [], "penalized_symbols": []}
         
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Ensure table exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
+                    symbol TEXT PRIMARY KEY,
+                    total_predictions INTEGER DEFAULT 0,
+                    correct_predictions INTEGER DEFAULT 0,
+                    accuracy_pct NUMERIC(5,2) DEFAULT 0,
+                    last_updated TIMESTAMP DEFAULT NOW(),
+                    status TEXT DEFAULT 'active'
+                )
+            """)
         
-        # Ensure table exists
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ghost_symbol_accuracy (
-                symbol TEXT PRIMARY KEY,
-                total_predictions INTEGER DEFAULT 0,
-                correct_predictions INTEGER DEFAULT 0,
-                accuracy_pct NUMERIC(5,2) DEFAULT 0,
-                last_updated TIMESTAMP DEFAULT NOW(),
-                status TEXT DEFAULT 'active'
-            )
-        """)
-        
-        # Excluded: < 30% accuracy with 10+ predictions (really bad)
-        cursor.execute("""
-            SELECT symbol FROM ghost_symbol_accuracy
-            WHERE accuracy_pct < 30 AND total_predictions >= 10
-        """)
-        excluded = [row[0] for row in cursor.fetchall()]
-        
-        # Boosted: > 70% accuracy with 10+ predictions
-        cursor.execute("""
-            SELECT symbol FROM ghost_symbol_accuracy
-            WHERE accuracy_pct > 70 AND total_predictions >= 10
-        """)
-        boosted = [row[0] for row in cursor.fetchall()]
-        
-        # Penalized: 30-45% accuracy with 10+ predictions
-        cursor.execute("""
-            SELECT symbol FROM ghost_symbol_accuracy
-            WHERE accuracy_pct >= 30 AND accuracy_pct < 45 AND total_predictions >= 10
-        """)
-        penalized = [row[0] for row in cursor.fetchall()]
-        
-        conn.close()
-        
-        return {
-            "excluded_symbols": excluded,
-            "boosted_symbols": boosted,
-            "penalized_symbols": penalized
+            # Excluded: < 30% accuracy with 10+ predictions (really bad)
+            cursor.execute("""
+                SELECT symbol FROM ghost_symbol_accuracy
+                WHERE accuracy_pct < 30 AND total_predictions >= 10
+            """)
+            excluded = [row[0] for row in cursor.fetchall()]
+            
+            # Boosted: > 70% accuracy with 10+ predictions
+            cursor.execute("""
+                SELECT symbol FROM ghost_symbol_accuracy
+                WHERE accuracy_pct > 70 AND total_predictions >= 10
+            """)
+            boosted = [row[0] for row in cursor.fetchall()]
+            
+            # Penalized: 30-45% accuracy with 10+ predictions
+            cursor.execute("""
+                SELECT symbol FROM ghost_symbol_accuracy
+                WHERE accuracy_pct >= 30 AND accuracy_pct < 45 AND total_predictions >= 10
+            """)
+            penalized = [row[0] for row in cursor.fetchall()]
+            
+            return {
+                "excluded_symbols": excluded,
+                "boosted_symbols": boosted,
+                "penalized_symbols": penalized
         }
         
     except Exception as e:
@@ -36523,45 +36450,39 @@ async def api_stability_status():
     # Check 3: Confidence distribution (should be <= 85%)
     try:
         # Get recent predictions to check confidence distribution
-        conn = None
-        try:
-            import psycopg2
-            db_url = os.environ.get("DATABASE_URL")
-            if db_url:
-                conn = psycopg2.connect(db_url)
-        except Exception:
-            pass
-        
-        if conn:
+        db_url = os.environ.get("DATABASE_URL")
+        if db_url:
             try:
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT 
-                        MAX(confidence) as max_conf,
-                        AVG(confidence) as avg_conf,
-                        COUNT(*) as total,
-                        SUM(CASE WHEN confidence > 0.85 THEN 1 ELSE 0 END) as over_85
-                    FROM predictions
-                    WHERE timestamp > NOW() - INTERVAL '24 hours'
-                """)
-                row = cur.fetchone()
-                if row and row[2] > 0:
-                    max_conf = float(row[0]) if row[0] else 0
-                    avg_conf = float(row[1]) if row[1] else 0
-                    over_85_count = int(row[3]) if row[3] else 0
-                    result["checks"]["confidence"] = {
-                        "max_24h": round(max_conf, 3),
-                        "avg_24h": round(avg_conf, 3),
-                        "predictions_24h": row[2],
-                        "over_85_percent": over_85_count,
-                        "ok": max_conf <= 0.85,
-                    }
-                    if max_conf > 0.85:
-                        issues.append(f"Confidence exceeded 85%: {max_conf:.1%}")
-                else:
-                    result["checks"]["confidence"] = {"predictions_24h": 0, "ok": True}
-            finally:
-                conn.close()
+                from core.db_pool import get_sync_connection
+                with get_sync_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT 
+                            MAX(confidence) as max_conf,
+                            AVG(confidence) as avg_conf,
+                            COUNT(*) as total,
+                            SUM(CASE WHEN confidence > 0.85 THEN 1 ELSE 0 END) as over_85
+                        FROM predictions
+                        WHERE timestamp > NOW() - INTERVAL '24 hours'
+                    """)
+                    row = cur.fetchone()
+                    if row and row[2] > 0:
+                        max_conf = float(row[0]) if row[0] else 0
+                        avg_conf = float(row[1]) if row[1] else 0
+                        over_85_count = int(row[3]) if row[3] else 0
+                        result["checks"]["confidence"] = {
+                            "max_24h": round(max_conf, 3),
+                            "avg_24h": round(avg_conf, 3),
+                            "predictions_24h": row[2],
+                            "over_85_percent": over_85_count,
+                            "ok": max_conf <= 0.85,
+                        }
+                        if max_conf > 0.85:
+                            issues.append(f"Confidence exceeded 85%: {max_conf:.1%}")
+                    else:
+                        result["checks"]["confidence"] = {"predictions_24h": 0, "ok": True}
+            except Exception:
+                result["checks"]["confidence"] = {"status": "no_database", "ok": True}
         else:
             result["checks"]["confidence"] = {"status": "no_database", "ok": True}
     except Exception as e:
@@ -44088,8 +44009,8 @@ try:
             GET /api/v3/guardian/alerts?acknowledged=false
         """
         try:
-            conn = psycopg2.connect(os.getenv("DATABASE_URL"))
-            try:
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
                 cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 
                 query = "SELECT * FROM guardian_alerts WHERE 1=1"
@@ -44110,8 +44031,6 @@ try:
                 
                 cur.execute(query, params)
                 alerts = cur.fetchall()
-            finally:
-                conn.close()
             
             # Convert to serializable format
             result = []
@@ -44158,58 +44077,43 @@ try:
             prediction_id: Related prediction ID
             news_event_id: Related news event ID
         """
-        conn = None
         try:
-            conn = psycopg2.connect(os.getenv("DATABASE_URL"))
-            cur = conn.cursor()
-            
-            cur.execute("""
-                INSERT INTO guardian_alerts 
-                (symbol, alert_type, severity, message, price_at_alert, confidence, prediction_id, news_event_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING alert_id
-            """, (symbol.upper(), alert_type, severity.upper(), message, price_at_alert, confidence, prediction_id, news_event_id))
-            
-            alert_id = cur.fetchone()[0]
-            conn.commit()
-            
-            LOGGER.info(f"[GUARDIAN] Created alert {alert_id} for {symbol}: {alert_type}")
-            return {"ok": True, "alert_id": alert_id}
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    INSERT INTO guardian_alerts 
+                    (symbol, alert_type, severity, message, price_at_alert, confidence, prediction_id, news_event_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING alert_id
+                """, (symbol.upper(), alert_type, severity.upper(), message, price_at_alert, confidence, prediction_id, news_event_id))
+                
+                alert_id = cur.fetchone()[0]
+                
+                LOGGER.info(f"[GUARDIAN] Created alert {alert_id} for {symbol}: {alert_type}")
+                return {"ok": True, "alert_id": alert_id}
         except Exception as e:
             LOGGER.error(f"Failed to create guardian alert: {e}")
             return {"ok": False, "error": str(e)}
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
 
     @APP.post("/api/v3/guardian/acknowledge/{alert_id}")
     async def acknowledge_guardian_alert(alert_id: int):
         """Acknowledge a guardian alert"""
-        conn = None
         try:
-            conn = psycopg2.connect(os.getenv("DATABASE_URL"))
-            cur = conn.cursor()
-            
-            cur.execute("""
-                UPDATE guardian_alerts 
-                SET acknowledged = TRUE, acknowledged_at = CURRENT_TIMESTAMP
-                WHERE alert_id = %s
-            """, (alert_id,))
-            
-            conn.commit()
-            
-            return {"ok": True, "alert_id": alert_id, "acknowledged": True}
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    UPDATE guardian_alerts 
+                    SET acknowledged = TRUE, acknowledged_at = CURRENT_TIMESTAMP
+                    WHERE alert_id = %s
+                """, (alert_id,))
+                
+                return {"ok": True, "alert_id": alert_id, "acknowledged": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
 
     LOGGER.info("✅ Guardian Alerts API endpoints registered (/api/v3/guardian/*)")
 
@@ -44261,46 +44165,40 @@ try:
         Get statistics about available training data.
         Shows how many resolved trades we have for retraining.
         """
-        conn = None
         try:
-            conn = psycopg2.connect(os.getenv("DATABASE_URL"))
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            
-            # Get outcome distribution
-            cur.execute("""
-                SELECT 
-                    outcome,
-                    COUNT(*) as count
-                FROM paper_trades
-                WHERE outcome IS NOT NULL AND outcome != 'PENDING'
-                GROUP BY outcome
-            """)
-            outcomes = {row['outcome']: row['count'] for row in cur.fetchall()}
-            
-            # Get total pending
-            cur.execute("SELECT COUNT(*) as cnt FROM paper_trades WHERE outcome = 'PENDING'")
-            pending_row = cur.fetchone()
-            pending = pending_row['cnt'] if pending_row else 0
-            
-            # Get total resolved
-            total_resolved = sum(outcomes.values()) if outcomes else 0
-            
-            return {
-                "ok": True,
-                "resolved_trades": total_resolved,
-                "pending_trades": pending,
-                "outcome_distribution": outcomes,
-                "ready_for_retrain": total_resolved >= 500,
-                "min_samples_required": 500
-            }
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                
+                # Get outcome distribution
+                cur.execute("""
+                    SELECT 
+                        outcome,
+                        COUNT(*) as count
+                    FROM paper_trades
+                    WHERE outcome IS NOT NULL AND outcome != 'PENDING'
+                    GROUP BY outcome
+                """)
+                outcomes = {row['outcome']: row['count'] for row in cur.fetchall()}
+                
+                # Get total pending
+                cur.execute("SELECT COUNT(*) as cnt FROM paper_trades WHERE outcome = 'PENDING'")
+                pending_row = cur.fetchone()
+                pending = pending_row['cnt'] if pending_row else 0
+                
+                # Get total resolved
+                total_resolved = sum(outcomes.values()) if outcomes else 0
+                
+                return {
+                    "ok": True,
+                    "resolved_trades": total_resolved,
+                    "pending_trades": pending,
+                    "outcome_distribution": outcomes,
+                    "ready_for_retrain": total_resolved >= 500,
+                    "min_samples_required": 500
+                }
         except Exception as e:
             return {"ok": False, "error": str(e)}
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
 
     @APP.post("/api/v3/model/retrain")
     async def trigger_model_retrain(
@@ -44377,9 +44275,41 @@ try:
         """
         Get current active top 10 money-making opportunities.
         
-        Returns Ghost's daily picks with predicted gains, sell times, and confidence.
+        Returns Ghost's daily picks from _LATEST_PREDICTIONS, filtered
+        through the V3 pipeline. Falls back to DailyTop10Scanner SQLite
+        if in-memory predictions are empty.
         """
         try:
+            import time as _time
+            from core.adapters import process_v3_from_cache
+
+            # PRIMARY: Build top 10 from live _LATEST_PREDICTIONS
+            if _LATEST_PREDICTIONS:
+                stocks, crypto = process_v3_from_cache(_LATEST_PREDICTIONS)
+                opportunities = []
+                for i, pick in enumerate(stocks + crypto, 1):
+                    opportunities.append({
+                        "rank": i,
+                        "symbol": pick.get("symbol", "?"),
+                        "direction": pick.get("direction", "?"),
+                        "confidence": pick.get("v3_confidence", pick.get("confidence", 0)),
+                        "current_price": pick.get("current_price", pick.get("price", 0)),
+                        "predicted_48h_price": pick.get("target_price", pick.get("take_profit", 0)),
+                        "gain_pct": pick.get("expected_move", 0),
+                        "asset_type": pick.get("asset_class", "stock"),
+                        "last_updated": _time.time(),
+                    })
+
+                if opportunities:
+                    return {
+                        "ok": True,
+                        "count": len(opportunities),
+                        "opportunities": opportunities[:10],
+                        "last_updated": _time.time(),
+                        "source": "live_predictions",
+                    }
+
+            # FALLBACK: DailyTop10Scanner SQLite
             scanner = get_scanner()
             top_10 = scanner.get_active_top_10()
             
@@ -44387,7 +44317,8 @@ try:
                 "ok": True,
                 "count": len(top_10),
                 "opportunities": top_10,
-                "last_updated": top_10[0]["last_updated"] if top_10 else None
+                "last_updated": top_10[0]["last_updated"] if top_10 else None,
+                "source": "scanner_sqlite",
             }
         
         except Exception as e:
@@ -45030,7 +44961,6 @@ try:
         3. Confirm the system works when Ghost promotes a NEW symbol
         """
         try:
-            import psycopg2
             import os
             from datetime import datetime
             
@@ -45065,8 +44995,8 @@ try:
                 ("INJ", 10.0, 4, 0.70),    # DeFi focused
             ]
             
-            conn = psycopg2.connect(db_url)
-            try:
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
                 cur = conn.cursor()
                 
                 seeded_stocks = []
@@ -45107,13 +45037,6 @@ try:
                             datetime.utcnow(), datetime.utcnow()
                         ))
                         result_list.append({"rank": rank, "symbol": symbol, "profit": f"+{profit:.1f}%"})
-                
-                conn.commit()
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
             
             # Reload the game to pick up new data
             from core.money_game_engine import get_money_game

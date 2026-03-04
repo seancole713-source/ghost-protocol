@@ -412,8 +412,8 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
             database_url = os.getenv("DATABASE_URL")
             if database_url:
                 # Query PostgreSQL directly for ghost_predictions table
-                conn = psycopg2.connect(database_url)
-                try:
+                from core.db_pool import get_sync_connection
+                with get_sync_connection() as conn:
                     cur = conn.cursor()
                     
                     # Look for predictions made within ±10 minutes of target timestamp
@@ -435,11 +435,6 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
                         price = float(result[0])
                         LOGGER.debug(f"✅ Found recorded price for {symbol} at {datetime.fromtimestamp(timestamp)}: ${price:.2f}")
                         return price
-                finally:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
             else:
                 # Fallback to SQLite in dev container
                 from core.prediction_store import get_prediction_store
@@ -657,12 +652,8 @@ def _store_outcome_success(
     predicted_confidence: float,
 ):
     """Store successful outcome in ghost_prediction_outcomes table."""
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise Exception("DATABASE_URL not set")
-    
-    conn = psycopg2.connect(database_url)
-    try:
+    from core.db_pool import get_sync_connection
+    with get_sync_connection() as conn:
         cursor = conn.cursor()
         
         # Insert outcome
@@ -724,10 +715,7 @@ def _store_outcome_success(
         ))
         
         conn.commit()
-        
-    finally:
         cursor.close()
-        conn.close()
 
 
 def _store_outcome_no_data(
@@ -740,12 +728,8 @@ def _store_outcome_no_data(
     notes: str,
 ):
     """Store outcome with status='no_data' when price cannot be fetched."""
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise Exception("DATABASE_URL not set")
-    
-    conn = psycopg2.connect(database_url)
-    try:
+    from core.db_pool import get_sync_connection
+    with get_sync_connection() as conn:
         cursor = conn.cursor()
         
         # Insert outcome with NULL/0 for missing prices
@@ -797,10 +781,7 @@ def _store_outcome_no_data(
         ))
         
         conn.commit()
-        
-    finally:
         cursor.close()
-        conn.close()
 
 
 def start_reconciler_background_task():

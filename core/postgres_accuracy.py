@@ -28,51 +28,49 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
     Returns:
         Accuracy statistics dict
     """
-    conn = None
     try:
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             LOGGER.error("DATABASE_URL not set")
             return _empty_response(period, "DATABASE_URL not configured")
         
-        from core.db_pool import get_sync_connection_raw
-        conn = get_sync_connection_raw()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Time filter
-        time_filter = ""
-        if period == "24h":
-            cutoff_seconds = int(time.time()) - (24 * 3600)
-            time_filter = f"AND EXTRACT(EPOCH FROM closed_at) >= {cutoff_seconds}"
-        elif period == "7d":
-            cutoff_seconds = int(time.time()) - (7 * 24 * 3600)
-            time_filter = f"AND EXTRACT(EPOCH FROM closed_at) >= {cutoff_seconds}"
-        elif period == "30d":
-            cutoff_seconds = int(time.time()) - (30 * 24 * 3600)
-            time_filter = f"AND EXTRACT(EPOCH FROM closed_at) >= {cutoff_seconds}"
-        
-        # Get completed outcomes
-        cur.execute(f"""
-            SELECT 
-                prediction_id,
-                symbol,
-                closed_at,
-                price_at_prediction,
-                price_at_resolution,
-                realized_move_pct,
-                predicted_direction,
-                actual_direction,
-                hit_direction,
-                predicted_confidence
-            FROM ghost_prediction_outcomes
-            WHERE status = 'completed' 
-            AND hit_direction IS NOT NULL
-            {time_filter}
-            ORDER BY closed_at DESC
-        """)
-        
-        rows = cur.fetchall()
-        conn.close()
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Time filter
+            time_filter = ""
+            if period == "24h":
+                cutoff_seconds = int(time.time()) - (24 * 3600)
+                time_filter = f"AND EXTRACT(EPOCH FROM closed_at) >= {cutoff_seconds}"
+            elif period == "7d":
+                cutoff_seconds = int(time.time()) - (7 * 24 * 3600)
+                time_filter = f"AND EXTRACT(EPOCH FROM closed_at) >= {cutoff_seconds}"
+            elif period == "30d":
+                cutoff_seconds = int(time.time()) - (30 * 24 * 3600)
+                time_filter = f"AND EXTRACT(EPOCH FROM closed_at) >= {cutoff_seconds}"
+            
+            # Get completed outcomes
+            cur.execute(f"""
+                SELECT 
+                    prediction_id,
+                    symbol,
+                    closed_at,
+                    price_at_prediction,
+                    price_at_resolution,
+                    realized_move_pct,
+                    predicted_direction,
+                    actual_direction,
+                    hit_direction,
+                    predicted_confidence
+                FROM ghost_prediction_outcomes
+                WHERE status = 'completed' 
+                AND hit_direction IS NOT NULL
+                {time_filter}
+                ORDER BY closed_at DESC
+            """)
+            
+            rows = cur.fetchall()
         
         if not rows:
             LOGGER.info(f"No completed outcomes found for period: {period}")
@@ -142,12 +140,6 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
     except Exception as e:
         LOGGER.error(f"Accuracy calculation failed: {e}", exc_info=True)
         return _empty_response(period, f"Error: {str(e)}")
-    finally:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
 
 def _empty_response(period: str, message: str = "") -> Dict[str, Any]:

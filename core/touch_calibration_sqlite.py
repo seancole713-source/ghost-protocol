@@ -27,10 +27,15 @@ class TouchCalibration:
 
     @property
     def stage5_ok(self) -> bool:
-        return self.calibrated_1pct >= 0.70
+        """Stage 5 (ANALYSIS gate): Allow predictions to flow for paper trading
+        and data collection. Threshold 0.50 ensures predictions pass once we have
+        SOME calibration data, but still blocks truly uncalibrated noise."""
+        return self.calibrated_1pct >= 0.50
 
     @property
     def stage6_ok(self) -> bool:
+        """Stage 6 (EXECUTION gate): Require higher bar for live trading.
+        This gate is only meaningful when live execution is enabled."""
         return self.calibrated_0_5pct >= 0.70
 
     @property

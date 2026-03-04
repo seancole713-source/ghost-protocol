@@ -171,8 +171,9 @@ def _fetch_training_data(symbol: str | None, lookback_days: int) -> list[dict]:
     database_url = os.getenv("DATABASE_URL", "")
     if database_url.startswith(("postgres://", "postgresql://")):
         try:
-            import psycopg2
-            conn = psycopg2.connect(database_url)
+            from core.db_pool import get_sync_connection
+            _conn_cm = get_sync_connection()
+            conn = _conn_cm.__enter__()
             cursor = conn.cursor()
             
             if symbol:
@@ -203,7 +204,7 @@ def _fetch_training_data(symbol: str | None, lookback_days: int) -> list[dict]:
             
             rows = cursor.fetchall()
             cursor.close()
-            conn.close()
+            _conn_cm.__exit__(None, None, None)
             
             for row in rows:
                 features = {}

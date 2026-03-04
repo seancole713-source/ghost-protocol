@@ -52,105 +52,98 @@ def get_real_accuracy_stats() -> dict:
             "status": str  # "UNVERIFIED", "BUILDING", "VERIFIED"
         }
     """
-    conn = None
     try:
         # Try to get from outcome reconciler's Postgres data
-        from core.db_pool import get_sync_connection_raw
+        from core.db_pool import get_sync_connection
         database_url = os.getenv("DATABASE_URL")
         
         if not database_url:
             return {"status": "LEARNING", "wins": 0, "losses": 0, "accuracy_pct": 0, "total_verified": 0}
         
-        conn = get_sync_connection_raw()
-        cursor = conn.cursor()
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
         
-        # First try ghost_prediction_outcomes (reconciled data)
-        # NOTE: Status is 'completed' not 'closed'! (Fixed Dec 22, 2025)
-        cursor.execute("""
-            SELECT 
-                COUNT(*) FILTER (WHERE hit_direction = 1) as wins,
-                COUNT(*) FILTER (WHERE hit_direction = 0 AND actual_direction IS NOT NULL) as losses,
-                COUNT(*) as total
-            FROM ghost_prediction_outcomes
-            WHERE status = 'completed'
-        """)
-        row = cursor.fetchone()
-        wins = row[0] or 0
-        losses = row[1] or 0
-        total = row[2] or 0
-        
-        # If outcomes table is empty, try to get count from ghost_predictions
-        # This shows we have predictions even if not all reconciled
-        if total == 0:
+            # First try ghost_prediction_outcomes (reconciled data)
+            # NOTE: Status is 'completed' not 'closed'! (Fixed Dec 22, 2025)
             cursor.execute("""
-                SELECT COUNT(*) as total_predictions
-                FROM ghost_predictions
-                WHERE run_at < EXTRACT(EPOCH FROM NOW()) - 172800  -- older than 48h
+                SELECT 
+                    COUNT(*) FILTER (WHERE hit_direction = 1) as wins,
+                    COUNT(*) FILTER (WHERE hit_direction = 0 AND actual_direction IS NOT NULL) as losses,
+                    COUNT(*) as total
+                FROM ghost_prediction_outcomes
+                WHERE status = 'completed'
             """)
-            pred_row = cursor.fetchone()
-            total_predictions = pred_row[0] or 0
+            row = cursor.fetchone()
+            wins = row[0] or 0
+            losses = row[1] or 0
+            total = row[2] or 0
+            
+            # If outcomes table is empty, try to get count from ghost_predictions
+            # This shows we have predictions even if not all reconciled
+            if total == 0:
+                cursor.execute("""
+                    SELECT COUNT(*) as total_predictions
+                    FROM ghost_predictions
+                    WHERE run_at < EXTRACT(EPOCH FROM NOW()) - 172800  -- older than 48h
+                """)
+                pred_row = cursor.fetchone()
+                total_predictions = pred_row[0] or 0
+                
+                cursor.close()
+                
+                # Show "LEARNING" status with prediction count
+                return {
+                    "wins": 0,
+                    "losses": 0,
+                    "accuracy_pct": 0,
+                    "total_verified": 0,
+                    "total_predictions": total_predictions,
+                    "status": "LEARNING",
+                    "message": f"{total_predictions} predictions pending validation"
+                }
+        
+            # Get 7-day accuracy
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) FILTER (WHERE hit_direction = 1) as wins_7d,
+                    COUNT(*) as total_7d
+                FROM ghost_prediction_outcomes
+                WHERE status = 'completed' 
+                AND closed_at > NOW() - INTERVAL '7 days'
+            """)
+            row_7d = cursor.fetchone()
+            wins_7d = row_7d[0] or 0
+            total_7d = row_7d[1] or 0
             
             cursor.close()
             
-            # Show "LEARNING" status with prediction count
+            # Calculate accuracy
+            accuracy_pct = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
+            trend_7d = (wins_7d / total_7d * 100) if total_7d > 0 else 0
+            
+            # Determine status
+            if total < 10:
+                status = "BUILDING"
+            elif accuracy_pct >= 60:
+                status = "VERIFIED ✅"
+            elif accuracy_pct >= 40:
+                status = "MODERATE ⚡"
+            else:
+                status = "LEARNING 📚"
+            
             return {
-                "wins": 0,
-                "losses": 0,
-                "accuracy_pct": 0,
-                "total_verified": 0,
-                "total_predictions": total_predictions,
-                "status": "LEARNING",
-                "message": f"{total_predictions} predictions pending validation"
+                "wins": wins,
+                "losses": losses,
+                "accuracy_pct": accuracy_pct,
+                "total_verified": wins + losses,
+                "trend_7d": trend_7d,
+                "status": status
             }
-        
-        # Get 7-day accuracy
-        cursor.execute("""
-            SELECT 
-                COUNT(*) FILTER (WHERE hit_direction = 1) as wins_7d,
-                COUNT(*) as total_7d
-            FROM ghost_prediction_outcomes
-            WHERE status = 'completed' 
-            AND closed_at > NOW() - INTERVAL '7 days'
-        """)
-        row_7d = cursor.fetchone()
-        wins_7d = row_7d[0] or 0
-        total_7d = row_7d[1] or 0
-        
-        cursor.close()
-        
-        # Calculate accuracy
-        accuracy_pct = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
-        trend_7d = (wins_7d / total_7d * 100) if total_7d > 0 else 0
-        
-        # Determine status
-        if total < 10:
-            status = "BUILDING"
-        elif accuracy_pct >= 60:
-            status = "VERIFIED ✅"
-        elif accuracy_pct >= 40:
-            status = "MODERATE ⚡"
-        else:
-            status = "LEARNING 📚"
-        
-        return {
-            "wins": wins,
-            "losses": losses,
-            "accuracy_pct": accuracy_pct,
-            "total_verified": wins + losses,
-            "trend_7d": trend_7d,
-            "status": status
-        }
         
     except Exception as e:
         if LOGGER:
             LOGGER.warning(f"Could not fetch real accuracy: {e}")
         return {"status": "UNVERIFIED", "wins": 0, "losses": 0, "accuracy_pct": 0, "total_verified": 0}
-    finally:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
 # ============================================================================
 # SMART CAP SYSTEM - Prevents spam, only sends best predictions
