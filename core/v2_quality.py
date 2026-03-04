@@ -95,88 +95,61 @@ class V2AssetQualitySystem:
         """Public read-only access to metrics"""
         return self._metrics
     
-    def _get_postgres_connection(self):
-        """Get PostgreSQL connection via shared pool bridge."""
-        from core.db_pool import get_sync_connection_raw
-        return get_sync_connection_raw()
-    
     def _ensure_postgres_table(self):
         """Create v2_quality_config table if not exists"""
         if not self.use_postgres:
             return
-        
-        conn = None
         try:
-            conn = self._get_postgres_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS v2_quality_config (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
-            """)
-            conn.commit()
-            LOGGER.info("[V2-QUALITY] PostgreSQL table ready")
+            from core.db_pool import sync_connection
+            with sync_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS v2_quality_config (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                """)
+                conn.commit()
+                LOGGER.info("[V2-QUALITY] PostgreSQL table ready")
         except Exception as e:
             LOGGER.warning(f"[V2-QUALITY] Failed to create PostgreSQL table: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-    
+
     def _load_from_postgres(self) -> Optional[dict]:
         """Load config from PostgreSQL"""
         if not self.use_postgres:
             return None
-        
-        conn = None
         try:
-            conn = self._get_postgres_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT value FROM v2_quality_config WHERE key = 'config'")
-            row = cur.fetchone()
-            
-            if row:
-                return json.loads(row[0])
-            return None
+            from core.db_pool import sync_connection
+            with sync_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT value FROM v2_quality_config WHERE key = 'config'")
+                row = cur.fetchone()
+                if row:
+                    return json.loads(row[0])
+                return None
         except Exception as e:
             LOGGER.warning(f"[V2-QUALITY] Failed to load from PostgreSQL: {e}")
             return None
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-    
+
     def _save_to_postgres(self, data: dict):
         """Save config to PostgreSQL"""
         if not self.use_postgres:
             return
-        
-        conn = None
         try:
-            conn = self._get_postgres_connection()
-            cur = conn.cursor()
-            value_json = json.dumps(data)
-            cur.execute("""
-                INSERT INTO v2_quality_config (key, value, updated_at)
-                VALUES ('config', %s, NOW())
-                ON CONFLICT (key) DO UPDATE SET value = %s, updated_at = NOW()
-            """, (value_json, value_json))
-            conn.commit()
-            LOGGER.info("[V2-QUALITY] Saved to PostgreSQL")
+            from core.db_pool import sync_connection
+            with sync_connection() as conn:
+                cur = conn.cursor()
+                value_json = json.dumps(data)
+                cur.execute("""
+                    INSERT INTO v2_quality_config (key, value, updated_at)
+                    VALUES ('config', %s, NOW())
+                    ON CONFLICT (key) DO UPDATE SET value = %s, updated_at = NOW()
+                """, (value_json, value_json))
+                conn.commit()
+                LOGGER.info("[V2-QUALITY] Saved to PostgreSQL")
         except Exception as e:
             LOGGER.error(f"[V2-QUALITY] Failed to save to PostgreSQL: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def _load_config(self):
         """Load saved whitelist/blacklist - PostgreSQL first, JSON fallback"""
@@ -456,12 +429,15 @@ class V2AssetQualitySystem:
 # ============================================================================
 
 _quality_system: Optional[V2AssetQualitySystem] = None
+_quality_lock = threading.Lock()
 
 def get_quality_system() -> V2AssetQualitySystem:
-    """Get singleton quality system"""
+    """Get singleton quality system (thread-safe)"""
     global _quality_system
     if _quality_system is None:
-        _quality_system = V2AssetQualitySystem()
+        with _quality_lock:
+            if _quality_system is None:
+                _quality_system = V2AssetQualitySystem()
     return _quality_system
 
 
