@@ -961,518 +961,179 @@ def _get_sell_timing(hours: int = 48) -> str:
 
 def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: bool = None) -> List[str]:
     """
-    Format TOP 10 message (5 stocks + 5 crypto) - DETAILED TRADE PLAN format.
-    
-    Returns LIST of messages (stocks msg, crypto msg) to fit Telegram 4096 char limit.
-    
-    Format per pick:
-    1) 🟢 NVDA — BUY ✅
-    • BUY (CT): Fri Jan 30 @ 9:30 AM | Entry Zone: $192.51 – $194.00
-    • SELL (CT): Mon Feb 02 @ Open | Target: $205.60 (+6.8%)
-    • STOP LOSS: $185.77
-    • Hold: 7 days (swing trade)
-    • Confidence: 56% | Risk: Moderate | R/R: ~2.4 : 1
-    💰 $100 → $106.80
-    ✅ News influence confirmed
+    Format TOP 10 picks — dead simple, no jargon.
+
+    Returns LIST of messages (single message) to fit Telegram 4096 char limit.
     """
     from datetime import datetime, timedelta
-    
+
     if inverse_mode is None:
         inverse_mode = os.getenv("INVERSE_GHOST", "0") == "1"
-    
+
     ct = get_central_time()
-    date_str = ct.strftime("%b %d, %Y")
-    time_str = ct.strftime("%I:%M %p CT").lstrip("0")
-    
-    # === US MARKET HOLIDAYS (NYSE/NASDAQ) ===
-    # These are fixed for 2025-2027. For dynamic holidays, use pandas_market_calendars.
-    US_MARKET_HOLIDAYS = {
-        # 2025
-        (2025, 1, 1),   # New Year's Day
-        (2025, 1, 20),  # MLK Day
-        (2025, 2, 17),  # Presidents Day
-        (2025, 4, 18),  # Good Friday
-        (2025, 5, 26),  # Memorial Day
-        (2025, 6, 19),  # Juneteenth
-        (2025, 7, 4),   # Independence Day
-        (2025, 9, 1),   # Labor Day
-        (2025, 11, 27), # Thanksgiving
-        (2025, 12, 25), # Christmas
-        # 2026
-        (2026, 1, 1),   # New Year's Day
-        (2026, 1, 19),  # MLK Day
-        (2026, 2, 16),  # Presidents Day
-        (2026, 4, 3),   # Good Friday
-        (2026, 5, 25),  # Memorial Day
-        (2026, 6, 19),  # Juneteenth
-        (2026, 7, 3),   # Independence Day (observed)
-        (2026, 9, 7),   # Labor Day
-        (2026, 11, 26), # Thanksgiving
-        (2026, 12, 25), # Christmas
-        # 2027
-        (2027, 1, 1),   # New Year's Day
-        (2027, 1, 18),  # MLK Day
-        (2027, 2, 15),  # Presidents Day
-        (2027, 3, 26),  # Good Friday
-        (2027, 5, 31),  # Memorial Day
-        (2027, 6, 18),  # Juneteenth (observed)
-        (2027, 7, 5),   # Independence Day (observed)
-        (2027, 9, 6),   # Labor Day
-        (2027, 11, 25), # Thanksgiving
-        (2027, 12, 24), # Christmas (observed)
-    }
-    
-    def is_us_holiday(dt: datetime) -> bool:
-        """Check if date is a US market holiday"""
-        return (dt.year, dt.month, dt.day) in US_MARKET_HOLIDAYS
-    
-    def get_holiday_name(dt: datetime) -> str:
-        """Get the name of the holiday for a date"""
-        holiday_names = {
-            (1, 1): "New Year's Day", (1, 18): "MLK Day", (1, 19): "MLK Day", (1, 20): "MLK Day",
-            (2, 15): "Presidents Day", (2, 16): "Presidents Day", (2, 17): "Presidents Day",
-            (3, 26): "Good Friday", (4, 3): "Good Friday", (4, 18): "Good Friday",
-            (5, 25): "Memorial Day", (5, 26): "Memorial Day", (5, 31): "Memorial Day",
-            (6, 18): "Juneteenth", (6, 19): "Juneteenth",
-            (7, 3): "Independence Day", (7, 4): "Independence Day", (7, 5): "Independence Day",
-            (9, 1): "Labor Day", (9, 6): "Labor Day", (9, 7): "Labor Day",
-            (11, 25): "Thanksgiving", (11, 26): "Thanksgiving", (11, 27): "Thanksgiving",
-            (12, 24): "Christmas", (12, 25): "Christmas",
-        }
-        return holiday_names.get((dt.month, dt.day), "Market Holiday")
-    
-    # === TRADING DAY CHECK ===
-    # Stocks can only be bought Mon-Fri, excluding holidays
-    def is_trading_day(dt: datetime) -> bool:
-        """Check if date is a trading day (weekday + not a holiday)"""
-        if dt.weekday() >= 5:  # Weekend
-            return False
-        if is_us_holiday(dt):  # Holiday
-            return False
-        return True
-    
-    def get_next_trading_day(dt: datetime) -> datetime:
-        """Get next trading day. Skips weekends AND holidays."""
-        while not is_trading_day(dt):
-            dt = dt + timedelta(days=1)
-        return dt
-    
-    # For stocks: use next trading day
-    stock_entry_date = get_next_trading_day(ct)
-    stock_day_name = stock_entry_date.strftime("%a")
-    is_market_closed = not is_trading_day(ct)
-    is_weekend = ct.weekday() >= 5
-    is_holiday = is_us_holiday(ct) and not is_weekend
-    holiday_name = get_holiday_name(ct) if is_holiday else None
-    
-    # For crypto: 24/7, use today
-    crypto_day_name = ct.strftime("%a")
-    
-    def get_hold_reason(conf: float, hold_days: int) -> str:
-        """Get intelligent hold reason based on confidence and days"""
-        if hold_days == 1:
-            if conf < 0.35:
-                return "low conviction scalp"
-            else:
-                return "RSI extreme"
-        elif hold_days == 2:
-            return "volatility swing"
-        elif hold_days <= 4:
-            return "swing trade"
-        else:
-            return "position trade"
-    
-    def get_risk_level(conf: float) -> str:
-        """Get risk level based on confidence"""
-        if conf >= 0.60:
-            return "Low"
-        elif conf >= 0.40:
-            return "Moderate"
-        else:
-            return "High"
-    
-    def calculate_rr(entry: float, target: float, stop: float, direction: str) -> float:
-        """Calculate risk/reward ratio"""
-        if direction in ('UP', 'BUY'):
-            reward = abs(target - entry)
-            risk = abs(entry - stop)
-        else:
-            reward = abs(entry - target)
-            risk = abs(stop - entry)
-        return reward / risk if risk > 0 else 1.0
-    
-    def get_exit_date(hold_days: int, is_stock: bool) -> str:
-        """Get exit date string - calculated from ACTUAL entry date"""
-        # For stocks, entry is stock_entry_date (next trading day if weekend)
-        # For crypto, entry is now (ct)
-        base_date = stock_entry_date if is_stock else ct
-        exit_dt = base_date + timedelta(days=hold_days)
-        # Stocks: if exit lands on weekend, push to Monday
-        if is_stock and exit_dt.weekday() >= 5:  # Saturday=5, Sunday=6
-            days_to_monday = 7 - exit_dt.weekday()
-            exit_dt = exit_dt + timedelta(days=days_to_monday)
-        return exit_dt.strftime("%a %b %d")
-    
+    # Header date: "Mon June 9, 2025"
+    header_date = ct.strftime("%a %B %-d, %Y")
+
+    # ── exit-date helper ──
+    def _exit_date(hold_days: int, is_stock: bool) -> str:
+        base = ct
+        exit_dt = base + timedelta(days=hold_days)
+        # Stocks: skip weekends
+        if is_stock and exit_dt.weekday() >= 5:
+            exit_dt += timedelta(days=(7 - exit_dt.weekday()))
+        return exit_dt.strftime("%a %b %-d")
+
+    # ── format one pick ──
     def format_pick(item, idx: int, is_stock: bool) -> str:
-        """Format a single pick in detailed format"""
         symbol = item['symbol']
         direction = item.get('direction', 'UP')
         is_buy = direction in ('UP', 'BUY')
-        
+
         current = item.get('current', 0)
         target = item.get('prediction_48h', item.get('target_price', current))
         stop = item.get('stop', current * 0.97 if is_buy else current * 1.03)
-        conf = calibrate_display_confidence(item['confidence'], symbol=symbol)
         hold_days = item.get('hold_days', 3)
-        news = item.get('news_influenced', False)
-        
-        # V3 DATA
-        v3_is_inverse = item.get('v3_is_inverse', False)
-        v3_original_direction = item.get('v3_original_direction')
-        v3_historical_win_rate = item.get('v3_historical_win_rate', 0.50)
-        v3_sample_size = item.get('v3_sample_size', 0)  # Sample size for honest display
-        v3_score = item.get('v3_score', 0)
         v3_is_whitelisted = item.get('v3_is_whitelisted', False)
-        
-        # Entry Zone: Use REAL volatility data (daily vol / 2 = intraday range)
-        # If no volatility data, estimate from expected_move
-        volatility = item.get('volatility', 0.02)  # 20-day annualized vol (default 2%)
-        expected_move = item.get('expected_move_pct', 0.03)  # Expected move %
-        
-        # Daily volatility = annualized / sqrt(252) ≈ annualized / 16
-        # Entry zone = half of daily vol (reasonable fill range)
-        daily_vol = volatility / 16 if volatility > 0.01 else abs(expected_move) / 3
-        entry_range_pct = max(0.005, min(0.03, daily_vol / 2))  # Clamp 0.5% - 3%
-        
-        # Calculate gain percentage
-        # For BUY: positive when target > current
-        # For SELL (short): we PROFIT when price drops, so show positive % for drop
+
+        # Gain %
         if is_buy:
             gain_pct = ((target - current) / current * 100) if current > 0 else 0
         else:
-            # SHORT: profit = entry - exit, show as positive %
             gain_pct = ((current - target) / current * 100) if current > 0 else 0
-        
-        entry_high = current * (1 + entry_range_pct)  # Entry zone: current to +vol-based %
-        rr = calculate_rr(current, target, stop, direction)
-        risk = get_risk_level(conf)
-        hold_reason = get_hold_reason(conf, hold_days)
-        exit_date = get_exit_date(hold_days, is_stock)
+
         return_val = 100 + abs(gain_pct)
-        
+        exit_str = _exit_date(hold_days, is_stock)
+
         emoji = "🟢" if is_buy else "🔴"
-        action = "BUY" if is_buy else "SELL"
-        news_check = " ✅" if news else ""
-        
-        # V3 BADGES
-        inverse_badge = " 🔄 INVERSE" if v3_is_inverse else ""
-        whitelist_badge = " ⭐" if v3_is_whitelisted else ""
-        
-        # Use correct day name based on asset type
-        # Stocks: must use trading day (Mon-Fri)
-        # Crypto: can trade 24/7
-        entry_day_name = stock_day_name if is_stock else crypto_day_name
-        entry_date = stock_entry_date if is_stock else ct
-        
+        dir_word = "UP" if is_buy else "DOWN"
+        star = " ⭐" if v3_is_whitelisted else ""
+
         lines = []
-        lines.append(f"{idx}) {emoji} {symbol} — {action}{inverse_badge}{whitelist_badge}{news_check}")
-        
-        # Add V3 explanation for inverse signals
-        if v3_is_inverse:
-            lines.append(f"🔄 Ghost predicted {v3_original_direction} → FLIPPED to {direction}")
-        
-        # Add warning if market closed (weekend or holiday) for stocks
-        if is_stock and is_market_closed:
-            if is_holiday:
-                lines.append(f"⚠️ MARKET CLOSED ({holiday_name}) - Execute {entry_day_name}")
-            else:
-                lines.append(f"⚠️ MARKET CLOSED (Weekend) - Execute {entry_day_name}")
-        
-        if is_buy:
-            if is_stock:
-                lines.append(f"• BUY (CT): {entry_day_name} {entry_date.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
-                lines.append(f"• SELL (CT): {exit_date} @ Open | Target: {format_price(target)} ({gain_pct:+.1f}%)")
-            else:
-                # Crypto - 24/7 (no "Open" for crypto)
-                lines.append(f"• BUY NOW (24/7): Entry Zone: {format_price(current)} – {format_price(entry_high)}")
-                lines.append(f"• SELL: {exit_date} | Target: {format_price(target)} ({gain_pct:+.1f}%)")
-        else:
-            # SHORT: sell high, buy back low - show positive profit %
-            if is_stock:
-                lines.append(f"• SELL (CT): {entry_day_name} {entry_date.strftime('%b %d')} @ 9:30 AM | Entry Zone: {format_price(current)} – {format_price(entry_high)}")
-                lines.append(f"• BUY-BACK (CT): {exit_date} @ Open | Target: {format_price(target)} (+{gain_pct:.1f}%)")
-            else:
-                # Crypto - 24/7 (no "Open" for crypto)
-                lines.append(f"• SELL NOW (24/7): Entry Zone: {format_price(current)} – {format_price(entry_high)}")
-                lines.append(f"• BUY-BACK: {exit_date} | Target: {format_price(target)} (+{gain_pct:.1f}%)")
-        
-        lines.append(f"• STOP LOSS: {format_price(stop)}")
-        lines.append(f"• Hold: {hold_days} day{'s' if hold_days > 1 else ''} ({hold_reason})")
-        
-        # V3: Include historical win rate with sample size context
-        # Only show win rate for 50+ trades, or show asterisk with sample count
-        if v3_historical_win_rate > 0 and v3_historical_win_rate != 0.50:
-            if v3_sample_size >= V3_MIN_SAMPLE_SIZE:
-                # High confidence - show win rate without asterisk
-                lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1 | Win Rate: {v3_historical_win_rate:.0%}")
-            elif v3_sample_size > 0:
-                # Low sample - show asterisk with count
-                lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1 | Win Rate: {v3_historical_win_rate:.0%}* ({v3_sample_size} trades)")
-            else:
-                # No sample size data - don't show win rate
-                lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1")
-        else:
-            lines.append(f"• Confidence: {conf:.0%} | Risk: {risk} | R/R: ~{rr:.1f} : 1")
-        
-        lines.append(f"💰 $100 → ${return_val:.2f}")
-        
-        if news:
-            lines.append("✅ News influence confirmed")
-        
+        lines.append(f"{idx}) {emoji} {symbol} is going {dir_word}{star}")
+        lines.append("")
+        lines.append(f"   Get in at    {format_price(current)}")
+        lines.append(f"   Get out at   {format_price(target)}  (you make {abs(gain_pct):.1f}%)")
+        lines.append(f"   Run away at  {format_price(stop)}  (you lose, get out)")
+        lines.append(f"   Done by      {exit_str}")
+        lines.append("")
+        lines.append(f"   Put $100 in → Get ${return_val:.2f} back")
+
         return "\n".join(lines)
-    
-    # ===== BUILD SINGLE MESSAGE =====
+
+    # ── build message ──
+    all_picks = list(stocks[:5]) + list(crypto[:5])
+
     all_lines = [
-        "🎯 GHOST TOP 10 — TRADE PLAN (V3 VALIDATED)",
-        f"📅 {date_str} | ⏰ 8:00 AM CT",
+        f"👻 GHOST PICKS — {header_date}",
+        "",
     ]
-    
-    # Add market closed warning banner (weekend or holiday)
-    if is_market_closed:
-        if is_holiday:
-            all_lines.extend([
-                "",
-                f"⚠️ **{holiday_name.upper()} — STOCK MARKETS CLOSED**",
-                f"📆 Next trading day: {stock_day_name} {stock_entry_date.strftime('%b %d')}",
-                "🪙 Crypto trades 24/7 — execute anytime",
-            ])
-        else:  # Weekend
-            all_lines.extend([
-                "",
-                "⚠️ **WEEKEND — STOCK MARKETS CLOSED**",
-                f"📆 Next trading day: {stock_day_name} {stock_entry_date.strftime('%b %d')}",
-                "🪙 Crypto trades 24/7 — execute anytime",
-            ])
-    
+
+    for idx, item in enumerate(all_picks, 1):
+        # Determine if stock or crypto by position
+        is_stock = idx <= len(stocks[:5])
+        all_lines.append(format_pick(item, idx, is_stock))
+        all_lines.append("")
+
+    if not all_picks:
+        all_lines.append("No picks today.")
+        all_lines.append("")
+
+    # Legend
     all_lines.extend([
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "🟢 = going UP — buy it now, sell later",
+        "🔴 = going DOWN — sell it now, buy back later",
+        "⭐ = this one wins a lot",
         "",
-        "━━━━━━━━━━━━━━━━━━━━━━",
-        "📈 STOCKS",
-        "━━━━━━━━━━━━━━━━━━━━━━",
-        ""
+        "👻 Ghost is watching",
     ])
-    
-    # Take top 5 stocks
-    for idx, s in enumerate(stocks[:5], 1):
-        all_lines.append(format_pick(s, idx, is_stock=True))
-        all_lines.append("")
-    
-    if not stocks:
-        all_lines.append("(No stock picks today)")
-        all_lines.append("")
-    
-    # Add crypto section - BACKTEST VALIDATED (p < 0.05)
-    all_lines.extend([
-        "━━━━━━━━━━━━━━━━━━━━━━",
-        "🪙 CRYPTO (V3 VALIDATED)",
-        "━━━━━━━━━━━━━━━━━━━━━━",
-        ""
-    ])
-    
-    # Take top 5 crypto
-    for idx, c in enumerate(crypto[:5], 1):
-        all_lines.append(format_pick(c, idx, is_stock=False))
-        all_lines.append("")
-    
-    if not crypto:
-        all_lines.append("(No crypto picks today)")
-        all_lines.append("")
-    
-    # Add legend at end
-    # Compute dynamic symbol counts from EDGE_SYMBOLS env var
-    _edge_list = list(get_edge_set())
-    # Dynamically classify: known crypto symbols
-    _KNOWN_CRYPTO = {"ETH", "XRP", "LINK", "CHZ", "BTC", "SOL", "ATOM", "UNI",
-                     "AAVE", "ICP", "TURBO", "JUP", "BCH", "IOTX", "GIGA",
-                     "ALICE", "BRETT", "SEI", "FET", "ADA", "AVAX", "BNB",
-                     "DOGE", "YFI", "BONK", "PEPE", "WIF", "RNDR"}
-    _n_crypto = sum(1 for s in _edge_list if s in _KNOWN_CRYPTO)
-    _n_stocks = len(_edge_list) - _n_crypto
-    all_lines.extend([
-        "━━━━━━━━━━━━━━━━━━━━━━",
-        "📖 LEGEND",
-        "━━━━━━━━━━━━━━━━━━━━━━",
-        "🟢 BUY | 🔴 SELL",
-        "🔄 = Inverse signal (Ghost flipped)",
-        "⭐ = Validated (p ≤ 0.05 in 52K backtest)",
-        "✅ = News-feed influenced",
-        "💰 = Return on $100 position",
-        "",
-        "📊 EDGE WHITELIST ACTIVE:",
-        f"• {len(_edge_list)} proven symbols",
-        f"• {_n_stocks} stocks | {_n_crypto} crypto",
-        "Ghost V3 is watching 👁️"
-    ])
-    
+
     full_msg = "\n".join(all_lines)
-    
+
     # Return as list with single message (keeps API compatible)
     return [full_msg]
 
 
 def format_update_message(picks: List[Dict]) -> str:
-    """Format an update message showing current status of all tracked picks"""
+    """Format a simple update showing how each pick is doing."""
     ct = get_central_time()
     time_str = ct.strftime("%I:%M %p CT").lstrip("0")
-    
+
     lines = [
-        f"📊 GHOST UPDATE — {time_str}",
+        f"👻 Ghost Update — {time_str}",
         "",
     ]
-    
-    # Split into stocks and crypto
-    stocks = [p for p in picks if p['asset_type'] == 'stock']
-    crypto = [p for p in picks if p['asset_type'] == 'crypto']
-    
-    if stocks:
-        lines.append("STOCKS")
-        lines.append("━━━━━━━━━━━━━━━")
-        for s in stocks:
-            pct = (s['current'] - s['entry']) / s['entry'] * 100
-            pct_str = f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
-            
-            emoji = s['emoji']
-            status = ""
-            
-            if s.get('near_target'):
-                status = " 🎯 NEAR TARGET"
-            elif s.get('near_stop'):
-                status = " ⚠️ NEAR STOP"
-            elif s.get('on_track'):
-                status = " ✓ On track"
-            else:
-                status = " — Moving against prediction"
-            
-            lines.append(f"{emoji} {s['symbol']}: {format_price(s['entry'])} → {format_price(s['current'])} ({pct_str}){status}")
-        lines.append("")
-    
-    if crypto:
-        lines.append("CRYPTO")
-        lines.append("━━━━━━━━━━━━━━━")
-        for c in crypto:
-            pct = (c['current'] - c['entry']) / c['entry'] * 100
-            pct_str = f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
-            
-            emoji = c['emoji']
-            status = ""
-            
-            if c.get('near_target'):
-                status = " 🎯 NEAR TARGET"
-            elif c.get('near_stop'):
-                status = " ⚠️ NEAR STOP"
-            elif c.get('on_track'):
-                status = " ✓ On track"
-            else:
-                status = " — Moving against prediction"
-            
-            lines.append(f"{emoji} {c['symbol']}: {format_price(c['entry'])} → {format_price(c['current'])} ({pct_str}){status}")
-        lines.append("")
-    
-    # Next update time
-    next_hour = ct.hour + 4
-    if next_hour >= 24:
-        next_hour = 8  # Next morning
-    next_time = ct.replace(hour=next_hour, minute=0, second=0, microsecond=0)
-    lines.append(f"Next update: {next_time.strftime('%I:%M %p CT').lstrip('0')} or on target hit")
-    
+
+    for p in picks:
+        pct = (p['current'] - p['entry']) / p['entry'] * 100
+        direction = p.get('direction', 'BUY')
+        if direction == 'SELL':
+            pct = -pct  # Flip: price drop = good for SELL
+
+        emoji = p.get('emoji', '🟢' if direction == 'BUY' else '🔴')
+
+        if p.get('near_target'):
+            status = "almost there! 🎯"
+        elif p.get('near_stop'):
+            status = "getting close to stop ⚠️"
+        elif p.get('on_track'):
+            status = "on track ✓"
+        else:
+            status = "not looking great"
+
+        sign = "+" if pct >= 0 else ""
+        lines.append(f"{emoji} {p['symbol']}  {sign}{pct:.1f}% — {status}")
+
+    lines.append("")
+    lines.append("👻 Ghost is watching")
+
     return "\n".join(lines)
 
 
 def format_off_path_alert(off_path_picks: List[Dict], asset_type: str = "ALL") -> str:
-    """
-    Format alert when picks go OFF their prediction path.
-    
-    OFF PATH means:
-    - BUY prediction but price going DOWN
-    - SELL prediction but price going UP
-    """
-    ct = get_central_time()
-    time_str = ct.strftime("%I:%M %p CT").lstrip("0")
-    
-    title = "🚨 GHOST PATH ALERT"
-    if asset_type == "crypto":
-        title = "🚨 CRYPTO PATH ALERT"
-    elif asset_type == "stock":
-        title = "🚨 STOCK PATH ALERT"
-    
-    lines = [
-        f"{title} — {time_str}",
-        "",
-        "⚠️ These picks are moving AGAINST the prediction:",
-        "",
-    ]
-    
+    """Format alert when picks move against prediction — simple language."""
+    lines = []
+
     for p in off_path_picks:
         pct = (p['current'] - p['entry']) / p['entry'] * 100
-        pct_str = f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
-        
         direction = p.get('direction', 'BUY')
-        emoji = "🟢" if direction == "BUY" else "🔴"
-        
-        lines.append(f"{emoji} {p['symbol']} — {direction}")
-        lines.append(f"   Entry: {format_price(p['entry'])} → Now: {format_price(p['current'])} ({pct_str})")
-        lines.append(f"   Target: {format_price(p['target'])} | Stop: {format_price(p['stop'])}")
-        
-        # Explain what's wrong
-        if direction == "BUY" and pct < 0:
-            lines.append(f"   ⚠️ Expected UP but down {abs(pct):.1f}%")
-        elif direction == "SELL" and pct > 0:
-            lines.append(f"   ⚠️ Expected DOWN but up {pct:.1f}%")
-        
+        if direction == 'SELL':
+            pct = -pct
+
+        sign = "+" if pct >= 0 else ""
+        lines.append(f"⚠️ {p['symbol']} — not looking good ({sign}{pct:.1f}%)")
+        lines.append("Still watching. Don't panic yet.")
         lines.append("")
-    
-    lines.append("━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("Ghost is still watching. Will alert on target/stop hit.")
-    
+
+    lines.append("👻 Ghost is watching")
+
     return "\n".join(lines)
 
 
 def format_alert_message(alerts: List[Dict]) -> str:
-    """Format an alert message when target or stop is hit"""
-    ct = get_central_time()
-    time_str = ct.strftime("%I:%M %p CT").lstrip("0")
-    
-    lines = [
-        f"🚨 GHOST ALERT — {time_str}",
-        "",
-    ]
-    
+    """Format target hit / stop loss alerts — dead simple."""
+    lines = []
+
     for a in alerts:
         pct = (a['current'] - a['entry']) / a['entry'] * 100
-        # FIX (Feb 13, 2026): For SELL picks, profit is when price goes DOWN
-        # Show profit/loss from the trader's perspective, not raw price change
         direction = a.get('direction', 'BUY')
         if direction == 'SELL':
-            pct = -pct  # Flip sign: price drop = profit for SELL
-        pct_str = f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
-        
+            pct = -pct  # Flip: price drop = profit for SELL
+
+        return_val = 100 + pct
+
         if a['type'] == 'target_hit':
-            lines.append(f"🎯 {a['symbol']} HIT TARGET")
-            lines.append(f"Entry: {format_price(a['entry'])} → Now: {format_price(a['current'])} ({pct_str})")
-            lines.append(f"Target was: {format_price(a['target'])} ✅ ACHIEVED")
-            lines.append("Action: Consider taking profit")
+            lines.append(f"✅ {a['symbol']} — You won!")
+            lines.append(f"Put in $100 → Got back ${return_val:.2f}")
         else:
-            lines.append(f"⚠️ {a['symbol']} STOP TRIGGERED")
-            lines.append(f"Entry: {format_price(a['entry'])} → Now: {format_price(a['current'])} ({pct_str})")
-            lines.append(f"Stop was: {format_price(a['stop'])} ❌ HIT")
-            lines.append("Action: Position closed")
-        
+            lines.append(f"❌ {a['symbol']} — You lost")
+            lines.append(f"Put in $100 → Got back ${return_val:.2f}")
+            lines.append("It happens. Move on.")
+
         lines.append("")
-    
-    # Don't assume 10 picks - active tracker knows the real count
-    # "Remaining X picks" message removed - confusing with V2 filter
-    # The active tracker sends its own progress updates
-    
+
+    lines.append("👻 Ghost is watching")
+
     return "\n".join(lines)
 
 

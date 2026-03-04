@@ -289,7 +289,7 @@ def format_telegram_report(report: dict[str, Any]) -> str:
     icon = "✅" if overall == "PASS" else "⚠️"
 
     lines = [
-        "🩺 GHOST SYSTEM CHECK",
+        "👻 Ghost Health Check",
         "──────────────────",
     ]
 
