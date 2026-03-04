@@ -23,6 +23,7 @@ LEVEL 3 (Focused): Symbol gets priority treatment
 
 import os
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
@@ -114,9 +115,14 @@ class TrustLadder:
         self._reconnect_interval = 300  # Try reconnecting every 5 minutes
     
     def _get_postgres_connection(self):
-        """Get PostgreSQL connection via shared pool bridge."""
-        from core.db_pool import get_sync_connection_raw
-        return get_sync_connection_raw()
+        """Get PostgreSQL connection via shared pool (context manager)."""
+        from contextlib import contextmanager as _cm
+        @_cm
+        def _pg():
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                yield conn
+        return _pg()
     
     def _ensure_table(self):
         """Create trust ladder table if not exists."""
@@ -127,33 +133,26 @@ class TrustLadder:
             )
             return
         
-        conn = None
         try:
-            conn = self._get_postgres_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS ghost_symbol_trust (
-                    symbol VARCHAR(20) PRIMARY KEY,
-                    trust_level INTEGER DEFAULT 1,
-                    consecutive_wins INTEGER DEFAULT 0,
-                    consecutive_losses INTEGER DEFAULT 0,
-                    checkpoint_wins INTEGER DEFAULT 0,
-                    total_predictions INTEGER DEFAULT 0,
-                    total_wins INTEGER DEFAULT 0,
-                    last_updated TIMESTAMP DEFAULT NOW()
-                )
-            """)
-            conn.commit()
-            cur.close()
-            LOGGER.info("[TRUST] ✅ ghost_symbol_trust table ready")
+            with self._get_postgres_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ghost_symbol_trust (
+                        symbol VARCHAR(20) PRIMARY KEY,
+                        trust_level INTEGER DEFAULT 1,
+                        consecutive_wins INTEGER DEFAULT 0,
+                        consecutive_losses INTEGER DEFAULT 0,
+                        checkpoint_wins INTEGER DEFAULT 0,
+                        total_predictions INTEGER DEFAULT 0,
+                        total_wins INTEGER DEFAULT 0,
+                        last_updated TIMESTAMP DEFAULT NOW()
+                    )
+                """)
+                conn.commit()
+                cur.close()
+                LOGGER.info("[TRUST] ✅ ghost_symbol_trust table ready")
         except Exception as e:
             LOGGER.error(f"[TRUST] Failed to create table: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def get_trust(self, symbol: str) -> SymbolTrust:
         """Get trust data for a symbol (creates default if not exists)."""
@@ -165,22 +164,15 @@ class TrustLadder:
             _now = _time.time()
             if _now - self._last_reconnect_attempt > self._reconnect_interval:
                 self._last_reconnect_attempt = _now
-                _reconn = None
                 try:
-                    _reconn = self._get_postgres_connection()
-                    _reconn.cursor().execute("SELECT 1")
-                    self.use_postgres = True
-                    self._memory_only = False
-                    self._ensure_table()
-                    LOGGER.info("[TRUST] ✅ PostgreSQL reconnected! Switching from memory-only to persistent mode.")
+                    with self._get_postgres_connection() as _reconn:
+                        _reconn.cursor().execute("SELECT 1")
+                        self.use_postgres = True
+                        self._memory_only = False
+                        self._ensure_table()
+                        LOGGER.info("[TRUST] ✅ PostgreSQL reconnected! Switching from memory-only to persistent mode.")
                 except Exception as e:
                     LOGGER.debug(f"[TRUST] Reconnection attempt failed: {e}")
-                finally:
-                    if _reconn:
-                        try:
-                            _reconn.close()
-                        except Exception:
-                            pass
         
         if not self.use_postgres:
             # Memory-only mode
@@ -197,53 +189,52 @@ class TrustLadder:
                 )
             return self._cache[symbol]
         
-        conn = None
         try:
-            conn = self._get_postgres_connection()
-            cur = conn.cursor()
-            
-            cur.execute("""
-                SELECT symbol, trust_level, consecutive_wins, consecutive_losses,
-                       checkpoint_wins, total_predictions, total_wins, last_updated
-                FROM ghost_symbol_trust
-                WHERE symbol = %s
-            """, (symbol,))
-            
-            row = cur.fetchone()
-            
-            if row:
-                trust = SymbolTrust(
-                    symbol=row[0],
-                    trust_level=row[1],
-                    consecutive_wins=row[2],
-                    consecutive_losses=row[3],
-                    checkpoint_wins=row[4],
-                    total_predictions=row[5],
-                    total_wins=row[6],
-                    last_updated=row[7]
-                )
-            else:
-                # Create new entry
+            with self._get_postgres_connection() as conn:
+                cur = conn.cursor()
+                
                 cur.execute("""
-                    INSERT INTO ghost_symbol_trust (symbol)
-                    VALUES (%s)
-                    ON CONFLICT (symbol) DO NOTHING
+                    SELECT symbol, trust_level, consecutive_wins, consecutive_losses,
+                           checkpoint_wins, total_predictions, total_wins, last_updated
+                    FROM ghost_symbol_trust
+                    WHERE symbol = %s
                 """, (symbol,))
-                conn.commit()
-                trust = SymbolTrust(
-                    symbol=symbol,
-                    trust_level=1,
-                    consecutive_wins=0,
-                    consecutive_losses=0,
-                    checkpoint_wins=0,
-                    total_predictions=0,
-                    total_wins=0,
-                    last_updated=datetime.utcnow()
-                )
-            
-            cur.close()
-            return trust
-            
+                
+                row = cur.fetchone()
+                
+                if row:
+                    trust = SymbolTrust(
+                        symbol=row[0],
+                        trust_level=row[1],
+                        consecutive_wins=row[2],
+                        consecutive_losses=row[3],
+                        checkpoint_wins=row[4],
+                        total_predictions=row[5],
+                        total_wins=row[6],
+                        last_updated=row[7]
+                    )
+                else:
+                    # Create new entry
+                    cur.execute("""
+                        INSERT INTO ghost_symbol_trust (symbol)
+                        VALUES (%s)
+                        ON CONFLICT (symbol) DO NOTHING
+                    """, (symbol,))
+                    conn.commit()
+                    trust = SymbolTrust(
+                        symbol=symbol,
+                        trust_level=1,
+                        consecutive_wins=0,
+                        consecutive_losses=0,
+                        checkpoint_wins=0,
+                        total_predictions=0,
+                        total_wins=0,
+                        last_updated=datetime.utcnow()
+                    )
+                
+                cur.close()
+                return trust
+                
         except Exception as e:
             LOGGER.error(f"[TRUST] Failed to get trust for {symbol}: {e}")
             return SymbolTrust(
@@ -256,12 +247,6 @@ class TrustLadder:
                 total_wins=0,
                 last_updated=datetime.utcnow()
             )
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def record_outcome(self, symbol: str, is_win: bool, is_checkpoint: bool = False) -> Dict:
         """
@@ -369,43 +354,36 @@ class TrustLadder:
             self._cache[trust.symbol] = trust
             return
         
-        conn = None
         try:
-            conn = self._get_postgres_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO ghost_symbol_trust 
-                    (symbol, trust_level, consecutive_wins, consecutive_losses,
-                     checkpoint_wins, total_predictions, total_wins, last_updated)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (symbol) DO UPDATE SET
-                    trust_level = EXCLUDED.trust_level,
-                    consecutive_wins = EXCLUDED.consecutive_wins,
-                    consecutive_losses = EXCLUDED.consecutive_losses,
-                    checkpoint_wins = EXCLUDED.checkpoint_wins,
-                    total_predictions = EXCLUDED.total_predictions,
-                    total_wins = EXCLUDED.total_wins,
-                    last_updated = EXCLUDED.last_updated
-            """, (
-                trust.symbol,
-                trust.trust_level,
-                trust.consecutive_wins,
-                trust.consecutive_losses,
-                trust.checkpoint_wins,
-                trust.total_predictions,
-                trust.total_wins,
-                trust.last_updated
-            ))
-            conn.commit()
-            cur.close()
+            with self._get_postgres_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO ghost_symbol_trust 
+                        (symbol, trust_level, consecutive_wins, consecutive_losses,
+                         checkpoint_wins, total_predictions, total_wins, last_updated)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (symbol) DO UPDATE SET
+                        trust_level = EXCLUDED.trust_level,
+                        consecutive_wins = EXCLUDED.consecutive_wins,
+                        consecutive_losses = EXCLUDED.consecutive_losses,
+                        checkpoint_wins = EXCLUDED.checkpoint_wins,
+                        total_predictions = EXCLUDED.total_predictions,
+                        total_wins = EXCLUDED.total_wins,
+                        last_updated = EXCLUDED.last_updated
+                """, (
+                    trust.symbol,
+                    trust.trust_level,
+                    trust.consecutive_wins,
+                    trust.consecutive_losses,
+                    trust.checkpoint_wins,
+                    trust.total_predictions,
+                    trust.total_wins,
+                    trust.last_updated
+                ))
+                conn.commit()
+                cur.close()
         except Exception as e:
             LOGGER.error(f"[TRUST] Failed to save trust for {trust.symbol}: {e}")
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def get_prediction_window(self, symbol: str) -> Dict:
         """
@@ -440,29 +418,22 @@ class TrustLadder:
         if not self.use_postgres:
             return [s for s, t in self._cache.items() if t.trust_level >= 3]
         
-        conn = None
         try:
-            conn = self._get_postgres_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT symbol, consecutive_wins, accuracy_pct
-                FROM ghost_symbol_trust
-                WHERE trust_level >= 3
-                ORDER BY consecutive_wins DESC
-            """)
-            rows = cur.fetchall()
-            cur.close()
-            
-            return [{"symbol": r[0], "consecutive_wins": r[1]} for r in rows]
+            with self._get_postgres_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT symbol, consecutive_wins, accuracy_pct
+                    FROM ghost_symbol_trust
+                    WHERE trust_level >= 3
+                    ORDER BY consecutive_wins DESC
+                """)
+                rows = cur.fetchall()
+                cur.close()
+                
+                return [{"symbol": r[0], "consecutive_wins": r[1]} for r in rows]
         except Exception as e:
             LOGGER.error(f"[TRUST] Failed to get focused symbols: {e}")
             return []
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def get_leaderboard(self, limit: int = 20) -> list:
         """Get trust leaderboard sorted by level and accuracy."""
@@ -484,53 +455,49 @@ class TrustLadder:
                 for t in trusts
             ]
         
-        conn = None
         try:
-            conn = self._get_postgres_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT symbol, trust_level, consecutive_wins, total_predictions, total_wins
-                FROM ghost_symbol_trust
-                WHERE total_predictions >= 5
-                ORDER BY trust_level DESC, 
-                         (total_wins::float / NULLIF(total_predictions, 0)) DESC
-                LIMIT %s
-            """, (limit,))
-            rows = cur.fetchall()
-            cur.close()
-            
-            return [
-                {
-                    "symbol": r[0],
-                    "trust_level": r[1],
-                    "level_name": TRUST_LEVELS[r[1]]["name"],
-                    "consecutive_wins": r[2],
-                    "total_predictions": r[3],
-                    "total_wins": r[4],
-                    "accuracy_pct": (r[4] / r[3] * 100) if r[3] > 0 else 0
-                }
-                for r in rows
-            ]
+            with self._get_postgres_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT symbol, trust_level, consecutive_wins, total_predictions, total_wins
+                    FROM ghost_symbol_trust
+                    WHERE total_predictions >= 5
+                    ORDER BY trust_level DESC, 
+                             (total_wins::float / NULLIF(total_predictions, 0)) DESC
+                    LIMIT %s
+                """, (limit,))
+                rows = cur.fetchall()
+                cur.close()
+                
+                return [
+                    {
+                        "symbol": r[0],
+                        "trust_level": r[1],
+                        "level_name": TRUST_LEVELS[r[1]]["name"],
+                        "consecutive_wins": r[2],
+                        "total_predictions": r[3],
+                        "total_wins": r[4],
+                        "accuracy_pct": (r[4] / r[3] * 100) if r[3] > 0 else 0
+                    }
+                    for r in rows
+                ]
         except Exception as e:
             LOGGER.error(f"[TRUST] Failed to get leaderboard: {e}")
             return []
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
 
 
 # Global instance
 _trust_ladder: Optional[TrustLadder] = None
+_trust_lock = threading.Lock()
 
 
 def get_trust_ladder() -> TrustLadder:
-    """Get or create the global TrustLadder instance."""
+    """Get or create the global TrustLadder instance (thread-safe)."""
     global _trust_ladder
     if _trust_ladder is None:
-        _trust_ladder = TrustLadder()
+        with _trust_lock:
+            if _trust_ladder is None:
+                _trust_ladder = TrustLadder()
     return _trust_ladder
 
 
