@@ -319,8 +319,12 @@ def evaluate_pending_predictions() -> Dict:
     Evaluate all predictions that are past their check_at timestamp.
     Reads from and writes to PostgreSQL.
     """
-    _conn_cm = _get_pg_conn()
-    conn = _conn_cm.__enter__()
+    with _get_pg_conn() as conn:
+        return _evaluate_with_conn(conn)
+
+
+def _evaluate_with_conn(conn) -> Dict:
+    """Inner evaluation logic that runs inside a connection context."""
     _ensure_pg_tables(conn)
     cur = conn.cursor()
 
@@ -342,6 +346,7 @@ def evaluate_pending_predictions() -> Dict:
     correct_count = 0
     incorrect_count = 0
     skipped_count = 0
+    skipped_symbols: Dict[str, int] = {}  # symbol → count for batch logging
 
     for pred in pending:
         pred_id, symbol, pred_at, check_at, pred_price, direction, start_price, confidence = pred
@@ -364,10 +369,8 @@ def evaluate_pending_predictions() -> Dict:
         )
 
         if not eval_result["ok"]:
-            LOGGER.warning(
-                f"⏩ Skipping {symbol} (prediction {pred_id}): {eval_result['reason']}"
-            )
             skipped_count += 1
+            skipped_symbols[symbol] = skipped_symbols.get(symbol, 0) + 1
             cur.execute(
                 "UPDATE ghost_predictions SET checked = 1, checked_at = %s, eval_version = %s WHERE id = %s",
                 (now, "skip-v1", pred_id),
@@ -440,6 +443,11 @@ def evaluate_pending_predictions() -> Dict:
 
     conn.commit()
 
+    # Log skipped predictions as a single summary instead of individual lines
+    if skipped_symbols:
+        skip_summary = ", ".join(f"{sym}×{cnt}" for sym, cnt in sorted(skipped_symbols.items()))
+        LOGGER.info(f"⏩ Skipped {skipped_count} predictions (no price data): {skip_summary}")
+
     # Update ghost_accuracy_stats
     if evaluated_count > 0:
         cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1")
@@ -472,8 +480,6 @@ def evaluate_pending_predictions() -> Dict:
             f"📊 Overall accuracy: {overall_accuracy:.1f}% "
             f"({total_correct}/{total_checked} correct)"
         )
-
-    _conn_cm.__exit__(None, None, None)
 
     return {
         "evaluated": evaluated_count,

@@ -8629,13 +8629,11 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 # Evaluator now reads from PostgreSQL exclusively.
                 # ================================================================
                 try:
-                    import psycopg2 as _se_pg
-                    _se_pg_url = os.getenv("DATABASE_URL")
-                    if _se_pg_url:
-                        _se_pg_conn = _se_pg.connect(_se_pg_url)
+                    from core.db_pool import get_sync_connection as _se_get_conn
+                    _se_pred_price = stock_result.get("target_price") or se_entry_price
+                    _se_pred_pct = ((float(_se_pred_price) - se_entry_price) / se_entry_price * 100) if se_entry_price else 0.0
+                    with _se_get_conn() as _se_pg_conn:
                         _se_pg_cur = _se_pg_conn.cursor()
-                        _se_pred_price = stock_result.get("target_price") or se_entry_price
-                        _se_pred_pct = ((float(_se_pred_price) - se_entry_price) / se_entry_price * 100) if se_entry_price else 0.0
                         _se_pg_cur.execute("""
                             INSERT INTO ghost_predictions (
                                 symbol, predicted_at, check_at, predicted_price,
@@ -8658,8 +8656,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                             0,
                         ))
                         _se_pg_conn.commit()
-                        _se_pg_conn.close()
-                        LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → PostgreSQL ghost_predictions ✅")
+                    LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → PostgreSQL ghost_predictions ✅")
                 except Exception as _se_pg_err:
                     LOGGER.warning(f"[{symbol}] Stock Engine PostgreSQL write failed (non-fatal): {_se_pg_err}")
                 
@@ -10211,7 +10208,11 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     pass  # Column already exists
 
             # Align target with returned trade params
-            predicted_price = take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price
+            # CRITICAL FIX (Mar 4, 2026): Was using stop_loss for DOWN predictions.
+            # stop_loss is ABOVE entry for DOWN (to limit losses), so evaluator
+            # computed direction_from_delta(stop_loss - entry) = UP, but predicted_direction = DOWN
+            # → dir_ok=0 on EVERY DOWN prediction. target_price is correct for both directions.
+            predicted_price = target_price
             # Use model-derived expected move if available; otherwise fall back to TP/SL derived pct.
             if expected_move_pct is not None:
                 predicted_pct = float(expected_move_pct)
@@ -10263,18 +10264,16 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # exist there for evaluation to work.
         # ================================================================
         try:
-            import psycopg2 as _pg_pred
-            _pg_url = os.getenv("DATABASE_URL")
-            if _pg_url:
-                _pg_conn = _pg_pred.connect(_pg_url)
+            from core.db_pool import get_sync_connection as _pg_get_conn
+            # CRITICAL FIX (Mar 4, 2026): Use target_price (not stop_loss for DOWN)
+            _predicted_price = target_price
+            _predicted_pct = float(expected_move_pct) if expected_move_pct is not None else (
+                ((float(_predicted_price) - current_price) / current_price) * 100 if current_price else 0.0
+            )
+            import json as _pg_json
+            _features_json = _pg_json.dumps(features)
+            with _pg_get_conn() as _pg_conn:
                 _pg_cur = _pg_conn.cursor()
-                # Ensure table (evaluator's _ensure_pg_tables handles this, but be safe)
-                _predicted_price = take_profit if direction == "UP" else stop_loss if direction == "DOWN" else entry_price
-                _predicted_pct = float(expected_move_pct) if expected_move_pct is not None else (
-                    ((float(_predicted_price) - current_price) / current_price) * 100 if current_price else 0.0
-                )
-                import json as _pg_json
-                _features_json = _pg_json.dumps(features)
                 _pg_cur.execute("""
                     INSERT INTO ghost_predictions (
                         symbol, predicted_at, check_at, predicted_price,
@@ -10298,8 +10297,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     _features_json,
                 ))
                 _pg_conn.commit()
-                _pg_conn.close()
-                LOGGER.info(f"[{symbol}] ✅ PostgreSQL ghost_predictions stored")
+            LOGGER.info(f"[{symbol}] ✅ PostgreSQL ghost_predictions stored")
         except Exception as _pg_err:
             LOGGER.warning(f"[{symbol}] PostgreSQL ghost_predictions write failed (non-fatal): {_pg_err}")
         
