@@ -413,28 +413,33 @@ def _get_price_at_time(symbol: str, timestamp: float) -> Optional[float]:
             if database_url:
                 # Query PostgreSQL directly for ghost_predictions table
                 conn = psycopg2.connect(database_url)
-                cur = conn.cursor()
-                
-                # Look for predictions made within ±10 minutes of target timestamp
-                # that have recorded price_at_prediction  
-                time_window = 600  # 10 minutes
-                cur.execute(
-                    """
-                    SELECT price_at_prediction FROM ghost_predictions 
-                    WHERE symbol = %s AND run_at BETWEEN %s AND %s 
-                    AND price_at_prediction IS NOT NULL 
-                    ORDER BY ABS(run_at - %s) LIMIT 1
-                    """,
-                    (symbol, timestamp - time_window, timestamp + time_window, timestamp)
-                )
-                result = cur.fetchone()
-                cur.close()
-                conn.close()
-                
-                if result and result[0]:
-                    price = float(result[0])
-                    LOGGER.debug(f"✅ Found recorded price for {symbol} at {datetime.fromtimestamp(timestamp)}: ${price:.2f}")
-                    return price
+                try:
+                    cur = conn.cursor()
+                    
+                    # Look for predictions made within ±10 minutes of target timestamp
+                    # that have recorded price_at_prediction  
+                    time_window = 600  # 10 minutes
+                    cur.execute(
+                        """
+                        SELECT price_at_prediction FROM ghost_predictions 
+                        WHERE symbol = %s AND run_at BETWEEN %s AND %s 
+                        AND price_at_prediction IS NOT NULL 
+                        ORDER BY ABS(run_at - %s) LIMIT 1
+                        """,
+                        (symbol, timestamp - time_window, timestamp + time_window, timestamp)
+                    )
+                    result = cur.fetchone()
+                    cur.close()
+                    
+                    if result and result[0]:
+                        price = float(result[0])
+                        LOGGER.debug(f"✅ Found recorded price for {symbol} at {datetime.fromtimestamp(timestamp)}: ${price:.2f}")
+                        return price
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
             else:
                 # Fallback to SQLite in dev container
                 from core.prediction_store import get_prediction_store

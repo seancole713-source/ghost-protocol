@@ -63,6 +63,7 @@ class LearningLoop:
         import os
         database_url = os.getenv("DATABASE_URL")
         if database_url:
+            conn = None
             try:
                 import psycopg2
                 conn = psycopg2.connect(database_url)
@@ -76,7 +77,6 @@ class LearningLoop:
                 """)
                 cursor.execute("SELECT value FROM ghost_kv_store WHERE key = 'learning_memory'")
                 row = cursor.fetchone()
-                conn.close()
                 if row:
                     self.memory = row[0] if isinstance(row[0], dict) else json.loads(row[0])
                     logger.info(
@@ -85,6 +85,12 @@ class LearningLoop:
                     return
             except Exception as e:
                 logger.warning(f"PostgreSQL memory load failed, trying disk: {e}")
+            finally:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         
         # Disk fallback
         if Path(self.memory_path).exists():
@@ -122,6 +128,7 @@ class LearningLoop:
         import os
         database_url = os.getenv("DATABASE_URL")
         if database_url:
+            conn = None
             try:
                 import psycopg2
                 conn = psycopg2.connect(database_url)
@@ -139,11 +146,16 @@ class LearningLoop:
                     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
                 """, (json.dumps(self.memory),))
                 conn.commit()
-                conn.close()
                 logger.info("Saved learning memory to PostgreSQL")
                 return
             except Exception as e:
                 logger.warning(f"PostgreSQL memory save failed, falling back to disk: {e}")
+            finally:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         
         # Disk fallback (development)
         MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -167,27 +179,30 @@ class LearningLoop:
                 return {"error": "DATABASE_URL not set", "count": 0}
             
             conn = psycopg2.connect(database_url)
-            cursor = conn.cursor()
-            
-            # Get accuracy from paper_trades (the primary accuracy source)
-            # This aligns with paper_tracker.get_stats() and /api/v3/accuracy/summary
-            cursor.execute("""
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as correct,
-                    SUM(CASE WHEN outcome IN ('LOSS', 'STOPPED') THEN 1 ELSE 0 END) as incorrect
-                FROM paper_trades
-                WHERE outcome IN ('WIN', 'LOSS', 'STOPPED')
-                AND created_at > NOW() - INTERVAL '%s days'
-            """, (days,))
-            
-            row = cursor.fetchone()
-            total = row[0] or 0
-            correct = row[1] or 0
-            incorrect = row[2] or 0
-            
-            cursor.close()
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                
+                # Get accuracy from paper_trades (the primary accuracy source)
+                # This aligns with paper_tracker.get_stats() and /api/v3/accuracy/summary
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as correct,
+                        SUM(CASE WHEN outcome IN ('LOSS', 'STOPPED') THEN 1 ELSE 0 END) as incorrect
+                    FROM paper_trades
+                    WHERE outcome IN ('WIN', 'LOSS', 'STOPPED')
+                    AND created_at > NOW() - INTERVAL '%s days'
+                """, (days,))
+                
+                row = cursor.fetchone()
+                total = row[0] or 0
+                correct = row[1] or 0
+                incorrect = row[2] or 0
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             
             if total == 0:
                 return {"error": "No outcomes found", "count": 0}

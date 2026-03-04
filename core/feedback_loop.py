@@ -174,6 +174,7 @@ class FeedbackLoop:
             return
         
         # Load outcomes from PostgreSQL
+        conn = None
         try:
             conn = psycopg2.connect(database_url)
             cursor = conn.cursor()
@@ -191,7 +192,6 @@ class FeedbackLoop:
             """)
             
             rows = cursor.fetchall()
-            conn.close()
             
             if not rows:
                 logger.info("📊 No recent outcomes in PostgreSQL to bootstrap from")
@@ -242,6 +242,12 @@ class FeedbackLoop:
             
         except Exception as e:
             logger.warning(f"⚠️ Failed to bootstrap from PostgreSQL: {e}")
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _load_weights_from_postgres(self):
         """
@@ -260,6 +266,7 @@ class FeedbackLoop:
         if not database_url:
             return
         
+        conn = None
         try:
             conn = psycopg2.connect(database_url)
             cursor = conn.cursor()
@@ -295,11 +302,14 @@ class FeedbackLoop:
                 
                 logger.info(f"✅ Loaded {loaded} persisted feature weights from PostgreSQL (survive deploys)")
             
-            cursor.close()
-            conn.close()
-            
         except Exception as e:
             logger.warning(f"⚠️ Failed to load weights from PostgreSQL: {e}")
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _persist_weights_to_postgres(self):
         """
@@ -319,6 +329,7 @@ class FeedbackLoop:
         if not database_url:
             return
         
+        conn = None
         try:
             conn = psycopg2.connect(database_url)
             cursor = conn.cursor()
@@ -361,13 +372,17 @@ class FeedbackLoop:
                 """, (feature_name, weight, total, correct, accuracy))
             
             conn.commit()
-            cursor.close()
-            conn.close()
             
             logger.info(f"💾 Persisted {len(self.feature_weights)} feature weights to PostgreSQL")
             
         except Exception as e:
             logger.warning(f"⚠️ Failed to persist weights to PostgreSQL: {e}")
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _compute_symbol_performance(self):
         """

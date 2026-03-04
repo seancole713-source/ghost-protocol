@@ -4431,6 +4431,7 @@ async def _on_startup():
                     
                     # CRITICAL FIX: Use PaperTracker's own connection abstraction
                     # instead of raw psycopg2 (which crashes when DATABASE_URL is SQLite)
+                    conn = None
                     try:
                         conn = tracker._get_connection()
                         now_str = datetime.utcnow().isoformat()
@@ -4441,10 +4442,15 @@ async def _on_startup():
                         """, (now_str,))
                         rows = tracker._fetchall(cur)
                         symbols = [(row["symbol"],) for row in rows]
-                        conn.close()
                     except Exception as query_err:
                         LOGGER.error(f"[PAPER] Failed to query pending trades: {query_err}")
                         symbols = []
+                    finally:
+                        if conn is not None:
+                            try:
+                                conn.close()
+                            except Exception:
+                                pass
                     
                     if symbols:
                         LOGGER.info(f"[PAPER] Found {len(symbols)} symbols with due trades, fetching prices...")
@@ -10335,6 +10341,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 # This prevents flooding paper_trades with predictions for symbols where model has no edge
                 _PAPER_TRADE_MIN_SYMBOL_WINRATE = float(os.getenv("PAPER_TRADE_MIN_SYMBOL_WINRATE", "0.35"))
                 _PAPER_TRADE_MIN_SYMBOL_TRADES = int(os.getenv("PAPER_TRADE_MIN_SYMBOL_TRADES", "8"))
+                conn_qg = None
                 try:
                     conn_qg = paper_tracker._get_connection()
                     qg_cutoff = (datetime.utcnow() - timedelta(days=14)).isoformat()
@@ -10349,7 +10356,6 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         (symbol.upper(), qg_cutoff)
                     )
                     qg_row = paper_tracker._fetchall(cur_qg)
-                    conn_qg.close()
                     
                     if qg_row and qg_row[0]:
                         qg_total = qg_row[0].get("total", 0) or 0
@@ -10366,6 +10372,12 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     if "quality_gate_skip" in str(qg_err):
                         raise  # Re-raise to hit the outer except
                     LOGGER.debug(f"[{symbol}] Quality gate check failed (continuing): {qg_err}")
+                finally:
+                    if conn_qg is not None:
+                        try:
+                            conn_qg.close()
+                        except Exception:
+                            pass
                 
                 # DEDUP: Now centralized in paper_tracker.log_signal() — catches ALL callers
                 # (run_prediction, stock_engine, ghost_notifications, cascade)
@@ -10410,6 +10422,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         
                         # Get symbol's historical win rate from paper trades
                         _sym_wr = 0.55  # Default
+                        conn_wr = None
                         try:
                             conn_wr = paper_tracker._get_connection()
                             cur_wr = paper_tracker._execute(conn_wr,
@@ -10419,7 +10432,6 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                                 (symbol.upper(),)
                             )
                             _wr_row = paper_tracker._fetchall(cur_wr)
-                            conn_wr.close()
                             if _wr_row and _wr_row[0]:
                                 _w = _wr_row[0].get("w", 0) or 0
                                 _l = _wr_row[0].get("l", 0) or 0
@@ -10427,6 +10439,12 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                                     _sym_wr = _w / (_w + _l)
                         except Exception:
                             pass
+                        finally:
+                            if conn_wr is not None:
+                                try:
+                                    conn_wr.close()
+                                except Exception:
+                                    pass
                         
                         _ps = _sizer.calculate_position_size(
                             symbol=symbol,
@@ -24068,23 +24086,28 @@ async def api_system_health_check():
             db_url = os.getenv("DATABASE_URL")
             if db_url:
                 conn = psycopg2.connect(db_url)
-                cur = conn.cursor(cursor_factory=RealDictCursor)
-                cur.execute("""
-                    SELECT symbol, direction, confidence, created_at
-                    FROM ghost_predictions
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """)
-                row = cur.fetchone()
-                conn.close()
-                
-                if row:
-                    result["last_prediction"] = {
-                        "symbol": row["symbol"],
-                        "direction": row["direction"],
-                        "confidence": float(row["confidence"]) if row["confidence"] else 0,
-                        "timestamp": row["created_at"].isoformat() if row["created_at"] else None
-                    }
+                try:
+                    cur = conn.cursor(cursor_factory=RealDictCursor)
+                    cur.execute("""
+                        SELECT symbol, direction, confidence, created_at
+                        FROM ghost_predictions
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    """)
+                    row = cur.fetchone()
+                    
+                    if row:
+                        result["last_prediction"] = {
+                            "symbol": row["symbol"],
+                            "direction": row["direction"],
+                            "confidence": float(row["confidence"]) if row["confidence"] else 0,
+                            "timestamp": row["created_at"].isoformat() if row["created_at"] else None
+                        }
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         except Exception as e:
             LOGGER.debug(f"Dashboard last_prediction error: {e}")
         
@@ -44135,6 +44158,7 @@ try:
             prediction_id: Related prediction ID
             news_event_id: Related news event ID
         """
+        conn = None
         try:
             conn = psycopg2.connect(os.getenv("DATABASE_URL"))
             cur = conn.cursor()
@@ -44148,17 +44172,23 @@ try:
             
             alert_id = cur.fetchone()[0]
             conn.commit()
-            conn.close()
             
             LOGGER.info(f"[GUARDIAN] Created alert {alert_id} for {symbol}: {alert_type}")
             return {"ok": True, "alert_id": alert_id}
         except Exception as e:
             LOGGER.error(f"Failed to create guardian alert: {e}")
             return {"ok": False, "error": str(e)}
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     @APP.post("/api/v3/guardian/acknowledge/{alert_id}")
     async def acknowledge_guardian_alert(alert_id: int):
         """Acknowledge a guardian alert"""
+        conn = None
         try:
             conn = psycopg2.connect(os.getenv("DATABASE_URL"))
             cur = conn.cursor()
@@ -44170,11 +44200,16 @@ try:
             """, (alert_id,))
             
             conn.commit()
-            conn.close()
             
             return {"ok": True, "alert_id": alert_id, "acknowledged": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     LOGGER.info("✅ Guardian Alerts API endpoints registered (/api/v3/guardian/*)")
 
@@ -44226,6 +44261,7 @@ try:
         Get statistics about available training data.
         Shows how many resolved trades we have for retraining.
         """
+        conn = None
         try:
             conn = psycopg2.connect(os.getenv("DATABASE_URL"))
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -44249,8 +44285,6 @@ try:
             # Get total resolved
             total_resolved = sum(outcomes.values()) if outcomes else 0
             
-            conn.close()
-            
             return {
                 "ok": True,
                 "resolved_trades": total_resolved,
@@ -44261,6 +44295,12 @@ try:
             }
         except Exception as e:
             return {"ok": False, "error": str(e)}
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     @APP.post("/api/v3/model/retrain")
     async def trigger_model_retrain(
@@ -45026,49 +45066,54 @@ try:
             ]
             
             conn = psycopg2.connect(db_url)
-            cur = conn.cursor()
-            
-            seeded_stocks = []
-            seeded_crypto = []
-            
-            for seeds, asset_type, result_list in [
-                (STOCK_SEEDS, "stock", seeded_stocks),
-                (CRYPTO_SEEDS, "crypto", seeded_crypto)
-            ]:
-                for rank, (symbol, profit, trades, win_rate) in enumerate(seeds, 1):
-                    wins = int(trades * win_rate)
-                    losses = trades - wins
-                    avg_profit = profit / trades
-                    money_score = profit * (1 + win_rate)
-                    
-                    cur.execute("""
-                        INSERT INTO money_game_players 
-                        (symbol, asset_type, tier, total_profit_pct, avg_profit_per_trade,
-                         best_trade_pct, worst_trade_pct, total_trades, wins, losses,
-                         win_rate, money_score, recent_profit_pct, momentum, rank, rank_change,
-                         last_trade, last_updated)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (symbol) DO UPDATE SET
-                            tier = EXCLUDED.tier,
-                            total_profit_pct = EXCLUDED.total_profit_pct,
-                            avg_profit_per_trade = EXCLUDED.avg_profit_per_trade,
-                            total_trades = EXCLUDED.total_trades,
-                            wins = EXCLUDED.wins,
-                            losses = EXCLUDED.losses,
-                            win_rate = EXCLUDED.win_rate,
-                            money_score = EXCLUDED.money_score,
-                            rank = EXCLUDED.rank,
-                            last_updated = NOW()
-                    """, (
-                        symbol, asset_type, "elite", profit, avg_profit,
-                        profit * 0.4, -profit * 0.1, trades, wins, losses,
-                        win_rate, money_score, profit * 0.3, "stable", rank, 0,
-                        datetime.utcnow(), datetime.utcnow()
-                    ))
-                    result_list.append({"rank": rank, "symbol": symbol, "profit": f"+{profit:.1f}%"})
-            
-            conn.commit()
-            conn.close()
+            try:
+                cur = conn.cursor()
+                
+                seeded_stocks = []
+                seeded_crypto = []
+                
+                for seeds, asset_type, result_list in [
+                    (STOCK_SEEDS, "stock", seeded_stocks),
+                    (CRYPTO_SEEDS, "crypto", seeded_crypto)
+                ]:
+                    for rank, (symbol, profit, trades, win_rate) in enumerate(seeds, 1):
+                        wins = int(trades * win_rate)
+                        losses = trades - wins
+                        avg_profit = profit / trades
+                        money_score = profit * (1 + win_rate)
+                        
+                        cur.execute("""
+                            INSERT INTO money_game_players 
+                            (symbol, asset_type, tier, total_profit_pct, avg_profit_per_trade,
+                             best_trade_pct, worst_trade_pct, total_trades, wins, losses,
+                             win_rate, money_score, recent_profit_pct, momentum, rank, rank_change,
+                             last_trade, last_updated)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (symbol) DO UPDATE SET
+                                tier = EXCLUDED.tier,
+                                total_profit_pct = EXCLUDED.total_profit_pct,
+                                avg_profit_per_trade = EXCLUDED.avg_profit_per_trade,
+                                total_trades = EXCLUDED.total_trades,
+                                wins = EXCLUDED.wins,
+                                losses = EXCLUDED.losses,
+                                win_rate = EXCLUDED.win_rate,
+                                money_score = EXCLUDED.money_score,
+                                rank = EXCLUDED.rank,
+                                last_updated = NOW()
+                        """, (
+                            symbol, asset_type, "elite", profit, avg_profit,
+                            profit * 0.4, -profit * 0.1, trades, wins, losses,
+                            win_rate, money_score, profit * 0.3, "stable", rank, 0,
+                            datetime.utcnow(), datetime.utcnow()
+                        ))
+                        result_list.append({"rank": rank, "symbol": symbol, "profit": f"+{profit:.1f}%"})
+                
+                conn.commit()
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             
             # Reload the game to pick up new data
             from core.money_game_engine import get_money_game

@@ -36,8 +36,8 @@ LOGGER = logging.getLogger("db_pool")
 # POOL CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════
 
-POOL_MIN_SIZE = int(os.getenv("DB_POOL_MIN", "2"))
-POOL_MAX_SIZE = int(os.getenv("DB_POOL_MAX", "8"))
+POOL_MIN_SIZE = int(os.getenv("DB_POOL_MIN", "1"))
+POOL_MAX_SIZE = int(os.getenv("DB_POOL_MAX", "5"))
 POOL_COMMAND_TIMEOUT = float(os.getenv("DB_COMMAND_TIMEOUT", "30"))
 
 # ═══════════════════════════════════════════════════════════════════
@@ -161,8 +161,8 @@ async def pool_health_check() -> dict:
 _sync_pool = None  # psycopg2 ThreadedConnectionPool
 _sync_pool_lock = __import__("threading").Lock()
 
-SYNC_POOL_MIN = int(os.getenv("DB_SYNC_POOL_MIN", "2"))
-SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "10"))
+SYNC_POOL_MIN = int(os.getenv("DB_SYNC_POOL_MIN", "1"))
+SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "5"))
 
 
 def _get_sync_pool():

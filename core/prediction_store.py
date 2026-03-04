@@ -902,8 +902,8 @@ class PostgresBackend:
             
             # Get pool configuration from environment (with sensible defaults)
             import os
-            pool_min = int(os.getenv("POSTGRES_POOL_MIN", "10"))
-            pool_max = int(os.getenv("POSTGRES_POOL_MAX", "50"))
+            pool_min = int(os.getenv("POSTGRES_POOL_MIN", "1"))
+            pool_max = int(os.getenv("POSTGRES_POOL_MAX", "5"))
             pool_timeout = int(os.getenv("POSTGRES_POOL_TIMEOUT_S", "10"))
             
             # Retry logic for Railway Postgres connection issues
