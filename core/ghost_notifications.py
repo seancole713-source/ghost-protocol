@@ -1519,25 +1519,23 @@ class GhostNotificationSystem:
             return False
     
     def _get_postgres_conn(self):
-        """Get PostgreSQL connection from db_pool"""
-        try:
-            from core.db_pool import get_sync_connection_raw
-            return get_sync_connection_raw()
-        except Exception:
-            return None
+        """Get PostgreSQL connection context manager from db_pool.
+        
+        Usage: with self._get_postgres_conn() as conn:
+        """
+        from contextlib import contextmanager as _cm
+        @_cm
+        def _pg():
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                yield conn
+        return _pg()
 
     @contextmanager
     def _pg_conn(self):
         """Context manager for safe PostgreSQL connection handling."""
-        conn = self._get_postgres_conn()
-        try:
+        with self._get_postgres_conn() as conn:
             yield conn
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
 
     def _init_postgres(self) -> bool:
         """Initialize PostgreSQL tracking tables. Returns True if successful."""
@@ -1550,114 +1548,107 @@ class GhostNotificationSystem:
         LOGGER.info(f"[TRACKING] Attempting PostgreSQL connection (URL length: {len(database_url)} chars)")
         
         try:
-            from core.db_pool import get_sync_connection_raw
+            from core.db_pool import get_sync_connection
         except ImportError as ie:
             self._last_postgres_error = f"db_pool not available: {ie}"
             LOGGER.warning(f"[TRACKING] db_pool import failed: {ie}")
             return False
         
-        conn = None
         try:
-            conn = get_sync_connection_raw()
-            LOGGER.info("[TRACKING] PostgreSQL connection successful!")
-            cur = conn.cursor()
-            
-            # Create tracking table in PostgreSQL
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS ghost_tracked_picks (
-                    id SERIAL PRIMARY KEY,
-                    symbol TEXT NOT NULL,
-                    asset_type TEXT NOT NULL,
-                    direction TEXT NOT NULL,
-                    entry_price REAL NOT NULL,
-                    target_price REAL NOT NULL,
-                    stop_price REAL NOT NULL,
-                    prediction_48h REAL NOT NULL,
-                    confidence REAL NOT NULL,
-                    entry_time TIMESTAMP WITH TIME ZONE NOT NULL,
-                    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                    status TEXT DEFAULT 'active',
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
-            """)
-            
-            # Create notification log table
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS ghost_notification_log (
-                    id SERIAL PRIMARY KEY,
-                    notification_type TEXT NOT NULL,
-                    sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    message_preview TEXT
-                )
-            """)
-            
-            # FIX (Feb 13, 2026): Persist notification state across redeploys
-            # _last_top10_date and _last_off_path_alerts were in-memory only,
-            # causing duplicate TOP 10 cards and off-path alerts after Railway redeploys
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS ghost_notification_state (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
-            """)
-            
-            # Load persisted state
-            cur.execute("SELECT key, value FROM ghost_notification_state")
-            for key, value in cur.fetchall():
-                if key == 'last_top10_date':
-                    self._last_top10_date = value
-                    LOGGER.info(f"[TRACKING] Restored _last_top10_date = {value} from PostgreSQL")
-                elif key.startswith('off_path_alert:'):
-                    symbol = key.split(':', 1)[1]
-                    self._last_off_path_alerts[symbol] = value
-            if self._last_off_path_alerts:
-                LOGGER.info(f"[TRACKING] Restored {len(self._last_off_path_alerts)} off-path alert states from PostgreSQL")
-            
-            # Create index for faster active picks lookup
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_tracked_picks_status 
-                ON ghost_tracked_picks(status)
-            """)
-            
-            # CLEANUP FIRST: Remove duplicate active picks BEFORE creating unique index
-            # (Keeps the OLDEST entry for each symbol)
-            cur.execute("""
-                DELETE FROM ghost_tracked_picks a
-                USING ghost_tracked_picks b
-                WHERE a.id > b.id 
-                AND a.symbol = b.symbol 
-                AND a.status = 'active' 
-                AND b.status = 'active'
-            """)
-            deleted_count = cur.rowcount
-            if deleted_count > 0:
-                LOGGER.info(f"[TRACKING] Cleaned up {deleted_count} duplicate active picks")
-            
-            # NOW create unique index (duplicates removed above)
-            cur.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_symbol 
-                ON ghost_tracked_picks (symbol) 
-                WHERE status = 'active'
-            """)
-            
-            conn.commit()
-            cur.close()
-            
-            LOGGER.info("[TRACKING] ✅ PostgreSQL initialized - picks will persist across deploys!")
-            self._last_postgres_error = None
-            return True
+            with get_sync_connection() as conn:
+                LOGGER.info("[TRACKING] PostgreSQL connection successful!")
+                cur = conn.cursor()
+                
+                # Create tracking table in PostgreSQL
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ghost_tracked_picks (
+                        id SERIAL PRIMARY KEY,
+                        symbol TEXT NOT NULL,
+                        asset_type TEXT NOT NULL,
+                        direction TEXT NOT NULL,
+                        entry_price REAL NOT NULL,
+                        target_price REAL NOT NULL,
+                        stop_price REAL NOT NULL,
+                        prediction_48h REAL NOT NULL,
+                        confidence REAL NOT NULL,
+                        entry_time TIMESTAMP WITH TIME ZONE NOT NULL,
+                        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                        status TEXT DEFAULT 'active',
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                """)
+                
+                # Create notification log table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ghost_notification_log (
+                        id SERIAL PRIMARY KEY,
+                        notification_type TEXT NOT NULL,
+                        sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        message_preview TEXT
+                    )
+                """)
+                
+                # FIX (Feb 13, 2026): Persist notification state across redeploys
+                # _last_top10_date and _last_off_path_alerts were in-memory only,
+                # causing duplicate TOP 10 cards and off-path alerts after Railway redeploys
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ghost_notification_state (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                """)
+                
+                # Load persisted state
+                cur.execute("SELECT key, value FROM ghost_notification_state")
+                for key, value in cur.fetchall():
+                    if key == 'last_top10_date':
+                        self._last_top10_date = value
+                        LOGGER.info(f"[TRACKING] Restored _last_top10_date = {value} from PostgreSQL")
+                    elif key.startswith('off_path_alert:'):
+                        symbol = key.split(':', 1)[1]
+                        self._last_off_path_alerts[symbol] = value
+                if self._last_off_path_alerts:
+                    LOGGER.info(f"[TRACKING] Restored {len(self._last_off_path_alerts)} off-path alert states from PostgreSQL")
+                
+                # Create index for faster active picks lookup
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_tracked_picks_status 
+                    ON ghost_tracked_picks(status)
+                """)
+                
+                # CLEANUP FIRST: Remove duplicate active picks BEFORE creating unique index
+                # (Keeps the OLDEST entry for each symbol)
+                cur.execute("""
+                    DELETE FROM ghost_tracked_picks a
+                    USING ghost_tracked_picks b
+                    WHERE a.id > b.id 
+                    AND a.symbol = b.symbol 
+                    AND a.status = 'active' 
+                    AND b.status = 'active'
+                """)
+                deleted_count = cur.rowcount
+                if deleted_count > 0:
+                    LOGGER.info(f"[TRACKING] Cleaned up {deleted_count} duplicate active picks")
+                
+                # NOW create unique index (duplicates removed above)
+                cur.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_symbol 
+                    ON ghost_tracked_picks (symbol) 
+                    WHERE status = 'active'
+                """)
+                
+                conn.commit()
+                cur.close()
+                
+                LOGGER.info("[TRACKING] ✅ PostgreSQL initialized - picks will persist across deploys!")
+                self._last_postgres_error = None
+                return True
             
         except Exception as e:
             self._last_postgres_error = str(e)
             LOGGER.warning(f"[TRACKING] PostgreSQL init failed: {e} - using SQLite fallback")
             return False
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def _init_sqlite(self):
         """Initialize SQLite tracking database (fallback)"""
@@ -2551,88 +2542,81 @@ class GhostNotificationSystem:
         
         # Continue with original tracking system
         if self._use_postgres:
-            conn = None
             try:
-                conn = self._get_postgres_conn()
-                cur = conn.cursor()
-                
-                # First, ensure we have a unique constraint on symbol for active picks
-                # This prevents duplicate registrations
-                cur.execute("""
-                    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_symbol 
-                    ON ghost_tracked_picks (symbol) 
-                    WHERE status = 'active'
-                """)
-                
-                for p in picks:
-                    action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
-                    # FIX (Feb 13, 2026): Use AssetClassifier instead of hardcoded BTC/ETH/SOL
-                    # BAND, JUP, and other crypto tokens were misclassified as 'stock'
-                    from core.asset_classifier import AssetClassifier
-                    asset_type = p.get('asset_type') or ('crypto' if AssetClassifier.is_crypto(p['symbol']) else 'stock')
+                with self._get_postgres_conn() as conn:
+                    cur = conn.cursor()
                     
-                    # FIX (Feb 12, 2026): Coerce WATCH → BUY/SELL based on predicted move
-                    # WATCH picks were zombie entries — tracked but never monitored by watchdog
-                    if action == "WATCH":
-                        if p['prediction_48h'] >= p['current']:
-                            action = "BUY"
-                        else:
-                            action = "SELL"
-                        LOGGER.info(f"[TRACKING] Coerced WATCH → {action} for {p['symbol']}")
-                    
-                    # FIX (Feb 12, 2026): Use pick's actual stop/target from V3, not hardcoded 5%
-                    stop_price = p.get('stop') or p.get('stop_loss') or (
-                        p['current'] * 0.95 if action == 'BUY' else p['current'] * 1.05
-                    )
-                    target_price = p.get('target_price') or p.get('prediction_48h')
-                    
-                    # FIX (Feb 13, 2026): Per-pick expiration from V3 hold_hours
-                    pick_hold_hours = p.get('v3_hold_hours') or p.get('hold_hours') or default_hold
-                    expires = now + timedelta(hours=pick_hold_hours)
-                    
-                    # Use ON CONFLICT to update existing active picks instead of duplicating
+                    # First, ensure we have a unique constraint on symbol for active picks
+                    # This prevents duplicate registrations
                     cur.execute("""
-                        INSERT INTO ghost_tracked_picks 
-                        (symbol, asset_type, direction, entry_price, target_price, stop_price, 
-                         prediction_48h, confidence, entry_time, expires_at, status)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
-                        ON CONFLICT (symbol) WHERE status = 'active'
-                        DO UPDATE SET
-                            direction = EXCLUDED.direction,
-                            asset_type = EXCLUDED.asset_type,
-                            entry_price = EXCLUDED.entry_price,
-                            target_price = EXCLUDED.target_price,
-                            stop_price = EXCLUDED.stop_price,
-                            prediction_48h = EXCLUDED.prediction_48h,
-                            confidence = EXCLUDED.confidence,
-                            entry_time = EXCLUDED.entry_time,
-                            expires_at = EXCLUDED.expires_at
-                    """, (
-                        p['symbol'],
-                        asset_type,
-                        action,
-                        p['current'],
-                        target_price,
-                        stop_price,
-                        p['prediction_48h'],
-                        p['confidence'],
-                        now,
-                        expires,
-                    ))
-                
-                conn.commit()
-                cur.close()
-                LOGGER.info(f"[TRACKING] ✅ Registered {len(picks)} picks in PostgreSQL (persistent)")
-                return
+                        CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_symbol 
+                        ON ghost_tracked_picks (symbol) 
+                        WHERE status = 'active'
+                    """)
+                    
+                    for p in picks:
+                        action, _, _ = determine_action(p['current'], p['prediction_48h'], p['confidence'])
+                        # FIX (Feb 13, 2026): Use AssetClassifier instead of hardcoded BTC/ETH/SOL
+                        # BAND, JUP, and other crypto tokens were misclassified as 'stock'
+                        from core.asset_classifier import AssetClassifier
+                        asset_type = p.get('asset_type') or ('crypto' if AssetClassifier.is_crypto(p['symbol']) else 'stock')
+                        
+                        # FIX (Feb 12, 2026): Coerce WATCH → BUY/SELL based on predicted move
+                        # WATCH picks were zombie entries — tracked but never monitored by watchdog
+                        if action == "WATCH":
+                            if p['prediction_48h'] >= p['current']:
+                                action = "BUY"
+                            else:
+                                action = "SELL"
+                            LOGGER.info(f"[TRACKING] Coerced WATCH → {action} for {p['symbol']}")
+                        
+                        # FIX (Feb 12, 2026): Use pick's actual stop/target from V3, not hardcoded 5%
+                        stop_price = p.get('stop') or p.get('stop_loss') or (
+                            p['current'] * 0.95 if action == 'BUY' else p['current'] * 1.05
+                        )
+                        target_price = p.get('target_price') or p.get('prediction_48h')
+                        
+                        # FIX (Feb 13, 2026): Per-pick expiration from V3 hold_hours
+                        pick_hold_hours = p.get('v3_hold_hours') or p.get('hold_hours') or default_hold
+                        expires = now + timedelta(hours=pick_hold_hours)
+                        
+                        # Use ON CONFLICT to update existing active picks instead of duplicating
+                        cur.execute("""
+                            INSERT INTO ghost_tracked_picks 
+                            (symbol, asset_type, direction, entry_price, target_price, stop_price, 
+                             prediction_48h, confidence, entry_time, expires_at, status)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
+                            ON CONFLICT (symbol) WHERE status = 'active'
+                            DO UPDATE SET
+                                direction = EXCLUDED.direction,
+                                asset_type = EXCLUDED.asset_type,
+                                entry_price = EXCLUDED.entry_price,
+                                target_price = EXCLUDED.target_price,
+                                stop_price = EXCLUDED.stop_price,
+                                prediction_48h = EXCLUDED.prediction_48h,
+                                confidence = EXCLUDED.confidence,
+                                entry_time = EXCLUDED.entry_time,
+                                expires_at = EXCLUDED.expires_at
+                        """, (
+                            p['symbol'],
+                            asset_type,
+                            action,
+                            p['current'],
+                            target_price,
+                            stop_price,
+                            p['prediction_48h'],
+                            p['confidence'],
+                            now,
+                            expires,
+                        ))
+                    
+                    conn.commit()
+                    cur.close()
+                    LOGGER.info(f"[TRACKING] ✅ Registered {len(picks)} picks in PostgreSQL (persistent)")
+                    return
                 
             except Exception as e:
                 LOGGER.error(f"[TRACKING] PostgreSQL insert failed: {e} - falling back to SQLite")
-            finally:
-                if conn:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
         
         # SQLite fallback
         conn = sqlite3.connect(self._db_path)
@@ -2703,8 +2687,7 @@ class GhostNotificationSystem:
                 _v3_set = set(V3_VALIDATED_STRATEGIES.keys())
                 _keep_set = _evict_edge_set | _v3_set
                 conn = None
-                try:
-                    conn = self._get_postgres_conn()
+                with self._get_postgres_conn() as conn:
                     cur = conn.cursor()
                     # Find active picks NOT in edge whitelist AND NOT V3 validated
                     cur.execute("SELECT DISTINCT symbol FROM ghost_tracked_picks WHERE status = 'active'")
@@ -2719,12 +2702,6 @@ class GhostNotificationSystem:
                         conn.commit()
                         LOGGER.info(f"[WATCHDOG] 🧹 Evicted {len(stale_symbols)} non-edge tracked picks: {stale_symbols}")
                     cur.close()
-                finally:
-                    if conn:
-                        try:
-                            conn.close()
-                        except Exception:
-                            pass
         except Exception as e:
             LOGGER.warning(f"[WATCHDOG] Edge eviction failed (non-fatal): {e}")
         
@@ -2736,9 +2713,7 @@ class GhostNotificationSystem:
         # =====================================================================
         try:
             if self._use_postgres:
-                conn = None
-                try:
-                    conn = self._get_postgres_conn()
+                with self._get_postgres_conn() as conn:
                     cur = conn.cursor()
                     cur.execute("""
                         UPDATE ghost_tracked_picks
@@ -2750,12 +2725,6 @@ class GhostNotificationSystem:
                     cur.close()
                     if expired_count > 0:
                         LOGGER.info(f"[WATCHDOG] 🧹 Expired {expired_count} stale tracked picks")
-                finally:
-                    if conn:
-                        try:
-                            conn.close()
-                        except Exception:
-                            pass
             else:
                 import sqlite3
                 conn = sqlite3.connect(self._db_path)
@@ -2772,26 +2741,19 @@ class GhostNotificationSystem:
         # Load active picks from PostgreSQL (persistent across deploys)
         rows = []
         if self._use_postgres:
-            conn = None
             try:
-                conn = self._get_postgres_conn()
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT symbol, asset_type, direction, entry_price, target_price, stop_price,
-                           prediction_48h, confidence, entry_time, expires_at
-                    FROM ghost_tracked_picks 
-                    WHERE status = 'active'
-                """)
-                rows = cur.fetchall()
-                cur.close()
+                with self._get_postgres_conn() as conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT symbol, asset_type, direction, entry_price, target_price, stop_price,
+                               prediction_48h, confidence, entry_time, expires_at
+                        FROM ghost_tracked_picks 
+                        WHERE status = 'active'
+                    """)
+                    rows = cur.fetchall()
+                    cur.close()
             except Exception as e:
                 LOGGER.error(f"PostgreSQL fetch failed: {e}")
-            finally:
-                if conn:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
         else:
             # Fallback to SQLite (ephemeral on Railway)
             conn = sqlite3.connect(self._db_path)
@@ -2824,21 +2786,14 @@ class GhostNotificationSystem:
                     asset_type = correct_type
                     # Also fix in DB so it doesn't happen again
                     if self._use_postgres:
-                        conn = None
                         try:
-                            conn = self._get_postgres_conn()
-                            cur = conn.cursor()
-                            cur.execute("UPDATE ghost_tracked_picks SET asset_type = %s WHERE symbol = %s AND status = 'active'", (correct_type, symbol))
-                            conn.commit()
-                            cur.close()
+                            with self._get_postgres_conn() as conn:
+                                cur = conn.cursor()
+                                cur.execute("UPDATE ghost_tracked_picks SET asset_type = %s WHERE symbol = %s AND status = 'active'", (correct_type, symbol))
+                                conn.commit()
+                                cur.close()
                         except Exception:
                             pass
-                        finally:
-                            if conn:
-                                try:
-                                    conn.close()
-                                except Exception:
-                                    pass
             except Exception:
                 pass
             
@@ -2959,27 +2914,20 @@ class GhostNotificationSystem:
                 
                 # Update PostgreSQL FIRST (persistent, primary)
                 if self._use_postgres:
-                    conn = None
                     try:
-                        conn = self._get_postgres_conn()
-                        cur = conn.cursor()
-                        cur.execute(
-                            "UPDATE ghost_tracked_picks SET status = %s WHERE symbol = %s AND status = 'active'",
-                            (status, a['symbol'])
-                        )
-                        conn.commit()
-                        cur.close()
-                        LOGGER.info(f"[TRACKING] ✅ Updated {a['symbol']} to {status} in PostgreSQL (BEFORE alert)")
+                        with self._get_postgres_conn() as conn:
+                            cur = conn.cursor()
+                            cur.execute(
+                                "UPDATE ghost_tracked_picks SET status = %s WHERE symbol = %s AND status = 'active'",
+                                (status, a['symbol'])
+                            )
+                            conn.commit()
+                            cur.close()
+                            LOGGER.info(f"[TRACKING] ✅ Updated {a['symbol']} to {status} in PostgreSQL (BEFORE alert)")
                     except Exception as e:
                         LOGGER.error(f"[TRACKING] ❌ Failed to update PostgreSQL for {a['symbol']}: {e}")
                         # DON'T send alert if we couldn't update status - prevents duplicates
                         continue
-                    finally:
-                        if conn:
-                            try:
-                                conn.close()
-                            except Exception:
-                                pass
                 
                 # Also update SQLite (fallback)
                 try:
@@ -3061,46 +3009,32 @@ class GhostNotificationSystem:
         """
         if not self._use_postgres:
             return  # SQLite is ephemeral on Railway anyway
-        conn = None
         try:
-            conn = self._get_postgres_conn()
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO ghost_notification_state (key, value, updated_at)
-                VALUES (%s, %s, NOW())
-                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-            """, (key, value))
-            conn.commit()
-            cur.close()
+            with self._get_postgres_conn() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO ghost_notification_state (key, value, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+                """, (key, value))
+                conn.commit()
+                cur.close()
         except Exception as e:
             LOGGER.warning(f"[TRACKING] Failed to persist state {key}: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
 
     def get_tracked_symbols(self) -> list:
         """Return list of symbols with active tracked picks (for cron watchdog price prefetch)."""
         if self._use_postgres:
-            conn = None
             try:
-                conn = self._get_postgres_conn()
-                cur = conn.cursor()
-                cur.execute("SELECT DISTINCT symbol FROM ghost_tracked_picks WHERE status = 'active'")
-                symbols = [row[0] for row in cur.fetchall()]
-                cur.close()
-                return symbols
+                with self._get_postgres_conn() as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT DISTINCT symbol FROM ghost_tracked_picks WHERE status = 'active'")
+                    symbols = [row[0] for row in cur.fetchall()]
+                    cur.close()
+                    return symbols
             except Exception as e:
                 LOGGER.error(f"get_tracked_symbols PostgreSQL failed: {e}")
                 return []
-            finally:
-                if conn:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
         else:
             try:
                 import sqlite3
@@ -3122,26 +3056,19 @@ class GhostNotificationSystem:
         
         # Try PostgreSQL first (persistent)
         if self._use_postgres:
-            conn = None
             try:
-                conn = self._get_postgres_conn()
-                cur = conn.cursor()
-                cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'active'")
-                active = cur.fetchone()[0]
-                cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'target_hit'")
-                target_hits = cur.fetchone()[0]
-                cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'stop_hit'")
-                stop_hits = cur.fetchone()[0]
-                cur.close()
-                db_type = "postgresql"
+                with self._get_postgres_conn() as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'active'")
+                    active = cur.fetchone()[0]
+                    cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'target_hit'")
+                    target_hits = cur.fetchone()[0]
+                    cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'stop_hit'")
+                    stop_hits = cur.fetchone()[0]
+                    cur.close()
+                    db_type = "postgresql"
             except Exception as e:
                 LOGGER.error(f"PostgreSQL status check failed: {e}")
-            finally:
-                if conn:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
         else:
             # Fallback to SQLite (ephemeral)
             conn = sqlite3.connect(self._db_path)
@@ -3165,14 +3092,18 @@ class GhostNotificationSystem:
 
 
 # Singleton instance
+import threading as _threading
 _notification_system: Optional[GhostNotificationSystem] = None
+_notification_system_lock = _threading.Lock()
 
 
 def get_notification_system() -> GhostNotificationSystem:
     """Get the singleton notification system"""
     global _notification_system
     if _notification_system is None:
-        _notification_system = GhostNotificationSystem()
+        with _notification_system_lock:
+            if _notification_system is None:
+                _notification_system = GhostNotificationSystem()
     return _notification_system
 
 

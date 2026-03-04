@@ -19,6 +19,7 @@ MONEY IS THE SCORE. GHOST WANTS TO WIN.
 import os
 import json
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -110,141 +111,132 @@ class MoneyGameEngine:
         
         LOGGER.info(f"🎮 [MONEY GAME] Initialized: {len(self._stock_players)} stocks, {len(self._crypto_players)} crypto competing for the bag!")
     
-    def _get_connection(self):
-        """Get PostgreSQL connection via shared pool bridge."""
-        from core.db_pool import get_sync_connection_raw
-        return get_sync_connection_raw()
+    def _pg_conn(self):
+        """Context manager that guarantees connection is returned to pool."""
+        from contextlib import contextmanager as _cm
+        @_cm
+        def _pg():
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                yield conn
+        return _pg()
     
     def _ensure_tables(self):
         """Create money game tables"""
         if not self.use_postgres:
             return
         
-        conn = None
         try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            # Player stats table
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS money_game_players (
-                    symbol TEXT PRIMARY KEY,
-                    asset_type TEXT NOT NULL,
-                    tier TEXT DEFAULT 'rookie',
-                    total_profit_pct REAL DEFAULT 0.0,
-                    avg_profit_per_trade REAL DEFAULT 0.0,
-                    best_trade_pct REAL DEFAULT 0.0,
-                    worst_trade_pct REAL DEFAULT 0.0,
-                    total_trades INTEGER DEFAULT 0,
-                    wins INTEGER DEFAULT 0,
-                    losses INTEGER DEFAULT 0,
-                    win_rate REAL DEFAULT 0.0,
-                    money_score REAL DEFAULT 0.0,
-                    recent_profit_pct REAL DEFAULT 0.0,
-                    momentum TEXT DEFAULT 'stable',
-                    rank INTEGER DEFAULT 999,
-                    rank_change INTEGER DEFAULT 0,
-                    last_trade TIMESTAMP WITH TIME ZONE,
-                    last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
-            """)
-            
-            # Trade history for money tracking
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS money_game_trades (
-                    id SERIAL PRIMARY KEY,
-                    symbol TEXT NOT NULL,
-                    asset_type TEXT NOT NULL,
-                    direction TEXT NOT NULL,
-                    entry_price REAL NOT NULL,
-                    target_price REAL NOT NULL,
-                    final_price REAL,
-                    profit_pct REAL,
-                    confidence REAL,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    resolved_at TIMESTAMP WITH TIME ZONE,
-                    is_win BOOLEAN
-                )
-            """)
-            
-            # Index for fast lookups
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_money_trades_symbol 
-                ON money_game_trades(symbol)
-            """)
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_money_players_score 
-                ON money_game_players(asset_type, money_score DESC)
-            """)
-            
-            conn.commit()
-            LOGGER.info("🎮 [MONEY GAME] Database tables ready!")
+            with self._pg_conn() as conn:
+                cur = conn.cursor()
+                
+                # Player stats table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS money_game_players (
+                        symbol TEXT PRIMARY KEY,
+                        asset_type TEXT NOT NULL,
+                        tier TEXT DEFAULT 'rookie',
+                        total_profit_pct REAL DEFAULT 0.0,
+                        avg_profit_per_trade REAL DEFAULT 0.0,
+                        best_trade_pct REAL DEFAULT 0.0,
+                        worst_trade_pct REAL DEFAULT 0.0,
+                        total_trades INTEGER DEFAULT 0,
+                        wins INTEGER DEFAULT 0,
+                        losses INTEGER DEFAULT 0,
+                        win_rate REAL DEFAULT 0.0,
+                        money_score REAL DEFAULT 0.0,
+                        recent_profit_pct REAL DEFAULT 0.0,
+                        momentum TEXT DEFAULT 'stable',
+                        rank INTEGER DEFAULT 999,
+                        rank_change INTEGER DEFAULT 0,
+                        last_trade TIMESTAMP WITH TIME ZONE,
+                        last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                """)
+                
+                # Trade history for money tracking
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS money_game_trades (
+                        id SERIAL PRIMARY KEY,
+                        symbol TEXT NOT NULL,
+                        asset_type TEXT NOT NULL,
+                        direction TEXT NOT NULL,
+                        entry_price REAL NOT NULL,
+                        target_price REAL NOT NULL,
+                        final_price REAL,
+                        profit_pct REAL,
+                        confidence REAL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        resolved_at TIMESTAMP WITH TIME ZONE,
+                        is_win BOOLEAN
+                    )
+                """)
+                
+                # Index for fast lookups
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_money_trades_symbol 
+                    ON money_game_trades(symbol)
+                """)
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_money_players_score 
+                    ON money_game_players(asset_type, money_score DESC)
+                """)
+                
+                conn.commit()
+                LOGGER.info("🎮 [MONEY GAME] Database tables ready!")
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] DB setup error: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def _load_players(self):
         """Load all players from database"""
         if not self.use_postgres:
             return
         
-        conn = None
         try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            cur.execute("""
-                SELECT symbol, asset_type, tier, total_profit_pct, avg_profit_per_trade,
-                       best_trade_pct, worst_trade_pct, total_trades, wins, losses,
-                       win_rate, money_score, recent_profit_pct, momentum, rank,
-                       rank_change, last_trade, last_updated
-                FROM money_game_players
-                ORDER BY asset_type, money_score DESC
-            """)
-            
-            for row in cur.fetchall():
-                stats = PlayerStats(
-                    symbol=row[0],
-                    asset_type=row[1],
-                    tier=PlayerTier(row[2]) if row[2] else PlayerTier.ROOKIE,
-                    total_profit_pct=row[3] or 0.0,
-                    avg_profit_per_trade=row[4] or 0.0,
-                    best_trade_pct=row[5] or 0.0,
-                    worst_trade_pct=row[6] or 0.0,
-                    total_trades=row[7] or 0,
-                    wins=row[8] or 0,
-                    losses=row[9] or 0,
-                    win_rate=row[10] or 0.0,
-                    money_score=row[11] or 0.0,
-                    recent_profit_pct=row[12] or 0.0,
-                    momentum=row[13] or "stable",
-                    rank=row[14] or 999,
-                    rank_change=row[15] or 0,
-                    last_trade=row[16] or datetime.utcnow(),
-                    last_updated=row[17] or datetime.utcnow()
-                )
+            with self._pg_conn() as conn:
+                cur = conn.cursor()
                 
-                if stats.asset_type == "stock":
-                    self._stock_players[stats.symbol] = stats
-                else:
-                    self._crypto_players[stats.symbol] = stats
-            
-            self._rebuild_elite_lists()
-            
-            LOGGER.info(f"🎮 [MONEY GAME] Loaded {len(self._stock_players)} stock players, {len(self._crypto_players)} crypto players")
+                cur.execute("""
+                    SELECT symbol, asset_type, tier, total_profit_pct, avg_profit_per_trade,
+                           best_trade_pct, worst_trade_pct, total_trades, wins, losses,
+                           win_rate, money_score, recent_profit_pct, momentum, rank,
+                           rank_change, last_trade, last_updated
+                    FROM money_game_players
+                    ORDER BY asset_type, money_score DESC
+                """)
+                
+                for row in cur.fetchall():
+                    stats = PlayerStats(
+                        symbol=row[0],
+                        asset_type=row[1],
+                        tier=PlayerTier(row[2]) if row[2] else PlayerTier.ROOKIE,
+                        total_profit_pct=row[3] or 0.0,
+                        avg_profit_per_trade=row[4] or 0.0,
+                        best_trade_pct=row[5] or 0.0,
+                        worst_trade_pct=row[6] or 0.0,
+                        total_trades=row[7] or 0,
+                        wins=row[8] or 0,
+                        losses=row[9] or 0,
+                        win_rate=row[10] or 0.0,
+                        money_score=row[11] or 0.0,
+                        recent_profit_pct=row[12] or 0.0,
+                        momentum=row[13] or "stable",
+                        rank=row[14] or 999,
+                        rank_change=row[15] or 0,
+                        last_trade=row[16] or datetime.utcnow(),
+                        last_updated=row[17] or datetime.utcnow()
+                    )
+                    
+                    if stats.asset_type == "stock":
+                        self._stock_players[stats.symbol] = stats
+                    else:
+                        self._crypto_players[stats.symbol] = stats
+                
+                self._rebuild_elite_lists()
+                
+                LOGGER.info(f"🎮 [MONEY GAME] Loaded {len(self._stock_players)} stock players, {len(self._crypto_players)} crypto players")
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Load error: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def _rebuild_elite_lists(self):
         """Rebuild TOP 10 (elite) lists based on money score"""
@@ -323,32 +315,25 @@ class MoneyGameEngine:
         if not self.use_postgres:
             return -1
         
-        conn = None
         try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            cur.execute("""
-                INSERT INTO money_game_trades
-                (symbol, asset_type, direction, entry_price, target_price, confidence)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (symbol, asset_type, direction, entry_price, target_price, confidence))
-            
-            trade_id = cur.fetchone()[0]
-            conn.commit()
-            
-            LOGGER.debug(f"🎮 [MONEY GAME] Trade #{trade_id}: {symbol} {direction} @ {entry_price}")
-            return trade_id
+            with self._pg_conn() as conn:
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    INSERT INTO money_game_trades
+                    (symbol, asset_type, direction, entry_price, target_price, confidence)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (symbol, asset_type, direction, entry_price, target_price, confidence))
+                
+                trade_id = cur.fetchone()[0]
+                conn.commit()
+                
+                LOGGER.debug(f"🎮 [MONEY GAME] Trade #{trade_id}: {symbol} {direction} @ {entry_price}")
+                return trade_id
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Record trade error: {e}")
             return -1
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def resolve_trade(self, trade_id: int, final_price: float) -> Dict:
         """
@@ -359,64 +344,57 @@ class MoneyGameEngine:
         if not self.use_postgres:
             return {"error": "No database"}
         
-        conn = None
         try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            # Get trade details
-            cur.execute("""
-                SELECT symbol, asset_type, direction, entry_price, target_price
-                FROM money_game_trades
-                WHERE id = %s AND resolved_at IS NULL
-            """, (trade_id,))
-            
-            row = cur.fetchone()
-            if not row:
-                return {"error": "Trade not found or already resolved"}
-            
-            symbol, asset_type, direction, entry_price, target_price = row
-            
-            # CALCULATE PROFIT/LOSS
-            if not entry_price or entry_price <= 0:
-                return {"error": f"Invalid entry_price={entry_price} for trade {trade_id}"}
-            if direction == "BUY":
-                profit_pct = ((final_price - entry_price) / entry_price) * 100
-                is_win = final_price >= target_price
-            else:  # SELL
-                profit_pct = ((entry_price - final_price) / entry_price) * 100
-                is_win = final_price <= target_price
-            
-            # Update trade record
-            cur.execute("""
-                UPDATE money_game_trades
-                SET final_price = %s, profit_pct = %s, is_win = %s, resolved_at = NOW()
-                WHERE id = %s
-            """, (final_price, profit_pct, is_win, trade_id))
-            
-            # Update player stats
-            self._update_player_stats(cur, symbol, asset_type, profit_pct, is_win)
-            
-            conn.commit()
-            
-            emoji = "💰" if profit_pct > 0 else "💸"
-            LOGGER.info(f"🎮 [MONEY GAME] {emoji} {symbol}: {profit_pct:+.2f}% {'WIN' if is_win else 'LOSS'}")
-            
-            return {
-                "symbol": symbol,
-                "profit_pct": profit_pct,
-                "is_win": is_win,
-                "final_price": final_price
-            }
+            with self._pg_conn() as conn:
+                cur = conn.cursor()
+                
+                # Get trade details
+                cur.execute("""
+                    SELECT symbol, asset_type, direction, entry_price, target_price
+                    FROM money_game_trades
+                    WHERE id = %s AND resolved_at IS NULL
+                """, (trade_id,))
+                
+                row = cur.fetchone()
+                if not row:
+                    return {"error": "Trade not found or already resolved"}
+                
+                symbol, asset_type, direction, entry_price, target_price = row
+                
+                # CALCULATE PROFIT/LOSS
+                if not entry_price or entry_price <= 0:
+                    return {"error": f"Invalid entry_price={entry_price} for trade {trade_id}"}
+                if direction == "BUY":
+                    profit_pct = ((final_price - entry_price) / entry_price) * 100
+                    is_win = final_price >= target_price
+                else:  # SELL
+                    profit_pct = ((entry_price - final_price) / entry_price) * 100
+                    is_win = final_price <= target_price
+                
+                # Update trade record
+                cur.execute("""
+                    UPDATE money_game_trades
+                    SET final_price = %s, profit_pct = %s, is_win = %s, resolved_at = NOW()
+                    WHERE id = %s
+                """, (final_price, profit_pct, is_win, trade_id))
+                
+                # Update player stats
+                self._update_player_stats(cur, symbol, asset_type, profit_pct, is_win)
+                
+                conn.commit()
+                
+                emoji = "💰" if profit_pct > 0 else "💸"
+                LOGGER.info(f"🎮 [MONEY GAME] {emoji} {symbol}: {profit_pct:+.2f}% {'WIN' if is_win else 'LOSS'}")
+                
+                return {
+                    "symbol": symbol,
+                    "profit_pct": profit_pct,
+                    "is_win": is_win,
+                    "final_price": final_price
+                }
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Resolve error: {e}")
             return {"error": str(e)}
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def _update_player_stats(self, cur, symbol: str, asset_type: str, profit_pct: float, is_win: bool):
         """Update a player's stats after a trade"""
@@ -571,155 +549,142 @@ class MoneyGameEngine:
         
         conn = None
         try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            # Recalculate recent profit for all players (last 7 days)
-            recent_cutoff = datetime.utcnow() - timedelta(days=7)
-            
-            for asset_type in ["stock", "crypto"]:
-                # Get recent profit per symbol
-                cur.execute("""
-                    SELECT symbol, COALESCE(SUM(profit_pct), 0) as recent_profit
-                    FROM money_game_trades
-                    WHERE asset_type = %s 
-                      AND resolved_at >= %s
-                      AND profit_pct IS NOT NULL
-                    GROUP BY symbol
-                """, (asset_type, recent_cutoff))
+            with self._pg_conn() as conn:
+                cur = conn.cursor()
                 
-                recent_profits = {row[0]: row[1] for row in cur.fetchall()}
+                # Recalculate recent profit for all players (last 7 days)
+                recent_cutoff = datetime.utcnow() - timedelta(days=7)
                 
-                # Get all players with enough trades
-                cur.execute("""
-                    SELECT symbol, money_score, rank
-                    FROM money_game_players
-                    WHERE asset_type = %s AND total_trades >= %s
-                    ORDER BY money_score DESC
-                """, (asset_type, self.MIN_TRADES))
-                
-                players = cur.fetchall()
-                pool = self._stock_players if asset_type == "stock" else self._crypto_players
-                old_elite = self._elite_stocks[:] if asset_type == "stock" else self._elite_crypto[:]
-                
-                # Assign new ranks
-                for new_rank, (symbol, money_score, old_rank) in enumerate(players, start=1):
-                    old_rank = old_rank or 999
-                    rank_change = old_rank - new_rank
-                    
-                    # Determine momentum
-                    recent_profit = recent_profits.get(symbol, 0)
-                    if recent_profit > 5:
-                        momentum = "hot"
-                    elif recent_profit < -5:
-                        momentum = "cold"
-                    else:
-                        momentum = "stable"
-                    
-                    # Determine tier
-                    if new_rank <= self.TOP_N:
-                        tier = PlayerTier.ELITE
-                    elif money_score >= 5:
-                        tier = PlayerTier.RISING_STAR
-                    else:
-                        tier = PlayerTier.BENCHED
-                    
-                    # Update database
+                for asset_type in ["stock", "crypto"]:
+                    # Get recent profit per symbol
                     cur.execute("""
-                        UPDATE money_game_players
-                        SET rank = %s, rank_change = %s, recent_profit_pct = %s,
-                            momentum = %s, tier = %s, last_updated = NOW()
-                        WHERE symbol = %s
-                    """, (new_rank, rank_change, recent_profit, momentum, tier.value, symbol))
+                        SELECT symbol, COALESCE(SUM(profit_pct), 0) as recent_profit
+                        FROM money_game_trades
+                        WHERE asset_type = %s 
+                          AND resolved_at >= %s
+                          AND profit_pct IS NOT NULL
+                        GROUP BY symbol
+                    """, (asset_type, recent_cutoff))
                     
-                    # Track promotions/demotions
-                    if new_rank <= self.TOP_N and symbol not in old_elite:
-                        changes[asset_type]["promoted"].append({
-                            "symbol": symbol,
-                            "new_rank": new_rank,
-                            "money_score": money_score,
-                            "momentum": momentum
-                        })
-                    elif new_rank > self.TOP_N and symbol in old_elite:
-                        changes[asset_type]["demoted"].append({
-                            "symbol": symbol,
-                            "old_rank": old_rank,
-                            "new_rank": new_rank,
-                            "money_score": money_score
-                        })
+                    recent_profits = {row[0]: row[1] for row in cur.fetchall()}
                     
-                    # Update in-memory
-                    if symbol in pool:
-                        pool[symbol].rank = new_rank
-                        pool[symbol].rank_change = rank_change
-                        pool[symbol].recent_profit_pct = recent_profit
-                        pool[symbol].momentum = momentum
-                        pool[symbol].tier = tier
+                    # Get all players with enough trades
+                    cur.execute("""
+                        SELECT symbol, money_score, rank
+                        FROM money_game_players
+                        WHERE asset_type = %s AND total_trades >= %s
+                        ORDER BY money_score DESC
+                    """, (asset_type, self.MIN_TRADES))
+                    
+                    players = cur.fetchall()
+                    pool = self._stock_players if asset_type == "stock" else self._crypto_players
+                    old_elite = self._elite_stocks[:] if asset_type == "stock" else self._elite_crypto[:]
+                    
+                    # Assign new ranks
+                    for new_rank, (symbol, money_score, old_rank) in enumerate(players, start=1):
+                        old_rank = old_rank or 999
+                        rank_change = old_rank - new_rank
+                        
+                        # Determine momentum
+                        recent_profit = recent_profits.get(symbol, 0)
+                        if recent_profit > 5:
+                            momentum = "hot"
+                        elif recent_profit < -5:
+                            momentum = "cold"
+                        else:
+                            momentum = "stable"
+                        
+                        # Determine tier
+                        if new_rank <= self.TOP_N:
+                            tier = PlayerTier.ELITE
+                        elif money_score >= 5:
+                            tier = PlayerTier.RISING_STAR
+                        else:
+                            tier = PlayerTier.BENCHED
+                        
+                        # Update database
+                        cur.execute("""
+                            UPDATE money_game_players
+                            SET rank = %s, rank_change = %s, recent_profit_pct = %s,
+                                momentum = %s, tier = %s, last_updated = NOW()
+                            WHERE symbol = %s
+                        """, (new_rank, rank_change, recent_profit, momentum, tier.value, symbol))
+                        
+                        # Track promotions/demotions
+                        if new_rank <= self.TOP_N and symbol not in old_elite:
+                            changes[asset_type]["promoted"].append({
+                                "symbol": symbol,
+                                "new_rank": new_rank,
+                                "money_score": money_score,
+                                "momentum": momentum
+                            })
+                        elif new_rank > self.TOP_N and symbol in old_elite:
+                            changes[asset_type]["demoted"].append({
+                                "symbol": symbol,
+                                "old_rank": old_rank,
+                                "new_rank": new_rank,
+                                "money_score": money_score
+                            })
+                        
+                        # Update in-memory
+                        if symbol in pool:
+                            pool[symbol].rank = new_rank
+                            pool[symbol].rank_change = rank_change
+                            pool[symbol].recent_profit_pct = recent_profit
+                            pool[symbol].momentum = momentum
+                            pool[symbol].tier = tier
+                    
+                    # New elite list
+                    new_elite = [p[0] for p in players[:self.TOP_N]]
+                    changes[asset_type]["new_elite"] = new_elite
+                    
+                    if asset_type == "stock":
+                        self._elite_stocks = new_elite
+                    else:
+                        self._elite_crypto = new_elite
                 
-                # New elite list
-                new_elite = [p[0] for p in players[:self.TOP_N]]
-                changes[asset_type]["new_elite"] = new_elite
+                conn.commit()
                 
-                if asset_type == "stock":
-                    self._elite_stocks = new_elite
-                else:
-                    self._elite_crypto = new_elite
-            
-            conn.commit()
-            
-            LOGGER.info(f"🎮 [MONEY GAME] 🏆 Rankings updated!")
-            LOGGER.info(f"  Stocks: {len(changes['stocks']['promoted'])} promoted, {len(changes['stocks']['demoted'])} demoted")
-            LOGGER.info(f"  Crypto: {len(changes['crypto']['promoted'])} promoted, {len(changes['crypto']['demoted'])} demoted")
-            
-            return changes
+                LOGGER.info(f"🎮 [MONEY GAME] 🏆 Rankings updated!")
+                LOGGER.info(f"  Stocks: {len(changes['stocks']['promoted'])} promoted, {len(changes['stocks']['demoted'])} demoted")
+                LOGGER.info(f"  Crypto: {len(changes['crypto']['promoted'])} promoted, {len(changes['crypto']['demoted'])} demoted")
+                
+                return changes
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Ranking error: {e}")
             return {"error": str(e)}
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def _save_player(self, stats: PlayerStats):
         """Save player to database"""
         if not self.use_postgres:
             return
         
-        conn = None
         try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            cur.execute("""
-                INSERT INTO money_game_players
-                (symbol, asset_type, tier, total_profit_pct, avg_profit_per_trade,
-                 best_trade_pct, worst_trade_pct, total_trades, wins, losses,
-                 win_rate, money_score, rank)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (symbol) DO UPDATE SET
-                    tier = EXCLUDED.tier,
-                    total_profit_pct = EXCLUDED.total_profit_pct,
-                    avg_profit_per_trade = EXCLUDED.avg_profit_per_trade,
-                    last_updated = NOW()
-            """, (
-                stats.symbol, stats.asset_type, stats.tier.value,
-                stats.total_profit_pct, stats.avg_profit_per_trade,
-                stats.best_trade_pct, stats.worst_trade_pct,
-                stats.total_trades, stats.wins, stats.losses,
-                stats.win_rate, stats.money_score, stats.rank
-            ))
-            
-            conn.commit()
+            with self._pg_conn() as conn:
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    INSERT INTO money_game_players
+                    (symbol, asset_type, tier, total_profit_pct, avg_profit_per_trade,
+                     best_trade_pct, worst_trade_pct, total_trades, wins, losses,
+                     win_rate, money_score, rank)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (symbol) DO UPDATE SET
+                        tier = EXCLUDED.tier,
+                        total_profit_pct = EXCLUDED.total_profit_pct,
+                        avg_profit_per_trade = EXCLUDED.avg_profit_per_trade,
+                        last_updated = NOW()
+                """, (
+                    stats.symbol, stats.asset_type, stats.tier.value,
+                    stats.total_profit_pct, stats.avg_profit_per_trade,
+                    stats.best_trade_pct, stats.worst_trade_pct,
+                    stats.total_trades, stats.wins, stats.losses,
+                    stats.win_rate, stats.money_score, stats.rank
+                ))
+                
+                conn.commit()
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Save player error: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
     
     def get_elite_stocks(self) -> List[str]:
         """Get TOP 10 money-making stocks"""
@@ -871,11 +836,14 @@ class MoneyGameEngine:
 
 # Singleton
 _money_game: Optional[MoneyGameEngine] = None
+_money_game_lock = threading.Lock()
 
 
 def get_money_game() -> MoneyGameEngine:
     """Get or create the Money Game engine"""
     global _money_game
     if _money_game is None:
-        _money_game = MoneyGameEngine()
+        with _money_game_lock:
+            if _money_game is None:
+                _money_game = MoneyGameEngine()
     return _money_game

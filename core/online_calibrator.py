@@ -17,33 +17,22 @@ from typing import Any
 LOGGER = logging.getLogger(__name__)
 
 
-def _get_pg_conn():
-    """Get a PostgreSQL connection via shared pool bridge."""
-    from core.db_pool import get_sync_connection_raw
-    return get_sync_connection_raw()
-
-
 def _pg_conn():
     """Context manager that guarantees connection is returned to pool.
-    
+
     Usage:
         with _pg_conn() as conn:
             cur = conn.cursor()
             cur.execute(...)
             conn.commit()
     """
-    from contextlib import contextmanager
-    @contextmanager
-    def _inner():
-        conn = _get_pg_conn()
-        try:
+    from contextlib import contextmanager as _cm
+    @_cm
+    def _pg():
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
             yield conn
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
-    return _inner()
+    return _pg()
 
 
 @dataclass
@@ -311,7 +300,7 @@ class OnlineCalibrator:
         Returns CalibrationResult if calibration performed, None otherwise.
         """
         try:
-            conn = _get_pg_conn()
+          with _pg_conn() as conn:
             cur = conn.cursor()
             cutoff = int(time.time()) - (self.lookback_days * 86400)
 
@@ -700,12 +689,16 @@ class OnlineCalibrator:
 
 
 # Singleton instance
+import threading as _threading
 _ONLINE_CALIBRATOR: OnlineCalibrator | None = None
+_ONLINE_CALIBRATOR_LOCK = _threading.Lock()
 
 
 def get_online_calibrator() -> OnlineCalibrator:
     """Get singleton instance of online calibrator."""
     global _ONLINE_CALIBRATOR
     if _ONLINE_CALIBRATOR is None:
-        _ONLINE_CALIBRATOR = OnlineCalibrator()
+        with _ONLINE_CALIBRATOR_LOCK:
+            if _ONLINE_CALIBRATOR is None:
+                _ONLINE_CALIBRATOR = OnlineCalibrator()
     return _ONLINE_CALIBRATOR

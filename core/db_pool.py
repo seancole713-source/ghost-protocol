@@ -271,6 +271,64 @@ def sync_connection():
     return _inner()
 
 
+class _PoolConnProxy:
+    """
+    Proxy around a psycopg2 connection that returns it to the pool on close().
+
+    The previous approach (monkey-patching conn.close on C extension objects)
+    was unreliable — psycopg2 connections are C types and attribute assignment
+    may not override the built-in close() method in all code paths.
+
+    This proxy delegates all attribute access to the real connection but
+    intercepts close() to call pool.putconn() directly.
+    """
+    __slots__ = ('_conn', '_pool', '_conn_id', '_closed')
+
+    def __init__(self, conn, pool, conn_id):
+        object.__setattr__(self, '_conn', conn)
+        object.__setattr__(self, '_pool', pool)
+        object.__setattr__(self, '_conn_id', conn_id)
+        object.__setattr__(self, '_closed', False)
+
+    def close(self):
+        if object.__getattribute__(self, '_closed'):
+            return
+        object.__setattr__(self, '_closed', True)
+        _conn = object.__getattribute__(self, '_conn')
+        _pool = object.__getattribute__(self, '_pool')
+        _cid = object.__getattribute__(self, '_conn_id')
+        _sync_checkout_callers.pop(_cid, None)
+        try:
+            _conn.rollback()
+        except Exception:
+            pass
+        try:
+            _pool.putconn(_conn)
+        except Exception:
+            pass
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, '_conn'), name)
+
+    def __setattr__(self, name, value):
+        if name in _PoolConnProxy.__slots__:
+            object.__setattr__(self, name, value)
+        else:
+            setattr(object.__getattribute__(self, '_conn'), name, value)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
+
 def get_sync_connection_raw():
     """
     Get a psycopg2 connection whose .close() returns it to the pool.
@@ -311,19 +369,8 @@ def get_sync_connection_raw():
                 _sync_checkout_callers[_conn_id] = _caller_info
                 LOGGER.debug(f"[DB_POOL] checkout #{len(_sync_checkout_callers)}/{SYNC_POOL_MAX}: {_caller_info}")
 
-                # Monkey-patch .close() so callers return to pool
-                def _pool_return(_c=conn, _cid=_conn_id):
-                    try:
-                        _c.rollback()
-                    except Exception:
-                        pass
-                    try:
-                        pool.putconn(_c)
-                        _sync_checkout_callers.pop(_cid, None)
-                    except Exception:
-                        pass
-                conn.close = _pool_return  # type: ignore[assignment]
-                return conn
+                # Return a proxy that calls pool.putconn() on close()
+                return _PoolConnProxy(conn, pool, _conn_id)
             except Exception as e:
                 _last_err = e
                 if _attempt < _max_retries - 1:
