@@ -160,6 +160,7 @@ async def pool_health_check() -> dict:
 
 _sync_pool = None  # psycopg2 ThreadedConnectionPool
 _sync_pool_lock = __import__("threading").Lock()
+_sync_checkout_callers = {}  # {conn_id: "file:line:func"} — tracks who checked out each conn
 
 SYNC_POOL_MIN = int(os.getenv("DB_SYNC_POOL_MIN", "1"))
 SYNC_POOL_MAX = int(os.getenv("DB_SYNC_POOL_MAX", "5"))
@@ -287,6 +288,7 @@ def get_sync_connection_raw():
         conn = get_sync_connection_raw()           # CORRECT
     """
     import time as _time
+    import traceback as _tb
 
     pool = _get_sync_pool()
 
@@ -299,14 +301,25 @@ def get_sync_connection_raw():
             try:
                 conn = pool.getconn()
 
+                # Track who checked out this connection
+                _caller_stack = _tb.extract_stack(limit=4)
+                _caller_info = " → ".join(
+                    f"{frame.filename.split('/')[-1]}:{frame.lineno}:{frame.name}"
+                    for frame in _caller_stack[:-1]  # skip get_sync_connection_raw itself
+                )
+                _conn_id = id(conn)
+                _sync_checkout_callers[_conn_id] = _caller_info
+                LOGGER.debug(f"[DB_POOL] checkout #{len(_sync_checkout_callers)}/{SYNC_POOL_MAX}: {_caller_info}")
+
                 # Monkey-patch .close() so callers return to pool
-                def _pool_return(_c=conn):
+                def _pool_return(_c=conn, _cid=_conn_id):
                     try:
                         _c.rollback()
                     except Exception:
                         pass
                     try:
                         pool.putconn(_c)
+                        _sync_checkout_callers.pop(_cid, None)
                     except Exception:
                         pass
                 conn.close = _pool_return  # type: ignore[assignment]
@@ -355,6 +368,7 @@ def get_sync_pool_status() -> dict:
             "max_connections": pool_max,
             "checked_out": used,
             "available": pool_max - used,
+            "holders": list(_sync_checkout_callers.values()),
         }
     except Exception as e:
         return {"initialized": True, "error": str(e)}
