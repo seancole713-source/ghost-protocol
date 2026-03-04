@@ -100,8 +100,8 @@ class V2AssetQualitySystem:
         if not self.use_postgres:
             return
         try:
-            from core.db_pool import sync_connection
-            with sync_connection() as conn:
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
                 cur = conn.cursor()
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS v2_quality_config (
@@ -120,8 +120,8 @@ class V2AssetQualitySystem:
         if not self.use_postgres:
             return None
         try:
-            from core.db_pool import sync_connection
-            with sync_connection() as conn:
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
                 cur = conn.cursor()
                 cur.execute("SELECT value FROM v2_quality_config WHERE key = 'config'")
                 row = cur.fetchone()
@@ -137,8 +137,8 @@ class V2AssetQualitySystem:
         if not self.use_postgres:
             return
         try:
-            from core.db_pool import sync_connection
-            with sync_connection() as conn:
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
                 cur = conn.cursor()
                 value_json = json.dumps(data)
                 cur.execute("""
