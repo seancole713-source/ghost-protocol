@@ -463,14 +463,18 @@ class IntelligenceHub:
                 if symbol.upper() in bearish_syms:
                     severity = event.get("severity", "LOW")
                     sig.direction = "SELL"
-                    sig.confidence = 0.6 if severity in ("HIGH", "CRITICAL") else 0.4
-                    sig.reasoning = f"News event bearish for {symbol}: {event.get('headline', '')[:80]}"
+                    sig.confidence = 0.7 if severity == "CRITICAL" else (0.6 if severity == "HIGH" else 0.4)
+                    # Include severity marker so _aggregate_signals can detect risk level
+                    risk_marker = "HIGH risk" if severity in ("CRITICAL", "HIGH") else "MEDIUM risk"
+                    sig.reasoning = f"News Brain: {symbol} at {risk_marker} — event: {event.get('headline', '')[:80]}"
                     return sig
 
                 if symbol.upper() in bullish_syms:
+                    severity = event.get("severity", "LOW")
                     sig.direction = "BUY"
-                    sig.confidence = 0.5
-                    sig.reasoning = f"News event bullish for {symbol}: {event.get('headline', '')[:80]}"
+                    sig.confidence = 0.6 if severity in ("CRITICAL", "HIGH") else 0.45
+                    risk_marker = "bullish HIGH" if severity in ("CRITICAL", "HIGH") else "bullish"
+                    sig.reasoning = f"News Brain: {symbol} {risk_marker} — event: {event.get('headline', '')[:80]}"
                     return sig
 
             sig.direction = direction

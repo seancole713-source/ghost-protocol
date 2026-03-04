@@ -130,6 +130,26 @@ class TestNewsBrainSignal:
         sig = hub._check_news_brain("SOL", "BUY")
         assert sig.active is True
         assert sig.direction == "SELL"
+        assert "HIGH risk" in sig.reasoning  # Severity must be in reasoning for aggregate detection
+
+    def test_bearish_critical_event_sets_high_risk(self):
+        """CRITICAL severity events should flag as HIGH risk in reasoning."""
+        from core.intelligence_hub import IntelligenceHub, update_news_brain_cache
+        update_news_brain_cache({
+            "major_events": [{
+                "headline": "Iran war escalation",
+                "severity": "CRITICAL",
+                "bearish_symbols": ["ETH", "LINK"],
+                "bullish_symbols": [],
+            }],
+            "predictions_at_risk": [],
+        })
+        hub = IntelligenceHub()
+        sig = hub._check_news_brain("ETH", "BUY")
+        assert sig.active is True
+        assert sig.direction == "SELL"
+        assert sig.confidence == 0.7  # CRITICAL = highest confidence
+        assert "HIGH risk" in sig.reasoning
 
     def test_no_recent_cache(self):
         import core.intelligence_hub as hub_module
