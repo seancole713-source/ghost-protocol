@@ -327,6 +327,16 @@ async def _debug_routes():
         return {"error": str(e)}
 
 
+@APP.get("/debug/pool-status", include_in_schema=False)
+async def _debug_pool_status():
+    """Diagnostic: show sync connection pool health."""
+    try:
+        from core.db_pool import get_sync_pool_status
+        return get_sync_pool_status()
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ---------------------------------------------------------------------------
 # Mount News Router (modular approach)
 # ---------------------------------------------------------------------------
@@ -4327,10 +4337,14 @@ async def _on_startup():
                                     LIMIT 100
                                 """)
                                 completed = cur.fetchall()
-                                conn.close()
                             except Exception as db_err:
                                 LOGGER.debug(f"[FEEDBACK LOOP] DB query failed: {db_err}")
                                 return
+                            finally:
+                                try:
+                                    conn.close()
+                                except Exception:
+                                    pass
                             
                             outcomes_processed = 0
                             for row in completed:

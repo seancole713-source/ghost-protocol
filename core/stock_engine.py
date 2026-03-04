@@ -833,33 +833,37 @@ class StockEngine:
         base_confidence = ensemble_confidence  # Raw model output, no floor
         
         # ================================================================
-        # PRE-MARKET CONFIDENCE ADJUSTMENT (Feb 24, 2026 v2)
+        # PRE-MARKET CONFIDENCE FLOOR (restored from lost commit 3fb0b14)
         #
         # At 8 AM CT (9 AM ET), the ensemble predictor is degraded because
         # the feature orchestrator can't get real-time price/volume data.
         # But the stock engine's indicators (from Polygon daily bars) are valid.
         #
-        # FIXED: Previous version had two problems:
-        #   1. Indicator floor was 0.62 + confirms*0.03 (manufactured from thin air)
-        #   2. Confirmations were double-counted (floor calc AND conf_boost)
-        # Now: modest flat boost capped at +8%, no confirmation double-count.
+        # Instead of a flat boost (which never hits V3 0.68 floor), apply
+        # a FLOOR based on confirmations.  This ensures stocks with strong
+        # multi-indicator agreement reach the TOP 10 card, while weak
+        # signals correctly fail:
+        #   0 confirms = 0.62 (fails V3)
+        #   1 confirm  = 0.65 (fails V3)
+        #   2 confirms = 0.68 (borderline)
+        #   3 confirms = 0.71 (passes V3 ✅)
+        #   4 confirms = 0.74 (passes V3 ✅)
+        #   5 confirms = 0.77 (passes V3 ✅)
+        #
+        # Completely inert during market hours (live quotes available).
         # ================================================================
         premarket = _is_premarket()
         data_quality = indicators.get("data_quality_score", 1.0)
         
-        premarket_boost = 0.0
         if premarket and direction != "HOLD" and data_quality >= 0.7:
-            # Modest boost: daily bars are valid but ensemble is degraded.
-            # Don't manufacture confidence — just compensate for data staleness.
-            # Max boost = +8% (from 52% → 60%, not 52% → 80%).
-            premarket_boost = min(0.08, 0.04 + confirmations * 0.01)
-            if base_confidence < 0.65:
-                base_confidence += premarket_boost
+            premarket_floor = 0.62 + (confirmations * 0.03)
+            if base_confidence < premarket_floor:
                 LOGGER.info(
-                    f"🌅 [{symbol}] Pre-market boost: +{premarket_boost:.0%} → "
-                    f"{base_confidence:.0%} (daily bars valid, "
-                    f"data_quality={data_quality:.0%}, {confirmations} confirms)"
+                    f"🌅 [{symbol}] Pre-market confidence floor: "
+                    f"{base_confidence:.0%} → {premarket_floor:.0%} "
+                    f"({confirmations} confirms, data_quality={data_quality:.0%})"
                 )
+                base_confidence = premarket_floor
         
         # Boost for confirmations (NOT double-counted with pre-market)
         # Reduced from 0.04 to 0.02 per confirmation, cap 0.10 (was 0.25)

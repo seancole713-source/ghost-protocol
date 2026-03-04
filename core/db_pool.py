@@ -334,3 +334,27 @@ def get_sync_connection_raw():
             raise RuntimeError("DATABASE_URL not set")
         LOGGER.warning("[DB_POOL] Sync pool not initialized, creating single connection")
         return psycopg2.connect(db_url)
+
+
+def get_sync_pool_status() -> dict:
+    """Return diagnostic info about the sync connection pool."""
+    pool = _sync_pool
+    if pool is None:
+        return {"initialized": False}
+    try:
+        # ThreadedConnectionPool internals
+        used = len(pool._used)       # connections currently checked out
+        rused = len(pool._rused)     # reverse map
+        pool_min = pool.minconn
+        pool_max = pool.maxconn
+        closed = getattr(pool, 'closed', False)
+        return {
+            "initialized": True,
+            "closed": closed,
+            "min_connections": pool_min,
+            "max_connections": pool_max,
+            "checked_out": used,
+            "available": pool_max - used,
+        }
+    except Exception as e:
+        return {"initialized": True, "error": str(e)}
