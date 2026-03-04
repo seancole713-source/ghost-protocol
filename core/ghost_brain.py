@@ -337,12 +337,15 @@ class GhostBrain:
             total = 0
             data_quality = "none"
 
-        # ── INSUFFICIENT DATA → EXCLUDE (don't gamble on unproven symbols) ──
+        # ── INSUFFICIENT DATA → PASS-THROUGH (let them build history) ──
         if total < MIN_SAMPLES:
-            reasons.append(f"insufficient_data ({total}/{MIN_SAMPLES}) → EXCLUDE")
+            reasons.append(f"insufficient_data ({total}/{MIN_SAMPLES}) → PASS_THROUGH")
+            # Cold-start fix: instead of EXCLUDE, pass through with original
+            # direction/confidence so trades get recorded and history builds.
+            # Once history reaches MIN_SAMPLES, full Brain analysis kicks in.
             decision = BrainDecision(
-                symbol=symbol, action="EXCLUDE", direction=direction,
-                confidence=0.0, tier="⚪NO_DATA",
+                symbol=symbol, action="SEND", direction=direction,
+                confidence=confidence, tier="⚪NEW",
                 asset_class=asset_class, reasons=reasons,
                 raw_accuracy=raw_accuracy, brain_accuracy=raw_accuracy,
                 effective_accuracy=raw_accuracy, sample_size=total,
@@ -350,7 +353,7 @@ class GhostBrain:
             )
             self._decisions[symbol] = decision
             self._cycle_stats["analyzed"] += 1
-            self._cycle_stats["excluded"] += 1
+            self._cycle_stats["sent"] += 1
             return decision
 
         # ══════════════════════════════════════════════════════

@@ -1234,6 +1234,7 @@ class GameResolver:
             "timestamp": datetime.utcnow().isoformat()
         }
         
+        conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
@@ -1250,55 +1251,61 @@ class GameResolver:
             """, (cutoff,))
             
             trades = cur.fetchall()
-            conn.close()
-            
-            LOGGER.info(f"🏆 [RESOLVER] Found {len(trades)} trades to resolve...")
-            
-            for trade in trades:
-                trade_id, symbol, asset_type, direction, entry_price, target_price = trade
-                
-                # Get current price
-                scout = GhostScout()
-                current_price = scout._get_current_price(symbol, asset_type)
-                
-                if current_price is None:
-                    LOGGER.warning(f"🏆 [RESOLVER] Could not get price for {symbol}")
-                    continue
-                
-                # Resolve the trade!
-                result = game.resolve_trade(trade_id, current_price)
-                
-                if "error" not in result:
-                    results["resolved"] += 1
-                    profit = result.get("profit_pct", 0)
-                    
-                    if profit > 0:
-                        results["winners"].append({
-                            "symbol": symbol,
-                            "profit": f"+{profit:.1f}%"
-                        })
-                        results["total_profit"] += profit
-                    else:
-                        results["losers"].append({
-                            "symbol": symbol,
-                            "loss": f"{profit:.1f}%"
-                        })
-                        results["total_loss"] += abs(profit)
-            
-            # After resolving, update rankings!
-            if results["resolved"] > 0:
-                LOGGER.info("🏆 [RESOLVER] Updating rankings after resolution...")
-                game.update_rankings()
-            
-            LOGGER.info(f"🏆 [RESOLVER] Resolved {results['resolved']} trades")
-            LOGGER.info(f"   💰 Winners: {len(results['winners'])}, Total Profit: +{results['total_profit']:.1f}%")
-            LOGGER.info(f"   💸 Losers: {len(results['losers'])}, Total Loss: -{results['total_loss']:.1f}%")
-            
-            return results
-            
         except Exception as e:
-            LOGGER.error(f"🏆 [RESOLVER] Error: {e}")
+            LOGGER.error(f"🏆 [RESOLVER] DB error fetching trades: {e}")
             return {"error": str(e)}
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        
+        LOGGER.info(f"🏆 [RESOLVER] Found {len(trades)} trades to resolve...")
+        
+        # Reuse ONE scout for all price lookups (avoid 100x Yahoo API calls)
+        scout = GhostScout(include_dynamic_movers=False)
+        
+        for trade in trades:
+            trade_id, symbol, asset_type, direction, entry_price, target_price = trade
+            
+            # Get current price
+            current_price = scout._get_current_price(symbol, asset_type)
+            
+            if current_price is None:
+                LOGGER.warning(f"🏆 [RESOLVER] Could not get price for {symbol}")
+                continue
+            
+            # Resolve the trade!
+            result = game.resolve_trade(trade_id, current_price)
+            
+            if "error" not in result:
+                results["resolved"] += 1
+                profit = result.get("profit_pct", 0)
+                
+                if profit > 0:
+                    results["winners"].append({
+                        "symbol": symbol,
+                        "profit": f"+{profit:.1f}%"
+                    })
+                    results["total_profit"] += profit
+                else:
+                    results["losers"].append({
+                        "symbol": symbol,
+                        "loss": f"{profit:.1f}%"
+                    })
+                    results["total_loss"] += abs(profit)
+        
+        # After resolving, update rankings!
+        if results["resolved"] > 0:
+            LOGGER.info("🏆 [RESOLVER] Updating rankings after resolution...")
+            game.update_rankings()
+        
+        LOGGER.info(f"🏆 [RESOLVER] Resolved {results['resolved']} trades")
+        LOGGER.info(f"   💰 Winners: {len(results['winners'])}, Total Profit: +{results['total_profit']:.1f}%")
+        LOGGER.info(f"   💸 Losers: {len(results['losers'])}, Total Loss: -{results['total_loss']:.1f}%")
+        
+        return results
 
 
 # Convenience functions

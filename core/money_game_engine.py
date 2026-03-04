@@ -120,6 +120,7 @@ class MoneyGameEngine:
         if not self.use_postgres:
             return
         
+        conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
@@ -177,16 +178,22 @@ class MoneyGameEngine:
             """)
             
             conn.commit()
-            conn.close()
             LOGGER.info("🎮 [MONEY GAME] Database tables ready!")
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] DB setup error: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _load_players(self):
         """Load all players from database"""
         if not self.use_postgres:
             return
         
+        conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
@@ -228,11 +235,16 @@ class MoneyGameEngine:
                     self._crypto_players[stats.symbol] = stats
             
             self._rebuild_elite_lists()
-            conn.close()
             
             LOGGER.info(f"🎮 [MONEY GAME] Loaded {len(self._stock_players)} stock players, {len(self._crypto_players)} crypto players")
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Load error: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _rebuild_elite_lists(self):
         """Rebuild TOP 10 (elite) lists based on money score"""
@@ -311,6 +323,7 @@ class MoneyGameEngine:
         if not self.use_postgres:
             return -1
         
+        conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
@@ -324,13 +337,18 @@ class MoneyGameEngine:
             
             trade_id = cur.fetchone()[0]
             conn.commit()
-            conn.close()
             
             LOGGER.debug(f"🎮 [MONEY GAME] Trade #{trade_id}: {symbol} {direction} @ {entry_price}")
             return trade_id
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Record trade error: {e}")
             return -1
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def resolve_trade(self, trade_id: int, final_price: float) -> Dict:
         """
@@ -341,6 +359,7 @@ class MoneyGameEngine:
         if not self.use_postgres:
             return {"error": "No database"}
         
+        conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
@@ -354,14 +373,12 @@ class MoneyGameEngine:
             
             row = cur.fetchone()
             if not row:
-                conn.close()
                 return {"error": "Trade not found or already resolved"}
             
             symbol, asset_type, direction, entry_price, target_price = row
             
             # CALCULATE PROFIT/LOSS
             if not entry_price or entry_price <= 0:
-                conn.close()
                 return {"error": f"Invalid entry_price={entry_price} for trade {trade_id}"}
             if direction == "BUY":
                 profit_pct = ((final_price - entry_price) / entry_price) * 100
@@ -381,7 +398,6 @@ class MoneyGameEngine:
             self._update_player_stats(cur, symbol, asset_type, profit_pct, is_win)
             
             conn.commit()
-            conn.close()
             
             emoji = "💰" if profit_pct > 0 else "💸"
             LOGGER.info(f"🎮 [MONEY GAME] {emoji} {symbol}: {profit_pct:+.2f}% {'WIN' if is_win else 'LOSS'}")
@@ -395,6 +411,12 @@ class MoneyGameEngine:
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Resolve error: {e}")
             return {"error": str(e)}
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _update_player_stats(self, cur, symbol: str, asset_type: str, profit_pct: float, is_win: bool):
         """Update a player's stats after a trade"""
@@ -547,6 +569,7 @@ class MoneyGameEngine:
             "timestamp": datetime.utcnow().isoformat()
         }
         
+        conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
@@ -643,7 +666,6 @@ class MoneyGameEngine:
                     self._elite_crypto = new_elite
             
             conn.commit()
-            conn.close()
             
             LOGGER.info(f"🎮 [MONEY GAME] 🏆 Rankings updated!")
             LOGGER.info(f"  Stocks: {len(changes['stocks']['promoted'])} promoted, {len(changes['stocks']['demoted'])} demoted")
@@ -653,12 +675,19 @@ class MoneyGameEngine:
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Ranking error: {e}")
             return {"error": str(e)}
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _save_player(self, stats: PlayerStats):
         """Save player to database"""
         if not self.use_postgres:
             return
         
+        conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
@@ -683,9 +712,14 @@ class MoneyGameEngine:
             ))
             
             conn.commit()
-            conn.close()
         except Exception as e:
             LOGGER.error(f"🎮 [MONEY GAME] Save player error: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def get_elite_stocks(self) -> List[str]:
         """Get TOP 10 money-making stocks"""
