@@ -52,6 +52,43 @@ LOGGER = logging.getLogger("ghost.intelligence_hub")
 
 
 # ═══════════════════════════════════════════════════════════════
+# SYMBOL ALIAS MAP — Claude may return full names instead of tickers
+# ═══════════════════════════════════════════════════════════════
+
+_SYMBOL_ALIASES: Dict[str, str] = {
+    "BITCOIN": "BTC", "ETHEREUM": "ETH", "SOLANA": "SOL",
+    "RIPPLE": "XRP", "CHAINLINK": "LINK", "CHILIZ": "CHZ",
+    "DOGECOIN": "DOGE", "CARDANO": "ADA", "POLKADOT": "DOT",
+    "AVALANCHE": "AVAX", "UNISWAP": "UNI", "LITECOIN": "LTC",
+    "STELLAR": "XLM", "POLYGON": "MATIC", "COSMOS": "ATOM",
+    "TONCOIN": "TON", "TRON": "TRX", "SHIBA INU": "SHIB",
+    "BITCOIN CASH": "BCH", "SEI NETWORK": "SEI", "SEI": "SEI",
+    "NEAR PROTOCOL": "NEAR", "APTOS": "APT", "ARBITRUM": "ARB",
+    "OPTIMISM": "OP", "TURBO": "TURBO",
+    # Common suffixes Claude might add
+    "BTCUSD": "BTC", "ETHUSD": "ETH", "SOLUSD": "SOL",
+    "BTC/USD": "BTC", "ETH/USD": "ETH", "SOL/USD": "SOL",
+    "BTC-USD": "BTC", "ETH-USD": "ETH", "SOL-USD": "SOL",
+}
+
+
+def _normalize_symbol(raw: str) -> str:
+    """Normalize a symbol from Claude's output to a standard ticker."""
+    s = raw.strip().upper()
+    # Direct alias match
+    if s in _SYMBOL_ALIASES:
+        return _SYMBOL_ALIASES[s]
+    # Strip common suffixes
+    for suffix in ("USD", "USDT", "-USD", "/USD", "_USD"):
+        if s.endswith(suffix):
+            base = s[:-len(suffix)]
+            if base in _SYMBOL_ALIASES:
+                return _SYMBOL_ALIASES[base]
+            return base
+    return s
+
+
+# ═══════════════════════════════════════════════════════════════
 # DATA CLASSES
 # ═══════════════════════════════════════════════════════════════
 
@@ -93,13 +130,30 @@ _NEWS_BRAIN_CACHE_TS: float = 0.0
 
 
 def update_news_brain_cache(analysis: Dict) -> None:
-    """Called by wolf_app's news analysis loop to store latest results."""
+    """Called by wolf_app's news analysis loop to store latest results.
+    Normalizes all symbol names (e.g., 'Ethereum' → 'ETH') on ingest."""
     global _NEWS_BRAIN_CACHE, _NEWS_BRAIN_CACHE_TS
+
+    # Normalize symbols in predictions_at_risk
+    for pred in analysis.get("predictions_at_risk", []):
+        raw = pred.get("symbol", "")
+        normalized = _normalize_symbol(raw)
+        if raw != normalized:
+            LOGGER.info(f"🧠 [HUB] Symbol normalized: '{raw}' → '{normalized}'")
+        pred["symbol"] = normalized
+
+    # Normalize symbols in major_events
+    for event in analysis.get("major_events", []):
+        event["bearish_symbols"] = [_normalize_symbol(s) for s in event.get("bearish_symbols", [])]
+        event["bullish_symbols"] = [_normalize_symbol(s) for s in event.get("bullish_symbols", [])]
+
     _NEWS_BRAIN_CACHE = analysis
     _NEWS_BRAIN_CACHE_TS = time.time()
+
+    at_risk_syms = [p.get('symbol', '?') for p in analysis.get('predictions_at_risk', [])]
     LOGGER.info(f"🧠 [HUB] News Brain cache updated: "
                 f"{len(analysis.get('major_events', []))} events, "
-                f"{len(analysis.get('predictions_at_risk', []))} at risk")
+                f"{len(at_risk_syms)} at risk: {', '.join(at_risk_syms)}")
 
 
 def get_news_brain_cache() -> Tuple[Dict, float]:

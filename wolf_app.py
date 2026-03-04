@@ -8449,12 +8449,22 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 try:
                     from core.intelligence_hub import get_intelligence_hub
                     _hub = get_intelligence_hub()
+                    # Fetch price history for regime detection
+                    _stock_price_history = []
+                    try:
+                        from core.ghost_scout import GhostScout as _StockGS
+                        _stock_gs = _StockGS()
+                        _stock_price_history = _stock_gs._fetch_price_history(symbol, "stock") or []
+                    except Exception:
+                        pass
+
                     _hub_report = _hub.analyze(
                         symbol=symbol,
                         direction=se_direction,
                         confidence=se_confidence,
                         entry_price=se_entry_price or 0,
                         asset_type="stock",
+                        price_history=_stock_price_history,
                     )
                     hub_meta = {
                         "intel_active_systems": _hub_report.active_systems,
@@ -15645,6 +15655,32 @@ async def api_v3_intelligence_status():
         status["news_brain_events"] = len(cache.get("major_events", [])) if cache else 0
         status["news_brain_at_risk"] = len(cache.get("predictions_at_risk", [])) if cache else 0
         return {"ok": True, **status}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@APP.get("/api/v3/intelligence/cache")
+async def api_v3_intelligence_cache():
+    """Dump the current news brain cache — shows exactly what symbols are at risk."""
+    try:
+        from core.intelligence_hub import get_news_brain_cache
+        cache, cache_ts = get_news_brain_cache()
+        import time as _t
+        return {
+            "ok": True,
+            "cache_age_seconds": round(_t.time() - cache_ts, 1) if cache_ts > 0 else -1,
+            "predictions_at_risk": cache.get("predictions_at_risk", []) if cache else [],
+            "major_events": [
+                {
+                    "headline": e.get("headline", "")[:120],
+                    "severity": e.get("severity", "?"),
+                    "bearish_symbols": e.get("bearish_symbols", []),
+                    "bullish_symbols": e.get("bullish_symbols", []),
+                }
+                for e in cache.get("major_events", [])
+            ] if cache else [],
+            "recommendation": cache.get("recommendation", "") if cache else "",
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
