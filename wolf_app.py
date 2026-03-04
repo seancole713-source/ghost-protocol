@@ -5577,7 +5577,7 @@ async def _post_startup_init():
             from zoneinfo import ZoneInfo
             _CT = ZoneInfo("America/Chicago")
             _DOCTOR_HOUR = 7
-            _GRACE_MINUTES = 30  # Fire if within 30 min after target
+            _GRACE_MINUTES = 120  # Fire if within 2h after target (handles restarts up to 9 AM)
             await asyncio.sleep(30)  # let startup finish
             LOGGER.info("[DOCTOR-CRON] 🩺 7 AM CT doctor cron started")
             
@@ -5590,13 +5590,13 @@ async def _post_startup_init():
                     today_target = now_ct.replace(hour=_DOCTOR_HOUR, minute=0, second=0, microsecond=0)
                     today_date = now_ct.date()
                     
-                    # Check if we're in the grace window (7:00-7:30 AM CT today)
+                    # Check if we're in the grace window (7:00-9:00 AM CT today)
                     minutes_past = (now_ct - today_target).total_seconds() / 60
                     in_grace = 0 <= minutes_past <= _GRACE_MINUTES
                     already_fired_today = (_last_fire_date == today_date)
                     
                     if in_grace and not already_fired_today:
-                        # We're in the window — fire NOW (handles restart at 7:01 etc.)
+                        # We're in the window — fire NOW (handles restart at 7:01, 8:30, etc.)
                         LOGGER.info(f"[DOCTOR-CRON] 🩺 In grace window ({minutes_past:.0f}m past 7 AM) — firing immediately")
                         wait_secs = 0
                     elif now_ct >= today_target:
@@ -5619,13 +5619,30 @@ async def _post_startup_init():
                         await asyncio.sleep(3600)  # check again in 1 hour
                         continue
                     
-                    # Fire!
+                    # Fire! With retry logic for Telegram delivery
                     LOGGER.info("[DOCTOR-CRON] 🩺 Running 7 AM System Doctor...")
                     from core.system_doctor import run_and_notify as _doctor_notify
                     loop = asyncio.get_event_loop()
-                    report = await loop.run_in_executor(None, _doctor_notify)
-                    _tg = 'sent' if report.get('telegram_sent') else 'NOT sent'
-                    LOGGER.info(f"[DOCTOR-CRON] 🩺 {report['overall']} ({report['passed']}/{report['passed']+report['failed']}) telegram={_tg}")
+                    
+                    _doctor_sent = False
+                    for _attempt in range(3):  # 3 attempts
+                        try:
+                            report = await loop.run_in_executor(None, _doctor_notify)
+                            _tg = report.get('telegram_sent', False)
+                            LOGGER.info(f"[DOCTOR-CRON] 🩺 {report['overall']} ({report['passed']}/{report['passed']+report['failed']}) telegram={'sent' if _tg else 'NOT sent'} (attempt {_attempt+1})")
+                            if _tg:
+                                _doctor_sent = True
+                                break
+                            else:
+                                LOGGER.warning(f"[DOCTOR-CRON] ⚠️ Telegram delivery failed on attempt {_attempt+1}/3")
+                                await asyncio.sleep(10)  # brief pause before retry
+                        except Exception as _retry_err:
+                            LOGGER.error(f"[DOCTOR-CRON] Attempt {_attempt+1}/3 error: {_retry_err}")
+                            await asyncio.sleep(10)
+                    
+                    if not _doctor_sent:
+                        LOGGER.error("[DOCTOR-CRON] ❌ All 3 Telegram delivery attempts failed — doctor ran but notification not sent")
+                    
                     _last_fire_date = fire_date
                     await asyncio.sleep(120)  # skip past the minute boundary
                 except Exception as _de:

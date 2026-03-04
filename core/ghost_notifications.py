@@ -137,8 +137,9 @@ V3_BLACKLIST = ['TGTX', 'SOUN', 'ABCL', 'ZIL', 'MANA', 'SAND', 'RLC', '1INCH',
 # RSI strategies consistently underperform (45-46% win rate)
 V3_AVOID_STRATEGIES = ['RSI', 'RSI_extreme']
 
-# V3 minimum confidence threshold (lowered — V3 strategies are already backtest-validated)
-V3_MIN_CONFIDENCE = float(os.getenv("V3_MIN_CONFIDENCE", "0.68"))  # Default 0.68 raw. Matches v3_filter.py. Env var override for tuning.
+# V3 minimum confidence threshold (lowered — V3 strategies are backtest-validated with p<0.05)
+# 0.45 lets validated strategies trade on moderate-confidence days while still filtering noise
+V3_MIN_CONFIDENCE = float(os.getenv("V3_MIN_CONFIDENCE", "0.45"))  # Default 0.45 raw. Matches v3_filter.py. Env var override for tuning.
 
 # DEFAULT HOLD PERIOD - Changed from 48h to 72h based on backtest
 # 72h had most statistically significant results

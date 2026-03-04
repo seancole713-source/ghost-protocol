@@ -23,7 +23,7 @@ from datetime import datetime
 logger = logging.getLogger("ghost")
 
 # Inline constants (avoids config/settings.py → pydantic_settings import chain)
-_V3_MIN_CONFIDENCE = float(os.getenv("V3_MIN_CONFIDENCE", "0.68"))
+_V3_MIN_CONFIDENCE = float(os.getenv("V3_MIN_CONFIDENCE", "0.45"))
 _DEFAULT_TARGET_PCT = 0.066  # 6.6%
 _DEFAULT_STOP_PCT = 0.033    # 3.3%
 
