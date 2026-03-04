@@ -97,15 +97,17 @@ class V2VerificationSystem:
                 "period_end": datetime
             }
         """
-        conn = self._get_conn()
-        cur = conn.cursor()
+        conn = None
+        try:
+          conn = self._get_conn()
+          cur = conn.cursor()
         
-        cutoff = datetime.utcnow() - timedelta(days=days)
-        cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column comparison
+          cutoff = datetime.utcnow() - timedelta(days=days)
+          cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column comparison
         
-        # Query paper_trades for verified outcomes
-        # Note: created_at might be TEXT, so use CAST to ensure proper comparison
-        cur.execute("""
+          # Query paper_trades for verified outcomes
+          # Note: created_at might be TEXT, so use CAST to ensure proper comparison
+          cur.execute("""
             SELECT 
                 symbol,
                 signal_direction,
@@ -121,11 +123,24 @@ class V2VerificationSystem:
             AND entry_price > 0
             AND target_price > 0
             ORDER BY created_at DESC
-        """, (cutoff_str,))
+          """, (cutoff_str,))
         
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+          rows = cur.fetchall()
+          cur.close()
+        except Exception as e:
+          LOGGER.error(f"[V2] Failed to get verified win rate: {e}")
+          return {
+              "total_predictions": 0, "verified_wins": 0,
+              "verified_losses": 0, "win_rate": 0.0,
+              "period_start": datetime.utcnow() - timedelta(days=days),
+              "period_end": datetime.utcnow()
+          }
+        finally:
+          if conn:
+              try:
+                  conn.close()
+              except Exception:
+                  pass
         
         if not rows:
             LOGGER.warning(f"[V2] No verified predictions found in last {days} days")
@@ -166,23 +181,25 @@ class V2VerificationSystem:
         IMPORTANT: Only uses V2-era data (since Jan 14, 2026) to avoid
         polluting results with pre-V2 garbage predictions.
         """
-        conn = self._get_conn()
-        cur = conn.cursor()
+        conn = None
+        try:
+          conn = self._get_conn()
+          cur = conn.cursor()
         
-        # Use the LATER of (days ago) or V2_START_DATE
-        # This ensures we NEVER use pre-V2 garbage data
-        days_ago = datetime.utcnow() - timedelta(days=days)
-        cutoff = max(days_ago, V2_START_DATE)
-        cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column
+          # Use the LATER of (days ago) or V2_START_DATE
+          # This ensures we NEVER use pre-V2 garbage data
+          days_ago = datetime.utcnow() - timedelta(days=days)
+          cutoff = max(days_ago, V2_START_DATE)
+          cutoff_str = cutoff.isoformat()  # Convert to string for TEXT column
         
-        LOGGER.info(f"[V2] Using cutoff {cutoff.isoformat()} (V2 floor: {V2_START_DATE.isoformat()})")
+          LOGGER.info(f"[V2] Using cutoff {cutoff.isoformat()} (V2 floor: {V2_START_DATE.isoformat()})")
         
-        # FIX (Mar 1, 2026): Build crypto IN clause from config/symbols.py
-        # Old hardcoded 13-symbol SQL list misclassified all other crypto as 'stock'
-        from config.symbols import CRYPTO_SYMBOLS as _V2_CRYPTO
-        _crypto_sql_list = ", ".join(f"'{s}'" for s in _V2_CRYPTO)
+          # FIX (Mar 1, 2026): Build crypto IN clause from config/symbols.py
+          # Old hardcoded 13-symbol SQL list misclassified all other crypto as 'stock'
+          from config.symbols import CRYPTO_SYMBOLS as _V2_CRYPTO
+          _crypto_sql_list = ", ".join(f"'{s}'" for s in _V2_CRYPTO)
         
-        cur.execute(f"""
+          cur.execute(f"""
             SELECT 
                 symbol,
                 CASE 
@@ -202,11 +219,19 @@ class V2VerificationSystem:
             GROUP BY symbol
             HAVING COUNT(*) >= %(min_preds)s
             ORDER BY win_rate DESC
-        """, {"cutoff": cutoff, "min_preds": min_predictions})
+          """, {"cutoff": cutoff, "min_preds": min_predictions})
         
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+          rows = cur.fetchall()
+          cur.close()
+        except Exception as e:
+          LOGGER.error(f"[V2] Symbol performance query failed: {e}")
+          return []
+        finally:
+          if conn:
+              try:
+                  conn.close()
+              except Exception:
+                  pass
         
         results = []
         for row in rows:
@@ -235,6 +260,7 @@ class V2VerificationSystem:
         Compares first half vs second half of period.
         """
         try:
+            conn = None
             conn = self._get_conn()
             cur = conn.cursor()
             
@@ -274,7 +300,6 @@ class V2VerificationSystem:
             second_wr = (second_half[1] / second_half[0]) if second_half[0] > 0 else 0
             
             cur.close()
-            conn.close()
             
             # Determine trend
             if second_wr > first_wr + 0.1:  # 10% improvement
@@ -287,6 +312,12 @@ class V2VerificationSystem:
         except Exception as e:
             LOGGER.debug(f"[V2] Trend analysis failed for {symbol}: {e}")
             return "unknown"
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def get_top_performers(self, days: int = 30, min_predictions: int = 20, top_n: int = 20) -> List[str]:
         """

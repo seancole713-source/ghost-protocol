@@ -52,6 +52,7 @@ def get_real_accuracy_stats() -> dict:
             "status": str  # "UNVERIFIED", "BUILDING", "VERIFIED"
         }
     """
+    conn = None
     try:
         # Try to get from outcome reconciler's Postgres data
         from core.db_pool import get_sync_connection_raw
@@ -90,7 +91,6 @@ def get_real_accuracy_stats() -> dict:
             total_predictions = pred_row[0] or 0
             
             cursor.close()
-            conn.close()
             
             # Show "LEARNING" status with prediction count
             return {
@@ -117,7 +117,6 @@ def get_real_accuracy_stats() -> dict:
         total_7d = row_7d[1] or 0
         
         cursor.close()
-        conn.close()
         
         # Calculate accuracy
         accuracy_pct = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
@@ -146,6 +145,12 @@ def get_real_accuracy_stats() -> dict:
         if LOGGER:
             LOGGER.warning(f"Could not fetch real accuracy: {e}")
         return {"status": "UNVERIFIED", "wins": 0, "losses": 0, "accuracy_pct": 0, "total_verified": 0}
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 # ============================================================================
 # SMART CAP SYSTEM - Prevents spam, only sends best predictions

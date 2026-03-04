@@ -105,6 +105,7 @@ class V2AssetQualitySystem:
         if not self.use_postgres:
             return
         
+        conn = None
         try:
             conn = self._get_postgres_connection()
             cur = conn.cursor()
@@ -116,22 +117,27 @@ class V2AssetQualitySystem:
                 )
             """)
             conn.commit()
-            conn.close()
             LOGGER.info("[V2-QUALITY] PostgreSQL table ready")
         except Exception as e:
             LOGGER.warning(f"[V2-QUALITY] Failed to create PostgreSQL table: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _load_from_postgres(self) -> Optional[dict]:
         """Load config from PostgreSQL"""
         if not self.use_postgres:
             return None
         
+        conn = None
         try:
             conn = self._get_postgres_connection()
             cur = conn.cursor()
             cur.execute("SELECT value FROM v2_quality_config WHERE key = 'config'")
             row = cur.fetchone()
-            conn.close()
             
             if row:
                 return json.loads(row[0])
@@ -139,12 +145,19 @@ class V2AssetQualitySystem:
         except Exception as e:
             LOGGER.warning(f"[V2-QUALITY] Failed to load from PostgreSQL: {e}")
             return None
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _save_to_postgres(self, data: dict):
         """Save config to PostgreSQL"""
         if not self.use_postgres:
             return
         
+        conn = None
         try:
             conn = self._get_postgres_connection()
             cur = conn.cursor()
@@ -155,10 +168,15 @@ class V2AssetQualitySystem:
                 ON CONFLICT (key) DO UPDATE SET value = %s, updated_at = NOW()
             """, (value_json, value_json))
             conn.commit()
-            conn.close()
             LOGGER.info("[V2-QUALITY] Saved to PostgreSQL")
         except Exception as e:
             LOGGER.error(f"[V2-QUALITY] Failed to save to PostgreSQL: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _load_config(self):
         """Load saved whitelist/blacklist - PostgreSQL first, JSON fallback"""

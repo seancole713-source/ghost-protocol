@@ -243,6 +243,33 @@ def get_sync_connection():
             conn.close()
 
 
+def sync_connection():
+    """
+    Context manager that guarantees connection is returned to pool.
+
+    Usage:
+        with sync_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT ...")
+            conn.commit()
+        # conn.close() is automatic — no leak possible
+
+    This is the PREFERRED way to use sync connections.
+    """
+    from contextlib import contextmanager as _cm
+    @_cm
+    def _inner():
+        conn = get_sync_connection_raw()
+        try:
+            yield conn
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return _inner()
+
+
 def get_sync_connection_raw():
     """
     Get a psycopg2 connection whose .close() returns it to the pool.

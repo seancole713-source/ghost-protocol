@@ -28,6 +28,7 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
     Returns:
         Accuracy statistics dict
     """
+    conn = None
     try:
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
@@ -141,6 +142,12 @@ def calculate_accuracy_postgres(period: str = "all") -> Dict[str, Any]:
     except Exception as e:
         LOGGER.error(f"Accuracy calculation failed: {e}", exc_info=True)
         return _empty_response(period, f"Error: {str(e)}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _empty_response(period: str, message: str = "") -> Dict[str, Any]:

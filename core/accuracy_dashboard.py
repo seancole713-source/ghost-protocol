@@ -156,6 +156,11 @@ class AccuracyDashboard:
 
         except Exception as e:
             LOGGER.error(f"Failed to get overall stats: {e}")
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
         # Add accuracy trends
         summary["accuracy_trend"] = self._get_accuracy_trends()
@@ -215,9 +220,14 @@ class AccuracyDashboard:
                 if row and row[0] and row[0] > 0:
                     trends[period] = round((row[1] or 0) / row[0], 3)
             cursor.close()
-            conn.close()
         except Exception as e:
             LOGGER.error(f"Failed to get accuracy trends: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         return trends
 
@@ -263,9 +273,14 @@ class AccuracyDashboard:
                     "avg_confidence": round(float(avg_conf or 0), 3)
                 }
             cursor.close()
-            conn.close()
         except Exception as e:
             LOGGER.error(f"Failed to get accuracy by symbol: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         return by_symbol
 
@@ -316,9 +331,14 @@ class AccuracyDashboard:
                         "avg_confidence": round(float(avg_conf or 0), 3)
                     }
             cursor.close()
-            conn.close()
         except Exception as e:
             LOGGER.error(f"Failed to get accuracy by confidence: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         return results
 
@@ -378,9 +398,14 @@ class AccuracyDashboard:
                 else:
                     calibration["interpretation"] = f"Underconfident by {error_pct:.1f}%"
             cursor.close()
-            conn.close()
         except Exception as e:
             LOGGER.error(f"Failed to get calibration analysis: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         return calibration
 
@@ -431,9 +456,14 @@ class AccuracyDashboard:
                     )
                 })
             cursor.close()
-            conn.close()
         except Exception as e:
             LOGGER.error(f"Failed to get recent predictions: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         return predictions
 
@@ -538,9 +568,14 @@ class AccuracyDashboard:
                     "count": int(worst[2])
                 }
             cursor.close()
-            conn.close()
         except Exception as e:
             LOGGER.error(f"Failed to get performance metrics: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         return metrics
 

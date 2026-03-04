@@ -26,6 +26,7 @@ import time
 import sqlite3
 import logging
 from datetime import datetime, timedelta
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1524,7 +1525,20 @@ class GhostNotificationSystem:
             return get_sync_connection_raw()
         except Exception:
             return None
-    
+
+    @contextmanager
+    def _pg_conn(self):
+        """Context manager for safe PostgreSQL connection handling."""
+        conn = self._get_postgres_conn()
+        try:
+            yield conn
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
     def _init_postgres(self) -> bool:
         """Initialize PostgreSQL tracking tables. Returns True if successful."""
         database_url = os.getenv("DATABASE_URL", "")
@@ -1542,6 +1556,7 @@ class GhostNotificationSystem:
             LOGGER.warning(f"[TRACKING] db_pool import failed: {ie}")
             return False
         
+        conn = None
         try:
             conn = get_sync_connection_raw()
             LOGGER.info("[TRACKING] PostgreSQL connection successful!")
@@ -1628,7 +1643,6 @@ class GhostNotificationSystem:
             
             conn.commit()
             cur.close()
-            conn.close()
             
             LOGGER.info("[TRACKING] ✅ PostgreSQL initialized - picks will persist across deploys!")
             self._last_postgres_error = None
@@ -1638,6 +1652,12 @@ class GhostNotificationSystem:
             self._last_postgres_error = str(e)
             LOGGER.warning(f"[TRACKING] PostgreSQL init failed: {e} - using SQLite fallback")
             return False
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _init_sqlite(self):
         """Initialize SQLite tracking database (fallback)"""
@@ -2531,6 +2551,7 @@ class GhostNotificationSystem:
         
         # Continue with original tracking system
         if self._use_postgres:
+            conn = None
             try:
                 conn = self._get_postgres_conn()
                 cur = conn.cursor()
@@ -2601,12 +2622,17 @@ class GhostNotificationSystem:
                 
                 conn.commit()
                 cur.close()
-                conn.close()
                 LOGGER.info(f"[TRACKING] ✅ Registered {len(picks)} picks in PostgreSQL (persistent)")
                 return
                 
             except Exception as e:
                 LOGGER.error(f"[TRACKING] PostgreSQL insert failed: {e} - falling back to SQLite")
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         
         # SQLite fallback
         conn = sqlite3.connect(self._db_path)
@@ -2676,22 +2702,29 @@ class GhostNotificationSystem:
                 # highest-conviction picks and need target/stop monitoring.
                 _v3_set = set(V3_VALIDATED_STRATEGIES.keys())
                 _keep_set = _evict_edge_set | _v3_set
-                conn = self._get_postgres_conn()
-                cur = conn.cursor()
-                # Find active picks NOT in edge whitelist AND NOT V3 validated
-                cur.execute("SELECT DISTINCT symbol FROM ghost_tracked_picks WHERE status = 'active'")
-                active_symbols = [row[0] for row in cur.fetchall()]
-                stale_symbols = [s for s in active_symbols if s.upper() not in _keep_set]
-                if stale_symbols:
-                    for sym in stale_symbols:
-                        cur.execute(
-                            "UPDATE ghost_tracked_picks SET status = 'evicted_edge' WHERE symbol = %s AND status = 'active'",
-                            (sym,)
-                        )
-                    conn.commit()
-                    LOGGER.info(f"[WATCHDOG] 🧹 Evicted {len(stale_symbols)} non-edge tracked picks: {stale_symbols}")
-                cur.close()
-                conn.close()
+                conn = None
+                try:
+                    conn = self._get_postgres_conn()
+                    cur = conn.cursor()
+                    # Find active picks NOT in edge whitelist AND NOT V3 validated
+                    cur.execute("SELECT DISTINCT symbol FROM ghost_tracked_picks WHERE status = 'active'")
+                    active_symbols = [row[0] for row in cur.fetchall()]
+                    stale_symbols = [s for s in active_symbols if s.upper() not in _keep_set]
+                    if stale_symbols:
+                        for sym in stale_symbols:
+                            cur.execute(
+                                "UPDATE ghost_tracked_picks SET status = 'evicted_edge' WHERE symbol = %s AND status = 'active'",
+                                (sym,)
+                            )
+                        conn.commit()
+                        LOGGER.info(f"[WATCHDOG] 🧹 Evicted {len(stale_symbols)} non-edge tracked picks: {stale_symbols}")
+                    cur.close()
+                finally:
+                    if conn:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
         except Exception as e:
             LOGGER.warning(f"[WATCHDOG] Edge eviction failed (non-fatal): {e}")
         
@@ -2703,19 +2736,26 @@ class GhostNotificationSystem:
         # =====================================================================
         try:
             if self._use_postgres:
-                conn = self._get_postgres_conn()
-                cur = conn.cursor()
-                cur.execute("""
-                    UPDATE ghost_tracked_picks
-                    SET status = 'expired'
-                    WHERE status = 'active' AND expires_at < NOW()
-                """)
-                expired_count = cur.rowcount
-                conn.commit()
-                cur.close()
-                conn.close()
-                if expired_count > 0:
-                    LOGGER.info(f"[WATCHDOG] 🧹 Expired {expired_count} stale tracked picks")
+                conn = None
+                try:
+                    conn = self._get_postgres_conn()
+                    cur = conn.cursor()
+                    cur.execute("""
+                        UPDATE ghost_tracked_picks
+                        SET status = 'expired'
+                        WHERE status = 'active' AND expires_at < NOW()
+                    """)
+                    expired_count = cur.rowcount
+                    conn.commit()
+                    cur.close()
+                    if expired_count > 0:
+                        LOGGER.info(f"[WATCHDOG] 🧹 Expired {expired_count} stale tracked picks")
+                finally:
+                    if conn:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
             else:
                 import sqlite3
                 conn = sqlite3.connect(self._db_path)
@@ -2732,6 +2772,7 @@ class GhostNotificationSystem:
         # Load active picks from PostgreSQL (persistent across deploys)
         rows = []
         if self._use_postgres:
+            conn = None
             try:
                 conn = self._get_postgres_conn()
                 cur = conn.cursor()
@@ -2743,9 +2784,14 @@ class GhostNotificationSystem:
                 """)
                 rows = cur.fetchall()
                 cur.close()
-                conn.close()
             except Exception as e:
                 LOGGER.error(f"PostgreSQL fetch failed: {e}")
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         else:
             # Fallback to SQLite (ephemeral on Railway)
             conn = sqlite3.connect(self._db_path)
@@ -2778,15 +2824,21 @@ class GhostNotificationSystem:
                     asset_type = correct_type
                     # Also fix in DB so it doesn't happen again
                     if self._use_postgres:
+                        conn = None
                         try:
                             conn = self._get_postgres_conn()
                             cur = conn.cursor()
                             cur.execute("UPDATE ghost_tracked_picks SET asset_type = %s WHERE symbol = %s AND status = 'active'", (correct_type, symbol))
                             conn.commit()
                             cur.close()
-                            conn.close()
                         except Exception:
                             pass
+                        finally:
+                            if conn:
+                                try:
+                                    conn.close()
+                                except Exception:
+                                    pass
             except Exception:
                 pass
             
@@ -2907,6 +2959,7 @@ class GhostNotificationSystem:
                 
                 # Update PostgreSQL FIRST (persistent, primary)
                 if self._use_postgres:
+                    conn = None
                     try:
                         conn = self._get_postgres_conn()
                         cur = conn.cursor()
@@ -2916,12 +2969,17 @@ class GhostNotificationSystem:
                         )
                         conn.commit()
                         cur.close()
-                        conn.close()
                         LOGGER.info(f"[TRACKING] ✅ Updated {a['symbol']} to {status} in PostgreSQL (BEFORE alert)")
                     except Exception as e:
                         LOGGER.error(f"[TRACKING] ❌ Failed to update PostgreSQL for {a['symbol']}: {e}")
                         # DON'T send alert if we couldn't update status - prevents duplicates
                         continue
+                    finally:
+                        if conn:
+                            try:
+                                conn.close()
+                            except Exception:
+                                pass
                 
                 # Also update SQLite (fallback)
                 try:
@@ -3003,6 +3061,7 @@ class GhostNotificationSystem:
         """
         if not self._use_postgres:
             return  # SQLite is ephemeral on Railway anyway
+        conn = None
         try:
             conn = self._get_postgres_conn()
             cur = conn.cursor()
@@ -3013,24 +3072,35 @@ class GhostNotificationSystem:
             """, (key, value))
             conn.commit()
             cur.close()
-            conn.close()
         except Exception as e:
             LOGGER.warning(f"[TRACKING] Failed to persist state {key}: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def get_tracked_symbols(self) -> list:
         """Return list of symbols with active tracked picks (for cron watchdog price prefetch)."""
         if self._use_postgres:
+            conn = None
             try:
                 conn = self._get_postgres_conn()
                 cur = conn.cursor()
                 cur.execute("SELECT DISTINCT symbol FROM ghost_tracked_picks WHERE status = 'active'")
                 symbols = [row[0] for row in cur.fetchall()]
                 cur.close()
-                conn.close()
                 return symbols
             except Exception as e:
                 LOGGER.error(f"get_tracked_symbols PostgreSQL failed: {e}")
                 return []
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         else:
             try:
                 import sqlite3
@@ -3052,6 +3122,7 @@ class GhostNotificationSystem:
         
         # Try PostgreSQL first (persistent)
         if self._use_postgres:
+            conn = None
             try:
                 conn = self._get_postgres_conn()
                 cur = conn.cursor()
@@ -3062,10 +3133,15 @@ class GhostNotificationSystem:
                 cur.execute("SELECT COUNT(*) FROM ghost_tracked_picks WHERE status = 'stop_hit'")
                 stop_hits = cur.fetchone()[0]
                 cur.close()
-                conn.close()
                 db_type = "postgresql"
             except Exception as e:
                 LOGGER.error(f"PostgreSQL status check failed: {e}")
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         else:
             # Fallback to SQLite (ephemeral)
             conn = sqlite3.connect(self._db_path)

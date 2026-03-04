@@ -129,7 +129,6 @@ class ShadowOutcomeResolver:
                     results["errors"] += 1
             
             conn.commit()
-            conn.close()
             
             # Update rankings after resolving batch
             if results["resolved"] > 0:
@@ -142,6 +141,12 @@ class ShadowOutcomeResolver:
         except Exception as e:
             LOGGER.error(f"[RESOLVER] Failed to resolve pending: {e}")
             return {"error": str(e)}
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     async def _get_current_price(self, symbol: str, asset_type: str) -> Optional[float]:
         """Get current price for symbol"""
@@ -221,6 +226,7 @@ class ShadowOutcomeResolver:
         if not self.use_postgres:
             return {"error": "No database"}
         
+        conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
@@ -235,7 +241,6 @@ class ShadowOutcomeResolver:
             """)
             
             row = cur.fetchone()
-            conn.close()
             
             return {
                 "pending": row[0],
@@ -246,6 +251,12 @@ class ShadowOutcomeResolver:
             }
         except Exception as e:
             return {"error": str(e)}
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
 
 # Singleton
