@@ -14265,13 +14265,9 @@ async def _api_v3_watchlist_enriched_core():
                 pred = _LATEST_PREDICTIONS.get(symbol, {})
                 ghost_confidence = pred.get("confidence", 0) or 0
                 ghost_direction = pred.get("direction", "FLAT")
-                ghost_confidence_pct = round(ghost_confidence * 100, 2) if ghost_confidence <= 1 else ghost_confidence
-                
-                # ADD: Symbol-seeded jitter to prevent identical confidence display
-                symbol_hash = hash(symbol.upper()) % 10000
-                conf_jitter = ((symbol_hash / 10000) - 0.5) * 4.0  # ±2% jitter
-                ghost_confidence_pct = round(ghost_confidence_pct + conf_jitter, 1)
-                ghost_confidence_pct = max(45.0, min(85.0, ghost_confidence_pct))  # Clamp
+                ghost_confidence_pct = round(ghost_confidence * 100, 1) if ghost_confidence <= 1 else round(ghost_confidence, 1)
+                # Show REAL confidence — no jitter, no clamping
+                # BTC at 12% should show 12%, BMBL at 70% should show 70%
 
                 derived_change = 0.0
                 if pred.get("expected_move") is not None:
@@ -14284,11 +14280,6 @@ async def _api_v3_watchlist_enriched_core():
                 # FIX: Use change_pct if we have actual price data (even if 0.0!)
                 # Only fall back to derived_change when change_pct is None (no prev_close data)
                 final_change = change_pct if change_pct is not None else derived_change
-                
-                # ADD: Symbol-seeded jitter when using derived change (prevents all showing same %)
-                if change_pct is None and final_change != 0:
-                    change_jitter = ((symbol_hash / 10000) - 0.5) * 0.4  # ±0.2% jitter
-                    final_change = final_change + change_jitter
                 
                 fallback_price = pred.get("price_at_prediction") or price
 
@@ -15060,53 +15051,39 @@ async def api_v3_goals_snapshot():
         # (bypasses connection pool which may be exhausted during prediction cycles)
         if accuracy == 50:
             try:
-                import psycopg2 as _gs_pg
-                _gs_url = os.getenv("DATABASE_URL")
-                if _gs_url:
-                    _gs_conn = _gs_pg.connect(_gs_url)
-                    _gs_cur = _gs_conn.cursor()
-                    _gs_cur.execute("""
-                        SELECT COUNT(*) as total,
-                               SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
-                        FROM ghost_predictions
-                        WHERE checked = 1
-                          AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
-                    """)
-                    _gs_row = _gs_cur.fetchone()
-                    _gs_total = _gs_row[0] if _gs_row else 0
-                    _gs_wins = _gs_row[1] if _gs_row and _gs_row[1] else 0
-                    LOGGER.info(f"[GHOST_SCORE] PostgreSQL ghost_predictions: checked={_gs_total}, correct={_gs_wins}")
-                    _gs_cur.close()
-                    _gs_conn.close()
-                    if _gs_total and _gs_total > 0:
-                        accuracy = round((_gs_wins / _gs_total) * 100, 1)
-                        LOGGER.info(f"[GHOST_SCORE] PostgreSQL direct accuracy: {accuracy}% ({_gs_wins}/{_gs_total})")
-                    else:
-                        LOGGER.info("[GHOST_SCORE] PostgreSQL: 0 checked predictions in last 30 days")
+                from core.db_pool import fetchrow as _db_fetchrow
+                _gs_row = await _db_fetchrow("""
+                    SELECT COUNT(*) as total,
+                           SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
+                    FROM ghost_predictions
+                    WHERE checked = 1
+                      AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
+                """)
+                _gs_total = _gs_row['total'] if _gs_row else 0
+                _gs_wins = _gs_row['wins'] if _gs_row and _gs_row['wins'] else 0
+                LOGGER.info(f"[GHOST_SCORE] PostgreSQL ghost_predictions: checked={_gs_total}, correct={_gs_wins}")
+                if _gs_total and _gs_total > 0:
+                    accuracy = round((_gs_wins / _gs_total) * 100, 1)
+                    LOGGER.info(f"[GHOST_SCORE] PostgreSQL direct accuracy: {accuracy}% ({_gs_wins}/{_gs_total})")
+                else:
+                    LOGGER.info("[GHOST_SCORE] PostgreSQL: 0 checked predictions in last 30 days")
             except Exception as _pg_err:
                 LOGGER.warning(f"[GHOST_SCORE] PostgreSQL direct fallback failed: {_pg_err}")
         
         # Third fallback: ghost_accuracy_stats table (written by prediction_evaluator)
         if accuracy == 50:
             try:
-                import psycopg2 as _gs_pg2
-                _gs_url2 = os.getenv("DATABASE_URL")
-                if _gs_url2:
-                    _gs_conn2 = _gs_pg2.connect(_gs_url2)
-                    _gs_cur2 = _gs_conn2.cursor()
-                    _gs_cur2.execute("""
-                        SELECT accuracy_pct, total_predictions, correct_predictions
-                        FROM ghost_accuracy_stats
-                        WHERE period = 'all_time'
-                    """)
-                    _gs_row2 = _gs_cur2.fetchone()
-                    _gs_cur2.close()
-                    _gs_conn2.close()
-                    if _gs_row2 and _gs_row2[1] and _gs_row2[1] > 0:
-                        accuracy = round(float(_gs_row2[0]), 1)
-                        LOGGER.info(f"[GHOST_SCORE] accuracy_stats table: {accuracy}% ({_gs_row2[2]}/{_gs_row2[1]})")
-                    else:
-                        LOGGER.info("[GHOST_SCORE] ghost_accuracy_stats: no all_time entry")
+                from core.db_pool import fetchrow as _db_fetchrow2
+                _gs_row2 = await _db_fetchrow2("""
+                    SELECT accuracy_pct, total_predictions, correct_predictions
+                    FROM ghost_accuracy_stats
+                    WHERE period = 'all_time'
+                """)
+                if _gs_row2 and _gs_row2['total_predictions'] and _gs_row2['total_predictions'] > 0:
+                    accuracy = round(float(_gs_row2['accuracy_pct']), 1)
+                    LOGGER.info(f"[GHOST_SCORE] accuracy_stats table: {accuracy}% ({_gs_row2['correct_predictions']}/{_gs_row2['total_predictions']})")
+                else:
+                    LOGGER.info("[GHOST_SCORE] ghost_accuracy_stats: no all_time entry")
             except Exception as _stats_err:
                 LOGGER.warning(f"[GHOST_SCORE] ghost_accuracy_stats fallback failed: {_stats_err}")
         
@@ -15117,17 +15094,17 @@ async def api_v3_goals_snapshot():
         ghost_score = round(accuracy * 0.5 + data_health * 0.3 + ai_activity * 0.2, 1)
         ghost_score = max(0, min(100, ghost_score))  # Clamp to 0-100
         
-        daily_pct = min(100, ghost_score * 0.7)
-        weekly_pct = min(100, ghost_score * 0.55)
-        monthly_pct = min(100, ghost_score * 0.4)
-
         return {
             "ok": True,
             "goals": goals,
             "ghost_score": ghost_score,
-            "daily_goal_pct": round(daily_pct, 2),
-            "weekly_goal_pct": round(weekly_pct, 2),
-            "monthly_goal_pct": round(monthly_pct, 2),
+            # Send real component values so the UI bars show actual health
+            "daily_goal_pct": round(accuracy, 1),       # Accuracy %
+            "weekly_goal_pct": round(data_health, 1),    # Data Health %
+            "monthly_goal_pct": round(ai_activity, 1),   # AI Activity %
+            "data_health": round(data_health, 1),
+            "ai_activity": round(ai_activity, 1),
+            "accuracy": round(accuracy, 1),
             "components": {
                 "accuracy": accuracy,
                 "data_health": data_health,

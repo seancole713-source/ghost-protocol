@@ -1584,21 +1584,22 @@ async function loadHealthScore() {
         document.getElementById('health-score-value').textContent = score > 0 ? score.toFixed(0) : '--';
         document.getElementById('health-grade').textContent = grade;
         
-        // Get real health metrics or use goals as fallback
+        // Get real health metrics from goals snapshot (now includes all components)
         let healthMetrics = {
             daily: goalsData.daily_goal_pct || 0,
             weekly: goalsData.weekly_goal_pct || 0,
             monthly: goalsData.monthly_goal_pct || 0,
-            data_health: 85,  // Fallback
-            ai_activity: 75,  // Fallback
-            accuracy: 70      // Fallback
+            data_health: goalsData.data_health || goalsData.components?.data_health || 85,
+            ai_activity: goalsData.ai_activity || goalsData.components?.ai_activity || 75,
+            accuracy: goalsData.accuracy || goalsData.components?.accuracy || 50
         };
         
+        // Override from health endpoint if available (more real-time)
         if (healthResponse.ok) {
             const healthData = await healthResponse.json();
-            healthMetrics.data_health = healthData.data_health || 85;
-            healthMetrics.ai_activity = healthData.ai_activity || 75;
-            healthMetrics.accuracy = healthData.accuracy || 70;
+            if (healthData.data_health) healthMetrics.data_health = healthData.data_health;
+            if (healthData.ai_activity) healthMetrics.ai_activity = healthData.ai_activity;
+            if (healthData.accuracy) healthMetrics.accuracy = healthData.accuracy;
         }
         
         // Update health metrics display
@@ -1626,14 +1627,12 @@ function renderHealthMetrics(metrics) {
     const metricsList = [];
     
     if (metrics.daily !== undefined) {
-        // V3 format with goal progress + real health metrics
+        // V3 format: show real operational health metrics
+        // Backend sends accuracy/data_health/ai_activity as daily/weekly/monthly
         metricsList.push(
-            { name: 'Daily Goal', value: metrics.daily },
-            { name: 'Weekly Goal', value: metrics.weekly },
-            { name: 'Monthly Goal', value: metrics.monthly },
-            { name: 'Data Health', value: metrics.data_health || 50 },  // Real value from API
-            { name: 'AI Activity', value: metrics.ai_activity || 50 },  // Real value from API
-            { name: 'Accuracy', value: metrics.accuracy || 50 }  // Real value from API
+            { name: 'Accuracy', value: metrics.accuracy || metrics.daily || 50 },
+            { name: 'Data Health', value: metrics.data_health || metrics.weekly || 50 },
+            { name: 'AI Activity', value: metrics.ai_activity || metrics.monthly || 50 }
         );
     } else {
         // V2 format (backward compatibility)
