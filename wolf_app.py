@@ -10931,10 +10931,11 @@ async def api_xray_symbol(symbol: str):
         orchestrator_ms = feature_data.get("execution_time_ms", 0)
         
         # === STEP 2: Load XGBoost and trace feature mapping ===
-        from core.ensemble_predictor import EnsemblePredictor
-        predictor = EnsemblePredictor()
+        from core.ensemble_predictor import get_ensemble_predictor
+        ensemble = get_ensemble_predictor()
+        predictor = ensemble.xgboost  # XGBoostModel with .model, ._loaded, .feature_names
         
-        if not predictor._loaded or predictor.model is None:
+        if not getattr(predictor, '_loaded', False) or predictor.model is None:
             return {
                 "ok": False,
                 "symbol": symbol,
