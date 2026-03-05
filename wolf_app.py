@@ -15029,18 +15029,29 @@ async def api_v3_goals_snapshot():
         # Accuracy: Get from paper trades with V2 date filter
         try:
             from core.paper_tracker import get_paper_tracker
+            from config.symbols import get_edge_set
             tracker = get_paper_tracker()
-            # 14-day rolling window — reflects CURRENT system performance
+            # 14-day rolling window — only count CURRENT edge symbols
+            # This excludes historical SOL/BTC/etc trades that were removed for poor accuracy
+            _edge_syms = get_edge_set()
             stats = tracker.get_stats(days=14)
+            _by_sym = stats.get("accuracy_by_symbol", {})
+            # Sum only edge-whitelist symbols
+            _edge_wins = sum(s.get("wins", 0) for sym, s in _by_sym.items() if sym in _edge_syms)
+            _edge_losses = sum(s.get("losses", 0) for sym, s in _by_sym.items() if sym in _edge_syms)
+            _edge_decided = _edge_wins + _edge_losses
             _resolved = stats.get("resolved_trades", 0)
             _wins = stats.get("wins", 0)
             _losses = stats.get("losses", 0)
-            LOGGER.info(f"[GHOST_SCORE] Paper tracker: resolved={_resolved}, wins={_wins}, losses={_losses}, total={stats.get('total_trades', 0)}")
-            if _resolved > 0:
+            LOGGER.info(f"[GHOST_SCORE] Paper tracker: resolved={_resolved}, wins={_wins}, losses={_losses}, edge_decided={_edge_decided} ({_edge_wins}W/{_edge_losses}L)")
+            if _edge_decided > 0:
+                accuracy = round(_edge_wins / _edge_decided * 100, 1)
+                LOGGER.info(f"[GHOST_SCORE] Edge-filtered accuracy: {accuracy}% ({_edge_wins}W/{_edge_losses}L)")
+            elif _resolved > 0:
                 accuracy = round(stats.get("win_rate_pct", 50), 1)
-                LOGGER.info(f"[GHOST_SCORE] Paper trade accuracy: {accuracy}% ({_wins}W/{_losses}L)")
+                LOGGER.info(f"[GHOST_SCORE] Fallback accuracy (all symbols): {accuracy}%")
             else:
-                LOGGER.info("[GHOST_SCORE] No resolved paper trades since V2 start date")
+                LOGGER.info("[GHOST_SCORE] No resolved paper trades in 14-day window")
         except Exception as _acc_err:
             LOGGER.warning(f"[GHOST_SCORE] accuracy from paper_tracker failed: {_acc_err}")
         
