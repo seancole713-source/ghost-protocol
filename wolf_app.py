@@ -10403,10 +10403,30 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 # Check if symbol is V3 validated
                 v3_config = V3_VALIDATED_STRATEGIES.get(symbol.upper())
                 v3_validated = v3_config is not None
-                v3_strategy = v3_config.get('strategy') if v3_config else None
-                v3_hold_hours = v3_config.get('hold_hours') if v3_config else None
-                v3_win_rate = v3_config.get('win_rate') if v3_config else None
-                v3_is_inverse = v3_config.get('strategy') == 'ghost_inverse' if v3_config else False
+                v3_strategy = v3_config.strategy if v3_config else None
+                v3_hold_hours = v3_config.hold_hours if v3_config else None
+                v3_win_rate = v3_config.backtest_win_rate if v3_config else None
+                v3_is_inverse = (v3_config.strategy == 'ghost_inverse') if v3_config else False
+                
+                # =====================================================================
+                # V3 DIRECTION OVERRIDE — apply BEFORE paper trade logging
+                # ghost_inverse: flip direction (PANW/NET/FTNT) or force UP (ETH)
+                # always_up: force UP (DDOG)
+                # Without this, inverse trades are evaluated BACKWARDS (correct
+                # outcomes scored as WRONG), systematically tanking accuracy.
+                # =====================================================================
+                v3_original_direction = None
+                if v3_config and v3_config.direction_override:
+                    v3_original_direction = direction
+                    if v3_config.direction_override == 'flip':
+                        direction = 'DOWN' if direction == 'UP' else 'UP'
+                    else:
+                        direction = v3_config.direction_override  # e.g., 'UP' for ETH/DDOG
+                    if direction != v3_original_direction:
+                        LOGGER.info(
+                            f"[{symbol}] 🔄 V3 DIRECTION OVERRIDE: {v3_original_direction} → {direction} "
+                            f"(strategy: {v3_config.strategy}, override: {v3_config.direction_override})"
+                        )
                 
                 # PRICE SANITY CHECK: Reject clearly garbage entry prices
                 # JUP was logged at $0.00048679 when real price is ~$0.50-1.00 (390,000% PnL artifact)
@@ -10498,6 +10518,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     v3_hold_hours=v3_hold_hours,
                     v3_backtest_win_rate=v3_win_rate,
                     v3_is_inverse=v3_is_inverse,
+                    v3_original_direction=v3_original_direction,
                     expected_move_pct=expected_move_pct,  # FIX: was missing — target_price needs this
                 )
                 v3_tag = f" [V3: {v3_strategy}]" if v3_validated else ""
