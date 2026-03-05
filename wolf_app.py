@@ -4153,45 +4153,23 @@ async def _on_startup():
         LOGGER.error(f"goals_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
     
-    # Load trained model from PostgreSQL (persists across Railway restarts)
-    try:
-        from core.model_store import get_model_store
-        from pathlib import Path
-        import pickle
-        
-        store = get_model_store()
-        
-        # Try to load from PostgreSQL first
-        model = store.load_model("ghost_xgboost_v2")
-        
-        if model:
-            # Save to filesystem for backward compatibility
-            model_dir = Path(__file__).parent / "models" / "trained"
-            model_dir.mkdir(parents=True, exist_ok=True)
-            model_path = model_dir / "ghost_xgboost_v2.pkl"
-            
-            with open(model_path, 'wb') as f:
-                pickle.dump(model, f)
-            
-            metadata = store.get_metadata("ghost_xgboost_v2")
-            version = metadata.get("version", "unknown") if metadata else "unknown"
-            
-            LOGGER.info(
-                f"[GHOST STARTUP] ✅ Model loaded from PostgreSQL v{version} "
-                f"(persisted to {model_path.name})"
-            )
-        else:
-            LOGGER.warning(
-                "[GHOST STARTUP] ⚠️  No model found in PostgreSQL "
-                "(will use filesystem model if available)"
-            )
-    except Exception as e:
-        LOGGER.error(
-            f"model_load_failed: {e}",
-            extra={"component": "startup"},
-            exc_info=False
-        )
-        # Non-critical - continue startup (will use filesystem model)
+    # ── DISABLED: PostgreSQL model overwrite ──────────────────────────────
+    # ROOT CAUSE of 0% feature quality (f0-f27 bug):
+    #   1. retrain_production_model.py saved a BARE XGBClassifier to PostgreSQL
+    #      (no feature_names dict wrapper)
+    #   2. On EVERY startup, this code loaded that bare model and overwrote
+    #      the git pkl (which has 59 named features in dict format)
+    #   3. XGBoostModel._load_trained_model() then got the bare model → f0-f27
+    #   4. Pipeline features (RSI_14, MACD_LINE, etc.) couldn't match → ALL defaulted
+    #   5. Model was literally predicting on zeros every single cycle
+    #
+    # FIX: Use the git-committed pkl directly (59-feature dict, 84.8% test acc).
+    # The retrain script has also been fixed to save dict format going forward.
+    # ────────────────────────────────────────────────────────────────────────
+    LOGGER.info(
+        "[GHOST STARTUP] Using git-committed XGBoost model (59 features, dict format). "
+        "PostgreSQL model load DISABLED — was overwriting good model with bare XGBClassifier."
+    )
     
     # Stage 1: Initialize Context Awareness Layer
     if STAGE1_ENABLED:

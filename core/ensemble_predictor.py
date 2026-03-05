@@ -627,6 +627,53 @@ class XGBoostModel:
                     "VOLATILITY_7D": 0.02,       # Normal volatility
                     "VOLATILITY_30D": 0.02,      # Normal volatility
                     "DAILY_RANGE_PCT": 2.0,      # Normal daily range
+                    
+                    # === V3-HOURLY feature defaults (59-feature model) ===
+                    # These match the git pkl model's feature names exactly
+                    "SMA_12": 0,                 # Will be price-level (filled by pipeline)
+                    "SMA_24": 0,                 # Same
+                    "SMA_48": 0,                 # Same
+                    "SMA_168": 0,                # Same
+                    "EMA_12": 0,                 # Same
+                    "EMA_24": 0,                 # Same
+                    "RSI_OVERSOLD": 0,           # Not oversold
+                    "RSI_OVERBOUGHT": 0,         # Not overbought
+                    "MACD_LINE": 0,              # Neutral MACD
+                    "MACD_SIGNAL": 0,            # Neutral
+                    "MACD_HISTOGRAM": 0,         # Neutral
+                    "MACD_BULLISH": 0.5,         # Uncertain
+                    "BB_MIDDLE": 0,              # Price-level
+                    "BB_UPPER": 0,               # Price-level
+                    "BB_LOWER": 0,               # Price-level
+                    "BB_WIDTH": 0.04,            # Normal bandwidth
+                    "ATR_14": 0,                 # Will be absolute
+                    "ATR_PCT": 0.02,             # Normal ATR %
+                    "VOLUME_SMA_24": 0,          # Volume level
+                    "OBV": 0,                    # Neutral OBV
+                    "OBV_SMA": 0,                # Neutral
+                    "OBV_TREND": 0.5,            # Uncertain trend
+                    "MOMENTUM_1H": 0,            # Flat
+                    "MOMENTUM_4H": 0,            # Flat
+                    "MOMENTUM_12H": 0,           # Flat
+                    "MOMENTUM_24H": 0,           # Flat
+                    "MOMENTUM_48H": 0,           # Flat
+                    "ROC_24": 0,                 # No change
+                    "ABOVE_SMA_24": 0.5,         # Uncertain
+                    "ABOVE_SMA_48": 0.5,         # Uncertain
+                    "ABOVE_SMA_168": 0.5,        # Uncertain
+                    "SMA_CROSS_24_48": 0,        # No cross
+                    "NEAR_24H_HIGH": 0.95,       # Not near high
+                    "NEAR_24H_LOW": 1.05,        # Not near low
+                    "NEAR_48H_HIGH": 0.95,       # Not near high
+                    "NEAR_48H_LOW": 1.05,        # Not near low
+                    "VOLATILITY_24H": 1.5,       # Normal hourly vol
+                    "VOLATILITY_48H": 1.5,       # Normal hourly vol
+                    "HOURLY_RANGE_PCT": 1.0,     # Normal range
+                    "HOUR_OF_DAY": 12,           # Midday
+                    "DAY_OF_WEEK": 2,            # Wednesday
+                    "IS_WEEKEND": 0,             # Weekday
+                    "BTC_MOMENTUM_4H": 0,        # Flat BTC
+                    "BTC_MOMENTUM_24H": 0,       # Flat BTC
                 }
                 
                 # Extract features in correct order
