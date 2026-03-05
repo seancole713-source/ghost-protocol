@@ -1,5 +1,5 @@
 # Ghost Trading System - Production Dockerfile
-# Force rebuild: Phase 5 deployment
+# Force rebuild: Model fix - restore 59-feature dict pkl (was overwritten by retrain)
 FROM python:3.11-slim
 
 # Install system dependencies
