@@ -10900,6 +10900,269 @@ async def api_features_diagnostic(symbol: str):
         raise HTTPException(500, f"Diagnostic failed: {str(e)}")
 
 
+@APP.get("/api/xray/{symbol}")
+async def api_xray_symbol(symbol: str):
+    """
+    X-RAY: See EXACTLY what XGBoost receives for a prediction.
+    
+    This runs a full prediction cycle and logs:
+    1. Every feature value the model sees (53 features)
+    2. Which are REAL data vs NEUTRAL DEFAULTS
+    3. Raw XGBoost output (prob_up, prob_down, spread)
+    4. Whether it hits the hold zone
+    5. Feature quality score
+    
+    This is the truth — no guessing. Call this to verify the pipeline works.
+    """
+    import time as _time
+    start = _time.time()
+    symbol = symbol.upper().strip()
+    
+    try:
+        # === STEP 1: Run feature orchestrator (same as real prediction) ===
+        from core.data_pillars.feature_orchestrator import get_feature_orchestrator
+        orchestrator = get_feature_orchestrator()
+        feature_data = orchestrator.get_all_features(symbol, period=90)
+        
+        raw_features = feature_data.get("features", {})
+        pillar_stats = feature_data.get("feature_availability", {})
+        orchestrator_errors = feature_data.get("errors", [])
+        orchestrator_ms = feature_data.get("execution_time_ms", 0)
+        
+        # === STEP 2: Load XGBoost and trace feature mapping ===
+        from core.ensemble_predictor import EnsemblePredictor
+        predictor = EnsemblePredictor()
+        
+        if not predictor._loaded or predictor.model is None:
+            return {
+                "ok": False,
+                "symbol": symbol,
+                "error": "XGBoost model not loaded",
+                "orchestrator_features": len(raw_features),
+                "pillar_stats": pillar_stats,
+            }
+        
+        # Rebuild the exact feature mapping from predict()
+        feature_mapping = {
+            "RSI_14": "RSI_14", "MACD_HISTOGRAM": "MACD_HISTOGRAM",
+            "MACD_LINE": "MACD_LINE", "MACD_SIGNAL": "MACD_SIGNAL",
+            "BB_POSITION": "BB_POSITION", "BB_WIDTH": "BB_WIDTH",
+            "BB_UPPER": "BB_UPPER", "BB_LOWER": "BB_LOWER", "BB_MIDDLE": "BB_MIDDLE",
+            "SMA_7": "SMA_7", "SMA_20": "SMA_20", "SMA_50": "SMA_50",
+            "EMA_12": "EMA_12", "EMA_26": "EMA_26",
+            "STOCH_K": "STOCH_K", "STOCH_D": "STOCH_D",
+            "ATR_14": "ATR_14",
+            "VOLUME_RATIO": "VOLUME_RATIO", "VOLUME_SMA_20": "VOLUME_SMA_20",
+            "OBV": "OBV", "OBV_SMA": "OBV_SMA",
+            "ROC_10": "ROC_10",
+            "SMA_CROSS_20_50": "SMA_CROSS_20_50",
+            "VOLATILITY_20D": "VOLATILITY_20", "VOLATILITY_20": "VOLATILITY_20",
+            "DAILY_RANGE_PCT": "DAILY_RANGE_PCT",
+            "BTC_RSI": "BTC_RSI",
+            "BTC_MOMENTUM_4H": "BTC_MOMENTUM_1D",
+            "BTC_MOMENTUM_24H": "BTC_MOMENTUM_7D",
+            "BTC_MACD_BULLISH": "BTC_MACD_BULLISH",
+            "BTC_CORRELATION": "BTC_CORRELATION",
+            "FEAR_GREED": "fear_greed_numeric",
+            "fear_greed_numeric": "fear_greed_numeric",
+            "FUNDING_RATE": "funding_rate_proxy",
+            "funding_rate_proxy": "funding_rate_proxy",
+            "RSI_OVERSOLD": "RSI_OVERSOLD", "RSI_OVERBOUGHT": "RSI_OVERBOUGHT",
+            "MACD_BULLISH": "MACD_BULLISH",
+            "ABOVE_SMA_20": "ABOVE_SMA_20", "ABOVE_SMA_50": "ABOVE_SMA_50",
+            "EMA_BULLISH": "EMA_BULLISH",
+            "VOLUME_SPIKE": "VOLUME_SPIKE",
+            "NEAR_24H_HIGH": "NEAR_7D_HIGH", "NEAR_24H_LOW": "NEAR_7D_LOW",
+            "NEAR_48H_HIGH": "NEAR_30D_HIGH", "NEAR_48H_LOW": "NEAR_30D_LOW",
+            "MOMENTUM_24H": "MOMENTUM_1D",
+            "VOLUME_SMA_24": "VOLUME_SMA_20",
+            "ROC_24": "ROC_10",
+            "ABOVE_SMA_24": "ABOVE_SMA_20", "ABOVE_SMA_48": "ABOVE_SMA_50",
+            "SMA_CROSS_24_48": "SMA_CROSS_20_50",
+            "VOLATILITY_24H": "VOLATILITY_7D", "VOLATILITY_48H": "VOLATILITY_30D",
+            "HOURLY_RANGE_PCT": "DAILY_RANGE_PCT",
+        }
+        
+        neutral_defaults = {
+            "RSI_OVERSOLD": 0, "RSI_OVERBOUGHT": 0, "MACD_BULLISH": 0.5,
+            "ABOVE_SMA_20": 0.5, "ABOVE_SMA_50": 0.5, "EMA_BULLISH": 0.5,
+            "SMA_CROSS_20_50": 0, "NEAR_7D_HIGH": 0, "NEAR_7D_LOW": 0,
+            "NEAR_30D_HIGH": 0, "NEAR_30D_LOW": 0, "VOLUME_SPIKE": 0,
+            "HIGH_FUNDING": 0, "NEGATIVE_FUNDING": 0, "EXTREME_FEAR": 0,
+            "EXTREME_GREED": 0, "BTC_MACD_BULLISH": 0.5, "BTC_LEADS": 0,
+            "RSI_14": 50, "BB_POSITION": 0.5, "STOCH_K": 50, "STOCH_D": 50,
+            "VOLUME_RATIO": 1.0, "fear_greed_value": 50, "fear_greed_numeric": 50,
+            "funding_rate_proxy": 0, "BTC_RSI": 50, "BTC_MOMENTUM_1D": 0,
+            "BTC_MOMENTUM_7D": 0, "BTC_CORRELATION": 0.5, "MOMENTUM_1D": 0,
+            "MOMENTUM_7D": 0, "MOMENTUM_30D": 0, "ROC_10": 0,
+            "VOLATILITY_7D": 0.02, "VOLATILITY_30D": 0.02, "DAILY_RANGE_PCT": 2.0,
+        }
+        
+        # === STEP 3: Trace every feature — the REAL truth ===
+        feature_xray = []
+        real_count = 0
+        default_count = 0
+        feature_values = []
+        
+        for name in predictor.feature_names:
+            # Same logic as predict() — try direct, then mapping, then default
+            value = raw_features.get(name, None)
+            source = "direct" if value is not None else None
+            mapped_from = None
+            
+            if value is None:
+                for src, dst in feature_mapping.items():
+                    if dst == name and src in raw_features:
+                        value = raw_features.get(src)
+                        source = "mapped"
+                        mapped_from = src
+                        break
+            
+            is_default = value is None
+            if is_default:
+                value = neutral_defaults.get(name, 0.0)
+                source = "DEFAULT"
+                default_count += 1
+            else:
+                real_count += 1
+            
+            feature_values.append(float(value))
+            feature_xray.append({
+                "name": name,
+                "value": round(float(value), 6),
+                "source": source,
+                "mapped_from": mapped_from,
+                "is_default": is_default,
+            })
+        
+        total = len(predictor.feature_names)
+        quality_pct = round(real_count / total * 100, 1) if total > 0 else 0
+        
+        # === STEP 4: Run XGBoost prediction ===
+        import numpy as np
+        X = np.array([feature_values])
+        proba = predictor.model.predict_proba(X)[0]
+        prob_down = float(proba[0])
+        prob_up = float(proba[1])
+        spread = abs(prob_up - prob_down)
+        
+        import os
+        hold_threshold = float(os.getenv("HOLD_ZONE_THRESHOLD", "0.08"))
+        in_hold_zone = spread < hold_threshold
+        
+        if in_hold_zone:
+            direction = "HOLD"
+            confidence = max(prob_up, prob_down)
+        elif prob_up >= prob_down:
+            direction = "UP"
+            confidence = prob_up
+        else:
+            direction = "DOWN"
+            confidence = prob_down
+        
+        elapsed = round((_time.time() - start) * 1000, 1)
+        
+        # === BUILD VERDICT ===
+        issues = []
+        if quality_pct < 70:
+            issues.append(f"Only {quality_pct}% features are real data (need 70%+)")
+        if in_hold_zone:
+            issues.append(f"In HOLD zone — spread {spread:.1%} < threshold {hold_threshold:.0%}")
+        if confidence < 0.55:
+            issues.append(f"Low confidence {confidence:.1%} — near coin-flip")
+        for pillar, stat in pillar_stats.items():
+            if "failed" in str(stat) or stat.startswith("0/"):
+                issues.append(f"{pillar}: {stat}")
+        
+        verdict = "GOOD" if quality_pct >= 80 and not in_hold_zone and confidence >= 0.55 else "DEGRADED" if quality_pct >= 50 else "BROKEN"
+        
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "verdict": verdict,
+            "issues": issues,
+            "feature_quality": {
+                "real": real_count,
+                "defaulted": default_count,
+                "total": total,
+                "quality_pct": quality_pct,
+            },
+            "xgboost_output": {
+                "prob_up": round(prob_up, 4),
+                "prob_down": round(prob_down, 4),
+                "spread": round(spread, 4),
+                "direction": direction,
+                "confidence": round(confidence, 4),
+                "hold_zone": in_hold_zone,
+                "hold_threshold": hold_threshold,
+            },
+            "pillar_stats": pillar_stats,
+            "orchestrator_errors": orchestrator_errors,
+            "features": feature_xray,
+            "defaulted_features": [f["name"] for f in feature_xray if f["is_default"]],
+            "timing": {
+                "orchestrator_ms": orchestrator_ms,
+                "total_ms": elapsed,
+            },
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"X-ray failed for {symbol}: {e}", exc_info=True)
+        return {"ok": False, "symbol": symbol, "error": str(e)}
+
+
+@APP.get("/api/xray")
+async def api_xray_all():
+    """
+    X-RAY all edge symbols at once.
+    Shows feature quality + XGBoost output for every symbol Ghost trades.
+    """
+    from config.symbols import get_edge_set
+    
+    edge_symbols = sorted(get_edge_set())
+    
+    results = []
+    for symbol in edge_symbols:
+        try:
+            result = await api_xray_symbol(symbol)
+            results.append({
+                "symbol": symbol,
+                "verdict": result.get("verdict", "ERROR"),
+                "quality_pct": result.get("feature_quality", {}).get("quality_pct", 0),
+                "real_features": result.get("feature_quality", {}).get("real", 0),
+                "defaulted": result.get("feature_quality", {}).get("defaulted", 0),
+                "direction": result.get("xgboost_output", {}).get("direction", "?"),
+                "confidence": result.get("xgboost_output", {}).get("confidence", 0),
+                "spread": result.get("xgboost_output", {}).get("spread", 0),
+                "hold_zone": result.get("xgboost_output", {}).get("hold_zone", True),
+                "issues": result.get("issues", []),
+            })
+        except Exception as e:
+            results.append({
+                "symbol": symbol,
+                "verdict": "ERROR",
+                "error": str(e),
+            })
+    
+    # Summary
+    good = sum(1 for r in results if r.get("verdict") == "GOOD")
+    degraded = sum(1 for r in results if r.get("verdict") == "DEGRADED")
+    broken = sum(1 for r in results if r.get("verdict") in ("BROKEN", "ERROR"))
+    avg_quality = round(sum(r.get("quality_pct", 0) for r in results) / len(results), 1) if results else 0
+    
+    return {
+        "ok": True,
+        "summary": {
+            "total_symbols": len(results),
+            "good": good,
+            "degraded": degraded,
+            "broken": broken,
+            "avg_feature_quality_pct": avg_quality,
+        },
+        "symbols": results,
+    }
+
+
 # =============================================================================
 # RESEARCH MODULE ENDPOINTS
 # =============================================================================
