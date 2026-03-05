@@ -8680,6 +8680,61 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 except Exception as _se_pg_err:
                     LOGGER.warning(f"[{symbol}] Stock Engine PostgreSQL write failed (non-fatal): {_se_pg_err}")
                 
+                # ================================================================
+                # PAPER TRADE LOGGING for Stock Engine (Mar 6, 2026)
+                # Stock Engine returns BEFORE reaching turbo engine paper trade
+                # logging at L10506. Without this, stock symbols (PANW, NET,
+                # FTNT, DDOG, T, BMBL, XPO) NEVER get paper trades and are
+                # invisible to accuracy tracking.
+                # paper_tracker.log_signal() has ALL gates internally:
+                #   edge whitelist, price sanity, HOLD zone, confidence gate,
+                #   trading controls, dedup
+                # ================================================================
+                try:
+                    _se_log_direction = se_direction
+                    _se_v3_original = None
+                    _se_v3_config = V3_VALIDATED_STRATEGIES.get(symbol.upper())
+                    _se_v3_validated = _se_v3_config is not None
+                    _se_v3_strategy = _se_v3_config.strategy if _se_v3_config else None
+                    _se_v3_hold = _se_v3_config.hold_hours if _se_v3_config else None
+                    _se_v3_wr = _se_v3_config.backtest_win_rate if _se_v3_config else None
+                    _se_v3_inverse = (_se_v3_config.strategy == 'ghost_inverse') if _se_v3_config else False
+                    
+                    # Apply V3 direction override BEFORE paper trade logging
+                    if _se_v3_config and _se_v3_config.direction_override:
+                        _se_v3_original = _se_log_direction
+                        if _se_v3_config.direction_override == 'flip':
+                            _se_log_direction = 'DOWN' if _se_log_direction == 'UP' else 'UP'
+                        else:
+                            _se_log_direction = _se_v3_config.direction_override
+                        if _se_log_direction != _se_v3_original:
+                            LOGGER.info(
+                                f"[{symbol}] 🔄 Stock Engine V3 OVERRIDE: {_se_v3_original} → {_se_log_direction} "
+                                f"(strategy: {_se_v3_config.strategy})"
+                            )
+                    
+                    _se_paper_id = paper_tracker.log_signal(
+                        cascade_id=f"stock_{symbol}_{int(time.time())}",
+                        symbol=symbol,
+                        signal_direction=_se_log_direction,
+                        signal_confidence=se_confidence,
+                        entry_price=se_entry_price,
+                        entry_time=datetime.utcnow().isoformat(),
+                        position_size=1000.0,
+                        stop_loss_pct=0.05,
+                        take_profit_pct=abs(float(stock_result.get("expected_move_pct", 3.0) or 3.0)) / 100.0,
+                        v3_validated=_se_v3_validated,
+                        v3_strategy=_se_v3_strategy,
+                        v3_hold_hours=_se_v3_hold,
+                        v3_backtest_win_rate=_se_v3_wr,
+                        v3_is_inverse=_se_v3_inverse,
+                        v3_original_direction=_se_v3_original,
+                    )
+                    if _se_paper_id:
+                        LOGGER.info(f"[{symbol}] 📝 Stock Engine paper trade logged: {_se_paper_id}")
+                except Exception as _se_pt_err:
+                    LOGGER.warning(f"[{symbol}] Stock Engine paper trade failed (non-fatal): {_se_pt_err}")
+                
                 return {
                     "ok": stock_result.get("is_actionable", False) or se_direction != "HOLD",
                     "prediction_id": None,
