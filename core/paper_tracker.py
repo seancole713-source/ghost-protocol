@@ -308,10 +308,22 @@ class PaperTracker:
         # =====================================================================
         # CONFIDENCE GATE: Don't log low-confidence coin-flip predictions
         # Predictions below 62% confidence are essentially random noise
-        # and drag down the overall win rate when tracked
+        # and drag down the overall win rate when tracked.
+        #
+        # V3 VALIDATED BYPASS: V3 symbols have statistically validated
+        # strategies (p < 0.05) with direction overrides applied BEFORE
+        # reaching here. Their edge comes from the strategy, not raw
+        # model confidence. Bypassing this gate lets V3 symbols (ETH,
+        # XRP, LINK, CHZ, PANW, NET, FTNT, DDOG) log paper trades even
+        # when raw model confidence is 0.50.
         # =====================================================================
         _min_paper_confidence = float(os.environ.get("MIN_PAPER_CONFIDENCE", "0.62"))
-        if signal_confidence is not None and signal_confidence < _min_paper_confidence:
+        if v3_validated:
+            LOGGER.info(
+                f"[{symbol}] ✅ V3 VALIDATED: Bypassing confidence gate "
+                f"(raw={signal_confidence:.1%}, strategy={v3_strategy})"
+            )
+        elif signal_confidence is not None and signal_confidence < _min_paper_confidence:
             LOGGER.info(
                 f"[{symbol}] 🎲 CONFIDENCE GATE (centralized): {signal_confidence:.1%} < {_min_paper_confidence:.0%} — too low to track"
             )

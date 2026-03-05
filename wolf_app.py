@@ -8691,9 +8691,12 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 #   trading controls, dedup
                 # ================================================================
                 try:
+                    from config.symbols import V3_VALIDATED_STRATEGIES as _SE_V3_STRATEGIES
+                    from core.paper_tracker import get_paper_tracker as _se_get_pt
+                    _se_pt = _se_get_pt()
                     _se_log_direction = se_direction
                     _se_v3_original = None
-                    _se_v3_config = V3_VALIDATED_STRATEGIES.get(symbol.upper())
+                    _se_v3_config = _SE_V3_STRATEGIES.get(symbol.upper())
                     _se_v3_validated = _se_v3_config is not None
                     _se_v3_strategy = _se_v3_config.strategy if _se_v3_config else None
                     _se_v3_hold = _se_v3_config.hold_hours if _se_v3_config else None
@@ -8713,7 +8716,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                                 f"(strategy: {_se_v3_config.strategy})"
                             )
                     
-                    _se_paper_id = paper_tracker.log_signal(
+                    _se_paper_id = _se_pt.log_signal(
                         cascade_id=f"stock_{symbol}_{int(time.time())}",
                         symbol=symbol,
                         signal_direction=_se_log_direction,
@@ -10394,6 +10397,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         EDGE_SYMBOLS = get_edge_set()
         _EDGE_WHITELIST_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
         
+        # Import V3 strategies early — needed for confidence gate bypass
+        from config.symbols import V3_VALIDATED_STRATEGIES
+        
         if _EDGE_WHITELIST_ENABLED and symbol.upper() not in EDGE_SYMBOLS:
             LOGGER.info(
                 f"[{symbol}] 🚫 EDGE WHITELIST: Symbol not in {len(EDGE_SYMBOLS)} proven edge symbols — skipping paper trade"
@@ -10404,10 +10410,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             LOGGER.info(
                 f"[{symbol}] 🛑 HOLD ZONE: XGBoost near coin-flip — no paper trade logged"
             )
-        elif direction in ["UP", "DOWN"] and confidence >= _PAPER_TRADE_MIN_CONFIDENCE:
+        elif direction in ["UP", "DOWN"] and (confidence >= _PAPER_TRADE_MIN_CONFIDENCE or symbol.upper() in V3_VALIDATED_STRATEGIES):
             try:
                 from core.paper_tracker import get_paper_tracker
-                from core.ghost_notifications import V3_VALIDATED_STRATEGIES
                 paper_tracker = get_paper_tracker()
                 
                 # QUALITY GATE: Check symbol's recent win rate — skip consistently losing symbols
