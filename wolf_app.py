@@ -8564,6 +8564,28 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         "error": "HOLD — not actionable",
                     }
                 
+                # ================================================================
+                # V3 DIRECTION OVERRIDE for Stock Engine (Mar 6, 2026)
+                # Apply BEFORE _LATEST_PREDICTIONS and ghost_predictions writes
+                # so evaluator, cockpit, and paper trades all use correct direction.
+                # ================================================================
+                from config.symbols import V3_VALIDATED_STRATEGIES as _SE_V3_EARLY
+                _se_v3_early = _SE_V3_EARLY.get(symbol.upper())
+                _se_raw_dir = None  # Track raw direction before V3 override
+                if _se_v3_early and _se_v3_early.direction_override:
+                    _se_raw_dir = se_direction
+                    if _se_v3_early.direction_override == 'flip':
+                        se_direction = 'DOWN' if se_direction == 'UP' else 'UP'
+                    else:
+                        se_direction = _se_v3_early.direction_override
+                    if se_direction != _se_raw_dir:
+                        LOGGER.info(
+                            f"[{symbol}] 🔄 Stock Engine V3 EARLY OVERRIDE: {_se_raw_dir} → {se_direction} "
+                            f"(strategy: {_se_v3_early.strategy})"
+                        )
+                # Recalculate action after potential direction override
+                se_action = "BUY" if se_direction == "UP" else "SELL" if se_direction == "DOWN" else "HOLD"
+                
                 with _LATEST_PREDICTIONS_LOCK:
                     _LATEST_PREDICTIONS[symbol] = {
                         "prediction_id": None,
@@ -8691,35 +8713,21 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 #   trading controls, dedup
                 # ================================================================
                 try:
-                    from config.symbols import V3_VALIDATED_STRATEGIES as _SE_V3_STRATEGIES
                     from core.paper_tracker import get_paper_tracker as _se_get_pt
                     _se_pt = _se_get_pt()
-                    _se_log_direction = se_direction
-                    _se_v3_original = None
-                    _se_v3_config = _SE_V3_STRATEGIES.get(symbol.upper())
-                    _se_v3_validated = _se_v3_config is not None
+                    # V3 direction override already applied at early override block
+                    # se_direction is already overridden, just use it directly
+                    _se_v3_config = _se_v3_early  # From early override block
+                    _se_v3_validated = _se_v3_config is not None if _se_v3_early else False
                     _se_v3_strategy = _se_v3_config.strategy if _se_v3_config else None
                     _se_v3_hold = _se_v3_config.hold_hours if _se_v3_config else None
                     _se_v3_wr = _se_v3_config.backtest_win_rate if _se_v3_config else None
                     _se_v3_inverse = (_se_v3_config.strategy == 'ghost_inverse') if _se_v3_config else False
                     
-                    # Apply V3 direction override BEFORE paper trade logging
-                    if _se_v3_config and _se_v3_config.direction_override:
-                        _se_v3_original = _se_log_direction
-                        if _se_v3_config.direction_override == 'flip':
-                            _se_log_direction = 'DOWN' if _se_log_direction == 'UP' else 'UP'
-                        else:
-                            _se_log_direction = _se_v3_config.direction_override
-                        if _se_log_direction != _se_v3_original:
-                            LOGGER.info(
-                                f"[{symbol}] 🔄 Stock Engine V3 OVERRIDE: {_se_v3_original} → {_se_log_direction} "
-                                f"(strategy: {_se_v3_config.strategy})"
-                            )
-                    
                     _se_paper_id = _se_pt.log_signal(
                         cascade_id=f"stock_{symbol}_{int(time.time())}",
                         symbol=symbol,
-                        signal_direction=_se_log_direction,
+                        signal_direction=se_direction,  # Already V3-overridden
                         signal_confidence=se_confidence,
                         entry_price=se_entry_price,
                         entry_time=datetime.utcnow().isoformat(),
@@ -8731,7 +8739,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         v3_hold_hours=_se_v3_hold,
                         v3_backtest_win_rate=_se_v3_wr,
                         v3_is_inverse=_se_v3_inverse,
-                        v3_original_direction=_se_v3_original,
+                        v3_original_direction=_se_raw_dir,
                     )
                     if _se_paper_id:
                         LOGGER.info(f"[{symbol}] 📝 Stock Engine paper trade logged: {_se_paper_id}")
@@ -10091,6 +10099,29 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 "error": str(e),
             }
 
+        # =====================================================================
+        # V3 DIRECTION OVERRIDE — apply EARLY (before storage + API return)
+        # ghost_inverse: flip direction (PANW/NET/FTNT) or force UP (ETH)
+        # always_up: force UP (DDOG)
+        # Applied HERE so _LATEST_PREDICTIONS, ghost_predictions, paper_trades,
+        # and API response ALL use the V3-overridden direction.
+        # Without this, inverse trades are evaluated BACKWARDS everywhere.
+        # =====================================================================
+        from config.symbols import V3_VALIDATED_STRATEGIES as _V3_EARLY
+        _v3_early_config = _V3_EARLY.get(symbol.upper())
+        _v3_original_direction = None
+        if _v3_early_config and _v3_early_config.direction_override:
+            _v3_original_direction = direction
+            if _v3_early_config.direction_override == 'flip':
+                direction = 'DOWN' if direction == 'UP' else 'UP'
+            else:
+                direction = _v3_early_config.direction_override  # e.g., 'UP' for ETH/DDOG
+            if direction != _v3_original_direction:
+                LOGGER.info(
+                    f"[{symbol}] 🔄 V3 EARLY OVERRIDE: {_v3_original_direction} → {direction} "
+                    f"(strategy: {_v3_early_config.strategy}, override: {_v3_early_config.direction_override})"
+                )
+
         # Wire to in-memory store for /api/cockpit consumption
         # If calibration says "don't predict", keep the prediction for monitoring but mark HOLD.
         action = "BUY" if direction == "UP" else "SELL" if direction == "DOWN" else "HOLD"
@@ -10468,25 +10499,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 v3_win_rate = v3_config.backtest_win_rate if v3_config else None
                 v3_is_inverse = (v3_config.strategy == 'ghost_inverse') if v3_config else False
                 
-                # =====================================================================
-                # V3 DIRECTION OVERRIDE — apply BEFORE paper trade logging
-                # ghost_inverse: flip direction (PANW/NET/FTNT) or force UP (ETH)
-                # always_up: force UP (DDOG)
-                # Without this, inverse trades are evaluated BACKWARDS (correct
-                # outcomes scored as WRONG), systematically tanking accuracy.
-                # =====================================================================
-                v3_original_direction = None
-                if v3_config and v3_config.direction_override:
-                    v3_original_direction = direction
-                    if v3_config.direction_override == 'flip':
-                        direction = 'DOWN' if direction == 'UP' else 'UP'
-                    else:
-                        direction = v3_config.direction_override  # e.g., 'UP' for ETH/DDOG
-                    if direction != v3_original_direction:
-                        LOGGER.info(
-                            f"[{symbol}] 🔄 V3 DIRECTION OVERRIDE: {v3_original_direction} → {direction} "
-                            f"(strategy: {v3_config.strategy}, override: {v3_config.direction_override})"
-                        )
+                # V3 direction override already applied at L10095 (early override).
+                # Use the original direction captured there.
+                v3_original_direction = _v3_original_direction
                 
                 # PRICE SANITY CHECK: Reject clearly garbage entry prices
                 # JUP was logged at $0.00048679 when real price is ~$0.50-1.00 (390,000% PnL artifact)
