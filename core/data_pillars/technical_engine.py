@@ -461,8 +461,8 @@ class TechnicalEngine(BasePillar):
             except Exception as e:
                 logger.warning(f"MACD calculation failed for {symbol}: {e}")
 
-            # Moving Averages
-            for period in [20, 50, 200]:
+            # Moving Averages (includes SMA_7 needed by XGBoost v2)
+            for period in [7, 20, 50, 200]:
                 try:
                     if len(close) < period:
                         logger.debug(f"Insufficient data for SMA_{period} on {symbol}: {len(close)} < {period}")
@@ -841,6 +841,21 @@ class TechnicalEngine(BasePillar):
                 except Exception:
                     pass
             
+            # === V2-compatible momentum features (longer lookback) ===
+            # XGBoost v2 expects MOMENTUM_7D and MOMENTUM_30D (daily timeframes)
+            # With hourly data: 7 days = 168 bars, 30 days = 720 bars
+            for hours, name in [(168, "MOMENTUM_7D"), (720, "MOMENTUM_30D")]:
+                try:
+                    if n_bars > hours:
+                        mom = (close.iloc[-1] - close.iloc[-hours-1]) / close.iloc[-hours-1] * 100
+                        signals.append(DataSignal(
+                            name=name, value=round(float(mom), 4),
+                            confidence=1.0, data_available=True,
+                            source="calculated", timestamp=ts, metadata={}
+                        ))
+                except Exception:
+                    pass
+            
             # === ROC (Rate of Change - 24 hours) ===
             try:
                 if n_bars > 24:
@@ -1003,6 +1018,14 @@ class TechnicalEngine(BasePillar):
             except Exception as e:
                 logger.debug(f"Fear & Greed features failed: {e}")
             
+            # === Funding Rate features (for crypto symbols) ===
+            # XGBoost v2 expects: funding_rate_proxy, HIGH_FUNDING, NEGATIVE_FUNDING
+            try:
+                funding_features = self._get_funding_rate_features(symbol, ts)
+                signals.extend(funding_features)
+            except Exception as e:
+                logger.debug(f"Funding rate features failed: {e}")
+            
         except Exception as e:
             logger.error(f"XGBoost feature calculation failed: {e}")
         
@@ -1122,6 +1145,59 @@ class TechnicalEngine(BasePillar):
                 DataSignal(name="fear_greed_numeric", value=50, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
                 DataSignal(name="EXTREME_FEAR", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
                 DataSignal(name="EXTREME_GREED", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+            ])
+        
+        return signals
+
+    def _get_funding_rate_features(self, symbol: str, ts: float) -> list[DataSignal]:
+        """
+        Get funding rate features for XGBoost v2.
+        
+        Uses the existing FundingRateAnalyzer (Binance Futures API - free).
+        Produces: funding_rate_proxy, HIGH_FUNDING, NEGATIVE_FUNDING
+        """
+        signals = []
+        
+        try:
+            # Only crypto symbols have funding rates
+            if not self._is_crypto_symbol(symbol):
+                # Stocks don't have funding rates — use neutral defaults
+                signals.extend([
+                    DataSignal(name="funding_rate_proxy", value=0, confidence=1.0, data_available=True, source="not_applicable", timestamp=ts, metadata={}),
+                    DataSignal(name="HIGH_FUNDING", value=0, confidence=1.0, data_available=True, source="not_applicable", timestamp=ts, metadata={}),
+                    DataSignal(name="NEGATIVE_FUNDING", value=0, confidence=1.0, data_available=True, source="not_applicable", timestamp=ts, metadata={}),
+                ])
+                return signals
+            
+            from core.pattern_intelligence.funding_rates import FundingRateAnalyzer
+            analyzer = FundingRateAnalyzer()
+            funding_data = analyzer.get_current_funding(symbol)
+            
+            rate = funding_data.get('rate', 0)
+            
+            signals.append(DataSignal(
+                name="funding_rate_proxy", value=round(float(rate), 6),
+                confidence=1.0 if not funding_data.get('unavailable') else 0.5,
+                data_available=True, source="binance_futures", timestamp=ts, metadata={}
+            ))
+            signals.append(DataSignal(
+                name="HIGH_FUNDING", value=1 if rate > 0.001 else 0,  # > 0.1% = high
+                confidence=1.0 if not funding_data.get('unavailable') else 0.5,
+                data_available=True, source="calculated", timestamp=ts, metadata={}
+            ))
+            signals.append(DataSignal(
+                name="NEGATIVE_FUNDING", value=1 if rate < -0.0005 else 0,  # < -0.05% = negative
+                confidence=1.0 if not funding_data.get('unavailable') else 0.5,
+                data_available=True, source="calculated", timestamp=ts, metadata={}
+            ))
+            
+        except Exception as e:
+            logger.debug(f"Funding rate features failed for {symbol}: {e}")
+            # Defaults — neutral funding
+            signals.extend([
+                DataSignal(name="funding_rate_proxy", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="HIGH_FUNDING", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
+                DataSignal(name="NEGATIVE_FUNDING", value=0, confidence=0.5, data_available=True, source="default", timestamp=ts, metadata={}),
             ])
         
         return signals

@@ -503,8 +503,8 @@ class XGBoostModel:
                     # === V2 ENHANCED FEATURES ===
                     # BTC Correlation (Critical for altcoin prediction)
                     "BTC_RSI": "BTC_RSI",
-                    "BTC_MOMENTUM_24H": "BTC_MOMENTUM_24H",
-                    "BTC_MOMENTUM_7D": "BTC_MOMENTUM_7D",
+                    "BTC_MOMENTUM_4H": "BTC_MOMENTUM_1D",    # V3→V2: 4-hour → 1-day proxy
+                    "BTC_MOMENTUM_24H": "BTC_MOMENTUM_7D",   # V3→V2: 24-hour → 7-day proxy
                     "BTC_MACD_BULLISH": "BTC_MACD_BULLISH",
                     "BTC_ABOVE_SMA_20": "BTC_ABOVE_SMA_20",
                     "BTC_CORRELATION": "BTC_CORRELATION",
@@ -534,8 +534,23 @@ class XGBoostModel:
                     # Market structure
                     "HIGHER_HIGH": "HIGHER_HIGH",
                     "LOWER_LOW": "LOWER_LOW",
-                    "NEAR_24H_HIGH": "NEAR_24H_HIGH",
-                    "NEAR_24H_LOW": "NEAR_24H_LOW",
+                    
+                    # === V3 HOURLY → V2 DAILY NAME MAPPINGS ===
+                    # Technical engine produces hourly names, XGBoost v2 expects daily names.
+                    # CRITICAL FIX: Without these, 21/53 features default to neutral.
+                    "NEAR_24H_HIGH": "NEAR_7D_HIGH",        # V3→V2: 24h high → 7d high
+                    "NEAR_24H_LOW": "NEAR_7D_LOW",          # V3→V2: 24h low → 7d low
+                    "NEAR_48H_HIGH": "NEAR_30D_HIGH",       # V3→V2: 48h high → 30d high
+                    "NEAR_48H_LOW": "NEAR_30D_LOW",         # V3→V2: 48h low → 30d low
+                    "MOMENTUM_24H": "MOMENTUM_1D",          # V3→V2: 24-hour → 1-day
+                    "VOLUME_SMA_24": "VOLUME_SMA_20",        # V3→V2: 24-bar → 20-bar vol SMA
+                    "ROC_24": "ROC_10",                      # V3→V2: 24-hour → 10-day ROC
+                    "ABOVE_SMA_24": "ABOVE_SMA_20",          # V3→V2: above 24h SMA → above 20d
+                    "ABOVE_SMA_48": "ABOVE_SMA_50",          # V3→V2: above 48h SMA → above 50d
+                    "SMA_CROSS_24_48": "SMA_CROSS_20_50",    # V3→V2: 24/48 cross → 20/50 cross
+                    "VOLATILITY_24H": "VOLATILITY_7D",       # V3→V2: 24h vol → 7d vol
+                    "VOLATILITY_48H": "VOLATILITY_30D",      # V3→V2: 48h vol → 30d vol
+                    "HOURLY_RANGE_PCT": "DAILY_RANGE_PCT",   # V3→V2: hourly range → daily range
                 }
                 
                 # NEUTRAL DEFAULTS: Use neutral values instead of 0 to avoid DOWN bias
