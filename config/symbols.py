@@ -194,14 +194,10 @@ DEFAULT_EDGE_SYMBOLS = ",".join([
     "ETH", "XRP", "LINK", "CHZ", "PANW", "NET", "FTNT", "DDOG",
     # ── V3 Whitelist Stocks (sweetspot analysis) ──
     "T", "BMBL", "XPO",
-    # ── Backbone crypto (high liquidity, essential coverage) ──
-    "BTC", "SOL",
-    # ── Graduated: must earn back via paper trade performance ──
-    # REMOVED: ATOM, UNI, AAVE, ICP, TURBO, JUP, BCH, IOTX, GIGA,
-    #          ALICE, BRETT, SEI, FET — no statistical validation
-    # REMOVED: AAPL, MSFT, NVDA, TSLA, AMZN, GOOGL, META, HOOD,
-    #          COIN, AMD, CRM, PLTR, SNOW, UBER — no proven edge
-    # These can be re-added when they show >55% win rate over 50+ trades
+    # ── REMOVED Mar 5, 2026 ──
+    # BTC — 50% live (coin flip), backtest "not significant" (52%)
+    # SOL — 16.7% live, backtest "not significant" (50.2%)
+    # Re-add only if >55% win rate over 50+ trades
 ])
 # REMOVED Feb 25, 2026: RNDR — 11% accuracy (1/9), in HARDCODED_EXCLUSIONS.
 # REMOVED Feb 27, 2026: ADA(20%), AVAX(30%), BNB(30%), DOGE(30%), YFI(11%)

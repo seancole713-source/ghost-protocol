@@ -10335,7 +10335,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # The other 76 symbols have 21.5% WR (256W/933L) — pure destruction
         # Only trade symbols with PROVEN edge. Updated via env var for easy tuning.
         # =====================================================================
-        _PAPER_TRADE_MIN_CONFIDENCE = float(os.getenv("PAPER_TRADE_MIN_CONFIDENCE", "0.55"))
+        _PAPER_TRADE_MIN_CONFIDENCE = float(os.getenv("PAPER_TRADE_MIN_CONFIDENCE", "0.62"))
         EDGE_SYMBOLS = get_edge_set()
         _EDGE_WHITELIST_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
         
@@ -10357,7 +10357,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 
                 # QUALITY GATE: Check symbol's recent win rate — skip consistently losing symbols
                 # This prevents flooding paper_trades with predictions for symbols where model has no edge
-                _PAPER_TRADE_MIN_SYMBOL_WINRATE = float(os.getenv("PAPER_TRADE_MIN_SYMBOL_WINRATE", "0.35"))
+                _PAPER_TRADE_MIN_SYMBOL_WINRATE = float(os.getenv("PAPER_TRADE_MIN_SYMBOL_WINRATE", "0.48"))
                 _PAPER_TRADE_MIN_SYMBOL_TRADES = int(os.getenv("PAPER_TRADE_MIN_SYMBOL_TRADES", "8"))
                 conn_qg = None
                 try:
@@ -14972,9 +14972,6 @@ async def api_v3_goals_snapshot():
         ai_activity = 50
         accuracy = 50
         
-        # V2 ERA: Start date for clean data
-        V2_START_DATE = "2026-01-14"
-        
         try:
             # Data Health: Check crypto providers with timeout (same as health/metrics)
             from core.crypto.crypto_providers import get_crypto_price_quorum
@@ -15033,8 +15030,8 @@ async def api_v3_goals_snapshot():
         try:
             from core.paper_tracker import get_paper_tracker
             tracker = get_paper_tracker()
-            # CRITICAL: Use since=V2_START_DATE to get 60% accuracy, not 29%
-            stats = tracker.get_stats(since=V2_START_DATE, v2_only=True)
+            # 14-day rolling window — reflects CURRENT system performance
+            stats = tracker.get_stats(days=14)
             _resolved = stats.get("resolved_trades", 0)
             _wins = stats.get("wins", 0)
             _losses = stats.get("losses", 0)
