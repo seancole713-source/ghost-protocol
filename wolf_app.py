@@ -861,6 +861,7 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         "/api/forecast/", "/api/movers/", "/api/gates/",
         "/api/money-game/",
         "/api/xray",
+        "/api/doctor",
         "/alerts/",
         "/api/debug/crypto-check/",
         "/static/",
