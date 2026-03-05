@@ -425,6 +425,37 @@ class XGBoostModel:
                         f"(no metadata, {len(self.feature_names)} features extracted)"
                     )
                 
+                # ── CRITICAL FALLBACK: If feature names are generic (f0, f1...),
+                # the pipeline can't map ANY real features → everything defaults.
+                # Load real names from training_results JSON as fallback.
+                if self.feature_names and self.feature_names[0].startswith("f") and self.feature_names[0][1:].isdigit():
+                    logger.warning(
+                        f"⚠️ Feature names are generic ({self.feature_names[:3]}...) — "
+                        f"loading real names from training_results JSON"
+                    )
+                    try:
+                        import json
+                        results_path = Path(__file__).parent.parent / "models" / "trained" / "training_results_v2.json"
+                        if results_path.exists():
+                            with open(results_path) as _f:
+                                results_data = json.load(_f)
+                            # Try data.feature_names first, then metadata.feature_names
+                            real_names = (
+                                results_data.get("data", {}).get("feature_names")
+                                or results_data.get("metadata", {}).get("feature_names")
+                                or []
+                            )
+                            if real_names and len(real_names) == len(self.feature_names):
+                                self.feature_names = real_names
+                                logger.info(f"✅ Loaded {len(real_names)} real feature names from training_results_v2.json")
+                            elif real_names:
+                                logger.warning(
+                                    f"⚠️ Feature count mismatch: model has {len(self.feature_names)}, "
+                                    f"JSON has {len(real_names)} — keeping generic names"
+                                )
+                    except Exception as e:
+                        logger.warning(f"Could not load feature names from JSON: {e}")
+                
                 self._loaded = True
                 
                 # Detect version from path

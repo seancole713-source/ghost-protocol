@@ -249,9 +249,25 @@ def save_model(model, feature_names, train_stats):
         print(f"  Backup: {BACKUP_PATH.name}")
     
     # Save new model to filesystem (for backward compatibility)
+    # CRITICAL FIX: Save as dict with feature_names, not bare model.
+    # Without feature_names, the loader falls back to f0,f1,f2... and
+    # no features from the pipeline can match. Everything defaults.
+    model_bundle = {
+        "model": model,
+        "feature_names": feature_names,
+        "train_accuracy": train_stats.get('train_accuracy', 0),
+        "test_accuracy": train_stats.get('test_accuracy', 0),
+        "cv_score": train_stats.get('cv_score', 0),
+        "metadata": {
+            "version": "retrained",
+            "features": len(feature_names),
+            "feature_names": feature_names,
+            "trained_at": datetime.now().isoformat(),
+        }
+    }
     with open(MODEL_PATH, 'wb') as f:
-        pickle.dump(model, f)
-    print(f"  ✅ Saved to filesystem: {MODEL_PATH}")
+        pickle.dump(model_bundle, f)
+    print(f"  \u2705 Saved to filesystem: {MODEL_PATH} (dict with {len(feature_names)} feature names)")
     
     # Save to PostgreSQL (for persistence across Railway restarts)
     if PERSIST_TO_DB:
