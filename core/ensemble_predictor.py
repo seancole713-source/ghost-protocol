@@ -724,12 +724,36 @@ class XGBoostModel:
                 prob_down = float(proba[0])  # Class 0 = DOWN
                 prob_up = float(proba[1])    # Class 1 = UP
                 
-                # RAW MODEL OUTPUT (no hacks, no bias correction, no compression)
-                # Let the model speak for itself - we'll measure REAL accuracy
-                logger.info(
-                    f"🤖 XGBoost {self.model_version} for {features.get('symbol', '?')}: "
-                    f"UP={prob_up:.1%}, DOWN={prob_down:.1%}"
-                )
+                # ── BIAS CORRECTION (Mar 6, 2026) ──
+                # The model was trained with scale_pos_weight=3.23 (a 2x overcorrection
+                # for 62% DOWN / 38% UP class imbalance). This inflates prob_up by ~12-15pp.
+                # 
+                # Evidence: ETH had RSI=37, MACD bearish, momentum=-3%, fear_greed=18 (EXTREME FEAR)
+                # but model said UP 71% because the 3.23x weight inflates UP probabilities.
+                #
+                # Fix: Apply inverse logit correction to neutralize the 2x multiplier.
+                # We only remove the EXTRA 2x, keeping the base balance correction (1.61x).
+                # This shifts the effective decision boundary from 0.50 to ~0.62.
+                #
+                # Math: logit(p) = log(p/(1-p)), adjusted = logit(p) - log(2.0), corrected = sigmoid(adjusted)
+                import math
+                _BIAS_CORRECTION = float(_os.getenv("XGBOOST_BIAS_CORRECTION", "0.7"))  # log(2.0) ≈ 0.693
+                if _BIAS_CORRECTION > 0:
+                    _logit_up = math.log(prob_up / max(prob_down, 1e-10))
+                    _adjusted_logit = _logit_up - _BIAS_CORRECTION
+                    _corrected_up = 1.0 / (1.0 + math.exp(-_adjusted_logit))
+                    _corrected_down = 1.0 - _corrected_up
+                    logger.info(
+                        f"🤖 XGBoost {self.model_version} for {features.get('symbol', '?')}: "
+                        f"raw UP={prob_up:.1%} DOWN={prob_down:.1%} → corrected UP={_corrected_up:.1%} DOWN={_corrected_down:.1%}"
+                    )
+                    prob_up = _corrected_up
+                    prob_down = _corrected_down
+                else:
+                    logger.info(
+                        f"🤖 XGBoost {self.model_version} for {features.get('symbol', '?')}: "
+                        f"UP={prob_up:.1%}, DOWN={prob_down:.1%}"
+                    )
                 
                 # HOLD ZONE (Feb 9, 2026): When model is near coin-flip, DON'T force a trade.
                 # "A binary classifier that's forced to choose will always output something.

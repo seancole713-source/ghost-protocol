@@ -178,10 +178,14 @@ def extract_features(data):
     # Calculate scale_pos_weight with aggressive balancing
     # Use 2x multiplier to force more balanced predictions
     base_weight = down_count / up_count if up_count > 0 else 1.0
-    scale_pos_weight = base_weight * 2.0  # Aggressive: double the weight
+    # Use base weight only (1.0x multiplier) — NOT 2.0x
+    # The 2.0x overcorrection caused the model to predict UP even when
+    # every indicator (RSI=37, MACD bearish, momentum=-3%, fear=18) screamed DOWN.
+    # Base weight (down/up ratio) is sufficient to balance the classes.
+    scale_pos_weight = base_weight * 1.0  # Balanced: no overcorrection
     
-    print(f"\n⚖️  scale_pos_weight = {scale_pos_weight:.2f} (base={base_weight:.2f}, 2x aggressive)")
-    print(f"   This will force model to predict more UP outcomes")
+    print(f"\n⚖️  scale_pos_weight = {scale_pos_weight:.2f} (base={base_weight:.2f}, 1x balanced)")
+    print(f"   Balanced correction — no artificial UP bias")
     
     return X, y, feature_names, scale_pos_weight
 
