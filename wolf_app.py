@@ -8615,7 +8615,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 
                 with _LATEST_PREDICTIONS_LOCK:
                     _LATEST_PREDICTIONS[symbol] = {
-                        "prediction_id": None,
+                        "prediction_id": None,  # Updated after PG write below
                         "symbol": symbol,
                         "run_at": time.time(),
                         "confidence": se_confidence,
@@ -8697,6 +8697,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 # ALSO write stock predictions to PostgreSQL (Feb 24, 2026)
                 # Evaluator now reads from PostgreSQL exclusively.
                 # ================================================================
+                _se_pg_prediction_id = None
                 try:
                     from core.db_pool import get_sync_connection as _se_get_conn
                     _se_pred_price = stock_result.get("target_price") or se_entry_price
@@ -8710,6 +8711,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                                 current_price, target_price, gate, checked
                             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (symbol, predicted_at) DO NOTHING
+                            RETURNING id
                         """, (
                             symbol,
                             int(time.time()),
@@ -8724,10 +8726,18 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                             "STOCK_ENGINE",
                             0,
                         ))
+                        _se_row = _se_pg_cur.fetchone()
+                        _se_pg_prediction_id = _se_row[0] if _se_row else None
                         _se_pg_conn.commit()
-                    LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → PostgreSQL ghost_predictions ✅")
+                    LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → PostgreSQL ghost_predictions (id={_se_pg_prediction_id}) ✅")
                 except Exception as _se_pg_err:
                     LOGGER.warning(f"[{symbol}] Stock Engine PostgreSQL write failed (non-fatal): {_se_pg_err}")
+                
+                # Update in-memory cache with PG prediction_id now that we have it
+                if _se_pg_prediction_id is not None:
+                    with _LATEST_PREDICTIONS_LOCK:
+                        if symbol in _LATEST_PREDICTIONS:
+                            _LATEST_PREDICTIONS[symbol]["prediction_id"] = _se_pg_prediction_id
                 
                 # ================================================================
                 # PAPER TRADE LOGGING for Stock Engine (Mar 6, 2026)
@@ -8775,7 +8785,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 
                 return {
                     "ok": stock_result.get("is_actionable", False) or se_direction != "HOLD",
-                    "prediction_id": None,
+                    "prediction_id": _se_pg_prediction_id,
                     "symbol": symbol,
                     "direction": se_direction,
                     "confidence": se_confidence,
@@ -10086,9 +10096,33 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             if _is_dedup and direction and confidence > 0:
                 from core.asset_classification import is_crypto_symbol as _is_crypto_dedup
                 _dedup_action = "BUY" if direction == "UP" else "SELL" if direction == "DOWN" else "HOLD"
+                # Extract original prediction_id from rejection message or DB
+                _dedup_pred_id = None
+                try:
+                    import re as _dedup_re
+                    _id_match = _dedup_re.search(r'prediction\s+(\d+)', _reject_str)
+                    if _id_match:
+                        _dedup_pred_id = int(_id_match.group(1))
+                except Exception:
+                    pass
+                # Fallback: query PostgreSQL for the existing prediction
+                if _dedup_pred_id is None:
+                    try:
+                        from core.db_pool import get_sync_connection as _dedup_get_conn
+                        with _dedup_get_conn() as _dedup_conn:
+                            _dedup_cur = _dedup_conn.cursor()
+                            _dedup_cur.execute(
+                                "SELECT id FROM ghost_predictions WHERE symbol = %s AND checked = 0 ORDER BY predicted_at DESC LIMIT 1",
+                                (symbol,)
+                            )
+                            _dedup_row = _dedup_cur.fetchone()
+                            if _dedup_row:
+                                _dedup_pred_id = _dedup_row[0]
+                    except Exception:
+                        pass
                 with _LATEST_PREDICTIONS_LOCK:
                     _LATEST_PREDICTIONS[symbol] = {
-                        "prediction_id": None,  # Dedup — original ID is in DB
+                        "prediction_id": _dedup_pred_id,  # Preserve original ID
                         "symbol": symbol,
                         "run_at": time.time(),
                         "confidence": confidence,
@@ -28051,6 +28085,81 @@ async def debug_db_reset_accuracy(confirm: str = "no"):
                 "message": "Symbol accuracy table reset. Reconciler will rebuild from outcomes."
             }
         
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.get("/debug/pg-health")
+async def debug_pg_health():
+    """
+    Quick PostgreSQL table health: row counts for ghost_predictions,
+    price_actuals, and ghost_accuracy_stats, plus newest/oldest timestamps.
+    """
+    try:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            result = {}
+            # ghost_predictions
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions")
+            total_preds = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 0")
+            unchecked = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1")
+            checked = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE correct = 1")
+            correct = cur.fetchone()[0]
+            cur.execute("SELECT MIN(predicted_at), MAX(predicted_at) FROM ghost_predictions")
+            pmin, pmax = cur.fetchone()
+            result["ghost_predictions"] = {
+                "total": total_preds,
+                "unchecked": unchecked,
+                "checked": checked,
+                "correct": correct,
+                "oldest_ts": pmin,
+                "newest_ts": pmax,
+                "oldest_age_h": round((time.time() - pmin) / 3600, 1) if pmin else None,
+                "newest_age_h": round((time.time() - pmax) / 3600, 1) if pmax else None,
+            }
+            # price_actuals
+            cur.execute("SELECT COUNT(*) FROM price_actuals")
+            pa_total = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(DISTINCT symbol) FROM price_actuals")
+            pa_symbols = cur.fetchone()[0]
+            cur.execute("SELECT MIN(ts), MAX(ts) FROM price_actuals")
+            amin, amax = cur.fetchone()
+            result["price_actuals"] = {
+                "total_rows": pa_total,
+                "unique_symbols": pa_symbols,
+                "oldest_ts": amin,
+                "newest_ts": amax,
+                "oldest_age_h": round((time.time() - amin) / 3600, 1) if amin else None,
+                "newest_age_h": round((time.time() - amax) / 3600, 1) if amax else None,
+            }
+            # Recent price_actuals by symbol
+            cur.execute("""
+                SELECT symbol, COUNT(*), MAX(ts)
+                FROM price_actuals
+                GROUP BY symbol
+                ORDER BY MAX(ts) DESC
+            """)
+            by_sym = []
+            for sym, cnt, latest in cur.fetchall():
+                by_sym.append({
+                    "symbol": sym, "count": cnt,
+                    "latest_ts": latest,
+                    "age_min": round((time.time() - latest) / 60, 1) if latest else None,
+                })
+            result["price_actuals_by_symbol"] = by_sym
+            # ghost_accuracy_stats
+            try:
+                cur.execute("SELECT period, total_predictions, correct_predictions, accuracy_pct FROM ghost_accuracy_stats ORDER BY period")
+                stats = [{"period": p, "total": t, "correct": c, "pct": a} for p, t, c, a in cur.fetchall()]
+                result["accuracy_stats"] = stats
+            except Exception:
+                result["accuracy_stats"] = "table_missing"
+            return {"ok": True, **result}
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
