@@ -48,6 +48,10 @@ def _ensure_price_tables(conn: sqlite3.Connection) -> None:
 
 
 def _get_active_symbols(conn: sqlite3.Connection, now: int) -> list[str]:
+    """Get symbols with active (unchecked) predictions from SQLite + PostgreSQL."""
+    symbols = set()
+
+    # SQLite (stock predictions stored locally)
     cutoff = now - (PRICE_RECORD_LOOKBACK_H * 3600)
     rows = conn.execute(
         """
@@ -57,13 +61,57 @@ def _get_active_symbols(conn: sqlite3.Connection, now: int) -> list[str]:
         """,
         (cutoff,),
     ).fetchall()
-    return [r[0] for r in rows if r and r[0]]
+    symbols.update(r[0] for r in rows if r and r[0])
+
+    # PostgreSQL (crypto + all predictions — evaluator reads from here)
+    try:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as pg_conn:
+            pg_cur = pg_conn.cursor()
+            pg_cur.execute(
+                """SELECT DISTINCT symbol FROM ghost_predictions
+                   WHERE checked = 0 AND predicted_at >= %s""",
+                (cutoff,),
+            )
+            pg_rows = pg_cur.fetchall()
+            symbols.update(r[0] for r in pg_rows if r and r[0])
+    except Exception as e:
+        LOGGER.debug(f"[PRICE RECORDER] PostgreSQL symbol fetch failed: {e}")
+
+    return list(symbols)
+
+
+def _write_prices_to_postgres(prices: list[tuple[int, str, float]]) -> int:
+    """Write price snapshots to PostgreSQL for the evaluator.
+    
+    CRITICAL FIX (Mar 7, 2026): Evaluator reads from PostgreSQL price_actuals
+    but this recorder only wrote to SQLite → evaluator had 0 price data → 0% WR.
+    """
+    if not prices:
+        return 0
+    try:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as pg_conn:
+            pg_cur = pg_conn.cursor()
+            for ts, symbol, price in prices:
+                pg_cur.execute(
+                    """INSERT INTO price_actuals (ts, symbol, price)
+                       VALUES (%s, %s, %s)
+                       ON CONFLICT (symbol, ts) DO NOTHING""",
+                    (ts, symbol, price),
+                )
+            pg_conn.commit()
+        return len(prices)
+    except Exception as e:
+        LOGGER.warning(f"[PRICE RECORDER] PostgreSQL write failed: {e}")
+        return 0
 
 
 def record_prices_once(fetch_price: FetchPriceFn) -> dict[str, int]:
-    """Record a single snapshot for all active symbols."""
+    """Record a single snapshot for all active symbols (SQLite + PostgreSQL)."""
     now = int(time.time())
     conn = sqlite3.connect(DB_PATH)
+    pg_batch: list[tuple[int, str, float]] = []
 
     try:
         _ensure_price_tables(conn)
@@ -85,12 +133,19 @@ def record_prices_once(fetch_price: FetchPriceFn) -> dict[str, int]:
                     """,
                     (now, symbol, float(price)),
                 )
+                pg_batch.append((now, symbol, float(price)))
                 inserted += 1
             except Exception:
                 failed += 1
 
         conn.commit()
-        return {"symbols": len(symbols), "inserted": inserted, "failed": failed}
+
+        # Also write to PostgreSQL for the evaluator
+        pg_inserted = _write_prices_to_postgres(pg_batch)
+        if pg_inserted:
+            LOGGER.debug(f"[PRICE RECORDER] {pg_inserted} prices → PostgreSQL")
+
+        return {"symbols": len(symbols), "inserted": inserted, "failed": failed, "pg_inserted": pg_inserted}
 
     finally:
         conn.close()

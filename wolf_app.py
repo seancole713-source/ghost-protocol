@@ -3471,7 +3471,13 @@ def _store_forecast_48h(
 
 
 def _store_price_actual(symbol: str, price: float, ts: int | None = None):
-    """Store actual price for verification."""
+    """Store actual price for verification — writes to BOTH SQLite and PostgreSQL.
+    
+    CRITICAL FIX (Mar 7, 2026): Previously wrote to SQLite only, but the
+    prediction_evaluator reads from PostgreSQL price_actuals. Result: evaluator
+    had ZERO price data → 0% win rate on all 155 trades.
+    Now writes to both so evaluator can actually evaluate predictions.
+    """
     import sqlite3
 
     try:
@@ -3488,7 +3494,24 @@ def _store_price_actual(symbol: str, price: float, ts: int | None = None):
             )
             conn.commit()
     except Exception as e:
-        print(f"[store_price_actual] {e}")
+        print(f"[store_price_actual] SQLite: {e}")
+
+    # ALSO write to PostgreSQL — evaluator reads from here
+    try:
+        from core.db_pool import get_sync_connection as _spa_get_conn
+        if ts is None:
+            ts = int(time.time())
+        with _spa_get_conn() as pg_conn:
+            pg_cur = pg_conn.cursor()
+            pg_cur.execute(
+                """INSERT INTO price_actuals (ts, symbol, price)
+                   VALUES (%s, %s, %s)
+                   ON CONFLICT (symbol, ts) DO NOTHING""",
+                (int(ts), str(symbol), float(price)),
+            )
+            pg_conn.commit()
+    except Exception as e:
+        print(f"[store_price_actual] PostgreSQL: {e}")
 
 
 def _get_forecast_48h_series(symbol: str, limit: int = 50) -> list[dict[str, Any]]:
@@ -5539,8 +5562,32 @@ async def _post_startup_init():
     
     if not WORKER_MODE:
         LOGGER.info("[WEB MODE] Heavy background engines DISABLED (predictions still running)")
-        LOGGER.info("[WEB MODE] To enable all background services, deploy a separate worker with WORKER_MODE=1")
-        return  # EXIT - no heavy background work in web mode
+        LOGGER.info("[WEB MODE] Price recorder will still run (needed for accuracy evaluation)")
+        # FIX (Mar 7, 2026): Start price recorder even in web mode.
+        # Without this, the evaluator has ZERO price data → 0% WR forever.
+        # Railway only runs the 'web' process, so price recording must happen here.
+        try:
+            from core.prediction_price_recorder import price_recording_loop as _web_price_loop
+
+            def _web_fetch_price(sym: str) -> float | None:
+                sym = (sym or "").upper().strip()
+                if not sym:
+                    return None
+                is_crypto_local = sym in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(sym) == "crypto"
+                if is_crypto_local:
+                    res = turbo_crypto_price(sym, max_budget_s=2.0)
+                else:
+                    res = turbo_stock_price(sym, max_budget_s=2.0)
+                if res and res.get("ok") and res.get("price"):
+                    return float(res["price"])
+                return None
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(_web_price_loop(_web_fetch_price))
+            LOGGER.info("[WEB MODE] ✅ Price recorder started (evaluator needs PostgreSQL price data)")
+        except Exception as _web_pr_err:
+            LOGGER.error(f"[WEB MODE] price recorder failed to start: {_web_pr_err}", exc_info=False)
+        return  # EXIT - no other heavy background work in web mode
 
     # Start price recorder for touch-target evaluation (worker-only)
     try:
@@ -11023,8 +11070,23 @@ async def api_xray_symbol(symbol: str):
         import numpy as np
         X = np.array([feature_values])
         proba = predictor.model.predict_proba(X)[0]
-        prob_down = float(proba[0])
-        prob_up = float(proba[1])
+        prob_down_raw = float(proba[0])
+        prob_up_raw = float(proba[1])
+        
+        # Apply bias correction (same as ensemble_predictor.py)
+        # Without this, xray shows raw biased probabilities while
+        # cockpit shows corrected ones — confusing.
+        import math
+        _XRAY_BIAS = float(os.getenv("XGBOOST_BIAS_CORRECTION", "0.7"))
+        if _XRAY_BIAS > 0 and prob_up_raw > 0.001 and prob_down_raw > 0.001:
+            _xray_logit = math.log(prob_up_raw / prob_down_raw)
+            _xray_adj = _xray_logit - _XRAY_BIAS
+            prob_up = 1.0 / (1.0 + math.exp(-_xray_adj))
+            prob_down = 1.0 - prob_up
+        else:
+            prob_up = prob_up_raw
+            prob_down = prob_down_raw
+        
         spread = abs(prob_up - prob_down)
         
         import os
@@ -11071,6 +11133,9 @@ async def api_xray_symbol(symbol: str):
             "xgboost_output": {
                 "prob_up": round(prob_up, 4),
                 "prob_down": round(prob_down, 4),
+                "prob_up_raw": round(prob_up_raw, 4),
+                "prob_down_raw": round(prob_down_raw, 4),
+                "bias_correction": _XRAY_BIAS,
                 "spread": round(spread, 4),
                 "direction": direction,
                 "confidence": round(confidence, 4),

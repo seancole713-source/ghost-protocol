@@ -156,6 +156,13 @@ def _ensure_pg_tables(conn) -> None:
     """)
     try:
         cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_price_actuals_sym_ts_uniq
+            ON price_actuals (symbol, ts)
+        """)
+    except Exception:
+        pass
+    try:
+        cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_price_actuals_sym_ts
             ON price_actuals (symbol, ts)
         """)

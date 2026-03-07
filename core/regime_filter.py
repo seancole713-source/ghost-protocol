@@ -316,16 +316,36 @@ async def apply_regime_filter(
         filtered_crypto = [p for p in filtered_crypto if not _is_buy_direction(p)]
 
     # ── Stock regime gating ───────────────────────────────────
+    # FIX (Mar 7, 2026): Was a binary kill switch — ALL stock BUYs blocked
+    # when SPY was below 20-day MA, even by 0.1%. Combined with low
+    # confidence, this gave Ghost 0 picks on normal down days.
+    # Now uses GRADUATED penalty: reduce confidence by SPY_BELOW_MA_PENALTY
+    # instead of blocking. The V3 confidence gate handles the rest.
     spy_regime = regime.get("spy_regime", "unknown")
     if spy_regime == "bear":
+        _adjusted_stocks = []
         for p in filtered_stocks:
             if _is_buy_direction(p):
-                removed_stocks.append(p)
-                LOGGER.warning(
-                    f"🚫 SPY BEAR: Blocked stock BUY "
-                    f"{p['symbol']} ({p.get('confidence', 0):.0%})"
-                )
-        filtered_stocks = [p for p in filtered_stocks if not _is_buy_direction(p)]
+                original_conf = p.get("confidence", 0)
+                adjusted_conf = original_conf - SPY_BELOW_MA_PENALTY
+                if adjusted_conf <= 0.35:
+                    # Only block if confidence is truly garbage after penalty
+                    removed_stocks.append(p)
+                    LOGGER.warning(
+                        f"🚫 SPY BEAR: Blocked stock BUY "
+                        f"{p['symbol']} (conf {original_conf:.0%} → {adjusted_conf:.0%} after penalty)"
+                    )
+                else:
+                    p_copy = dict(p)
+                    p_copy["confidence"] = adjusted_conf
+                    _adjusted_stocks.append(p_copy)
+                    LOGGER.info(
+                        f"⚠️ SPY BEAR: Penalized stock BUY "
+                        f"{p['symbol']} ({original_conf:.0%} → {adjusted_conf:.0%})"
+                    )
+            else:
+                _adjusted_stocks.append(p)  # SELLs pass through unchanged
+        filtered_stocks = _adjusted_stocks
 
     # Build regime info for logging/debug
     regime_info = {
