@@ -180,7 +180,27 @@ def _check_core_imports() -> dict[str, Any]:
 
 
 def _check_accuracy() -> dict[str, Any]:
-    """Check accuracy tracker has recent data."""
+    """Check accuracy tracker — reads from PostgreSQL evaluator (persistent)."""
+    # PRIMARY: PostgreSQL evaluator (survives deploys, authoritative)
+    try:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1")
+            checked = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE correct = 1")
+            correct = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 0")
+            pending = cur.fetchone()[0]
+            if checked > 0:
+                wr = correct / checked
+                return {"pass": True, "detail": f"{correct}/{checked} correct ({wr:.0%}), {pending} pending"}
+            elif pending > 0:
+                return {"pass": True, "detail": f"{pending} predictions pending evaluation"}
+    except Exception:
+        pass
+
+    # FALLBACK: Paper tracker (SQLite, ephemeral)
     try:
         from core.paper_tracker import get_paper_tracker
         tracker = get_paper_tracker()
@@ -190,7 +210,7 @@ def _check_accuracy() -> dict[str, Any]:
         total = stats.get("total_trades", 0)
         ok = total > 0
         wr = stats.get("win_rate", 0)
-        return {"pass": ok, "detail": f"{total} trades, {wr:.0%} WR"}
+        return {"pass": ok, "detail": f"{total} paper trades, {wr:.0%} WR"}
     except Exception as e:
         # Acceptable if module missing on cold start
         return {"pass": True, "detail": f"accuracy tracker unavailable: {str(e)[:60]}"}
