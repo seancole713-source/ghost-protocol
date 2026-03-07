@@ -11077,7 +11077,8 @@ async def api_xray_symbol(symbol: str):
         # Without this, xray shows raw biased probabilities while
         # cockpit shows corrected ones — confusing.
         import math
-        _XRAY_BIAS = float(os.getenv("XGBOOST_BIAS_CORRECTION", "0.7"))
+        import os as _xray_os
+        _XRAY_BIAS = float(_xray_os.getenv("XGBOOST_BIAS_CORRECTION", "0.7"))
         if _XRAY_BIAS > 0 and prob_up_raw > 0.001 and prob_down_raw > 0.001:
             _xray_logit = math.log(prob_up_raw / prob_down_raw)
             _xray_adj = _xray_logit - _XRAY_BIAS
