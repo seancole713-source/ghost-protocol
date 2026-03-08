@@ -35,7 +35,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     'ETH': ValidatedStrategy(
         symbol='ETH',
         strategy='ghost_inverse',
-        direction_override='UP',
+        direction_override=None,  # REMOVED: was 'UP' — forced 0% accuracy when ETH went down
         hold_hours=72,
         backtest_win_rate=0.615,
         backtest_trades=78,
@@ -68,7 +68,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     'PANW': ValidatedStrategy(
         symbol='PANW',
         strategy='ghost_inverse',
-        direction_override=DIRECTION_FLIP,
+        direction_override=None,  # REMOVED: was DIRECTION_FLIP — showed 5% accuracy with flip
         hold_hours=168,
         backtest_win_rate=0.646,
         backtest_trades=65,
@@ -79,7 +79,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     'NET': ValidatedStrategy(
         symbol='NET',
         strategy='ghost_inverse',
-        direction_override=DIRECTION_FLIP,
+        direction_override=None,  # REMOVED: was DIRECTION_FLIP — showed 5% accuracy with flip
         hold_hours=168,
         backtest_win_rate=0.625,
         backtest_trades=72,
@@ -90,7 +90,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     'FTNT': ValidatedStrategy(
         symbol='FTNT',
         strategy='ghost_inverse',
-        direction_override=DIRECTION_FLIP,
+        direction_override=None,  # REMOVED: was DIRECTION_FLIP — showed 5% accuracy with flip
         hold_hours=168,
         backtest_win_rate=0.623,
         backtest_trades=69,
@@ -115,7 +115,7 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     'DDOG': ValidatedStrategy(
         symbol='DDOG',
         strategy='always_up',
-        direction_override='UP',
+        direction_override=None,  # REMOVED: was 'UP' — showed 11% accuracy when DDOG went down
         hold_hours=48,
         backtest_win_rate=0.569,
         backtest_trades=202,

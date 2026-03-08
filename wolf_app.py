@@ -28293,6 +28293,61 @@ async def debug_reset_all_evaluations():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.post("/debug/skip-pre-fix-predictions")
+async def debug_skip_pre_fix_predictions():
+    """
+    Mark all predictions made BEFORE the price data fix (March 7 2026)
+    as permanently skipped. These were generated with broken features
+    (21/53 defaulting), wrong direction overrides, and corrupt target prices.
+    Only post-fix predictions will be evaluated for accuracy.
+    """
+    FIX_TIMESTAMP = 1772896000  # March 7 2026 ~14:00 UTC
+    try:
+        import time as _t
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            now = int(_t.time())
+
+            # Count pre-fix predictions
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE predicted_at < %s", (FIX_TIMESTAMP,))
+            pre_fix_count = cur.fetchone()[0]
+
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE predicted_at < %s AND checked = 0", (FIX_TIMESTAMP,))
+            unchecked_pre_fix = cur.fetchone()[0]
+
+            # Skip all pre-fix predictions (mark as checked with skip version)
+            cur.execute("""
+                UPDATE ghost_predictions
+                SET checked = 1,
+                    checked_at = %s,
+                    eval_version = 'skip-pre-fix-v1'
+                WHERE predicted_at < %s AND eval_version IS DISTINCT FROM 'skip-pre-fix-v1'
+            """, (now, FIX_TIMESTAMP))
+            skipped_count = cur.rowcount
+            conn.commit()
+
+            # Get updated accuracy (post-fix only)
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'")
+            real_checked = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND correct = 1 AND eval_version NOT LIKE 'skip%%'")
+            real_correct = cur.fetchone()[0]
+            new_accuracy = round(real_correct / real_checked * 100, 1) if real_checked > 0 else 0
+
+            return {
+                "ok": True,
+                "pre_fix_total": pre_fix_count,
+                "newly_skipped": skipped_count,
+                "post_fix_checked": real_checked,
+                "post_fix_correct": real_correct,
+                "post_fix_accuracy_pct": new_accuracy,
+                "message": f"Skipped {skipped_count} pre-fix predictions. Post-fix accuracy: {new_accuracy}% ({real_correct}/{real_checked})",
+            }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/pg-accuracy-breakdown")
 async def debug_pg_accuracy_breakdown():
     """
