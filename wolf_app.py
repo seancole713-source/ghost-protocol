@@ -28165,6 +28165,172 @@ async def debug_pg_health():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.get("/debug/pg-accuracy-breakdown")
+async def debug_pg_accuracy_breakdown():
+    """
+    Deep accuracy breakdown for ghost_predictions:
+    - Per-symbol accuracy
+    - Eval version breakdown (single-point fallback vs real window)
+    - Pre-fix vs post-fix accuracy split
+    """
+    FIX_TIMESTAMP = 1772896000  # March 7 2026 ~14:00 UTC - price data fix deployed
+    try:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            result: dict = {}
+
+            # 1) Per-symbol accuracy
+            cur.execute("""
+                SELECT symbol,
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN checked=1 THEN 1 ELSE 0 END) AS checked,
+                       SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) AS correct,
+                       SUM(CASE WHEN checked=0 THEN 1 ELSE 0 END) AS pending
+                FROM ghost_predictions GROUP BY symbol ORDER BY total DESC
+            """)
+            per_symbol = []
+            for sym, total, checked, correct, pending in cur.fetchall():
+                acc = round(correct / checked * 100, 1) if checked > 0 else None
+                per_symbol.append({"symbol": sym, "total": total, "checked": checked,
+                                   "correct": correct, "pending": pending, "accuracy_pct": acc})
+            result["per_symbol"] = per_symbol
+
+            # 2) Eval version breakdown
+            cur.execute("""
+                SELECT eval_version,
+                       COUNT(*) AS cnt,
+                       SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) AS correct
+                FROM ghost_predictions WHERE checked=1
+                GROUP BY eval_version ORDER BY cnt DESC
+            """)
+            eval_versions = []
+            for ver, cnt, correct in cur.fetchall():
+                eval_versions.append({"version": ver, "count": cnt, "correct": correct,
+                                      "accuracy_pct": round(correct / cnt * 100, 1) if cnt > 0 else 0})
+            result["eval_versions"] = eval_versions
+
+            # 3) Window data quality
+            cur.execute("""
+                SELECT
+                  COUNT(*) AS total_checked,
+                  SUM(CASE WHEN window_first IS NOT NULL AND window_high IS NOT NULL
+                            AND window_first != window_last THEN 1 ELSE 0 END) AS real_window,
+                  SUM(CASE WHEN window_first IS NOT NULL AND window_high IS NOT NULL
+                            AND window_first = window_last AND window_high = window_low
+                       THEN 1 ELSE 0 END) AS single_point,
+                  SUM(CASE WHEN window_first IS NULL THEN 1 ELSE 0 END) AS no_window
+                FROM ghost_predictions WHERE checked=1
+            """)
+            row = cur.fetchone()
+            result["window_quality"] = {
+                "total_checked": row[0], "real_window": row[1],
+                "single_point_fallback": row[2], "no_window_data": row[3],
+            }
+
+            # 4) Accuracy by window quality
+            cur.execute("""
+                SELECT
+                  CASE
+                    WHEN window_first IS NOT NULL AND window_first = window_last
+                         AND window_high = window_low THEN 'single_point'
+                    WHEN window_first IS NOT NULL AND window_first != window_last
+                         THEN 'real_window'
+                    ELSE 'no_data'
+                  END AS quality,
+                  COUNT(*) AS cnt,
+                  SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) AS correct
+                FROM ghost_predictions WHERE checked=1 GROUP BY quality
+            """)
+            acc_by_quality = {}
+            for quality, cnt, correct in cur.fetchall():
+                acc_by_quality[quality] = {
+                    "count": cnt, "correct": correct,
+                    "accuracy_pct": round(correct / cnt * 100, 1) if cnt > 0 else 0}
+            result["accuracy_by_window_quality"] = acc_by_quality
+
+            # 5) Pre-fix vs post-fix (based on predicted_at timestamp)
+            cur.execute("""
+                SELECT
+                  CASE WHEN predicted_at < %s THEN 'pre_fix' ELSE 'post_fix' END AS era,
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN checked=1 THEN 1 ELSE 0 END) AS checked,
+                  SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) AS correct
+                FROM ghost_predictions GROUP BY era
+            """, (FIX_TIMESTAMP,))
+            era_split = {}
+            for era, total, checked, correct in cur.fetchall():
+                era_split[era] = {
+                    "total": total, "checked": checked, "correct": correct,
+                    "accuracy_pct": round(correct / checked * 100, 1) if checked > 0 else None}
+            result["pre_vs_post_fix"] = era_split
+
+            # 6) Pre-fix predictions: how many had window data?
+            cur.execute("""
+                SELECT
+                  SUM(CASE WHEN window_first IS NOT NULL AND window_first != window_last
+                       THEN 1 ELSE 0 END) AS real_window,
+                  SUM(CASE WHEN window_first IS NOT NULL AND window_first = window_last
+                            AND window_high = window_low THEN 1 ELSE 0 END) AS single_point,
+                  SUM(CASE WHEN window_first IS NULL THEN 1 ELSE 0 END) AS no_window
+                FROM ghost_predictions
+                WHERE checked=1 AND predicted_at < %s
+            """, (FIX_TIMESTAMP,))
+            row = cur.fetchone()
+            result["pre_fix_window_quality"] = {
+                "real_window": row[0] or 0, "single_point_fallback": row[1] or 0,
+                "no_window_data": row[2] or 0}
+
+            # 7) Direction-consistent breakdown
+            cur.execute("""
+                SELECT
+                  direction_consistent,
+                  COUNT(*) AS cnt,
+                  SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) AS correct,
+                  AVG(ABS(outcome_pct)) AS avg_move
+                FROM ghost_predictions WHERE checked=1 AND eval_version != 'skip-v1'
+                GROUP BY direction_consistent
+            """)
+            dir_breakdown = {}
+            for dc, cnt, correct, avg_move in cur.fetchall():
+                label = "direction_correct" if dc == 1 else "direction_wrong"
+                dir_breakdown[label] = {
+                    "count": cnt, "correct": correct,
+                    "accuracy_pct": round(correct / cnt * 100, 1) if cnt > 0 else 0,
+                    "avg_abs_move_pct": round(avg_move, 2) if avg_move else 0}
+            result["direction_breakdown"] = dir_breakdown
+
+            # 8) Outcome pct distribution (why 1% threshold matters)
+            cur.execute("""
+                SELECT
+                  CASE
+                    WHEN ABS(outcome_pct) < 0.5 THEN '<0.5pct'
+                    WHEN ABS(outcome_pct) < 1.0 THEN '0.5-1pct'
+                    WHEN ABS(outcome_pct) < 2.0 THEN '1-2pct'
+                    WHEN ABS(outcome_pct) < 5.0 THEN '2-5pct'
+                    ELSE '>5pct'
+                  END AS move_bucket,
+                  COUNT(*) AS cnt,
+                  SUM(CASE WHEN direction_consistent=1 THEN 1 ELSE 0 END) AS dir_correct,
+                  SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) AS correct
+                FROM ghost_predictions
+                WHERE checked=1 AND eval_version != 'skip-v1'
+                GROUP BY move_bucket ORDER BY move_bucket
+            """)
+            move_dist = []
+            for bucket, cnt, dir_correct, correct in cur.fetchall():
+                move_dist.append({"bucket": bucket, "count": cnt,
+                                  "direction_correct": dir_correct, "correct": correct})
+            result["outcome_move_distribution"] = move_dist
+
+            result["fix_timestamp"] = FIX_TIMESTAMP
+            result["fix_note"] = "Price data fix deployed at b5d837c. Predictions before this had no price_actuals window data."
+            return {"ok": True, **result}
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/model-status")
 async def debug_model_status(secret: str = ""):
     """
