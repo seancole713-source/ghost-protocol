@@ -28110,6 +28110,12 @@ async def debug_pg_health():
             checked = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE correct = 1")
             correct = cur.fetchone()[0]
+            # Real accuracy: exclude skipped evaluations
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'")
+            checked_real = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND correct = 1 AND eval_version NOT LIKE 'skip%%'")
+            correct_real = cur.fetchone()[0]
+            real_accuracy = round(correct_real / checked_real * 100, 1) if checked_real > 0 else 0
             cur.execute("SELECT MIN(predicted_at), MAX(predicted_at) FROM ghost_predictions")
             pmin, pmax = cur.fetchone()
             result["ghost_predictions"] = {
@@ -28117,6 +28123,9 @@ async def debug_pg_health():
                 "unchecked": unchecked,
                 "checked": checked,
                 "correct": correct,
+                "real_accuracy_pct": real_accuracy,
+                "real_checked": checked_real,
+                "real_correct": correct_real,
                 "oldest_ts": pmin,
                 "newest_ts": pmax,
                 "oldest_age_h": round((time.time() - pmin) / 3600, 1) if pmin else None,
@@ -28160,6 +28169,77 @@ async def debug_pg_health():
             except Exception:
                 result["accuracy_stats"] = "table_missing"
             return {"ok": True, **result}
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.post("/debug/reset-bad-evaluations")
+async def debug_reset_bad_evaluations():
+    """
+    ONE-TIME CLEANUP: Reset predictions that were evaluated with single-point
+    fallback (window_first = window_last AND window_high = window_low).
+    These produced 19.5% accuracy vs 90% with real price windows.
+    After reset, the evaluator will re-evaluate with proper window data
+    or permanently skip if too old (>7 days).
+    """
+    try:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+
+            # Count single-point evaluations before reset
+            cur.execute("""
+                SELECT COUNT(*) FROM ghost_predictions
+                WHERE checked = 1
+                  AND window_first IS NOT NULL
+                  AND window_first = window_last
+                  AND window_high = window_low
+            """)
+            bad_count = cur.fetchone()[0]
+
+            if bad_count == 0:
+                return {"ok": True, "message": "No single-point evaluations found", "reset": 0}
+
+            # Reset them to unchecked so evaluator can re-process
+            cur.execute("""
+                UPDATE ghost_predictions
+                SET checked = 0,
+                    checked_at = NULL,
+                    correct = NULL,
+                    outcome_price = NULL,
+                    outcome_pct = NULL,
+                    outcome_direction = NULL,
+                    window_first = NULL,
+                    window_last = NULL,
+                    window_high = NULL,
+                    window_low = NULL,
+                    touch_1pct = NULL,
+                    error_pct = NULL,
+                    eval_version = NULL
+                WHERE checked = 1
+                  AND window_first IS NOT NULL
+                  AND window_first = window_last
+                  AND window_high = window_low
+            """)
+            reset_count = cur.rowcount
+            conn.commit()
+
+            # Get updated accuracy stats
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'")
+            remaining_checked = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND correct = 1 AND eval_version NOT LIKE 'skip%%'")
+            remaining_correct = cur.fetchone()[0]
+            new_accuracy = round(remaining_correct / remaining_checked * 100, 1) if remaining_checked > 0 else 0
+
+            return {
+                "ok": True,
+                "message": f"Reset {reset_count} single-point evaluations",
+                "reset": reset_count,
+                "remaining_checked": remaining_checked,
+                "remaining_correct": remaining_correct,
+                "new_accuracy_pct": new_accuracy,
+            }
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}

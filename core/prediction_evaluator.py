@@ -362,11 +362,22 @@ def _evaluate_with_conn(conn) -> Dict:
             conn, symbol=symbol, start_ts=int(pred_at), end_ts=int(check_at)
         )
 
-        # If no window prices, try to get a single current price
-        if not prices:
-            current = get_current_price(symbol)
-            if current is not None:
-                prices = [(int(check_at), current)]
+        # MINIMUM PRICE POINTS: Require at least 5 data points for a fair evaluation.
+        # Single-point fallback was producing 19.5% accuracy (garbage) vs 90% with
+        # real window data. Skip predictions without sufficient price history.
+        MIN_WINDOW_PRICES = 5
+        if len(prices) < MIN_WINDOW_PRICES:
+            skipped_count += 1
+            skipped_symbols[symbol] = skipped_symbols.get(symbol, 0) + 1
+            # Don't mark as checked — let it be re-evaluated when more data exists
+            # But if the check_at is very old (>7 days), mark as skipped permanently
+            age_hours = (now - int(check_at)) / 3600
+            if age_hours > 168:  # Older than 7 days — data will never appear
+                cur.execute(
+                    "UPDATE ghost_predictions SET checked = 1, checked_at = %s, eval_version = %s WHERE id = %s",
+                    (now, "skip-no-window-v2", pred_id),
+                )
+            continue
 
         eval_result = _evaluate_touch_target(
             predicted_direction=direction,
@@ -457,15 +468,15 @@ def _evaluate_with_conn(conn) -> Dict:
 
     # Update ghost_accuracy_stats
     if evaluated_count > 0:
-        cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1")
+        cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'")
         total_checked = cur.fetchone()[0]
 
-        cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND correct = 1")
+        cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND correct = 1 AND eval_version NOT LIKE 'skip%%'")
         total_correct = cur.fetchone()[0]
 
         overall_accuracy = (total_correct / total_checked * 100) if total_checked > 0 else 0
 
-        cur.execute("SELECT AVG(error_pct) FROM ghost_predictions WHERE checked = 1")
+        cur.execute("SELECT AVG(error_pct) FROM ghost_predictions WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'")
         avg_error = cur.fetchone()[0] or 0
 
         cur.execute("""
