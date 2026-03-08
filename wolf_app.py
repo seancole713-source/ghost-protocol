@@ -10976,9 +10976,22 @@ async def api_xray_symbol(symbol: str):
     This is the truth — no guessing. Call this to verify the pipeline works.
     """
     import time as _time
+    import math as _xray_math
     start = _time.time()
     symbol = symbol.upper().strip()
-    
+
+    def _sanitize_for_json(obj):
+        """Recursively replace NaN/Inf floats with None so json.dumps(allow_nan=False) won't crash."""
+        if isinstance(obj, float):
+            if _xray_math.isnan(obj) or _xray_math.isinf(obj):
+                return None
+            return obj
+        if isinstance(obj, dict):
+            return {k: _sanitize_for_json(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_sanitize_for_json(v) for v in obj]
+        return obj
+
     try:
         # === STEP 1: Run feature orchestrator (same as real prediction) ===
         from core.data_pillars.feature_orchestrator import get_feature_orchestrator
@@ -11080,6 +11093,17 @@ async def api_xray_symbol(symbol: str):
                         mapped_from = src
                         break
             
+            # Sanitize NaN/Inf — treat as missing (these crash JSON serialization)
+            if value is not None:
+                try:
+                    fv = float(value)
+                    if _xray_math.isnan(fv) or _xray_math.isinf(fv):
+                        value = None
+                        source = None
+                except (TypeError, ValueError):
+                    value = None
+                    source = None
+            
             is_default = value is None
             if is_default:
                 value = neutral_defaults.get(name, 0.0)
@@ -11154,7 +11178,7 @@ async def api_xray_symbol(symbol: str):
         
         verdict = "GOOD" if quality_pct >= 80 and not in_hold_zone and confidence >= 0.55 else "DEGRADED" if quality_pct >= 50 else "BROKEN"
         
-        return {
+        result = {
             "ok": True,
             "symbol": symbol,
             "verdict": verdict,
@@ -11186,6 +11210,12 @@ async def api_xray_symbol(symbol: str):
                 "total_ms": elapsed,
             },
         }
+        # Sanitize NaN/Inf BEFORE returning — Starlette's JSONResponse uses
+        # json.dumps(allow_nan=False) which raises ValueError on NaN/Inf.
+        # That ValueError fires AFTER this function returns (during response
+        # serialization), so our try/except below never sees it. The crash
+        # then surfaces as {"error":"internal_error"} from _log_requests MW.
+        return _sanitize_for_json(result)
         
     except Exception as e:
         LOGGER.error(f"X-ray failed for {symbol}: {e}", exc_info=True)
@@ -12299,73 +12329,80 @@ async def api_v3_review_score():
 @APP.get("/api/v3/accuracy/summary")
 async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_only: bool = True):
     """
-    Get prediction accuracy summary.
-    
+    Get prediction accuracy summary from PostgreSQL ghost_predictions.
+
     Shows:
-    - Total predictions reconciled
+    - Total predictions evaluated (excluding skipped/flat-market)
     - Directional accuracy (% correct)
     - Average confidence
     - Performance by symbol
-    
+
     Args:
         symbol: Filter by symbol (optional)
         days: Lookback period (default 30)
         v2_only: Only include V2 whitelisted symbols (default True)
-    
+
     Returns:
         {
             "ok": true,
             "accuracy_pct": 65.5,
             "total_predictions": 100,
             "correct_predictions": 65,
-            "avg_confidence": 0.68,
-            "symbol": "SPY" or "ALL",
-            "period_days": 30
+            ...
         }
     """
     try:
-        # FIXED: Use paper trades data which has actual outcomes
-        # Ghost_prediction_outcomes is empty, paper_trades has 600+ resolved
-        from core.paper_tracker import get_paper_tracker
-        tracker = get_paper_tracker()
-        
-        # V2 ERA FIX: Use since=2026-01-14 to exclude pre-V2 garbage data
-        # This is the key filter that makes accuracy go from 29% to 60%!
-        V2_START_DATE = "2026-01-14"
-        
-        # Get stats with V2 filter AND date filter
-        stats = tracker.get_stats(days=days, since=V2_START_DATE, v2_only=v2_only)
-        
-        total = stats.get("resolved_trades", 0)
-        wins = stats.get("wins", 0)
-        losses = stats.get("losses", 0)
-        
-        # Calculate accuracy — use wins/(wins+losses), NOT wins/total
-        # BREAK_EVEN, EXPIRED trades should NOT count against accuracy
-        decided = wins + losses
-        accuracy_pct = round((wins / decided) * 100, 1) if decided > 0 else 0.0
-        
-        # Calculate daily/weekly/monthly breakdowns
-        # NOTE: 'since' overrides 'days' in get_stats(), so we use max()
-        # to ensure we never go before V2_START_DATE but still get period-specific data
-        from datetime import timedelta as _td_acc
-        v2_cutoff_dt = datetime.fromisoformat(V2_START_DATE)
-        daily_cutoff = max(v2_cutoff_dt, datetime.utcnow() - _td_acc(days=1))
-        weekly_cutoff = max(v2_cutoff_dt, datetime.utcnow() - _td_acc(days=7))
-        daily_stats = tracker.get_stats(since=daily_cutoff.isoformat(), v2_only=v2_only)
-        weekly_stats = tracker.get_stats(since=weekly_cutoff.isoformat(), v2_only=v2_only)
-        
-        daily_wins = daily_stats.get("wins", 0)
-        daily_losses = daily_stats.get("losses", 0)
-        daily_decided = daily_wins + daily_losses
-        daily_acc = round((daily_wins / daily_decided) * 100, 1) if daily_decided > 0 else 0.0
-        
-        weekly_wins = weekly_stats.get("wins", 0)
-        weekly_losses = weekly_stats.get("losses", 0)
-        weekly_decided = weekly_wins + weekly_losses
-        weekly_acc = round((weekly_wins / weekly_decided) * 100, 1) if weekly_decided > 0 else 0.0
-        
-        # Compute avg_confidence from live predictions
+        from core.db_pool import get_sync_connection
+
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+
+            # Base filter: checked=1, not skipped
+            base_where = "checked = 1 AND eval_version NOT LIKE 'skip%%'"
+            params: list = []
+
+            # Time filter
+            cutoff_ts = int(time.time()) - (days * 86400)
+            base_where += " AND predicted_at >= %s"
+            params.append(cutoff_ts)
+
+            # Symbol filter
+            if symbol:
+                base_where += " AND symbol = %s"
+                params.append(symbol.upper())
+
+            # Main stats
+            cur.execute(f"SELECT COUNT(*) FROM ghost_predictions WHERE {base_where}", params)
+            total_checked = cur.fetchone()[0]
+            cur.execute(f"SELECT COUNT(*) FROM ghost_predictions WHERE {base_where} AND correct = 1", params)
+            total_correct = cur.fetchone()[0]
+            accuracy_pct = round(total_correct / total_checked * 100, 1) if total_checked > 0 else 0.0
+
+            # Daily (last 24h)
+            daily_ts = int(time.time()) - 86400
+            daily_where = "checked = 1 AND eval_version NOT LIKE 'skip%%' AND predicted_at >= %s"
+            daily_params = [daily_ts]
+            if symbol:
+                daily_where += " AND symbol = %s"
+                daily_params.append(symbol.upper())
+            cur.execute(f"SELECT COUNT(*), SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) FROM ghost_predictions WHERE {daily_where}", daily_params)
+            d_total, d_correct = cur.fetchone()
+            d_correct = d_correct or 0
+            daily_acc = round(d_correct / d_total * 100, 1) if d_total and d_total > 0 else 0.0
+
+            # Weekly (last 7d)
+            weekly_ts = int(time.time()) - (7 * 86400)
+            weekly_where = "checked = 1 AND eval_version NOT LIKE 'skip%%' AND predicted_at >= %s"
+            weekly_params = [weekly_ts]
+            if symbol:
+                weekly_where += " AND symbol = %s"
+                weekly_params.append(symbol.upper())
+            cur.execute(f"SELECT COUNT(*), SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) FROM ghost_predictions WHERE {weekly_where}", weekly_params)
+            w_total, w_correct = cur.fetchone()
+            w_correct = w_correct or 0
+            weekly_acc = round(w_correct / w_total * 100, 1) if w_total and w_total > 0 else 0.0
+
+        # Live confidence from in-memory predictions
         _live_confs_acc = [p.get("confidence", 0) for p in _LATEST_PREDICTIONS.values() if isinstance(p, dict) and p.get("confidence")]
         _avg_conf_acc = round(sum(_live_confs_acc) / len(_live_confs_acc), 3) if _live_confs_acc else 0.65
 
@@ -12374,21 +12411,20 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
             "accuracy_pct": accuracy_pct,
             "daily_accuracy_pct": daily_acc,
             "weekly_accuracy_pct": weekly_acc,
-            "monthly_accuracy_pct": accuracy_pct,  # Same as main (30 day default)
-            "total_predictions": total,
-            "resolved_predictions": total,
-            "correct_predictions": wins,
+            "monthly_accuracy_pct": accuracy_pct,
+            "total_predictions": total_checked,
+            "resolved_predictions": total_checked,
+            "correct_predictions": total_correct,
             "avg_confidence": _avg_conf_acc,
             "avg_move_pct": 0.0,
             "symbol": symbol or "ALL",
             "period_days": days,
-            "v2_start_date": V2_START_DATE,
-            "data_source": "paper_trades_v2",
+            "data_source": "ghost_predictions_pg",
             "v2_filtered": v2_only,
             "accuracy_status": "MEETS_TARGET" if accuracy_pct >= 70 else "IMPROVING" if accuracy_pct >= 50 else "DEVELOPING",
             "meets_70pct_threshold": accuracy_pct >= 70
         }
-    
+
     except Exception as e:
         LOGGER.error(f"Accuracy summary failed: {e}", exc_info=True)
         return {
@@ -14380,12 +14416,16 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 25):
                             gate_fields = {}
 
                         current_price = symbol_pred.get("price_at_prediction", 0)
+                        _dir1 = symbol_pred.get("direction", "FLAT")
+                        _move1 = symbol_pred.get("confidence", 0) * 5
+                        if _dir1 == "DOWN":
+                            _move1 = -abs(_move1)
                         predictions_list.append({
                             "prediction_id": symbol_pred.get("id"),
                             "symbol": symbol.upper(),
-                            "direction": symbol_pred.get("direction", "FLAT"),
+                            "direction": _dir1,
                             "confidence": symbol_pred.get("confidence", 0),
-                            "expected_move": symbol_pred.get("confidence", 0) * 5,
+                            "expected_move": _move1,
                             "horizon_h": 48,
                             "run_at": symbol_pred.get("created_at", 0),
                             "price_at_prediction": current_price,
@@ -14427,12 +14467,16 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 25):
                             gate_fields = {}
 
                         current_price = pred.get("price_at_prediction", 0)
+                        _dir2 = pred.get("direction", "FLAT")
+                        _move2 = pred.get("confidence", 0) * 5
+                        if _dir2 == "DOWN":
+                            _move2 = -abs(_move2)
                         predictions_list.append({
                             "prediction_id": pred.get("id"),
                             "symbol": pred.get("symbol"),
-                            "direction": pred.get("direction", "FLAT"),
+                            "direction": _dir2,
                             "confidence": pred.get("confidence", 0),
-                            "expected_move": pred.get("confidence", 0) * 5,
+                            "expected_move": _move2,
                             "horizon_h": 48,
                             "run_at": pred.get("created_at", 0),
                             "price_at_prediction": current_price,
@@ -14465,12 +14509,17 @@ async def api_v3_predictions_latest(symbol: str | None = None, limit: int = 25):
         # Helper: build one prediction dict from cache entry
         def _build_pred(sym: str, pred: dict) -> dict:
             current_price = pred.get("price", pred.get("price_at_prediction", 0))
+            _dir_bp = pred.get("direction", "FLAT")
+            # Use actual expected_move_pct from prediction engine if available
+            _move_bp = pred.get("expected_move_pct", pred.get("confidence", 0) * 5)
+            if _dir_bp == "DOWN" and _move_bp > 0:
+                _move_bp = -_move_bp
             return {
                 "prediction_id": pred.get("prediction_id"),
                 "symbol": sym,
-                "direction": pred.get("direction", "FLAT"),
+                "direction": _dir_bp,
                 "confidence": _rnd(pred.get("confidence", 0)),
-                "expected_move": _rnd(pred.get("confidence", 0) * 5),
+                "expected_move": _rnd(_move_bp),
                 "horizon_h": pred.get("horizon_h", 48),
                 "run_at": pred.get("run_at", 0),
                 "price_at_prediction": current_price,
