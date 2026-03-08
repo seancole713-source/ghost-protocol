@@ -395,13 +395,34 @@ def _evaluate_with_conn(conn) -> Dict:
             )
             continue
 
-        # PRIMARY: Direction accuracy — did price move in the predicted direction?
-        # This aligns with paper_tracker's WIN/LOSS logic (direction + 1% threshold)
-        # SECONDARY: Touch-target (correct_1pct) is tracked but NOT the primary metric
-        is_direction_correct = int(eval_result.get("direction_consistent") or 0)
-        # Also require meaningful move (>1% in right direction) to match paper_tracker
-        outcome_pct = abs(eval_result.get("outcome_pct", 0))
-        is_correct = 1 if (is_direction_correct == 1 and outcome_pct >= 1.0) else 0
+        # PRIMARY: Direction accuracy — did the ACTUAL market move match the prediction?
+        # direction_consistent only checks prediction internal consistency, NOT actual accuracy.
+        # We need to compare predicted direction against actual outcome direction.
+        predicted_dir = (direction or "").upper().strip()
+        actual_dir = (eval_result.get("outcome_direction") or "").upper().strip()
+        abs_move_pct = abs(eval_result.get("outcome_pct", 0))
+
+        # Skip flat market — move too small to judge direction
+        FLAT_MARKET_THRESHOLD = 0.5  # percent
+        if abs_move_pct < FLAT_MARKET_THRESHOLD:
+            skipped_count += 1
+            skipped_symbols[symbol] = skipped_symbols.get(symbol, 0) + 1
+            cur.execute(
+                "UPDATE ghost_predictions SET checked = 1, checked_at = %s, eval_version = %s, "
+                "outcome_pct = %s, outcome_price = %s, outcome_direction = %s, "
+                "window_first = %s, window_last = %s, window_high = %s, window_low = %s "
+                "WHERE id = %s",
+                (now, "skip-flat-v1", eval_result.get("outcome_pct"),
+                 eval_result.get("window_last"), actual_dir,
+                 eval_result.get("window_first"), eval_result.get("window_last"),
+                 eval_result.get("window_high"), eval_result.get("window_low"),
+                 pred_id),
+            )
+            continue
+
+        # Correct = actual direction matches predicted direction AND move >= 0.5%
+        is_direction_match = 1 if (predicted_dir == actual_dir and predicted_dir in ("UP", "DOWN")) else 0
+        is_correct = is_direction_match
         is_correct_exec = int(eval_result.get("correct_0_5pct") or 0)
 
         cur.execute("""

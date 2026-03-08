@@ -28245,6 +28245,54 @@ async def debug_reset_bad_evaluations():
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
+@APP.post("/debug/reset-all-evaluations")
+async def debug_reset_all_evaluations():
+    """
+    Reset ALL checked predictions to unchecked so evaluator can re-run
+    with the fixed correctness metric (actual direction match, flat-market skip).
+    """
+    try:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1")
+            total_checked = cur.fetchone()[0]
+
+            cur.execute("""
+                UPDATE ghost_predictions
+                SET checked = 0,
+                    checked_at = NULL,
+                    correct = NULL,
+                    outcome_price = NULL,
+                    outcome_pct = NULL,
+                    outcome_direction = NULL,
+                    window_first = NULL,
+                    window_last = NULL,
+                    window_high = NULL,
+                    window_low = NULL,
+                    touch_1pct = NULL,
+                    touch_0_5pct = NULL,
+                    correct_1pct = NULL,
+                    correct_0_5pct = NULL,
+                    direction_consistent = NULL,
+                    error_pct = NULL,
+                    eval_version = NULL
+                WHERE checked = 1
+            """)
+            reset_count = cur.rowcount
+            conn.commit()
+
+            return {
+                "ok": True,
+                "message": f"Reset {reset_count} evaluations for re-evaluation with fixed metric",
+                "reset": reset_count,
+            }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @APP.get("/debug/pg-accuracy-breakdown")
 async def debug_pg_accuracy_breakdown():
     """
