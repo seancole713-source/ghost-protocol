@@ -1772,46 +1772,44 @@ async function openGoalsModal() {
     
     console.log('[GOALS] Inputs found:', !!dailyInput, !!weeklyInput, !!monthlyInput, !!yearlyInput);
     
-    // Set defaults using both .value AND setAttribute for maximum compatibility
-    if (dailyInput) { dailyInput.value = 500; dailyInput.setAttribute('value', '500'); }
-    if (weeklyInput) { weeklyInput.value = 2500; weeklyInput.setAttribute('value', '2500'); }
-    if (monthlyInput) { monthlyInput.value = 10000; monthlyInput.setAttribute('value', '10000'); }
-    if (yearlyInput) { yearlyInput.value = 120000; yearlyInput.setAttribute('value', '120000'); }
+    // Load from localStorage first (persists across reloads), then defaults
+    const saved = JSON.parse(localStorage.getItem('ghost_trading_goals') || '{}');
+    const defaults = { daily: 500, weekly: 2500, monthly: 10000, yearly: 120000 };
+    const goals = { ...defaults, ...saved };
     
-    console.log('[GOALS] After setting defaults:', {
-        daily: dailyInput?.value,
-        weekly: weeklyInput?.value,
-        monthly: monthlyInput?.value,
-        yearly: yearlyInput?.value
-    });
+    if (dailyInput) { dailyInput.value = goals.daily; }
+    if (weeklyInput) { weeklyInput.value = goals.weekly; }
+    if (monthlyInput) { monthlyInput.value = goals.monthly; }
+    if (yearlyInput) { yearlyInput.value = goals.yearly; }
+    
+    console.log('[GOALS] Loaded from localStorage:', goals);
     
     // Show modal
     document.getElementById('goals-modal').classList.add('active');
-    console.log('[GOALS] Modal opened with defaults');
+    console.log('[GOALS] Modal opened');
     
-    // Then async update from API
+    // Then async update from API (server may have newer values)
     try {
         const response = await fetch('/api/v3/goals/snapshot');
         if (response.ok) {
             const data = await response.json();
             console.log('[GOALS] API response:', data);
-            const goals = data.goals || {};
+            const apiGoals = data.goals || {};
             
-            // Update with actual values if available
-            if (goals.daily && dailyInput) { dailyInput.value = goals.daily; }
-            if (goals.weekly && weeklyInput) { weeklyInput.value = goals.weekly; }
-            if (goals.monthly && monthlyInput) { monthlyInput.value = goals.monthly; }
-            if (goals.yearly && yearlyInput) { yearlyInput.value = goals.yearly; }
-            
-            console.log('[GOALS] After API update:', {
-                daily: dailyInput?.value,
-                weekly: weeklyInput?.value,
-                monthly: monthlyInput?.value,
-                yearly: yearlyInput?.value
-            });
+            // Only override localStorage values if API has non-default values
+            const isDefault = (g) => g.daily === 500 && g.weekly === 2500 && g.monthly === 10000 && g.yearly === 120000;
+            if (!isDefault(apiGoals)) {
+                if (apiGoals.daily && dailyInput) { dailyInput.value = apiGoals.daily; }
+                if (apiGoals.weekly && weeklyInput) { weeklyInput.value = apiGoals.weekly; }
+                if (apiGoals.monthly && monthlyInput) { monthlyInput.value = apiGoals.monthly; }
+                if (apiGoals.yearly && yearlyInput) { yearlyInput.value = apiGoals.yearly; }
+                console.log('[GOALS] Updated from API (non-default values found)');
+            } else {
+                console.log('[GOALS] API returned defaults, keeping localStorage values');
+            }
         }
     } catch (error) {
-        console.error('[GOALS] API error (using defaults):', error);
+        console.error('[GOALS] API error (using localStorage/defaults):', error);
     }
 }
 
@@ -1826,7 +1824,11 @@ async function saveGoals() {
         const monthly = parseFloat(document.getElementById('goal-monthly').value) || 0;
         const yearly = parseFloat(document.getElementById('goal-yearly').value) || 0;
         
-        // Save each goal using v3 API endpoint
+        // Persist to localStorage (survives reloads + deploys)
+        localStorage.setItem('ghost_trading_goals', JSON.stringify({ daily, weekly, monthly, yearly }));
+        console.log('[GOALS] Saved to localStorage:', { daily, weekly, monthly, yearly });
+        
+        // Also save to server (best-effort, ephemeral)
         const periods = [
             { period: 'daily', amount: daily },
             { period: 'weekly', amount: weekly },
@@ -1836,17 +1838,12 @@ async function saveGoals() {
         
         for (const goal of periods) {
             if (goal.amount > 0) {
-                console.log(`Saving ${goal.period} goal: $${goal.amount}`);
-                const response = await fetch(`/api/v3/goals/set?period=${goal.period}&target_amount=${goal.amount}`, {
-                    method: 'POST'
-                });
-                
-                const data = await response.json();
-                console.log(`Response for ${goal.period}:`, data);
-                
-                if (!response.ok || !data.ok) {
-                    const errorMsg = data.error || `HTTP ${response.status}`;
-                    throw new Error(`Failed to set ${goal.period} goal: ${errorMsg}`);
+                try {
+                    await fetch(`/api/v3/goals/set?period=${goal.period}&target_amount=${goal.amount}`, {
+                        method: 'POST'
+                    });
+                } catch (e) {
+                    console.warn(`[GOALS] Server save failed for ${goal.period}:`, e.message);
                 }
             }
         }

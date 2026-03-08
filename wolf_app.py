@@ -16531,7 +16531,7 @@ async def api_v3_alerts_test_all():
         return {"ok": False, "error": str(e)}
 
 
-@APP.get("/api/v3/goals/set")
+@APP.api_route("/api/v3/goals/set", methods=["GET", "POST"])
 async def api_v3_goals_set(period: str, target_amount: float):
     """
     Set a goal for a specific period.
@@ -28330,12 +28330,181 @@ async def debug_reset_all_evaluations():
                 WHERE checked = 1
             """)
             reset_count = cur.rowcount
+
+            # Clear stale accuracy stats so they don't mislead
+            cur.execute("DELETE FROM ghost_accuracy_stats")
             conn.commit()
 
             return {
                 "ok": True,
                 "message": f"Reset {reset_count} evaluations for re-evaluation with fixed metric",
                 "reset": reset_count,
+                "accuracy_stats_cleared": True,
+            }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.post("/debug/backfill-price-actuals")
+async def debug_backfill_price_actuals():
+    """
+    Backfill price_actuals from SQLite → PostgreSQL.
+
+    The prediction_evaluator reads price data from PostgreSQL, but prices
+    were only written to SQLite before March 7 2026. This endpoint copies
+    all SQLite price_actuals rows into PostgreSQL so that skipped predictions
+    (skip-no-window-v2) can be re-evaluated with real price data.
+
+    After running this, call POST /debug/reset-skipped-for-reevaluation
+    to reset the skipped predictions so the evaluator retries them.
+    """
+    import sqlite3 as _sqlite3
+    try:
+        from core.db_pool import get_sync_connection as _bf_get_conn
+
+        sqlite_path = os.getenv("WOLF_SQLITE_PATH", "data/wolf.db")
+        if not os.path.exists(sqlite_path):
+            return {"ok": False, "error": f"SQLite DB not found at {sqlite_path}"}
+
+        # Read all price_actuals from SQLite
+        with _sqlite3.connect(sqlite_path) as sq_conn:
+            rows = sq_conn.execute("SELECT ts, symbol, price FROM price_actuals WHERE price IS NOT NULL").fetchall()
+
+        if not rows:
+            return {"ok": True, "message": "No price_actuals found in SQLite", "backfilled": 0}
+
+        # Insert into PostgreSQL (skip duplicates)
+        inserted = 0
+        with _bf_get_conn() as pg_conn:
+            pg_cur = pg_conn.cursor()
+            # Ensure table + unique index exist
+            pg_cur.execute("""
+                CREATE TABLE IF NOT EXISTS price_actuals (
+                    id SERIAL PRIMARY KEY,
+                    symbol TEXT NOT NULL,
+                    ts BIGINT NOT NULL,
+                    price DOUBLE PRECISION
+                )
+            """)
+            try:
+                pg_cur.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_price_actuals_sym_ts_uniq
+                    ON price_actuals (symbol, ts)
+                """)
+            except Exception:
+                pg_conn.rollback()
+
+            BATCH_SIZE = 500
+            for i in range(0, len(rows), BATCH_SIZE):
+                batch = rows[i:i + BATCH_SIZE]
+                for ts, symbol, price in batch:
+                    try:
+                        pg_cur.execute(
+                            """INSERT INTO price_actuals (ts, symbol, price)
+                               VALUES (%s, %s, %s)
+                               ON CONFLICT (symbol, ts) DO NOTHING""",
+                            (int(ts), str(symbol), float(price)),
+                        )
+                        if pg_cur.rowcount > 0:
+                            inserted += 1
+                    except Exception:
+                        pass
+                pg_conn.commit()
+
+        return {
+            "ok": True,
+            "sqlite_rows": len(rows),
+            "pg_inserted": inserted,
+            "pg_skipped_duplicates": len(rows) - inserted,
+            "message": f"Backfilled {inserted} price rows from SQLite → PostgreSQL. Now call POST /debug/reset-skipped-for-reevaluation",
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
+@APP.post("/debug/reset-skipped-for-reevaluation")
+async def debug_reset_skipped_for_reevaluation():
+    """
+    Reset predictions that were skipped due to missing price data
+    (eval_version = 'skip-no-window-v2') so the evaluator retries them.
+
+    Only resets predictions that now have >= 5 price_actuals rows in PostgreSQL
+    for their evaluation window, so we don't just skip them again.
+
+    Also clears stale ghost_accuracy_stats so accuracy reflects reality.
+    """
+    try:
+        from core.db_pool import get_sync_connection as _rs_get_conn
+        with _rs_get_conn() as conn:
+            cur = conn.cursor()
+            now = int(time.time())
+
+            # Find skip-no-window predictions that now have enough price data
+            cur.execute("""
+                SELECT p.id, p.symbol, p.predicted_at, p.check_at
+                FROM ghost_predictions p
+                WHERE p.checked = 1
+                  AND p.eval_version = 'skip-no-window-v2'
+            """)
+            candidates = cur.fetchall()
+
+            reset_ids = []
+            for pred_id, symbol, pred_at, check_at in candidates:
+                cur.execute("""
+                    SELECT COUNT(*) FROM price_actuals
+                    WHERE symbol = %s AND ts >= %s AND ts <= %s
+                """, (symbol, int(pred_at), int(check_at)))
+                price_count = cur.fetchone()[0]
+                if price_count >= 5:
+                    reset_ids.append(pred_id)
+
+            # Reset those predictions
+            reset_count = 0
+            for pred_id in reset_ids:
+                cur.execute("""
+                    UPDATE ghost_predictions
+                    SET checked = 0,
+                        checked_at = NULL,
+                        correct = NULL,
+                        outcome_price = NULL,
+                        outcome_pct = NULL,
+                        outcome_direction = NULL,
+                        window_first = NULL,
+                        window_last = NULL,
+                        window_high = NULL,
+                        window_low = NULL,
+                        touch_1pct = NULL,
+                        touch_0_5pct = NULL,
+                        correct_1pct = NULL,
+                        correct_0_5pct = NULL,
+                        direction_consistent = NULL,
+                        error_pct = NULL,
+                        eval_version = NULL
+                    WHERE id = %s
+                """, (pred_id,))
+                reset_count += cur.rowcount
+
+            # Clear stale ghost_accuracy_stats so it gets refreshed on next eval
+            cur.execute("DELETE FROM ghost_accuracy_stats")
+            conn.commit()
+
+            # Count remaining state
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 0")
+            new_unchecked = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version = 'skip-no-window-v2'")
+            still_skipped = cur.fetchone()[0]
+
+            return {
+                "ok": True,
+                "candidates_checked": len(candidates),
+                "had_enough_prices": len(reset_ids),
+                "reset_for_reevaluation": reset_count,
+                "still_skipped_no_data": still_skipped,
+                "total_unchecked_now": new_unchecked,
+                "accuracy_stats_cleared": True,
+                "message": f"Reset {reset_count} predictions for re-evaluation. {still_skipped} still lack price data. Run evaluator to re-evaluate.",
             }
     except Exception as e:
         import traceback
