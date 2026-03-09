@@ -323,6 +323,12 @@ async function loadCockpitStatus() {
             console.log('[STATUS] Cockpit status:', data);
             updateStatusIndicator(data.active);
             
+            // Update system health badge
+            const sysGradeEl = document.getElementById('system-health-grade');
+            if (sysGradeEl && data.ghost_health_score !== undefined) {
+                sysGradeEl.textContent = `${data.ghost_health_score}/100 ${data.ghost_health_grade || 'A'}`;
+            }
+
             // Update system stats in health panel
             if (data.uptime_seconds !== undefined) {
                 const uptimeHours = (data.uptime_seconds / 3600).toFixed(1);
