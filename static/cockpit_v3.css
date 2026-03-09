@@ -214,6 +214,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .panel-header h2 {
@@ -232,6 +234,7 @@ body {
 .tabs {
     display: flex;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .tab {
@@ -244,6 +247,7 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
+    white-space: nowrap;
 }
 
 .tab.active {
