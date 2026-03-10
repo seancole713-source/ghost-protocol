@@ -15795,7 +15795,7 @@ async def api_v3_debug_accuracy_symbols():
             cur.execute("""
                 SELECT predicted_direction, outcome_direction, outcome_pct,
                        correct, confidence, current_price, predicted_price, target_price,
-                       predicted_pct, eval_version
+                       predicted_pct, eval_version, gate
                 FROM ghost_predictions
                 WHERE symbol = %s AND checked = 1 AND eval_version NOT LIKE 'skip%%'
                 ORDER BY predicted_at DESC LIMIT 15
@@ -15810,6 +15810,7 @@ async def api_v3_debug_accuracy_symbols():
                 "target_price": float(r[7]) if r[7] else None,
                 "predicted_pct": float(r[8]) if r[8] else None,
                 "eval_version": r[9],
+                "gate": r[10],
             } for r in rows]
 
         cur.close()
