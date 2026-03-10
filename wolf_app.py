@@ -15895,8 +15895,8 @@ async def api_v3_debug_accuracy_symbols():
         return {"error": str(e)}
 
 
-@APP.get("/api/v3/brain/scorecard")
-async def api_v3_brain_scorecard():
+@APP.get("/api/v3/learning-brain/scorecard")
+async def api_v3_learning_brain_scorecard():
     """
     Ghost Learning Brain scorecard.
     Shows per-symbol accuracy and which symbols are flagged for auto-inversion.
