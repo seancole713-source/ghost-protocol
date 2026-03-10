@@ -8703,13 +8703,35 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     _se_pred_price = stock_result.get("target_price") or se_entry_price
                     _se_pred_pct = ((float(_se_pred_price) - se_entry_price) / se_entry_price * 100) if se_entry_price else 0.0
 
+                    # ── GHOST LEARNING BRAIN (Mar 10, 2026) ────────────────────
+                    # Ghost looks at its own scorecard per symbol. If accuracy
+                    # is <25% over 10+ evaluated predictions, it flips direction
+                    # AND mirrors target_price. Self-correcting: once the flipped
+                    # predictions become correct, accuracy rises and flipping stops.
+                    try:
+                        from core.ghost_learning_brain import apply_inversion as _brain_invert
+                        se_direction, _se_pred_price, _se_pred_pct, _was_inverted = _brain_invert(
+                            symbol=symbol,
+                            direction=se_direction,
+                            target_price=float(_se_pred_price),
+                            entry_price=se_entry_price,
+                            expected_move_pct=_se_pred_pct,
+                        )
+                        _se_pred_price = float(_se_pred_price)
+                        if _was_inverted:
+                            # Update cockpit to show the brain's decision
+                            se_action = "BUY" if se_direction == "UP" else "SELL" if se_direction == "DOWN" else "HOLD"
+                            with _LATEST_PREDICTIONS_LOCK:
+                                if symbol in _LATEST_PREDICTIONS:
+                                    _LATEST_PREDICTIONS[symbol]["direction"] = se_direction
+                                    _LATEST_PREDICTIONS[symbol]["action"] = se_action
+                                    _LATEST_PREDICTIONS[symbol]["brain_inverted"] = True
+                    except Exception as _inv_err:
+                        LOGGER.debug(f"[{symbol}] Learning brain check failed: {_inv_err}")
+
                     # ── DIRECTION CONSISTENCY GUARD (Mar 10, 2026) ──────────────
-                    # The evaluator scores correctness by comparing predicted_direction
-                    # against actual market direction. If the stock engine returns
-                    # direction=UP but target_price < entry (i.e. it really predicted
-                    # DOWN), the evaluator will wrongly score it as incorrect.
-                    # Derive direction from the actual target vs entry price to ensure
-                    # predicted_direction is always consistent with the stored target.
+                    # After the brain's decision, ensure direction and target agree.
+                    # The evaluator scores by comparing predicted_direction vs actual.
                     _se_dir_for_pg = se_direction
                     if se_entry_price and _se_pred_price:
                         if float(_se_pred_price) > se_entry_price and se_direction == "DOWN":
@@ -10457,6 +10479,29 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             _predicted_pct = float(expected_move_pct) if expected_move_pct is not None else (
                 ((float(_predicted_price) - current_price) / current_price) * 100 if current_price else 0.0
             )
+
+            # ── GHOST LEARNING BRAIN (Mar 10, 2026) ────────────────────
+            # Ghost checks its own scorecard: if accuracy <25% over 10+
+            # predictions for this symbol, flip direction + target.
+            try:
+                from core.ghost_learning_brain import apply_inversion as _brain_invert_turbo
+                direction, _predicted_price, _predicted_pct, _was_inverted_turbo = _brain_invert_turbo(
+                    symbol=symbol,
+                    direction=direction,
+                    target_price=float(_predicted_price),
+                    entry_price=current_price,
+                    expected_move_pct=_predicted_pct,
+                )
+                _predicted_price = float(_predicted_price)
+                if _was_inverted_turbo:
+                    # Update cockpit to show the brain's decision
+                    with _LATEST_PREDICTIONS_LOCK:
+                        if symbol in _LATEST_PREDICTIONS:
+                            _LATEST_PREDICTIONS[symbol]["direction"] = direction
+                            _LATEST_PREDICTIONS[symbol]["action"] = "BUY" if direction == "UP" else "SELL" if direction == "DOWN" else "HOLD"
+                            _LATEST_PREDICTIONS[symbol]["brain_inverted"] = True
+            except Exception as _tinv_err:
+                LOGGER.debug(f"[{symbol}] Turbo learning brain check failed: {_tinv_err}")
 
             # ── DIRECTION CONSISTENCY GUARD (Mar 10, 2026) ──────────────
             # Ensure predicted_direction matches target vs entry price.
@@ -15848,6 +15893,38 @@ async def api_v3_debug_accuracy_symbols():
         return {"summary": summary, "failing_details": details}
     except Exception as e:
         return {"error": str(e)}
+
+
+@APP.get("/api/v3/brain/scorecard")
+async def api_v3_brain_scorecard():
+    """
+    Ghost Learning Brain scorecard.
+    Shows per-symbol accuracy and which symbols are flagged for auto-inversion.
+    """
+    try:
+        from core.ghost_learning_brain import force_refresh, INVERT_ACCURACY_THRESHOLD, MIN_EVALUATED_PREDICTIONS
+        scorecard = force_refresh()
+        inverted = {s: d for s, d in scorecard.items() if d["should_invert"]}
+        normal = {s: d for s, d in scorecard.items() if not d["should_invert"]}
+        total_preds = sum(d["total"] for d in scorecard.values())
+        total_correct = sum(d["correct"] for d in scorecard.values())
+        return {
+            "ok": True,
+            "brain_status": "ACTIVE",
+            "invert_threshold_pct": INVERT_ACCURACY_THRESHOLD,
+            "min_predictions": MIN_EVALUATED_PREDICTIONS,
+            "overall_accuracy_pct": round(total_correct / total_preds * 100, 1) if total_preds else 0,
+            "total_evaluated": total_preds,
+            "symbols_inverted": list(inverted.keys()),
+            "symbols_normal": list(normal.keys()),
+            "scorecard": scorecard,
+            "message": (
+                f"🧠 Brain inverting {len(inverted)} symbols: {', '.join(inverted.keys())}"
+                if inverted else "🧠 Brain: all symbols above threshold, no inversions needed"
+            ),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @APP.get("/api/v3/debug/accuracy/raw-mismatches")
