@@ -8702,6 +8702,23 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     from core.db_pool import get_sync_connection as _se_get_conn
                     _se_pred_price = stock_result.get("target_price") or se_entry_price
                     _se_pred_pct = ((float(_se_pred_price) - se_entry_price) / se_entry_price * 100) if se_entry_price else 0.0
+
+                    # ── DIRECTION CONSISTENCY GUARD (Mar 10, 2026) ──────────────
+                    # The evaluator scores correctness by comparing predicted_direction
+                    # against actual market direction. If the stock engine returns
+                    # direction=UP but target_price < entry (i.e. it really predicted
+                    # DOWN), the evaluator will wrongly score it as incorrect.
+                    # Derive direction from the actual target vs entry price to ensure
+                    # predicted_direction is always consistent with the stored target.
+                    _se_dir_for_pg = se_direction
+                    if se_entry_price and _se_pred_price:
+                        if float(_se_pred_price) > se_entry_price and se_direction == "DOWN":
+                            _se_dir_for_pg = "UP"
+                            LOGGER.warning(f"[{symbol}] ⚠️ Direction consistency fix: target {_se_pred_price} > entry {se_entry_price} but dir was DOWN → corrected to UP")
+                        elif float(_se_pred_price) < se_entry_price and se_direction == "UP":
+                            _se_dir_for_pg = "DOWN"
+                            LOGGER.warning(f"[{symbol}] ⚠️ Direction consistency fix: target {_se_pred_price} < entry {se_entry_price} but dir was UP → corrected to DOWN")
+
                     with _se_get_conn() as _se_pg_conn:
                         _se_pg_cur = _se_pg_conn.cursor()
                         _se_pg_cur.execute("""
@@ -8717,7 +8734,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                             int(time.time()),
                             int(time.time() + se_horizon * 3600),
                             float(_se_pred_price),
-                            se_direction,
+                            _se_dir_for_pg,
                             float(_se_pred_pct),
                             se_confidence,
                             se_horizon,
@@ -10440,6 +10457,18 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             _predicted_pct = float(expected_move_pct) if expected_move_pct is not None else (
                 ((float(_predicted_price) - current_price) / current_price) * 100 if current_price else 0.0
             )
+
+            # ── DIRECTION CONSISTENCY GUARD (Mar 10, 2026) ──────────────
+            # Ensure predicted_direction matches target vs entry price.
+            _turbo_dir_for_pg = direction
+            if current_price and _predicted_price:
+                if float(_predicted_price) > current_price and direction == "DOWN":
+                    _turbo_dir_for_pg = "UP"
+                    LOGGER.warning(f"[{symbol}] ⚠️ Turbo direction consistency fix: target {_predicted_price} > entry {current_price} but dir was DOWN → UP")
+                elif float(_predicted_price) < current_price and direction == "UP":
+                    _turbo_dir_for_pg = "DOWN"
+                    LOGGER.warning(f"[{symbol}] ⚠️ Turbo direction consistency fix: target {_predicted_price} < entry {current_price} but dir was UP → DOWN")
+
             import json as _pg_json
             _features_json = _pg_json.dumps(features)
             with _pg_get_conn() as _pg_conn:
@@ -10456,7 +10485,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     int(run_at),
                     int(run_at + (horizon_h * 3600)),
                     float(_predicted_price),
-                    direction,
+                    _turbo_dir_for_pg,
                     float(_predicted_pct),
                     confidence,
                     horizon_h,
@@ -15875,6 +15904,70 @@ async def api_v3_debug_accuracy_raw_mismatches():
         return {"count": len(rows), "rows": rows}
     except Exception as e:
         return {"error": str(e)}
+
+
+@APP.post("/api/v3/debug/accuracy/fix-direction-mismatches")
+async def api_v3_fix_direction_mismatches():
+    """
+    Fix predictions where predicted_direction disagrees with target_price vs current_price.
+    E.g. direction=UP but target < current → should be DOWN.
+    Corrects direction and resets checked=0 so evaluator re-evaluates.
+    """
+    import psycopg2 as _fix_pg2
+    _db_url = os.getenv("DATABASE_URL", "")
+    if not _db_url:
+        return {"error": "DATABASE_URL not set"}
+    try:
+        conn = _fix_pg2.connect(_db_url)
+        cur = conn.cursor()
+
+        # Find mismatches: direction=UP but target < current, or direction=DOWN but target > current
+        cur.execute("""
+            SELECT id, symbol, predicted_direction, current_price, target_price,
+                   predicted_pct, checked, correct, eval_version
+            FROM ghost_predictions
+            WHERE (
+                (predicted_direction = 'UP' AND target_price < current_price AND current_price > 0)
+                OR
+                (predicted_direction = 'DOWN' AND target_price > current_price AND current_price > 0)
+            )
+            AND eval_version NOT LIKE 'skip%%'
+        """)
+        mismatches = cur.fetchall()
+
+        fixed = []
+        for row in mismatches:
+            pid, sym, old_dir, cprice, tprice, ppct, checked, correct, ev = row
+            new_dir = "UP" if float(tprice) > float(cprice) else "DOWN"
+            # Correct the direction and reset for re-evaluation
+            cur.execute("""
+                UPDATE ghost_predictions
+                SET predicted_direction = %s, checked = 0, checked_at = NULL,
+                    correct = NULL, outcome_price = NULL, outcome_direction = NULL,
+                    outcome_pct = NULL, eval_version = NULL
+                WHERE id = %s
+            """, (new_dir, pid))
+            fixed.append({
+                "id": pid, "symbol": sym,
+                "old_direction": old_dir, "new_direction": new_dir,
+                "current_price": float(cprice), "target_price": float(tprice),
+                "was_checked": checked, "was_correct": correct,
+            })
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return {
+            "ok": True,
+            "mismatches_found": len(mismatches),
+            "fixed": len(fixed),
+            "details": fixed,
+            "message": f"Fixed {len(fixed)} direction mismatches. Evaluator will re-evaluate them.",
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
 # ============================================================================
