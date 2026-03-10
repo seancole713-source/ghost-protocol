@@ -806,23 +806,29 @@ class TechnicalEngine(BasePillar):
             # === OBV features ===
             try:
                 obv = (np.sign(close.diff()) * volume).cumsum()
-                obv_sma = obv.rolling(window=min(24, len(obv))).mean()
+                obv_sma = obv.rolling(window=min(24, len(obv)), min_periods=1).mean()
                 
-                signals.append(DataSignal(
-                    name="OBV", value=round(float(obv.iloc[-1]), 2),
-                    confidence=1.0, data_available=True,
-                    source="calculated", timestamp=ts, metadata={}
-                ))
-                signals.append(DataSignal(
-                    name="OBV_SMA", value=round(float(obv_sma.iloc[-1]), 2),
-                    confidence=1.0, data_available=True,
-                    source="calculated", timestamp=ts, metadata={}
-                ))
-                signals.append(DataSignal(
-                    name="OBV_TREND", value=1 if obv.iloc[-1] > obv_sma.iloc[-1] else 0,
-                    confidence=1.0, data_available=True,
-                    source="calculated", timestamp=ts, metadata={}
-                ))
+                obv_last = obv.iloc[-1]
+                obv_sma_last = obv_sma.iloc[-1]
+                
+                if not np.isnan(obv_last):
+                    signals.append(DataSignal(
+                        name="OBV", value=round(float(obv_last), 2),
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                if not np.isnan(obv_sma_last):
+                    signals.append(DataSignal(
+                        name="OBV_SMA", value=round(float(obv_sma_last), 2),
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
+                if not np.isnan(obv_last) and not np.isnan(obv_sma_last):
+                    signals.append(DataSignal(
+                        name="OBV_TREND", value=1 if obv_last > obv_sma_last else 0,
+                        confidence=1.0, data_available=True,
+                        source="calculated", timestamp=ts, metadata={}
+                    ))
             except Exception:
                 pass
             

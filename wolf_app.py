@@ -15795,7 +15795,7 @@ async def api_v3_debug_accuracy_symbols():
             cur.execute("""
                 SELECT predicted_direction, outcome_direction, outcome_pct,
                        correct, confidence, current_price, predicted_price, target_price,
-                       predicted_pct, eval_version, gate
+                       predicted_pct, eval_version, gate, predicted_at
                 FROM ghost_predictions
                 WHERE symbol = %s AND checked = 1 AND eval_version NOT LIKE 'skip%%'
                 ORDER BY predicted_at DESC LIMIT 15
@@ -15811,11 +15811,68 @@ async def api_v3_debug_accuracy_symbols():
                 "predicted_pct": float(r[8]) if r[8] else None,
                 "eval_version": r[9],
                 "gate": r[10],
+                "predicted_at": r[11],
             } for r in rows]
 
         cur.close()
         conn.close()
         return {"summary": summary, "failing_details": details}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@APP.get("/api/v3/debug/accuracy/raw-mismatches")
+async def api_v3_debug_accuracy_raw_mismatches():
+    """
+    Diagnostic: raw prediction rows for BMBL and T.
+    Returns all columns so we can inspect exactly what the DB holds.
+    """
+    import psycopg2 as _dbg_pg3
+    from datetime import datetime as _dt
+    _db_url = os.getenv("DATABASE_URL", "")
+    if not _db_url:
+        return {"error": "DATABASE_URL not set"}
+    try:
+        conn = _dbg_pg3.connect(_db_url)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, symbol, predicted_at, check_at, predicted_price,
+                   predicted_direction, predicted_pct, confidence, timeframe_hours,
+                   current_price, target_price, gate, checked, checked_at,
+                   outcome_price, outcome_direction, outcome_pct, correct,
+                   eval_version
+            FROM ghost_predictions
+            WHERE symbol IN ('BMBL', 'T')
+              AND checked = 1
+              AND eval_version NOT LIKE 'skip%%'
+            ORDER BY symbol, predicted_at DESC
+        """)
+        cols = [
+            "id", "symbol", "predicted_at", "check_at", "predicted_price",
+            "predicted_direction", "predicted_pct", "confidence", "timeframe_hours",
+            "current_price", "target_price", "gate", "checked", "checked_at",
+            "outcome_price", "outcome_direction", "outcome_pct", "correct",
+            "eval_version",
+        ]
+        rows = []
+        for r in cur.fetchall():
+            row = {}
+            for i, col in enumerate(cols):
+                val = r[i]
+                if col in ("predicted_at", "check_at") and val is not None:
+                    try:
+                        val = _dt.fromtimestamp(float(val)).isoformat() if isinstance(val, (int, float)) else str(val)
+                    except Exception:
+                        val = str(val)
+                elif isinstance(val, (float, int)):
+                    val = float(val) if isinstance(val, float) else val
+                else:
+                    val = str(val) if val is not None else None
+                row[col] = val
+            rows.append(row)
+        cur.close()
+        conn.close()
+        return {"count": len(rows), "rows": rows}
     except Exception as e:
         return {"error": str(e)}
 
