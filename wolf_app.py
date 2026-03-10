@@ -15628,6 +15628,7 @@ async def api_v3_goals_snapshot():
                            SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
                     FROM ghost_predictions
                     WHERE checked = 1
+                      AND eval_version NOT LIKE 'skip%%'
                       AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
                 """)
                 _gs_total = _gs_row['total'] if _gs_row else 0
@@ -15736,6 +15737,7 @@ async def api_v3_debug_accuracy():
                        SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) as losses
                 FROM ghost_predictions
                 WHERE checked = 1
+                  AND eval_version NOT LIKE 'skip%%'
                   AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
             """)
             row30 = cur.fetchone()
@@ -16398,6 +16400,7 @@ async def api_v3_health_metrics():
                                SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
                         FROM ghost_predictions
                         WHERE checked = 1
+                          AND eval_version NOT LIKE 'skip%%'
                           AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
                     """)
                     _hm_row = _hm_cur.fetchone()
