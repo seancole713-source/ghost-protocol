@@ -186,15 +186,19 @@ def _check_accuracy() -> dict[str, Any]:
         from core.db_pool import get_sync_connection
         with get_sync_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1")
+            # Only count real evaluations (exclude skip-tagged)
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'")
             checked = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE correct = 1")
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND correct = 1 AND eval_version NOT LIKE 'skip%%'")
             correct = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 0")
             pending = cur.fetchone()[0]
+            # Also count skipped for context
+            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version LIKE 'skip%%'")
+            skipped = cur.fetchone()[0]
             if checked > 0:
                 wr = correct / checked
-                return {"pass": True, "detail": f"{correct}/{checked} correct ({wr:.0%}), {pending} pending"}
+                return {"pass": True, "detail": f"{correct}/{checked} correct ({wr:.0%}), {pending} pending, {skipped} skipped"}
             elif pending > 0:
                 return {"pass": True, "detail": f"{pending} predictions pending evaluation"}
     except Exception:

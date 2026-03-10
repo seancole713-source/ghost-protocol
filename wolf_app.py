@@ -15751,6 +15751,74 @@ async def api_v3_debug_accuracy():
     return result
 
 
+@APP.get("/api/v3/debug/accuracy/symbols")
+async def api_v3_debug_accuracy_symbols():
+    """
+    Diagnostic: per-symbol breakdown of evaluated predictions.
+    Shows predicted_direction vs outcome_direction for every real evaluation.
+    """
+    import psycopg2 as _dbg_pg2
+    _db_url = os.getenv("DATABASE_URL", "")
+    if not _db_url:
+        return {"error": "DATABASE_URL not set"}
+    try:
+        conn = _dbg_pg2.connect(_db_url)
+        cur = conn.cursor()
+        # Per-symbol summary
+        cur.execute("""
+            SELECT symbol,
+                   COUNT(*) as total,
+                   SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as correct,
+                   SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) as incorrect,
+                   ROUND(AVG(confidence)::numeric, 3) as avg_conf,
+                   ROUND(AVG(outcome_pct)::numeric, 3) as avg_outcome_pct
+            FROM ghost_predictions
+            WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'
+            GROUP BY symbol
+            ORDER BY symbol
+        """)
+        summary = []
+        for r in cur.fetchall():
+            sym, total, correct, incorrect, avg_conf, avg_out = r
+            summary.append({
+                "symbol": sym, "total": total, "correct": int(correct or 0),
+                "incorrect": int(incorrect or 0),
+                "accuracy_pct": round(float(correct or 0) / total * 100, 1) if total else 0,
+                "avg_confidence": float(avg_conf) if avg_conf else 0,
+                "avg_outcome_pct": float(avg_out) if avg_out else 0,
+            })
+
+        # Detailed rows for symbols with 0% accuracy
+        zero_symbols = [s["symbol"] for s in summary if s["accuracy_pct"] < 20]
+        details = {}
+        for sym in zero_symbols:
+            cur.execute("""
+                SELECT predicted_direction, outcome_direction, outcome_pct,
+                       correct, confidence, current_price, predicted_price, target_price,
+                       predicted_pct, eval_version
+                FROM ghost_predictions
+                WHERE symbol = %s AND checked = 1 AND eval_version NOT LIKE 'skip%%'
+                ORDER BY predicted_at DESC LIMIT 15
+            """, (sym,))
+            rows = cur.fetchall()
+            details[sym] = [{
+                "predicted_dir": r[0], "outcome_dir": r[1],
+                "outcome_pct": float(r[2]) if r[2] else None,
+                "correct": r[3], "confidence": float(r[4]) if r[4] else None,
+                "current_price": float(r[5]) if r[5] else None,
+                "predicted_price": float(r[6]) if r[6] else None,
+                "target_price": float(r[7]) if r[7] else None,
+                "predicted_pct": float(r[8]) if r[8] else None,
+                "eval_version": r[9],
+            } for r in rows]
+
+        cur.close()
+        conn.close()
+        return {"summary": summary, "failing_details": details}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ============================================================================
 #  OPTION A OBSERVABILITY ENDPOINTS
 # ============================================================================
