@@ -1545,6 +1545,36 @@ class GhostNotificationSystem:
         
         LOGGER.info(f"[TOP10] Phase 1: Filtering {len(latest_predictions)} predictions using cached prices...")
         
+        # ══════════════════════════════════════════════════════════════
+        # LEARNING BRAIN QUALITY GATE (Mar 12, 2026):
+        # Bench symbols with <45% accuracy over 10+ predictions.
+        # These are in the "dead zone" — not wrong enough to flip,
+        # not right enough to recommend. Ghost drops them and moves on.
+        # ══════════════════════════════════════════════════════════════
+        brain_benched_count = 0
+        brain_benched_symbols = []
+        try:
+            from core.ghost_learning_brain import should_bench as _lb_should_bench
+            pre_bench = len(latest_predictions)
+            benched_out = {}
+            for sym in list(latest_predictions.keys()):
+                is_benched, bench_reason = _lb_should_bench(sym)
+                if is_benched:
+                    benched_out[sym] = bench_reason
+                    brain_benched_count += 1
+                    brain_benched_symbols.append(f"{sym} ({bench_reason})")
+            
+            if benched_out:
+                latest_predictions = {s: p for s, p in latest_predictions.items() if s not in benched_out}
+                LOGGER.info(
+                    f"[TOP10] 🧠🪑 LEARNING BRAIN BENCHED {len(benched_out)} symbols: "
+                    + ", ".join(brain_benched_symbols)
+                )
+            else:
+                LOGGER.debug("[TOP10] 🧠 Learning Brain: no symbols benched")
+        except Exception as e:
+            LOGGER.warning(f"[TOP10] Learning Brain bench check failed: {e}")
+        
         for symbol, pred in latest_predictions.items():
             if not isinstance(pred, dict):
                 continue

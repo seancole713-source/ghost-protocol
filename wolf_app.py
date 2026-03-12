@@ -15948,29 +15948,49 @@ async def api_v3_debug_accuracy_symbols():
 async def api_v3_learning_brain_scorecard():
     """
     Ghost Learning Brain scorecard.
-    Shows per-symbol accuracy and which symbols are flagged for auto-inversion.
+    Shows per-symbol accuracy and which symbols are flagged for
+    auto-inversion, benching, or active recommendation.
     """
     try:
-        from core.ghost_learning_brain import force_refresh, INVERT_ACCURACY_THRESHOLD, MIN_EVALUATED_PREDICTIONS
+        from core.ghost_learning_brain import (
+            force_refresh, INVERT_ACCURACY_THRESHOLD,
+            BENCH_ACCURACY_THRESHOLD, MIN_EVALUATED_PREDICTIONS,
+        )
         scorecard = force_refresh()
-        inverted = {s: d for s, d in scorecard.items() if d["should_invert"]}
-        normal = {s: d for s, d in scorecard.items() if not d["should_invert"]}
+        inverted = {s: d for s, d in scorecard.items() if d.get("should_invert")}
+        benched = {s: d for s, d in scorecard.items() if d.get("should_bench")}
+        active = {s: d for s, d in scorecard.items()
+                  if not d.get("should_invert") and not d.get("should_bench")}
         total_preds = sum(d["total"] for d in scorecard.values())
         total_correct = sum(d["correct"] for d in scorecard.values())
+
+        # Build status lines
+        status_parts = []
+        if inverted:
+            status_parts.append(f"🔄 Inverting {len(inverted)}: {', '.join(inverted.keys())}")
+        if benched:
+            status_parts.append(f"🪑 Benched {len(benched)}: {', '.join(benched.keys())}")
+        if not inverted and not benched:
+            status_parts.append("🧠 All symbols above threshold — no actions needed")
+
         return {
             "ok": True,
             "brain_status": "ACTIVE",
             "invert_threshold_pct": INVERT_ACCURACY_THRESHOLD,
+            "bench_threshold_pct": BENCH_ACCURACY_THRESHOLD,
             "min_predictions": MIN_EVALUATED_PREDICTIONS,
             "overall_accuracy_pct": round(total_correct / total_preds * 100, 1) if total_preds else 0,
             "total_evaluated": total_preds,
+            "zones": {
+                "recommend": f"> {BENCH_ACCURACY_THRESHOLD}% accuracy → send to picks",
+                "bench": f"{INVERT_ACCURACY_THRESHOLD}-{BENCH_ACCURACY_THRESHOLD}% → dropped from picks",
+                "invert": f"< {INVERT_ACCURACY_THRESHOLD}% → direction flipped",
+            },
             "symbols_inverted": list(inverted.keys()),
-            "symbols_normal": list(normal.keys()),
+            "symbols_benched": list(benched.keys()),
+            "symbols_active": list(active.keys()),
             "scorecard": scorecard,
-            "message": (
-                f"🧠 Brain inverting {len(inverted)} symbols: {', '.join(inverted.keys())}"
-                if inverted else "🧠 Brain: all symbols above threshold, no inversions needed"
-            ),
+            "message": " | ".join(status_parts),
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}

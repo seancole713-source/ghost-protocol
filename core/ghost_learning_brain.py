@@ -4,29 +4,40 @@ Ghost Learning Brain — Self-Correcting Prediction Intelligence
 
 Ghost looks at its own scorecard and thinks:
   "I'm 3% on DDOG... what if I flip my predictions?"
+  "I'm 29% on XPO... let me bench that one for now."
 
-This module tracks per-symbol accuracy from PostgreSQL and provides
-an auto-inversion signal when Ghost is reliably WRONG on a symbol.
-The key insight: a model that is consistently wrong is just as useful
-as one that's consistently right — you just flip it.
+This module tracks per-symbol accuracy from PostgreSQL and provides:
+  1. AUTO-INVERSION — when Ghost is reliably WRONG (<35%), flip it
+  2. AUTO-BENCHING — when accuracy is in the dead zone (35-45%),
+     bench the symbol from picks entirely until it improves
+
+Three zones:
+  ┌─────────────────────────────────────────────────┐
+  │  > 45%  │  RECOMMEND  │ Send to Telegram picks  │
+  │ 35-45%  │  BENCHED    │ Drop from picks          │
+  │  < 35%  │  INVERTED   │ Flip direction           │
+  └─────────────────────────────────────────────────┘
 
 Self-correcting behavior:
   - Once flipped predictions start being correct, accuracy rises
   - When accuracy crosses back above the threshold, inversion stops
+  - Benched symbols are still tracked — when they improve, they return
   - This creates a natural feedback loop that converges to correctness
 
 Created: March 10, 2026
+Updated: March 12, 2026 — Added quality gate (bench losers)
 """
 
 import logging
 import time
 import threading
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 LOGGER = logging.getLogger("ghost.learning_brain")
 
 # ── Configuration ─────────────────────────────────────────────
-INVERT_ACCURACY_THRESHOLD = 25.0   # Below this % → invert
+BENCH_ACCURACY_THRESHOLD = 45.0    # Below this % → bench (don't recommend)
+INVERT_ACCURACY_THRESHOLD = 35.0   # Below this % → invert (flip direction)
 MIN_EVALUATED_PREDICTIONS = 10     # Need at least this many to judge
 CACHE_TTL_SECONDS = 300            # Refresh from PG every 5 minutes
 RECENCY_WINDOW_DAYS = 14           # Only look at last 14 days of predictions
@@ -69,17 +80,37 @@ def _refresh_cache() -> None:
             correct = correct or 0
             incorrect = incorrect or 0
             accuracy = (correct / total * 100) if total > 0 else 50.0
-            should_invert = total >= MIN_EVALUATED_PREDICTIONS and accuracy < INVERT_ACCURACY_THRESHOLD
+            has_enough_data = total >= MIN_EVALUATED_PREDICTIONS
+
+            # Three zones: INVERT < 35% < BENCH < 45% < RECOMMEND
+            should_invert = has_enough_data and accuracy < INVERT_ACCURACY_THRESHOLD
+            should_bench = has_enough_data and accuracy < BENCH_ACCURACY_THRESHOLD and not should_invert
+
+            if should_invert:
+                status = "INVERTED"
+                reason = (
+                    f"accuracy {accuracy:.1f}% over {total} preds "
+                    f"(< {INVERT_ACCURACY_THRESHOLD}%) → FLIPPING direction"
+                )
+            elif should_bench:
+                status = "BENCHED"
+                reason = (
+                    f"accuracy {accuracy:.1f}% over {total} preds "
+                    f"(< {BENCH_ACCURACY_THRESHOLD}%) → BENCHED from picks"
+                )
+            else:
+                status = "ACTIVE"
+                reason = None
+
             new_cache[symbol] = {
                 "total": total,
                 "correct": correct,
                 "incorrect": incorrect,
                 "accuracy_pct": round(accuracy, 1),
                 "should_invert": should_invert,
-                "reason": (
-                    f"accuracy {accuracy:.1f}% over {total} predictions (< {INVERT_ACCURACY_THRESHOLD}%)"
-                    if should_invert else None
-                ),
+                "should_bench": should_bench,
+                "status": status,
+                "reason": reason,
             }
 
         with _cache_lock:
@@ -88,13 +119,22 @@ def _refresh_cache() -> None:
             _last_refresh = time.time()
 
         inverted = [s for s, d in new_cache.items() if d["should_invert"]]
-        if inverted:
-            LOGGER.info(
-                f"🧠 Ghost Learning Brain: {len(inverted)} symbols flagged for inversion: "
-                + ", ".join(f"{s} ({new_cache[s]['accuracy_pct']}%)" for s in inverted)
-            )
+        benched = [s for s, d in new_cache.items() if d["should_bench"]]
+        if inverted or benched:
+            parts = []
+            if inverted:
+                parts.append(
+                    f"{len(inverted)} INVERTED: "
+                    + ", ".join(f"{s} ({new_cache[s]['accuracy_pct']}%)" for s in inverted)
+                )
+            if benched:
+                parts.append(
+                    f"{len(benched)} BENCHED: "
+                    + ", ".join(f"{s} ({new_cache[s]['accuracy_pct']}%)" for s in benched)
+                )
+            LOGGER.info(f"🧠 Ghost Learning Brain: {' | '.join(parts)}")
         else:
-            LOGGER.debug(f"🧠 Ghost Learning Brain: All {len(new_cache)} symbols above {INVERT_ACCURACY_THRESHOLD}% threshold")
+            LOGGER.debug(f"🧠 Ghost Learning Brain: All {len(new_cache)} symbols above {BENCH_ACCURACY_THRESHOLD}% threshold")
 
     except Exception as e:
         LOGGER.warning(f"🧠 Ghost Learning Brain refresh failed: {e}")
@@ -120,6 +160,83 @@ def should_invert(symbol: str) -> Tuple[bool, Optional[str]]:
         return False, None
 
     return entry["should_invert"], entry.get("reason")
+
+
+def should_bench(symbol: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check if a symbol should be BENCHED from picks.
+    
+    Benched = accuracy is in the dead zone (35-45%).
+    Not wrong enough to flip, not right enough to recommend.
+    Ghost drops it and moves on to better symbols.
+    
+    Returns:
+        (should_bench: bool, reason: Optional[str])
+    """
+    global _last_refresh
+
+    # Refresh cache if stale
+    if time.time() - _last_refresh > CACHE_TTL_SECONDS:
+        _refresh_cache()
+
+    with _cache_lock:
+        entry = _symbol_accuracy_cache.get(symbol)
+
+    if not entry:
+        return False, None
+
+    # Bench check includes BOTH benched AND inverted symbols
+    # Inverted symbols are already flipped at engine level, but if they're
+    # still losing after inversion, they should be benched too
+    if entry["should_bench"]:
+        return True, entry.get("reason")
+
+    return False, None
+
+
+def is_symbol_blocked(symbol: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check if a symbol should be BLOCKED from Telegram picks.
+    This covers BOTH benched (dead zone) AND inverted-but-still-losing symbols.
+    
+    Use this as the single quality gate for the picks pipeline.
+    
+    Returns:
+        (is_blocked: bool, reason: Optional[str])
+    """
+    global _last_refresh
+
+    if time.time() - _last_refresh > CACHE_TTL_SECONDS:
+        _refresh_cache()
+
+    with _cache_lock:
+        entry = _symbol_accuracy_cache.get(symbol)
+
+    if not entry:
+        return False, None
+
+    if entry["should_bench"]:
+        return True, entry.get("reason")
+
+    return False, None
+
+
+def get_benched_symbols() -> List[str]:
+    """Return list of symbols currently benched from picks."""
+    if time.time() - _last_refresh > CACHE_TTL_SECONDS:
+        _refresh_cache()
+
+    with _cache_lock:
+        return [s for s, d in _symbol_accuracy_cache.items() if d["should_bench"]]
+
+
+def get_inverted_symbols() -> List[str]:
+    """Return list of symbols currently being inverted."""
+    if time.time() - _last_refresh > CACHE_TTL_SECONDS:
+        _refresh_cache()
+
+    with _cache_lock:
+        return [s for s, d in _symbol_accuracy_cache.items() if d["should_invert"]]
 
 
 def apply_inversion(
