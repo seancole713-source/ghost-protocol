@@ -1621,11 +1621,10 @@ async def _ui_entrypoint():
 # are not mounted or when running in minimal deployment environments.
 @APP.get("/cockpit", include_in_schema=False)
 async def _cockpit_page(request: Request):
-    """Serve Ghost v3 cockpit - ALWAYS V3, no fallback to legacy versions."""
+    """Serve Ghost v4 cockpit — tab-based redesign."""
     try:
-        # Always serve V3 cockpit with Jinja2 template rendering
         response = _TEMPLATES.TemplateResponse(
-            "cockpit_v3.html",
+            "cockpit_v4.html",
             {
                 "request": request,
                 "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", ""),
@@ -12553,7 +12552,13 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
             "period_days": days,
             "data_source": "ghost_predictions_pg",
             "v2_filtered": v2_only,
-            "accuracy_status": "MEETS_TARGET" if accuracy_pct >= 70 else "IMPROVING" if accuracy_pct >= 50 else "DEVELOPING",
+            "accuracy_status": (
+                "MEETS_TARGET" if accuracy_pct >= 70
+                else "DECLINING" if daily_acc == 0.0 and accuracy_pct > 0
+                else "IMPROVING" if daily_acc > accuracy_pct and accuracy_pct >= 40
+                else "DEVELOPING" if accuracy_pct >= 40
+                else "CRITICAL"
+            ),
             "meets_70pct_threshold": accuracy_pct >= 70
         }
 
@@ -15000,6 +15005,132 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
         return {"price": None, "change_pct": None}
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# V4 ENDPOINTS — Clean cockpit redesign
+# ──────────────────────────────────────────────────────────────────────────────
+
+@APP.get("/api/v4/picks")
+async def api_v4_picks():
+    """
+    Today's trade picks in Telegram card format.
+    Returns entry, target, stop_loss, gain_pct, done_by for each active prediction.
+    Only includes picks with confidence >= 50%.
+    """
+    try:
+        from datetime import timedelta
+        now = time.time()
+        picks = []
+        with _LATEST_PREDICTIONS_LOCK:
+            for symbol, pred in _LATEST_PREDICTIONS.items():
+                if not isinstance(pred, dict):
+                    continue
+                conf = pred.get("confidence", 0)
+                if conf < 50:
+                    continue  # Below 50% = no opinion, don't show
+                direction = pred.get("direction", "FLAT")
+                if direction == "FLAT":
+                    continue  # No actionable signal
+
+                entry = pred.get("entry_price") or pred.get("price_at_prediction") or pred.get("price", 0)
+                target = pred.get("target_price") or pred.get("take_profit", 0)
+                stop = pred.get("stop_loss", 0)
+                if not entry or entry <= 0:
+                    continue
+
+                # Calculate gain %
+                is_up = direction == "UP"
+                if is_up and target and entry:
+                    gain_pct = (target - entry) / entry * 100
+                elif not is_up and target and entry:
+                    gain_pct = (entry - target) / entry * 100
+                else:
+                    gain_pct = 0
+
+                # Done by: use horizon_h to calculate deadline
+                horizon_h = pred.get("horizon_h", 48)
+                run_at = pred.get("run_at", now)
+                deadline_ts = run_at + (horizon_h * 3600)
+                deadline_dt = datetime.fromtimestamp(deadline_ts, tz=UTC)
+                # Skip weekends for stocks
+                market = pred.get("market", "crypto")
+                if market == "stock" and deadline_dt.weekday() >= 5:
+                    days_ahead = 7 - deadline_dt.weekday()
+                    deadline_dt += timedelta(days=days_ahead)
+                done_by = deadline_dt.strftime("%a %b %-d")
+
+                # Staleness check: skip predictions older than 2x horizon
+                age_h = (now - run_at) / 3600
+                if age_h > horizon_h * 2:
+                    continue
+
+                picks.append({
+                    "symbol": symbol,
+                    "direction": direction,
+                    "confidence": round(conf, 1),
+                    "entry_price": round(entry, 4),
+                    "target_price": round(target, 4) if target else None,
+                    "stop_loss": round(stop, 4) if stop else None,
+                    "gain_pct": round(gain_pct, 1),
+                    "done_by": done_by,
+                    "type": market,
+                    "market": market,
+                    "horizon_h": horizon_h,
+                    "age_h": round(age_h, 1),
+                })
+
+        # Sort: highest confidence first
+        picks.sort(key=lambda p: p["confidence"], reverse=True)
+
+        return {
+            "ok": True,
+            "picks": picks,
+            "count": len(picks),
+            "timestamp": int(now),
+        }
+    except Exception as e:
+        LOGGER.error(f"[V4] Picks endpoint failed: {e}", exc_info=True)
+        return {"ok": False, "picks": [], "count": 0, "error": str(e)}
+
+
+@APP.get("/api/v3/heartbeat/status")
+async def api_v3_heartbeat_status():
+    """Get all heartbeat task statuses for the Health tab."""
+    try:
+        from core.heartbeat import get_all_heartbeats, get_missing_tasks, EXPECTED_INTERVALS
+        all_hb = get_all_heartbeats()
+        missing = get_missing_tasks()
+
+        tasks = {}
+        # Include pulsing tasks
+        for name, info in all_hb.items():
+            tasks[name] = {
+                "alive": info["status"] == "alive",
+                "status": info["status"],
+                "last_pulse": info["last_pulse"],
+                "age_s": info["age_s"],
+            }
+        # Include missing tasks (never pulsed)
+        for name in missing:
+            tasks[name] = {
+                "alive": False,
+                "status": "never",
+                "last_pulse": None,
+                "age_s": None,
+            }
+
+        alive_count = sum(1 for t in tasks.values() if t["alive"])
+        return {
+            "ok": True,
+            "tasks": tasks,
+            "alive": alive_count,
+            "total": len(tasks),
+            "health_pct": round(alive_count / len(tasks) * 100, 1) if tasks else 0,
+        }
+    except Exception as e:
+        LOGGER.error(f"Heartbeat status failed: {e}", exc_info=True)
+        return {"ok": False, "tasks": {}, "alive": 0, "total": 0, "error": str(e)}
+
+
 # Alias for /api/v3/watchlist/user (compatibility with personal watchlist router)
 @APP.get("/api/v3/watchlist/user")
 async def api_v3_watchlist_user():
@@ -15587,11 +15718,12 @@ async def api_v3_goals_snapshot():
                 STATE[key] = default
             goals[period] = STATE.get(key, default)
 
-        # FIXED (v2): Calculate ghost_score from real health metrics
-        # Uses same crypto quorum as health/metrics endpoint
+        # FIXED (v5.4): Use INTEGRITY-verified accuracy, not paper tracker inflated numbers
+        # Paper tracker says 79% but integrity-checked accuracy is 54%
+        # The dashboard should show the honest number
         data_health = 50
         ai_activity = 50
-        accuracy = None  # FIXED: None instead of phantom 50% — forces fallback chain to find real data
+        accuracy = None  # Will be set from integrity-checked source
         
         try:
             # Data Health: Check crypto providers with timeout (same as health/metrics)
@@ -15647,75 +15779,40 @@ async def api_v3_goals_snapshot():
         variety_bonus = min(15, unique_symbols)
         ai_activity = min(95, base_activity + variety_bonus)
         
-        # Accuracy: Get from paper trades with V2 date filter
+        # Accuracy: Get from INTEGRITY-verified source (ghost_predictions checked=1)
+        # This matches what the integrity audit reports — the honest number
+        # Priority: PostgreSQL checked predictions > paper tracker > accuracy_stats
         try:
-            from core.paper_tracker import get_paper_tracker
-            from config.symbols import get_edge_set
-            tracker = get_paper_tracker()
-            # 14-day rolling window — only count CURRENT edge symbols
-            # This excludes historical SOL/BTC/etc trades that were removed for poor accuracy
-            _edge_syms = get_edge_set()
-            stats = tracker.get_stats(days=14)
-            _by_sym = stats.get("accuracy_by_symbol", {})
-            # Sum only edge-whitelist symbols
-            _edge_wins = sum(s.get("wins", 0) for sym, s in _by_sym.items() if sym in _edge_syms)
-            _edge_losses = sum(s.get("losses", 0) for sym, s in _by_sym.items() if sym in _edge_syms)
-            _edge_decided = _edge_wins + _edge_losses
-            _resolved = stats.get("resolved_trades", 0)
-            _wins = stats.get("wins", 0)
-            _losses = stats.get("losses", 0)
-            LOGGER.info(f"[GHOST_SCORE] Paper tracker: resolved={_resolved}, wins={_wins}, losses={_losses}, edge_decided={_edge_decided} ({_edge_wins}W/{_edge_losses}L)")
-            if _edge_decided > 0:
-                accuracy = round(_edge_wins / _edge_decided * 100, 1)
-                LOGGER.info(f"[GHOST_SCORE] Edge-filtered accuracy: {accuracy}% ({_edge_wins}W/{_edge_losses}L)")
-            elif _resolved > 0:
-                accuracy = round(stats.get("win_rate_pct", 50), 1)
-                LOGGER.info(f"[GHOST_SCORE] Fallback accuracy (all symbols): {accuracy}%")
-            else:
-                LOGGER.info("[GHOST_SCORE] No resolved paper trades in 14-day window")
-        except Exception as _acc_err:
-            LOGGER.warning(f"[GHOST_SCORE] accuracy from paper_tracker failed: {_acc_err}")
-        
-        # Fallback: If accuracy is still None, try PostgreSQL directly
-        # (bypasses connection pool which may be exhausted during prediction cycles)
+            from core.db_pool import fetchrow as _db_fetchrow
+            _gs_row = await _db_fetchrow("""
+                SELECT COUNT(*) as total,
+                       SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
+                FROM ghost_predictions
+                WHERE checked = 1
+                  AND eval_version NOT LIKE 'skip%%'
+                  AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
+            """)
+            _gs_total = _gs_row['total'] if _gs_row else 0
+            _gs_wins = _gs_row['wins'] if _gs_row and _gs_row['wins'] else 0
+            LOGGER.info(f"[GHOST_SCORE] PostgreSQL integrity accuracy: checked={_gs_total}, correct={_gs_wins}")
+            if _gs_total and _gs_total > 0:
+                accuracy = round((_gs_wins / _gs_total) * 100, 1)
+                LOGGER.info(f"[GHOST_SCORE] Integrity-verified accuracy: {accuracy}% ({_gs_wins}/{_gs_total})")
+        except Exception as _pg_err:
+            LOGGER.warning(f"[GHOST_SCORE] PostgreSQL accuracy query failed: {_pg_err}")
+
+        # Fallback: paper tracker (if PostgreSQL unavailable)
         if accuracy is None:
             try:
-                from core.db_pool import fetchrow as _db_fetchrow
-                _gs_row = await _db_fetchrow("""
-                    SELECT COUNT(*) as total,
-                           SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
-                    FROM ghost_predictions
-                    WHERE checked = 1
-                      AND eval_version NOT LIKE 'skip%%'
-                      AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
-                """)
-                _gs_total = _gs_row['total'] if _gs_row else 0
-                _gs_wins = _gs_row['wins'] if _gs_row and _gs_row['wins'] else 0
-                LOGGER.info(f"[GHOST_SCORE] PostgreSQL ghost_predictions: checked={_gs_total}, correct={_gs_wins}")
-                if _gs_total and _gs_total > 0:
-                    accuracy = round((_gs_wins / _gs_total) * 100, 1)
-                    LOGGER.info(f"[GHOST_SCORE] PostgreSQL direct accuracy: {accuracy}% ({_gs_wins}/{_gs_total})")
-                else:
-                    LOGGER.info("[GHOST_SCORE] PostgreSQL: 0 checked predictions in last 30 days")
-            except Exception as _pg_err:
-                LOGGER.warning(f"[GHOST_SCORE] PostgreSQL direct fallback failed: {_pg_err}")
-        
-        # Third fallback: ghost_accuracy_stats table (written by prediction_evaluator)
-        if accuracy is None:
-            try:
-                from core.db_pool import fetchrow as _db_fetchrow2
-                _gs_row2 = await _db_fetchrow2("""
-                    SELECT accuracy_pct, total_predictions, correct_predictions
-                    FROM ghost_accuracy_stats
-                    WHERE period = 'all_time'
-                """)
-                if _gs_row2 and _gs_row2['total_predictions'] and _gs_row2['total_predictions'] > 0:
-                    accuracy = round(float(_gs_row2['accuracy_pct']), 1)
-                    LOGGER.info(f"[GHOST_SCORE] accuracy_stats table: {accuracy}% ({_gs_row2['correct_predictions']}/{_gs_row2['total_predictions']})")
-                else:
-                    LOGGER.info("[GHOST_SCORE] ghost_accuracy_stats: no all_time entry")
-            except Exception as _stats_err:
-                LOGGER.warning(f"[GHOST_SCORE] ghost_accuracy_stats fallback failed: {_stats_err}")
+                from core.paper_tracker import get_paper_tracker
+                tracker = get_paper_tracker()
+                stats = tracker.get_stats(days=30)
+                _resolved = stats.get("resolved_trades", 0)
+                if _resolved > 0:
+                    accuracy = round(stats.get("win_rate_pct", 50), 1)
+                    LOGGER.info(f"[GHOST_SCORE] Paper tracker fallback accuracy: {accuracy}%")
+            except Exception as _pt_err:
+                LOGGER.warning(f"[GHOST_SCORE] Paper tracker fallback failed: {_pt_err}")
         
         LOGGER.info(f"[GHOST_SCORE] Components: accuracy={accuracy}, data_health={data_health}, ai_activity={ai_activity}, predictions={total_predictions}")
         
@@ -16503,90 +16600,67 @@ async def api_v3_health_metrics():
             LOGGER.warning(f"Health check provider test failed: {e}")
             data_health = 50  # Unknown state
         
-        # AI Activity: Count recent predictions (predictions per hour)
-        # BUG 4 FIX: Also check paper trades as activity indicator
+        # AI Activity: Based on heartbeat status (are tasks actually running?)
+        # Not just prediction count — that masks dead background processes
         total_predictions = len(_LATEST_PREDICTIONS)
         try:
-            from core.paper_tracker import get_paper_tracker
-            tracker = get_paper_tracker()
-            paper_stats = tracker.get_stats(days=1)
-            pending_trades = paper_stats.get("pending_trades", 0)
-            total_predictions = max(total_predictions, pending_trades)
+            from core.heartbeat import get_all_status
+            _hb_status = get_all_status()
+            _hb_alive = sum(1 for h in _hb_status.values() if h.get("status") == "alive")
+            _hb_total = len(_hb_status) if _hb_status else 1
+            # Activity = % of tasks alive + prediction count bonus
+            task_health = round((_hb_alive / max(_hb_total, 1)) * 60)  # up to 60 from tasks
+            pred_bonus = min(30, total_predictions * 2)  # up to 30 from predictions
+            ai_activity = min(95, task_health + pred_bonus + 5)  # +5 baseline (server is running)
         except Exception:
-            pass
+            # Fallback: prediction count only
+            if total_predictions >= 50:
+                ai_activity = 70
+            elif total_predictions >= 20:
+                ai_activity = 55
+            elif total_predictions >= 10:
+                ai_activity = 45
+            else:
+                ai_activity = 30
         
-        # More generous activity thresholds
-        if total_predictions >= 50:
-            ai_activity = 90
-        elif total_predictions >= 20:
-            ai_activity = 75
-        elif total_predictions >= 10:
-            ai_activity = 60
-        elif total_predictions >= 5:
-            ai_activity = 50
-        else:
-            ai_activity = 40  # Minimum activity (system is running)
-        
-        # Accuracy: Calculate from V2-filtered paper trades (not _PREDICTION_STORE)
-        # Uses same 3-source fallback as goals/snapshot for consistency
-        accuracy = None  # FIXED: None instead of phantom 50% — don't fake accuracy
+        # Accuracy: INTEGRITY-verified source first (honest number)
+        # Priority: PostgreSQL checked predictions > paper tracker
+        accuracy = None
         accuracy_source = "none"
         try:
-            from core.paper_tracker import get_paper_tracker
-            tracker = get_paper_tracker()
-            stats = tracker.get_stats(since=V2_START_DATE, v2_only=True)
-            if stats.get("resolved_trades", 0) > 0:
-                accuracy = round(stats.get("win_rate_pct", 50), 1)
-                accuracy_source = "paper_tracker"
+            import psycopg2 as _hm_pg
+            _hm_url = os.getenv("DATABASE_URL")
+            if _hm_url:
+                _hm_conn = _hm_pg.connect(_hm_url)
+                _hm_cur = _hm_conn.cursor()
+                _hm_cur.execute("""
+                    SELECT COUNT(*) as total,
+                           SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
+                    FROM ghost_predictions
+                    WHERE checked = 1
+                      AND eval_version NOT LIKE 'skip%%'
+                      AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
+                """)
+                _hm_row = _hm_cur.fetchone()
+                _hm_cur.close()
+                _hm_conn.close()
+                _hm_total = _hm_row[0] if _hm_row else 0
+                _hm_wins = _hm_row[1] if _hm_row and _hm_row[1] else 0
+                if _hm_total and _hm_total > 0:
+                    accuracy = round((_hm_wins / _hm_total) * 100, 1)
+                    accuracy_source = "ghost_predictions_integrity"
         except Exception:
             pass
         
-        # Fallback: ghost_predictions table
+        # Fallback: paper tracker
         if accuracy is None:
             try:
-                import psycopg2 as _hm_pg
-                _hm_url = os.getenv("DATABASE_URL")
-                if _hm_url:
-                    _hm_conn = _hm_pg.connect(_hm_url)
-                    _hm_cur = _hm_conn.cursor()
-                    _hm_cur.execute("""
-                        SELECT COUNT(*) as total,
-                               SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins
-                        FROM ghost_predictions
-                        WHERE checked = 1
-                          AND eval_version NOT LIKE 'skip%%'
-                          AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
-                    """)
-                    _hm_row = _hm_cur.fetchone()
-                    _hm_cur.close()
-                    _hm_conn.close()
-                    _hm_total = _hm_row[0] if _hm_row else 0
-                    _hm_wins = _hm_row[1] if _hm_row and _hm_row[1] else 0
-                    if _hm_total and _hm_total > 0:
-                        accuracy = round((_hm_wins / _hm_total) * 100, 1)
-                        accuracy_source = "ghost_predictions"
-            except Exception:
-                pass
-        
-        # Fallback: ghost_accuracy_stats table
-        if accuracy is None:
-            try:
-                import psycopg2 as _hm_pg2
-                _hm_url2 = os.getenv("DATABASE_URL")
-                if _hm_url2:
-                    _hm_conn2 = _hm_pg2.connect(_hm_url2)
-                    _hm_cur2 = _hm_conn2.cursor()
-                    _hm_cur2.execute("""
-                        SELECT accuracy_pct, total_predictions
-                        FROM ghost_accuracy_stats
-                        WHERE period = 'all_time'
-                    """)
-                    _hm_row2 = _hm_cur2.fetchone()
-                    _hm_cur2.close()
-                    _hm_conn2.close()
-                    if _hm_row2 and _hm_row2[1] and _hm_row2[1] > 0:
-                        accuracy = round(float(_hm_row2[0]), 1)
-                        accuracy_source = "ghost_accuracy_stats"
+                from core.paper_tracker import get_paper_tracker
+                tracker = get_paper_tracker()
+                stats = tracker.get_stats(since=V2_START_DATE, v2_only=True)
+                if stats.get("resolved_trades", 0) > 0:
+                    accuracy = round(stats.get("win_rate_pct", 50), 1)
+                    accuracy_source = "paper_tracker"
             except Exception:
                 pass
         
@@ -17071,53 +17145,23 @@ async def api_v3_cockpit_status():
     Returns mode, active status, uptime, etc.
     """
     try:
-        # Calculate health score from ACTUAL recent predictions (not counters)
+        # Calculate health score from INTEGRITY audit (real system health)
         health_score = 0
         total_predictions = 0
+        integrity_issues = 0
         try:
-            # Source of truth: wolf.db (touch-target evaluator + calibration).
-            import sqlite3 as _sqlite3
-
-            try:
-                from core import prediction_tracker as _pt  # noqa: F401
-            except Exception:
-                pass
-
-            cutoff = int(time.time()) - (24 * 3600)
-            with _sqlite3.connect(WOLF_SQLITE_PATH) as _c:
-                row = _c.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM ghost_predictions
-                    WHERE predicted_at >= ?
-                    """,
-                    (cutoff,),
-                ).fetchone()
-                total_predictions = int(row[0] or 0) if row else 0
-
-            # Health score: 10 points per prediction in last 24h, max 100
-            health_score = min(100, total_predictions * 10)
+            from core.integrity import run_audit
+            audit = run_audit(auto_fix=False)
+            health_score = audit.get("health_score", 50)
+            integrity_issues = audit.get("issues_remaining", 0)
+            total_predictions = audit.get("summary", {}).get("total_predictions", 0)
+            if total_predictions == 0:
+                total_predictions = len(_LATEST_PREDICTIONS)
         except Exception as e:
-            LOGGER.warning(f"Could not calculate health score from wolf.db: {e}")
-            # Fallback: prediction_store (may be different DB)
-            try:
-                from core.prediction_store import get_prediction_store
-
-                store = get_prediction_store()
-                recent = store.get_recent_predictions(limit=200)
-
-                from datetime import datetime, timedelta
-
-                cutoff_ts = (datetime.now() - timedelta(hours=24)).timestamp()
-                recent_24h = [p for p in recent if float(p.get("timestamp", 0) or 0) > cutoff_ts]
-
-                total_predictions = len(recent_24h)
-                health_score = min(100, total_predictions * 10)
-            except Exception as e2:
-                LOGGER.warning(f"Could not calculate health score from prediction_store: {e2}")
-                # Final fallback to old counters
-                total_predictions = sum(_LAST_MULTI_PREDICTION_COUNTS.values())
-                health_score = min(100, total_predictions * 5)
+            LOGGER.warning(f"Could not get integrity score for cockpit: {e}")
+            # Fallback: count predictions but cap at 80 (never fake 100)
+            total_predictions = len(_LATEST_PREDICTIONS)
+            health_score = min(80, total_predictions * 5) if total_predictions > 0 else 30
         
         # Calculate grade based on score
         if health_score >= 90:
@@ -17141,6 +17185,7 @@ async def api_v3_cockpit_status():
             "ghost_health_score": health_score,
             "ghost_health_grade": grade,
             "predictions_today": total_predictions,
+            "integrity_issues": integrity_issues,
         }
     
     except Exception as e:
@@ -17434,11 +17479,27 @@ async def api_v3_news_feed(limit: int = 10):
                     if not title:
                         continue
 
-                    # Simple sentiment from keywords
+                    # Sentiment analysis from headline keywords
                     lower = title.lower()
                     sentiment = "neutral"
-                    bullish_kw = ("surge", "rally", "gain", "jump", "soar", "rise", "record high", "bull", "boom", "up ")
-                    bearish_kw = ("crash", "fall", "drop", "plunge", "sink", "loss", "fear", "bear", "recession", "down ")
+                    bullish_kw = (
+                        "surge", "rally", "gain", "jump", "soar", "rise", "record high",
+                        "bull", "boom", "up ", "upgrade", "beat", "outperform", "strong",
+                        "growth", "profit", "breakthrough", "recovery", "rebound", "climb",
+                        "spike", "advance", "positive", "optimis", "upbeat", "high",
+                        "tops", "exceed", "record", "milestone", "momentum", "buy",
+                        "all-time high", "ath", "breakout", "inflation ease", "rate cut",
+                    )
+                    bearish_kw = (
+                        "crash", "fall", "drop", "plunge", "sink", "loss", "fear",
+                        "bear", "recession", "down ", "downgrade", "miss", "underperform",
+                        "weak", "decline", "deficit", "layoff", "cut", "warning", "tumble",
+                        "slide", "slump", "selloff", "sell-off", "negative", "pessimis",
+                        "concern", "risk", "threat", "crisis", "war", "conflict", "sanctions",
+                        "tariff", "inflation rise", "rate hike", "default", "bankruptcy",
+                        "collapse", "closure", "shutdown", "attack", "strike",
+                        "volatil", "uncertain", "panic", "contagion", "overvalue",
+                    )
                     if any(w in lower for w in bullish_kw):
                         sentiment = "bullish"
                     elif any(w in lower for w in bearish_kw):

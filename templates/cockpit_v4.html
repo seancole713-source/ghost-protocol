@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghost Protocol v4</title>
+    <link rel="stylesheet" href="/static/cockpit_v4.css?v={{ cache_bust }}">
+</head>
+<body>
+    <!-- ─── HEADER ─── -->
+    <header id="ghost-header">
+        <div class="header-left">
+            <h1>GHOST PROTOCOL</h1>
+            <span class="status-dot" id="status-indicator"></span>
+            <span class="status-text" id="status-text">LIVE</span>
+        </div>
+        <div class="header-center">
+            <span id="system-time">00:00:00</span>
+        </div>
+        <div class="header-right">
+            <span class="health-pill" id="health-pill" title="System health">-- / 100</span>
+            <span class="version">v4.0</span>
+            <div class="controls">
+                <button id="btn-start" class="btn btn-go">START</button>
+                <button id="btn-stop" class="btn btn-halt">STOP</button>
+            </div>
+            <select id="mode-selector" class="mode-select" aria-label="Mode">
+                <option value="live">LIVE</option>
+                <option value="fixed">FIXED</option>
+            </select>
+        </div>
+    </header>
+
+    <!-- ─── TAB NAV ─── -->
+    <nav id="tab-nav">
+        <button class="tab-btn active" data-tab="stocks">Stocks</button>
+        <button class="tab-btn" data-tab="crypto">Crypto</button>
+        <button class="tab-btn" data-tab="history">History</button>
+        <button class="tab-btn" data-tab="health">Health</button>
+    </nav>
+
+    <!-- ─── TAB: STOCKS ─── -->
+    <main id="tab-stocks" class="tab-page active">
+        <section class="section-label">Today's Picks — Stocks</section>
+        <div class="picks-grid" id="stock-picks">
+            <div class="loading-msg">Loading stock picks…</div>
+        </div>
+
+        <section class="section-label">Active Trades</section>
+        <div class="trades-list" id="stock-active-trades">
+            <div class="loading-msg">Loading active trades…</div>
+        </div>
+
+        <section class="section-label">Watchlist</section>
+        <div class="watchlist-grid" id="stock-watchlist">
+            <div class="loading-msg">Loading watchlist…</div>
+        </div>
+
+        <section class="section-label">News</section>
+        <div class="news-list" id="stock-news">
+            <div class="loading-msg">Loading news…</div>
+        </div>
+    </main>
+
+    <!-- ─── TAB: CRYPTO ─── -->
+    <main id="tab-crypto" class="tab-page">
+        <section class="section-label">Today's Picks — Crypto</section>
+        <div class="picks-grid" id="crypto-picks">
+            <div class="loading-msg">Loading crypto picks…</div>
+        </div>
+
+        <section class="section-label">Active Trades</section>
+        <div class="trades-list" id="crypto-active-trades">
+            <div class="loading-msg">Loading active trades…</div>
+        </div>
+
+        <section class="section-label">Watchlist</section>
+        <div class="watchlist-grid" id="crypto-watchlist">
+            <div class="loading-msg">Loading watchlist…</div>
+        </div>
+
+        <section class="section-label">News</section>
+        <div class="news-list" id="crypto-news">
+            <div class="loading-msg">Loading news…</div>
+        </div>
+    </main>
+
+    <!-- ─── TAB: HISTORY ─── -->
+    <main id="tab-history" class="tab-page">
+        <div class="history-header">
+            <div class="history-stats" id="history-stats">
+                <div class="hstat"><span class="hstat-val" id="hist-wins">--</span><span class="hstat-lbl">Wins</span></div>
+                <div class="hstat"><span class="hstat-val" id="hist-losses">--</span><span class="hstat-lbl">Losses</span></div>
+                <div class="hstat"><span class="hstat-val" id="hist-winrate">--</span><span class="hstat-lbl">Win Rate</span></div>
+                <div class="hstat"><span class="hstat-val" id="hist-pnl">--</span><span class="hstat-lbl">Total P&L</span></div>
+            </div>
+            <div class="history-filters">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="stock">Stocks</button>
+                <button class="filter-btn" data-filter="crypto">Crypto</button>
+                <button class="filter-btn" data-filter="win">Wins</button>
+                <button class="filter-btn" data-filter="loss">Losses</button>
+            </div>
+        </div>
+        <div class="history-table-wrap">
+            <table class="history-table" id="history-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Direction</th>
+                        <th>Entry</th>
+                        <th>Exit</th>
+                        <th>P&L</th>
+                        <th>Result</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody id="history-tbody">
+                    <tr><td colspan="7" class="loading-msg">Loading history…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- ─── TAB: HEALTH ─── -->
+    <main id="tab-health" class="tab-page">
+        <div class="health-topline" id="health-topline">
+            Loading system health…
+        </div>
+
+        <section class="section-label">Accuracy</section>
+        <div class="accuracy-row" id="accuracy-row">
+            <div class="acc-card">
+                <span class="acc-val" id="acc-24h">--</span>
+                <span class="acc-lbl">24h</span>
+            </div>
+            <div class="acc-card">
+                <span class="acc-val" id="acc-7d">--</span>
+                <span class="acc-lbl">7 Day</span>
+            </div>
+            <div class="acc-card">
+                <span class="acc-val" id="acc-30d">--</span>
+                <span class="acc-lbl">30 Day</span>
+            </div>
+            <div class="acc-card">
+                <span class="acc-val" id="acc-total">--</span>
+                <span class="acc-lbl">Record</span>
+            </div>
+        </div>
+
+        <section class="section-label">Heartbeat — Active Tasks</section>
+        <div class="heartbeat-grid" id="heartbeat-grid">
+            <div class="loading-msg">Loading heartbeat…</div>
+        </div>
+
+        <section class="section-label">Issues</section>
+        <div class="issues-list" id="issues-list">
+            <div class="loading-msg">Loading issues…</div>
+        </div>
+    </main>
+
+    <script src="/static/cockpit_v4.js?v={{ cache_bust }}"></script>
+</body>
+</html>
