@@ -188,7 +188,10 @@ function renderPicksHeader() {
             const s = (p.status || 'pending').toLowerCase();
             return s === 'active' || s === 'pending';
         }).length;
-        subEl.textContent = `${activePicks} active picks · ${_picks.length} total tracked | ${pct}% accuracy | ${correct}/${total} correct`;
+        // Skip transparency
+        const skipped = _accuracy.total_skipped ?? 0;
+        const skipInfo = skipped > 0 ? ` · ${skipped} skip-tagged excluded` : '';
+        subEl.textContent = `${activePicks} active picks · ${_picks.length} total tracked | ${pct}% accuracy (${correct}/${total})${skipInfo}`;
     }
 }
 
@@ -535,7 +538,13 @@ function renderHealth() {
             const status = _accuracy.accuracy_status || 'UNKNOWN';
             const score = _audit.health_score ?? '--';
             const issues = _audit.issues_remaining ?? 0;
-            topEl.innerHTML = `<span class="hl-big">${pct}%</span> accuracy · ${correct}/${total} correct · Status: <strong>${status}</strong> · System: ${score}/100 · ${issues} issue${issues !== 1 ? 's' : ''}`;
+            // Skip transparency
+            const rawPct = _accuracy.raw_accuracy_pct;
+            const skipped = _accuracy.total_skipped ?? 0;
+            const skipNote = (rawPct != null && skipped > 0)
+                ? ` · <span style="color:var(--yellow)">${rawPct}% raw (${skipped} skips excluded)</span>`
+                : '';
+            topEl.innerHTML = `<span class="hl-big">${pct}%</span> accuracy · ${correct}/${total} correct${skipNote} · Status: <strong>${status}</strong> · System: ${score}/100 · ${issues} issue${issues !== 1 ? 's' : ''}`;
         } else {
             topEl.textContent = 'Unable to load health data';
         }
@@ -559,7 +568,21 @@ function renderHealth() {
         if (!entries.length) {
             hbEl.innerHTML = '<div class="empty-state">No tasks registered</div>';
         } else {
-            hbEl.innerHTML = entries.map(([name, info]) => {
+            // Critical tasks that should always be running
+            const criticalTasks = ['outcome-reconciler', 'full-scanner', 'money-game'];
+            const deadCritical = entries.filter(([name, info]) => {
+                const st = info.status || (info.alive ? 'alive' : 'dead');
+                return criticalTasks.includes(name) && (st === 'dead' || st === 'never');
+            }).map(([name]) => name);
+
+            let warningHtml = '';
+            if (deadCritical.length) {
+                warningHtml = `<div style="background:rgba(255,59,48,0.15);border:1px solid var(--red);border-radius:8px;padding:10px 14px;margin-bottom:12px;color:var(--red);font-size:13px">
+                    ⚠️ <strong>Critical tasks offline:</strong> ${deadCritical.join(', ')} — predictions may not auto-resolve
+                </div>`;
+            }
+
+            hbEl.innerHTML = warningHtml + entries.map(([name, info]) => {
                 const status = info.status || (info.alive ? 'alive' : 'dead');
                 const dotClass = status === 'alive' ? 'alive' : status === 'stale' ? 'stale' : status === 'never' ? 'never' : 'dead';
                 const ago = info.last_pulse ? fmtTimeAgo(info.last_pulse) : 'never';
@@ -891,6 +914,17 @@ function renderFinancials() {
     }
 
     if (statusEl) statusEl.innerHTML = '';
+
+    // Forecast staleness warning — check audit issues for stale forecast
+    if (_audit?.issues) {
+        const forecastIssue = _audit.issues.find(i => (i.detail || i.message || '').toLowerCase().includes('forecast'));
+        if (forecastIssue) {
+            const warnEl = document.createElement('div');
+            warnEl.style.cssText = 'background:rgba(255,204,0,0.12);border:1px solid var(--yellow);border-radius:8px;padding:10px 14px;margin-bottom:12px;color:var(--yellow);font-size:13px';
+            warnEl.innerHTML = `⚠️ <strong>${esc(forecastIssue.detail || forecastIssue.message || 'Forecast data is stale')}</strong>`;
+            statusEl?.parentElement?.insertBefore(warnEl, statusEl.nextSibling);
+        }
+    }
 
     // ── Performance by Symbol ──
     const symbolStats = {};

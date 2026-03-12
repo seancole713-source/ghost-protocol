@@ -12488,8 +12488,8 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
         with get_sync_connection() as conn:
             cur = conn.cursor()
 
-            # Base filter: checked=1, not skipped
-            base_where = "checked = 1 AND eval_version NOT LIKE 'skip%%'"
+            # Base filter: evaluated (correct IS NOT NULL), not skipped
+            base_where = "correct IS NOT NULL AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')"
             params: list = []
 
             # Time filter
@@ -12509,9 +12509,22 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
             total_correct = cur.fetchone()[0]
             accuracy_pct = round(total_correct / total_checked * 100, 1) if total_checked > 0 else 0.0
 
+            # Skip-tag transparency: count total evaluated INCLUDING skips
+            skip_params = [cutoff_ts]
+            skip_where = "correct IS NOT NULL AND predicted_at >= %s"
+            if symbol:
+                skip_where += " AND symbol = %s"
+                skip_params.append(symbol.upper())
+            cur.execute(f"SELECT COUNT(*), SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) FROM ghost_predictions WHERE {skip_where}", skip_params)
+            total_with_skips, correct_with_skips = cur.fetchone()
+            correct_with_skips = correct_with_skips or 0
+            total_with_skips = total_with_skips or 0
+            total_skipped = total_with_skips - total_checked
+            raw_accuracy_pct = round(correct_with_skips / total_with_skips * 100, 1) if total_with_skips > 0 else 0.0
+
             # Daily (last 24h)
             daily_ts = int(time.time()) - 86400
-            daily_where = "checked = 1 AND eval_version NOT LIKE 'skip%%' AND predicted_at >= %s"
+            daily_where = "correct IS NOT NULL AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%') AND predicted_at >= %s"
             daily_params = [daily_ts]
             if symbol:
                 daily_where += " AND symbol = %s"
@@ -12523,7 +12536,7 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
 
             # Weekly (last 7d)
             weekly_ts = int(time.time()) - (7 * 86400)
-            weekly_where = "checked = 1 AND eval_version NOT LIKE 'skip%%' AND predicted_at >= %s"
+            weekly_where = "correct IS NOT NULL AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%') AND predicted_at >= %s"
             weekly_params = [weekly_ts]
             if symbol:
                 weekly_where += " AND symbol = %s"
@@ -12552,6 +12565,11 @@ async def api_accuracy_summary(symbol: str | None = None, days: int = 30, v2_onl
             "period_days": days,
             "data_source": "ghost_predictions_pg",
             "v2_filtered": v2_only,
+            # Skip transparency
+            "total_with_skips": total_with_skips,
+            "total_skipped": total_skipped,
+            "raw_accuracy_pct": raw_accuracy_pct,
+            "skip_pct": round(total_skipped / total_with_skips * 100, 1) if total_with_skips > 0 else 0.0,
             "accuracy_status": (
                 "MEETS_TARGET" if accuracy_pct >= 70
                 else "DECLINING" if daily_acc == 0.0 and accuracy_pct > 0
@@ -15128,6 +15146,10 @@ async def api_v4_picks():
                     if not entry or entry <= 0:
                         continue
 
+                    # Re-derive direction from prices (fixes CHZ and 216 historical mismatches)
+                    if entry > 0 and target > 0:
+                        direction = "UP" if target > entry else "DOWN"
+
                     is_up = direction == "UP"
                     if is_up and target and entry:
                         gain_pct = (target - entry) / entry * 100
@@ -15195,16 +15217,31 @@ async def api_v4_history(days: int = 90, limit: int = 500):
             cur = conn.cursor()
             cutoff_ts = int(time.time()) - (days * 86400)
 
-            cur.execute("""
-                SELECT symbol, direction, price_at_prediction, actual_price,
-                       expected_move, actual_move_pct, correct, predicted_at,
-                       eval_ts, confidence, market
-                FROM ghost_predictions
-                WHERE correct IS NOT NULL
-                  AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
-                ORDER BY eval_ts DESC NULLS LAST, predicted_at DESC
-                LIMIT %s
-            """, (limit,))
+            # Try with target_price column for direction re-derivation
+            has_target_col = True
+            try:
+                cur.execute("""
+                    SELECT symbol, direction, price_at_prediction, actual_price,
+                           expected_move, actual_move_pct, correct, predicted_at,
+                           eval_ts, confidence, market, target_price
+                    FROM ghost_predictions
+                    WHERE correct IS NOT NULL
+                      AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
+                    ORDER BY eval_ts DESC NULLS LAST, predicted_at DESC
+                    LIMIT %s
+                """, (limit,))
+            except Exception:
+                has_target_col = False
+                cur.execute("""
+                    SELECT symbol, direction, price_at_prediction, actual_price,
+                           expected_move, actual_move_pct, correct, predicted_at,
+                           eval_ts, confidence, market
+                    FROM ghost_predictions
+                    WHERE correct IS NOT NULL
+                      AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
+                    ORDER BY eval_ts DESC NULLS LAST, predicted_at DESC
+                    LIMIT %s
+                """, (limit,))
             rows = cur.fetchall()
             cur.close()
 
@@ -15213,6 +15250,13 @@ async def api_v4_history(days: int = 90, limit: int = 500):
             symbol = r[0]
             direction = r[1] or "UP"
             entry_price = float(r[2]) if r[2] else 0
+            target_price_val = float(r[11]) if has_target_col and len(r) > 11 and r[11] else 0
+
+            # Re-derive direction from prices (fixes 216 historical mismatches)
+            if entry_price > 0 and target_price_val > 0:
+                direction = "UP" if target_price_val > entry_price else "DOWN"
+            elif r[4] and float(r[4]) != 0:  # expected_move fallback
+                direction = "UP" if float(r[4]) > 0 else "DOWN"
             exit_price = float(r[3]) if r[3] else 0
             expected_move = float(r[4]) if r[4] else 0
             actual_move_pct = float(r[5]) if r[5] else 0
