@@ -3,8 +3,11 @@
  * Design rules:
  * 1. Every number on screen must match what Telegram sends
  * 2. Picks come from ghost_tracked_picks (same DB the Telegram reads)
+ *    Falls back to _LATEST_PREDICTIONS if tracked picks are empty
  * 3. Confidence < 50% = HOLD (no contradictory arrows)
  * 4. One card = one truth. No duplicates.
+ * 5. History comes from ghost_predictions (the 463-record source of truth)
+ * 6. Watchlist from /api/v3/watchlist/enriched (the real endpoint)
  */
 
 // ─── STATE ───
@@ -12,7 +15,16 @@ let _picks = [];
 let _trades = [];
 let _watchlist = [];
 let _news = [];
+let _history = [];
 let _historyFilter = 'all';
+
+// ─── CRYPTO SYMBOLS for news filtering ───
+const CRYPTO_SYMS = new Set([
+    'BTC','ETH','SOL','XRP','DOGE','ADA','DOT','LINK','AVAX','MATIC',
+    'UNI','AAVE','SHIB','LTC','BCH','ATOM','FIL','NEAR','APT','ARB',
+    'OP','SUI','SEI','TIA','INJ','PEPE','WIF','BONK','FLOKI','GIGA',
+    'CHZ','BITCOIN','ETHEREUM','CRYPTO','BLOCKCHAIN','DEFI','NFT','WEB3',
+]);
 
 // ─── BOOT ───
 document.addEventListener('DOMContentLoaded', () => {
@@ -63,30 +75,29 @@ function startClock() {
 // ─── MASTER LOADER ───
 async function loadAll() {
     const results = await Promise.allSettled([
-        fetchJSON('/api/v4/picks'),            // 0 – picks from same source as Telegram
-        fetchJSON('/api/v3/paper/trades?limit=200'), // 1 – paper trades
-        fetchJSON('/api/v3/watchlist'),         // 2 – watchlist
-        fetchJSON('/api/v3/news/feed'),         // 3 – news
-        fetchJSON('/api/v3/accuracy/summary'),  // 4 – accuracy
-        fetchJSON('/api/v3/heartbeat/status'),  // 5 – heartbeat
-        fetchJSON('/integrity/audit/readonly'), // 6 – integrity audit
+        fetchJSON('/api/v4/picks'),                     // 0 – picks (tracked_picks → fallback _LATEST)
+        fetchJSON('/api/v3/watchlist/enriched'),         // 1 – watchlist (the REAL endpoint)
+        fetchJSON('/api/v3/news/feed'),                 // 2 – news
+        fetchJSON('/api/v3/accuracy/summary'),           // 3 – accuracy
+        fetchJSON('/api/v3/heartbeat/status'),           // 4 – heartbeat
+        fetchJSON('/integrity/audit/readonly'),          // 5 – integrity audit
+        fetchJSON('/api/v4/history?days=90&limit=500'),  // 6 – full history from ghost_predictions
     ]);
 
     const val = i => results[i].status === 'fulfilled' ? results[i].value : null;
 
-    // Store data
     const picksData = val(0);
-    const tradesData = val(1);
-    const watchData = val(2);
-    const newsData = val(3);
-    const accData = val(4);
-    const hbData = val(5);
-    const auditData = val(6);
+    const watchData = val(1);
+    const newsData = val(2);
+    const accData = val(3);
+    const hbData = val(4);
+    const auditData = val(5);
+    const histData = val(6);
 
     if (picksData?.ok) _picks = picksData.picks || [];
-    if (tradesData?.ok) _trades = tradesData.trades || [];
     if (watchData?.ok) _watchlist = watchData.items || watchData.watchlist || [];
     if (newsData?.ok) _news = newsData.articles || newsData.feed || [];
+    if (histData?.ok) _history = histData.trades || [];
 
     // ── Header health pill ──
     const pill = document.getElementById('health-pill');
@@ -97,7 +108,7 @@ async function loadAll() {
     }
 
     // ── Status dot ──
-    setStatus(!!picksData || !!tradesData);
+    setStatus(!!picksData || !!watchData);
 
     // ── Greeting bar ──
     const dateEl = document.getElementById('greeting-date');
@@ -120,10 +131,10 @@ async function loadAll() {
     renderPicks();
     renderActiveTrades('stock', 'stock-active-trades');
     renderActiveTrades('crypto', 'crypto-active-trades');
-    renderWatchlist('stock', 'stock-watchlist');
-    renderWatchlist('crypto', 'crypto-watchlist');
-    renderNews('stock-news');
-    renderNews('crypto-news');
+    renderWatchlistTable('stock', 'stock-watchlist-tbody');
+    renderWatchlistTable('crypto', 'crypto-watchlist-tbody');
+    renderNews('stock', 'stock-news');
+    renderNews('crypto', 'crypto-news');
     renderHistory();
     renderHealth(accData, hbData, auditData);
 }
@@ -166,8 +177,7 @@ function renderPicks() {
 
         // Status badge
         const status = (p.status || 'pending').toLowerCase();
-        let statusClass = 'pending';
-        let statusLabel = 'PENDING';
+        let statusClass = 'pending', statusLabel = 'PENDING';
         if (status === 'won' || status === 'win' || status === 'correct' || status === 'target_hit') {
             statusClass = 'won'; statusLabel = 'WON';
         } else if (status === 'lost' || status === 'loss' || status === 'incorrect' || status === 'stop_hit') {
@@ -175,8 +185,6 @@ function renderPicks() {
         } else if (status === 'expired') {
             statusClass = 'expired'; statusLabel = 'EXPIRED';
         }
-
-        const typeLabel = (p.type || p.market || '').toUpperCase();
 
         return `
         <div class="pick-card ${sideClass}">
@@ -216,45 +224,46 @@ function renderActiveTrades(assetType, containerId) {
     const el = document.getElementById(containerId);
     if (!el) return;
 
-    const pending = _trades.filter(t => {
-        const outcome = (t.outcome || t.status || '').toLowerCase();
-        if (outcome && outcome !== 'pending' && outcome !== 'open') return false;
-        const tType = (t.market || t.type || '').toLowerCase();
-        return assetType === 'stock'
-            ? (tType === 'stock' || tType === 'stocks')
-            : tType === 'crypto';
+    // Active trades = picks with status 'active' for this asset type
+    const activePicks = _picks.filter(p => {
+        const pType = (p.type || p.market || '').toLowerCase();
+        const matchesType = assetType === 'stock'
+            ? (pType === 'stock' || pType === 'stocks')
+            : pType === 'crypto';
+        const status = (p.status || 'active').toLowerCase();
+        return matchesType && (status === 'active' || status === 'pending');
     });
 
-    if (!pending.length) {
+    if (!activePicks.length) {
         el.innerHTML = '<div class="loading-msg">No active trades</div>';
         return;
     }
 
-    el.innerHTML = pending.slice(0, 8).map(t => {
-        const pnl = t.unrealized_pnl || t.pnl || 0;
-        const pnlClass = pnl >= 0 ? 'green' : 'red';
-        const pnlStr = (pnl >= 0 ? '+' : '') + '$' + Math.abs(pnl).toFixed(2);
-        const dir = (t.direction || t.signal_direction || '--').toUpperCase();
+    el.innerHTML = activePicks.slice(0, 8).map(t => {
+        const isUp = (t.direction || '').toUpperCase() === 'UP';
+        const emoji = isUp ? '🟢' : '🔴';
+        const dirLabel = isUp ? 'UP' : 'DOWN';
+        const gainPct = t.gain_pct != null ? Math.abs(t.gain_pct).toFixed(1) : '--';
         return `
         <div class="trade-card">
             <div class="trade-left">
-                <span class="trade-sym">${t.symbol || '--'}</span>
-                <span class="trade-meta">${dir} · ${fmtPrice(t.entry_price || t.signal_price)}</span>
+                <span class="trade-sym">${emoji} ${t.symbol || '--'}</span>
+                <span class="trade-meta">${dirLabel} · Entry: ${fmtPrice(t.entry_price)}</span>
             </div>
             <div class="trade-right">
-                <span class="trade-pnl ${pnlClass}">${pnlStr}</span>
-                <span class="trade-status">Open</span>
+                <span class="trade-pnl green">+${gainPct}%</span>
+                <span class="trade-status">${t.done_by || 'Active'}</span>
             </div>
         </div>`;
     }).join('');
 }
 
 // ═══════════════════════════════════════════
-// WATCHLIST (Stocks / Crypto tabs)
+// WATCHLIST TABLE (Yahoo Finance style)
 // ═══════════════════════════════════════════
-function renderWatchlist(assetType, containerId) {
-    const el = document.getElementById(containerId);
-    if (!el) return;
+function renderWatchlistTable(assetType, tbodyId) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
 
     const items = _watchlist.filter(w => {
         const wType = (w.type || '').toLowerCase();
@@ -262,11 +271,12 @@ function renderWatchlist(assetType, containerId) {
     });
 
     if (!items.length) {
-        el.innerHTML = '<div class="loading-msg">No items</div>';
+        tbody.innerHTML = '<tr><td colspan="5" class="loading-msg">No symbols — predictions haven\'t run yet</td></tr>';
         return;
     }
 
-    el.innerHTML = items.map(w => {
+    tbody.innerHTML = items.map(w => {
+        const price = fmtPrice(w.price);
         const changePct = w.change_pct || 0;
         const changeClass = changePct >= 0 ? 'green' : 'red';
         const changeStr = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
@@ -282,28 +292,45 @@ function renderWatchlist(assetType, containerId) {
             dirClass = dir === 'UP' ? 'up' : dir === 'DOWN' ? 'down' : 'hold';
         }
 
-        return `
-        <div class="wl-card">
-            <div>
-                <div class="wl-sym">${w.symbol}</div>
-                <div class="wl-price">${fmtPrice(w.price)}</div>
-            </div>
-            <div class="wl-right">
-                <div class="wl-change ${changeClass}">${changeStr}</div>
-                <div class="wl-dir ${dirClass}">${dirLabel}</div>
-            </div>
-        </div>`;
+        const confStr = conf > 0 ? conf.toFixed(0) + '%' : '--';
+
+        return `<tr>
+            <td class="sym-cell">${w.symbol}</td>
+            <td class="price-cell">${price}</td>
+            <td class="chg-cell ${changeClass}">${changeStr}</td>
+            <td class="dir-cell"><span class="dir-badge ${dirClass}">${dirLabel}</span></td>
+            <td class="conf-cell">${confStr}</td>
+        </tr>`;
     }).join('');
 }
 
 // ═══════════════════════════════════════════
-// NEWS (shown on both Stocks/Crypto tabs)
+// NEWS (filtered by tab: stock vs crypto)
 // ═══════════════════════════════════════════
-function renderNews(containerId) {
+function renderNews(assetType, containerId) {
     const el = document.getElementById(containerId);
     if (!el) return;
 
-    const articles = _news.slice(0, 8);
+    // Filter news by keyword matching
+    let articles = _news;
+    if (assetType === 'crypto') {
+        const filtered = articles.filter(a => {
+            const title = (a.title || a.headline || '').toUpperCase();
+            return Array.from(CRYPTO_SYMS).some(sym => title.includes(sym));
+        });
+        articles = filtered.length ? filtered : articles.slice(0, 3); // Fallback to first 3
+    } else {
+        // Stock news = exclude obvious crypto articles
+        const filtered = articles.filter(a => {
+            const title = (a.title || a.headline || '').toUpperCase();
+            const isCrypto = ['BITCOIN', 'ETHEREUM', 'CRYPTO', 'BLOCKCHAIN', 'BTC', 'ETH'].some(k => title.includes(k));
+            return !isCrypto;
+        });
+        articles = filtered.length ? filtered : articles;
+    }
+
+    articles = articles.slice(0, 8);
+
     if (!articles.length) {
         el.innerHTML = '<div class="loading-msg">No news</div>';
         return;
@@ -327,35 +354,24 @@ function renderNews(containerId) {
 }
 
 // ═══════════════════════════════════════════
-// HISTORY TAB — Resolved trades
+// HISTORY TAB — Full resolved predictions from ghost_predictions
 // ═══════════════════════════════════════════
 function renderHistory() {
-    // Build resolved list from paper trades
-    let resolved = _trades.filter(t => {
-        const o = (t.outcome || '').toLowerCase();
-        return o && o !== 'pending' && o !== 'open' && o !== '';
-    });
+    let data = [..._history];
 
     // Apply filter
-    if (_historyFilter === 'stock') resolved = resolved.filter(t => isStock(t));
-    else if (_historyFilter === 'crypto') resolved = resolved.filter(t => !isStock(t));
-    else if (_historyFilter === 'win') resolved = resolved.filter(t => isWin(t));
-    else if (_historyFilter === 'loss') resolved = resolved.filter(t => !isWin(t));
+    if (_historyFilter === 'stock') data = data.filter(t => (t.market || t.type || '').toLowerCase() === 'stock');
+    else if (_historyFilter === 'crypto') data = data.filter(t => (t.market || t.type || '').toLowerCase() === 'crypto');
+    else if (_historyFilter === 'win') data = data.filter(t => t.outcome === 'win');
+    else if (_historyFilter === 'loss') data = data.filter(t => t.outcome === 'loss');
 
-    // Sort newest first
-    resolved.sort((a, b) => (ts(b) || 0) - (ts(a) || 0));
+    // Stats (from ALL history, not filtered)
+    const wins = _history.filter(t => t.outcome === 'win').length;
+    const losses = _history.length - wins;
+    const totalPnl = _history.reduce((s, t) => s + (t.pnl || 0), 0);
+    const winRate = _history.length > 0 ? (wins / _history.length * 100).toFixed(1) : '--';
 
-    // Stats (from ALL resolved, not filtered)
-    const allResolved = _trades.filter(t => {
-        const o = (t.outcome || '').toLowerCase();
-        return o && o !== 'pending' && o !== 'open' && o !== '';
-    });
-    const wins = allResolved.filter(t => isWin(t)).length;
-    const losses = allResolved.length - wins;
-    const totalPnl = allResolved.reduce((s, t) => s + (t.pnl || t.realized_pnl || 0), 0);
-    const winRate = allResolved.length > 0 ? (wins / allResolved.length * 100).toFixed(1) : '--';
-
-    setText('hist-total', allResolved.length);
+    setText('hist-total', _history.length);
     setTextColor('hist-wins', wins, 'green');
     setTextColor('hist-losses', losses, 'red');
     setText('hist-winrate', winRate === '--' ? '--' : winRate + '%');
@@ -369,23 +385,23 @@ function renderHistory() {
     const tbody = document.getElementById('history-tbody');
     if (!tbody) return;
 
-    if (!resolved.length) {
+    if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="7" class="loading-msg">No resolved trades</td></tr>';
         return;
     }
 
-    tbody.innerHTML = resolved.slice(0, 200).map(t => {
-        const won = isWin(t);
-        const pnl = t.pnl || t.realized_pnl || 0;
-        const pnlStr = (pnl >= 0 ? '+' : '') + '$' + Math.abs(pnl).toFixed(2);
-        const dir = (t.direction || t.signal_direction || '--').toUpperCase();
-        const date = ts(t) ? fmtDate(ts(t)) : '--';
+    tbody.innerHTML = data.slice(0, 500).map(t => {
+        const won = t.outcome === 'win';
+        const movePct = t.actual_move_pct || 0;
+        const moveStr = (movePct >= 0 ? '+' : '') + movePct.toFixed(2) + '%';
+        const dir = (t.direction || '--').toUpperCase();
+        const date = t.resolved_at ? fmtDate(t.resolved_at) : (t.predicted_at ? fmtDate(t.predicted_at) : '--');
         return `<tr>
             <td><strong>${t.symbol || '--'}</strong></td>
             <td>${dir}</td>
-            <td>${fmtPrice(t.entry_price || t.signal_price)}</td>
-            <td>${fmtPrice(t.exit_price || t.close_price)}</td>
-            <td class="${pnl >= 0 ? 'result-win' : 'result-loss'}">${pnlStr}</td>
+            <td>${fmtPrice(t.entry_price)}</td>
+            <td>${fmtPrice(t.exit_price)}</td>
+            <td class="${won ? 'result-win' : 'result-loss'}">${moveStr}</td>
             <td class="${won ? 'result-win' : 'result-loss'}">${won ? 'WIN' : 'LOSS'}</td>
             <td>${date}</td>
         </tr>`;
@@ -492,7 +508,7 @@ function fmtPrice(v) {
 
 function fmtDate(ts) {
     if (!ts) return '--';
-    const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
+    const d = typeof ts === 'number' ? new Date(ts > 1e12 ? ts : ts * 1000) : new Date(ts);
     return isNaN(d) ? '--' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
@@ -513,6 +529,3 @@ function setTextColor(id, v, color) {
     const el = document.getElementById(id);
     if (el) { el.textContent = v; el.className = 'hstat-val ' + color; }
 }
-function isWin(t) { const o = (t.outcome || '').toLowerCase(); return o === 'win' || o === 'correct'; }
-function isStock(t) { const m = (t.market || t.type || '').toLowerCase(); return m === 'stock' || m === 'stocks'; }
-function ts(t) { return t.resolved_at || t.closed_at || t.updated_at || null; }

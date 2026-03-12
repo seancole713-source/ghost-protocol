@@ -15013,17 +15013,20 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
 async def api_v4_picks():
     """
     Today's trade picks — reads from ghost_tracked_picks (same source as Telegram).
+    Falls back to _LATEST_PREDICTIONS if tracked picks table is empty.
     Every number here matches what the user received in Telegram.
     """
     try:
         from datetime import timedelta
-        from core.db_pool import get_sync_connection
-        database_url = os.getenv("DATABASE_URL")
-
+        now = time.time()
         picks = []
+        source = "none"
 
+        # ── PRIMARY: ghost_tracked_picks (same DB Telegram writes to) ──
+        database_url = os.getenv("DATABASE_URL")
         if database_url:
             try:
+                from core.db_pool import get_sync_connection
                 with get_sync_connection() as conn:
                     cur = conn.cursor()
                     cur.execute("""
@@ -15045,8 +15048,8 @@ async def api_v4_picks():
                     target = float(r[4]) if r[4] else (float(r[6]) if r[6] else 0)
                     stop = float(r[5]) if r[5] else 0
                     conf = float(r[7]) if r[7] else 0
-                    entry_time = r[8]  # timestamp/datetime
-                    expires_at = r[9]  # timestamp/datetime
+                    entry_time = r[8]
+                    expires_at = r[9]
                     status = (r[10] or "active").lower()
 
                     if not entry or entry <= 0:
@@ -15072,7 +15075,6 @@ async def api_v4_picks():
                                 exp_dt = expires_at
                                 if exp_dt.tzinfo is None:
                                     exp_dt = exp_dt.replace(tzinfo=UTC)
-                            # Skip weekends for stocks
                             is_stock = asset_type in ("stock", "stocks")
                             if is_stock and exp_dt.weekday() >= 5:
                                 days_ahead = 7 - exp_dt.weekday()
@@ -15095,22 +15097,170 @@ async def api_v4_picks():
                         "status": status,
                         "whitelisted": False,
                     })
+                if picks:
+                    source = "ghost_tracked_picks"
             except Exception as db_err:
                 LOGGER.error(f"[V4] ghost_tracked_picks query failed: {db_err}")
 
-        # Sort: highest confidence first
+        # ── FALLBACK: _LATEST_PREDICTIONS (in-memory, always populated) ──
+        if not picks:
+            with _LATEST_PREDICTIONS_LOCK:
+                for symbol, pred in _LATEST_PREDICTIONS.items():
+                    if not isinstance(pred, dict):
+                        continue
+                    conf = pred.get("confidence", 0)
+                    if conf < 50:
+                        continue
+                    direction = pred.get("direction", "FLAT")
+                    if direction == "FLAT":
+                        continue
+
+                    entry = pred.get("entry_price") or pred.get("price_at_prediction") or pred.get("price", 0)
+                    target = pred.get("target_price") or pred.get("take_profit", 0)
+                    stop = pred.get("stop_loss", 0)
+                    if not entry or entry <= 0:
+                        continue
+
+                    is_up = direction == "UP"
+                    if is_up and target and entry:
+                        gain_pct = (target - entry) / entry * 100
+                    elif not is_up and target and entry:
+                        gain_pct = (entry - target) / entry * 100
+                    else:
+                        gain_pct = 0
+
+                    horizon_h = pred.get("horizon_h", 48)
+                    run_at = pred.get("run_at", now)
+                    deadline_ts = run_at + (horizon_h * 3600)
+                    deadline_dt = datetime.fromtimestamp(deadline_ts, tz=UTC)
+                    market = pred.get("market", "crypto")
+                    if market == "stock" and deadline_dt.weekday() >= 5:
+                        days_ahead = 7 - deadline_dt.weekday()
+                        deadline_dt += timedelta(days=days_ahead)
+                    done_by = deadline_dt.strftime("%a %b %-d")
+
+                    age_h = (now - run_at) / 3600
+                    if age_h > horizon_h * 2:
+                        continue
+
+                    picks.append({
+                        "symbol": symbol,
+                        "direction": direction,
+                        "confidence": round(conf, 1),
+                        "entry_price": round(entry, 6),
+                        "target_price": round(target, 6) if target else None,
+                        "stop_loss": round(stop, 6) if stop else None,
+                        "gain_pct": round(gain_pct, 1),
+                        "done_by": done_by,
+                        "type": market,
+                        "market": market,
+                        "status": "active",
+                        "whitelisted": False,
+                    })
+            if picks:
+                source = "latest_predictions"
+
         picks.sort(key=lambda p: p["confidence"], reverse=True)
 
         return {
             "ok": True,
             "picks": picks,
             "count": len(picks),
-            "timestamp": int(time.time()),
-            "source": "ghost_tracked_picks",
+            "timestamp": int(now),
+            "source": source,
         }
     except Exception as e:
         LOGGER.error(f"[V4] Picks endpoint failed: {e}", exc_info=True)
         return {"ok": False, "picks": [], "count": 0, "error": str(e)}
+
+
+@APP.get("/api/v4/history")
+async def api_v4_history(days: int = 90, limit: int = 500):
+    """
+    Full resolved prediction history from ghost_predictions (source of truth).
+    Returns actual_price, correct/incorrect, eval_ts — the REAL record.
+    This is the same table that drives the 247/463 accuracy number.
+    """
+    try:
+        from core.db_pool import get_sync_connection
+
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            cutoff_ts = int(time.time()) - (days * 86400)
+
+            cur.execute("""
+                SELECT symbol, direction, price_at_prediction, actual_price,
+                       expected_move, actual_move_pct, correct, predicted_at,
+                       eval_ts, confidence, market
+                FROM ghost_predictions
+                WHERE checked = 1
+                  AND eval_version NOT LIKE 'skip%%'
+                  AND predicted_at >= %s
+                ORDER BY eval_ts DESC NULLS LAST, predicted_at DESC
+                LIMIT %s
+            """, (cutoff_ts, limit))
+            rows = cur.fetchall()
+            cur.close()
+
+        trades = []
+        for r in rows:
+            symbol = r[0]
+            direction = r[1] or "UP"
+            entry_price = float(r[2]) if r[2] else 0
+            exit_price = float(r[3]) if r[3] else 0
+            expected_move = float(r[4]) if r[4] else 0
+            actual_move_pct = float(r[5]) if r[5] else 0
+            correct = r[6]  # 1 or 0
+            predicted_at = r[7]  # unix timestamp
+            eval_ts = r[8]      # unix timestamp
+            confidence = float(r[9]) if r[9] else 0
+            market = r[10] or "stock"
+
+            # Calculate P&L based on actual move
+            pnl = 0
+            if entry_price and actual_move_pct:
+                is_up = direction == "UP"
+                if is_up:
+                    pnl = entry_price * (actual_move_pct / 100)
+                else:
+                    pnl = entry_price * (-actual_move_pct / 100)
+
+            outcome = "win" if correct == 1 else "loss"
+
+            trades.append({
+                "symbol": symbol,
+                "direction": direction,
+                "entry_price": round(entry_price, 6) if entry_price else None,
+                "exit_price": round(exit_price, 6) if exit_price else None,
+                "pnl": round(pnl, 4),
+                "actual_move_pct": round(actual_move_pct, 2),
+                "outcome": outcome,
+                "confidence": round(confidence, 1),
+                "market": market,
+                "type": market,
+                "predicted_at": predicted_at,
+                "resolved_at": eval_ts,
+            })
+
+        # Summary stats
+        wins = sum(1 for t in trades if t["outcome"] == "win")
+        losses = len(trades) - wins
+        total_pnl = sum(t["pnl"] for t in trades)
+        win_rate = round(wins / len(trades) * 100, 1) if trades else 0
+
+        return {
+            "ok": True,
+            "trades": trades,
+            "count": len(trades),
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
+            "total_pnl": round(total_pnl, 2),
+            "source": "ghost_predictions",
+        }
+    except Exception as e:
+        LOGGER.error(f"[V4] History endpoint failed: {e}", exc_info=True)
+        return {"ok": False, "trades": [], "count": 0, "error": str(e)}
 
 
 @APP.get("/api/v3/heartbeat/status")
