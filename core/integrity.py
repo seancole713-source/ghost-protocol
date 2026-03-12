@@ -467,6 +467,37 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                 "detail": f"LIVE display math wrong — {live_mismatches} symbols: {'; '.join(live_mismatch_examples[:3])}",
             })
         if db_mismatches > 20:
+            # AUTO-FIX: Correct direction based on target vs entry price
+            if auto_fix and pg_available and db_mismatches > 0:
+                try:
+                    fix_count = 0
+                    _af_conn = pg_connect(_db_url)
+                    _af_cur = _af_conn.cursor()
+                    _af_cur.execute("""
+                        UPDATE ghost_predictions
+                        SET predicted_direction = CASE
+                            WHEN target_price > current_price * 1.001 THEN 'UP'
+                            WHEN target_price < current_price * 0.999 THEN 'DOWN'
+                            ELSE predicted_direction
+                        END
+                        WHERE checked = 0
+                          AND (
+                              (predicted_direction = 'UP' AND target_price < current_price * 0.99)
+                              OR (predicted_direction = 'DOWN' AND target_price > current_price * 1.01)
+                          )
+                          AND current_price > 0
+                          AND target_price > 0
+                    """)
+                    fix_count = _af_cur.rowcount
+                    _af_conn.commit()
+                    _af_cur.close()
+                    _af_conn.close()
+                    if fix_count > 0:
+                        fixes_applied += fix_count
+                        LOGGER.info(f"[INTEGRITY] AUTO-FIX: Corrected direction on {fix_count} pending predictions")
+                except Exception as fix_err:
+                    LOGGER.warning(f"[INTEGRITY] Direction auto-fix failed: {fix_err}")
+
             issues.append({
                 "type": "db_direction_mismatch", "severity": "warn",
                 "detail": f"{db_mismatches} stored predictions have direction/target mismatch (historical)",
@@ -1033,6 +1064,25 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                 'outcome-reconciler', 'prediction-cycle', 'full-scanner',
                 'money-game', 'reevaluation', 'self-improvement',
             )]
+
+            # AUTO-FIX: If outcome-reconciler never pulsed, trigger check_all
+            # to process overdue paper trades that would normally auto-resolve
+            if auto_fix and 'outcome-reconciler' in missing:
+                try:
+                    from core.paper_tracker import get_paper_tracker
+                    tracker = get_paper_tracker()
+                    _fix_stats = tracker.get_stats(days=30)
+                    _fix_pending = _fix_stats.get('pending_trades', 0)
+                    _fix_resolved = _fix_stats.get('resolved_trades', 0)
+                    if _fix_pending > _fix_resolved:
+                        with tracker._get_connection() as conn:
+                            resolved_list = tracker.check_all_pending(conn)
+                        if resolved_list:
+                            fixes_applied += len(resolved_list)
+                            LOGGER.info(f"[INTEGRITY] AUTO-FIX: Resolved {len(resolved_list)} overdue paper trades (reconciler not running)")
+                except Exception as fix_err:
+                    LOGGER.warning(f"[INTEGRITY] Paper trade auto-resolve failed: {fix_err}")
+
             if len(missing) == total_registered and total_registered > 0:
                 # ALL tasks never pulsed — nothing is running
                 issues.append({
@@ -1676,6 +1726,16 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                 "detail": f"Only {resolved}/{total} paper trades resolved ({resolved/total*100:.0f}%) — reconciler may be failing",
             })
         elif total >= 50 and pending > resolved * 2:
+            # AUTO-FIX: Process overdue trades to reduce backlog
+            if auto_fix:
+                try:
+                    with tracker._get_connection() as conn:
+                        resolved_list = tracker.check_all_pending(conn)
+                    if resolved_list:
+                        fixes_applied += len(resolved_list)
+                        LOGGER.info(f"[INTEGRITY] AUTO-FIX: Resolved {len(resolved_list)} trades from backlog")
+                except Exception as fix_err:
+                    LOGGER.warning(f"[INTEGRITY] Paper trade backlog fix failed: {fix_err}")
             issues.append({
                 "type": "paper_trades_backlog", "severity": "info",
                 "detail": f"{pending} pending vs {resolved} resolved — trade backlog growing, {pending/total*100:.0f}% still waiting",
@@ -1716,11 +1776,33 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
         summary["active_directional_predictions"] = active_predictions
 
         if active_predictions >= 3 and forecast_data is None:
+            # AUTO-FIX: Regenerate forecast grid
+            if auto_fix:
+                try:
+                    import wolf_app as _wa_fix
+                    _gen_fn = getattr(_wa_fix, '_generate_forecast_grid', None)
+                    if _gen_fn:
+                        _gen_fn()  # Regenerates and saves to file
+                        fixes_applied += 1
+                        LOGGER.info("[INTEGRITY] AUTO-FIX: Regenerated missing forecast grid")
+                except Exception as fix_err:
+                    LOGGER.warning(f"[INTEGRITY] Forecast regeneration failed: {fix_err}")
             issues.append({
                 "type": "forecast_disconnected", "severity": "warn",
                 "detail": f"{active_predictions} active predictions but forecast grid is empty/missing — dashboard forecast panel has no data",
             })
         elif forecast_data and forecast_age_h and forecast_age_h > 6:
+            # AUTO-FIX: Regenerate stale forecast
+            if auto_fix:
+                try:
+                    import wolf_app as _wa_fix2
+                    _gen_fn2 = getattr(_wa_fix2, '_generate_forecast_grid', None)
+                    if _gen_fn2:
+                        _gen_fn2()  # Regenerates and saves to file
+                        fixes_applied += 1
+                        LOGGER.info(f"[INTEGRITY] AUTO-FIX: Regenerated stale forecast ({forecast_age_h:.1f}h old)")
+                except Exception as fix_err:
+                    LOGGER.warning(f"[INTEGRITY] Forecast regeneration failed: {fix_err}")
             issues.append({
                 "type": "forecast_stale", "severity": "warn",
                 "detail": f"Forecast data is {forecast_age_h:.1f}h old — dashboard showing outdated forecast",

@@ -15582,7 +15582,7 @@ async def api_v3_goals_snapshot():
         # Uses same crypto quorum as health/metrics endpoint
         data_health = 50
         ai_activity = 50
-        accuracy = 50
+        accuracy = None  # FIXED: None instead of phantom 50% — forces fallback chain to find real data
         
         try:
             # Data Health: Check crypto providers with timeout (same as health/metrics)
@@ -15667,9 +15667,9 @@ async def api_v3_goals_snapshot():
         except Exception as _acc_err:
             LOGGER.warning(f"[GHOST_SCORE] accuracy from paper_tracker failed: {_acc_err}")
         
-        # Fallback: If accuracy is still the default 50, try PostgreSQL directly
+        # Fallback: If accuracy is still None, try PostgreSQL directly
         # (bypasses connection pool which may be exhausted during prediction cycles)
-        if accuracy == 50:
+        if accuracy is None:
             try:
                 from core.db_pool import fetchrow as _db_fetchrow
                 _gs_row = await _db_fetchrow("""
@@ -15692,7 +15692,7 @@ async def api_v3_goals_snapshot():
                 LOGGER.warning(f"[GHOST_SCORE] PostgreSQL direct fallback failed: {_pg_err}")
         
         # Third fallback: ghost_accuracy_stats table (written by prediction_evaluator)
-        if accuracy == 50:
+        if accuracy is None:
             try:
                 from core.db_pool import fetchrow as _db_fetchrow2
                 _gs_row2 = await _db_fetchrow2("""
@@ -15710,9 +15710,12 @@ async def api_v3_goals_snapshot():
         
         LOGGER.info(f"[GHOST_SCORE] Components: accuracy={accuracy}, data_health={data_health}, ai_activity={ai_activity}, predictions={total_predictions}")
         
+        # If all fallbacks failed, accuracy stays None — use 0 for score calculation
+        # but report it honestly (don't fake 50%)
+        accuracy_for_score = accuracy if accuracy is not None else 0
+        
         # Ghost Score = weighted average (accuracy: 50%, data_health: 30%, ai_activity: 20%)
-        # With improved health/activity calculations, score should reflect reality better
-        ghost_score = round(accuracy * 0.5 + data_health * 0.3 + ai_activity * 0.2, 1)
+        ghost_score = round(accuracy_for_score * 0.5 + data_health * 0.3 + ai_activity * 0.2, 1)
         ghost_score = max(0, min(100, ghost_score))  # Clamp to 0-100
         
         return {
@@ -15720,12 +15723,12 @@ async def api_v3_goals_snapshot():
             "goals": goals,
             "ghost_score": ghost_score,
             # Send real component values so the UI bars show actual health
-            "daily_goal_pct": round(accuracy, 1),       # Accuracy %
+            "daily_goal_pct": round(accuracy, 1) if accuracy is not None else None,       # Accuracy %
             "weekly_goal_pct": round(data_health, 1),    # Data Health %
             "monthly_goal_pct": round(ai_activity, 1),   # AI Activity %
             "data_health": round(data_health, 1),
             "ai_activity": round(ai_activity, 1),
-            "accuracy": round(accuracy, 1),
+            "accuracy": round(accuracy, 1) if accuracy is not None else None,
             "components": {
                 "accuracy": accuracy,
                 "data_health": data_health,
@@ -16517,8 +16520,8 @@ async def api_v3_health_metrics():
         
         # Accuracy: Calculate from V2-filtered paper trades (not _PREDICTION_STORE)
         # Uses same 3-source fallback as goals/snapshot for consistency
-        accuracy = 50  # Default
-        accuracy_source = "default"
+        accuracy = None  # FIXED: None instead of phantom 50% — don't fake accuracy
+        accuracy_source = "none"
         try:
             from core.paper_tracker import get_paper_tracker
             tracker = get_paper_tracker()
@@ -16530,7 +16533,7 @@ async def api_v3_health_metrics():
             pass
         
         # Fallback: ghost_predictions table
-        if accuracy == 50:
+        if accuracy is None:
             try:
                 import psycopg2 as _hm_pg
                 _hm_url = os.getenv("DATABASE_URL")
@@ -16557,7 +16560,7 @@ async def api_v3_health_metrics():
                 pass
         
         # Fallback: ghost_accuracy_stats table
-        if accuracy == 50:
+        if accuracy is None:
             try:
                 import psycopg2 as _hm_pg2
                 _hm_url2 = os.getenv("DATABASE_URL")
@@ -16591,7 +16594,7 @@ async def api_v3_health_metrics():
             "data_health": data_health,
             "ai_activity": ai_activity,
             "accuracy": accuracy,
-            "accuracy_source": accuracy_source,
+            "accuracy_source": accuracy_source if accuracy is not None else "no_data",
             "cache_performance": cache_stats,
             "v2_start_date": V2_START_DATE,
             "timestamp": datetime.now(UTC).isoformat()
@@ -17233,18 +17236,14 @@ async def api_v3_hunter_feed(limit: int = 10):
                 confidence = pred.get("confidence", 0) or 0
                 confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
                 
-                # Calculate expected move - FIX: use expected_move_pct (stored key) not expected_move
+                # Use real expected_move_pct from prediction engine (not a formula)
                 expected_move = pred.get("expected_move_pct") or pred.get("expected_move")
-                if expected_move is None:
-                    if direction == "UP":
-                        change_pct = ((confidence_pct - 40) / 10) + 1.0
-                    elif direction == "DOWN":
-                        change_pct = -(((confidence_pct - 40) / 10) + 1.0)
-                    else:
-                        change_pct = 0.5 if confidence_pct > 50 else -0.5
-                else:
+                if expected_move is not None:
                     # expected_move_pct is already in percentage (e.g., 4.5 = 4.5%)
                     change_pct = expected_move if abs(expected_move) < 20 else expected_move / 100
+                else:
+                    # No expected_move data — show 0 instead of inventing a number
+                    change_pct = 0.0
 
                 change_pct = round(change_pct, 2)
 
@@ -17316,16 +17315,12 @@ async def api_v3_hunter_feed(limit: int = 10):
                 confidence = pred.get("confidence", 0) or 0
                 confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
                 
-                expected_move = pred.get("expected_move")
-                if expected_move is None:
-                    if direction == "UP":
-                        change_pct = ((confidence_pct - 40) / 10) + 1.0
-                    elif direction == "DOWN":
-                        change_pct = -(((confidence_pct - 40) / 10) + 1.0)
-                    else:
-                        change_pct = 0.5 if confidence_pct > 50 else -0.5
+                expected_move = pred.get("expected_move_pct") or pred.get("expected_move")
+                if expected_move is not None:
+                    change_pct = expected_move * 100 if abs(expected_move) < 1 else expected_move
                 else:
-                    change_pct = expected_move * 100
+                    # No expected_move data — show 0 instead of fabricating
+                    change_pct = 0.0
                 
                 change_pct = round(change_pct, 2)
                 
@@ -17526,9 +17521,9 @@ async def api_v3_predictions_history(limit: int = 100):
                 "horizon_h": pred.get("horizon_h", 48),
                 "price_at_prediction": pred.get("price_at_prediction"),
                 "provider": pred.get("provider", "unknown"),
-                # Add mock outcome for now (will be replaced with real tracking later)
-                "closed": False,
-                "accuracy": None
+                # Outcome from paper trade system (if resolved)
+                "closed": pred.get("resolved", False),
+                "accuracy": pred.get("outcome")
             })
         
         return {
