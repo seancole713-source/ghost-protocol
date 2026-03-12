@@ -761,9 +761,9 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
     checks_run.append("Direction Consistency Guards")
     try:
         import inspect
-        from core.ghost_notifications import GhostNotifications
+        from core.ghost_notifications import GhostNotificationSystem
 
-        gn_source = inspect.getsource(GhostNotifications)
+        gn_source = inspect.getsource(GhostNotificationSystem)
 
         has_format_pick_guard = (
             "DIRECTION CONSISTENCY GUARD" in gn_source
@@ -948,7 +948,7 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
         summary["telegram_configured"] = bool(telegram_token and telegram_chat)
 
         # Verify key modules load
-        from core.ghost_notifications import GhostNotifications
+        from core.ghost_notifications import GhostNotificationSystem
         summary["notifications_module"] = "loaded"
 
         from core.adapters import scored_list_to_formatter
