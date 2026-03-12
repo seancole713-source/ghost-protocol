@@ -15012,71 +15012,91 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
 @APP.get("/api/v4/picks")
 async def api_v4_picks():
     """
-    Today's trade picks in Telegram card format.
-    Returns entry, target, stop_loss, gain_pct, done_by for each active prediction.
-    Only includes picks with confidence >= 50%.
+    Today's trade picks — reads from ghost_tracked_picks (same source as Telegram).
+    Every number here matches what the user received in Telegram.
     """
     try:
         from datetime import timedelta
-        now = time.time()
+        from core.db_pool import get_sync_connection
+        database_url = os.getenv("DATABASE_URL")
+
         picks = []
-        with _LATEST_PREDICTIONS_LOCK:
-            for symbol, pred in _LATEST_PREDICTIONS.items():
-                if not isinstance(pred, dict):
-                    continue
-                conf = pred.get("confidence", 0)
-                if conf < 50:
-                    continue  # Below 50% = no opinion, don't show
-                direction = pred.get("direction", "FLAT")
-                if direction == "FLAT":
-                    continue  # No actionable signal
 
-                entry = pred.get("entry_price") or pred.get("price_at_prediction") or pred.get("price", 0)
-                target = pred.get("target_price") or pred.get("take_profit", 0)
-                stop = pred.get("stop_loss", 0)
-                if not entry or entry <= 0:
-                    continue
+        if database_url:
+            try:
+                with get_sync_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT symbol, asset_type, direction, entry_price, target_price,
+                               stop_price, prediction_48h, confidence, entry_time,
+                               expires_at, status
+                        FROM ghost_tracked_picks
+                        ORDER BY entry_time DESC
+                        LIMIT 50
+                    """)
+                    rows = cur.fetchall()
+                    cur.close()
 
-                # Calculate gain %
-                is_up = direction == "UP"
-                if is_up and target and entry:
-                    gain_pct = (target - entry) / entry * 100
-                elif not is_up and target and entry:
-                    gain_pct = (entry - target) / entry * 100
-                else:
-                    gain_pct = 0
+                for r in rows:
+                    symbol = r[0]
+                    asset_type = (r[1] or "crypto").lower()
+                    direction = r[2] or "UP"
+                    entry = float(r[3]) if r[3] else 0
+                    target = float(r[4]) if r[4] else (float(r[6]) if r[6] else 0)
+                    stop = float(r[5]) if r[5] else 0
+                    conf = float(r[7]) if r[7] else 0
+                    entry_time = r[8]  # timestamp/datetime
+                    expires_at = r[9]  # timestamp/datetime
+                    status = (r[10] or "active").lower()
 
-                # Done by: use horizon_h to calculate deadline
-                horizon_h = pred.get("horizon_h", 48)
-                run_at = pred.get("run_at", now)
-                deadline_ts = run_at + (horizon_h * 3600)
-                deadline_dt = datetime.fromtimestamp(deadline_ts, tz=UTC)
-                # Skip weekends for stocks
-                market = pred.get("market", "crypto")
-                if market == "stock" and deadline_dt.weekday() >= 5:
-                    days_ahead = 7 - deadline_dt.weekday()
-                    deadline_dt += timedelta(days=days_ahead)
-                done_by = deadline_dt.strftime("%a %b %-d")
+                    if not entry or entry <= 0:
+                        continue
 
-                # Staleness check: skip predictions older than 2x horizon
-                age_h = (now - run_at) / 3600
-                if age_h > horizon_h * 2:
-                    continue
+                    is_buy = direction in ("UP", "BUY")
 
-                picks.append({
-                    "symbol": symbol,
-                    "direction": direction,
-                    "confidence": round(conf, 1),
-                    "entry_price": round(entry, 4),
-                    "target_price": round(target, 4) if target else None,
-                    "stop_loss": round(stop, 4) if stop else None,
-                    "gain_pct": round(gain_pct, 1),
-                    "done_by": done_by,
-                    "type": market,
-                    "market": market,
-                    "horizon_h": horizon_h,
-                    "age_h": round(age_h, 1),
-                })
+                    # Gain % — same formula as format_pick()
+                    if is_buy and target and entry:
+                        gain_pct = (target - entry) / entry * 100
+                    elif not is_buy and target and entry:
+                        gain_pct = (entry - target) / entry * 100
+                    else:
+                        gain_pct = 0
+
+                    # Done by — same logic as _exit_date()
+                    done_by = "--"
+                    if expires_at:
+                        try:
+                            if isinstance(expires_at, (int, float)):
+                                exp_dt = datetime.fromtimestamp(expires_at, tz=UTC)
+                            else:
+                                exp_dt = expires_at
+                                if exp_dt.tzinfo is None:
+                                    exp_dt = exp_dt.replace(tzinfo=UTC)
+                            # Skip weekends for stocks
+                            is_stock = asset_type in ("stock", "stocks")
+                            if is_stock and exp_dt.weekday() >= 5:
+                                days_ahead = 7 - exp_dt.weekday()
+                                exp_dt += timedelta(days=days_ahead)
+                            done_by = exp_dt.strftime("%a %b %-d")
+                        except Exception:
+                            done_by = "--"
+
+                    picks.append({
+                        "symbol": symbol,
+                        "direction": direction,
+                        "confidence": round(conf, 1),
+                        "entry_price": round(entry, 6),
+                        "target_price": round(target, 6) if target else None,
+                        "stop_loss": round(stop, 6) if stop else None,
+                        "gain_pct": round(gain_pct, 1),
+                        "done_by": done_by,
+                        "type": asset_type,
+                        "market": asset_type,
+                        "status": status,
+                        "whitelisted": False,
+                    })
+            except Exception as db_err:
+                LOGGER.error(f"[V4] ghost_tracked_picks query failed: {db_err}")
 
         # Sort: highest confidence first
         picks.sort(key=lambda p: p["confidence"], reverse=True)
@@ -15085,7 +15105,8 @@ async def api_v4_picks():
             "ok": True,
             "picks": picks,
             "count": len(picks),
-            "timestamp": int(now),
+            "timestamp": int(time.time()),
+            "source": "ghost_tracked_picks",
         }
     except Exception as e:
         LOGGER.error(f"[V4] Picks endpoint failed: {e}", exc_info=True)
