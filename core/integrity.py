@@ -56,8 +56,15 @@ Self-healing background audit that:
  CHECK 34: Hunter Feed Data Fabrication — synthetic values in API output
  CHECK 35: Accuracy Fallback Phantom — silently reporting 50% defaults
 
+ ── CONTRADICTION (cross-system sanity) ──
+ CHECK 36: Paper Trade Resolution — 0 resolved = exit logic broken
+ CHECK 37: Prediction vs Forecast Consistency — UP 80% vs FLAT 0%
+ CHECK 38: Signal Burst Rate — shotgun pattern detection
+ CHECK 39: Win Rate vs Confidence Sanity — 70% confident, 0% wins
+ CHECK 40: Dashboard Data Consistency — accuracy mismatch across panels
+
 Created: March 12, 2026
-Updated: March 12, 2026 — v4: 35 checks — proactive bug discovery
+Updated: March 12, 2026 — v5: 40 checks — regression + infra + proactive + contradiction
 """
 
 import logging
@@ -1610,6 +1617,187 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
             })
     except Exception as e:
         LOGGER.warning(f"[INTEGRITY] Accuracy phantom check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    #  CONTRADICTION CHECKS 36-40 — Catch when features contradict
+    #  each other. The health check saw 93 because it checked each
+    #  feature in isolation. These checks compare features AGAINST
+    #  each other to find logical impossibilities.
+    # ══════════════════════════════════════════════════════════════
+
+    # ── CHECK 36: Paper Trade Resolution ─────────────────────────
+    # If there are 100+ pending trades and 0 resolved, the exit
+    # logic is broken. A real trading system closes positions.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("Paper Trade Resolution")
+    try:
+        from core.paper_tracker import get_paper_tracker
+        tracker = get_paper_tracker()
+        stats = tracker.get_stats(days=365)
+
+        pending = stats.get("pending_trades", 0)
+        resolved = stats.get("resolved_trades", 0)
+        total = stats.get("total_trades", 0)
+
+        summary["paper_total_trades"] = total
+        summary["paper_pending"] = pending
+        summary["paper_resolved"] = resolved
+        summary["paper_win_rate"] = stats.get("win_rate", 0)
+
+        if total >= 50 and resolved == 0:
+            issues.append({
+                "type": "paper_trades_never_resolve", "severity": "error",
+                "detail": f"{pending} pending paper trades, 0 resolved — exit logic broken or reconciler not running",
+            })
+        elif total >= 100 and resolved < total * 0.05:
+            issues.append({
+                "type": "paper_trades_low_resolution", "severity": "warn",
+                "detail": f"Only {resolved}/{total} paper trades resolved ({resolved/total*100:.0f}%) — reconciler may be failing",
+            })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Paper trade resolution check error: {e}")
+
+    # ── CHECK 37: Prediction vs Forecast Consistency ─────────────
+    # When predictions say UP with 80% but forecast says FLAT/0%,
+    # two subsystems are contradicting each other.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("Prediction vs Forecast Consistency")
+    try:
+        import wolf_app as _wa
+        predictions = getattr(_wa, '_LATEST_PREDICTIONS', {})
+        forecast_grid = getattr(_wa, '_FORECAST_GRID', {})
+
+        contradictions = []
+        for sym, pred in predictions.items():
+            direction = pred.get("direction", "")
+            confidence = pred.get("confidence", 0)
+            conf_pct = (confidence * 100) if confidence <= 1 else confidence
+
+            if conf_pct >= 60 and direction in ("UP", "DOWN"):
+                # Check if forecast exists and disagrees
+                fc = forecast_grid.get(sym)
+                if fc and isinstance(fc, dict):
+                    fc_direction = fc.get("direction", "FLAT")
+                    fc_prob = fc.get("probability", 0)
+                    if fc_direction == "FLAT" or fc_prob == 0:
+                        contradictions.append(
+                            f"{sym}: prediction={direction} {conf_pct:.0f}% but forecast=FLAT/0%"
+                        )
+
+        summary["prediction_forecast_contradictions"] = contradictions
+
+        if contradictions:
+            issues.append({
+                "type": "prediction_forecast_conflict", "severity": "warn",
+                "detail": f"{len(contradictions)} symbols: prediction and forecast disagree — {contradictions[0]}",
+            })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Prediction vs forecast check error: {e}")
+
+    # ── CHECK 38: Signal Burst Rate ──────────────────────────────
+    # If all predictions have timestamps within 60 seconds of each
+    # other, the system is batch-firing instead of finding setups.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("Signal Burst Rate")
+    try:
+        import wolf_app as _wa
+        predictions = getattr(_wa, '_LATEST_PREDICTIONS', {})
+
+        if len(predictions) >= 5:
+            timestamps = []
+            for pred in predictions.values():
+                ts = pred.get("run_at") or pred.get("created_at") or 0
+                if isinstance(ts, (int, float)):
+                    timestamps.append(ts)
+
+            if len(timestamps) >= 5:
+                timestamps.sort()
+                spread_s = timestamps[-1] - timestamps[0]
+                summary["prediction_burst_spread_s"] = round(spread_s, 1)
+
+                if spread_s < 120 and len(timestamps) >= 8:
+                    issues.append({
+                        "type": "signal_burst_spam", "severity": "info",
+                        "detail": f"All {len(timestamps)} predictions fired within {spread_s:.0f}s — shotgun pattern, not selective",
+                    })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Signal burst check error: {e}")
+
+    # ── CHECK 39: Win Rate vs Confidence Sanity ──────────────────
+    # If average confidence is 70%+ but win rate is 0%, either the
+    # confidence is fake or the evaluation is broken.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("Win Rate vs Confidence Sanity")
+    try:
+        import wolf_app as _wa
+        predictions = getattr(_wa, '_LATEST_PREDICTIONS', {})
+
+        if predictions:
+            confidences = []
+            for pred in predictions.values():
+                c = pred.get("confidence", 0)
+                pct = (c * 100) if c <= 1 else c
+                confidences.append(pct)
+
+            avg_conf = sum(confidences) / len(confidences) if confidences else 0
+            summary["avg_prediction_confidence"] = round(avg_conf, 1)
+
+            # Cross-reference with paper trade win rate
+            try:
+                from core.paper_tracker import get_paper_tracker
+                tracker = get_paper_tracker()
+                stats = tracker.get_stats(days=30)
+                win_rate = stats.get("win_rate", 0)
+                resolved = stats.get("resolved_trades", 0)
+
+                if avg_conf >= 60 and resolved >= 20 and win_rate < 0.3:
+                    issues.append({
+                        "type": "confidence_winrate_mismatch", "severity": "warn",
+                        "detail": f"Avg confidence {avg_conf:.0f}% but win rate only {win_rate*100:.0f}% over {resolved} trades — confidence calibration broken",
+                    })
+            except Exception:
+                pass
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Win rate vs confidence check error: {e}")
+
+    # ── CHECK 40: Dashboard Data Consistency ─────────────────────
+    # Checks that accuracy shown in different panels matches.
+    # If health says 56% but goals says 50%, they're reading from
+    # different sources — user sees contradictory numbers.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("Dashboard Data Consistency")
+    try:
+        # Compare the accuracy we computed in CHECK 3 with what the
+        # paper tracker thinks accuracy is
+        integrity_accuracy = summary.get("accuracy_pct")
+
+        try:
+            from core.paper_tracker import get_paper_tracker
+            tracker = get_paper_tracker()
+            stats = tracker.get_stats(days=30)
+            paper_win_rate = stats.get("win_rate", None)
+            paper_resolved = stats.get("resolved_trades", 0)
+
+            if integrity_accuracy and paper_win_rate is not None and paper_resolved >= 10:
+                paper_pct = paper_win_rate * 100
+                diff = abs(integrity_accuracy - paper_pct)
+                summary["accuracy_vs_winrate_gap"] = round(diff, 1)
+
+                if diff >= 20:
+                    issues.append({
+                        "type": "dashboard_accuracy_mismatch", "severity": "warn",
+                        "detail": f"Integrity accuracy {integrity_accuracy:.1f}% vs paper win rate {paper_pct:.1f}% — {diff:.0f}pp gap, different data sources",
+                    })
+            elif paper_resolved == 0 and summary.get("total_evaluated", 0) > 50:
+                summary["accuracy_vs_winrate_gap"] = None
+                issues.append({
+                    "type": "dashboard_accuracy_incomplete", "severity": "info",
+                    "detail": f"Accuracy shows {integrity_accuracy:.1f}% from {summary.get('total_evaluated', 0)} evals, but paper tracker has 0 resolved trades — win rate can't be verified",
+                })
+        except Exception:
+            pass
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Dashboard consistency check error: {e}")
 
     # ══════════════════════════════════════════════════════════════
     penalty = sum(SEVERITY_WEIGHTS.get(i["severity"], 1) for i in issues)

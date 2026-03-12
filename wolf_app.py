@@ -17233,13 +17233,6 @@ async def api_v3_hunter_feed(limit: int = 10):
                 confidence = pred.get("confidence", 0) or 0
                 confidence_pct = round(confidence * 100, 1) if confidence <= 1 else round(confidence, 1)
                 
-                # ADD: Symbol-seeded jitter to prevent identical confidence display
-                # When XGBoost clusters similar stocks, this ensures visible variation
-                symbol_hash = hash(symbol.upper()) % 10000
-                conf_jitter = ((symbol_hash / 10000) - 0.5) * 4.0  # ±2% jitter
-                confidence_pct = round(confidence_pct + conf_jitter, 1)
-                confidence_pct = max(45.0, min(85.0, confidence_pct))  # Clamp
-                
                 # Calculate expected move - FIX: use expected_move_pct (stored key) not expected_move
                 expected_move = pred.get("expected_move_pct") or pred.get("expected_move")
                 if expected_move is None:
@@ -17252,10 +17245,8 @@ async def api_v3_hunter_feed(limit: int = 10):
                 else:
                     # expected_move_pct is already in percentage (e.g., 4.5 = 4.5%)
                     change_pct = expected_move if abs(expected_move) < 20 else expected_move / 100
-                
-                # ADD: Symbol-seeded jitter to prevent identical change % display
-                change_jitter = ((symbol_hash / 10000) - 0.5) * 0.4  # ±0.2% jitter
-                change_pct = round(change_pct + change_jitter, 2)
+
+                change_pct = round(change_pct, 2)
 
                 feed_items.append({
                     "symbol": symbol,
@@ -44718,7 +44709,7 @@ try:
         Check all pending paper trades (called by scheduler).
         
         Fetches current prices and resolves trades that reached target time.
-        Only processes trades whose target_time has been reached (not all pending).
+        Also force-expires trades stuck more than 2x past their prediction window.
         """
         try:
             tracker = get_paper_tracker()
@@ -44727,21 +44718,19 @@ try:
             from core.asset_classifier import get_asset_type
             price_data = {}
             
-            # Only fetch symbols that are ACTUALLY DUE (target_time <= now)
-            # This prevents fetching prices for hundreds of symbols that aren't ready
+            # Query due symbols using the tracker's own connection handling
+            symbols = []
             try:
-                conn = tracker._get_connection()
                 now_str = datetime.utcnow().isoformat()
-                cur = tracker._execute(conn, """
-                    SELECT DISTINCT symbol FROM paper_trades 
-                    WHERE outcome = 'PENDING' AND target_time <= ?
-                """, (now_str,))
-                rows = tracker._fetchall(cur)
-                symbols = [(row["symbol"],) for row in rows]
-                conn.close()
+                with tracker._get_connection() as conn:
+                    cur = tracker._execute(conn, """
+                        SELECT DISTINCT symbol FROM paper_trades 
+                        WHERE outcome = 'PENDING' AND target_time <= ?
+                    """, (now_str,))
+                    rows = tracker._fetchall(cur)
+                    symbols = [(row["symbol"],) for row in rows]
             except Exception as query_err:
                 LOGGER.error(f"Failed to query pending symbols: {query_err}")
-                symbols = []
             
             LOGGER.info(f"[check_all] {len(symbols)} symbols with due trades")
             
@@ -44768,9 +44757,53 @@ try:
             
             resolved = tracker.check_all_pending(price_data)
             
+            # Force-expire trades stuck >2x past their prediction window
+            expired_count = 0
+            try:
+                with tracker._get_connection() as conn:
+                    cur = tracker._execute(conn, """
+                        SELECT paper_trade_id, symbol, target_time, entry_price,
+                               signal_direction, signal_time
+                        FROM paper_trades 
+                        WHERE outcome = 'PENDING' AND target_time <= ?
+                    """, (now_str,))
+                    stuck_rows = tracker._fetchall(cur)
+                    
+                    for row in stuck_rows:
+                        sym = row["symbol"]
+                        if sym in price_data:
+                            continue  # Already handled above
+                        
+                        # If we can't get a price, use entry_price (EXPIRED, not WIN/LOSS)
+                        target_dt = datetime.fromisoformat(
+                            str(row["target_time"]).replace("Z", "+00:00").replace("+00:00", "")
+                        )
+                        overdue_hours = (datetime.utcnow() - target_dt).total_seconds() / 3600
+                        
+                        if overdue_hours > 24:  # More than 24h overdue = force expire
+                            tracker._execute(conn, """
+                                UPDATE paper_trades 
+                                SET outcome = 'EXPIRED', 
+                                    checked_at = ?,
+                                    notes = ?
+                                WHERE paper_trade_id = ?
+                            """, (
+                                datetime.utcnow().isoformat(),
+                                f"Force-expired: {overdue_hours:.0f}h overdue, price unavailable",
+                                row["paper_trade_id"]
+                            ))
+                            expired_count += 1
+                    
+                    if expired_count > 0:
+                        conn.commit()
+                        LOGGER.info(f"[check_all] Force-expired {expired_count} stuck trades")
+            except Exception as exp_err:
+                LOGGER.warning(f"Force-expire step failed: {exp_err}")
+            
             return {
                 "ok": True,
                 "resolved_count": len(resolved),
+                "expired_count": expired_count,
                 "symbols_checked": len(symbols),
                 "prices_fetched": len(price_data),
                 "resolved": resolved
