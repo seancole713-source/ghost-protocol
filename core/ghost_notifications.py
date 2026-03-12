@@ -995,6 +995,25 @@ def format_top10_message(stocks: List[Dict], crypto: List[Dict], inverse_mode: b
         hold_days = item.get('hold_days', 3)
         v3_is_whitelisted = item.get('v3_is_whitelisted', False)
 
+        # ── DIRECTION CONSISTENCY GUARD (Mar 12, 2026) ──────────────
+        # If direction and target/entry disagree, trust direction and
+        # recalculate target & stop. This catches ALL upstream bugs
+        # (brain inversions, V3 overrides, dedup path, etc.)
+        if current > 0 and target > 0:
+            target_above_entry = target > current
+            if is_buy and not target_above_entry:
+                # UP direction but target below entry — fix it
+                move_pct = abs(target - current) / current
+                target = round(current * (1 + move_pct), 6)
+                stop = round(current * (1 - move_pct * 0.6), 6)
+                LOGGER.warning(f"[FORMAT] ⚠️ {symbol} direction={direction} but target was below entry → recalculated target=${target}")
+            elif not is_buy and target_above_entry:
+                # DOWN direction but target above entry — fix it
+                move_pct = abs(target - current) / current
+                target = round(current * (1 - move_pct), 6)
+                stop = round(current * (1 + move_pct * 0.6), 6)
+                LOGGER.warning(f"[FORMAT] ⚠️ {symbol} direction={direction} but target was above entry → recalculated target=${target}")
+
         # Gain %
         if is_buy:
             gain_pct = ((target - current) / current * 100) if current > 0 else 0
@@ -1646,6 +1665,7 @@ class GhostNotificationSystem:
                 "direction": direction,
                 "asset_class": asset_class,
                 "learning_boosted": boost_multiplier > 1.0,
+                "brain_inverted": brain_decision.inverted if brain and brain_decision else False,
                 "event_warning": event_warning,
                 "pred": pred,  # Keep original for later
             }
@@ -1867,9 +1887,12 @@ class GhostNotificationSystem:
         
         # V3 INVERSE FIX: When direction is flipped, we must recalculate target!
         # Original DOWN target is BELOW entry, but BUY target should be ABOVE entry
+        # ALSO covers Ghost Brain inversions (Mar 12, 2026) — brain sets inverted=True
+        # but not v3_is_inverse, so target wasn't being recalculated for brain flips.
         v3_is_inverse = candidate.get("v3_is_inverse", False)
+        brain_inverted = candidate.get("brain_inverted", False)
         
-        if v3_is_inverse:
+        if v3_is_inverse or brain_inverted:
             # RECALCULATE target for inverted direction
             # Use the same move % but in opposite direction
             move_pct = 0.05 if asset_class == "crypto" else 0.03

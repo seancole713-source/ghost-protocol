@@ -8732,13 +8732,25 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     # ── DIRECTION CONSISTENCY GUARD (Mar 10, 2026) ──────────────
                     # After the brain's decision, ensure direction and target agree.
                     # The evaluator scores by comparing predicted_direction vs actual.
+                    # FIX (Mar 12, 2026): Also update se_direction and _LATEST_PREDICTIONS
+                    # so Telegram/paper trades get corrected direction.
                     _se_dir_for_pg = se_direction
                     if se_entry_price and _se_pred_price:
                         if float(_se_pred_price) > se_entry_price and se_direction == "DOWN":
                             _se_dir_for_pg = "UP"
+                            se_direction = "UP"
+                            with _LATEST_PREDICTIONS_LOCK:
+                                if symbol in _LATEST_PREDICTIONS:
+                                    _LATEST_PREDICTIONS[symbol]["direction"] = "UP"
+                                    _LATEST_PREDICTIONS[symbol]["action"] = "BUY"
                             LOGGER.warning(f"[{symbol}] ⚠️ Direction consistency fix: target {_se_pred_price} > entry {se_entry_price} but dir was DOWN → corrected to UP")
                         elif float(_se_pred_price) < se_entry_price and se_direction == "UP":
                             _se_dir_for_pg = "DOWN"
+                            se_direction = "DOWN"
+                            with _LATEST_PREDICTIONS_LOCK:
+                                if symbol in _LATEST_PREDICTIONS:
+                                    _LATEST_PREDICTIONS[symbol]["direction"] = "DOWN"
+                                    _LATEST_PREDICTIONS[symbol]["action"] = "SELL"
                             LOGGER.warning(f"[{symbol}] ⚠️ Direction consistency fix: target {_se_pred_price} < entry {se_entry_price} but dir was UP → corrected to DOWN")
 
                     with _se_get_conn() as _se_pg_conn:
@@ -10159,6 +10171,24 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                                 _dedup_pred_id = _dedup_row[0]
                     except Exception:
                         pass
+                # FIX (Mar 12, 2026): Dedup path must also include target/stop/entry
+                # so Telegram notifications don't have to guess with fallback values.
+                _dedup_abs_move = abs(expected_move_pct) if expected_move_pct else 3.0
+                try:
+                    from core.asset_classifier import get_target_stop as _dedup_get_ts
+                    _dedup_stops = _dedup_get_ts(symbol, horizon_h)
+                    _dedup_stop_pct = _dedup_stops['stop_pct']
+                except Exception:
+                    _dedup_stop_pct = 4.5 if _is_crypto_dedup(symbol) else 2.0
+                if direction == "UP":
+                    _dedup_target = round(current_price * (1 + _dedup_abs_move / 100), 6)
+                    _dedup_stop = round(current_price * (1 - _dedup_stop_pct / 100), 6)
+                elif direction == "DOWN":
+                    _dedup_target = round(current_price * (1 - _dedup_abs_move / 100), 6)
+                    _dedup_stop = round(current_price * (1 + _dedup_stop_pct / 100), 6)
+                else:
+                    _dedup_target = current_price
+                    _dedup_stop = current_price
                 with _LATEST_PREDICTIONS_LOCK:
                     _LATEST_PREDICTIONS[symbol] = {
                         "prediction_id": _dedup_pred_id,  # Preserve original ID
@@ -10170,11 +10200,16 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         "horizon_h": horizon_h,
                         "price": current_price,
                         "price_at_prediction": current_price,
+                        "entry_price": current_price,
+                        "target_price": _dedup_target,
+                        "take_profit": _dedup_target,
+                        "stop_loss": _dedup_stop,
+                        "expected_move_pct": expected_move_pct,
                         "market": "crypto" if _is_crypto_dedup(symbol) else "stock",
                         "engine": "turbo",
                         **_turbo_hub_meta,
                     }
-                LOGGER.info(f"[{symbol}] ✅ Dedup prediction cached in _LATEST_PREDICTIONS (conf={confidence:.2f})")
+                LOGGER.info(f"[{symbol}] ✅ Dedup prediction cached in _LATEST_PREDICTIONS (conf={confidence:.2f}, target=${_dedup_target}, stop=${_dedup_stop})")
                 return {
                     "ok": True,
                     "symbol": symbol,
@@ -10505,13 +10540,25 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
 
             # ── DIRECTION CONSISTENCY GUARD (Mar 10, 2026) ──────────────
             # Ensure predicted_direction matches target vs entry price.
+            # FIX (Mar 12, 2026): Also update 'direction' variable and
+            # _LATEST_PREDICTIONS so Telegram/paper trades get corrected direction.
             _turbo_dir_for_pg = direction
             if current_price and _predicted_price:
                 if float(_predicted_price) > current_price and direction == "DOWN":
                     _turbo_dir_for_pg = "UP"
+                    direction = "UP"
+                    with _LATEST_PREDICTIONS_LOCK:
+                        if symbol in _LATEST_PREDICTIONS:
+                            _LATEST_PREDICTIONS[symbol]["direction"] = "UP"
+                            _LATEST_PREDICTIONS[symbol]["action"] = "BUY"
                     LOGGER.warning(f"[{symbol}] ⚠️ Turbo direction consistency fix: target {_predicted_price} > entry {current_price} but dir was DOWN → UP")
                 elif float(_predicted_price) < current_price and direction == "UP":
                     _turbo_dir_for_pg = "DOWN"
+                    direction = "DOWN"
+                    with _LATEST_PREDICTIONS_LOCK:
+                        if symbol in _LATEST_PREDICTIONS:
+                            _LATEST_PREDICTIONS[symbol]["direction"] = "DOWN"
+                            _LATEST_PREDICTIONS[symbol]["action"] = "SELL"
                     LOGGER.warning(f"[{symbol}] ⚠️ Turbo direction consistency fix: target {_predicted_price} < entry {current_price} but dir was UP → DOWN")
 
             import json as _pg_json
