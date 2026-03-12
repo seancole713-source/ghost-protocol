@@ -6,6 +6,10 @@ Design goals:
 - Single source of truth for crypto-vs-stock routing.
 - Runtime extensibility so higher-level apps (e.g., `wolf_app.py`) can register
     their active crypto universe without introducing circular imports.
+- FIX (Mar 12, 2026): Merge with config/symbols.py CRYPTO_SYMBOLS at import time
+    so there's ONE authoritative crypto list. Previously 33 crypto symbols (including
+    CHZ, ILV, TURBO, ZEC) were missing here, causing them to be classified as "stocks"
+    in the Telegram picks pipeline and stealing slots from actual stocks.
 """
 
 from __future__ import annotations
@@ -97,6 +101,30 @@ def _load_env_extras() -> None:
 
 
 _load_env_extras()
+
+
+def _merge_config_crypto() -> None:
+    """Merge crypto symbols from config/symbols.py into this module's set.
+
+    This ensures a single authoritative crypto universe — any symbol marked
+    as crypto in config/symbols.py is also recognized here.  Without this,
+    symbols like CHZ, ILV, TURBO etc. were classified as 'stock' in the
+    Telegram picks pipeline, crowding out actual stocks.
+    """
+    try:
+        from config.symbols import CRYPTO_SYMBOLS as _config_crypto
+        added = register_crypto_symbols(_config_crypto)
+        if added:
+            import logging
+            logging.getLogger("ghost").info(
+                f"[ASSET_CLASSIFICATION] Merged {added} crypto symbols from config/symbols.py "
+                f"(total: {len(CRYPTO_SYMBOLS)})"
+            )
+    except ImportError:
+        pass  # config.symbols not available — keep local list
+
+
+_merge_config_crypto()
 
 
 def is_crypto_symbol(symbol: str) -> bool:
