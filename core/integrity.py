@@ -12,7 +12,7 @@ Self-healing background audit that:
   • Returns a 0-100 health score
 
 ═══════════════════════════════════════════════════════════════════
- 20 CHECKS — mapped to every bug we found and fixed
+ 30 CHECKS — data layer + infrastructure + runtime
 ═══════════════════════════════════════════════════════════════════
 
  CHECK 1:  Database Connectivity — PG + SQLite alive
@@ -44,9 +44,19 @@ Self-healing background audit that:
  CHECK 18: V3 Filter Sanity — min_confidence, strategies loaded
  CHECK 19: Live Display Math — cached prediction numbers consistent
  CHECK 20: Notification Pipeline Health — imports + config
+ CHECK 21: Background Task Heartbeats — every task pulsing
+ CHECK 22: Telegram Delivery Verification — last send timestamp
+ CHECK 23: DB Pool Utilization — connections available
+ CHECK 24: Memory & Resources — RSS, threads, file descriptors
+ CHECK 25: Price Provider Circuit Breakers — cascade health
+ CHECK 26: API Rate Limiter State — throttle bucket memory
+ CHECK 27: Daemon Thread Liveness — are threads actually alive
+ CHECK 28: Database Schema Validation — required columns exist
+ CHECK 29: Alpaca Broker Health — API reachability
+ CHECK 30: Price Cache Health — size + freshness
 
 Created: March 12, 2026
-Updated: March 12, 2026 — v2: expanded from 10 → 20 checks
+Updated: March 12, 2026 — v3: expanded from 20 → 30 checks (limitless)
 """
 
 import logging
@@ -971,8 +981,447 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
         LOGGER.warning(f"[INTEGRITY] Notification check error: {e}")
 
     # ══════════════════════════════════════════════════════════════
-    # COMPUTE HEALTH SCORE
+    # CHECK 21: Background Task Heartbeats
+    # ──────────────────────────────────────────────────────────────
+    # Ghost runs 15+ background threads/tasks. If any thread crashes
+    # with an unhandled exception, it dies silently. This check
+    # verifies every registered task has pulsed recently.
     # ══════════════════════════════════════════════════════════════
+    checks_run.append("Background Task Heartbeats")
+    try:
+        from core.heartbeat import get_all_heartbeats, get_missing_tasks, get_stale_tasks
+
+        heartbeats = get_all_heartbeats()
+        missing = get_missing_tasks()
+        stale = get_stale_tasks()
+
+        alive_tasks = [n for n, h in heartbeats.items() if h["status"] == "alive"]
+        stale_tasks = [n for n, h in heartbeats.items() if h["status"] == "stale"]
+        dead_tasks = [n for n, h in heartbeats.items() if h["status"] == "dead"]
+
+        summary["heartbeat_alive"] = alive_tasks
+        summary["heartbeat_stale"] = stale_tasks
+        summary["heartbeat_dead"] = dead_tasks
+        summary["heartbeat_never_pulsed"] = missing
+        summary["heartbeat_total_registered"] = len(heartbeats) + len(missing)
+
+        if dead_tasks:
+            issues.append({
+                "type": "background_task_dead", "severity": "error",
+                "detail": f"DEAD background tasks (no heartbeat): {', '.join(dead_tasks)}",
+            })
+        if stale_tasks:
+            issues.append({
+                "type": "background_task_stale", "severity": "warn",
+                "detail": f"Stale background tasks (delayed heartbeat): {', '.join(stale_tasks)}",
+            })
+        # Don't flag missing tasks as errors during first 10 min after boot
+        # (they haven't had time to start yet)
+        if missing and len(heartbeats) > 0:
+            # Some tasks have pulsed but these haven't — likely crashed at startup
+            summary["heartbeat_missing_note"] = "These tasks registered but never started"
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Heartbeat check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    # CHECK 22: Telegram Delivery Verification
+    # ──────────────────────────────────────────────────────────────
+    # CHECK 20 verifies env vars exist and modules import. This
+    # check verifies messages are ACTUALLY being delivered — last
+    # successful send timestamp, error state, API reachability.
+    # ══════════════════════════════════════════════════════════════
+    checks_run.append("Telegram Delivery Verification")
+    try:
+        import wolf_app as _wa
+
+        last_send_ts = getattr(_wa, '_LAST_TELEGRAM_SEND_TIME', None)
+        last_status = getattr(_wa, '_LAST_TELEGRAM_STATUS', 'never_run')
+        last_error = getattr(_wa, '_LAST_TELEGRAM_ERROR', None)
+
+        summary["telegram_last_send_ts"] = last_send_ts
+        summary["telegram_last_status"] = last_status
+        summary["telegram_last_error"] = last_error
+
+        if last_send_ts:
+            age_hours = (now_ts - last_send_ts) / 3600
+            summary["telegram_last_send_hours_ago"] = round(age_hours, 1)
+
+            if age_hours > 24:
+                issues.append({
+                    "type": "telegram_no_sends", "severity": "error",
+                    "detail": f"No Telegram message sent in {age_hours:.0f}h — delivery may be broken",
+                })
+            elif age_hours > 12:
+                issues.append({
+                    "type": "telegram_sends_slow", "severity": "warn",
+                    "detail": f"No Telegram message sent in {age_hours:.0f}h",
+                })
+        elif last_status == "never_run":
+            summary["telegram_last_send_hours_ago"] = None
+
+        if last_status == "error" and last_error:
+            issues.append({
+                "type": "telegram_last_error", "severity": "warn",
+                "detail": f"Last Telegram send failed: {str(last_error)[:80]}",
+            })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Telegram delivery check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    # CHECK 23: Database Connection Pool Utilization
+    # ──────────────────────────────────────────────────────────────
+    # CHECK 1 just tests SELECT 1. This check monitors pool
+    # utilization — if all connections are checked out, new queries
+    # will hang/timeout. Uses existing get_sync_pool_status().
+    # ══════════════════════════════════════════════════════════════
+    checks_run.append("DB Pool Utilization")
+    try:
+        from core.db_pool import get_sync_pool_status
+
+        pool_status = get_sync_pool_status()
+        summary["db_pool"] = pool_status
+
+        if pool_status.get("initialized"):
+            max_conn = pool_status.get("max_connections", 5)
+            checked_out = pool_status.get("checked_out", 0)
+            available = pool_status.get("available", max_conn)
+
+            if max_conn > 0:
+                utilization_pct = (checked_out / max_conn) * 100
+                summary["db_pool_utilization_pct"] = round(utilization_pct, 1)
+
+                if available == 0:
+                    issues.append({
+                        "type": "db_pool_exhausted", "severity": "error",
+                        "detail": f"DB pool EXHAUSTED — {checked_out}/{max_conn} connections in use, 0 available!",
+                    })
+                elif utilization_pct > 80:
+                    issues.append({
+                        "type": "db_pool_high", "severity": "warn",
+                        "detail": f"DB pool {utilization_pct:.0f}% utilized ({checked_out}/{max_conn})",
+                    })
+
+            if pool_status.get("closed"):
+                issues.append({
+                    "type": "db_pool_closed", "severity": "error",
+                    "detail": "DB connection pool is CLOSED — all queries will fail!",
+                })
+        else:
+            summary["db_pool_utilization_pct"] = None
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] DB pool check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    # CHECK 24: Memory / Resource Usage
+    # ──────────────────────────────────────────────────────────────
+    # No resource monitoring existed. This check uses os-level
+    # /proc/self/status on Linux (Railway runs Linux) to get RSS
+    # without requiring psutil.
+    # ══════════════════════════════════════════════════════════════
+    checks_run.append("Memory & Resources")
+    try:
+        import resource
+        # getrusage returns RSS in KB on Linux
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        rss_mb = usage.ru_maxrss / 1024  # Convert KB to MB on Linux
+        summary["memory_rss_mb"] = round(rss_mb, 1)
+
+        # Also try /proc/self/status for more accurate current RSS
+        try:
+            with open("/proc/self/status") as f:
+                for line in f:
+                    if line.startswith("VmRSS:"):
+                        rss_kb = int(line.split()[1])
+                        rss_mb = rss_kb / 1024
+                        summary["memory_rss_mb"] = round(rss_mb, 1)
+                        break
+        except Exception:
+            pass
+
+        if rss_mb > 1024:
+            issues.append({
+                "type": "memory_critical", "severity": "error",
+                "detail": f"Memory usage {rss_mb:.0f}MB — exceeds 1GB, OOM risk!",
+            })
+        elif rss_mb > 512:
+            issues.append({
+                "type": "memory_high", "severity": "warn",
+                "detail": f"Memory usage {rss_mb:.0f}MB — above 512MB",
+            })
+
+        # Thread count
+        try:
+            import threading
+            thread_count = threading.active_count()
+            summary["active_threads"] = thread_count
+
+            if thread_count > 50:
+                issues.append({
+                    "type": "thread_leak", "severity": "warn",
+                    "detail": f"Thread count {thread_count} — possible thread leak",
+                })
+        except Exception:
+            pass
+
+        # Open file descriptors
+        try:
+            fd_count = len(os.listdir("/proc/self/fd"))
+            summary["open_file_descriptors"] = fd_count
+
+            if fd_count > 500:
+                issues.append({
+                    "type": "fd_leak", "severity": "warn",
+                    "detail": f"Open file descriptors: {fd_count} — possible leak",
+                })
+        except Exception:
+            pass
+
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Memory check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    # CHECK 25: Price Provider Health / Circuit Breakers
+    # ──────────────────────────────────────────────────────────────
+    # Ghost cascades through multiple price providers. If all are
+    # in circuit-breaker "open" state, predictions run on stale
+    # prices. This check reads the breaker states.
+    # ══════════════════════════════════════════════════════════════
+    checks_run.append("Price Provider Circuit Breakers")
+    try:
+        import wolf_app as _wa
+
+        breakers = getattr(_wa, '_PROVIDER_BREAKERS', {})
+        provider_status = {}
+        open_providers = []
+
+        for name, state in breakers.items():
+            status = state.get("state", "unknown")
+            failures = state.get("failures", 0)
+            provider_status[name] = {
+                "state": status,
+                "failures": failures,
+            }
+            if status == "open":
+                open_providers.append(f"{name} ({failures} failures)")
+
+        summary["price_providers"] = provider_status
+        summary["providers_open_circuit"] = len(open_providers)
+
+        if len(open_providers) == len(breakers) and len(breakers) > 0:
+            issues.append({
+                "type": "all_providers_down", "severity": "error",
+                "detail": f"ALL price providers circuit-broken: {', '.join(open_providers)} — running on stale prices!",
+            })
+        elif open_providers:
+            issues.append({
+                "type": "provider_circuit_open", "severity": "warn",
+                "detail": f"Price providers circuit-broken: {', '.join(open_providers)}",
+            })
+
+        # Also check crypto provider health if available
+        try:
+            from core.crypto.crypto_providers import get_crypto_provider_health
+            crypto_health = get_crypto_provider_health()
+            summary["crypto_provider_health"] = crypto_health
+        except Exception:
+            pass
+
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Provider health check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    # CHECK 26: API Throttle / Rate Limiter State
+    # ──────────────────────────────────────────────────────────────
+    # The IP throttle dict could grow unbounded if eviction fails.
+    # Also monitors if too many clients are getting 429'd.
+    # ══════════════════════════════════════════════════════════════
+    checks_run.append("API Rate Limiter State")
+    try:
+        import wolf_app as _wa
+
+        throttle_buckets = getattr(_wa, '_throttle_buckets', {})
+        bucket_count = len(throttle_buckets)
+        summary["throttle_bucket_count"] = bucket_count
+
+        if bucket_count > 500:
+            issues.append({
+                "type": "throttle_memory_leak", "severity": "error",
+                "detail": f"Throttle bucket dict has {bucket_count} entries — eviction broken, memory leak!",
+            })
+        elif bucket_count > 200:
+            issues.append({
+                "type": "throttle_buckets_high", "severity": "warn",
+                "detail": f"Throttle tracking {bucket_count} IPs — higher than expected",
+            })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Throttle check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    # CHECK 27: Daemon Thread Liveness
+    # ──────────────────────────────────────────────────────────────
+    # Direct check: are the actual Python thread objects alive?
+    # This catches threads that crashed even if heartbeats weren't
+    # wired in yet.
+    # ══════════════════════════════════════════════════════════════
+    checks_run.append("Daemon Thread Liveness")
+    try:
+        import wolf_app as _wa
+
+        thread_checks = {
+            "autosave-worker": getattr(_wa, '_AUTOSAVE_WORKER', None),
+            "alert-worker": getattr(_wa, '_ALERT_WORKER', None),
+            "open-close-scheduler": getattr(_wa, '_SCHED_WORKER', None),
+            "outcome-reconciler": getattr(_wa, '_RECONCILER_WORKER', None),
+            "accuracy-tracker": getattr(_wa, '_ACCURACY_TRACKER', None),
+        }
+
+        dead_threads = []
+        alive_threads = []
+        for name, thread in thread_checks.items():
+            if thread is None:
+                continue  # Never started — not necessarily an error
+            if thread.is_alive():
+                alive_threads.append(name)
+            else:
+                dead_threads.append(name)
+
+        summary["daemon_threads_alive"] = alive_threads
+        summary["daemon_threads_dead"] = dead_threads
+
+        if dead_threads:
+            issues.append({
+                "type": "daemon_thread_dead", "severity": "error",
+                "detail": f"DEAD daemon threads: {', '.join(dead_threads)} — crashed silently!",
+            })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Thread liveness check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    # CHECK 28: Database Schema Validation
+    # ──────────────────────────────────────────────────────────────
+    # No Alembic — migrations are ad-hoc ALTER TABLEs. This check
+    # verifies critical columns exist in ghost_predictions.
+    # ══════════════════════════════════════════════════════════════
+    checks_run.append("Database Schema")
+    try:
+        if pg_available:
+            from core.db_pool import get_sync_connection
+            with get_sync_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'ghost_predictions'
+                """)
+                existing_cols = {row[0] for row in cur.fetchall()}
+
+            required_cols = {
+                "id", "symbol", "predicted_at", "check_at",
+                "predicted_direction", "confidence", "current_price",
+                "target_price", "checked", "correct", "eval_version",
+                "outcome_price", "outcome_direction", "checked_at",
+                "window_high", "window_low",
+            }
+
+            missing_cols = required_cols - existing_cols
+            summary["schema_columns_found"] = len(existing_cols)
+            summary["schema_columns_missing"] = sorted(missing_cols) if missing_cols else []
+
+            if missing_cols:
+                issues.append({
+                    "type": "schema_missing_columns", "severity": "error",
+                    "detail": f"ghost_predictions missing columns: {', '.join(sorted(missing_cols))} — migration needed!",
+                })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Schema check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    # CHECK 29: Alpaca Broker Health
+    # ──────────────────────────────────────────────────────────────
+    # If Alpaca keys are set, verify the broker can actually reach
+    # the API. Silent order failures = real money lost.
+    # ══════════════════════════════════════════════════════════════
+    checks_run.append("Broker Health")
+    try:
+        alpaca_key = os.environ.get("ALPACA_API_KEY")
+        alpaca_secret = os.environ.get("ALPACA_SECRET_KEY")
+
+        if alpaca_key and alpaca_secret:
+            try:
+                from core.alpaca_broker import get_broker
+                broker = get_broker()
+                if broker:
+                    summary["broker_status"] = "initialized"
+                    # Check if broker has a health check method
+                    if hasattr(broker, 'health_check'):
+                        try:
+                            health = broker.health_check()
+                            summary["broker_health"] = health
+                            if not health.get("ok"):
+                                issues.append({
+                                    "type": "broker_unhealthy", "severity": "error",
+                                    "detail": f"Alpaca broker health check failed: {str(health)[:80]}",
+                                })
+                        except Exception as e:
+                            issues.append({
+                                "type": "broker_health_error", "severity": "warn",
+                                "detail": f"Broker health check threw: {str(e)[:80]}",
+                            })
+                else:
+                    summary["broker_status"] = "not_initialized"
+            except Exception as e:
+                summary["broker_status"] = f"error: {str(e)[:60]}"
+                issues.append({
+                    "type": "broker_import_fail", "severity": "warn",
+                    "detail": f"Alpaca broker failed to load: {str(e)[:80]}",
+                })
+        else:
+            summary["broker_status"] = "not_configured"
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Broker check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    # CHECK 30: Price Cache Size & Freshness
+    # ──────────────────────────────────────────────────────────────
+    # PRICE_CACHE can grow unbounded. Also checks that cached prices
+    # aren't all stale (which means providers silently failed).
+    # ══════════════════════════════════════════════════════════════
+    checks_run.append("Price Cache Health")
+    try:
+        import wolf_app as _wa
+
+        price_cache = getattr(_wa, 'PRICE_CACHE', {})
+        cache_size = len(price_cache)
+        summary["price_cache_size"] = cache_size
+
+        if cache_size > 1000:
+            issues.append({
+                "type": "price_cache_bloat", "severity": "warn",
+                "detail": f"PRICE_CACHE has {cache_size} entries — possible memory bloat",
+            })
+
+        # Check freshness of cached prices
+        if price_cache:
+            stale_count = 0
+            fresh_count = 0
+            for sym, entry in price_cache.items():
+                if isinstance(entry, dict):
+                    ts = entry.get("ts") or entry.get("timestamp") or 0
+                    if ts and (now_ts - ts) > 3600:
+                        stale_count += 1
+                    elif ts:
+                        fresh_count += 1
+
+            summary["price_cache_fresh"] = fresh_count
+            summary["price_cache_stale"] = stale_count
+
+            if fresh_count == 0 and stale_count > 0:
+                issues.append({
+                    "type": "all_prices_stale", "severity": "error",
+                    "detail": f"ALL {stale_count} cached prices are stale (>1h) — providers may be down!",
+                })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Price cache check error: {e}")
     penalty = sum(SEVERITY_WEIGHTS.get(i["severity"], 1) for i in issues)
     health_score = max(0, min(100, 100 - penalty))
 

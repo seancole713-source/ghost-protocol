@@ -74,6 +74,7 @@ from prometheus_client import (
 from pydantic import BaseModel
 
 from core.concurrency import AsyncRateLimiter
+from core.heartbeat import pulse as _heartbeat_pulse
 from core.price_quorum import PriceDecision, PriceProvider, get_price_quorum
 from core.providers.turbo_provider import turbo_stock_price, turbo_crypto_price
 from config.symbols import DEFAULT_EDGE_SYMBOLS, get_edge_set
@@ -4611,6 +4612,7 @@ async def _on_startup():
             _time.sleep(600)  # Wait 10 min after startup for data to be available
             
             while True:
+                _heartbeat_pulse("online-calibrator")
                 try:
                     from core.online_calibrator import get_online_calibrator
                     calibrator = get_online_calibrator()
@@ -16396,6 +16398,28 @@ async def integrity_audit():
         }
 
 
+@APP.get("/integrity/bugs")
+async def integrity_bugs():
+    """
+    Run bug-fix regression checks.
+    Verifies that ALL known bug fixes are still intact.
+    """
+    try:
+        from core.integrity_bug_checks import run_bug_checks_summary
+        result = await asyncio.to_thread(run_bug_checks_summary)
+        return result
+    except Exception as e:
+        LOGGER.error(f"[INTEGRITY] Bug checks endpoint failed: {e}")
+        return {
+            "total_checks": 0,
+            "passed": 0,
+            "failed": 1,
+            "health_pct": 0,
+            "checks": [{"name": "crash", "bug_id": -1, "passed": False,
+                        "severity": "error", "detail": str(e)[:200], "mismatches": []}],
+        }
+
+
 @APP.get("/integrity/audit/readonly")
 async def integrity_audit_readonly():
     """
@@ -22079,6 +22103,7 @@ def _autosave_loop():
         return
     while not _AUTOSAVE_STOP.is_set():
         try:
+            _heartbeat_pulse("autosave-worker")
             time.sleep(max(1, WOLF_AUTOSAVE_S))
             _persist_save()
         except Exception:
@@ -22689,6 +22714,7 @@ _ALERT_STOP = threading.Event()
 
 def _alert_worker_loop():
     while not _ALERT_STOP.is_set():
+        _heartbeat_pulse("alert-worker")
         try:
             item = _ALERT_QUEUE.get(timeout=0.5)
         except _queue.Empty:
@@ -22841,6 +22867,7 @@ def _stop_schedule_worker():
 def _schedule_loop():
     global _SCHED_LAST_OPEN_DAY, _SCHED_LAST_CLOSE_DAY
     while not _SCHED_STOP.is_set():
+        _heartbeat_pulse("open-close-scheduler")
         try:
             now_ny = _ny_now()
             wd = now_ny.weekday()
@@ -22911,6 +22938,7 @@ def _reconciler_loop():
     time.sleep(60)  # Wait 60s for server to fully start before first run
     
     while not _RECONCILER_STOP.is_set():
+        _heartbeat_pulse("outcome-reconciler")
         try:
             # 1. Append actual prices to active predictions
             _append_actual_prices()
@@ -22957,6 +22985,7 @@ def _accuracy_tracking_loop():
     time.sleep(120)  # Wait 2 minutes for server to fully start
     
     while not _ACCURACY_STOP.is_set():
+        _heartbeat_pulse("accuracy-tracker")
         try:
             from core.accuracy_tracking import record_accuracy_snapshot
             record_accuracy_snapshot()
