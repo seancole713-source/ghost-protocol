@@ -67,6 +67,7 @@ Created: March 12, 2026
 Updated: March 12, 2026 — v5: 40 checks — regression + infra + proactive + contradiction
 """
 
+import json
 import logging
 import os
 import time
@@ -1023,11 +1024,31 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                 "type": "background_task_stale", "severity": "warn",
                 "detail": f"Stale background tasks (delayed heartbeat): {', '.join(stale_tasks)}",
             })
-        # Don't flag missing tasks as errors during first 10 min after boot
-        # (they haven't had time to start yet)
-        if missing and len(heartbeats) > 0:
-            # Some tasks have pulsed but these haven't — likely crashed at startup
-            summary["heartbeat_missing_note"] = "These tasks registered but never started"
+        # Flag tasks that registered but NEVER pulsed
+        # This was the biggest blind spot — 18/18 tasks dead and health said nothing
+        if missing:
+            total_registered = len(heartbeats) + len(missing)
+            alive_count = len(alive_tasks)
+            critical_missing = [t for t in missing if t in (
+                'outcome-reconciler', 'prediction-cycle', 'full-scanner',
+                'money-game', 'reevaluation', 'self-improvement',
+            )]
+            if len(missing) == total_registered and total_registered > 0:
+                # ALL tasks never pulsed — nothing is running
+                issues.append({
+                    "type": "all_background_tasks_dead", "severity": "error",
+                    "detail": f"ALL {total_registered} background tasks have NEVER pulsed — reconciler, prediction cycle, and all daemons are NOT running",
+                })
+            elif critical_missing:
+                issues.append({
+                    "type": "critical_tasks_never_started", "severity": "error",
+                    "detail": f"Critical tasks never pulsed: {', '.join(critical_missing)} — paper trades won't auto-resolve, predictions may not cycle",
+                })
+            elif len(missing) >= 5:
+                issues.append({
+                    "type": "many_tasks_never_started", "severity": "warn",
+                    "detail": f"{len(missing)}/{total_registered} background tasks never pulsed: {', '.join(missing[:8])}",
+                })
     except Exception as e:
         LOGGER.warning(f"[INTEGRITY] Heartbeat check error: {e}")
 
@@ -1649,10 +1670,15 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                 "type": "paper_trades_never_resolve", "severity": "error",
                 "detail": f"{pending} pending paper trades, 0 resolved — exit logic broken or reconciler not running",
             })
-        elif total >= 100 and resolved < total * 0.05:
+        elif total >= 100 and resolved < total * 0.10:
             issues.append({
                 "type": "paper_trades_low_resolution", "severity": "warn",
                 "detail": f"Only {resolved}/{total} paper trades resolved ({resolved/total*100:.0f}%) — reconciler may be failing",
+            })
+        elif total >= 50 and pending > resolved * 2:
+            issues.append({
+                "type": "paper_trades_backlog", "severity": "info",
+                "detail": f"{pending} pending vs {resolved} resolved — trade backlog growing, {pending/total*100:.0f}% still waiting",
             })
     except Exception as e:
         LOGGER.warning(f"[INTEGRITY] Paper trade resolution check error: {e}")
@@ -1660,32 +1686,67 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
     # ── CHECK 37: Prediction vs Forecast Consistency ─────────────
     # When predictions say UP with 80% but forecast says FLAT/0%,
     # two subsystems are contradicting each other.
+    # Also flags when forecast system is completely disconnected.
     # ──────────────────────────────────────────────────────────────
     checks_run.append("Prediction vs Forecast Consistency")
     try:
         import wolf_app as _wa
         predictions = getattr(_wa, '_LATEST_PREDICTIONS', {})
-        forecast_grid = getattr(_wa, '_FORECAST_GRID', {})
 
+        # Read actual forecast data from the file (not a module variable)
+        forecast_data = None
+        forecast_age_h = None
+        try:
+            forecast_path = getattr(_wa, 'FORECAST_GRID_PATH', 'data/forecast_WOLF.json')
+            if os.path.exists(forecast_path):
+                with open(forecast_path) as _fg:
+                    forecast_data = json.load(_fg)
+                # Check forecast freshness
+                fc_ts = forecast_data.get("aso") or forecast_data.get("generated_at") or 0
+                if fc_ts > 0:
+                    forecast_age_h = (now_ts - fc_ts) / 3600
+                    summary["forecast_age_hours"] = round(forecast_age_h, 1)
+        except Exception:
+            pass
+
+        # Flag 1: Forecast file missing or empty while predictions are active
+        active_predictions = len([p for p in predictions.values()
+                                  if p.get("direction") in ("UP", "DOWN")])
+        summary["forecast_data_available"] = forecast_data is not None
+        summary["active_directional_predictions"] = active_predictions
+
+        if active_predictions >= 3 and forecast_data is None:
+            issues.append({
+                "type": "forecast_disconnected", "severity": "warn",
+                "detail": f"{active_predictions} active predictions but forecast grid is empty/missing — dashboard forecast panel has no data",
+            })
+        elif forecast_data and forecast_age_h and forecast_age_h > 6:
+            issues.append({
+                "type": "forecast_stale", "severity": "warn",
+                "detail": f"Forecast data is {forecast_age_h:.1f}h old — dashboard showing outdated forecast",
+            })
+
+        # Flag 2: Check for direction contradictions between prediction and forecast
         contradictions = []
-        for sym, pred in predictions.items():
-            direction = pred.get("direction", "")
-            confidence = pred.get("confidence", 0)
-            conf_pct = (confidence * 100) if confidence <= 1 else confidence
-
-            if conf_pct >= 60 and direction in ("UP", "DOWN"):
-                # Check if forecast exists and disagrees
-                fc = forecast_grid.get(sym)
-                if fc and isinstance(fc, dict):
-                    fc_direction = fc.get("direction", "FLAT")
-                    fc_prob = fc.get("probability", 0)
-                    if fc_direction == "FLAT" or fc_prob == 0:
+        if forecast_data and isinstance(forecast_data, dict):
+            fc_direction = forecast_data.get("direction", "FLAT")
+            fc_symbol = forecast_data.get("symbol", "")
+            if fc_symbol and fc_symbol in predictions:
+                pred = predictions[fc_symbol]
+                pred_dir = pred.get("direction", "")
+                pred_conf = pred.get("confidence", 0)
+                pred_pct = (pred_conf * 100) if pred_conf <= 1 else pred_conf
+                if pred_pct >= 55 and pred_dir in ("UP", "DOWN"):
+                    if fc_direction == "FLAT" or fc_direction == "":
                         contradictions.append(
-                            f"{sym}: prediction={direction} {conf_pct:.0f}% but forecast=FLAT/0%"
+                            f"{fc_symbol}: prediction={pred_dir} {pred_pct:.0f}% but forecast=FLAT"
+                        )
+                    elif pred_dir != fc_direction:
+                        contradictions.append(
+                            f"{fc_symbol}: prediction={pred_dir} {pred_pct:.0f}% but forecast={fc_direction}"
                         )
 
         summary["prediction_forecast_contradictions"] = contradictions
-
         if contradictions:
             issues.append({
                 "type": "prediction_forecast_conflict", "severity": "warn",
@@ -1695,8 +1756,8 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
         LOGGER.warning(f"[INTEGRITY] Prediction vs forecast check error: {e}")
 
     # ── CHECK 38: Signal Burst Rate ──────────────────────────────
-    # If all predictions have timestamps within 60 seconds of each
-    # other, the system is batch-firing instead of finding setups.
+    # If predictions are fired in rapid succession rather than
+    # spread across analysis windows, it's a shotgun pattern.
     # ──────────────────────────────────────────────────────────────
     checks_run.append("Signal Burst Rate")
     try:
@@ -1713,12 +1774,20 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
             if len(timestamps) >= 5:
                 timestamps.sort()
                 spread_s = timestamps[-1] - timestamps[0]
+                preds_per_min = (len(timestamps) / max(spread_s, 1)) * 60
                 summary["prediction_burst_spread_s"] = round(spread_s, 1)
+                summary["predictions_per_minute"] = round(preds_per_min, 1)
 
+                # Check for tight bursts: >4 predictions per minute
                 if spread_s < 120 and len(timestamps) >= 8:
                     issues.append({
-                        "type": "signal_burst_spam", "severity": "info",
+                        "type": "signal_burst_spam", "severity": "warn",
                         "detail": f"All {len(timestamps)} predictions fired within {spread_s:.0f}s — shotgun pattern, not selective",
+                    })
+                elif preds_per_min >= 4:
+                    issues.append({
+                        "type": "signal_rapid_fire", "severity": "info",
+                        "detail": f"{len(timestamps)} predictions at {preds_per_min:.1f}/min ({spread_s:.0f}s total) — rapid-fire mode, not staggered analysis",
                     })
     except Exception as e:
         LOGGER.warning(f"[INTEGRITY] Signal burst check error: {e}")
