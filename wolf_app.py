@@ -17391,17 +17391,108 @@ async def api_v3_hunter_feed(limit: int = 10):
 @APP.get("/api/v3/news/feed")
 async def api_v3_news_feed(limit: int = 10):
     """
-    Get general news feed for cockpit news panel.
-    
-    Returns feed items with 'items' key for UI compatibility.
+    Get news feed for cockpit news panel.
+
+    Priority: real external news first, Ghost predictions as labeled fallback.
     """
-    # Get hunter feed data
+    import asyncio
+
+    # ── 1. Try real RSS news (fast, free, no API key) ─────────────────────
+    _RSS_FEEDS = [
+        ("https://feeds.marketwatch.com/marketwatch/topstories/", "MarketWatch"),
+        ("https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", "NYTimes"),
+        ("https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US", "Yahoo Finance"),
+        ("https://www.cnbc.com/id/100003114/device/rss/rss.html", "CNBC"),
+        ("https://feeds.bbci.co.uk/news/business/rss.xml", "BBC"),
+    ]
+
+    def _fetch_rss_sync() -> list[dict]:
+        """Parse RSS feeds synchronously (runs in thread pool)."""
+        import feedparser
+        from email.utils import parsedate_to_datetime
+        items = []
+        for url, source in _RSS_FEEDS:
+            try:
+                feed = feedparser.parse(url)
+                for entry in (feed.entries or [])[:5]:
+                    # Parse timestamp
+                    ts = None
+                    for date_field in ("published_parsed", "updated_parsed"):
+                        tp = entry.get(date_field)
+                        if tp:
+                            import calendar
+                            ts = calendar.timegm(tp)
+                            break
+                    if ts is None:
+                        for date_str_field in ("published", "updated"):
+                            ds = entry.get(date_str_field)
+                            if ds:
+                                try:
+                                    ts = parsedate_to_datetime(ds).timestamp()
+                                except Exception:
+                                    ts = time.time()
+                                break
+                    if ts is None:
+                        ts = time.time()
+
+                    title = entry.get("title", "").strip()
+                    if not title:
+                        continue
+
+                    # Simple sentiment from keywords
+                    lower = title.lower()
+                    sentiment = "neutral"
+                    bullish_kw = ("surge", "rally", "gain", "jump", "soar", "rise", "record high", "bull", "boom", "up ")
+                    bearish_kw = ("crash", "fall", "drop", "plunge", "sink", "loss", "fear", "bear", "recession", "down ")
+                    if any(w in lower for w in bullish_kw):
+                        sentiment = "bullish"
+                    elif any(w in lower for w in bearish_kw):
+                        sentiment = "bearish"
+
+                    items.append({
+                        "headline": title,
+                        "title": title,
+                        "timestamp": int(ts),
+                        "source": source,
+                        "sentiment": sentiment,
+                        "url": entry.get("link", ""),
+                    })
+            except Exception:
+                continue
+        # Deduplicate by headline, sort newest first
+        seen = set()
+        deduped = []
+        for it in items:
+            key = it["headline"][:60].lower()
+            if key not in seen:
+                seen.add(key)
+                deduped.append(it)
+        deduped.sort(key=lambda x: x["timestamp"], reverse=True)
+        return deduped
+
+    try:
+        loop = asyncio.get_event_loop()
+        rss_items = await asyncio.wait_for(
+            loop.run_in_executor(None, _fetch_rss_sync),
+            timeout=8.0,
+        )
+    except Exception:
+        rss_items = []
+
+    if rss_items:
+        return {
+            "ok": True,
+            "items": rss_items[:limit],
+            "feed": rss_items[:limit],
+            "count": len(rss_items[:limit]),
+            "provider": "rss",
+        }
+
+    # ── 2. Fallback: Ghost predictions labeled as "Ghost AI" ──────────────
+    LOGGER.warning("[NEWS] RSS feeds all failed — falling back to Ghost predictions")
     hunter_data = await api_v3_hunter_feed(limit=limit)
-    
-    # Reformat for news panel (UI expects 'items' key)
     if hunter_data.get("ok"):
         feed_items = hunter_data.get("feed", [])
-        # Format items for news panel
         news_items = []
         for item in feed_items:
             news_items.append({
@@ -17409,23 +17500,18 @@ async def api_v3_news_feed(limit: int = 10):
                 "title": item.get("title"),
                 "sentiment": item.get("sentiment", "neutral"),
                 "timestamp": item.get("timestamp"),
-                "source": item.get("source", "Ghost AI"),
-                "symbol": item.get("symbol")
+                "source": "Ghost AI (no external news)",
+                "symbol": item.get("symbol"),
             })
-        
         return {
             "ok": True,
-            "items": news_items,  # UI expects 'items' key
-            "feed": news_items,   # Keep for compatibility
-            "count": len(news_items)
+            "items": news_items,
+            "feed": news_items,
+            "count": len(news_items),
+            "provider": "ghost_fallback",
         }
-    else:
-        return {
-            "ok": False,
-            "items": [],
-            "feed": [],
-            "error": hunter_data.get("error", "Failed to load news")
-        }
+
+    return {"ok": False, "items": [], "feed": [], "error": "All news sources failed"}
 
 
 @APP.get("/api/v3/predictions/history")

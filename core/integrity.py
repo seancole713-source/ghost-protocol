@@ -12,51 +12,52 @@ Self-healing background audit that:
   • Returns a 0-100 health score
 
 ═══════════════════════════════════════════════════════════════════
- 30 CHECKS — data layer + infrastructure + runtime
+ 35 CHECKS — regression + infrastructure + PROACTIVE discovery
 ═══════════════════════════════════════════════════════════════════
 
+ ── DATA LAYER (regression guards) ──
  CHECK 1:  Database Connectivity — PG + SQLite alive
  CHECK 2:  Prediction Staleness — engines still producing
- CHECK 3:  Overall Accuracy — skip-tag-filtered (Bug: GHOST_SCORE)
+ CHECK 3:  Overall Accuracy — skip-tag-filtered
  CHECK 4:  Learning Brain Status — bench + invert zones
  CHECK 5:  Price Feed Health — _LATEST_PREDICTIONS populated
  CHECK 6:  Duplicate Predictions — same symbol+timestamp
  CHECK 7:  Stale Evaluations — past check_at but unchecked
  CHECK 8:  Direction vs Target Math — UP must target above entry
-           (Bug: CHZ labeled DOWN but target above entry)
  CHECK 9:  Config / Env Vars — required keys set
  CHECK 10: Per-Symbol Accuracy — flag chronic losers
- CHECK 11: Crypto/Stock Misclassification — asset_classification.py
-           must agree with config/symbols.py
-           (Bug: CHZ + 32 crypto classified as stocks)
- CHECK 12: Skip-Tag Pollution — accuracy counts must exclude skips
-           (Bug: 439 skip-tagged preds inflating denominator)
- CHECK 13: Ghost Brain vs Learning Brain Conflict — both brains
-           shouldn't invert the same symbol (double-flip = back to bad)
- CHECK 14: Cache Data Integrity — _LATEST_PREDICTIONS entries must
-           have valid direction, price, confidence, market type
- CHECK 15: Edge Whitelist Validation — active symbols in edge set
- CHECK 16: Direction Consistency Guards — format_pick() and
-           _build_pick() guards must exist in ghost_notifications.py
-           (Bug: brain flipped direction but target stayed wrong)
- CHECK 17: Brain Inversion + Target Recalc — inverted predictions
-           must have targets on the correct side
- CHECK 18: V3 Filter Sanity — min_confidence, strategies loaded
- CHECK 19: Live Display Math — cached prediction numbers consistent
- CHECK 20: Notification Pipeline Health — imports + config
- CHECK 21: Background Task Heartbeats — every task pulsing
- CHECK 22: Telegram Delivery Verification — last send timestamp
- CHECK 23: DB Pool Utilization — connections available
- CHECK 24: Memory & Resources — RSS, threads, file descriptors
- CHECK 25: Price Provider Circuit Breakers — cascade health
- CHECK 26: API Rate Limiter State — throttle bucket memory
- CHECK 27: Daemon Thread Liveness — are threads actually alive
- CHECK 28: Database Schema Validation — required columns exist
- CHECK 29: Alpaca Broker Health — API reachability
- CHECK 30: Price Cache Health — size + freshness
+ CHECK 11: Crypto/Stock Misclassification
+ CHECK 12: Skip-Tag Pollution
+ CHECK 13: Ghost Brain vs Learning Brain Conflict
+ CHECK 14: Cache Data Integrity
+ CHECK 15: Edge Whitelist Validation
+ CHECK 16: Direction Consistency Guards
+ CHECK 17: Brain Inversion + Target Recalc
+ CHECK 18: V3 Filter Sanity
+ CHECK 19: Live Display Math
+ CHECK 20: Notification Pipeline Health
+
+ ── INFRASTRUCTURE (runtime monitoring) ──
+ CHECK 21: Background Task Heartbeats
+ CHECK 22: Telegram Delivery Verification
+ CHECK 23: DB Pool Utilization
+ CHECK 24: Memory & Resources
+ CHECK 25: Price Provider Circuit Breakers
+ CHECK 26: API Rate Limiter State
+ CHECK 27: Daemon Thread Liveness
+ CHECK 28: Database Schema Validation
+ CHECK 29: Alpaca Broker Health
+ CHECK 30: Price Cache Health
+
+ ── PROACTIVE (finds new bugs) ──
+ CHECK 31: News Feed Content Validation — real news vs self-referential
+ CHECK 32: Confidence Data Integrity — detects jitter/clamping
+ CHECK 33: Endpoint Placeholder Detection — stub/fake/phantom data
+ CHECK 34: Hunter Feed Data Fabrication — synthetic values in API output
+ CHECK 35: Accuracy Fallback Phantom — silently reporting 50% defaults
 
 Created: March 12, 2026
-Updated: March 12, 2026 — v3: expanded from 20 → 30 checks (limitless)
+Updated: March 12, 2026 — v4: 35 checks — proactive bug discovery
 """
 
 import logging
@@ -1422,6 +1423,195 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                 })
     except Exception as e:
         LOGGER.warning(f"[INTEGRITY] Price cache check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
+    #  PROACTIVE CHECKS 31-35 — Find bugs we DON'T know about yet
+    #  These validate that features return semantically correct data,
+    #  not just that they exist and return 200 OK.
+    # ══════════════════════════════════════════════════════════════
+
+    # ── CHECK 31: News Feed Content Validation ───────────────────
+    # Detects when the news feed is just showing Ghost predictions
+    # disguised as news instead of actual external news articles.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("News Feed Content")
+    try:
+        import wolf_app as _wa
+        import inspect
+
+        # Check the source of api_v3_news_feed to see if it ONLY
+        # calls the hunter feed (predictions) with no external source.
+        fn = getattr(_wa, 'api_v3_news_feed', None)
+        if fn:
+            src = inspect.getsource(fn)
+            has_rss = 'feedparser' in src or 'rss' in src.lower() or 'RSS' in src
+            has_external = 'reuters' in src.lower() or 'marketwatch' in src.lower() or 'yahoo' in src.lower() or 'cnbc' in src.lower()
+            only_hunter = 'api_v3_hunter_feed' in src and not has_rss and not has_external
+
+            summary["news_has_external_sources"] = has_external or has_rss
+            summary["news_only_predictions"] = only_hunter
+
+            if only_hunter:
+                issues.append({
+                    "type": "news_feed_self_referential", "severity": "error",
+                    "detail": "News feed only shows Ghost predictions relabeled as news — no external sources",
+                })
+        else:
+            summary["news_has_external_sources"] = None
+            summary["news_only_predictions"] = None
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] News feed content check error: {e}")
+
+    # ── CHECK 32: Confidence Data Integrity ──────────────────────
+    # Detects when confidence values are being clamped or jittered,
+    # hiding real model output from the user.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("Confidence Data Integrity")
+    try:
+        import wolf_app as _wa
+        import inspect
+
+        fn = getattr(_wa, 'api_v3_hunter_feed', None)
+        if fn:
+            src = inspect.getsource(fn)
+            has_clamp = 'max(45' in src or 'min(85' in src or 'clamp' in src.lower()
+            has_jitter = 'jitter' in src.lower() or 'conf_jitter' in src
+
+            summary["confidence_clamped"] = has_clamp
+            summary["confidence_jittered"] = has_jitter
+
+            problems = []
+            if has_clamp:
+                problems.append("confidence clamped to 45-85% (hides real values)")
+            if has_jitter:
+                problems.append("fake jitter added to confidence (±2%)")
+
+            if problems:
+                issues.append({
+                    "type": "confidence_data_fabricated", "severity": "warn",
+                    "detail": f"Hunter feed: {'; '.join(problems)}",
+                })
+        else:
+            summary["confidence_clamped"] = None
+            summary["confidence_jittered"] = None
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Confidence data check error: {e}")
+
+    # ── CHECK 33: Endpoint Placeholder Detection ─────────────────
+    # Scans for endpoints returning stub/placeholder/warming-up data.
+    # A real health check should flag "warming up" as a problem, not
+    # silently let users think the system is working.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("Endpoint Placeholder Detection")
+    try:
+        import wolf_app as _wa
+        import inspect
+
+        PLACEHOLDER_PATTERNS = [
+            "warming up", "initializing", "coming soon",
+            "not implemented", "stub", "placeholder", "todo",
+            "mock", "hardcoded", "# fake",
+        ]
+        # Scan key endpoint functions for placeholder strings
+        endpoints_to_check = [
+            "api_v3_news_feed", "api_v3_hunter_feed",
+            "api_v3_predictions_history", "api_v3_accuracy_summary",
+            "api_v3_health_metrics", "api_v3_goals_snapshot",
+        ]
+        placeholder_found = []
+        for ep_name in endpoints_to_check:
+            fn = getattr(_wa, ep_name, None)
+            if fn:
+                try:
+                    src = inspect.getsource(fn).lower()
+                    for pattern in PLACEHOLDER_PATTERNS:
+                        if pattern in src:
+                            placeholder_found.append(f"{ep_name}: '{pattern}'")
+                            break  # One per endpoint
+                except Exception:
+                    pass
+
+        summary["endpoints_with_placeholders"] = placeholder_found
+
+        if placeholder_found:
+            issues.append({
+                "type": "endpoint_placeholder_data", "severity": "warn",
+                "detail": f"{len(placeholder_found)} endpoints return placeholder data: {', '.join(placeholder_found[:5])}",
+            })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Placeholder detection error: {e}")
+
+    # ── CHECK 34: Hunter Feed Data Fabrication ────────────────────
+    # Validates live hunter feed output: are change_pct values
+    # synthetic (invented formulas), are outcomes always None, etc.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("Hunter Feed Data Fabrication")
+    try:
+        import wolf_app as _wa
+        import inspect
+
+        fn = getattr(_wa, 'api_v3_hunter_feed', None)
+        fabrication_issues = []
+        if fn:
+            src = inspect.getsource(fn)
+
+            # Check for synthetic expected_move formula
+            if 'confidence_pct - 40' in src and 'change_pct' in src:
+                fabrication_issues.append("expected_move invented from confidence formula")
+
+            # Check for change_jitter
+            if 'change_jitter' in src:
+                fabrication_issues.append("change_pct jittered with fake noise")
+
+            # Check for hardcoded stop/take values
+            if 'stop_loss' in src and '0.98' in src:
+                fabrication_issues.append("stop_loss hardcoded at 2%")
+            if 'take_profit' in src and '1.06' in src:
+                fabrication_issues.append("take_profit hardcoded at 6%")
+
+        summary["hunter_feed_fabrications"] = fabrication_issues
+
+        if fabrication_issues:
+            issues.append({
+                "type": "hunter_feed_fabricated", "severity": "warn",
+                "detail": f"Hunter feed fabricates data: {'; '.join(fabrication_issues)}",
+            })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Hunter feed fabrication check error: {e}")
+
+    # ── CHECK 35: Accuracy Fallback Phantom ───────────────────────
+    # Detects when accuracy/health endpoints silently fall back to
+    # 50% defaults instead of returning null/error. A user sees
+    # "50% accuracy" and thinks the system measured that — it didn't.
+    # ──────────────────────────────────────────────────────────────
+    checks_run.append("Accuracy Fallback Phantom")
+    try:
+        import wolf_app as _wa
+        import inspect
+
+        phantom_defaults = []
+        for fn_name in ["api_v3_goals_snapshot", "api_v3_health_metrics", "api_v3_accuracy_summary"]:
+            fn = getattr(_wa, fn_name, None)
+            if fn:
+                try:
+                    src = inspect.getsource(fn)
+                    # Look for 50 or 0.5 as default accuracy/health values
+                    if ('= 50' in src or '= 0.5' in src) and ('accuracy' in src.lower() or 'health' in src.lower()):
+                        phantom_defaults.append(fn_name)
+                except Exception:
+                    pass
+
+        summary["phantom_accuracy_defaults"] = phantom_defaults
+
+        if phantom_defaults:
+            issues.append({
+                "type": "accuracy_phantom_defaults", "severity": "warn",
+                "detail": f"{len(phantom_defaults)} endpoints use phantom 50% default: {', '.join(phantom_defaults)}",
+            })
+    except Exception as e:
+        LOGGER.warning(f"[INTEGRITY] Accuracy phantom check error: {e}")
+
+    # ══════════════════════════════════════════════════════════════
     penalty = sum(SEVERITY_WEIGHTS.get(i["severity"], 1) for i in issues)
     health_score = max(0, min(100, 100 - penalty))
 
