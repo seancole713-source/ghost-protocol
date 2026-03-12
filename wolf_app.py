@@ -15043,7 +15043,7 @@ async def api_v4_picks():
                 for r in rows:
                     symbol = r[0]
                     asset_type = (r[1] or "crypto").lower()
-                    direction = r[2] or "UP"
+                    db_direction = r[2] or "UP"
                     entry = float(r[3]) if r[3] else 0
                     target = float(r[4]) if r[4] else (float(r[6]) if r[6] else 0)
                     stop = float(r[5]) if r[5] else 0
@@ -15054,6 +15054,13 @@ async def api_v4_picks():
 
                     if not entry or entry <= 0:
                         continue
+
+                    # Derive direction from entry vs target prices (source of truth)
+                    # Fixes inversion bug where DB stores wrong direction for some picks
+                    if entry > 0 and target > 0:
+                        direction = "UP" if target > entry else "DOWN"
+                    else:
+                        direction = db_direction
 
                     is_buy = direction in ("UP", "BUY")
 
@@ -15193,12 +15200,11 @@ async def api_v4_history(days: int = 90, limit: int = 500):
                        expected_move, actual_move_pct, correct, predicted_at,
                        eval_ts, confidence, market
                 FROM ghost_predictions
-                WHERE checked = 1
-                  AND eval_version NOT LIKE 'skip%%'
-                  AND predicted_at >= %s
+                WHERE correct IS NOT NULL
+                  AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
                 ORDER BY eval_ts DESC NULLS LAST, predicted_at DESC
                 LIMIT %s
-            """, (cutoff_ts, limit))
+            """, (limit,))
             rows = cur.fetchall()
             cur.close()
 
@@ -16903,22 +16909,28 @@ async def api_v3_market_ticker():
     ]
     try:
         import yfinance as yf
-        tickers = yf.Tickers(" ".join([idx[0] for idx in indices]))
         for yf_sym, ticker_id, display_name in indices:
             try:
-                info = tickers.tickers[yf_sym].fast_info
-                price = getattr(info, 'last_price', 0) or 0
-                prev = getattr(info, 'previous_close', price) or price
-                change = price - prev
-                change_pct = (change / prev * 100) if prev else 0
+                ticker = yf.Ticker(yf_sym)
+                info = ticker.fast_info
+                price = getattr(info, 'last_price', None) or getattr(info, 'lastPrice', None) or 0
+                prev = getattr(info, 'previous_close', None) or getattr(info, 'previousClose', None) or price
+                if not price and hasattr(ticker, 'history'):
+                    hist = ticker.history(period='1d')
+                    if not hist.empty:
+                        price = float(hist['Close'].iloc[-1])
+                        prev = float(hist['Open'].iloc[0]) if 'Open' in hist.columns else price
+                change = (price - prev) if price and prev else 0
+                change_pct = (change / prev * 100) if prev and prev > 0 else 0
                 items.append({
                     "id": ticker_id,
                     "name": display_name,
-                    "price": round(price, 2),
+                    "price": round(price, 2) if price else 0,
                     "change": round(change, 2),
                     "change_pct": round(change_pct, 2),
                 })
-            except Exception:
+            except Exception as idx_err:
+                LOGGER.debug(f"Ticker {yf_sym} failed: {idx_err}")
                 items.append({"id": ticker_id, "name": display_name, "price": 0, "change": 0, "change_pct": 0})
     except Exception:
         for _, ticker_id, display_name in indices:

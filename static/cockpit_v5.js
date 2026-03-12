@@ -183,7 +183,12 @@ function renderPicksHeader() {
         const pct = _accuracy.accuracy_pct ?? 0;
         const correct = _accuracy.correct_predictions ?? 0;
         const total = _accuracy.total_predictions ?? 0;
-        subEl.textContent = `${_picks.length} picks today | ${pct}% accuracy | ${correct}/${total} correct`;
+        // Count only today's active picks vs total tracked
+        const activePicks = _picks.filter(p => {
+            const s = (p.status || 'pending').toLowerCase();
+            return s === 'active' || s === 'pending';
+        }).length;
+        subEl.textContent = `${activePicks} active picks · ${_picks.length} total tracked | ${pct}% accuracy | ${correct}/${total} correct`;
     }
 }
 
@@ -196,7 +201,16 @@ function renderPicks() {
         return;
     }
 
-    el.innerHTML = _picks.map(p => {
+    el.innerHTML = _picks
+        // Sort: active/pending first, then resolved
+        .slice().sort((a, b) => {
+            const sa = (a.status || 'pending').toLowerCase();
+            const sb = (b.status || 'pending').toLowerCase();
+            const aActive = sa === 'active' || sa === 'pending' ? 0 : 1;
+            const bActive = sb === 'active' || sb === 'pending' ? 0 : 1;
+            return aActive - bActive;
+        })
+        .map(p => {
         const isUp = (p.direction || '').toUpperCase() === 'UP';
         const sideClass = isUp ? 'bullish' : 'bearish';
         const emoji = isUp ? '🟢' : '🔴';
@@ -248,15 +262,19 @@ function renderRecentPicks() {
         return;
     }
 
-    // Combine today's picks + recent history
-    const rows = _picks.map(p => ({
+    // Combine active picks + recent history
+    const activePicks = _picks.filter(p => {
+        const s = (p.status || 'pending').toLowerCase();
+        return s === 'active' || s === 'pending';
+    });
+    const rows = activePicks.map(p => ({
         symbol: p.symbol,
         direction: (p.direction || '').toUpperCase(),
         entry: fmtPrice(p.entry_price),
         target: fmtPrice(p.target_price),
         stop: fmtPrice(p.stop_loss),
         status: (p.status || 'PENDING').toUpperCase(),
-        date: 'Today'
+        date: p.done_by || 'Active'
     })).concat(recent.map(t => ({
         symbol: t.symbol,
         direction: (t.direction || '').toUpperCase(),
@@ -322,6 +340,26 @@ function renderStocksTable() {
     if (!tbody) return;
 
     let items = _watchlist.filter(w => (w.type || '').toLowerCase() === 'stock');
+
+    // Fallback: if no stocks in watchlist, build from picks that are stock-type
+    if (!items.length && _picks.length) {
+        const stockPicks = _picks.filter(p => (p.type || p.market || '').toLowerCase() === 'stock' || (p.type || p.market || '').toLowerCase() === 'stocks');
+        const seen = new Set();
+        stockPicks.forEach(p => {
+            if (p.symbol && !seen.has(p.symbol)) {
+                seen.add(p.symbol);
+                items.push({
+                    symbol: p.symbol,
+                    price: p.entry_price || 0,
+                    change_pct: p.gain_pct || 0,
+                    change: 0,
+                    ghost_confidence: p.confidence || 0,
+                    ghost_direction: p.direction || 'HOLD',
+                    type: 'stock'
+                });
+            }
+        });
+    }
 
     // Apply filter
     if (_stockFilter === 'active') {
@@ -574,8 +612,8 @@ function renderHealthCheckMirror() {
 
     // Heartbeat summary
     if (_heartbeat) {
-        const alive = _heartbeat.summary?.alive || 0;
-        const total = _heartbeat.summary?.total || 0;
+        const alive = _heartbeat.alive ?? 0;
+        const total = _heartbeat.total ?? 0;
         checks.push({ icon: alive > 3 ? '✅' : '⚠️', name: 'Background Tasks', detail: `${alive}/${total} tasks alive` });
     }
 
@@ -608,8 +646,8 @@ function renderHealthSidebar() {
         stats.push({ label: 'Total Trades', value: _accuracy.total_predictions ?? 0 });
         stats.push({ label: 'Correct', value: _accuracy.correct_predictions ?? 0 });
     }
-    if (_heartbeat?.summary) {
-        stats.push({ label: 'Tasks Alive', value: _heartbeat.summary.alive || 0 });
+    if (_heartbeat) {
+        stats.push({ label: 'Tasks Alive', value: _heartbeat.alive || 0 });
     }
     if (_audit) {
         stats.push({ label: 'Health Score', value: (_audit.health_score ?? '--') + '/100' });
