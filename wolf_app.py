@@ -16367,6 +16367,57 @@ async def api_v3_live_recalculator_status(limit_snapshots: int = 50, limit_signa
         }
 
 
+# ══════════════════════════════════════════════════════════════
+# INTEGRITY AUDIT — Self-healing health check system
+# ══════════════════════════════════════════════════════════════
+
+@APP.get("/integrity/audit")
+async def integrity_audit():
+    """
+    Run the full system integrity audit with auto-fix.
+    Returns health score (0-100) + issues list.
+    Called by UI on page load + every 5 minutes.
+    """
+    try:
+        from core.integrity import run_audit
+        result = await asyncio.to_thread(run_audit, auto_fix=True)
+        return result
+    except Exception as e:
+        from datetime import datetime as _dt_int
+        LOGGER.error(f"[INTEGRITY] Audit endpoint failed: {e}")
+        return {
+            "health_score": 0,
+            "auto_fixes_applied": 0,
+            "issues_remaining": 1,
+            "issues": [{"type": "audit_crash", "severity": "error", "detail": str(e)[:200]}],
+            "checks_run": [],
+            "summary": {},
+            "last_audit": _dt_int.now().isoformat(),
+        }
+
+
+@APP.get("/integrity/audit/readonly")
+async def integrity_audit_readonly():
+    """
+    Run integrity audit WITHOUT auto-fix (read-only).
+    Safe to call from monitoring/external systems.
+    """
+    try:
+        from core.integrity import run_audit
+        result = await asyncio.to_thread(run_audit, auto_fix=False)
+        return result
+    except Exception as e:
+        from datetime import datetime as _dt_int
+        return {
+            "health_score": 0,
+            "issues_remaining": 1,
+            "issues": [{"type": "audit_crash", "severity": "error", "detail": str(e)[:200]}],
+            "checks_run": [],
+            "summary": {},
+            "last_audit": _dt_int.now().isoformat(),
+        }
+
+
 @APP.get("/api/v3/health/metrics")
 async def api_v3_health_metrics():
     """

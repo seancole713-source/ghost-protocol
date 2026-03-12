@@ -35,6 +35,20 @@
         </div>
     </header>
 
+    <!-- 🩺 INTEGRITY HEALTH BAR — hidden until first audit loads -->
+    <div id="integrity-bar" style="display:none">
+        <div class="integrity-inner">
+            <div class="integrity-score" id="integrity-score">
+                <span class="integrity-score-num" id="integrity-score-num">--</span>
+                <span class="integrity-score-label" id="integrity-score-label">System Health</span>
+            </div>
+            <div class="integrity-status" id="integrity-status"></div>
+            <div class="integrity-fixes" id="integrity-fixes" style="display:none"></div>
+            <div class="integrity-toggle" id="integrity-toggle" onclick="toggleIntegrityIssues()" style="display:none"></div>
+        </div>
+        <div class="integrity-issues" id="integrity-issues" style="display:none"></div>
+    </div>
+
     <!-- Main Container -->
     <main id="ghost-main">
         

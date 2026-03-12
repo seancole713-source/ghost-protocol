@@ -281,6 +281,7 @@ function startIntervals() {
         ['accuracy',    () => loadAccuracyChart(),                        60000,  40000],
         ['cascade',     () => updateCascadeView(),                        60000,  45000],
         ['paperTrade',  () => { updatePaperTrades(); updateJournal(); },  60000,  50000],
+        ['integrity',   () => runIntegrityAudit(),                       300000, 55000],
     ];
     
     console.log('[Polling] Stagger schedule starting:');
@@ -430,6 +431,7 @@ async function loadAllPanels() {
     
     // Slow panels - load in background (may take 10-30s on first load)
     setTimeout(() => {
+        runIntegrityAudit().catch(e => console.error('Integrity audit error:', e));
         loadCockpitStatus().catch(e => console.error('Status error:', e));
         loadTopMovers().catch(e => console.error('Top movers error:', e));
         loadNews().catch(e => console.error('News error:', e));
@@ -2404,6 +2406,98 @@ function clearJournalForm() {
     document.getElementById('entry-stop').value = '';
     document.getElementById('entry-target').value = '';
     document.getElementById('entry-notes').value = '';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 🩺 INTEGRITY AUDIT — Self-healing health check
+// ═══════════════════════════════════════════════════════════════════════
+
+async function runIntegrityAudit() {
+    try {
+        const r = await fetch('/integrity/audit');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+
+        const bar = document.getElementById('integrity-bar');
+        const scoreNum = document.getElementById('integrity-score-num');
+        const scoreLabel = document.getElementById('integrity-score-label');
+        const statusEl = document.getElementById('integrity-status');
+        const fixesEl = document.getElementById('integrity-fixes');
+        const toggleEl = document.getElementById('integrity-toggle');
+        const issuesEl = document.getElementById('integrity-issues');
+        const mainEl = document.getElementById('ghost-main');
+
+        if (!bar) return;
+
+        // Color-coded score
+        let color, label;
+        if (d.health_score >= 90) {
+            color = '#30d158'; label = 'Healthy';
+        } else if (d.health_score >= 70) {
+            color = '#ff9f0a'; label = 'Needs Attention';
+        } else {
+            color = '#ff453a'; label = 'Issues Found';
+        }
+
+        scoreNum.textContent = Math.round(d.health_score);
+        scoreNum.style.color = color;
+        scoreLabel.textContent = label;
+        scoreLabel.style.color = color;
+
+        // Status line: checks run + summary
+        const checksCount = d.checks_run ? d.checks_run.length : 0;
+        const acc = d.summary?.accuracy_pct;
+        let statusParts = [`${checksCount} checks passed`];
+        if (acc != null) statusParts.push(`${acc}% accuracy`);
+        if (d.summary?.brain_benched?.length > 0)
+            statusParts.push(`🪑 ${d.summary.brain_benched.join(', ')} benched`);
+        if (d.summary?.brain_inverted?.length > 0)
+            statusParts.push(`🔄 ${d.summary.brain_inverted.join(', ')} inverted`);
+        statusEl.textContent = statusParts.join(' · ');
+        statusEl.style.color = 'var(--text-secondary)';
+
+        // Auto-fix count
+        if (d.auto_fixes_applied > 0) {
+            fixesEl.textContent = `✓ ${d.auto_fixes_applied} auto-fixed`;
+            fixesEl.style.display = 'inline';
+        } else {
+            fixesEl.style.display = 'none';
+        }
+
+        // Issues toggle
+        if (d.issues_remaining > 0) {
+            toggleEl.textContent = `⚠ ${d.issues_remaining} issue${d.issues_remaining > 1 ? 's' : ''}`;
+            toggleEl.style.display = 'inline';
+
+            // Build issue list
+            issuesEl.innerHTML = d.issues.map(i => {
+                const sevClass = i.severity || 'info';
+                return `<div class="integrity-issue">
+                    <span class="integrity-issue-severity ${sevClass}">${sevClass}</span>
+                    <span class="integrity-issue-detail">${i.detail || i.type}</span>
+                </div>`;
+            }).join('');
+        } else {
+            toggleEl.style.display = 'none';
+            issuesEl.style.display = 'none';
+        }
+
+        // Show the bar
+        bar.style.display = 'block';
+        if (mainEl) mainEl.classList.add('has-integrity-bar');
+
+        console.log(`[INTEGRITY] Score: ${d.health_score}, Issues: ${d.issues_remaining}, Fixes: ${d.auto_fixes_applied}`);
+    } catch (e) {
+        console.log('[INTEGRITY] audit skipped:', e);
+        // Never crashes the page
+    }
+}
+
+function toggleIntegrityIssues() {
+    const el = document.getElementById('integrity-issues');
+    if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
 }
 
 // Trade tracking initial load — interval is managed by startIntervals()

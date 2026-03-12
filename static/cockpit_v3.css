@@ -1717,6 +1717,134 @@ body {
     opacity: 0.7;
 }
 
+/* ═══════════════════════════════════════════════════ */
+/* 🩺 INTEGRITY HEALTH BAR                            */
+/* ═══════════════════════════════════════════════════ */
+
+#integrity-bar {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    background: var(--bg-black);
+    border-bottom: 1px solid var(--border-subtle);
+    z-index: 999;
+    font-size: 13px;
+    transition: all 0.3s ease;
+}
+
+#integrity-bar .integrity-inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 20px;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.integrity-score {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.integrity-score-num {
+    font-size: 20px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    min-width: 36px;
+    text-align: right;
+}
+
+.integrity-score-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.integrity-status {
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.integrity-fixes {
+    font-size: 11px;
+    color: var(--accent-green);
+    flex-shrink: 0;
+}
+
+.integrity-toggle {
+    font-size: 11px;
+    color: var(--accent-yellow);
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.integrity-toggle:hover {
+    background: rgba(255, 204, 0, 0.1);
+}
+
+.integrity-issues {
+    background: rgba(26, 26, 26, 0.95);
+    border-top: 1px solid var(--border-subtle);
+    padding: 8px 20px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.integrity-issue {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(42, 42, 42, 0.5);
+}
+
+.integrity-issue:last-child {
+    border-bottom: none;
+}
+
+.integrity-issue-severity {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+}
+
+.integrity-issue-severity.error {
+    background: rgba(255, 59, 48, 0.2);
+    color: var(--accent-red);
+}
+
+.integrity-issue-severity.warn {
+    background: rgba(255, 149, 0, 0.2);
+    color: var(--accent-orange);
+}
+
+.integrity-issue-severity.info {
+    background: rgba(255, 204, 0, 0.1);
+    color: var(--text-secondary);
+}
+
+.integrity-issue-detail {
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* Adjust main content offset when integrity bar is visible */
+#ghost-main.has-integrity-bar {
+    margin-top: 104px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .paper-stats, .journal-stats {
@@ -1729,5 +1857,18 @@ body {
     
     .trade-item-details {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    #integrity-bar .integrity-inner {
+        padding: 6px 12px;
+        gap: 10px;
+    }
+
+    .integrity-score-num {
+        font-size: 16px;
+    }
+
+    .integrity-score-label {
+        display: none;
     }
 }
