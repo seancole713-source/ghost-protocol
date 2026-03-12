@@ -761,14 +761,11 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
     checks_run.append("Direction Consistency Guards")
     try:
         import inspect
-        from core.ghost_notifications import GhostNotificationSystem
+        import core.ghost_notifications as gn_mod
 
-        gn_source = inspect.getsource(GhostNotificationSystem)
+        gn_source = inspect.getsource(gn_mod)
 
-        has_format_pick_guard = (
-            "DIRECTION CONSISTENCY GUARD" in gn_source
-            or "direction" in gn_source.lower() and "consistency" in gn_source.lower()
-        )
+        has_format_pick_guard = "DIRECTION CONSISTENCY GUARD" in gn_source
         has_brain_inverted_field = "brain_inverted" in gn_source
 
         summary["format_pick_guard"] = has_format_pick_guard
