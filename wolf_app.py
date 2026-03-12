@@ -856,7 +856,7 @@ async def auth_fast_fail_middleware(request: Request, call_next):
         "/api/stage4/", "/api/stage5/",
         "/api/runtime/", "/api/watcher/", "/api/crypto/",
         "/api/scan", "/api/opportunit", "/api/goals/",
-        "/api/cockpit/", "/api/v3/", "/api/v2/",
+        "/api/cockpit/", "/api/v3/", "/api/v4/", "/api/v2/",
         "/api/xrp/", "/api/presale/", "/api/config",
         "/api/corporate_actions", "/api/portfolio/",
         "/api/forecast/", "/api/movers/", "/api/gates/",
@@ -1621,10 +1621,10 @@ async def _ui_entrypoint():
 # are not mounted or when running in minimal deployment environments.
 @APP.get("/cockpit", include_in_schema=False)
 async def _cockpit_page(request: Request):
-    """Serve Ghost v4 cockpit — tab-based redesign."""
+    """Serve Ghost v5 cockpit — Robinhood-style redesign."""
     try:
         response = _TEMPLATES.TemplateResponse(
-            "cockpit_v4.html",
+            "cockpit_v5.html",
             {
                 "request": request,
                 "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", ""),
@@ -16864,6 +16864,67 @@ async def api_v3_health_metrics():
             "error": str(e),
             "note": "All metrics unavailable due to error — do NOT treat as 50%"
         }
+
+
+# ═══════════════════════════════════════════════════════════
+# v5 COCKPIT ENDPOINTS — Market Ticker + AI Brain + Financials
+# ═══════════════════════════════════════════════════════════
+
+
+@APP.get("/api/v3/market/ticker")
+async def api_v3_market_ticker():
+    """Market ticker bar data — major indices and crypto prices for the top bar."""
+    import time as _t
+    items = []
+
+    # BTC and ETH from existing price infrastructure
+    for crypto_sym, ticker_id in [("BTC", "btc"), ("ETH", "eth")]:
+        try:
+            from core.crypto.crypto_providers import get_crypto_price_turbo
+            price_data = await get_crypto_price_turbo(crypto_sym)
+            if price_data and price_data.get("price"):
+                p = price_data["price"]
+                items.append({
+                    "id": ticker_id,
+                    "name": crypto_sym,
+                    "price": p,
+                    "change": price_data.get("change_24h", 0) or 0,
+                    "change_pct": price_data.get("change_pct_24h", 0) or 0,
+                })
+        except Exception:
+            items.append({"id": ticker_id, "name": crypto_sym, "price": 0, "change": 0, "change_pct": 0})
+
+    # Market indices via yfinance (with fallback)
+    indices = [
+        ("^GSPC", "spy", "S&P 500"),
+        ("^DJI", "dow", "DOW"),
+        ("^IXIC", "nasdaq", "NASDAQ"),
+        ("^VIX", "vix", "VIX"),
+    ]
+    try:
+        import yfinance as yf
+        tickers = yf.Tickers(" ".join([idx[0] for idx in indices]))
+        for yf_sym, ticker_id, display_name in indices:
+            try:
+                info = tickers.tickers[yf_sym].fast_info
+                price = getattr(info, 'last_price', 0) or 0
+                prev = getattr(info, 'previous_close', price) or price
+                change = price - prev
+                change_pct = (change / prev * 100) if prev else 0
+                items.append({
+                    "id": ticker_id,
+                    "name": display_name,
+                    "price": round(price, 2),
+                    "change": round(change, 2),
+                    "change_pct": round(change_pct, 2),
+                })
+            except Exception:
+                items.append({"id": ticker_id, "name": display_name, "price": 0, "change": 0, "change_pct": 0})
+    except Exception:
+        for _, ticker_id, display_name in indices:
+            items.append({"id": ticker_id, "name": display_name, "price": 0, "change": 0, "change_pct": 0})
+
+    return {"ok": True, "items": items, "ts": _t.time()}
 
 
 @APP.get("/api/v3/intelligence/status")
