@@ -462,6 +462,44 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
 
         # Live mismatches are critical — users SEE them right now
         if live_mismatches > 0:
+            # AUTO-FIX: Correct LIVE cache direction based on target vs entry math
+            # Root cause: learning brain inverts direction without recalculating target
+            if auto_fix:
+                _live_fixes = 0
+                for sym, pred in latest_preds.items():
+                    if not isinstance(pred, dict):
+                        continue
+                    direction = pred.get("direction")
+                    target = pred.get("target_price")
+                    entry = (pred.get("price")
+                             or pred.get("price_at_prediction")
+                             or pred.get("current_price"))
+                    if not all([direction, target, entry]):
+                        continue
+                    try:
+                        target_f = float(target)
+                        entry_f = float(entry)
+                        if entry_f <= 0:
+                            continue
+                    except (ValueError, TypeError):
+                        continue
+
+                    correct_direction = None
+                    if direction == "UP" and target_f < entry_f * 0.99:
+                        correct_direction = "DOWN"
+                    elif direction == "DOWN" and target_f > entry_f * 1.01:
+                        correct_direction = "UP"
+
+                    if correct_direction:
+                        pred["direction"] = correct_direction
+                        pred["action"] = "BUY" if correct_direction == "UP" else "SELL"
+                        pred["integrity_corrected"] = True
+                        _live_fixes += 1
+                        LOGGER.info(f"[INTEGRITY] AUTO-FIX: {sym} direction {direction} → {correct_direction} (target={target_f:.4f} vs entry={entry_f:.4f})")
+
+                if _live_fixes:
+                    fixes_applied += _live_fixes
+
             issues.append({
                 "type": "live_direction_mismatch", "severity": "error",
                 "detail": f"LIVE display math wrong — {live_mismatches} symbols: {'; '.join(live_mismatch_examples[:3])}",
@@ -1075,11 +1113,25 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                     _fix_pending = _fix_stats.get('pending_trades', 0)
                     _fix_resolved = _fix_stats.get('resolved_trades', 0)
                     if _fix_pending > _fix_resolved:
-                        with tracker._get_connection() as conn:
-                            resolved_list = tracker.check_all_pending(conn)
-                        if resolved_list:
-                            fixes_applied += len(resolved_list)
-                            LOGGER.info(f"[INTEGRITY] AUTO-FIX: Resolved {len(resolved_list)} overdue paper trades (reconciler not running)")
+                        # Build price_data from _LATEST_PREDICTIONS cache
+                        import wolf_app as _wa21
+                        _preds21 = getattr(_wa21, '_LATEST_PREDICTIONS', {})
+                        _prices21 = {}
+                        for _s21, _p21 in _preds21.items():
+                            if isinstance(_p21, dict):
+                                _px = _p21.get('price') or _p21.get('price_at_prediction') or _p21.get('current_price')
+                                if _px:
+                                    try:
+                                        _prices21[_s21] = float(_px)
+                                    except (ValueError, TypeError):
+                                        pass
+                        if _prices21:
+                            resolved_list = tracker.check_all_pending(_prices21)
+                            if resolved_list:
+                                fixes_applied += len(resolved_list)
+                                LOGGER.info(f"[INTEGRITY] AUTO-FIX: Resolved {len(resolved_list)} overdue paper trades (reconciler not running)")
+                        else:
+                            LOGGER.warning("[INTEGRITY] AUTO-FIX: No price data for paper trade resolution")
                 except Exception as fix_err:
                     LOGGER.warning(f"[INTEGRITY] Paper trade auto-resolve failed: {fix_err}")
 
@@ -1666,15 +1718,24 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
     try:
         import wolf_app as _wa
         import inspect
+        import re as _re35
 
         phantom_defaults = []
+        # Patterns that indicate phantom accuracy defaults (not data_health, ai_activity, etc.)
+        _phantom_patterns = [
+            _re35.compile(r'\baccuracy\s*=\s*(?:50|0\.5)\b'),       # accuracy = 50 or accuracy = 0.5
+            _re35.compile(r'\baccuracy_pct\s*=\s*(?:50|0\.5)\b'),   # accuracy_pct = 50
+            _re35.compile(r'\bghost_score\s*=\s*(?:50|0\.5)\b'),    # ghost_score = 50
+            _re35.compile(r'\bwin_rate\s*=\s*(?:50|0\.5)\b'),       # win_rate = 50
+        ]
         for fn_name in ["api_v3_goals_snapshot", "api_v3_health_metrics", "api_v3_accuracy_summary"]:
             fn = getattr(_wa, fn_name, None)
             if fn:
                 try:
                     src = inspect.getsource(fn)
-                    # Look for 50 or 0.5 as default accuracy/health values
-                    if ('= 50' in src or '= 0.5' in src) and ('accuracy' in src.lower() or 'health' in src.lower()):
+                    # Only flag if ACCURACY-specific variables default to 50
+                    # Don't flag data_health=50 or ai_activity=50 — those are intentional neutral values
+                    if any(p.search(src) for p in _phantom_patterns):
                         phantom_defaults.append(fn_name)
                 except Exception:
                     pass
@@ -1726,20 +1787,33 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                 "detail": f"Only {resolved}/{total} paper trades resolved ({resolved/total*100:.0f}%) — reconciler may be failing",
             })
         elif total >= 50 and pending > resolved * 2:
-            # AUTO-FIX: Process overdue trades to reduce backlog
-            if auto_fix:
-                try:
-                    with tracker._get_connection() as conn:
-                        resolved_list = tracker.check_all_pending(conn)
-                    if resolved_list:
-                        fixes_applied += len(resolved_list)
-                        LOGGER.info(f"[INTEGRITY] AUTO-FIX: Resolved {len(resolved_list)} trades from backlog")
-                except Exception as fix_err:
-                    LOGGER.warning(f"[INTEGRITY] Paper trade backlog fix failed: {fix_err}")
             issues.append({
                 "type": "paper_trades_backlog", "severity": "info",
                 "detail": f"{pending} pending vs {resolved} resolved — trade backlog growing, {pending/total*100:.0f}% still waiting",
             })
+
+        # AUTO-FIX: Process overdue paper trades regardless of severity
+        # The worst cases (0 resolved, <10% resolution) need this MORE, not less
+        if auto_fix and pending > 0:
+            try:
+                import wolf_app as _wa36
+                _preds36 = getattr(_wa36, '_LATEST_PREDICTIONS', {})
+                _prices36 = {}
+                for _s36, _p36 in _preds36.items():
+                    if isinstance(_p36, dict):
+                        _px = _p36.get('price') or _p36.get('price_at_prediction') or _p36.get('current_price')
+                        if _px:
+                            try:
+                                _prices36[_s36] = float(_px)
+                            except (ValueError, TypeError):
+                                pass
+                if _prices36:
+                    resolved_list = tracker.check_all_pending(_prices36)
+                    if resolved_list:
+                        fixes_applied += len(resolved_list)
+                        LOGGER.info(f"[INTEGRITY] AUTO-FIX: Resolved {len(resolved_list)} trades from backlog ({pending} were pending)")
+            except Exception as fix_err:
+                LOGGER.warning(f"[INTEGRITY] Paper trade backlog fix failed: {fix_err}")
     except Exception as e:
         LOGGER.warning(f"[INTEGRITY] Paper trade resolution check error: {e}")
 

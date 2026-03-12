@@ -407,6 +407,11 @@ def _prediction_loop():
     
     while not _LOOP_STOP.is_set():
         try:
+            try:
+                from core.heartbeat import pulse as _hb_pulse
+                _hb_pulse("prediction-cycle")
+            except Exception:
+                pass
             now = time.time()
             time_since_last = now - _LAST_RUN_TIME
             

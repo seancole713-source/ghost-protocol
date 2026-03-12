@@ -5043,6 +5043,7 @@ async def _post_startup_init():
                 while True:
                     try:
                         cycle_count += 1
+                        _heartbeat_pulse("news-analysis")
                         LOGGER.info(f"📰 [CYCLE {cycle_count}] Running automatic news analysis...")
                         brain = get_news_brain()
                         result = await brain.analyze_news()
@@ -5115,6 +5116,7 @@ async def _post_startup_init():
                 await asyncio.sleep(300)  # Wait 5 min after startup
                 while True:
                     try:
+                        _heartbeat_pulse("self-improvement")
                         from core.self_improvement_engine import run_improvement_cycle
                         result = run_improvement_cycle()
                         LOGGER.info(f"🔧 Self-improvement cycle complete: {result.get('improvements_made', 0)} improvements")
@@ -5231,6 +5233,7 @@ async def _post_startup_init():
                 while True:
                     try:
                         loop_count += 1
+                        _heartbeat_pulse("notification-loop")
                         now_central = datetime.now(central_tz)
                         current_hour = now_central.hour
                         current_date = now_central.strftime("%Y-%m-%d")
@@ -5491,6 +5494,7 @@ async def _post_startup_init():
             
             while True:
                 try:
+                    _heartbeat_pulse("doctor-cron")
                     now_ct = datetime.now(_CT)
                     today_target = now_ct.replace(hour=_DOCTOR_HOUR, minute=0, second=0, microsecond=0)
                     today_date = now_ct.date()
@@ -5737,6 +5741,7 @@ async def _post_startup_init():
             """Background loop for VIP microcap scanning with Cash-App alerts"""
             while True:
                 try:
+                    _heartbeat_pulse("vip-scanner")
                     # FIXED: Run blocking scan_vip_coins in thread pool to avoid blocking event loop
                     loop = asyncio.get_event_loop()
                     result = await loop.run_in_executor(None, scan_vip_coins)
@@ -5761,6 +5766,7 @@ async def _post_startup_init():
             """Check for pre-market prediction trigger (7AM CT weekdays)"""
             while True:
                 try:
+                    _heartbeat_pulse("premarket-scanner")
                     should_run, reason = should_run_premarket()
                     if should_run:
                         LOGGER.info(f"🌅 Running pre-market predictions... ({reason})")
@@ -5784,6 +5790,7 @@ async def _post_startup_init():
             """Full market scan at 5AM CT + hourly mover detection"""
             while True:
                 try:
+                    _heartbeat_pulse("full-scanner")
                     # Check for daily full scan (5AM CT)
                     should_run, reason = should_run_full_scan()
                     if should_run:
@@ -5818,6 +5825,7 @@ async def _post_startup_init():
             while True:
                 try:
                     await asyncio.sleep(3600)  # Run every hour
+                    _heartbeat_pulse("self-improvement")
                     LOGGER.info("🧠 [SELF-IMPROVEMENT] Starting autonomous improvement cycle...")
                     loop = asyncio.get_event_loop()
                     changes = await loop.run_in_executor(None, run_improvement_cycle)
@@ -5971,6 +5979,7 @@ async def _post_startup_init():
                 # Main scheduler loop
                 while True:
                     try:
+                        _heartbeat_pulse("money-game")
                         now = datetime.now(central_tz) if central_tz else datetime.utcnow()
                         current_hour = now.hour
                         current_minute = now.minute

@@ -558,6 +558,11 @@ class GuardianOracle:
         
         while self.monitoring:
             try:
+                try:
+                    from core.heartbeat import pulse as _hb_pulse
+                    _hb_pulse("guardian-oracle")
+                except Exception:
+                    pass
                 for symbol, position in self.active_positions.items():
                     # Get fresh reading
                     new_reading = await self._analyze_position(symbol)

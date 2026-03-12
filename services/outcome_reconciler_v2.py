@@ -807,6 +807,11 @@ def start_reconciler_background_task():
         
         while True:
             try:
+                try:
+                    from core.heartbeat import pulse as _hb_pulse
+                    _hb_pulse("outcome-reconciler")
+                except Exception:
+                    pass
                 reconcile_outcomes_v2()
             except Exception as e:
                 LOGGER.error(f"❌ Reconciler loop error: {e}", exc_info=True)

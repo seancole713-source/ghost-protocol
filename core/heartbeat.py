@@ -51,8 +51,8 @@ EXPECTED_INTERVALS: Dict[str, float] = {
     "money-game":            3600 + 300,   # Periodic
     "guardian-oracle":       600,          # Monitor loop
     "prediction-cycle":      600,          # Multi-prediction main loop
-    "retraining":            7200,         # Long intervals
-    "reevaluation":          7200,         # Long intervals
+    # NOTE: retraining and reevaluation are on-demand API calls, NOT background loops
+    # They were removed from heartbeat tracking to avoid false "never pulsed" alarms
 }
 
 # Grace period multiplier: task is "stale" at 2x interval, "dead" at 4x
