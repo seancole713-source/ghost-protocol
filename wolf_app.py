@@ -15321,6 +15321,13 @@ async def api_v3_heartbeat_status():
         all_hb = get_all_heartbeats()
         missing = get_missing_tasks()
 
+        # Tasks that run in web mode (before WORKER_MODE gate)
+        WEB_MODE_TASKS = {
+            "online-calibrator", "news-analysis", "self-improvement",
+            "notification-loop", "doctor-cron", "prediction-cycle",
+        }
+        _is_worker = os.getenv("WORKER_MODE") == "1"
+
         tasks = {}
         # Include pulsing tasks
         for name, info in all_hb.items():
@@ -15329,23 +15336,31 @@ async def api_v3_heartbeat_status():
                 "status": info["status"],
                 "last_pulse": info["last_pulse"],
                 "age_s": info["age_s"],
+                "web_mode": name in WEB_MODE_TASKS,
             }
         # Include missing tasks (never pulsed)
         for name in missing:
+            is_web_task = name in WEB_MODE_TASKS
+            # In web mode, skip worker-only tasks entirely — they CAN'T run
+            if not _is_worker and not is_web_task:
+                continue
             tasks[name] = {
                 "alive": False,
                 "status": "never",
                 "last_pulse": None,
                 "age_s": None,
+                "web_mode": is_web_task,
             }
 
         alive_count = sum(1 for t in tasks.values() if t["alive"])
+        total_applicable = len(tasks)
         return {
             "ok": True,
             "tasks": tasks,
             "alive": alive_count,
-            "total": len(tasks),
-            "health_pct": round(alive_count / len(tasks) * 100, 1) if tasks else 0,
+            "total": total_applicable,
+            "health_pct": round(alive_count / total_applicable * 100, 1) if total_applicable else 0,
+            "worker_mode": _is_worker,
         }
     except Exception as e:
         LOGGER.error(f"Heartbeat status failed: {e}", exc_info=True)
@@ -16993,6 +17008,24 @@ async def api_v3_intelligence_status():
         cache, cache_ts = get_news_brain_cache()
         status["news_brain_events"] = len(cache.get("major_events", [])) if cache else 0
         status["news_brain_at_risk"] = len(cache.get("predictions_at_risk", [])) if cache else 0
+
+        # Build systems array for frontend subsystem cards
+        subsystem_names = [
+            "ensemble", "calibrator", "trust_ladder", "quality_gate",
+            "killswitch", "vwap", "feed_fusion", "regime_detector",
+            "self_improvement",
+        ]
+        systems = []
+        for name in subsystem_names:
+            loaded = status.get(f"{name}_loaded", False)
+            systems.append({"name": name, "active": loaded})
+        # Add news brain as a subsystem
+        systems.append({"name": "news_brain", "active": status.get("news_brain_has_data", False)})
+
+        status["systems"] = systems
+        status["systems_loaded"] = sum(1 for s in systems if s["active"])
+        status["systems_total"] = len(systems)
+
         return {"ok": True, **status}
     except Exception as e:
         return {"ok": False, "error": str(e)}

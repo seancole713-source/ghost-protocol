@@ -568,21 +568,17 @@ function renderHealth() {
         if (!entries.length) {
             hbEl.innerHTML = '<div class="empty-state">No tasks registered</div>';
         } else {
-            // Critical tasks that should always be running
-            const criticalTasks = ['outcome-reconciler', 'full-scanner', 'money-game'];
-            const deadCritical = entries.filter(([name, info]) => {
-                const st = info.status || (info.alive ? 'alive' : 'dead');
-                return criticalTasks.includes(name) && (st === 'dead' || st === 'never');
-            }).map(([name]) => name);
+            const isWorker = _heartbeat.worker_mode === true;
 
-            let warningHtml = '';
-            if (deadCritical.length) {
-                warningHtml = `<div style="background:rgba(255,59,48,0.15);border:1px solid var(--red);border-radius:8px;padding:10px 14px;margin-bottom:12px;color:var(--red);font-size:13px">
-                    ⚠️ <strong>Critical tasks offline:</strong> ${deadCritical.join(', ')} — predictions may not auto-resolve
+            // Mode indicator
+            let modeHtml = '';
+            if (!isWorker) {
+                modeHtml = `<div style="background:rgba(0,200,83,0.1);border:1px solid var(--green);border-radius:8px;padding:8px 14px;margin-bottom:12px;color:var(--text-muted);font-size:12px">
+                    🌐 <strong style="color:var(--green)">Web Mode</strong> — showing ${entries.length} applicable tasks (worker-only tasks hidden)
                 </div>`;
             }
 
-            hbEl.innerHTML = warningHtml + entries.map(([name, info]) => {
+            hbEl.innerHTML = modeHtml + entries.map(([name, info]) => {
                 const status = info.status || (info.alive ? 'alive' : 'dead');
                 const dotClass = status === 'alive' ? 'alive' : status === 'stale' ? 'stale' : status === 'never' ? 'never' : 'dead';
                 const ago = info.last_pulse ? fmtTimeAgo(info.last_pulse) : 'never';
