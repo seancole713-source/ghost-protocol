@@ -15336,13 +15336,13 @@ async def api_v4_history(days: int = 90, limit: int = 500):
             has_target_col = True
             try:
                 cur.execute("""
-                    SELECT symbol, direction, price_at_prediction, actual_price,
-                           expected_move, actual_move_pct, correct, predicted_at,
-                           eval_ts, confidence, market, target_price
+                    SELECT symbol, predicted_direction, current_price, outcome_price,
+                           predicted_pct, outcome_pct, correct, predicted_at,
+                           checked_at, confidence, target_price
                     FROM ghost_predictions
                     WHERE correct IS NOT NULL
                       AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
-                    ORDER BY eval_ts DESC NULLS LAST, predicted_at DESC
+                    ORDER BY checked_at DESC NULLS LAST, predicted_at DESC
                     LIMIT %s
                 """, (limit,))
             except Exception:
@@ -15353,13 +15353,13 @@ async def api_v4_history(days: int = 90, limit: int = 500):
                 has_target_col = False
                 cur = conn.cursor()  # get fresh cursor after rollback
                 cur.execute("""
-                    SELECT symbol, direction, price_at_prediction, actual_price,
-                           expected_move, actual_move_pct, correct, predicted_at,
-                           eval_ts, confidence, market
+                    SELECT symbol, predicted_direction, current_price, outcome_price,
+                           predicted_pct, outcome_pct, correct, predicted_at,
+                           checked_at, confidence
                     FROM ghost_predictions
                     WHERE correct IS NOT NULL
                       AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
-                    ORDER BY eval_ts DESC NULLS LAST, predicted_at DESC
+                    ORDER BY checked_at DESC NULLS LAST, predicted_at DESC
                     LIMIT %s
                 """, (limit,))
             rows = cur.fetchall()
@@ -15370,21 +15370,23 @@ async def api_v4_history(days: int = 90, limit: int = 500):
             symbol = r[0]
             direction = r[1] or "UP"
             entry_price = float(r[2]) if r[2] else 0
-            target_price_val = float(r[11]) if has_target_col and len(r) > 11 and r[11] else 0
+            target_price_val = float(r[10]) if has_target_col and len(r) > 10 and r[10] else 0
 
             # Re-derive direction from prices (fixes 216 historical mismatches)
             if entry_price > 0 and target_price_val > 0:
                 direction = "UP" if target_price_val > entry_price else "DOWN"
-            elif r[4] and float(r[4]) != 0:  # expected_move fallback
+            elif r[4] and float(r[4]) != 0:  # predicted_pct fallback
                 direction = "UP" if float(r[4]) > 0 else "DOWN"
             exit_price = float(r[3]) if r[3] else 0
             expected_move = float(r[4]) if r[4] else 0
             actual_move_pct = float(r[5]) if r[5] else 0
             correct = r[6]  # 1 or 0
             predicted_at = r[7]  # unix timestamp
-            eval_ts = r[8]      # unix timestamp
+            eval_ts = r[8]      # unix timestamp (checked_at)
             confidence = float(r[9]) if r[9] else 0
-            market = r[10] or "stock"
+            # Derive market from symbol (no market column in DB)
+            _crypto = ('BTC', 'ETH', 'SOL', 'DOGE', 'ADA', 'XRP', 'BNB', 'AVAX', 'MATIC', 'DOT')
+            market = "crypto" if any(k in symbol.upper() for k in _crypto) else "stock"
 
             # Calculate P&L based on actual move
             pnl = 0
