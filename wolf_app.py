@@ -2461,30 +2461,20 @@ def _build_market_status_with_indices(is_open: bool, next_open_ts: int) -> dict[
     """
     market_data = {"open": is_open, "next_open_ts": next_open_ts, "indices": []}
 
-    # Fetch major indices
-    indices_symbols = ["SPY", "QQQ", "^VIX"]
+    # Fetch major indices via multi-provider fallback (reuses _get_index_price)
+    indices_symbols = [("SPY", "SPY"), ("QQQ", "QQQ"), ("^VIX", "VIX")]
     try:
-        for sym in indices_symbols:
+        for sym, display_sym in indices_symbols:
             try:
-                import yfinance as yf
-
-                ticker = yf.Ticker(sym)
-                # Get current and previous close
-                info = ticker.info
-                current_price = info.get("regularMarketPrice") or info.get("previousClose")
-                prev_close = info.get("previousClose")
-
-                if current_price and prev_close and prev_close > 0:
-                    change_pct = ((current_price - prev_close) / prev_close) * 100.0
-                    market_data["indices"].append(
-                        {
-                            "symbol": sym.replace("^", ""),  # Clean symbol for display
-                            "price": round(current_price, 2),
-                            "change_pct": round(change_pct, 2),
-                        }
-                    )
+                price, prev = _get_index_price(sym)
+                if price and price > 0 and prev and prev > 0:
+                    change_pct = ((price - prev) / prev) * 100.0
+                    market_data["indices"].append({
+                        "symbol": display_sym,
+                        "price": round(price, 2),
+                        "change_pct": round(change_pct, 2),
+                    })
             except Exception as e:
-                # Skip individual index failures
                 LOGGER.debug(f"Failed to fetch index {sym}: {e}")
                 continue
     except Exception as e:
@@ -5651,49 +5641,52 @@ async def _post_startup_init():
             LOGGER.info("[WEB MODE] ✅ Price recorder started (evaluator needs PostgreSQL price data)")
         except Exception as _web_pr_err:
             LOGGER.error(f"[WEB MODE] price recorder failed to start: {_web_pr_err}", exc_info=False)
-        return  # EXIT - no other heavy background work in web mode
+        # NOTE: Do NOT return here — money-game and other critical tasks
+        # must run even in web mode. Heavy scanners are gated individually below.
 
-    # Start price recorder for touch-target evaluation (worker-only)
-    try:
-        from core.prediction_price_recorder import price_recording_loop
+    # Start price recorder for touch-target evaluation (worker-only — web mode starts its own)
+    if WORKER_MODE:
+        try:
+            from core.prediction_price_recorder import price_recording_loop
 
-        def _fetch_price_for_recorder(sym: str) -> float | None:
-            sym = (sym or "").upper().strip()
-            if not sym:
+            def _fetch_price_for_recorder(sym: str) -> float | None:
+                sym = (sym or "").upper().strip()
+                if not sym:
+                    return None
+                is_crypto_local = sym in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(sym) == "crypto"
+                if is_crypto_local:
+                    res = turbo_crypto_price(sym, max_budget_s=2.0)
+                else:
+                    res = turbo_stock_price(sym, max_budget_s=2.0)
+                if res and res.get("ok") and res.get("price"):
+                    return float(res["price"])
                 return None
-            is_crypto_local = sym in HUNTER_CRYPTO_SYMBOLS or _classify_symbol_category(sym) == "crypto"
-            if is_crypto_local:
-                res = turbo_crypto_price(sym, max_budget_s=2.0)
-            else:
-                res = turbo_stock_price(sym, max_budget_s=2.0)
-            if res and res.get("ok") and res.get("price"):
-                return float(res["price"])
-            return None
 
-        loop = asyncio.get_running_loop()
-        loop.create_task(price_recording_loop(_fetch_price_for_recorder))
-        LOGGER.info("[WORKER MODE] ✅ Price recorder started (touch-target evaluation)")
-    except Exception as e:
-        LOGGER.error(f"[WORKER MODE] price recorder failed to start: {e}", exc_info=False)
+            loop = asyncio.get_running_loop()
+            loop.create_task(price_recording_loop(_fetch_price_for_recorder))
+            LOGGER.info("[WORKER MODE] ✅ Price recorder started (touch-target evaluation)")
+        except Exception as e:
+            LOGGER.error(f"[WORKER MODE] price recorder failed to start: {e}", exc_info=False)
     
     # ═══════════════════════════════════════════════════════════════════════════════
-    # WORKER MODE ONLY - Everything below runs ONLY in dedicated worker process
+    # HEAVY TASKS — only run in WORKER mode (scanners, orchestrator, execution)
+    # Critical tasks (money-game, telegram reports) run in ALL modes further below.
     # ═══════════════════════════════════════════════════════════════════════════════
     
-    LOGGER.info("[WORKER MODE] Starting background services (orchestrator, auto-predict, execution engine)...")
-    
-    # CRITICAL: Wait 2 seconds for worker process to fully initialize
-    await asyncio.sleep(2)
-    
-    LOGGER.info("[WORKER] Starting background initialization (delayed 2s)...")
+    if not WORKER_MODE:
+        LOGGER.info("[WEB MODE] Heavy scanners/orchestrator SKIPPED (deploy worker for those)")
+    else:
+        LOGGER.info("[WORKER MODE] Starting heavy background services...")
+        await asyncio.sleep(2)
     
     # NOTE: Postgres pool initialization removed - will lazy-init on first request
     # Startup must complete in <100s for Railway healthcheck, Postgres can take 30s+
     
     # ═══════════════════════════════════════════════════════════════════════════════
     # TO THE MOON: Use Master Orchestrator for unified service management
+    # (WORKER_MODE only — too heavy for web process)
     # ═══════════════════════════════════════════════════════════════════════════════
-    orchestrator_enabled = os.getenv("ORCHESTRATOR_ENABLED", "0") == "1"
+    orchestrator_enabled = os.getenv("ORCHESTRATOR_ENABLED", "0") == "1" and WORKER_MODE
     
     if orchestrator_enabled:
         try:
@@ -5791,149 +5784,153 @@ async def _post_startup_init():
     # except Exception as e:
     #     LOGGER.error(f"order_sync_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
-    # Start VIP Microcap Scanner (WEPE, LILPEPE, DORKL, SLOTH, APC) - CRITICAL FIX #3
-    try:
-        from core.vip_scanner import scan_vip_coins, VIP_SCAN_INTERVAL_S
+    # Start VIP Microcap Scanner (WORKER_MODE only — heavy scanning)
+    if WORKER_MODE:
+        try:
+            from core.vip_scanner import scan_vip_coins, VIP_SCAN_INTERVAL_S
         
-        async def _vip_scanner_loop():
-            """Background loop for VIP microcap scanning with Cash-App alerts"""
-            while True:
-                try:
-                    _heartbeat_pulse("vip-scanner")
-                    # FIXED: Run blocking scan_vip_coins in thread pool to avoid blocking event loop
-                    loop = asyncio.get_event_loop()
-                    result = await loop.run_in_executor(None, scan_vip_coins)
-                    LOGGER.info(
-                        f"VIP scan: {result['available']}/{result['scanned']} available, "
-                        f"{len(result['opportunities'])} opportunities, {result['alerts_sent']} alerts"
-                    )
-                except Exception as e:
-                    LOGGER.error(f"VIP scanner error: {e}", exc_info=True)
-                await asyncio.sleep(VIP_SCAN_INTERVAL_S)
+            async def _vip_scanner_loop():
+                """Background loop for VIP microcap scanning with Cash-App alerts"""
+                while True:
+                    try:
+                        _heartbeat_pulse("vip-scanner")
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(None, scan_vip_coins)
+                        LOGGER.info(
+                            f"VIP scan: {result['available']}/{result['scanned']} available, "
+                            f"{len(result['opportunities'])} opportunities, {result['alerts_sent']} alerts"
+                        )
+                    except Exception as e:
+                        LOGGER.error(f"VIP scanner error: {e}", exc_info=True)
+                    await asyncio.sleep(VIP_SCAN_INTERVAL_S)
         
-        asyncio.create_task(_vip_scanner_loop())
-        LOGGER.info("✅ VIP Microcap Scanner: STARTED (60s interval, Cash-App alerts)")
-    except Exception as e:
-        LOGGER.error(f"vip_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+            asyncio.create_task(_vip_scanner_loop())
+            LOGGER.info("✅ VIP Microcap Scanner: STARTED (60s interval, Cash-App alerts)")
+        except Exception as e:
+            LOGGER.error(f"vip_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
-    # Start Pre-Market Predictor (7AM CT weekdays) - CRITICAL FIX #4
-    try:
-        from core.premarket_predictor import should_run_premarket, run_premarket_predictions
+    # Start Pre-Market Predictor (7AM CT weekdays) — WORKER_MODE only
+    if WORKER_MODE:
+        try:
+            from core.premarket_predictor import should_run_premarket, run_premarket_predictions
         
-        async def _premarket_loop():
-            """Check for pre-market prediction trigger (7AM CT weekdays)"""
-            while True:
-                try:
-                    _heartbeat_pulse("premarket-scanner")
-                    should_run, reason = should_run_premarket()
-                    if should_run:
-                        LOGGER.info(f"🌅 Running pre-market predictions... ({reason})")
-                        # FIXED: Await async function directly (not via run_in_executor)
-                        await run_premarket_predictions()
-                        LOGGER.info("✅ Pre-market predictions complete")
-                except Exception as e:
-                    LOGGER.error(f"Pre-market predictor error: {e}", exc_info=True)
-                await asyncio.sleep(60)  # Check every minute
+            async def _premarket_loop():
+                """Check for pre-market prediction trigger (7AM CT weekdays)"""
+                while True:
+                    try:
+                        _heartbeat_pulse("premarket-scanner")
+                        should_run, reason = should_run_premarket()
+                        if should_run:
+                            LOGGER.info(f"🌅 Running pre-market predictions... ({reason})")
+                            await run_premarket_predictions()
+                            LOGGER.info("✅ Pre-market predictions complete")
+                    except Exception as e:
+                        LOGGER.error(f"Pre-market predictor error: {e}", exc_info=True)
+                    await asyncio.sleep(60)
         
-        asyncio.create_task(_premarket_loop())
-        LOGGER.info("✅ Pre-Market Predictor: STARTED (7AM CT weekdays)")
-    except Exception as e:
-        LOGGER.error(f"premarket_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+            asyncio.create_task(_premarket_loop())
+            LOGGER.info("✅ Pre-Market Predictor: STARTED (7AM CT weekdays)")
+        except Exception as e:
+            LOGGER.error(f"premarket_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
-    # Start Full Market Scanner (5AM CT weekdays) - Scans ALL stocks/crypto
-    try:
-        from core.full_market_scanner import should_run_full_scan, run_full_market_scan, check_hourly_movers
+    # Start Full Market Scanner (5AM CT weekdays) — WORKER_MODE only
+    if WORKER_MODE:
+        try:
+            from core.full_market_scanner import should_run_full_scan, run_full_market_scan, check_hourly_movers
         
-        async def _full_scanner_loop():
-            """Full market scan at 5AM CT + hourly mover detection"""
-            while True:
-                try:
-                    _heartbeat_pulse("full-scanner")
-                    # Check for daily full scan (5AM CT)
-                    should_run, reason = should_run_full_scan()
-                    if should_run:
-                        LOGGER.info(f"🔮 Running FULL MARKET SCAN... ({reason})")
-                        await run_full_market_scan()
-                        LOGGER.info("✅ Full market scan complete")
+            async def _full_scanner_loop():
+                """Full market scan at 5AM CT + hourly mover detection"""
+                while True:
+                    try:
+                        _heartbeat_pulse("full-scanner")
+                        should_run, reason = should_run_full_scan()
+                        if should_run:
+                            LOGGER.info(f"🔮 Running FULL MARKET SCAN... ({reason})")
+                            await run_full_market_scan()
+                            LOGGER.info("✅ Full market scan complete")
                     
-                    # Check for hourly movers every hour
-                    import time
-                    current_minute = int(time.time() / 60) % 60
-                    if current_minute == 0:  # Top of the hour
-                        await check_hourly_movers()
+                        import time
+                        current_minute = int(time.time() / 60) % 60
+                        if current_minute == 0:
+                            await check_hourly_movers()
                         
-                except Exception as e:
-                    LOGGER.error(f"Full market scanner error: {e}", exc_info=True)
-                await asyncio.sleep(60)  # Check every minute
+                    except Exception as e:
+                        LOGGER.error(f"Full market scanner error: {e}", exc_info=True)
+                    await asyncio.sleep(60)
         
-        asyncio.create_task(_full_scanner_loop())
-        LOGGER.info("🔮 Full Market Scanner: STARTED (5AM CT daily + hourly movers)")
-    except Exception as e:
-        LOGGER.error(f"full_market_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+            asyncio.create_task(_full_scanner_loop())
+            LOGGER.info("🔮 Full Market Scanner: STARTED (5AM CT daily + hourly movers)")
+        except Exception as e:
+            LOGGER.error(f"full_market_scanner_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
     # NOTE: News Brain startup moved BEFORE WORKER_MODE check (runs in all modes)
     # NOTE: Notification system moved BEFORE WORKER_MODE check (Feb 11, 2026)
     
-    # Stage 4: Start Self-Improvement Engine (Phase 4 - Master Control)
-    try:
-        from core.self_improvement_engine import run_improvement_cycle
+    # Stage 4: Start Self-Improvement Engine (WORKER_MODE only)
+    if WORKER_MODE:
+        try:
+            from core.self_improvement_engine import run_improvement_cycle
         
-        async def _self_improvement_loop():
-            """Background task to autonomously improve Ghost every hour"""
-            _heartbeat_pulse("self-improvement")  # Pulse immediately at start
-            while True:
-                try:
-                    await asyncio.sleep(3600)  # Run every hour
-                    _heartbeat_pulse("self-improvement")
-                    LOGGER.info("🧠 [SELF-IMPROVEMENT] Starting autonomous improvement cycle...")
-                    loop = asyncio.get_event_loop()
-                    changes = await loop.run_in_executor(None, run_improvement_cycle)
-                    LOGGER.info(f"🧠 [SELF-IMPROVEMENT] Cycle complete: {changes}")
-                except Exception as improve_err:
-                    LOGGER.error(f"🧠 [SELF-IMPROVEMENT] Cycle error: {improve_err}", exc_info=False)
-        
-        asyncio.create_task(_self_improvement_loop())
-        LOGGER.info("🧠 [POST-STARTUP] ✅ Phase 4 Self-Improvement Engine active (hourly cycles)")
-    except Exception as e:
-        LOGGER.error(f"self_improvement_engine_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
-    
-    # Stage 5: Start Autonomous Execution Engine (Phase 5 - Master Control)
-    LOGGER.info("🤖 [POST-STARTUP] Initializing Phase 5 Autonomous Execution Engine...")
-    try:
-        from core.autonomous_execution_engine import run_execution_cycle
-        
-        execution_enabled = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
-        execution_interval = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))
-        orchestrator_enabled = os.getenv("ORCHESTRATOR_ENABLED", "0") == "1"
-        worker_mode = os.getenv("WORKER_MODE", "0") == "1"
-        
-        LOGGER.info(f"🤖 [POST-STARTUP] Phase 5 config loaded: enabled={execution_enabled}, interval={execution_interval}s")
-        
-        if execution_enabled and not orchestrator_enabled and not worker_mode:
-            async def _autonomous_execution_loop():
-                """Background task to execute trades every 5 minutes"""
-                await asyncio.sleep(60)  # Wait 60s before first cycle
-                
+            async def _self_improvement_loop():
+                """Background task to autonomously improve Ghost every hour"""
+                _heartbeat_pulse("self-improvement")
                 while True:
                     try:
-                        LOGGER.info("🤖 [AUTO-EXECUTION] Starting execution cycle...")
+                        await asyncio.sleep(3600)
+                        _heartbeat_pulse("self-improvement")
+                        LOGGER.info("🧠 [SELF-IMPROVEMENT] Starting autonomous improvement cycle...")
                         loop = asyncio.get_event_loop()
-                        result = await loop.run_in_executor(None, run_execution_cycle)
-                        status = result.get('status', 'unknown') if isinstance(result, dict) else 'unknown'
-                        LOGGER.info(f"🤖 [AUTO-EXECUTION] Cycle complete: {status}")
-                    except Exception as exec_err:
-                        LOGGER.error(f"🤖 [AUTO-EXECUTION] Cycle error: {exec_err}", exc_info=False)
-                    
-                    await asyncio.sleep(execution_interval)
+                        changes = await loop.run_in_executor(None, run_improvement_cycle)
+                        LOGGER.info(f"🧠 [SELF-IMPROVEMENT] Cycle complete: {changes}")
+                    except Exception as improve_err:
+                        LOGGER.error(f"🧠 [SELF-IMPROVEMENT] Cycle error: {improve_err}", exc_info=False)
+        
+            asyncio.create_task(_self_improvement_loop())
+            LOGGER.info("🧠 [POST-STARTUP] ✅ Phase 4 Self-Improvement Engine active (hourly cycles)")
+        except Exception as e:
+            LOGGER.error(f"self_improvement_engine_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
+    # Stage 5: Start Autonomous Execution Engine (WORKER_MODE only)
+    if WORKER_MODE:
+        LOGGER.info("🤖 [POST-STARTUP] Initializing Phase 5 Autonomous Execution Engine...")
+        try:
+            from core.autonomous_execution_engine import run_execution_cycle
+        
+            execution_enabled = os.getenv("AUTO_EXECUTION_ENABLED", "0") == "1"
+            execution_interval = int(os.getenv("AUTO_EXECUTION_INTERVAL_S", "300"))
+            orchestrator_enabled = os.getenv("ORCHESTRATOR_ENABLED", "0") == "1"
+            worker_mode = os.getenv("WORKER_MODE", "0") == "1"
+        
+            LOGGER.info(f"🤖 [POST-STARTUP] Phase 5 config loaded: enabled={execution_enabled}, interval={execution_interval}s")
+        
+            if execution_enabled and not orchestrator_enabled and not worker_mode:
+                async def _autonomous_execution_loop():
+                    """Background task to execute trades every 5 minutes"""
+                    await asyncio.sleep(60)
+                    while True:
+                        try:
+                            LOGGER.info("🤖 [AUTO-EXECUTION] Starting execution cycle...")
+                            loop = asyncio.get_event_loop()
+                            result = await loop.run_in_executor(None, run_execution_cycle)
+                            status = result.get('status', 'unknown') if isinstance(result, dict) else 'unknown'
+                            LOGGER.info(f"🤖 [AUTO-EXECUTION] Cycle complete: {status}")
+                        except Exception as exec_err:
+                            LOGGER.error(f"🤖 [AUTO-EXECUTION] Cycle error: {exec_err}", exc_info=False)
+                        await asyncio.sleep(execution_interval)
             
-            asyncio.create_task(_autonomous_execution_loop())
-            LOGGER.info(f"🤖 [POST-STARTUP] ✅ Phase 5 Autonomous Execution ACTIVE (interval={execution_interval}s)")
-        elif execution_enabled and (orchestrator_enabled or worker_mode):
-            LOGGER.info("🤖 [POST-STARTUP] Phase 5 loop skipped (orchestrator/worker will manage execution)")
-        else:
-            LOGGER.info("🤖 [POST-STARTUP] Phase 5 Autonomous Execution DISABLED (set AUTO_EXECUTION_ENABLED=1 to enable)")
-    except Exception as e:
-        LOGGER.error(f"🚨 [POST-STARTUP] Phase 5 initialization FAILED: {e}", extra={"component": "startup"}, exc_info=True)
+                asyncio.create_task(_autonomous_execution_loop())
+                LOGGER.info(f"🤖 [POST-STARTUP] ✅ Phase 5 Autonomous Execution ACTIVE (interval={execution_interval}s)")
+            elif execution_enabled and (orchestrator_enabled or worker_mode):
+                LOGGER.info("🤖 [POST-STARTUP] Phase 5 loop skipped (orchestrator/worker will manage execution)")
+            else:
+                LOGGER.info("🤖 [POST-STARTUP] Phase 5 Autonomous Execution DISABLED (set AUTO_EXECUTION_ENABLED=1 to enable)")
+        except Exception as e:
+            LOGGER.error(f"🚨 [POST-STARTUP] Phase 5 initialization FAILED: {e}", extra={"component": "startup"}, exc_info=True)
+    
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # ALL-MODE TASKS — run in BOTH web and worker mode
+    # Money-game and Telegram reports are critical for core functionality
+    # ═══════════════════════════════════════════════════════════════════════════════
     
     # Start Telegram daily report scheduler (Ghost Investment Hunter)
     try:
@@ -15344,7 +15341,12 @@ async def api_v4_history(days: int = 90, limit: int = 500):
                     LIMIT %s
                 """, (limit,))
             except Exception:
+                # FIX (Mar 13, 2026): MUST rollback before retry!
+                # Without this, PostgreSQL stays in aborted transaction state
+                # and the fallback query fails with "current transaction is aborted"
+                conn.rollback()
                 has_target_col = False
+                cur = conn.cursor()  # get fresh cursor after rollback
                 cur.execute("""
                     SELECT symbol, direction, price_at_prediction, actual_price,
                            expected_move, actual_move_pct, correct, predicted_at,
@@ -16231,39 +16233,39 @@ async def api_v3_debug_accuracy():
     # Source 2: ghost_predictions table
     try:
         if _db_url:
-            conn = _dbg_pg.connect(_db_url)
-            cur = conn.cursor()
+            from core.db_pool import get_sync_connection as _dbg_get_conn
+            with _dbg_get_conn() as conn:
+                cur = conn.cursor()
 
-            # Total rows
-            cur.execute("SELECT COUNT(*) FROM ghost_predictions")
-            total_rows = cur.fetchone()[0]
+                # Total rows
+                cur.execute("SELECT COUNT(*) FROM ghost_predictions")
+                total_rows = cur.fetchone()[0]
 
-            # Checked rows (all time)
-            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1")
-            checked_all = cur.fetchone()[0]
+                # Checked rows (all time)
+                cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1")
+                checked_all = cur.fetchone()[0]
 
-            # Checked rows (last 30 days)
-            cur.execute("""
-                SELECT COUNT(*) as total,
-                       SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins,
-                       SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) as losses
-                FROM ghost_predictions
-                WHERE checked = 1
-                  AND eval_version NOT LIKE 'skip%%'
-                  AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
-            """)
-            row30 = cur.fetchone()
+                # Checked rows (last 30 days)
+                cur.execute("""
+                    SELECT COUNT(*) as total,
+                           SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as wins,
+                           SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) as losses
+                    FROM ghost_predictions
+                    WHERE checked = 1
+                      AND eval_version NOT LIKE 'skip%%'
+                      AND predicted_at > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
+                """)
+                row30 = cur.fetchone()
 
-            # Unchecked (pending evaluation)
-            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 0")
-            unchecked = cur.fetchone()[0]
+                # Unchecked (pending evaluation)
+                cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 0")
+                unchecked = cur.fetchone()[0]
 
-            # Oldest and newest prediction
-            cur.execute("SELECT MIN(predicted_at), MAX(predicted_at) FROM ghost_predictions")
-            ts_range = cur.fetchone()
+                # Oldest and newest prediction
+                cur.execute("SELECT MIN(predicted_at), MAX(predicted_at) FROM ghost_predictions")
+                ts_range = cur.fetchone()
 
-            cur.close()
-            conn.close()
+                cur.close()
 
             result["sources"]["ghost_predictions"] = {
                 "total_rows": total_rows,
@@ -16285,12 +16287,12 @@ async def api_v3_debug_accuracy():
     # Source 3: ghost_accuracy_stats table
     try:
         if _db_url:
-            conn = _dbg_pg.connect(_db_url)
-            cur = conn.cursor()
-            cur.execute("SELECT period, total_predictions, correct_predictions, accuracy_pct, updated_at FROM ghost_accuracy_stats")
-            rows = cur.fetchall()
-            cur.close()
-            conn.close()
+            from core.db_pool import get_sync_connection as _dbg_get_conn3
+            with _dbg_get_conn3() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT period, total_predictions, correct_predictions, accuracy_pct, updated_at FROM ghost_accuracy_stats")
+                rows = cur.fetchall()
+                cur.close()
             result["sources"]["ghost_accuracy_stats"] = [
                 {
                     "period": r[0],
@@ -16350,60 +16352,60 @@ async def api_v3_debug_accuracy_symbols():
     if not _db_url:
         return {"error": "DATABASE_URL not set"}
     try:
-        conn = _dbg_pg2.connect(_db_url)
-        cur = conn.cursor()
-        # Per-symbol summary
-        cur.execute("""
-            SELECT symbol,
-                   COUNT(*) as total,
-                   SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as correct,
-                   SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) as incorrect,
-                   ROUND(AVG(confidence)::numeric, 3) as avg_conf,
-                   ROUND(AVG(outcome_pct)::numeric, 3) as avg_outcome_pct
-            FROM ghost_predictions
-            WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'
-            GROUP BY symbol
-            ORDER BY symbol
-        """)
-        summary = []
-        for r in cur.fetchall():
-            sym, total, correct, incorrect, avg_conf, avg_out = r
-            summary.append({
-                "symbol": sym, "total": total, "correct": int(correct or 0),
-                "incorrect": int(incorrect or 0),
-                "accuracy_pct": round(float(correct or 0) / total * 100, 1) if total else 0,
-                "avg_confidence": float(avg_conf) if avg_conf else 0,
-                "avg_outcome_pct": float(avg_out) if avg_out else 0,
-            })
-
-        # Detailed rows for symbols with 0% accuracy
-        zero_symbols = [s["symbol"] for s in summary if s["accuracy_pct"] < 20]
-        details = {}
-        for sym in zero_symbols:
+        from core.db_pool import get_sync_connection as _dbg_get_conn2
+        with _dbg_get_conn2() as conn:
+            cur = conn.cursor()
+            # Per-symbol summary
             cur.execute("""
-                SELECT predicted_direction, outcome_direction, outcome_pct,
-                       correct, confidence, current_price, predicted_price, target_price,
-                       predicted_pct, eval_version, gate, predicted_at
+                SELECT symbol,
+                       COUNT(*) as total,
+                       SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as correct,
+                       SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) as incorrect,
+                       ROUND(AVG(confidence)::numeric, 3) as avg_conf,
+                       ROUND(AVG(outcome_pct)::numeric, 3) as avg_outcome_pct
                 FROM ghost_predictions
-                WHERE symbol = %s AND checked = 1 AND eval_version NOT LIKE 'skip%%'
-                ORDER BY predicted_at DESC LIMIT 15
-            """, (sym,))
-            rows = cur.fetchall()
-            details[sym] = [{
-                "predicted_dir": r[0], "outcome_dir": r[1],
-                "outcome_pct": float(r[2]) if r[2] else None,
-                "correct": r[3], "confidence": float(r[4]) if r[4] else None,
-                "current_price": float(r[5]) if r[5] else None,
-                "predicted_price": float(r[6]) if r[6] else None,
-                "target_price": float(r[7]) if r[7] else None,
-                "predicted_pct": float(r[8]) if r[8] else None,
-                "eval_version": r[9],
-                "gate": r[10],
-                "predicted_at": r[11],
-            } for r in rows]
+                WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'
+                GROUP BY symbol
+                ORDER BY symbol
+            """)
+            summary = []
+            for r in cur.fetchall():
+                sym, total, correct, incorrect, avg_conf, avg_out = r
+                summary.append({
+                    "symbol": sym, "total": total, "correct": int(correct or 0),
+                    "incorrect": int(incorrect or 0),
+                    "accuracy_pct": round(float(correct or 0) / total * 100, 1) if total else 0,
+                    "avg_confidence": float(avg_conf) if avg_conf else 0,
+                    "avg_outcome_pct": float(avg_out) if avg_out else 0,
+                })
 
-        cur.close()
-        conn.close()
+            # Detailed rows for symbols with 0% accuracy
+            zero_symbols = [s["symbol"] for s in summary if s["accuracy_pct"] < 20]
+            details = {}
+            for sym in zero_symbols:
+                cur.execute("""
+                    SELECT predicted_direction, outcome_direction, outcome_pct,
+                           correct, confidence, current_price, predicted_price, target_price,
+                           predicted_pct, eval_version, gate, predicted_at
+                    FROM ghost_predictions
+                    WHERE symbol = %s AND checked = 1 AND eval_version NOT LIKE 'skip%%'
+                    ORDER BY predicted_at DESC LIMIT 15
+                """, (sym,))
+                rows = cur.fetchall()
+                details[sym] = [{
+                    "predicted_dir": r[0], "outcome_dir": r[1],
+                    "outcome_pct": float(r[2]) if r[2] else None,
+                    "correct": r[3], "confidence": float(r[4]) if r[4] else None,
+                    "current_price": float(r[5]) if r[5] else None,
+                    "predicted_price": float(r[6]) if r[6] else None,
+                    "target_price": float(r[7]) if r[7] else None,
+                    "predicted_pct": float(r[8]) if r[8] else None,
+                    "eval_version": r[9],
+                    "gate": r[10],
+                    "predicted_at": r[11],
+                } for r in rows]
+
+            cur.close()
         return {"summary": summary, "failing_details": details}
     except Exception as e:
         return {"error": str(e)}
@@ -16473,45 +16475,45 @@ async def api_v3_debug_accuracy_raw_mismatches():
     if not _db_url:
         return {"error": "DATABASE_URL not set"}
     try:
-        conn = _dbg_pg3.connect(_db_url)
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, symbol, predicted_at, check_at, predicted_price,
-                   predicted_direction, predicted_pct, confidence, timeframe_hours,
-                   current_price, target_price, gate, checked, checked_at,
-                   outcome_price, outcome_direction, outcome_pct, correct,
-                   eval_version
-            FROM ghost_predictions
-            WHERE symbol IN ('BMBL', 'T')
-              AND checked = 1
-              AND eval_version NOT LIKE 'skip%%'
-            ORDER BY symbol, predicted_at DESC
-        """)
-        cols = [
-            "id", "symbol", "predicted_at", "check_at", "predicted_price",
-            "predicted_direction", "predicted_pct", "confidence", "timeframe_hours",
-            "current_price", "target_price", "gate", "checked", "checked_at",
-            "outcome_price", "outcome_direction", "outcome_pct", "correct",
-            "eval_version",
-        ]
-        rows = []
-        for r in cur.fetchall():
-            row = {}
-            for i, col in enumerate(cols):
-                val = r[i]
-                if col in ("predicted_at", "check_at") and val is not None:
-                    try:
-                        val = _dt.fromtimestamp(float(val)).isoformat() if isinstance(val, (int, float)) else str(val)
-                    except Exception:
-                        val = str(val)
-                elif isinstance(val, (float, int)):
-                    val = float(val) if isinstance(val, float) else val
-                else:
-                    val = str(val) if val is not None else None
-                row[col] = val
-            rows.append(row)
-        cur.close()
-        conn.close()
+        from core.db_pool import get_sync_connection as _dbg_get_conn4
+        with _dbg_get_conn4() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, symbol, predicted_at, check_at, predicted_price,
+                       predicted_direction, predicted_pct, confidence, timeframe_hours,
+                       current_price, target_price, gate, checked, checked_at,
+                       outcome_price, outcome_direction, outcome_pct, correct,
+                       eval_version
+                FROM ghost_predictions
+                WHERE symbol IN ('BMBL', 'T')
+                  AND checked = 1
+                  AND eval_version NOT LIKE 'skip%%'
+                ORDER BY symbol, predicted_at DESC
+            """)
+            cols = [
+                "id", "symbol", "predicted_at", "check_at", "predicted_price",
+                "predicted_direction", "predicted_pct", "confidence", "timeframe_hours",
+                "current_price", "target_price", "gate", "checked", "checked_at",
+                "outcome_price", "outcome_direction", "outcome_pct", "correct",
+                "eval_version",
+            ]
+            rows = []
+            for r in cur.fetchall():
+                row = {}
+                for i, col in enumerate(cols):
+                    val = r[i]
+                    if col in ("predicted_at", "check_at") and val is not None:
+                        try:
+                            val = _dt.fromtimestamp(float(val)).isoformat() if isinstance(val, (int, float)) else str(val)
+                        except Exception:
+                            val = str(val)
+                    elif isinstance(val, (float, int)):
+                        val = float(val) if isinstance(val, float) else val
+                    else:
+                        val = str(val) if val is not None else None
+                    row[col] = val
+                rows.append(row)
+            cur.close()
         return {"count": len(rows), "rows": rows}
     except Exception as e:
         return {"error": str(e)}
@@ -16529,45 +16531,44 @@ async def api_v3_fix_direction_mismatches():
     if not _db_url:
         return {"error": "DATABASE_URL not set"}
     try:
-        conn = _fix_pg2.connect(_db_url)
-        cur = conn.cursor()
+        from core.db_pool import get_sync_connection as _fix_get_conn
+        with _fix_get_conn() as conn:
+            cur = conn.cursor()
 
-        # Find mismatches: direction=UP but target < current, or direction=DOWN but target > current
-        cur.execute("""
-            SELECT id, symbol, predicted_direction, current_price, target_price,
-                   predicted_pct, checked, correct, eval_version
-            FROM ghost_predictions
-            WHERE (
-                (predicted_direction = 'UP' AND target_price < current_price AND current_price > 0)
-                OR
-                (predicted_direction = 'DOWN' AND target_price > current_price AND current_price > 0)
-            )
-            AND eval_version NOT LIKE 'skip%%'
-        """)
-        mismatches = cur.fetchall()
-
-        fixed = []
-        for row in mismatches:
-            pid, sym, old_dir, cprice, tprice, ppct, checked, correct, ev = row
-            new_dir = "UP" if float(tprice) > float(cprice) else "DOWN"
-            # Correct the direction and reset for re-evaluation
+            # Find mismatches: direction=UP but target < current, or direction=DOWN but target > current
             cur.execute("""
-                UPDATE ghost_predictions
-                SET predicted_direction = %s, checked = 0, checked_at = NULL,
-                    correct = NULL, outcome_price = NULL, outcome_direction = NULL,
-                    outcome_pct = NULL, eval_version = NULL
-                WHERE id = %s
-            """, (new_dir, pid))
-            fixed.append({
-                "id": pid, "symbol": sym,
-                "old_direction": old_dir, "new_direction": new_dir,
-                "current_price": float(cprice), "target_price": float(tprice),
-                "was_checked": checked, "was_correct": correct,
-            })
+                SELECT id, symbol, predicted_direction, current_price, target_price,
+                       predicted_pct, checked, correct, eval_version
+                FROM ghost_predictions
+                WHERE (
+                    (predicted_direction = 'UP' AND target_price < current_price AND current_price > 0)
+                    OR
+                    (predicted_direction = 'DOWN' AND target_price > current_price AND current_price > 0)
+                )
+                AND eval_version NOT LIKE 'skip%%'
+            """)
+            mismatches = cur.fetchall()
 
-        conn.commit()
-        cur.close()
-        conn.close()
+            fixed = []
+            for row in mismatches:
+                pid, sym, old_dir, cprice, tprice, ppct, checked, correct, ev = row
+                new_dir = "UP" if float(tprice) > float(cprice) else "DOWN"
+                # Correct the direction and reset for re-evaluation
+                cur.execute("""
+                    UPDATE ghost_predictions
+                    SET predicted_direction = %s, checked = 0, checked_at = NULL,
+                        correct = NULL, outcome_price = NULL, outcome_direction = NULL,
+                        outcome_pct = NULL, eval_version = NULL
+                    WHERE id = %s
+                """, (new_dir, pid))
+                fixed.append({
+                    "id": pid, "symbol": sym,
+                    "old_direction": old_dir, "new_direction": new_dir,
+                    "current_price": float(cprice), "target_price": float(tprice),
+                    "was_checked": checked, "was_correct": correct,
+                })
+
+            cur.close()
 
         return {
             "ok": True,
@@ -17023,10 +17024,8 @@ async def api_v3_health_metrics():
         accuracy = None
         accuracy_source = "none"
         try:
-            import psycopg2 as _hm_pg
-            _hm_url = os.getenv("DATABASE_URL")
-            if _hm_url:
-                _hm_conn = _hm_pg.connect(_hm_url)
+            from core.db_pool import get_sync_connection as _hm_get_conn
+            with _hm_get_conn() as _hm_conn:
                 _hm_cur = _hm_conn.cursor()
                 _hm_cur.execute("""
                     SELECT COUNT(*) as total,
@@ -17038,7 +17037,6 @@ async def api_v3_health_metrics():
                 """)
                 _hm_row = _hm_cur.fetchone()
                 _hm_cur.close()
-                _hm_conn.close()
                 _hm_total = _hm_row[0] if _hm_row else 0
                 _hm_wins = _hm_row[1] if _hm_row and _hm_row[1] else 0
                 if _hm_total and _hm_total > 0:
@@ -17094,6 +17092,115 @@ async def api_v3_health_metrics():
 # v5 COCKPIT ENDPOINTS — Market Ticker + AI Brain + Financials
 # ═══════════════════════════════════════════════════════════
 
+# ── Market Index Price Cache (60s TTL, multi-provider fallback) ──
+_INDEX_CACHE: dict = {}  # {symbol: {"price": float, "prev": float, "ts": float}}
+_INDEX_CACHE_TTL = 60  # seconds
+
+
+def _fetch_index_yahoo_chart(symbol: str) -> tuple:
+    """Fetch index price via Yahoo v8 chart API — most reliable for ^-prefix symbols.
+    Returns (price, prev_close) or (None, None).
+    """
+    try:
+        import urllib.parse
+        encoded = urllib.parse.quote(symbol, safe="")
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}"
+        import httpx
+        resp = httpx.get(
+            url,
+            params={"interval": "1d", "range": "5d"},
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            result = (data.get("chart") or {}).get("result") or []
+            if result:
+                meta = result[0].get("meta", {})
+                price = meta.get("regularMarketPrice") or meta.get("previousClose")
+                prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+                # Also try the timestamp series for better prev close
+                closes = ((result[0].get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+                closes = [c for c in closes if c is not None]
+                if closes:
+                    price = closes[-1]
+                    if len(closes) >= 2:
+                        prev = closes[-2]
+                if price and float(price) > 0:
+                    return float(price), float(prev) if prev else float(price)
+    except Exception as e:
+        LOGGER.debug(f"Yahoo chart API failed for {symbol}: {e}")
+    return None, None
+
+
+def _fetch_index_yahoo_quote(symbol: str) -> tuple:
+    """Fetch index price via Yahoo v7 quote API (backup).
+    Returns (price, prev_close) or (None, None).
+    """
+    try:
+        url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol.upper()}"
+        import httpx
+        resp = httpx.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            data = resp.json() or {}
+            results = (data.get("quoteResponse") or {}).get("result") or []
+            if results:
+                q = results[0]
+                price = q.get("regularMarketPrice")
+                prev = q.get("regularMarketPreviousClose")
+                if price and float(price) > 0:
+                    return float(price), float(prev) if prev else float(price)
+    except Exception as e:
+        LOGGER.debug(f"Yahoo quote API failed for {symbol}: {e}")
+    return None, None
+
+
+def _fetch_index_yfinance(symbol: str) -> tuple:
+    """Fetch index price via yfinance library (last resort — slower).
+    Returns (price, prev_close) or (None, None).
+    """
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="5d")
+        if not hist.empty:
+            price = float(hist["Close"].iloc[-1])
+            prev = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else price
+            if price > 0:
+                return price, prev
+    except Exception as e:
+        LOGGER.debug(f"yfinance failed for {symbol}: {e}")
+    return None, None
+
+
+def _get_index_price(symbol: str) -> tuple:
+    """Get index price with multi-provider fallback and caching.
+    Chain: Yahoo Chart API → Yahoo Quote API → yfinance.
+    Returns (price, prev_close).
+    """
+    import time as _t
+    # Check cache
+    cached = _INDEX_CACHE.get(symbol)
+    if cached and (_t.time() - cached["ts"]) < _INDEX_CACHE_TTL:
+        return cached["price"], cached["prev"]
+
+    # Provider chain
+    for fetcher in [_fetch_index_yahoo_chart, _fetch_index_yahoo_quote, _fetch_index_yfinance]:
+        price, prev = fetcher(symbol)
+        if price and price > 0:
+            _INDEX_CACHE[symbol] = {"price": price, "prev": prev or price, "ts": _t.time()}
+            return price, prev or price
+
+    # Return stale cache if all providers failed
+    if cached:
+        LOGGER.warning(f"All index providers failed for {symbol}, using stale cache")
+        return cached["price"], cached["prev"]
+    return 0, 0
+
 
 @APP.get("/api/v3/market/ticker")
 async def api_v3_market_ticker():
@@ -17109,7 +17216,6 @@ async def api_v3_market_ticker():
             if price_data and price_data.get("price"):
                 p = price_data["price"]
                 pct = price_data.get("change_24h_pct", 0) or 0
-                # Compute absolute change from percentage
                 abs_change = round(p * pct / 100, 2) if pct else 0
                 items.append({
                     "id": ticker_id,
@@ -17121,47 +17227,27 @@ async def api_v3_market_ticker():
         except Exception:
             items.append({"id": ticker_id, "name": crypto_sym, "price": 0, "change": 0, "change_pct": 0})
 
-    # Market indices via yfinance (with fallback)
+    # Market indices via multi-provider fallback (Yahoo Chart → Yahoo Quote → yfinance)
     indices = [
         ("^GSPC", "spy", "S&P 500"),
         ("^DJI", "dow", "DOW"),
         ("^IXIC", "nasdaq", "NASDAQ"),
         ("^VIX", "vix", "VIX"),
     ]
-    try:
-        import yfinance as yf
-        for yf_sym, ticker_id, display_name in indices:
-            try:
-                ticker = yf.Ticker(yf_sym)
-                # Use history(period='5d') — always has data even after hours/weekends
-                hist = ticker.history(period='5d')
-                price = 0
-                prev = 0
-                if not hist.empty:
-                    price = float(hist['Close'].iloc[-1])
-                    if len(hist) >= 2:
-                        prev = float(hist['Close'].iloc[-2])  # Previous day's close
-                    else:
-                        prev = float(hist['Open'].iloc[0]) if 'Open' in hist.columns else price
-                else:
-                    # Last resort: fast_info (works during market hours)
-                    info = ticker.fast_info
-                    price = getattr(info, 'last_price', None) or getattr(info, 'lastPrice', None) or 0
-                    prev = getattr(info, 'previous_close', None) or getattr(info, 'previousClose', None) or price
-                change = (price - prev) if price and prev else 0
-                change_pct = (change / prev * 100) if prev and prev > 0 else 0
-                items.append({
-                    "id": ticker_id,
-                    "name": display_name,
-                    "price": round(price, 2) if price else 0,
-                    "change": round(change, 2),
-                    "change_pct": round(change_pct, 2),
-                })
-            except Exception as idx_err:
-                LOGGER.debug(f"Ticker {yf_sym} failed: {idx_err}")
-                items.append({"id": ticker_id, "name": display_name, "price": 0, "change": 0, "change_pct": 0})
-    except Exception:
-        for _, ticker_id, display_name in indices:
+    for yf_sym, ticker_id, display_name in indices:
+        try:
+            price, prev = await asyncio.to_thread(_get_index_price, yf_sym)
+            change = (price - prev) if price and prev else 0
+            change_pct = (change / prev * 100) if prev and prev > 0 else 0
+            items.append({
+                "id": ticker_id,
+                "name": display_name,
+                "price": round(price, 2) if price else 0,
+                "change": round(change, 2),
+                "change_pct": round(change_pct, 2),
+            })
+        except Exception as idx_err:
+            LOGGER.debug(f"Ticker {yf_sym} failed: {idx_err}")
             items.append({"id": ticker_id, "name": display_name, "price": 0, "change": 0, "change_pct": 0})
 
     return {"ok": True, "items": items, "ts": _t.time()}
@@ -17196,9 +17282,10 @@ async def api_v4_subsystems():
 
         # LearningBrain
         try:
-            from core.learning_brain import LearningBrain
+            from core.ghost_learning_brain import apply_inversion, get_inverted_symbols
+            _lb_inverted = get_inverted_symbols()
             brains.append({"name": "Learning Brain", "key": "learning_brain", "active": True,
-                           "desc": "Self-correction — inverts bad patterns"})
+                           "desc": f"Self-correction — {len(_lb_inverted)} symbols inverted"})
         except Exception:
             brains.append({"name": "Learning Brain", "key": "learning_brain", "active": False,
                            "desc": "Self-correction engine (import failed)"})
@@ -20417,10 +20504,8 @@ async def api_walk_forward_analysis(
         # Get historical returns from PostgreSQL prediction outcomes
         returns = []
         try:
-            import psycopg2 as _pg2
-            _db_url = os.getenv("DATABASE_URL")
-            if _db_url:
-                _conn = _pg2.connect(_db_url)
+            from core.db_pool import get_sync_connection as _wf_get_conn
+            with _wf_get_conn() as _conn:
                 _cur = _conn.cursor()
                 _cur.execute("""
                     SELECT realized_move_pct
@@ -20431,7 +20516,6 @@ async def api_walk_forward_analysis(
                 """, (symbol.upper(),))
                 returns = [row[0] / 100.0 for row in _cur.fetchall()]
                 _cur.close()
-                _conn.close()
         except Exception as _e:
             LOGGER.warning(f"Walk-forward: could not load returns from DB: {_e}")
         
@@ -20503,10 +20587,8 @@ async def api_monte_carlo(
         # Get historical returns from PostgreSQL prediction outcomes
         returns = []
         try:
-            import psycopg2 as _pg2
-            _db_url = os.getenv("DATABASE_URL")
-            if _db_url:
-                _conn = _pg2.connect(_db_url)
+            from core.db_pool import get_sync_connection as _mc_get_conn
+            with _mc_get_conn() as _conn:
                 _cur = _conn.cursor()
                 _cur.execute("""
                     SELECT realized_move_pct
@@ -20517,7 +20599,6 @@ async def api_monte_carlo(
                 """, (symbol.upper(),))
                 returns = [row[0] / 100.0 for row in _cur.fetchall()]
                 _cur.close()
-                _conn.close()
         except Exception as _e:
             LOGGER.warning(f"Monte Carlo: could not load returns from DB: {_e}")
         
@@ -29697,7 +29778,7 @@ async def debug_backfill_price_actuals():
                         if pg_cur.rowcount > 0:
                             inserted += 1
                     except Exception:
-                        pass
+                        pg_conn.rollback()  # FIX: reset transaction state so next INSERT can work
                 pg_conn.commit()
 
         return {
