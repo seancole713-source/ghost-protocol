@@ -52,6 +52,7 @@ EXPECTED_INTERVALS: Dict[str, float] = {
     "money-game":            3600 + 300,   # Periodic
     "guardian-oracle":       600,          # Monitor loop
     "prediction-cycle":      600,          # Multi-prediction main loop
+    "autopilot-check":       600,          # Accuracy autopilot check (every 5 min)
     # NOTE: retraining and reevaluation are on-demand API calls, NOT background loops
     # They were removed from heartbeat tracking to avoid false "never pulsed" alarms
 }

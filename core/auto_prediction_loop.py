@@ -92,6 +92,20 @@ async def _run_all_predictions_async():
     # No point wasting compute on symbols the model can't predict
     _EDGE_FILTER_ENABLED = os.getenv("EDGE_WHITELIST_ENABLED", "1") == "1"
     _EDGE_SET = get_edge_set()
+
+    # ── PERFORMANCE GATE (Mar 13, 2026) ──
+    # Dynamic filter: kills symbols with <45% accuracy over 20+ trades
+    # This is the difference between trading 11 losing symbols and trading
+    # only the ones that actually make money.
+    try:
+        from core.performance_gate import get_active_edge_set
+        _EDGE_SET = get_active_edge_set(_EDGE_SET)
+        if LOGGER:
+            LOGGER.info(f"[AUTO-PREDICT] Performance Gate: {len(_EDGE_SET)} symbols active (killed symbols removed)")
+    except Exception as _pg_err:
+        if LOGGER:
+            LOGGER.warning(f"[AUTO-PREDICT] Performance Gate unavailable: {_pg_err}")
+
     if LOGGER:
         LOGGER.info(f"[AUTO-PREDICT] Edge filter: {len(_EDGE_SET)} symbols active")
     

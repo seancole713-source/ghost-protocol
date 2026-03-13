@@ -5586,6 +5586,35 @@ async def _post_startup_init():
     except Exception:
         LOGGER.exception("accuracy_tracker_start_failed", extra={"component": "startup"})
 
+    # Start accuracy autopilot periodic check (circuit breakers)
+    try:
+        async def _autopilot_check_loop():
+            """Check accuracy autopilot circuit breakers every 5 minutes.
+            
+            Three breakers:
+            1. Accuracy breaker — pause if system accuracy <40%
+            2. Feed breaker — pause if all price feeds are down
+            3. Confidence floor — 55% minimum (checked per-prediction)
+            
+            Sends Telegram alerts on state changes.
+            """
+            await asyncio.sleep(60)  # let startup finish
+            LOGGER.info("[AUTOPILOT] 🛡️ Accuracy autopilot check loop started (every 5 min)")
+            while True:
+                try:
+                    _heartbeat_pulse("autopilot-check")
+                    from core.accuracy_autopilot import check_and_update as _ap_check_update
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, _ap_check_update)
+                except Exception as _ap_err:
+                    LOGGER.warning(f"[AUTOPILOT] Check failed (non-fatal): {_ap_err}")
+                await asyncio.sleep(300)  # 5 minutes
+
+        asyncio.create_task(_autopilot_check_loop())
+        LOGGER.info("[ALL MODES] ✅ Accuracy autopilot started (circuit breakers every 5 min)")
+    except Exception as e:
+        LOGGER.warning(f"[ALL MODES] Autopilot start failed (non-fatal): {e}")
+
     # CRITICAL: Check if this is WORKER mode or WEB mode
     WORKER_MODE = os.getenv("WORKER_MODE") == "1"
     
@@ -5927,8 +5956,9 @@ async def _post_startup_init():
             # except Exception:
             #     pass
 
-            # Use _LATEST_PREDICTIONS with configurable confidence (lowered for 6h predictions)
-            min_conf = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.45"))
+            # Use _LATEST_PREDICTIONS with configurable confidence (raised Mar 13, 2026)
+            # Was 0.45 — too low, sending garbage picks. Now 0.60 for quality picks only.
+            min_conf = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.60"))
             opportunities = []
             for sym, pred in _LATEST_PREDICTIONS.items():
                 confidence = pred.get("confidence", 0)
@@ -8623,6 +8653,26 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         "duration_ms": duration_ms_held, "engine": "stock_v2",
                         "error": "HOLD — not actionable",
                     }
+
+                # ================================================================
+                # ACCURACY AUTOPILOT GATE (Mar 13, 2026)
+                # Skip predictions when system is paused or confidence too low.
+                # This prevents garbage predictions from entering the pipeline.
+                # ================================================================
+                try:
+                    from core.accuracy_autopilot import should_skip_prediction as _ap_skip
+                    _ap_should_skip, _ap_reason = _ap_skip(se_confidence)
+                    if _ap_should_skip:
+                        duration_ms_skip = int((time.monotonic() - start) * 1000)
+                        LOGGER.info(f"[{symbol}] 🛑 Autopilot skip: {_ap_reason}")
+                        return {
+                            "ok": False, "symbol": symbol, "direction": se_direction,
+                            "confidence": se_confidence, "current_price": se_entry_price,
+                            "duration_ms": duration_ms_skip, "engine": "stock_v2",
+                            "error": f"autopilot: {_ap_reason}",
+                        }
+                except Exception as _ap_err:
+                    LOGGER.debug(f"[{symbol}] Autopilot check failed: {_ap_err}")
                 
                 # ================================================================
                 # V3 DIRECTION OVERRIDE for Stock Engine (Mar 6, 2026)
@@ -9645,10 +9695,10 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # =====================================================================
         # CONFIDENCE THRESHOLD (NEW: Jan 9, 2026)
         # Only trade predictions with sufficient confidence
-        # Lowered to 0.40 to build accuracy data (Feb 7, 2026)
-        # Paper trades need to FLOW so we can measure if predictions are right
+        # RAISED to 0.55 (Mar 13, 2026) — was 0.35, letting garbage through
+        # 25.5% accuracy means the floor was too low. Fewer picks, higher quality.
         # =====================================================================
-        MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.35"))
+        MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.55"))
         
         should_predict = True  # Default: predict unless gates say otherwise
         if base_confidence < MIN_CONFIDENCE_THRESHOLD:
@@ -9992,6 +10042,26 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             LOGGER.debug(f"[{symbol}] Trust ladder unavailable: {e}")
         
         # =====================================================================
+        # TRADE LEARNING LOOP — Dynamic confidence adjustment (Mar 13, 2026)
+        # Uses historical patterns (win rate by confidence bucket, symbol,
+        # direction) to adjust confidence. If Ghost has been losing on this
+        # symbol/direction/bucket combo, confidence gets pulled down.
+        # =====================================================================
+        try:
+            from core.trade_learning_loop import get_confidence_adjustment as _tll_adj_fn
+            _tll_adj = _tll_adj_fn(symbol, direction, confidence)
+            if abs(_tll_adj) > 0.005:
+                _pre_tll = confidence
+                confidence += _tll_adj
+                confidence = max(0.10, confidence)  # Don't go below 10%
+                LOGGER.info(
+                    f"[{symbol}] 🎓 LEARNING ADJ: {_pre_tll:.1%} → {confidence:.1%} "
+                    f"({_tll_adj:+.1%}) — based on historical patterns"
+                )
+        except Exception as _tll_err:
+            LOGGER.debug(f"[{symbol}] Learning loop adjustment unavailable: {_tll_err}")
+        
+        # =====================================================================
         # HARD CAP: NEVER claim more than 85% confidence (Jan 31, 2026)
         # Real trading systems rarely exceed this. Our 52% win rate doesn't
         # justify 90%+ confidence claims.
@@ -10139,6 +10209,26 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 "confidence": confidence, "current_price": current_price,
                 "duration_ms": duration_ms, "error": "HOLD — not actionable",
             }
+
+        # ================================================================
+        # ACCURACY AUTOPILOT GATE — Turbo Engine (Mar 13, 2026)
+        # Skip predictions when system is paused or confidence too low.
+        # This is the LAST gate before PostgreSQL storage.
+        # ================================================================
+        try:
+            from core.accuracy_autopilot import should_skip_prediction as _turbo_ap_skip
+            _turbo_skip, _turbo_reason = _turbo_ap_skip(confidence)
+            if _turbo_skip:
+                duration_ms = int((time.monotonic() - start) * 1000)
+                LOGGER.info(f"[{symbol}] 🛑 Autopilot skip (turbo): {_turbo_reason}")
+                return {
+                    "ok": False, "symbol": symbol, "direction": direction,
+                    "confidence": confidence, "current_price": current_price,
+                    "duration_ms": duration_ms, "engine": "turbo",
+                    "error": f"autopilot: {_turbo_reason}",
+                }
+        except Exception as _turbo_ap_err:
+            LOGGER.debug(f"[{symbol}] Autopilot check failed (turbo): {_turbo_ap_err}")
 
         # Create prediction with rich features
         from core.prediction_store import PredictionRejected
@@ -15349,7 +15439,7 @@ async def api_v3_heartbeat_status():
             "online-calibrator", "news-analysis", "self-improvement",
             "notification-loop", "doctor-cron", "prediction-cycle",
             "outcome-reconciler", "alert-worker", "accuracy-tracker",
-            "price-recorder",
+            "price-recorder", "autopilot-check",
         }
         _is_worker = os.getenv("WORKER_MODE") == "1"
 
@@ -38799,6 +38889,75 @@ async def api_doctor_notify():
         return run_and_notify()
     except Exception as e:
         return {"overall": "ERROR", "error": str(e)}
+
+
+# =====================================================================
+# ACCURACY ENGINE ENDPOINTS (Mar 13, 2026)
+# Three new modules that form the accuracy improvement trinity:
+#   1. Performance Gate  — Auto-kills symbols with <45% accuracy
+#   2. Accuracy Autopilot — Circuit breakers (pause, feed, confidence)
+#   3. Trade Learning Loop — Pattern analysis, confidence adjustment
+# =====================================================================
+
+@APP.get("/api/performance-gate")
+async def api_performance_gate():
+    """Performance Gate: which symbols are alive, warned, or killed."""
+    try:
+        from core.performance_gate import get_summary as _pg_summary
+        return _pg_summary()
+    except Exception as e:
+        return {"error": str(e), "status": "unavailable"}
+
+
+@APP.get("/api/performance-gate/scorecard")
+async def api_performance_gate_scorecard():
+    """Per-symbol scorecard with accuracy, trade count, and status."""
+    try:
+        from core.performance_gate import get_scorecard as _pg_scorecard
+        return {"scorecard": _pg_scorecard()}
+    except Exception as e:
+        return {"error": str(e), "scorecard": []}
+
+
+@APP.get("/api/autopilot")
+async def api_autopilot():
+    """Accuracy Autopilot: circuit breaker status and configuration."""
+    try:
+        from core.accuracy_autopilot import get_status as _ap_status
+        return _ap_status()
+    except Exception as e:
+        return {"error": str(e), "paused": False, "status": "unavailable"}
+
+
+@APP.post("/api/autopilot/check")
+async def api_autopilot_check():
+    """Force an autopilot check-and-update cycle now."""
+    try:
+        from core.accuracy_autopilot import check_and_update as _ap_check, get_status as _ap_status2
+        _ap_check()
+        return _ap_status2()
+    except Exception as e:
+        return {"error": str(e), "status": "check_failed"}
+
+
+@APP.get("/api/learning")
+async def api_learning():
+    """Trade Learning Loop: insights, patterns, and confidence adjustments."""
+    try:
+        from core.trade_learning_loop import get_summary as _tll_summary
+        return _tll_summary()
+    except Exception as e:
+        return {"error": str(e), "status": "unavailable"}
+
+
+@APP.get("/api/learning/insights")
+async def api_learning_insights():
+    """Detailed learning insights: win rates by bucket, symbol, direction."""
+    try:
+        from core.trade_learning_loop import get_insights as _tll_insights
+        return _tll_insights()
+    except Exception as e:
+        return {"error": str(e), "insights": {}}
 
 
 @APP.get("/api/stability/status")

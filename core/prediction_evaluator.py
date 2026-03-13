@@ -373,10 +373,13 @@ def _evaluate_with_conn(conn) -> Dict:
             # But if the check_at is very old (>7 days), mark as skipped permanently
             age_hours = (now - int(check_at)) / 3600
             if age_hours > 168:  # Older than 7 days — data will never appear
+                # FIX (Mar 13, 2026): Count as INCORRECT instead of skip-tagging.
+                # Every prediction counts. No more hiding bad predictions.
                 cur.execute(
-                    "UPDATE ghost_predictions SET checked = 1, checked_at = %s, eval_version = %s WHERE id = %s",
-                    (now, "skip-no-window-v2", pred_id),
+                    "UPDATE ghost_predictions SET checked = 1, checked_at = %s, correct = 0, eval_version = %s WHERE id = %s",
+                    (now, "no-data-v2", pred_id),
                 )
+                incorrect_count += 1
             continue
 
         eval_result = _evaluate_touch_target(
@@ -387,11 +390,12 @@ def _evaluate_with_conn(conn) -> Dict:
         )
 
         if not eval_result["ok"]:
-            skipped_count += 1
-            skipped_symbols[symbol] = skipped_symbols.get(symbol, 0) + 1
+            # FIX (Mar 13, 2026): Count as INCORRECT instead of skip-tagging.
+            # Every prediction counts — no more inflating accuracy by hiding failures.
+            incorrect_count += 1
             cur.execute(
-                "UPDATE ghost_predictions SET checked = 1, checked_at = %s, eval_version = %s WHERE id = %s",
-                (now, "skip-v1", pred_id),
+                "UPDATE ghost_predictions SET checked = 1, checked_at = %s, correct = 0, eval_version = %s WHERE id = %s",
+                (now, "eval-fail-v2", pred_id),
             )
             continue
 
@@ -405,14 +409,15 @@ def _evaluate_with_conn(conn) -> Dict:
         # Skip flat market — move too small to judge direction
         FLAT_MARKET_THRESHOLD = 0.5  # percent
         if abs_move_pct < FLAT_MARKET_THRESHOLD:
-            skipped_count += 1
-            skipped_symbols[symbol] = skipped_symbols.get(symbol, 0) + 1
+            # FIX (Mar 13, 2026): Flat market = prediction was wrong about direction.
+            # Count as INCORRECT instead of skip-tagging.
+            incorrect_count += 1
             cur.execute(
-                "UPDATE ghost_predictions SET checked = 1, checked_at = %s, eval_version = %s, "
+                "UPDATE ghost_predictions SET checked = 1, checked_at = %s, correct = 0, eval_version = %s, "
                 "outcome_pct = %s, outcome_price = %s, outcome_direction = %s, "
                 "window_first = %s, window_last = %s, window_high = %s, window_low = %s "
                 "WHERE id = %s",
-                (now, "skip-flat-v1", eval_result.get("outcome_pct"),
+                (now, "flat-market-v2", eval_result.get("outcome_pct"),
                  eval_result.get("window_last"), actual_dir,
                  eval_result.get("window_first"), eval_result.get("window_last"),
                  eval_result.get("window_high"), eval_result.get("window_low"),

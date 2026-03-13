@@ -1,0 +1,39 @@
+# ============================================================================
+# RAILWAY WORKER SERVICE — Ghost Protocol v5.9
+# ============================================================================
+# This config is for a SEPARATE Railway service that runs as the worker.
+# It shares the same codebase and DATABASE_URL as the web service.
+#
+# DEPLOYMENT STEPS:
+# 1. In Railway dashboard, add a NEW service to your project
+# 2. Point it to the same GitHub repo
+# 3. Set these environment variables:
+#    - WORKER_MODE=1
+#    - DATABASE_URL=<same as web service>
+#    - TELEGRAM_BOT_TOKEN=<same as web service>
+#    - TELEGRAM_CHAT_ID=<same as web service>
+#    - All API keys (ALPHA_VANTAGE_KEY, POLYGON_API_KEY, etc.)
+# 4. Set the start command or use this railway.toml
+#
+# WORKER TASKS (7 tasks that only run with WORKER_MODE=1):
+#   1. money-game         — Portfolio simulation engine
+#   2. full-scanner       — Full market scanner (500+ symbols)
+#   3. guardian-oracle     — Pattern guardian monitoring
+#   4. vip-scanner        — VIP symbol scanning
+#   5. premarket-scanner  — Pre-market analysis
+#   6. self-improvement   — Model self-tuning
+#   7. news-analysis      — News sentiment processing
+# ============================================================================
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# NO healthcheck — worker is not an HTTP server (the PORT is just for Railway)
+# Railway requires a port binding even for workers
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# Worker start command
+startCommand = "sh -c 'WORKER_MODE=1 uvicorn wolf_app:APP --host 0.0.0.0 --port ${PORT:-8001}'"

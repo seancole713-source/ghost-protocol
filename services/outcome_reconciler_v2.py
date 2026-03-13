@@ -371,6 +371,29 @@ def _reconcile_single_v2(pred: Dict[str, Any]) -> str:
         except Exception as feedback_err:
             LOGGER.warning(f"⚠️ Feedback loop error (non-fatal): {feedback_err}")
         
+        # ============================================
+        # TRADE LEARNING LOOP — Deep pattern analysis (Mar 13, 2026)
+        # Analyzes each trade for confidence bucket, direction,
+        # symbol patterns and feeds back into the prediction engine.
+        # ============================================
+        try:
+            from core.trade_learning_loop import analyze_trade as _tll_analyze
+            lesson = _tll_analyze(
+                symbol=symbol,
+                direction=pred_direction,
+                correct=(hit_direction == 1),
+                confidence=pred_confidence,
+                entry_price=price_t0,
+                exit_price=price_t1,
+            )
+            if lesson:
+                LOGGER.info(
+                    f"🎓 [LEARNING] {symbol}: {lesson.get('lesson', 'analyzed')} "
+                    f"(bucket={lesson.get('bucket', '?')}, sym_wr={lesson.get('symbol_win_rate', 0):.0f}%)"
+                )
+        except Exception as tll_err:
+            LOGGER.debug(f"Trade learning loop error (non-fatal): {tll_err}")
+        
         accuracy_symbol = "✅" if hit_direction == 1 else "❌"
         LOGGER.info(
             f"{accuracy_symbol} Prediction {pred_id} ({symbol}): "
