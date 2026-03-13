@@ -36,9 +36,10 @@ EXPECTED_INTERVALS: Dict[str, float] = {
     "autosave-worker":       600,    # WOLF_AUTOSAVE_S, typically 5-10 min
     "alert-worker":          60,     # Processes queue, should be alive every minute
     "open-close-scheduler":  60,     # Checks every 30s
-    "outcome-reconciler":    600,    # Every 5 min (300s wait + work time)
+    "outcome-reconciler":    3600 + 60,  # Every 1 hour (V2 reconciler)
     "accuracy-tracker":      600,    # Every 5 min
     "online-calibrator":     21600 + 600,  # Every 6 hours
+    "price-recorder":        600,    # Every 5 min (records prediction prices)
 
     # Asyncio tasks
     "notification-loop":     3600 + 300,   # Runs on schedule (1h between checks)

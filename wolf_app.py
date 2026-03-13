@@ -5568,6 +5568,24 @@ async def _post_startup_init():
     except Exception as e:
         LOGGER.warning(f"[POST-STARTUP] System Doctor wire failed (non-fatal): {e}")
 
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # WEB + WORKER MODE: Critical tasks that must run in ALL modes
+    # ═══════════════════════════════════════════════════════════════════════════════
+
+    # Start alert worker (needed for Telegram/Slack/webhook notifications in ALL modes)
+    try:
+        _start_alert_worker()
+        LOGGER.info("[ALL MODES] ✅ Alert worker started (Telegram/Slack/webhook delivery)")
+    except Exception:
+        LOGGER.exception("alert_worker_start_failed", extra={"component": "startup"})
+
+    # Start accuracy tracker (needed for accuracy trending charts in ALL modes)
+    try:
+        _start_accuracy_tracker()
+        LOGGER.info("[ALL MODES] ✅ Accuracy tracker started (trending snapshots every 5 min)")
+    except Exception:
+        LOGGER.exception("accuracy_tracker_start_failed", extra={"component": "startup"})
+
     # CRITICAL: Check if this is WORKER mode or WEB mode
     WORKER_MODE = os.getenv("WORKER_MODE") == "1"
     
@@ -5580,7 +5598,13 @@ async def _post_startup_init():
         try:
             from core.prediction_price_recorder import price_recording_loop as _web_price_loop
 
+            _web_price_pulse_counter = 0
+
             def _web_fetch_price(sym: str) -> float | None:
+                nonlocal _web_price_pulse_counter
+                _web_price_pulse_counter += 1
+                if _web_price_pulse_counter % 5 == 1:  # Pulse every ~5 cycles (not every call)
+                    _heartbeat_pulse("price-recorder")
                 sym = (sym or "").upper().strip()
                 if not sym:
                     return None
@@ -6212,16 +6236,8 @@ async def _post_startup_init():
             LOGGER.warning("bootstrap_skipped", extra={"component": "startup"})
     except Exception as e:
         LOGGER.exception("bootstrap_failed", extra={"component": "startup", "error": str(e)})
-    # Start alert worker to process queued sends
-    try:
-        _start_alert_worker()
-    except Exception:
-        LOGGER.exception("alert_worker_start_failed", extra={"component": "startup"})
-    # Start accuracy tracking worker for real-time monitoring
-    try:
-        _start_accuracy_tracker()
-    except Exception:
-        LOGGER.exception("accuracy_tracker_start_failed", extra={"component": "startup"})
+    # NOTE: alert-worker and accuracy-tracker now start BEFORE the WORKER_MODE gate
+    # (moved in v5.7) so they run in ALL modes. See _post_startup_init() above.
     # Start open/close scheduler (optional)
     try:
         if SCHEDULE_OPEN_CLOSE:
@@ -15332,7 +15348,7 @@ async def api_v3_heartbeat_status():
         WEB_MODE_TASKS = {
             "online-calibrator", "news-analysis", "self-improvement",
             "notification-loop", "doctor-cron", "prediction-cycle",
-            "calibration-builder", "accuracy-evaluator", "paper-reconciler",
+            "outcome-reconciler", "alert-worker", "accuracy-tracker",
             "price-recorder",
         }
         _is_worker = os.getenv("WORKER_MODE") == "1"
@@ -17142,7 +17158,7 @@ async def api_v4_subsystems():
         WEB_TASKS = {
             "online-calibrator", "news-analysis", "self-improvement",
             "notification-loop", "doctor-cron", "prediction-cycle",
-            "calibration-builder", "accuracy-evaluator", "paper-reconciler",
+            "outcome-reconciler", "alert-worker", "accuracy-tracker",
             "price-recorder",
         }
         try:
@@ -23406,6 +23422,7 @@ _ALERT_STOP = threading.Event()
 
 
 def _alert_worker_loop():
+    _heartbeat_pulse("alert-worker")  # Pulse immediately so Health tab shows alive
     while not _ALERT_STOP.is_set():
         _heartbeat_pulse("alert-worker")
         try:
@@ -23674,6 +23691,7 @@ def _stop_accuracy_tracker():
 
 def _accuracy_tracking_loop():
     """Background loop to record accuracy snapshots for trending analysis"""
+    _heartbeat_pulse("accuracy-tracker")  # Pulse immediately so Health tab shows alive
     # Sleep first on startup to avoid blocking server initialization
     time.sleep(120)  # Wait 2 minutes for server to fully start
     

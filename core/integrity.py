@@ -532,14 +532,17 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                     _af_conn.close()
                     if fix_count > 0:
                         fixes_applied += fix_count
+                        db_mismatches = max(0, db_mismatches - fix_count)  # Update count after fix
                         LOGGER.info(f"[INTEGRITY] AUTO-FIX: Corrected direction on {fix_count} predictions (including historical)")
                 except Exception as fix_err:
                     LOGGER.warning(f"[INTEGRITY] Direction auto-fix failed: {fix_err}")
 
-            issues.append({
-                "type": "db_direction_mismatch", "severity": "info" if db_mismatches < 50 else "warn",
-                "detail": f"{db_mismatches} stored predictions have direction/target mismatch (auto-fixing)",
-            })
+            # Only report remaining mismatches (after auto-fix)
+            if db_mismatches > 0:
+                issues.append({
+                    "type": "db_direction_mismatch", "severity": "info" if db_mismatches < 50 else "warn",
+                    "detail": f"{db_mismatches} stored predictions have direction/target mismatch (auto-fixing)",
+                })
     except Exception as e:
         LOGGER.warning(f"[INTEGRITY] Direction/target check error: {e}")
 
