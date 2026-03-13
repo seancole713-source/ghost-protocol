@@ -1339,29 +1339,21 @@ async def get_market_movers(
 async def get_accuracy_summary():
     """Get prediction accuracy metrics from ghost_prediction_outcomes table"""
     try:
-        import os
-        import psycopg2
-        from datetime import datetime, timedelta
-        
-        database_url = os.getenv("DATABASE_URL")
-        if not database_url:
-            LOGGER.warning("DATABASE_URL not set, returning zero accuracy")
-            return _zero_accuracy_response()
-        
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        
-        try:
+        from core.db_pool import get_sync_connection
+
+        with get_sync_connection() as conn:
+            cursor = conn.cursor()
+
             # Use the pre-built accuracy views from migration
             cursor.execute("SELECT * FROM v_accuracy_24h")
             daily_row = cursor.fetchone()
-            
+
             cursor.execute("SELECT * FROM v_accuracy_7d")
             weekly_row = cursor.fetchone()
-            
+
             cursor.execute("SELECT * FROM v_accuracy_30d")
             monthly_row = cursor.fetchone()
-            
+
             # Get latest prediction timestamp
             cursor.execute("""
                 SELECT MAX(gp.run_at)
@@ -1369,48 +1361,42 @@ async def get_accuracy_summary():
             """)
             last_tune_row = cursor.fetchone()
             last_tune = int(last_tune_row[0]) if last_tune_row and last_tune_row[0] else None
-            
-            # Parse results (total, correct, wrong, accuracy_pct)
-            def parse_view_row(row):
-                if not row or row[0] == 0:
-                    return 0.0, 0, 0, 0
-                total, correct, wrong, accuracy = row
-                pending = 0  # Pending are excluded from views
-                return float(accuracy or 0.0), int(correct or 0), int(wrong or 0), int(pending)
-            
-            daily_acc, daily_corr, daily_wrong, daily_pend = parse_view_row(daily_row)
-            weekly_acc, weekly_corr, weekly_wrong, weekly_pend = parse_view_row(weekly_row)
-            monthly_acc, monthly_corr, monthly_wrong, monthly_pend = parse_view_row(monthly_row)
-            
-            # Determine accuracy status (70% threshold)
-            accuracy_status = "ACCURATE" if monthly_acc >= 70.0 else "BELOW_TARGET"
-            if monthly_acc == 0.0:
-                accuracy_status = "NO_DATA"
-            
-            return {
-                "daily_accuracy_pct": round(daily_acc, 1),
-                "weekly_accuracy_pct": round(weekly_acc, 1),
-                "monthly_accuracy_pct": round(monthly_acc, 1),
-                "accuracy_status": accuracy_status,
-                "meets_70pct_threshold": monthly_acc >= 70.0,
-                "correct": daily_corr,
-                "warning": 0,
-                "wrong": daily_wrong,
-                "pending": daily_pend,
-                "last_tune_ts": last_tune,
-                "config_name": "ghost-av1",
-                "total_predictions": daily_corr + daily_wrong + daily_pend,
-                "data_source": "postgres_outcomes_v2"
-            }
-            
-        finally:
+
             cursor.close()
-            conn.close()
-            
-    except psycopg2.Error as db_err:
-        LOGGER.error(f"Database error in accuracy_summary: {db_err}", exc_info=True)
-        return _zero_accuracy_response(error=f"Database error: {str(db_err)[:100]}")
-        
+
+        # Parse results (total, correct, wrong, accuracy_pct)
+        def parse_view_row(row):
+            if not row or row[0] == 0:
+                return 0.0, 0, 0, 0
+            total, correct, wrong, accuracy = row
+            pending = 0  # Pending are excluded from views
+            return float(accuracy or 0.0), int(correct or 0), int(wrong or 0), int(pending)
+
+        daily_acc, daily_corr, daily_wrong, daily_pend = parse_view_row(daily_row)
+        weekly_acc, weekly_corr, weekly_wrong, weekly_pend = parse_view_row(weekly_row)
+        monthly_acc, monthly_corr, monthly_wrong, monthly_pend = parse_view_row(monthly_row)
+
+        # Determine accuracy status (70% threshold)
+        accuracy_status = "ACCURATE" if monthly_acc >= 70.0 else "BELOW_TARGET"
+        if monthly_acc == 0.0:
+            accuracy_status = "NO_DATA"
+
+        return {
+            "daily_accuracy_pct": round(daily_acc, 1),
+            "weekly_accuracy_pct": round(weekly_acc, 1),
+            "monthly_accuracy_pct": round(monthly_acc, 1),
+            "accuracy_status": accuracy_status,
+            "meets_70pct_threshold": monthly_acc >= 70.0,
+            "correct": daily_corr,
+            "warning": 0,
+            "wrong": daily_wrong,
+            "pending": daily_pend,
+            "last_tune_ts": last_tune,
+            "config_name": "ghost-av1",
+            "total_predictions": daily_corr + daily_wrong + daily_pend,
+            "data_source": "postgres_outcomes_v2"
+        }
+
     except Exception as e:
         LOGGER.error(f"Accuracy summary failed: {e}", exc_info=True)
         return _zero_accuracy_response(error=str(e)[:200])

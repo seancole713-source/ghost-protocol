@@ -15324,6 +15324,11 @@ async def api_v4_history(days: int = 90, limit: int = 500):
         from core.db_pool import get_sync_connection
 
         with get_sync_connection() as conn:
+            # Safety: reset any aborted transaction state from previous pool user
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             cur = conn.cursor()
             cutoff_ts = int(time.time()) - (days * 86400)
 

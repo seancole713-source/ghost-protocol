@@ -217,6 +217,13 @@ def get_sync_connection():
         conn = None
         try:
             conn = pool.getconn()
+            # Reset any aborted transaction state left by a previous borrower.
+            # Without this, a connection returned to the pool after a swallowed
+            # error stays in "aborted" state and poisons the next caller.
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             yield conn
             conn.commit()
         except Exception:
