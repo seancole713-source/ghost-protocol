@@ -1163,6 +1163,84 @@ LOGGER = logging.getLogger("ghost")
 # These fire even when Polygon fallback succeeds, creating noise
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
+
+# ============================================================================
+# PREDICTION GATES (Step 3, Mar 13 2026)
+# Kill switch + confidence floor + rate limit — applied before every INSERT
+# into ghost_predictions. Only blocks NEW predictions; never touches history.
+# ============================================================================
+_PREDICTION_GATE_KILL_SWITCH_MIN_TRADES = 10
+_PREDICTION_GATE_KILL_SWITCH_MIN_WINRATE = 35.0   # percent
+_PREDICTION_GATE_CONFIDENCE_FLOOR = 0.55
+_PREDICTION_GATE_MAX_PER_DAY = 2
+
+
+def should_create_prediction(symbol: str, confidence: float) -> tuple:
+    """
+    Returns (True, "") if prediction should proceed,
+    (False, reason_string) if blocked by kill switch / confidence floor / rate limit.
+    Queries PostgreSQL ghost_predictions for historical stats.
+    """
+    # ── Check 1: Confidence floor ──────────────────────────────────────────
+    if confidence < _PREDICTION_GATE_CONFIDENCE_FLOOR:
+        reason = f"CONFIDENCE FLOOR: Skipping {symbol} — confidence {confidence:.2f} below {_PREDICTION_GATE_CONFIDENCE_FLOOR}"
+        LOGGER.info(reason)
+        return (False, reason)
+
+    # ── Check 2 & 3 require DB ─────────────────────────────────────────────
+    try:
+        from core.db_pool import get_sync_connection as _gate_get_conn
+        with _gate_get_conn() as _gate_conn:
+            try:
+                _gate_conn.rollback()
+            except Exception:
+                pass
+            _gate_cur = _gate_conn.cursor()
+
+            # ── Check 2: Kill switch — per-symbol win rate ─────────────────
+            _gate_cur.execute("""
+                SELECT COUNT(*) AS total,
+                       COALESCE(SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END), 0) AS wins
+                FROM ghost_predictions
+                WHERE symbol = %s
+                  AND correct IS NOT NULL
+                  AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
+            """, (symbol,))
+            _gate_row = _gate_cur.fetchone()
+            _gate_total = _gate_row[0] if _gate_row else 0
+            _gate_wins = _gate_row[1] if _gate_row else 0
+
+            if _gate_total >= _PREDICTION_GATE_KILL_SWITCH_MIN_TRADES:
+                _gate_winrate = round(_gate_wins / _gate_total * 100, 1)
+                if _gate_winrate < _PREDICTION_GATE_KILL_SWITCH_MIN_WINRATE:
+                    reason = f"KILL SWITCH: Skipping {symbol} — win rate {_gate_winrate}% over {_gate_total} trades"
+                    LOGGER.info(reason)
+                    _gate_cur.close()
+                    return (False, reason)
+
+            # ── Check 3: Rate limit — max N predictions per symbol per 24h ─
+            _gate_cutoff = int(time.time()) - 86400
+            _gate_cur.execute("""
+                SELECT COUNT(*)
+                FROM ghost_predictions
+                WHERE symbol = %s
+                  AND predicted_at > %s
+            """, (symbol, _gate_cutoff))
+            _gate_count = _gate_cur.fetchone()[0]
+            _gate_cur.close()
+
+            if _gate_count >= _PREDICTION_GATE_MAX_PER_DAY:
+                reason = f"RATE LIMIT: Skipping {symbol} — already {_gate_count} predictions today"
+                LOGGER.info(reason)
+                return (False, reason)
+
+    except Exception as _gate_err:
+        # If DB check fails, allow prediction through (fail-open)
+        LOGGER.warning(f"Prediction gate DB check failed for {symbol}: {_gate_err}")
+
+    return (True, "")
+
+
 # OpenTelemetry (optional)
 OTEL_ENABLED = os.getenv("OTEL_ENABLED", "0").lower() in ("1", "true", "yes")
 OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "ghost-wolf")
@@ -8718,9 +8796,17 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → cockpit: {se_direction} {se_confidence:.0%} ({stock_result.get('confirmations', 0)} confirmations)")
                 
                 # ================================================================
+                # PREDICTION GATE (Step 3): Kill switch + confidence floor + rate limit
+                # ================================================================
+                _se_gate_ok, _se_gate_reason = should_create_prediction(symbol, se_confidence)
+                if not _se_gate_ok:
+                    LOGGER.info(f"[{symbol}] 🚫 Stock Engine prediction blocked: {_se_gate_reason}")
+
+                # ================================================================
                 # WIRE STOCK ENGINE → ghost_predictions DB (touch calibration data)
                 # ================================================================
-                try:
+                if _se_gate_ok:
+                 try:
                     import sqlite3 as _se_sqlite3
                     conn = _se_sqlite3.connect(WOLF_SQLITE_PATH)
                     # Ensure table exists (ephemeral storage loses it on redeploy)
@@ -8770,7 +8856,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     conn.commit()
                     conn.close()
                     LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → ghost_predictions DB ✅")
-                except Exception as db_err:
+                 except Exception as db_err:
                     LOGGER.warning(f"[{symbol}] Stock Engine ghost_predictions write failed (non-fatal): {db_err}")
 
                 # ================================================================
@@ -8778,7 +8864,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 # Evaluator now reads from PostgreSQL exclusively.
                 # ================================================================
                 _se_pg_prediction_id = None
-                try:
+                if _se_gate_ok:
+                 try:
                     from core.db_pool import get_sync_connection as _se_get_conn
                     _se_pred_price = stock_result.get("target_price") or se_entry_price
                     _se_pred_pct = ((float(_se_pred_price) - se_entry_price) / se_entry_price * 100) if se_entry_price else 0.0
@@ -8861,7 +8948,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         _se_pg_prediction_id = _se_row[0] if _se_row else None
                         _se_pg_conn.commit()
                     LOGGER.info(f"[{symbol}] 🏛️ Stock Engine → PostgreSQL ghost_predictions (id={_se_pg_prediction_id}) ✅")
-                except Exception as _se_pg_err:
+                 except Exception as _se_pg_err:
                     LOGGER.warning(f"[{symbol}] Stock Engine PostgreSQL write failed (non-fatal): {_se_pg_err}")
                 
                 # Update in-memory cache with PG prediction_id now that we have it
@@ -10548,8 +10635,16 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         except Exception as e:
             LOGGER.warning(f"[{symbol}] Accuracy tracking registration failed: {e}")
 
+        # ================================================================
+        # PREDICTION GATE (Step 3): Kill switch + confidence floor + rate limit
+        # ================================================================
+        _turbo_gate_ok, _turbo_gate_reason = should_create_prediction(symbol, confidence)
+        if not _turbo_gate_ok:
+            LOGGER.info(f"[{symbol}] 🚫 Turbo prediction blocked: {_turbo_gate_reason}")
+
         # ALSO write to ghost_predictions table for touch-target evaluation + UI
-        try:
+        if _turbo_gate_ok:
+          try:
             import sqlite3
             # Ensure tables exist (and include newer columns like features_json)
             from core import prediction_tracker as _pt  # noqa: F401
@@ -10619,7 +10714,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             conn.commit()
             conn.close()
             LOGGER.info(f"[{symbol}] Stored in ghost_predictions table (ID={prediction_id}, direction={direction}, confidence={confidence:.1%}, features={len(features)})")
-        except Exception as e:
+          except Exception as e:
             LOGGER.error(f"[{symbol}] Failed to write to ghost_predictions table: {e}")
 
         # ================================================================
@@ -10627,7 +10722,8 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # The evaluator now reads from PostgreSQL, so predictions MUST
         # exist there for evaluation to work.
         # ================================================================
-        try:
+        if _turbo_gate_ok:
+         try:
             from core.db_pool import get_sync_connection as _pg_get_conn
             # CRITICAL FIX (Mar 4, 2026): Use target_price (not stop_loss for DOWN)
             _predicted_price = target_price
@@ -10709,7 +10805,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 ))
                 _pg_conn.commit()
             LOGGER.info(f"[{symbol}] ✅ PostgreSQL ghost_predictions stored")
-        except Exception as _pg_err:
+         except Exception as _pg_err:
             LOGGER.warning(f"[{symbol}] PostgreSQL ghost_predictions write failed (non-fatal): {_pg_err}")
         
         # ========================================================================
