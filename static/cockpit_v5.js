@@ -19,6 +19,7 @@ let _accuracy = null;
 let _heartbeat = null;
 let _audit = null;
 let _intelligence = null;
+let _subsystems = null;
 let _newsFilter = 'all';
 let _stockFilter = 'all';
 let _cryptoFilter = 'all';
@@ -117,6 +118,7 @@ async function loadAll() {
         fetchJSON('/api/v4/history?days=365&limit=2000'),// 6 – full history
         fetchJSON('/api/v3/intelligence/status'),        // 7 – intelligence hub
         fetchJSON('/api/v3/intelligence/cache'),         // 8 – news brain cache
+        fetchJSON('/api/v4/subsystems'),                 // 9 – full subsystem inventory
     ]);
 
     const val = i => results[i].status === 'fulfilled' ? results[i].value : null;
@@ -130,6 +132,7 @@ async function loadAll() {
     const histData = val(6);
     _intelligence = val(7);
     const newsBrain = val(8);
+    _subsystems = val(9);
 
     if (picksData?.ok) _picks = picksData.picks || [];
     if (watchData?.ok) _watchlist = watchData.items || watchData.watchlist || [];
@@ -544,7 +547,12 @@ function renderHealth() {
             const skipNote = (rawPct != null && skipped > 0)
                 ? ` · <span style="color:var(--yellow)">${rawPct}% raw (${skipped} skips excluded)</span>`
                 : '';
-            topEl.innerHTML = `<span class="hl-big">${pct}%</span> accuracy · ${correct}/${total} correct${skipNote} · Status: <strong>${status}</strong> · System: ${score}/100 · ${issues} issue${issues !== 1 ? 's' : ''}`;
+            // Subsystem summary
+            const sub = _subsystems?.summary;
+            const subNote = sub
+                ? ` · Brains: ${sub.brains} · Memory: ${sub.memory} · Intel: ${sub.intelligence} · Tasks: ${sub.tasks} · Doctor: ${sub.doctor}`
+                : '';
+            topEl.innerHTML = `<span class="hl-big">${pct}%</span> accuracy · ${correct}/${total} correct${skipNote} · System: ${score}/100 · ${issues} issue${issues !== 1 ? 's' : ''}${subNote}`;
         } else {
             topEl.textContent = 'Unable to load health data';
         }
@@ -558,10 +566,19 @@ function renderHealth() {
         setText('acc-record', `${_accuracy.correct_predictions || 0}W / ${((_accuracy.total_predictions || 0) - (_accuracy.correct_predictions || 0))}L`);
     }
 
+    // ── System Doctor — Morning Health Check ──
+    renderDoctorChecks();
+
     // Telegram Health Check Mirror
     renderHealthCheckMirror();
 
-    // Heartbeat grid
+    // ── Brain Modules (subsystems) ──
+    renderSubsystemBrains('subsystem-brains');
+
+    // ── Memory Systems (subsystems) ──
+    renderSubsystemMemory('subsystem-memory');
+
+    // Heartbeat grid — NOW shows ALL tasks, worker-only dimmed
     const hbEl = document.getElementById('heartbeat-grid');
     if (hbEl && _heartbeat?.tasks) {
         const entries = Object.entries(_heartbeat.tasks);
@@ -569,21 +586,27 @@ function renderHealth() {
             hbEl.innerHTML = '<div class="empty-state">No tasks registered</div>';
         } else {
             const isWorker = _heartbeat.worker_mode === true;
+            const webTasks = entries.filter(([,i]) => i.runs_here !== false);
+            const workerTasks = entries.filter(([,i]) => i.runs_here === false);
 
             // Mode indicator
             let modeHtml = '';
             if (!isWorker) {
                 modeHtml = `<div style="background:rgba(0,200,83,0.1);border:1px solid var(--green);border-radius:8px;padding:8px 14px;margin-bottom:12px;color:var(--text-muted);font-size:12px">
-                    🌐 <strong style="color:var(--green)">Web Mode</strong> — showing ${entries.length} applicable tasks (worker-only tasks hidden)
+                    🌐 <strong style="color:var(--green)">Web Mode</strong> — ${webTasks.length} active tasks · ${workerTasks.length} worker-only (dimmed)
                 </div>`;
             }
 
-            hbEl.innerHTML = modeHtml + entries.map(([name, info]) => {
+            const renderCard = ([name, info]) => {
                 const status = info.status || (info.alive ? 'alive' : 'dead');
-                const dotClass = status === 'alive' ? 'alive' : status === 'stale' ? 'stale' : status === 'never' ? 'never' : 'dead';
-                const ago = info.last_pulse ? fmtTimeAgo(info.last_pulse) : 'never';
-                return `<div class="hb-card"><span class="hb-dot ${dotClass}"></span><span class="hb-name">${esc(name.replace(/-/g, ' '))}</span><span class="hb-ago">${ago}</span></div>`;
-            }).join('');
+                const isWorkerOnly = info.runs_here === false;
+                const dotClass = isWorkerOnly ? 'worker-only' : status === 'alive' ? 'alive' : status === 'stale' ? 'stale' : status === 'never' ? 'never' : 'dead';
+                const ago = isWorkerOnly ? 'worker only' : info.last_pulse ? fmtTimeAgo(info.last_pulse) : 'never';
+                const dimClass = isWorkerOnly ? ' hb-dimmed' : '';
+                return `<div class="hb-card${dimClass}"><span class="hb-dot ${dotClass}"></span><span class="hb-name">${esc(name.replace(/-/g, ' '))}</span><span class="hb-ago">${ago}</span></div>`;
+            };
+
+            hbEl.innerHTML = modeHtml + webTasks.map(renderCard).join('') + workerTasks.map(renderCard).join('');
         }
     }
 
@@ -600,6 +623,79 @@ function renderHealth() {
             }).join('');
         }
     }
+}
+
+// ── System Doctor checks (Morning Health Check) ──
+function renderDoctorChecks() {
+    const el = document.getElementById('doctor-checks');
+    if (!el) return;
+
+    if (!_subsystems?.morning_health?.checks?.length) {
+        el.innerHTML = '<div class="empty-state">System Doctor not available</div>';
+        return;
+    }
+
+    const mh = _subsystems.morning_health;
+    const overall = mh.overall || 'UNKNOWN';
+    const overallIcon = overall === 'PASS' ? '✅' : '⚠️';
+
+    let html = `<div class="doctor-header">
+        <span class="doctor-overall">${overallIcon} ${overall}</span>
+        <span class="doctor-score">${mh.passed}/${mh.passed + mh.failed} checks passed</span>
+    </div>`;
+
+    html += mh.checks.map(c => {
+        const icon = c.pass ? '✅' : '❌';
+        return `<div class="doctor-row"><span class="doctor-icon">${icon}</span><span class="doctor-name">${esc(c.name)}</span><span class="doctor-detail">${esc(c.detail || '')}</span></div>`;
+    }).join('');
+
+    el.innerHTML = html;
+}
+
+// ── Subsystem cards: Brains ──
+function renderSubsystemBrains(targetId) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+
+    const brains = _subsystems?.brains;
+    if (!brains?.length) {
+        el.innerHTML = '<div class="empty-state">Brain modules not loaded</div>';
+        return;
+    }
+
+    el.innerHTML = brains.map(b => {
+        const dot = b.active ? 'active' : 'inactive';
+        return `<div class="subsys-card">
+            <span class="brain-dot ${dot}"></span>
+            <div class="subsys-info">
+                <span class="subsys-name">${esc(b.name)}</span>
+                <span class="subsys-desc">${esc(b.desc || '')}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── Subsystem cards: Memory ──
+function renderSubsystemMemory(targetId) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+
+    const mem = _subsystems?.memory;
+    if (!mem?.length) {
+        el.innerHTML = '<div class="empty-state">Memory systems not loaded</div>';
+        return;
+    }
+
+    el.innerHTML = mem.map(m => {
+        const dot = m.active ? 'active' : 'inactive';
+        return `<div class="subsys-card">
+            <span class="brain-dot ${dot}"></span>
+            <div class="subsys-info">
+                <span class="subsys-name">${esc(m.name)}</span>
+                <span class="subsys-desc">${esc(m.desc || '')}</span>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 function renderHealthCheckMirror() {
@@ -666,11 +762,18 @@ function renderHealthSidebar() {
         stats.push({ label: 'Correct', value: _accuracy.correct_predictions ?? 0 });
     }
     if (_heartbeat) {
-        stats.push({ label: 'Tasks Alive', value: _heartbeat.alive || 0 });
+        stats.push({ label: 'Tasks Alive', value: `${_heartbeat.alive || 0}/${_heartbeat.total || 0}` });
     }
     if (_audit) {
         stats.push({ label: 'Health Score', value: (_audit.health_score ?? '--') + '/100' });
         stats.push({ label: 'Issues', value: _audit.issues_remaining ?? 0 });
+    }
+    // Subsystem counts
+    if (_subsystems) {
+        stats.push({ label: 'Brains', value: _subsystems.summary?.brains || '?' });
+        stats.push({ label: 'Memory', value: _subsystems.summary?.memory || '?' });
+        stats.push({ label: 'Intel Hub', value: _subsystems.summary?.intelligence || '?' });
+        stats.push({ label: 'Doctor', value: _subsystems.summary?.doctor || '?' });
     }
 
     if (!stats.length) {
@@ -687,10 +790,22 @@ function renderHealthSidebar() {
 // TAB 6: AI BRAIN
 // ═══════════════════════════════════════
 function renderBrain(newsBrain) {
+    // ── Brain Modules (from subsystems API) ──
+    renderSubsystemBrains('brain-modules');
+
+    // ── Memory Systems (from subsystems API) ──
+    renderSubsystemMemory('brain-memory');
+
     // Intelligence Hub Subsystems
     const subsEl = document.getElementById('brain-subsystems');
     if (subsEl) {
-        if (_intelligence?.systems) {
+        // Prefer subsystems API intel data if available
+        const intelSystems = _subsystems?.intelligence;
+        if (intelSystems?.length) {
+            subsEl.innerHTML = intelSystems.map(s =>
+                `<div class="brain-card"><span class="brain-dot ${s.active ? 'active' : 'inactive'}"></span><span class="brain-name">${esc(s.name)}</span></div>`
+            ).join('');
+        } else if (_intelligence?.systems) {
             const systems = _intelligence.systems;
             // systems could be an object or array
             const entries = Array.isArray(systems)

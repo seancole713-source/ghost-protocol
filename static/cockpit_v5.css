@@ -869,6 +869,104 @@ body {
 .red { color: var(--red); }
 
 /* ═══════════════════════════════════════
+   SYSTEM DOCTOR + SUBSYSTEM CARDS (v5.5)
+   ═══════════════════════════════════════ */
+
+/* Doctor checks grid */
+.doctor-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.doctor-header {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.doctor-overall {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.doctor-score {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.doctor-row {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.doctor-icon { flex-shrink: 0; }
+.doctor-name { font-weight: 500; min-width: 140px; }
+.doctor-detail { color: var(--text-dim); flex: 1; }
+
+/* Subsystem cards (brains, memory) */
+.subsystem-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 8px;
+}
+
+.subsys-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.subsys-card .brain-dot {
+    margin-top: 3px;
+}
+
+.subsys-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.subsys-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.subsys-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.3;
+}
+
+/* Dimmed worker-only heartbeat cards */
+.hb-dimmed {
+    opacity: 0.4;
+}
+
+.hb-dot.worker-only {
+    background: var(--text-muted);
+    opacity: 0.5;
+}
+
+
+/* ═══════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════ */
 @media (max-width: 1200px) {
