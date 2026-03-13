@@ -536,33 +536,40 @@ function renderHealth() {
     if (topEl) {
         if (_accuracy && _audit) {
             const pct = _accuracy.accuracy_pct ?? 0;
+            const rawPct = _accuracy.raw_accuracy_pct ?? pct;
             const correct = _accuracy.correct_predictions ?? 0;
             const total = _accuracy.total_predictions ?? 0;
-            const status = _accuracy.accuracy_status || 'UNKNOWN';
-            const score = _audit.health_score ?? '--';
-            const issues = _audit.issues_remaining ?? 0;
-            // Skip transparency
-            const rawPct = _accuracy.raw_accuracy_pct;
             const skipped = _accuracy.total_skipped ?? 0;
-            const skipNote = (rawPct != null && skipped > 0)
-                ? ` · <span style="color:var(--yellow)">${rawPct}% raw (${skipped} skips excluded)</span>`
-                : '';
-            // Subsystem summary
-            const sub = _subsystems?.summary;
-            const subNote = sub
-                ? ` · Brains: ${sub.brains} · Memory: ${sub.memory} · Intel: ${sub.intelligence} · Tasks: ${sub.tasks} · Doctor: ${sub.doctor}`
-                : '';
-            topEl.innerHTML = `<span class="hl-big">${pct}%</span> accuracy · ${correct}/${total} correct${skipNote} · System: ${score}/100 · ${issues} issue${issues !== 1 ? 's' : ''}${subNote}`;
+            const totalAll = _accuracy.total_with_skips ?? total;
+            const score = _audit.health_score ?? '--';
+            const penalty = _audit.total_penalty ?? 0;
+            const issues = _audit.issues_remaining ?? 0;
+
+            // Dual accuracy: filtered vs real
+            const rawColor = rawPct < 40 ? 'var(--red)' : rawPct < 50 ? 'var(--yellow)' : 'var(--green)';
+            const filtColor = pct < 40 ? 'var(--red)' : pct < 50 ? 'var(--yellow)' : 'var(--green)';
+            const accHtml = `<span class="hl-big" style="color:${filtColor}">${pct}%</span> filtered`
+                + (skipped > 0 ? ` · <span style="color:${rawColor};font-weight:600">${rawPct}%</span> real <span style="color:var(--text-muted);font-size:11px">(${skipped} skips excluded from ${totalAll})</span>` : '');
+
+            // Health score with penalty hint
+            const scoreColor = score >= 80 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+            const scoreHtml = `<span style="color:${scoreColor};font-weight:600">${score}</span>/100`
+                + (penalty > 0 ? ` <span style="color:var(--text-muted);font-size:11px">(-${penalty} penalty)</span>` : '');
+
+            topEl.innerHTML = `${accHtml} · System: ${scoreHtml} · ${issues} issue${issues !== 1 ? 's' : ''}`;
         } else {
             topEl.textContent = 'Unable to load health data';
         }
     }
 
-    // Accuracy cards
+    // Accuracy cards — show real numbers, 0% means 0%
     if (_accuracy) {
-        setText('acc-24h', (_accuracy.daily_accuracy_pct ?? 0) + '%');
-        setText('acc-7d', (_accuracy.weekly_accuracy_pct ?? 0) + '%');
-        setText('acc-30d', (_accuracy.monthly_accuracy_pct ?? 0) + '%');
+        const d = _accuracy.daily_accuracy_pct;
+        const w = _accuracy.weekly_accuracy_pct;
+        const m = _accuracy.monthly_accuracy_pct;
+        setText('acc-24h', (d != null ? d : '--') + '%');
+        setText('acc-7d', (w != null ? w : '--') + '%');
+        setText('acc-30d', (m != null ? m : '--') + '%');
         setText('acc-record', `${_accuracy.correct_predictions || 0}W / ${((_accuracy.total_predictions || 0) - (_accuracy.correct_predictions || 0))}L`);
     }
 
@@ -597,6 +604,15 @@ function renderHealth() {
                 </div>`;
             }
 
+            // Worker-only deployment banner (if any worker tasks exist)
+            let workerBanner = '';
+            if (!isWorker && workerTasks.length > 0) {
+                workerBanner = `<div style="background:rgba(255,152,0,0.1);border:1px solid var(--yellow);border-radius:8px;padding:10px 14px;margin:8px 0 12px;font-size:12px">
+                    <strong style="color:var(--yellow)">⚠️ ${workerTasks.length} tasks require a worker process</strong><br>
+                    <span style="color:var(--text-muted)">These tasks (${workerTasks.map(([n]) => n).join(', ')}) only run when WORKER_MODE=true. Deploy a Railway worker service to activate them.</span>
+                </div>`;
+            }
+
             const renderCard = ([name, info]) => {
                 const status = info.status || (info.alive ? 'alive' : 'dead');
                 const isWorkerOnly = info.runs_here === false;
@@ -606,21 +622,47 @@ function renderHealth() {
                 return `<div class="hb-card${dimClass}"><span class="hb-dot ${dotClass}"></span><span class="hb-name">${esc(name.replace(/-/g, ' '))}</span><span class="hb-ago">${ago}</span></div>`;
             };
 
-            hbEl.innerHTML = modeHtml + webTasks.map(renderCard).join('') + workerTasks.map(renderCard).join('');
+            hbEl.innerHTML = modeHtml + webTasks.map(renderCard).join('') + workerBanner + workerTasks.map(renderCard).join('');
         }
     }
 
-    // Issues
+    // Issues — deduped, with severity counts and auto-fix status
     const issEl = document.getElementById('issues-list');
-    if (issEl && _audit?.issues) {
+    if (issEl && _audit) {
         const issues = _audit.issues || [];
-        if (!issues.length) {
-            issEl.innerHTML = '<div class="empty-state" style="color:var(--green)">✓ No issues</div>';
+        const fixes = _audit.auto_fixes_applied ?? 0;
+
+        if (!issues.length && fixes === 0) {
+            issEl.innerHTML = '<div class="empty-state" style="color:var(--green)">✓ No issues — system healthy</div>';
         } else {
-            issEl.innerHTML = issues.map(iss => {
+            // Dedup by type
+            const seen = new Set();
+            const deduped = issues.filter(iss => {
+                const key = iss.type || iss.detail || '';
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+
+            // Count by severity
+            const errCount = deduped.filter(i => i.severity === 'error').length;
+            const warnCount = deduped.filter(i => i.severity === 'warn').length;
+            const infoCount = deduped.filter(i => i.severity === 'info').length;
+
+            let headerHtml = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;padding:6px 10px;background:rgba(255,255,255,0.03);border-radius:6px">`;
+            if (errCount) headerHtml += `<span style="color:var(--red)">❌ ${errCount} error${errCount > 1 ? 's' : ''}</span> `;
+            if (warnCount) headerHtml += `<span style="color:var(--yellow)">⚠️ ${warnCount} warning${warnCount > 1 ? 's' : ''}</span> `;
+            if (infoCount) headerHtml += `<span style="color:var(--text-muted)">ℹ️ ${infoCount} info</span> `;
+            if (fixes > 0) headerHtml += `<span style="color:var(--green)">· 🔧 ${fixes} auto-fixed</span>`;
+            headerHtml += `</div>`;
+
+            const issuesHtml = deduped.map(iss => {
                 const sev = (iss.severity || 'info').toLowerCase();
-                return `<div class="issue-item"><span class="issue-sev ${sev}">${sev}</span><span class="issue-detail">${esc(iss.detail || iss.message || iss.type || '')}</span></div>`;
+                const icon = sev === 'error' ? '❌' : sev === 'warn' ? '⚠️' : 'ℹ️';
+                return `<div class="issue-item"><span class="issue-sev ${sev}">${icon} ${sev}</span><span class="issue-detail">${esc(iss.detail || iss.message || iss.type || '')}</span></div>`;
             }).join('');
+
+            issEl.innerHTML = headerHtml + issuesHtml;
         }
     }
 }
@@ -637,16 +679,23 @@ function renderDoctorChecks() {
 
     const mh = _subsystems.morning_health;
     const overall = mh.overall || 'UNKNOWN';
-    const overallIcon = overall === 'PASS' ? '✅' : '⚠️';
+    const overallIcon = overall === 'PASS' ? '✅' : overall === 'WARN' ? '⚠️' : '❌';
+
+    const passed = mh.passed ?? 0;
+    const warned = mh.warned ?? 0;
+    const failed = mh.failed ?? 0;
+    const total = passed + warned + failed;
 
     let html = `<div class="doctor-header">
         <span class="doctor-overall">${overallIcon} ${overall}</span>
-        <span class="doctor-score">${mh.passed}/${mh.passed + mh.failed} checks passed</span>
+        <span class="doctor-score">${passed} pass${warned > 0 ? ` · ${warned} warn` : ''}${failed > 0 ? ` · ${failed} fail` : ''} — ${total} checks</span>
     </div>`;
 
     html += mh.checks.map(c => {
-        const icon = c.pass ? '✅' : '❌';
-        return `<div class="doctor-row"><span class="doctor-icon">${icon}</span><span class="doctor-name">${esc(c.name)}</span><span class="doctor-detail">${esc(c.detail || '')}</span></div>`;
+        const sev = c.severity || (c.pass ? 'pass' : 'fail');
+        const icon = sev === 'fail' ? '❌' : sev === 'warn' ? '⚠️' : '✅';
+        const detailColor = sev === 'fail' ? 'color:var(--red)' : sev === 'warn' ? 'color:var(--yellow)' : '';
+        return `<div class="doctor-row"><span class="doctor-icon">${icon}</span><span class="doctor-name">${esc(c.name)}</span><span class="doctor-detail" style="${detailColor}">${esc(c.detail || '')}</span></div>`;
     }).join('');
 
     el.innerHTML = html;
@@ -702,7 +751,18 @@ function renderHealthCheckMirror() {
     const el = document.getElementById('health-check-mirror');
     if (!el) return;
 
-    // Build Telegram health check format from available data
+    // If doctor data available, use real severity
+    if (_subsystems?.morning_health?.checks?.length) {
+        const mh = _subsystems.morning_health;
+        el.innerHTML = mh.checks.map(c => {
+            const sev = c.severity || (c.pass ? 'pass' : 'fail');
+            const icon = sev === 'fail' ? '❌' : sev === 'warn' ? '⚠️' : '✅';
+            return `<div class="hc-row"><span class="hc-icon">${icon}</span><span class="hc-name">${esc(c.name)}</span><span class="hc-detail">${esc(c.detail || '')}</span></div>`;
+        }).join('');
+        return;
+    }
+
+    // Fallback: build from available data (with honest thresholds)
     const checks = [];
 
     // API Server
@@ -710,41 +770,32 @@ function renderHealthCheckMirror() {
 
     // Predictions
     const predCount = _watchlist.length || 0;
-    checks.push({ icon: predCount > 0 ? '✅' : '⚠️', name: 'Predictions', detail: `${predCount} active predictions` });
+    checks.push({ icon: predCount > 0 ? '✅' : '❌', name: 'Predictions', detail: `${predCount} active predictions` });
 
-    // Edge Symbols
-    if (_intelligence?.edge_symbols_count != null) {
-        checks.push({ icon: '✅', name: 'Edge Symbols', detail: `${_intelligence.edge_symbols_count} edge symbols` });
-    }
-
-    // Accuracy
+    // Accuracy — use REAL accuracy for threshold
     if (_accuracy) {
-        const pct = _accuracy.accuracy_pct ?? 0;
-        const correct = _accuracy.correct_predictions ?? 0;
-        const total = _accuracy.total_predictions ?? 0;
-        checks.push({ icon: pct >= 50 ? '✅' : '⚠️', name: 'Accuracy Tracker', detail: `${correct}/${total} correct (${pct}%)` });
+        const rawPct = _accuracy.raw_accuracy_pct ?? _accuracy.accuracy_pct ?? 0;
+        const filtPct = _accuracy.accuracy_pct ?? 0;
+        const icon = rawPct < 40 ? '❌' : rawPct < 50 ? '⚠️' : '✅';
+        checks.push({ icon, name: 'Accuracy', detail: `${filtPct}% filtered · ${rawPct}% real` });
     }
 
     // Heartbeat summary
     if (_heartbeat) {
         const alive = _heartbeat.alive ?? 0;
         const total = _heartbeat.total ?? 0;
-        checks.push({ icon: alive > 3 ? '✅' : '⚠️', name: 'Background Tasks', detail: `${alive}/${total} tasks alive` });
+        checks.push({ icon: alive > 3 ? '✅' : alive > 0 ? '⚠️' : '❌', name: 'Background Tasks', detail: `${alive}/${total} tasks alive` });
     }
 
     // System health
     if (_audit) {
         const score = _audit.health_score ?? 0;
         const issues = _audit.issues_remaining ?? 0;
-        checks.push({ icon: score >= 70 ? '✅' : '⚠️', name: 'System Health', detail: `${score}/100 · ${issues} issues` });
+        checks.push({ icon: score >= 80 ? '✅' : score >= 50 ? '⚠️' : '❌', name: 'System Health', detail: `${score}/100 · ${issues} issues` });
     }
 
-    // Intelligence Hub
-    if (_intelligence) {
-        const loaded = _intelligence.systems_loaded ?? 0;
-        const total = _intelligence.systems_total ?? 0;
-        checks.push({ icon: loaded > 0 ? '✅' : '⚠️', name: 'Intelligence Hub', detail: `${loaded}/${total} subsystems loaded` });
-    }
+    // Database
+    checks.push({ icon: _accuracy ? '✅' : '❌', name: 'Database', detail: _accuracy ? 'PostgreSQL responding' : 'Unknown' });
 
     el.innerHTML = checks.map(c =>
         `<div class="hc-row"><span class="hc-icon">${c.icon}</span><span class="hc-name">${c.name}</span><span class="hc-detail">${c.detail}</span></div>`
@@ -757,23 +808,20 @@ function renderHealthSidebar() {
 
     const stats = [];
     if (_accuracy) {
-        stats.push({ label: 'Win Rate', value: (_accuracy.accuracy_pct ?? 0) + '%' });
-        stats.push({ label: 'Total Trades', value: _accuracy.total_predictions ?? 0 });
+        stats.push({ label: 'Filtered Rate', value: (_accuracy.accuracy_pct ?? 0) + '%' });
+        stats.push({ label: 'Real Rate', value: (_accuracy.raw_accuracy_pct ?? _accuracy.accuracy_pct ?? 0) + '%', warn: (_accuracy.raw_accuracy_pct ?? 100) < 50 });
+        stats.push({ label: 'Total Evaluated', value: _accuracy.total_predictions ?? 0 });
+        stats.push({ label: 'Skipped', value: _accuracy.total_skipped ?? 0, warn: (_accuracy.total_skipped ?? 0) > 100 });
         stats.push({ label: 'Correct', value: _accuracy.correct_predictions ?? 0 });
     }
     if (_heartbeat) {
         stats.push({ label: 'Tasks Alive', value: `${_heartbeat.alive || 0}/${_heartbeat.total || 0}` });
     }
     if (_audit) {
-        stats.push({ label: 'Health Score', value: (_audit.health_score ?? '--') + '/100' });
-        stats.push({ label: 'Issues', value: _audit.issues_remaining ?? 0 });
-    }
-    // Subsystem counts
-    if (_subsystems) {
-        stats.push({ label: 'Brains', value: _subsystems.summary?.brains || '?' });
-        stats.push({ label: 'Memory', value: _subsystems.summary?.memory || '?' });
-        stats.push({ label: 'Intel Hub', value: _subsystems.summary?.intelligence || '?' });
-        stats.push({ label: 'Doctor', value: _subsystems.summary?.doctor || '?' });
+        stats.push({ label: 'Health Score', value: (_audit.health_score ?? '--') + '/100', warn: (_audit.health_score ?? 100) < 60 });
+        stats.push({ label: 'Penalty', value: '-' + (_audit.total_penalty ?? 0) });
+        stats.push({ label: 'Issues', value: _audit.issues_remaining ?? 0, warn: (_audit.issues_remaining ?? 0) > 3 });
+        stats.push({ label: 'Auto-fixes', value: _audit.auto_fixes_applied ?? 0 });
     }
 
     if (!stats.length) {
@@ -781,9 +829,22 @@ function renderHealthSidebar() {
         return;
     }
 
-    el.innerHTML = stats.map(s =>
-        `<div class="quick-stat"><span class="qs-label">${s.label}</span><span class="qs-value">${s.value}</span></div>`
-    ).join('');
+    el.innerHTML = stats.map(s => {
+        const warnStyle = s.warn ? ' style="color:var(--yellow)"' : '';
+        return `<div class="quick-stat"><span class="qs-label">${s.label}</span><span class="qs-value"${warnStyle}>${s.value}</span></div>`;
+    }).join('');
+
+    // Health score formula breakdown
+    if (_audit?.score_breakdown?.length) {
+        let formulaHtml = `<div style="margin-top:12px;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:6px;font-size:11px;color:var(--text-muted)">
+            <strong>Score Formula</strong> <span style="opacity:0.6">100 − penalty</span><br>`;
+        for (const b of _audit.score_breakdown) {
+            const color = b.component === 'errors' ? 'var(--red)' : b.component === 'warnings' ? 'var(--yellow)' : 'var(--text-muted)';
+            formulaHtml += `<span style="color:${color}">• ${b.count} ${b.component} × ${b.weight} = −${b.penalty}</span><br>`;
+        }
+        formulaHtml += `<strong>Total penalty: −${_audit.total_penalty ?? 0}</strong></div>`;
+        el.innerHTML += formulaHtml;
+    }
 }
 
 // ═══════════════════════════════════════

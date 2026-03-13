@@ -16752,16 +16752,57 @@ async def integrity_audit():
     Run the full system integrity audit with auto-fix.
     Returns health score (0-100) + issues list.
     Called by UI on page load + every 5 minutes.
+    Escalates ERROR-severity issues to Telegram.
     """
     try:
         from core.integrity import run_audit
         result = await asyncio.to_thread(run_audit, auto_fix=True)
+
+        # ── Telegram escalation for ERROR-severity issues ──
+        try:
+            error_issues = [i for i in result.get("issues", []) if i.get("severity") == "error"]
+            if error_issues:
+                score = result.get("health_score", 0)
+                fixes = result.get("auto_fixes_applied", 0)
+                lines = [
+                    f"🚨 Ghost Integrity Alert — {len(error_issues)} error(s)",
+                    f"Health Score: {score}/100 · Auto-fixes: {fixes}",
+                    "──────────────────",
+                ]
+                for iss in error_issues[:8]:
+                    lines.append(f"❌ {iss.get('type', 'unknown')}: {iss.get('detail', '')[:80]}")
+                lines.append("──────────────────")
+                lines.append("Check cockpit Health tab for full details")
+                _esc_msg = "\n".join(lines)
+
+                import httpx as _esc_httpx
+                _esc_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+                _esc_chat = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+                if _esc_token and _esc_chat:
+                    _esc_url = f"https://api.telegram.org/bot{_esc_token}/sendMessage"
+                    for _cid in _esc_chat.split(","):
+                        _cid = _cid.strip()
+                        if _cid:
+                            await asyncio.to_thread(
+                                lambda: _esc_httpx.post(
+                                    _esc_url,
+                                    json={"chat_id": _cid, "text": _esc_msg, "disable_web_page_preview": True},
+                                    timeout=10,
+                                )
+                            )
+                    result["telegram_escalated"] = True
+                    LOGGER.info(f"[INTEGRITY] Escalated {len(error_issues)} error(s) to Telegram")
+        except Exception as esc_e:
+            LOGGER.warning(f"[INTEGRITY] Telegram escalation failed: {esc_e}")
+
         return result
     except Exception as e:
         from datetime import datetime as _dt_int
         LOGGER.error(f"[INTEGRITY] Audit endpoint failed: {e}")
         return {
             "health_score": 0,
+            "score_breakdown": [],
+            "total_penalty": 100,
             "auto_fixes_applied": 0,
             "issues_remaining": 1,
             "issues": [{"type": "audit_crash", "severity": "error", "detail": str(e)[:200]}],

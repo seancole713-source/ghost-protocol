@@ -2048,8 +2048,40 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
     penalty = sum(SEVERITY_WEIGHTS.get(i["severity"], 1) for i in issues)
     health_score = max(0, min(100, 100 - penalty))
 
+    # ── Score breakdown: show what costs points ──
+    score_breakdown = []
+    error_issues = [i for i in issues if i.get("severity") == "error"]
+    warn_issues = [i for i in issues if i.get("severity") == "warn"]
+    info_issues = [i for i in issues if i.get("severity") == "info"]
+    if error_issues:
+        score_breakdown.append({
+            "component": "errors",
+            "count": len(error_issues),
+            "weight": SEVERITY_WEIGHTS["error"],
+            "penalty": len(error_issues) * SEVERITY_WEIGHTS["error"],
+            "details": [i.get("detail", i.get("type", ""))[:80] for i in error_issues[:5]],
+        })
+    if warn_issues:
+        score_breakdown.append({
+            "component": "warnings",
+            "count": len(warn_issues),
+            "weight": SEVERITY_WEIGHTS["warn"],
+            "penalty": len(warn_issues) * SEVERITY_WEIGHTS["warn"],
+            "details": [i.get("detail", i.get("type", ""))[:80] for i in warn_issues[:5]],
+        })
+    if info_issues:
+        score_breakdown.append({
+            "component": "info",
+            "count": len(info_issues),
+            "weight": SEVERITY_WEIGHTS["info"],
+            "penalty": len(info_issues) * SEVERITY_WEIGHTS["info"],
+            "details": [i.get("detail", i.get("type", ""))[:60] for i in info_issues[:3]],
+        })
+
     return {
         "health_score": round(health_score, 1),
+        "score_breakdown": score_breakdown,
+        "total_penalty": round(penalty, 1),
         "auto_fixes_applied": fixes_applied,
         "issues_remaining": len(issues),
         "issues": issues[:25],

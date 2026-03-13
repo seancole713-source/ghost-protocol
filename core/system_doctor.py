@@ -2,8 +2,7 @@
 Ghost System Doctor — Daily Health Check (7 AM CT)
 
 Runs a comprehensive diagnostic across all Ghost subsystems and returns
-a simple PASS / FAIL report.  Designed to be called by beast_scheduler
-and send a Telegram summary every morning.
+a PASS / WARN / FAIL report with real severity thresholds.
 
 Checks:
   1. API server alive (FastAPI responding)
@@ -11,9 +10,15 @@ Checks:
   3. Edge symbols populated (13 expected)
   4. Price feeds working (at least 1 symbol)
   5. Intelligence Hub loaded (20 systems)
-  6. Accuracy tracker has data
+  6. Accuracy tracker has data + performance thresholds
   7. Telegram connectivity
   8. No Python import errors in core modules
+  9. Database health (PostgreSQL transaction state)
+
+Severity levels:
+  - pass: All good
+  - warn: Degraded, needs attention
+  - fail: Broken, immediate action required
 """
 
 import logging
@@ -33,26 +38,24 @@ HUB_STATUS_FUNC = None             # func() -> dict
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Individual checks — each returns {"pass": bool, "detail": str}
+#  Individual checks — each returns {"pass": bool, "severity": str, "detail": str}
+#  severity: "pass" | "warn" | "fail"
 # ═══════════════════════════════════════════════════════════════════
 
 def _check_api() -> dict[str, Any]:
     """Check FastAPI is responding."""
     try:
         import httpx
-        # Use loopback first (avoids Railway edge routing / SSL overhead)
         port = os.getenv("PORT", "8000")
         try:
             r = httpx.get(f"http://127.0.0.1:{port}/api/health", timeout=3, follow_redirects=True)
             if r.status_code == 200:
-                return {"pass": True, "detail": f"HTTP {r.status_code}"}
+                return {"pass": True, "severity": "pass", "detail": f"HTTP {r.status_code}"}
         except Exception:
             pass
-        # If loopback fails (e.g. single-worker deadlock), the fact that this
-        # code is executing at all means the API is alive.
-        return {"pass": True, "detail": "OK (self-check — server is handling this request)"}
+        return {"pass": True, "severity": "pass", "detail": "OK (self-check — server is handling this request)"}
     except Exception as e:
-        return {"pass": False, "detail": str(e)[:80]}
+        return {"pass": False, "severity": "fail", "detail": str(e)[:80]}
 
 
 def _check_predictions() -> dict[str, Any]:
@@ -62,27 +65,25 @@ def _check_predictions() -> dict[str, Any]:
         if GET_PREDICTIONS_FUNC:
             preds = GET_PREDICTIONS_FUNC()
         if not preds:
-            # Direct fallback: reach into wolf_app's prediction cache
             try:
                 import wolf_app as _wa
                 preds = dict(getattr(_wa, "_LATEST_PREDICTIONS", {}))
             except Exception:
                 pass
         if not preds:
-            return {"pass": False, "detail": "0 predictions in cache"}
-        # Freshness
+            return {"pass": False, "severity": "fail", "detail": "0 predictions in cache"}
         now = time.time()
         ages = [now - p.get("run_at", 0) for p in preds.values() if p.get("run_at")]
         if not ages:
-            return {"pass": True, "detail": f"{len(preds)} preds (no timestamps)"}
+            return {"pass": True, "severity": "warn", "detail": f"{len(preds)} preds (no timestamps)"}
         newest_h = min(ages) / 3600
-        ok = newest_h <= 4.0
-        return {
-            "pass": ok,
-            "detail": f"{len(preds)} preds, newest {newest_h:.1f}h ago",
-        }
+        if newest_h > 4.0:
+            return {"pass": False, "severity": "fail", "detail": f"{len(preds)} preds, newest {newest_h:.1f}h ago — STALE"}
+        if newest_h > 2.0:
+            return {"pass": True, "severity": "warn", "detail": f"{len(preds)} preds, newest {newest_h:.1f}h ago — aging"}
+        return {"pass": True, "severity": "pass", "detail": f"{len(preds)} preds, newest {newest_h:.1f}h ago"}
     except Exception as e:
-        return {"pass": False, "detail": str(e)[:80]}
+        return {"pass": False, "severity": "fail", "detail": str(e)[:80]}
 
 
 def _check_edge_symbols() -> dict[str, Any]:
@@ -94,18 +95,20 @@ def _check_edge_symbols() -> dict[str, Any]:
         else:
             edge = GET_EDGE_SET_FUNC()
         n = len(edge)
-        ok = n >= 10  # allow small roster changes
-        return {"pass": ok, "detail": f"{n} edge symbols"}
+        if n < 5:
+            return {"pass": False, "severity": "fail", "detail": f"Only {n} edge symbols — critically low"}
+        if n < 10:
+            return {"pass": True, "severity": "warn", "detail": f"{n} edge symbols — below normal"}
+        return {"pass": True, "severity": "pass", "detail": f"{n} edge symbols"}
     except Exception as e:
-        return {"pass": False, "detail": str(e)[:80]}
+        return {"pass": False, "severity": "fail", "detail": str(e)[:80]}
 
 
 def _check_price_feed() -> dict[str, Any]:
-    """Spot-check one crypto + one stock price."""
+    """Spot-check one crypto + one stock price. Real thresholds."""
     try:
         price_func = GET_PRICE_FUNC
         if not price_func:
-            # Build a self-sufficient price function
             def _fallback_price(symbol, market):
                 try:
                     if market == "crypto":
@@ -131,10 +134,13 @@ def _check_price_feed() -> dict[str, Any]:
                     ok_count += 1
             except Exception:
                 pass
-        ok = ok_count >= 1
-        return {"pass": ok, "detail": f"{ok_count}/2 feeds responding"}
+        if ok_count == 0:
+            return {"pass": False, "severity": "fail", "detail": "0/2 feeds responding — ALL price data offline"}
+        if ok_count == 1:
+            return {"pass": True, "severity": "warn", "detail": "1/2 feeds responding — partial outage"}
+        return {"pass": True, "severity": "pass", "detail": "2/2 feeds responding"}
     except Exception as e:
-        return {"pass": False, "detail": str(e)[:80]}
+        return {"pass": False, "severity": "fail", "detail": str(e)[:80]}
 
 
 def _check_hub() -> dict[str, Any]:
@@ -143,18 +149,21 @@ def _check_hub() -> dict[str, Any]:
         if HUB_STATUS_FUNC:
             status = HUB_STATUS_FUNC()
             n = status.get("systems_active", 0)
-            ok = n >= 15
-            return {"pass": ok, "detail": f"{n} systems active"}
-        # Fallback: use the actual singleton
+            if n < 5:
+                return {"pass": False, "severity": "fail", "detail": f"{n} systems active — below minimum"}
+            return {"pass": True, "severity": "pass", "detail": f"{n} systems active"}
         from core.intelligence_hub import get_intelligence_hub
         hub = get_intelligence_hub()
         status = hub.get_status()
         loaded = sum(1 for v in status.values() if v is True)
-        total = sum(1 for k, v in status.items() if k.endswith("_loaded"))
-        ok = loaded >= 5
-        return {"pass": ok, "detail": f"{loaded}/{total} subsystems loaded"}
+        total = sum(1 for k in status.keys() if k.endswith("_loaded"))
+        if total == 0:
+            total = loaded  # Avoid 10/0 display
+        if loaded < 5:
+            return {"pass": False, "severity": "fail", "detail": f"{loaded}/{total} subsystems loaded — below minimum"}
+        return {"pass": True, "severity": "pass", "detail": f"{loaded}/{total} subsystems loaded"}
     except Exception as e:
-        return {"pass": False, "detail": str(e)[:80]}
+        return {"pass": False, "severity": "fail", "detail": str(e)[:80]}
 
 
 def _check_core_imports() -> dict[str, Any]:
@@ -174,33 +183,54 @@ def _check_core_imports() -> dict[str, Any]:
             __import__(mod)
         except Exception as e:
             failures.append(f"{mod}: {e}")
-    ok = len(failures) == 0
-    detail = "all OK" if ok else "; ".join(failures)[:120]
-    return {"pass": ok, "detail": f"{len(modules) - len(failures)}/{len(modules)} modules OK"}
+    n_ok = len(modules) - len(failures)
+    if failures:
+        sev = "fail" if len(failures) >= 3 else "warn"
+        detail = f"{n_ok}/{len(modules)} modules OK — FAILED: {'; '.join(failures)[:100]}"
+        return {"pass": False, "severity": sev, "detail": detail}
+    return {"pass": True, "severity": "pass", "detail": f"{n_ok}/{len(modules)} modules OK"}
 
 
 def _check_accuracy() -> dict[str, Any]:
-    """Check accuracy tracker — reads from PostgreSQL evaluator (persistent)."""
-    # PRIMARY: PostgreSQL evaluator (survives deploys, authoritative)
+    """Check accuracy tracker — reads from PostgreSQL evaluator (persistent).
+    
+    Thresholds:
+      - < 40% real accuracy → fail
+      - < 50% real accuracy → warn
+      - ≥ 50% → pass
+    """
     try:
         from core.db_pool import get_sync_connection
         with get_sync_connection() as conn:
             cur = conn.cursor()
-            # Only count real evaluations (exclude skip-tagged)
-            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'")
-            checked = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND correct = 1 AND eval_version NOT LIKE 'skip%%'")
-            correct = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 0")
-            pending = cur.fetchone()[0]
-            # Also count skipped for context
-            cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version LIKE 'skip%%'")
-            skipped = cur.fetchone()[0]
-            if checked > 0:
-                wr = correct / checked
-                return {"pass": True, "detail": f"{correct}/{checked} correct ({wr:.0%}), {pending} pending, {skipped} skipped"}
-            elif pending > 0:
-                return {"pass": True, "detail": f"{pending} predictions pending evaluation"}
+            # Real accuracy: include ALL evaluated predictions (no skip exclusion)
+            cur.execute("SELECT COUNT(*), SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) FROM ghost_predictions WHERE correct IS NOT NULL")
+            total_all, correct_all = cur.fetchone()
+            correct_all = correct_all or 0
+            total_all = total_all or 0
+
+            # Filtered accuracy: exclude skip-tagged
+            cur.execute("SELECT COUNT(*), SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) FROM ghost_predictions WHERE correct IS NOT NULL AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')")
+            total_filt, correct_filt = cur.fetchone()
+            correct_filt = correct_filt or 0
+            total_filt = total_filt or 0
+
+            # Skipped count
+            skipped = total_all - total_filt
+
+            if total_all == 0:
+                return {"pass": True, "severity": "warn", "detail": "No predictions evaluated yet"}
+
+            real_pct = round(correct_all / total_all * 100, 1)
+            filt_pct = round(correct_filt / total_filt * 100, 1) if total_filt > 0 else 0.0
+
+            detail = f"{filt_pct}% filtered ({correct_filt}/{total_filt}) · {real_pct}% real ({correct_all}/{total_all}) · {skipped} skipped"
+
+            if real_pct < 40:
+                return {"pass": False, "severity": "fail", "detail": detail}
+            if real_pct < 50:
+                return {"pass": True, "severity": "warn", "detail": detail}
+            return {"pass": True, "severity": "pass", "detail": detail}
     except Exception:
         pass
 
@@ -210,23 +240,51 @@ def _check_accuracy() -> dict[str, Any]:
         tracker = get_paper_tracker()
         stats = tracker.get_stats()
         if not stats:
-            return {"pass": False, "detail": "no accuracy data"}
+            return {"pass": False, "severity": "warn", "detail": "no accuracy data"}
         total = stats.get("total_trades", 0)
-        ok = total > 0
         wr = stats.get("win_rate", 0)
-        return {"pass": ok, "detail": f"{total} paper trades, {wr:.0%} WR"}
+        detail = f"{total} paper trades, {wr:.0%} WR"
+        if total == 0:
+            return {"pass": False, "severity": "warn", "detail": detail}
+        if wr < 0.4:
+            return {"pass": False, "severity": "fail", "detail": detail}
+        if wr < 0.5:
+            return {"pass": True, "severity": "warn", "detail": detail}
+        return {"pass": True, "severity": "pass", "detail": detail}
     except Exception as e:
-        # Acceptable if module missing on cold start
-        return {"pass": True, "detail": f"accuracy tracker unavailable: {str(e)[:60]}"}
+        return {"pass": True, "severity": "warn", "detail": f"accuracy tracker unavailable: {str(e)[:60]}"}
 
 
 def _check_telegram() -> dict[str, Any]:
     """Check Telegram bot token is configured."""
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-    ok = bool(token) and bool(chat)
-    detail = "configured" if ok else ("missing TOKEN" if not token else "missing CHAT_ID")
-    return {"pass": ok, "detail": detail}
+    if not token:
+        return {"pass": False, "severity": "fail", "detail": "TELEGRAM_BOT_TOKEN not set — alerts disabled"}
+    if not chat:
+        return {"pass": False, "severity": "fail", "detail": "TELEGRAM_CHAT_ID not set — alerts disabled"}
+    return {"pass": True, "severity": "pass", "detail": "configured"}
+
+
+def _check_database() -> dict[str, Any]:
+    """Check PostgreSQL is reachable and not in aborted transaction state."""
+    try:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            result = cur.fetchone()
+            if result and result[0] == 1:
+                # Count rows to verify data access
+                cur.execute("SELECT COUNT(*) FROM ghost_predictions")
+                count = cur.fetchone()[0]
+                return {"pass": True, "severity": "pass", "detail": f"PostgreSQL OK — {count} predictions"}
+            return {"pass": False, "severity": "fail", "detail": "SELECT 1 returned unexpected result"}
+    except Exception as e:
+        err = str(e)[:100]
+        if "current transaction is aborted" in err.lower():
+            return {"pass": False, "severity": "fail", "detail": f"Transaction aborted state — needs ROLLBACK: {err}"}
+        return {"pass": False, "severity": "fail", "detail": f"Database unreachable: {err}"}
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -242,6 +300,7 @@ _ALL_CHECKS = [
     ("Core Imports", _check_core_imports),
     ("Accuracy Tracker", _check_accuracy),
     ("Telegram Config", _check_telegram),
+    ("Database", _check_database),
 ]
 
 
@@ -251,12 +310,13 @@ def run_system_doctor() -> dict[str, Any]:
 
     Returns:
         {
-            "overall": "PASS" | "FAIL",
+            "overall": "PASS" | "WARN" | "FAIL",
             "timestamp": "2026-03-01T07:00:00Z",
             "passed": 7,
+            "warned": 1,
             "failed": 1,
             "checks": [
-                {"name": "API Server", "pass": True, "detail": "HTTP 200"},
+                {"name": "API Server", "pass": True, "severity": "pass", "detail": "HTTP 200"},
                 ...
             ]
         }
@@ -264,27 +324,41 @@ def run_system_doctor() -> dict[str, Any]:
     ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
     results = []
     passed = 0
+    warned = 0
     failed = 0
 
     for name, fn in _ALL_CHECKS:
         try:
             r = fn()
         except Exception as e:
-            r = {"pass": False, "detail": f"check crashed: {e}"}
+            r = {"pass": False, "severity": "fail", "detail": f"check crashed: {e}"}
+        # Ensure severity field exists for all checks
+        if "severity" not in r:
+            r["severity"] = "pass" if r.get("pass") else "fail"
         r["name"] = name
         results.append(r)
-        if r["pass"]:
-            passed += 1
-        else:
+        sev = r.get("severity", "pass" if r["pass"] else "fail")
+        if sev == "fail":
             failed += 1
+        elif sev == "warn":
+            warned += 1
+        else:
+            passed += 1
 
-    overall = "PASS" if failed == 0 else "FAIL"
-    LOGGER.info(f"🩺 System Doctor: {overall} ({passed}/{passed + failed} checks passed)")
+    if failed > 0:
+        overall = "FAIL"
+    elif warned > 0:
+        overall = "WARN"
+    else:
+        overall = "PASS"
+
+    LOGGER.info(f"🩺 System Doctor: {overall} ({passed} pass, {warned} warn, {failed} fail)")
 
     return {
         "overall": overall,
         "timestamp": ts,
         "passed": passed,
+        "warned": warned,
         "failed": failed,
         "checks": results,
     }
@@ -296,21 +370,21 @@ def run_system_doctor() -> dict[str, Any]:
 
 def format_telegram_report(report: dict[str, Any]) -> str:
     """
-    Format doctor report as a compact Telegram message.
+    Format doctor report as a compact Telegram message with PASS/WARN/FAIL icons.
 
     Example output:
         🩺 GHOST SYSTEM CHECK
         ──────────────────
         ✅ API Server — HTTP 200
-        ✅ Predictions — 13 preds, newest 1.2h ago
-        ❌ Price Feeds — 0/2 feeds responding
+        ⚠️ Price Feeds — 1/2 feeds responding — partial outage
+        ❌ Accuracy — 25.5% real — below threshold
         ✅ Intelligence Hub — 20 systems active
         ...
         ──────────────────
-        ⚠️ RESULT: FAIL (7/8 passed)
+        ⚠️ RESULT: WARN (7 pass · 1 warn · 1 fail)
     """
     overall = report["overall"]
-    icon = "✅" if overall == "PASS" else "⚠️"
+    icon = "✅" if overall == "PASS" else "⚠️" if overall == "WARN" else "❌"
 
     lines = [
         "👻 Ghost Health Check",
@@ -318,11 +392,20 @@ def format_telegram_report(report: dict[str, Any]) -> str:
     ]
 
     for c in report["checks"]:
-        mark = "✅" if c["pass"] else "❌"
+        sev = c.get("severity", "pass" if c["pass"] else "fail")
+        if sev == "fail":
+            mark = "❌"
+        elif sev == "warn":
+            mark = "⚠️"
+        else:
+            mark = "✅"
         lines.append(f"{mark} {c['name']} — {c['detail']}")
 
     lines.append("──────────────────")
-    lines.append(f"{icon} RESULT: {overall} ({report['passed']}/{report['passed'] + report['failed']} passed)")
+    p = report.get("passed", 0)
+    w = report.get("warned", 0)
+    f = report.get("failed", 0)
+    lines.append(f"{icon} RESULT: {overall} ({p} pass · {w} warn · {f} fail)")
     lines.append(f"🕐 {report['timestamp']}")
 
     return "\n".join(lines)
