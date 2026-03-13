@@ -4607,35 +4607,40 @@ async def _on_startup():
         
         def _online_calibration_loop():
             """Background thread: run calibration every 6 hours."""
-            import time as _time
-            _time.sleep(600)  # Wait 10 min after startup for data to be available
-            
-            while True:
-                _heartbeat_pulse("online-calibrator")
-                try:
-                    from core.online_calibrator import get_online_calibrator
-                    calibrator = get_online_calibrator()
-                    
-                    # Calibrate horizon weights
-                    horizon_result = calibrator.calibrate_horizon_weights()
-                    if horizon_result:
-                        LOGGER.info(
-                            f"[CALIBRATOR] ✅ Horizon weights recalibrated: "
-                            f"gain={horizon_result.performance_gain:.1%}"
-                        )
-                    
-                    # Calibrate strategy weights
-                    strategy_result = calibrator.calibrate_strategy_weights()
-                    if strategy_result:
-                        LOGGER.info(
-                            f"[CALIBRATOR] ✅ Strategy weights recalibrated: "
-                            f"gain={strategy_result.performance_gain:.1%}"
-                        )
-                    
-                except Exception as e:
-                    LOGGER.warning(f"[CALIBRATOR] Calibration cycle failed: {e}")
+            try:
+                import time as _time
+                _heartbeat_pulse("online-calibrator")  # Pulse immediately so Health tab shows alive
+                LOGGER.info("[CALIBRATOR] ⏳ Waiting 10 min before first calibration...")
+                _time.sleep(600)  # Wait 10 min after startup for data to be available
                 
-                _time.sleep(6 * 3600)  # Every 6 hours
+                while True:
+                    _heartbeat_pulse("online-calibrator")
+                    try:
+                        from core.online_calibrator import get_online_calibrator
+                        calibrator = get_online_calibrator()
+                        
+                        # Calibrate horizon weights
+                        horizon_result = calibrator.calibrate_horizon_weights()
+                        if horizon_result:
+                            LOGGER.info(
+                                f"[CALIBRATOR] ✅ Horizon weights recalibrated: "
+                                f"gain={horizon_result.performance_gain:.1%}"
+                            )
+                        
+                        # Calibrate strategy weights
+                        strategy_result = calibrator.calibrate_strategy_weights()
+                        if strategy_result:
+                            LOGGER.info(
+                                f"[CALIBRATOR] ✅ Strategy weights recalibrated: "
+                                f"gain={strategy_result.performance_gain:.1%}"
+                            )
+                        
+                    except Exception as e:
+                        LOGGER.warning(f"[CALIBRATOR] Calibration cycle failed: {e}")
+                    
+                    _time.sleep(6 * 3600)  # Every 6 hours
+            except Exception as _thread_err:
+                LOGGER.error(f"[CALIBRATOR] ❌ Thread crashed: {_thread_err}", exc_info=True)
         
         _calibrator_thread = threading.Thread(
             target=_online_calibration_loop,
@@ -5112,6 +5117,7 @@ async def _post_startup_init():
             async def _self_improvement_loop():
                 """Run self-improvement cycle every 6 hours."""
                 LOGGER.info("🔧 Self-Improvement Engine: STARTING (every 6 hours)")
+                _heartbeat_pulse("self-improvement")  # Pulse immediately so Health tab shows alive
                 await asyncio.sleep(300)  # Wait 5 min after startup
                 while True:
                     try:
@@ -5821,6 +5827,7 @@ async def _post_startup_init():
         
         async def _self_improvement_loop():
             """Background task to autonomously improve Ghost every hour"""
+            _heartbeat_pulse("self-improvement")  # Pulse immediately at start
             while True:
                 try:
                     await asyncio.sleep(3600)  # Run every hour
@@ -16954,12 +16961,15 @@ async def api_v3_market_ticker():
             price_data = await get_crypto_price_turbo(crypto_sym)
             if price_data and price_data.get("price"):
                 p = price_data["price"]
+                pct = price_data.get("change_24h_pct", 0) or 0
+                # Compute absolute change from percentage
+                abs_change = round(p * pct / 100, 2) if pct else 0
                 items.append({
                     "id": ticker_id,
                     "name": crypto_sym,
                     "price": p,
-                    "change": price_data.get("change_24h", 0) or 0,
-                    "change_pct": price_data.get("change_pct_24h", 0) or 0,
+                    "change": abs_change,
+                    "change_pct": round(pct, 2),
                 })
         except Exception:
             items.append({"id": ticker_id, "name": crypto_sym, "price": 0, "change": 0, "change_pct": 0})
@@ -16976,14 +16986,21 @@ async def api_v3_market_ticker():
         for yf_sym, ticker_id, display_name in indices:
             try:
                 ticker = yf.Ticker(yf_sym)
-                info = ticker.fast_info
-                price = getattr(info, 'last_price', None) or getattr(info, 'lastPrice', None) or 0
-                prev = getattr(info, 'previous_close', None) or getattr(info, 'previousClose', None) or price
-                if not price and hasattr(ticker, 'history'):
-                    hist = ticker.history(period='1d')
-                    if not hist.empty:
-                        price = float(hist['Close'].iloc[-1])
+                # Use history(period='5d') — always has data even after hours/weekends
+                hist = ticker.history(period='5d')
+                price = 0
+                prev = 0
+                if not hist.empty:
+                    price = float(hist['Close'].iloc[-1])
+                    if len(hist) >= 2:
+                        prev = float(hist['Close'].iloc[-2])  # Previous day's close
+                    else:
                         prev = float(hist['Open'].iloc[0]) if 'Open' in hist.columns else price
+                else:
+                    # Last resort: fast_info (works during market hours)
+                    info = ticker.fast_info
+                    price = getattr(info, 'last_price', None) or getattr(info, 'lastPrice', None) or 0
+                    prev = getattr(info, 'previous_close', None) or getattr(info, 'previousClose', None) or price
                 change = (price - prev) if price and prev else 0
                 change_pct = (change / prev * 100) if prev and prev > 0 else 0
                 items.append({
