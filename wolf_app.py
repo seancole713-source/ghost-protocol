@@ -1171,7 +1171,7 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 # ============================================================================
 _PREDICTION_GATE_KILL_SWITCH_MIN_TRADES = 10
 _PREDICTION_GATE_KILL_SWITCH_MIN_WINRATE = 35.0   # percent
-_PREDICTION_GATE_CONFIDENCE_FLOOR = 0.55
+_PREDICTION_GATE_CONFIDENCE_FLOOR = 0.45           # was 0.55 — too high, base_confidence starts at 0.50-0.52
 _PREDICTION_GATE_MAX_PER_DAY = 2
 
 

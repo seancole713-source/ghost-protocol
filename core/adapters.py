@@ -381,5 +381,44 @@ def process_v3_from_cache(
         _logger.info(f"[V3-CLEAN] 🎯 EDGE WHITELIST: {len(filtered)} edge kept, {blocked} non-edge blocked")
         latest_predictions = filtered
     
+    # ── KILL SWITCH (Step 3 patch, Mar 16 2026) ─────────────────────────
+    # Remove symbols with proven losing records from Telegram picks.
+    # Same logic as the DB INSERT gate, but applied to the notification path
+    # so users don't get recommendations for symbols Ghost keeps losing on.
+    _KILL_MIN_TRADES = 10
+    _KILL_MIN_WINRATE = 35.0  # percent
+    try:
+        from core.db_pool import get_sync_connection as _ks_get_conn
+        with _ks_get_conn() as _ks_conn:
+            try:
+                _ks_conn.rollback()
+            except Exception:
+                pass
+            _ks_cur = _ks_conn.cursor()
+            _killed_symbols = set()
+            for _sym in list(latest_predictions.keys()):
+                _ks_cur.execute("""
+                    SELECT COUNT(*) AS total,
+                           COALESCE(SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END), 0) AS wins
+                    FROM ghost_predictions
+                    WHERE symbol = %s
+                      AND correct IS NOT NULL
+                      AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
+                """, (_sym,))
+                _ks_row = _ks_cur.fetchone()
+                _ks_total = _ks_row[0] if _ks_row else 0
+                _ks_wins = _ks_row[1] if _ks_row else 0
+                if _ks_total >= _KILL_MIN_TRADES:
+                    _ks_wr = round(_ks_wins / _ks_total * 100, 1)
+                    if _ks_wr < _KILL_MIN_WINRATE:
+                        _killed_symbols.add(_sym)
+                        _logger.info(f"KILL SWITCH (picks): Removing {_sym} — win rate {_ks_wr}% over {_ks_total} trades")
+            _ks_cur.close()
+            if _killed_symbols:
+                latest_predictions = {s: p for s, p in latest_predictions.items() if s not in _killed_symbols}
+                _logger.info(f"[V3-CLEAN] 🚫 KILL SWITCH: Removed {len(_killed_symbols)} losing symbols: {_killed_symbols}")
+    except Exception as _ks_err:
+        _logger.warning(f"[V3-CLEAN] Kill switch DB check failed (non-fatal): {_ks_err}")
+    
     raw_list = list(latest_predictions.values())
     return process_v3_predictions(raw_list, min_confidence)
