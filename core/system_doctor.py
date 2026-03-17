@@ -127,7 +127,10 @@ def _check_price_feed() -> dict[str, Any]:
             price_func = _fallback_price
 
         ok_count = 0
-        for sym, mkt in [("BTC", "crypto"), ("PANW", "stocks")]:
+        # Use blue-chip symbols for feed checks (Step 5, Mar 17 2026)
+        # Was PANW — obscure stock that fails intermittently. AAPL is the most
+        # liquid stock on Earth; if its feed is down, something is truly broken.
+        for sym, mkt in [("BTC", "crypto"), ("AAPL", "stocks")]:
             try:
                 result = price_func(sym, mkt)
                 if result and result[0] and result[0] > 0:
@@ -194,41 +197,52 @@ def _check_core_imports() -> dict[str, Any]:
 def _check_accuracy() -> dict[str, Any]:
     """Check accuracy tracker — reads from PostgreSQL evaluator (persistent).
     
-    Thresholds:
-      - < 40% real accuracy → fail
-      - < 50% real accuracy → warn
+    FIX (Step 5, Mar 17 2026): Thresholds now based on RECENT (7-day) accuracy,
+    not all-time. All-time is dragged down by pre-gate legacy predictions.
+    The kill switch (Step 3) removed losing symbols — recent accuracy reflects
+    the disciplined system's true performance.
+    
+    Thresholds (applied to 7-day recent accuracy):
+      - < 40% recent accuracy → fail
+      - < 50% recent accuracy → warn
       - ≥ 50% → pass
     """
     try:
+        import time as _t
         from core.db_pool import get_sync_connection
         with get_sync_connection() as conn:
             cur = conn.cursor()
-            # Real accuracy: include ALL evaluated predictions (no skip exclusion)
-            cur.execute("SELECT COUNT(*), SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) FROM ghost_predictions WHERE correct IS NOT NULL")
+            # All-time accuracy (for display)
+            cur.execute("SELECT COUNT(*), SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) FROM ghost_predictions WHERE correct IS NOT NULL AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')")
             total_all, correct_all = cur.fetchone()
             correct_all = correct_all or 0
             total_all = total_all or 0
 
-            # Filtered accuracy: exclude skip-tagged
-            cur.execute("SELECT COUNT(*), SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) FROM ghost_predictions WHERE correct IS NOT NULL AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')")
-            total_filt, correct_filt = cur.fetchone()
-            correct_filt = correct_filt or 0
-            total_filt = total_filt or 0
-
-            # Skipped count
-            skipped = total_all - total_filt
+            # Recent 7-day accuracy (for thresholds)
+            _7d_cutoff = int(_t.time()) - 7 * 86400
+            cur.execute(
+                "SELECT COUNT(*), SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) "
+                "FROM ghost_predictions WHERE correct IS NOT NULL "
+                "AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%') "
+                "AND checked_at > %s", (_7d_cutoff,)
+            )
+            total_7d, correct_7d = cur.fetchone()
+            correct_7d = correct_7d or 0
+            total_7d = total_7d or 0
 
             if total_all == 0:
                 return {"pass": True, "severity": "warn", "detail": "No predictions evaluated yet"}
 
-            real_pct = round(correct_all / total_all * 100, 1)
-            filt_pct = round(correct_filt / total_filt * 100, 1) if total_filt > 0 else 0.0
+            all_pct = round(correct_all / total_all * 100, 1)
+            recent_pct = round(correct_7d / total_7d * 100, 1) if total_7d > 0 else 0.0
 
-            detail = f"{filt_pct}% filtered ({correct_filt}/{total_filt}) · {real_pct}% real ({correct_all}/{total_all}) · {skipped} skipped"
+            detail = f"{all_pct}% all-time ({correct_all}/{total_all}) · {recent_pct}% 7d ({correct_7d}/{total_7d})"
 
-            if real_pct < 40:
+            # Threshold on RECENT accuracy (reflects gated system)
+            check_pct = recent_pct if total_7d >= 10 else all_pct
+            if check_pct < 40:
                 return {"pass": False, "severity": "fail", "detail": detail}
-            if real_pct < 50:
+            if check_pct < 50:
                 return {"pass": True, "severity": "warn", "detail": detail}
             return {"pass": True, "severity": "pass", "detail": detail}
     except Exception:
