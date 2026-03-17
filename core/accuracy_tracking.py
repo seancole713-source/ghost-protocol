@@ -13,7 +13,43 @@ import time
 from typing import Any, Dict, List, Tuple
 from collections import defaultdict
 import statistics
-from core.live_accuracy import get_live_accuracy_dashboard
+
+# NOTE: get_live_accuracy_dashboard import removed (Step 4C, Mar 17 2026).
+# Snapshot now reads PostgreSQL directly instead of making live Coinbase HTTP calls.
+# Functions that still need it import lazily below.
+
+def _get_pg_accuracy() -> Dict[str, Any]:
+    """Get accuracy from PostgreSQL ghost_predictions (deterministic, no HTTP)."""
+    import os
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        return {"ok": False, "current_accuracy_pct": 0, "total_predictions": 0,
+                "correct_now": 0, "wrong_now": 0, "predictions": []}
+    try:
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT COUNT(*) AS total,
+                       COALESCE(SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END), 0) AS wins
+                FROM ghost_predictions
+                WHERE checked = 1
+                  AND eval_version NOT LIKE 'skip%%'
+            """)
+            row = cur.fetchone()
+            total = row[0] if row else 0
+            correct = row[1] if row else 0
+            cur.close()
+        acc = round(correct / total * 100, 1) if total > 0 else 0.0
+        return {"ok": True, "current_accuracy_pct": acc, "total_predictions": total,
+                "correct_now": correct, "wrong_now": total - correct, "predictions": []}
+    except Exception:
+        return {"ok": False, "current_accuracy_pct": 0, "total_predictions": 0,
+                "correct_now": 0, "wrong_now": 0, "predictions": []}
 
 LOGGER = logging.getLogger("ghost.accuracy_tracking")
 
@@ -26,29 +62,62 @@ def record_accuracy_snapshot():
     """
     Record current accuracy for trending analysis.
     Called periodically (e.g., every 5 minutes) by background job.
+
+    FIX (Step 4C, Mar 17 2026): Was calling get_live_accuracy_dashboard() which
+    made live Coinbase HTTP calls per prediction → any HTTP failure = skip → count
+    oscillated wildly (5831→4→0→73→901). Also only tracked 20 hardcoded crypto
+    symbols, missing all stock predictions.
+
+    Now reads directly from PostgreSQL ghost_predictions (authoritative evaluator
+    table). Count is deterministic — no HTTP calls, no Coinbase dependency.
     """
     try:
-        dashboard = get_live_accuracy_dashboard()
-        
-        if not dashboard["ok"]:
+        import os
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
             return
-        
+
+        from core.db_pool import get_sync_connection
+        with get_sync_connection() as conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT COUNT(*) AS total,
+                       COALESCE(SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END), 0) AS wins
+                FROM ghost_predictions
+                WHERE checked = 1
+                  AND eval_version NOT LIKE 'skip%%'
+            """)
+            row = cur.fetchone()
+            total = row[0] if row else 0
+            correct = row[1] if row else 0
+            cur.close()
+
+        if total == 0:
+            return
+
+        accuracy_pct = round(correct / total * 100, 1)
+        wrong = total - correct
+
         snapshot = {
             "timestamp": time.time(),
-            "accuracy_pct": dashboard["current_accuracy_pct"],
-            "total_predictions": dashboard["total_predictions"],
-            "correct_now": dashboard["correct_now"],
-            "wrong_now": dashboard["wrong_now"]
+            "accuracy_pct": accuracy_pct,
+            "total_predictions": total,
+            "correct_now": correct,
+            "wrong_now": wrong,
         }
-        
+
         ACCURACY_HISTORY.append(snapshot)
-        
+
         # Keep only recent history
         if len(ACCURACY_HISTORY) > MAX_HISTORY_POINTS:
             ACCURACY_HISTORY.pop(0)
-        
-        LOGGER.info(f"Recorded accuracy snapshot: {snapshot['accuracy_pct']:.1f}% ({snapshot['correct_now']}/{snapshot['total_predictions']})")
-        
+
+        LOGGER.info(f"Recorded accuracy snapshot: {accuracy_pct:.1f}% ({correct}/{total})")
+
     except Exception as e:
         LOGGER.error(f"Failed to record accuracy snapshot: {e}", exc_info=True)
 
@@ -78,8 +147,8 @@ def get_accuracy_trending(hours: int = 24) -> Dict[str, Any]:
     """
     try:
         if not ACCURACY_HISTORY:
-            # No history yet, get current snapshot
-            current = get_live_accuracy_dashboard()
+            # No history yet, get current snapshot from PostgreSQL
+            current = _get_pg_accuracy()
             return {
                 "ok": True,
                 "period_hours": hours,
@@ -169,9 +238,9 @@ def get_confidence_correlation() -> Dict[str, Any]:
         }
     """
     try:
-        dashboard = get_live_accuracy_dashboard()
+        dashboard = _get_pg_accuracy()
         
-        if not dashboard["ok"] or not dashboard["predictions"]:
+        if not dashboard["ok"] or not dashboard.get("predictions"):
             return {
                 "ok": True,
                 "confidence_buckets": {},
@@ -264,7 +333,7 @@ def check_accuracy_alerts(threshold: float = 70.0) -> Dict[str, Any]:
         }
     """
     try:
-        dashboard = get_live_accuracy_dashboard()
+        dashboard = _get_pg_accuracy()
         
         if not dashboard["ok"]:
             return {

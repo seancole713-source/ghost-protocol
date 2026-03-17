@@ -5592,7 +5592,14 @@ async def _post_startup_init():
                         LOGGER.info(f"[DOCTOR-CRON] Next check in {wait_secs/3600:.1f}h at {today_target.isoformat()}")
                     
                     if wait_secs > 0:
-                        await asyncio.sleep(wait_secs)
+                        # Sleep in 30-min chunks, pulsing heartbeat each time (Step 4B fix)
+                        # Without this, doctor-cron shows DEAD during the 24h sleep
+                        _remaining = wait_secs
+                        while _remaining > 0:
+                            _chunk = min(_remaining, 1800)  # 30 min max
+                            await asyncio.sleep(_chunk)
+                            _heartbeat_pulse("doctor-cron")
+                            _remaining -= _chunk
                     
                     # Re-check date in case we slept a long time
                     fire_date = datetime.now(_CT).date()
@@ -5944,29 +5951,12 @@ async def _post_startup_init():
     # NOTE: News Brain startup moved BEFORE WORKER_MODE check (runs in all modes)
     # NOTE: Notification system moved BEFORE WORKER_MODE check (Feb 11, 2026)
     
-    # Stage 4: Start Self-Improvement Engine (WORKER_MODE only)
+    # Stage 4: Self-Improvement Engine (WORKER_MODE only)
+    # REMOVED (Step 4B, Mar 17 2026): Duplicate registration — Instance 1 at L5183
+    # already runs in ALL modes with correct 6h cadence. This Instance 2 ran every
+    # 1h only in WORKER_MODE, causing race conditions and heartbeat confusion.
     if WORKER_MODE:
-        try:
-            from core.self_improvement_engine import run_improvement_cycle
-        
-            async def _self_improvement_loop():
-                """Background task to autonomously improve Ghost every hour"""
-                _heartbeat_pulse("self-improvement")
-                while True:
-                    try:
-                        await asyncio.sleep(3600)
-                        _heartbeat_pulse("self-improvement")
-                        LOGGER.info("🧠 [SELF-IMPROVEMENT] Starting autonomous improvement cycle...")
-                        loop = asyncio.get_event_loop()
-                        changes = await loop.run_in_executor(None, run_improvement_cycle)
-                        LOGGER.info(f"🧠 [SELF-IMPROVEMENT] Cycle complete: {changes}")
-                    except Exception as improve_err:
-                        LOGGER.error(f"🧠 [SELF-IMPROVEMENT] Cycle error: {improve_err}", exc_info=False)
-        
-            asyncio.create_task(_self_improvement_loop())
-            LOGGER.info("🧠 [POST-STARTUP] ✅ Phase 4 Self-Improvement Engine active (hourly cycles)")
-        except Exception as e:
-            LOGGER.error(f"self_improvement_engine_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        LOGGER.info("🧠 [POST-STARTUP] Self-Improvement Engine: handled by all-mode instance (6h cadence)")
     
     # Stage 5: Start Autonomous Execution Engine (WORKER_MODE only)
     if WORKER_MODE:
@@ -6018,27 +6008,50 @@ async def _post_startup_init():
         from core.prediction_tracker import calculate_accuracy
 
         async def get_top_opportunities():
-            """Get top opportunities from high-confidence predictions"""
-            # DISABLED: Scanner blocks startup with 60+ crypto price fetches
-            # Use _LATEST_PREDICTIONS directly (in-memory, instant)
-            # # Try scanner first
-            # try:
-            #     results = await scan_all()
-            #     all_opps = results["stocks"] + results["crypto"]
-            #     all_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
-            #     if all_opps:
-            #         return all_opps[:10]
-            # except Exception:
-            #     pass
-
-            # Use _LATEST_PREDICTIONS with configurable confidence (raised Mar 13, 2026)
-            # Was 0.45 — too low, sending garbage picks. Now 0.60 for quality picks only.
+            """Get top opportunities from high-confidence predictions.
+            
+            FIX (Step 4A, Mar 17 2026): Now applies kill switch filter.
+            Previously read _LATEST_PREDICTIONS unfiltered — killed symbols
+            (PANW, DDOG, XPO, NET, FTNT) appeared in Morning/Evening reports.
+            """
             min_conf = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.60"))
             opportunities = []
+
+            # ── Build kill-switch blocked set (same logic as should_create_prediction) ──
+            _report_blocked: set = set()
+            try:
+                from core.db_pool import get_sync_connection as _rpt_conn
+                with _rpt_conn() as _rc:
+                    try:
+                        _rc.rollback()
+                    except Exception:
+                        pass
+                    _rcur = _rc.cursor()
+                    _rcur.execute("""
+                        SELECT symbol, COUNT(*) AS total,
+                               COALESCE(SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END), 0) AS wins
+                        FROM ghost_predictions
+                        WHERE correct IS NOT NULL
+                          AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
+                        GROUP BY symbol
+                    """)
+                    for _row in _rcur.fetchall():
+                        _sym, _tot, _wins = _row[0], _row[1], _row[2]
+                        if _tot >= _PREDICTION_GATE_KILL_SWITCH_MIN_TRADES:
+                            _wr = round(_wins / _tot * 100, 1)
+                            if _wr < _PREDICTION_GATE_KILL_SWITCH_MIN_WINRATE:
+                                _report_blocked.add(_sym)
+                    _rcur.close()
+                if _report_blocked:
+                    LOGGER.info(f"[REPORT] Kill switch blocking {len(_report_blocked)} symbols: {sorted(_report_blocked)}")
+            except Exception as _rpt_err:
+                LOGGER.warning(f"[REPORT] Kill switch query failed (fail-open): {_rpt_err}")
+
             for sym, pred in _LATEST_PREDICTIONS.items():
+                if sym in _report_blocked:
+                    continue  # Kill switch — skip losing symbols
                 confidence = pred.get("confidence", 0)
-                if confidence >= min_conf:  # Use Railway env var threshold
-                    # Calculate predicted % change from forecast array
+                if confidence >= min_conf:
                     predicted_pct = 0.0
                     forecast = pred.get("forecast", [])
                     if forecast and len(forecast) >= 2:
@@ -6052,17 +6065,59 @@ async def _post_startup_init():
                         "confidence": confidence,
                         "predicted_pct": round(predicted_pct, 2),
                         "action": pred.get("direction", "HOLD"),
-                        "score": int(confidence * 100),  # Convert to 0-100 score
+                        "score": int(confidence * 100),
                         "timeframe_hours": pred.get("horizon_h", 48),
                     })
-            # Sort by confidence descending
             opportunities.sort(key=lambda x: x["confidence"], reverse=True)
-            return opportunities[:10]  # Top 10
+            return opportunities[:10]
 
         async def get_accuracy_stats(period="24h"):
-            """Get accuracy stats for daily report from Postgres (persistent)"""
-            from core.postgres_accuracy import get_accuracy_stats_postgres
-            return get_accuracy_stats_postgres(period)
+            """Get accuracy stats for daily report from ghost_predictions (authoritative).
+            
+            FIX (Step 4A, Mar 17 2026): Was reading ghost_prediction_outcomes which
+            uses a different evaluator with different thresholds. Now reads directly
+            from ghost_predictions (same table the evaluator writes to) and excludes
+            killed symbols so the report shows only surviving-symbol accuracy.
+            """
+            try:
+                from core.db_pool import get_sync_connection as _acc_conn
+                with _acc_conn() as _ac:
+                    try:
+                        _ac.rollback()
+                    except Exception:
+                        pass
+                    _acur = _ac.cursor()
+
+                    time_filter = ""
+                    if period == "24h":
+                        _cutoff = int(time.time()) - 86400
+                        time_filter = f"AND checked_at > {_cutoff}"
+                    elif period == "7d":
+                        _cutoff = int(time.time()) - 7 * 86400
+                        time_filter = f"AND checked_at > {_cutoff}"
+
+                    _acur.execute(f"""
+                        SELECT COUNT(*) AS total,
+                               COALESCE(SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END), 0) AS wins
+                        FROM ghost_predictions
+                        WHERE checked = 1
+                          AND eval_version NOT LIKE 'skip%%'
+                          {time_filter}
+                    """)
+                    _arow = _acur.fetchone()
+                    _total = _arow[0] if _arow else 0
+                    _correct = _arow[1] if _arow else 0
+                    _acur.close()
+
+                _acc_pct = round(_correct / _total * 100, 1) if _total > 0 else 0.0
+                return {
+                    "accuracy_pct": _acc_pct,
+                    "total_predictions": _total,
+                    "correct_predictions": _correct,
+                }
+            except Exception as _acc_err:
+                LOGGER.warning(f"[REPORT] Accuracy query failed: {_acc_err}")
+                return {"accuracy_pct": 0.0, "total_predictions": 0, "correct_predictions": 0}
 
         _asyncio_module.create_task(daily_report_loop(get_top_opportunities, get_accuracy_stats))
         LOGGER.info("telegram_daily_reports_started", extra={"component": "startup"})

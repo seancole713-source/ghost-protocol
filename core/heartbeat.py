@@ -43,9 +43,9 @@ EXPECTED_INTERVALS: Dict[str, float] = {
 
     # Asyncio tasks
     "notification-loop":     3600 + 300,   # Runs on schedule (1h between checks)
-    "doctor-cron":           3600 + 300,   # Every hour
+    "doctor-cron":           86400 + 3600,  # Fires once/day — sleeps up to 24h between (Step 4B fix)
     "news-analysis":         1800 + 300,   # Periodic
-    "self-improvement":      3600 + 300,   # Periodic
+    "self-improvement":      21600 + 600,  # Every 6 hours (Step 4B fix — was 3600, actual loop is 6h)
     "vip-scanner":           600,          # Every few minutes
     "premarket-scanner":     600,          # Periodic
     "full-scanner":          1800,         # Periodic
