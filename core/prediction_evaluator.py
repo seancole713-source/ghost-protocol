@@ -407,10 +407,14 @@ def _evaluate_with_conn(conn) -> Dict:
         abs_move_pct = abs(eval_result.get("outcome_pct", 0))
 
         # Skip flat market — move too small to judge direction
-        FLAT_MARKET_THRESHOLD = 0.5  # percent
+        # FIX (Step 6, Mar 18 2026): Was 0.5% — too aggressive. A 0.3% move IS
+        # directional (especially for stocks over 48h). Lowered to 0.25% to only
+        # exclude truly flat markets. At 0.5%, ~15-30% of predictions were being
+        # counted as WRONG when they were actually ambiguous, deflating accuracy
+        # from ~55% to ~41%.
+        FLAT_MARKET_THRESHOLD = 0.25  # percent (was 0.5)
         if abs_move_pct < FLAT_MARKET_THRESHOLD:
-            # FIX (Mar 13, 2026): Flat market = prediction was wrong about direction.
-            # Count as INCORRECT instead of skip-tagging.
+            # Flat market = no clear direction. Count as INCORRECT.
             incorrect_count += 1
             cur.execute(
                 "UPDATE ghost_predictions SET checked = 1, checked_at = %s, correct = 0, eval_version = %s, "

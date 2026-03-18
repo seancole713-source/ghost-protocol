@@ -97,7 +97,12 @@ LOGGER = logging.getLogger("ghost_brain")
 BRAIN_ENABLED = os.getenv("GHOST_BRAIN_ENABLED", "1") == "1"
 
 # ─── Core Thresholds (v2, kept) ───
-INVERT_BELOW = float(os.getenv("BRAIN_INVERT_BELOW", "38.0"))
+# FIX (Step 6, Mar 18 2026): INVERT disabled. Set threshold to 0 so no symbol
+# qualifies. Inversion caused double-flips with ghost_learning_brain and
+# oscillation (flip → accuracy rises → stop flipping → accuracy drops → flip again).
+# The kill switch (Step 3) handles bad symbols by BLOCKING them entirely,
+# which is deterministic and convergent. Inversion is neither.
+INVERT_BELOW = float(os.getenv("BRAIN_INVERT_BELOW", "0.0"))  # was 38.0
 EXCLUDE_BELOW = float(os.getenv("BRAIN_EXCLUDE_BELOW", "48.0"))
 BOOST_ABOVE = float(os.getenv("BRAIN_BOOST_ABOVE", "62.0"))
 STRONG_BOOST_ABOVE = float(os.getenv("BRAIN_STRONG_BOOST", "70.0"))

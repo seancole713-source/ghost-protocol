@@ -8925,31 +8925,14 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                     _se_pred_price = stock_result.get("target_price") or se_entry_price
                     _se_pred_pct = ((float(_se_pred_price) - se_entry_price) / se_entry_price * 100) if se_entry_price else 0.0
 
-                    # ── GHOST LEARNING BRAIN (Mar 10, 2026) ────────────────────
-                    # Ghost looks at its own scorecard per symbol. If accuracy
-                    # is <25% over 10+ evaluated predictions, it flips direction
-                    # AND mirrors target_price. Self-correcting: once the flipped
-                    # predictions become correct, accuracy rises and flipping stops.
-                    try:
-                        from core.ghost_learning_brain import apply_inversion as _brain_invert
-                        se_direction, _se_pred_price, _se_pred_pct, _was_inverted = _brain_invert(
-                            symbol=symbol,
-                            direction=se_direction,
-                            target_price=float(_se_pred_price),
-                            entry_price=se_entry_price,
-                            expected_move_pct=_se_pred_pct,
-                        )
-                        _se_pred_price = float(_se_pred_price)
-                        if _was_inverted:
-                            # Update cockpit to show the brain's decision
-                            se_action = "BUY" if se_direction == "UP" else "SELL" if se_direction == "DOWN" else "HOLD"
-                            with _LATEST_PREDICTIONS_LOCK:
-                                if symbol in _LATEST_PREDICTIONS:
-                                    _LATEST_PREDICTIONS[symbol]["direction"] = se_direction
-                                    _LATEST_PREDICTIONS[symbol]["action"] = se_action
-                                    _LATEST_PREDICTIONS[symbol]["brain_inverted"] = True
-                    except Exception as _inv_err:
-                        LOGGER.debug(f"[{symbol}] Learning brain check failed: {_inv_err}")
+                    # ── GHOST LEARNING BRAIN — DISABLED (Step 6, Mar 18 2026) ──
+                    # Root cause of double-flip: Brain v3 (ghost_brain.py) inverts
+                    # at <38%, then Learning Brain inverts AGAIN at <35% → direction
+                    # flips back to the original wrong answer. The kill switch
+                    # (Step 3, should_create_prediction) already handles chronically
+                    # bad symbols by blocking them entirely. Inversion is the wrong
+                    # approach — it creates oscillation, not convergence.
+                    _was_inverted = False
 
                     # ── DIRECTION CONSISTENCY GUARD (Mar 10, 2026) ──────────────
                     # After the brain's decision, ensure direction and target agree.
@@ -9334,9 +9317,15 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             except Exception:
                 pass
         
-        # If still NEUTRAL after all signals, default to UP (ensemble will likely override anyway)
+        # If still NEUTRAL after all signals, stay NEUTRAL — don't guess
+        # FIX (Step 6, Mar 18 2026): Was defaulting to "UP" which created
+        # systematic upward bias. If RSI, MACD, and momentum can't determine
+        # direction, forcing UP is worse than letting ensemble decide.
+        # The ensemble override at L9343 handles NEUTRAL → UP/DOWN when it
+        # has confidence > 0.45. If ensemble ALSO can't decide, HOLD is
+        # better than a random guess.
         if direction == "NEUTRAL":
-            direction = "UP"
+            direction = "HOLD"
         
         # Step 2: ENSEMBLE MODEL VOTING (Task #6)
         # Combine LSTM + XGBoost + Transformer for 10-15% accuracy boost
@@ -9479,14 +9468,11 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
             else:
                 LOGGER.debug(f"[{symbol}] ⚖️ Directional adjustment negligible: {_directional_adjustment:+.4f}")
         except Exception as e:
-            LOGGER.debug(f"[{symbol}] Directional tracker unavailable (using defaults): {e}")
-            # Fallback to env-var overrides if adaptive tracker fails
-            _fallback_up = float(os.getenv("UP_CONFIDENCE_PENALTY", "0.12"))
-            _fallback_down = float(os.getenv("DOWN_CONFIDENCE_BONUS", "0.05"))
-            if direction == "UP":
-                _directional_adjustment = -_fallback_up
-            elif direction == "DOWN":
-                _directional_adjustment = _fallback_down
+            LOGGER.debug(f"[{symbol}] Directional tracker unavailable (no bias applied): {e}")
+            # FIX (Step 6, Mar 18 2026): Was hardcoding -12% UP penalty / +5% DOWN
+            # bonus when tracker fails. This created systematic bearish bias that
+            # tanked accuracy in bullish markets. Now: no data = no bias.
+            _directional_adjustment = 0.0
         
         # Step 2.5b: PATTERN INTELLIGENCE BOOST (v4.0)
         # Use fear/greed, funding rates, social sentiment, BTC correlation
@@ -10786,28 +10772,11 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 ((float(_predicted_price) - current_price) / current_price) * 100 if current_price else 0.0
             )
 
-            # ── GHOST LEARNING BRAIN (Mar 10, 2026) ────────────────────
-            # Ghost checks its own scorecard: if accuracy <25% over 10+
-            # predictions for this symbol, flip direction + target.
-            try:
-                from core.ghost_learning_brain import apply_inversion as _brain_invert_turbo
-                direction, _predicted_price, _predicted_pct, _was_inverted_turbo = _brain_invert_turbo(
-                    symbol=symbol,
-                    direction=direction,
-                    target_price=float(_predicted_price),
-                    entry_price=current_price,
-                    expected_move_pct=_predicted_pct,
-                )
-                _predicted_price = float(_predicted_price)
-                if _was_inverted_turbo:
-                    # Update cockpit to show the brain's decision
-                    with _LATEST_PREDICTIONS_LOCK:
-                        if symbol in _LATEST_PREDICTIONS:
-                            _LATEST_PREDICTIONS[symbol]["direction"] = direction
-                            _LATEST_PREDICTIONS[symbol]["action"] = "BUY" if direction == "UP" else "SELL" if direction == "DOWN" else "HOLD"
-                            _LATEST_PREDICTIONS[symbol]["brain_inverted"] = True
-            except Exception as _tinv_err:
-                LOGGER.debug(f"[{symbol}] Turbo learning brain check failed: {_tinv_err}")
+            # ── GHOST LEARNING BRAIN — DISABLED (Step 6, Mar 18 2026) ──
+            # Same as stock engine: double-flip with Brain v3 caused
+            # predictions to flip back to the original wrong direction.
+            # Kill switch (Step 3) handles bad symbols by blocking, not flipping.
+            _was_inverted_turbo = False
 
             # ── DIRECTION CONSISTENCY GUARD (Mar 10, 2026) ──────────────
             # Ensure predicted_direction matches target vs entry price.
