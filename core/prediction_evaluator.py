@@ -318,6 +318,198 @@ def get_current_price(symbol: str) -> Optional[float]:
 
 
 # ---------------------------------------------------------------------------
+# Re-evaluation of legacy skip-tagged predictions
+# ---------------------------------------------------------------------------
+
+def re_evaluate_skip_tagged() -> Dict:
+    """
+    Re-evaluate predictions that were tagged with eval_version='skip-*'.
+
+    These were historically skipped because the market moved less than the
+    old flat-market threshold (0.5% or 1.0%). With the threshold now at
+    0.25%, many of these may actually be legitimate wins or losses.
+
+    This function:
+      1. Fetches all checked=1, eval_version LIKE 'skip%' predictions
+      2. Re-runs the evaluation logic with the current 0.25% threshold
+      3. Updates outcomes — some will flip from skip→win or skip→loss
+      4. Returns a summary of changes
+
+    Safe to run multiple times — idempotent (re-evaluates same records).
+    """
+    with _get_pg_conn() as conn:
+        return _re_evaluate_skip_tagged_with_conn(conn)
+
+
+def _re_evaluate_skip_tagged_with_conn(conn) -> Dict:
+    """Inner logic for re-evaluating skip-tagged predictions."""
+    _ensure_pg_tables(conn)
+    cur = conn.cursor()
+    now = int(time.time())
+
+    # Find all skip-tagged predictions
+    cur.execute("""
+        SELECT id, symbol, predicted_at, check_at, predicted_price,
+               predicted_direction, current_price, confidence,
+               outcome_pct, outcome_direction, eval_version
+        FROM ghost_predictions
+        WHERE checked = 1 AND eval_version LIKE 'skip%%'
+        ORDER BY predicted_at ASC
+    """)
+    skip_tagged = cur.fetchall()
+
+    LOGGER.info(f"Found {len(skip_tagged)} skip-tagged predictions to re-evaluate")
+
+    re_evaluated = 0
+    flipped_to_correct = 0
+    flipped_to_incorrect = 0
+    stayed_incorrect = 0
+
+    FLAT_MARKET_THRESHOLD = 0.25  # Current threshold
+
+    for pred in skip_tagged:
+        (pred_id, symbol, pred_at, check_at, pred_price,
+         direction, start_price, confidence,
+         old_outcome_pct, old_outcome_dir, old_eval_version) = pred
+
+        # If we already have outcome data stored, use it directly
+        # (the original evaluator stored outcome_pct/outcome_direction
+        #  before skip-tagging, so we don't need to re-fetch prices)
+        if old_outcome_pct is not None and old_outcome_dir is not None:
+            abs_move_pct = abs(float(old_outcome_pct))
+            predicted_dir = (direction or "").upper().strip()
+            actual_dir = (old_outcome_dir or "").upper().strip()
+
+            if abs_move_pct < FLAT_MARKET_THRESHOLD:
+                # Still flat under new threshold — mark as incorrect (flat-market-v3)
+                cur.execute(
+                    "UPDATE ghost_predictions SET correct = 0, eval_version = %s WHERE id = %s",
+                    ("flat-market-v3", pred_id),
+                )
+                stayed_incorrect += 1
+            else:
+                # Move exceeds new threshold — evaluate direction match
+                is_correct = 1 if (predicted_dir == actual_dir and predicted_dir in ("UP", "DOWN")) else 0
+                new_version = "re-eval-v1"
+
+                cur.execute(
+                    "UPDATE ghost_predictions SET correct = %s, eval_version = %s WHERE id = %s",
+                    (is_correct, new_version, pred_id),
+                )
+
+                if is_correct:
+                    flipped_to_correct += 1
+                else:
+                    flipped_to_incorrect += 1
+
+            re_evaluated += 1
+        else:
+            # No stored outcome data — try to re-fetch prices
+            prices = _fetch_window_prices_pg(
+                conn, symbol=symbol,
+                start_ts=int(pred_at), end_ts=int(check_at)
+            )
+
+            if len(prices) < 5:
+                # Still no data — mark as no-data
+                cur.execute(
+                    "UPDATE ghost_predictions SET correct = 0, eval_version = %s WHERE id = %s",
+                    ("no-data-v2", pred_id),
+                )
+                stayed_incorrect += 1
+                re_evaluated += 1
+                continue
+
+            eval_result = _evaluate_touch_target(
+                predicted_direction=direction,
+                start_price=float(start_price) if start_price else None,
+                target_price=float(pred_price) if pred_price else None,
+                prices=prices,
+            )
+
+            if not eval_result["ok"]:
+                cur.execute(
+                    "UPDATE ghost_predictions SET correct = 0, eval_version = %s WHERE id = %s",
+                    ("eval-fail-v2", pred_id),
+                )
+                stayed_incorrect += 1
+                re_evaluated += 1
+                continue
+
+            predicted_dir = (direction or "").upper().strip()
+            actual_dir = (eval_result.get("outcome_direction") or "").upper().strip()
+            abs_move_pct = abs(eval_result.get("outcome_pct", 0))
+
+            if abs_move_pct < FLAT_MARKET_THRESHOLD:
+                cur.execute(
+                    "UPDATE ghost_predictions SET correct = 0, eval_version = %s, "
+                    "outcome_pct = %s, outcome_direction = %s WHERE id = %s",
+                    ("flat-market-v3", eval_result.get("outcome_pct"), actual_dir, pred_id),
+                )
+                stayed_incorrect += 1
+            else:
+                is_correct = 1 if (predicted_dir == actual_dir and predicted_dir in ("UP", "DOWN")) else 0
+                cur.execute(
+                    "UPDATE ghost_predictions SET correct = %s, eval_version = %s, "
+                    "outcome_pct = %s, outcome_price = %s, outcome_direction = %s, "
+                    "window_first = %s, window_last = %s, window_high = %s, window_low = %s "
+                    "WHERE id = %s",
+                    (is_correct, "re-eval-v1",
+                     eval_result.get("outcome_pct"), eval_result.get("window_last"),
+                     actual_dir,
+                     eval_result.get("window_first"), eval_result.get("window_last"),
+                     eval_result.get("window_high"), eval_result.get("window_low"),
+                     pred_id),
+                )
+                if is_correct:
+                    flipped_to_correct += 1
+                else:
+                    flipped_to_incorrect += 1
+
+            re_evaluated += 1
+
+    conn.commit()
+
+    # Update accuracy stats after re-evaluation
+    cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND eval_version NOT LIKE 'skip%%'")
+    total_checked = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM ghost_predictions WHERE checked = 1 AND correct = 1 AND eval_version NOT LIKE 'skip%%'")
+    total_correct = cur.fetchone()[0]
+    overall_accuracy = (total_correct / total_checked * 100) if total_checked > 0 else 0
+
+    cur.execute("""
+        INSERT INTO ghost_accuracy_stats
+            (period, total_predictions, correct_predictions,
+             accuracy_pct, avg_error_pct, updated_at)
+        VALUES ('all_time', %s, %s, %s, 0, %s)
+        ON CONFLICT (period) DO UPDATE SET
+            total_predictions = EXCLUDED.total_predictions,
+            correct_predictions = EXCLUDED.correct_predictions,
+            accuracy_pct = EXCLUDED.accuracy_pct,
+            updated_at = EXCLUDED.updated_at
+    """, (total_checked, total_correct, overall_accuracy, now))
+    conn.commit()
+
+    LOGGER.info(
+        f"📊 Re-evaluation complete: {re_evaluated} processed, "
+        f"✅ {flipped_to_correct} flipped to correct, "
+        f"❌ {flipped_to_incorrect} flipped to incorrect, "
+        f"➡️ {stayed_incorrect} stayed incorrect. "
+        f"New accuracy: {overall_accuracy:.1f}% ({total_correct}/{total_checked})"
+    )
+
+    return {
+        "re_evaluated": re_evaluated,
+        "flipped_to_correct": flipped_to_correct,
+        "flipped_to_incorrect": flipped_to_incorrect,
+        "stayed_incorrect": stayed_incorrect,
+        "new_accuracy_pct": overall_accuracy,
+        "total_checked": total_checked,
+        "total_correct": total_correct,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Main evaluation logic
 # ---------------------------------------------------------------------------
 
@@ -549,6 +741,18 @@ def main():
         return 1
 
     try:
+        # Step 1: Re-evaluate legacy skip-tagged predictions (one-time cleanup)
+        try:
+            re_eval = re_evaluate_skip_tagged()
+            if re_eval["re_evaluated"] > 0:
+                LOGGER.info(f"  🔄 Re-evaluated {re_eval['re_evaluated']} skip-tagged predictions")
+                LOGGER.info(f"  ✅ Flipped to correct: {re_eval['flipped_to_correct']}")
+                LOGGER.info(f"  ❌ Flipped to incorrect: {re_eval['flipped_to_incorrect']}")
+                LOGGER.info(f"  📊 New accuracy: {re_eval['new_accuracy_pct']:.1f}%")
+        except Exception as e:
+            LOGGER.warning(f"Skip-tag re-evaluation failed (non-fatal): {e}")
+
+        # Step 2: Evaluate pending predictions
         result = evaluate_pending_predictions()
 
         LOGGER.info("")

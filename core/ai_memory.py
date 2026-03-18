@@ -4,8 +4,14 @@ GHOST AI Memory System
 Long-term memory with vector embeddings for semantic search.
 Replaces 100-sample ring buffer with unlimited persistent storage.
 
+CRITICAL FIX (Mar 18, 2026):
+  Previous version used SQLite on Railway's ephemeral filesystem.
+  Every deploy wiped all AI memory - Ghost couldn't learn from mistakes.
+  Now reads/writes PostgreSQL via DATABASE_URL so memories persist.
+  Falls back to SQLite for local development when DATABASE_URL is absent.
+
 Features:
-- SQLite for structured queries (timestamp, symbol, action, outcome)
+- PostgreSQL for structured queries (persistent across deploys)
 - Vector embeddings for semantic similarity (FAISS/ChromaDB)
 - Confidence calibration (predicted vs actual outcomes)
 - Episodic memory (significant trades, market events)
@@ -13,6 +19,7 @@ Features:
 
 Author: Ghost AI
 Date: 2025-10-03
+Updated: 2026-03-18 - PostgreSQL migration
 """
 
 import json
@@ -28,25 +35,21 @@ import numpy as np
 # =============================================================================
 # Vector Store Configuration (from environment)
 # =============================================================================
-# VECTOR_SOURCE: "openai", "chromadb", "faiss", or "none"
 VECTOR_SOURCE = os.getenv("VECTOR_SOURCE", "chromadb").lower()
-# VECTOR_STORE_ID: External vector store ID (e.g., OpenAI vector store ID)
 VECTOR_STORE_ID = os.getenv("VECTOR_STORE_ID", "")
-# MEMORY_TTL_DAYS: How long to keep memories before consolidation
 MEMORY_TTL_DAYS = int(os.getenv("MEMORY_TTL_DAYS", "90"))
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-# Optional: ChromaDB for vector storage (fallback to FAISS if not available)
+# Optional: ChromaDB for vector storage
 try:
     import chromadb  # type: ignore
     from chromadb.config import Settings  # type: ignore
-
     HAS_CHROMADB = True
 except ImportError:
     HAS_CHROMADB = False
 
 try:
     import importlib.util
-
     HAS_FAISS = importlib.util.find_spec("faiss") is not None
 except ImportError:
     HAS_FAISS = False
@@ -59,136 +62,177 @@ class AIMemory:
     Ghost AI long-term memory system.
 
     Architecture:
-    - SQLite: Structured queries (filters, aggregations)
+    - PostgreSQL: Structured queries (persistent on Railway)
+    - SQLite: Fallback for local development
     - Vector Store: Semantic similarity search
     - In-Memory Cache: Recent 1000 decisions for fast access
-
-    Schema:
-    -------
-    ai_memory table:
-        - id: INTEGER PRIMARY KEY
-        - ts: BIGINT (Unix timestamp)
-        - symbol: TEXT
-        - price: REAL
-        - prev_close: REAL
-        - volume: REAL (optional)
-        - volatility: REAL (optional)
-        - news_score: REAL
-        - sentiment: REAL (optional)
-        - features: TEXT (JSON blob, 100+ dimensions)
-        - action: TEXT (BUY, SELL, HOLD)
-        - confidence: REAL (0-1)
-        - reasoning: TEXT
-        - model_version: TEXT
-        - model_type: TEXT (knn, rl, ensemble)
-        - outcome_1h: REAL (PnL 1h later)
-        - outcome_24h: REAL (PnL 24h later)
-        - outcome_7d: REAL (PnL 7d later)
-        - realized_pnl: REAL (actual PnL if executed)
-        - user_feedback: TEXT (optional)
-        - executed: BOOLEAN
     """
 
     def __init__(self, db_path: str = "data/ai_memory.db", vector_store: str = None):
-        """
-        Initialize AI Memory.
-
-        Args:
-            db_path: Path to SQLite database
-            vector_store: "chromadb", "faiss", "openai", or "none" (defaults to VECTOR_SOURCE env)
-        """
+        """Initialize AI Memory. Uses PostgreSQL if DATABASE_URL is set."""
         self.db_path = db_path
-        # Use environment variable if not explicitly specified
         self.vector_store_type = vector_store or VECTOR_SOURCE or "chromadb"
-        self.vector_store_id = VECTOR_STORE_ID  # External store ID (e.g., OpenAI)
+        self.vector_store_id = VECTOR_STORE_ID
+        self._use_pg = bool(DATABASE_URL)
 
-        # Connect to SQLite
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self._init_tables()
+        if self._use_pg:
+            self._sqlite_conn = None
+            self._init_pg_tables()
+            LOGGER.info("AIMemory using PostgreSQL (persistent across deploys)")
+        else:
+            os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
+            self._sqlite_conn = sqlite3.connect(db_path, check_same_thread=False)
+            self._sqlite_conn.row_factory = sqlite3.Row
+            self._init_sqlite_tables()
+            LOGGER.info(f"AIMemory using SQLite: {db_path} (local dev mode)")
 
-        # Initialize vector store based on configuration
+        # Initialize vector store
         self.vector_store = None
         if self.vector_store_type == "openai" and VECTOR_STORE_ID:
             LOGGER.info(f"Using OpenAI vector store: {VECTOR_STORE_ID}")
-            # OpenAI vector store is accessed via API, no local init needed
         elif self.vector_store_type == "chromadb" and HAS_CHROMADB:
             self._init_chromadb()
         elif self.vector_store_type == "faiss" and HAS_FAISS:
             self._init_faiss()
         else:
-            LOGGER.warning(f"Vector store '{self.vector_store_type}' not available, using SQLite only")
+            LOGGER.warning(f"Vector store '{self.vector_store_type}' not available")
 
-        # In-memory cache for recent decisions (fast access)
+        # In-memory cache for recent decisions
         self.cache: list[dict] = []
         self.cache_size = 1000
         self._load_cache()
 
         LOGGER.info(
-            f"AIMemory initialized: db={db_path}, vector_store={self.vector_store_type}, cache_size={len(self.cache)}"
+            f"AIMemory initialized: backend={'pg' if self._use_pg else 'sqlite'}, "
+            f"vector_store={self.vector_store_type}, cache_size={len(self.cache)}"
         )
 
-    def _init_tables(self):
-        """Create SQLite tables if not exist."""
-        with self.conn:
-            self.conn.execute("""
+    # -- Connection helpers --------------------------------------------------
+
+    def _get_pg_conn(self):
+        """Get a PostgreSQL connection context manager from the pool."""
+        from core.db_pool import get_sync_connection
+        return get_sync_connection()
+
+    def _execute(self, query, params=(), fetch="none"):
+        """
+        Execute a query on the active backend.
+        query uses %s placeholders (auto-converted to ? for SQLite).
+        fetch: "none", "one", "all", or "lastrowid".
+        """
+        if self._use_pg:
+            with self._get_pg_conn() as conn:
+                cur = conn.cursor()
+                cur.execute(query, params)
+                if fetch == "all":
+                    cols = [desc[0] for desc in cur.description] if cur.description else []
+                    return [dict(zip(cols, row)) for row in cur.fetchall()]
+                elif fetch == "one":
+                    row = cur.fetchone()
+                    if row and cur.description:
+                        cols = [desc[0] for desc in cur.description]
+                        return dict(zip(cols, row))
+                    return row
+                elif fetch == "lastrowid":
+                    conn.commit()
+                    return cur.fetchone()[0] if cur.description else 0
+                else:
+                    conn.commit()
+                    return cur.rowcount
+        else:
+            sqlite_query = query.replace("%s", "?")
+            cur = self._sqlite_conn.execute(sqlite_query, params)
+            if fetch == "all":
+                return [dict(row) for row in cur.fetchall()]
+            elif fetch == "one":
+                row = cur.fetchone()
+                return dict(row) if row else None
+            elif fetch == "lastrowid":
+                self._sqlite_conn.commit()
+                return cur.lastrowid or 0
+            else:
+                self._sqlite_conn.commit()
+                return cur.rowcount
+
+    # -- Table initialization ------------------------------------------------
+
+    def _init_pg_tables(self):
+        """Create PostgreSQL tables if not exist."""
+        with self._get_pg_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS ai_memory (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     ts BIGINT NOT NULL,
                     symbol TEXT NOT NULL,
-
-                    -- Market Context
-                    price REAL,
-                    prev_close REAL,
-                    volume REAL,
-                    volatility REAL,
-                    news_score REAL,
-                    sentiment REAL,
-
-                    -- Features (JSON blob)
+                    price DOUBLE PRECISION,
+                    prev_close DOUBLE PRECISION,
+                    volume DOUBLE PRECISION,
+                    volatility DOUBLE PRECISION,
+                    news_score DOUBLE PRECISION,
+                    sentiment DOUBLE PRECISION,
                     features TEXT,
-
-                    -- Decision
                     action TEXT,
-                    confidence REAL,
+                    confidence DOUBLE PRECISION,
                     reasoning TEXT,
-
-                    -- Model Info
                     model_version TEXT,
                     model_type TEXT,
-
-                    -- Outcomes (filled later)
-                    outcome_1h REAL,
-                    outcome_24h REAL,
-                    outcome_7d REAL,
-                    realized_pnl REAL,
-
-                    -- Metadata
+                    outcome_1h DOUBLE PRECISION,
+                    outcome_24h DOUBLE PRECISION,
+                    outcome_7d DOUBLE PRECISION,
+                    realized_pnl DOUBLE PRECISION,
                     user_feedback TEXT,
-                    executed BOOLEAN DEFAULT 0
+                    executed BOOLEAN DEFAULT FALSE
                 )
             """)
-
-            # Indexes for common queries
-            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_ts ON ai_memory(ts)")
-            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_symbol ON ai_memory(symbol)")
-            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_action ON ai_memory(action)")
-            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_executed ON ai_memory(executed)")
-
-            # Calibration metrics table (confidence vs actual outcomes)
-            self.conn.execute("""
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_aimem_ts ON ai_memory(ts)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_aimem_symbol ON ai_memory(symbol)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_aimem_action ON ai_memory(action)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_aimem_executed ON ai_memory(executed)")
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS calibration_metrics (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     computed_at BIGINT,
                     model_type TEXT,
                     confidence_bucket TEXT,
-                    predicted_prob REAL,
-                    actual_success_rate REAL,
+                    predicted_prob DOUBLE PRECISION,
+                    actual_success_rate DOUBLE PRECISION,
                     sample_count INTEGER
                 )
             """)
+            conn.commit()
+        LOGGER.info("AI memory PostgreSQL tables initialized")
 
-        LOGGER.info("AI memory tables initialized")
+    def _init_sqlite_tables(self):
+        """Create SQLite tables if not exist (local dev fallback)."""
+        with self._sqlite_conn:
+            self._sqlite_conn.execute("""
+                CREATE TABLE IF NOT EXISTS ai_memory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts BIGINT NOT NULL, symbol TEXT NOT NULL,
+                    price REAL, prev_close REAL, volume REAL, volatility REAL,
+                    news_score REAL, sentiment REAL, features TEXT,
+                    action TEXT, confidence REAL, reasoning TEXT,
+                    model_version TEXT, model_type TEXT,
+                    outcome_1h REAL, outcome_24h REAL, outcome_7d REAL,
+                    realized_pnl REAL, user_feedback TEXT,
+                    executed BOOLEAN DEFAULT 0
+                )
+            """)
+            self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_ts ON ai_memory(ts)")
+            self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_symbol ON ai_memory(symbol)")
+            self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_action ON ai_memory(action)")
+            self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_executed ON ai_memory(executed)")
+            self._sqlite_conn.execute("""
+                CREATE TABLE IF NOT EXISTS calibration_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    computed_at BIGINT, model_type TEXT, confidence_bucket TEXT,
+                    predicted_prob REAL, actual_success_rate REAL, sample_count INTEGER
+                )
+            """)
+        LOGGER.info("AI memory SQLite tables initialized")
+
+    # -- Vector store initialization -----------------------------------------
 
     def _init_chromadb(self):
         """Initialize ChromaDB vector store."""
@@ -207,105 +251,93 @@ class AIMemory:
     def _init_faiss(self):
         """Initialize FAISS vector index."""
         try:
-            # FIXED: Implement FAISS initialization
             import faiss
-            import numpy as np
             import pickle
             from pathlib import Path
-            
+
             index_path = Path("data/faiss_index.bin")
             metadata_path = Path("data/faiss_metadata.pkl")
-            
-            # Vector dimension (for feature embeddings)
             vector_dim = 512
-            
+
             if index_path.exists() and metadata_path.exists():
-                # Load existing index
                 self.vector_store = faiss.read_index(str(index_path))
                 with open(metadata_path, "rb") as f:
                     self.faiss_metadata = pickle.load(f)
                 LOGGER.info(f"Loaded FAISS index with {self.vector_store.ntotal} vectors")
             else:
-                # Create new index (L2 distance)
                 self.vector_store = faiss.IndexFlatL2(vector_dim)
                 self.faiss_metadata = []
                 LOGGER.info(f"Created new FAISS index (dimension={vector_dim})")
-            
-            # Store paths for saving later
+
             self.index_path = index_path
             self.metadata_path = metadata_path
-            
         except ImportError:
-            LOGGER.warning("FAISS library not installed: pip install faiss-cpu")
-            LOGGER.warning("Falling back to SQLite-only mode")
+            LOGGER.warning("FAISS not installed, using DB-only mode")
             self.vector_store = None
         except Exception as e:
             LOGGER.error(f"FAISS init failed: {e}")
-            LOGGER.warning("Falling back to SQLite-only mode")
             self.vector_store = None
+
+    # -- Cache ---------------------------------------------------------------
 
     def _load_cache(self):
         """Load recent decisions into cache."""
-        cur = self.conn.execute(
-            "SELECT * FROM ai_memory ORDER BY ts DESC LIMIT ?", (self.cache_size,)
-        )
-        self.cache = [dict(row) for row in cur.fetchall()]
+        try:
+            rows = self._execute(
+                "SELECT * FROM ai_memory ORDER BY ts DESC LIMIT %s",
+                (self.cache_size,), fetch="all",
+            )
+            self.cache = rows if rows else []
+        except Exception as e:
+            LOGGER.warning(f"Cache load failed: {e}")
+            self.cache = []
         LOGGER.info(f"Loaded {len(self.cache)} decisions into cache")
 
+    # -- Core operations -----------------------------------------------------
+
     def store_decision(self, decision: dict[str, Any]) -> int:
-        """
-        Store AI decision with context.
-
-        Args:
-            decision: Dictionary with keys:
-                - ts (int): Timestamp
-                - symbol (str): Ticker
-                - price (float): Current price
-                - prev_close (float): Previous close
-                - news_score (float): News sentiment
-                - features (dict): Feature vector
-                - action (str): BUY/SELL/HOLD
-                - confidence (float): 0-1
-                - reasoning (str): Explanation
-                - model_version (str): Model ID
-                - model_type (str): knn/rl/ensemble
-
-        Returns:
-            int: Row ID of stored decision
-        """
-        # Store in SQLite
+        """Store AI decision with context. Returns row ID."""
         features_json = json.dumps(decision.get("features", {}))
 
-        cur = self.conn.execute(
-            """
-            INSERT INTO ai_memory (
-                ts, symbol, price, prev_close, volume, volatility,
-                news_score, sentiment, features, action, confidence,
-                reasoning, model_version, model_type, executed
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                decision.get("ts", int(time.time())),
-                decision.get("symbol", "WOLF"),
-                decision.get("price"),
-                decision.get("prev_close"),
-                decision.get("volume"),
-                decision.get("volatility"),
-                decision.get("news_score"),
-                decision.get("sentiment"),
-                features_json,
-                decision.get("action", "HOLD"),
-                decision.get("confidence", 0.5),
-                decision.get("reasoning", ""),
-                decision.get("model_version", "unknown"),
-                decision.get("model_type", "knn"),
-                decision.get("executed", False),
-            ),
+        params = (
+            decision.get("ts", int(time.time())),
+            decision.get("symbol", "WOLF"),
+            decision.get("price"),
+            decision.get("prev_close"),
+            decision.get("volume"),
+            decision.get("volatility"),
+            decision.get("news_score"),
+            decision.get("sentiment"),
+            features_json,
+            decision.get("action", "HOLD"),
+            decision.get("confidence", 0.5),
+            decision.get("reasoning", ""),
+            decision.get("model_version", "unknown"),
+            decision.get("model_type", "knn"),
+            decision.get("executed", False),
         )
-        self.conn.commit()
-        row_id = cur.lastrowid if cur.lastrowid is not None else 0
 
-        # Add to vector store (if available)
+        if self._use_pg:
+            row_id = self._execute(
+                """INSERT INTO ai_memory (
+                    ts, symbol, price, prev_close, volume, volatility,
+                    news_score, sentiment, features, action, confidence,
+                    reasoning, model_version, model_type, executed
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING id""",
+                params, fetch="lastrowid",
+            )
+        else:
+            row_id = self._execute(
+                """INSERT INTO ai_memory (
+                    ts, symbol, price, prev_close, volume, volatility,
+                    news_score, sentiment, features, action, confidence,
+                    reasoning, model_version, model_type, executed
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                params, fetch="lastrowid",
+            )
+
+        # Add to vector store
         if self.vector_store and decision.get("features") and row_id > 0:
             try:
                 self._add_to_vector_store(row_id, decision)
@@ -320,293 +352,168 @@ class AIMemory:
             self.cache.pop()
 
         LOGGER.debug(
-            f"Stored decision {row_id}: {decision.get('action')} {decision.get('symbol')} @ {decision.get('confidence'):.2f}"
+            f"Stored decision {row_id}: {decision.get('action')} "
+            f"{decision.get('symbol')} @ {decision.get('confidence', 0):.2f}"
         )
-
         return row_id
 
     def _add_to_vector_store(self, row_id: int, decision: dict):
         """Add decision to vector store for semantic search."""
-        if not self.vector_store:
+        if not self.vector_store or self.vector_store_type != "chromadb":
             return
-
-        if self.vector_store_type == "chromadb":
-            # Convert features dict to list
-            features = decision.get("features", {})
-            embedding = self._features_to_vector(features)
-
-            # Create document (reasoning text)
-            document = decision.get("reasoning", "")
-
-            # Metadata
-            metadata = {
-                "symbol": decision.get("symbol", ""),
-                "action": decision.get("action", ""),
-                "confidence": float(decision.get("confidence", 0.5)),
-                "model_type": decision.get("model_type", ""),
-                "ts": int(decision.get("ts", 0)),
-            }
-
-            self.vector_store.add(
-                ids=[str(row_id)],
-                embeddings=[embedding],
-                documents=[document],
-                metadatas=[metadata],
-            )
+        features = decision.get("features", {})
+        embedding = self._features_to_vector(features)
+        document = decision.get("reasoning", "")
+        metadata = {
+            "symbol": decision.get("symbol", ""),
+            "action": decision.get("action", ""),
+            "confidence": float(decision.get("confidence", 0.5)),
+            "model_type": decision.get("model_type", ""),
+            "ts": int(decision.get("ts", 0)),
+        }
+        self.vector_store.add(
+            ids=[str(row_id)], embeddings=[embedding],
+            documents=[document], metadatas=[metadata],
+        )
 
     def _features_to_vector(self, features: dict) -> list[float]:
-        """
-        Convert feature dict to fixed-length vector.
-
-        Standard feature order:
-        [ret_1d, ret_7d, vol_20d, news_score, sentiment, pos_pct, ...]
-        """
-        # Define standard feature keys (extend as needed)
+        """Convert feature dict to fixed-length vector."""
         standard_keys = [
-            "ret_1d",
-            "ret_7d",
-            "ret_30d",
-            "vol_20d",
-            "vol_60d",
-            "news_score",
-            "sentiment",
-            "rsi_14",
-            "macd",
-            "macd_signal",
-            "bb_width",
-            "bb_position",
-            "pos_pct",
-            "pnl_pct",
-            "momentum_1d",
-            "momentum_7d",
+            "ret_1d", "ret_7d", "ret_30d", "vol_20d", "vol_60d",
+            "news_score", "sentiment", "rsi_14", "macd", "macd_signal",
+            "bb_width", "bb_position", "pos_pct", "pnl_pct",
+            "momentum_1d", "momentum_7d",
         ]
+        return [float(features.get(key, 0.0)) for key in standard_keys]
 
-        vector = []
-        for key in standard_keys:
-            vector.append(float(features.get(key, 0.0)))
+    # -- Search & retrieval --------------------------------------------------
 
-        return vector
-
-    def find_similar_situations(
-        self, current_state: dict, k: int = 10, filters: dict | None = None
-    ) -> list[dict]:
-        """
-        Find similar past scenarios using vector similarity.
-
-        Args:
-            current_state: Dict with 'features', 'symbol', etc.
-            k: Number of similar situations to return
-            filters: Optional filters (symbol, action, date range)
-
-        Returns:
-            List of similar decisions with outcomes
-        """
+    def find_similar_situations(self, current_state: dict, k: int = 10,
+                                filters: dict | None = None) -> list[dict]:
+        """Find similar past scenarios using vector similarity."""
         if not self.vector_store:
-            # Fallback to SQLite-only search (less sophisticated)
             return self._find_similar_sql(current_state, k, filters)
 
         if self.vector_store_type == "chromadb":
             embedding = self._features_to_vector(current_state.get("features", {}))
-
-            # Build where clause from filters
             where = {}
             if filters:
-                if "symbol" in filters:
-                    where["symbol"] = filters["symbol"]
-                if "action" in filters:
-                    where["action"] = filters["action"]
-
+                if "symbol" in filters: where["symbol"] = filters["symbol"]
+                if "action" in filters: where["action"] = filters["action"]
             results = self.vector_store.query(
-                query_embeddings=[embedding], n_results=k, where=where if where else None
+                query_embeddings=[embedding], n_results=k,
+                where=where if where else None,
             )
-
-            # Fetch full records from SQLite
             ids = results["ids"][0] if results["ids"] else []
             similar = []
             for doc_id in ids:
-                cur = self.conn.execute("SELECT * FROM ai_memory WHERE id=?", (int(doc_id),))
-                row = cur.fetchone()
-                if row:
-                    similar.append(dict(row))
-
+                row = self._execute("SELECT * FROM ai_memory WHERE id=%s",
+                                    (int(doc_id),), fetch="one")
+                if row: similar.append(row)
             return similar
-
         return []
 
-    def _find_similar_sql(self, current_state: dict, k: int, filters: dict | None) -> list[dict]:
-        """Fallback similarity search using SQL (no vector DB)."""
-        # Simple heuristic: Match on symbol, similar price range
+    def _find_similar_sql(self, current_state: dict, k: int,
+                          filters: dict | None) -> list[dict]:
+        """Fallback similarity search using SQL."""
         symbol = current_state.get("symbol", "WOLF")
         price = current_state.get("price", 0)
-
-        query = """
-            SELECT * FROM ai_memory
-            WHERE symbol=?
-            AND price BETWEEN ? AND ?
-            ORDER BY ts DESC
-            LIMIT ?
-        """
-
-        price_range = 0.1  # ±10%
-        cur = self.conn.execute(
-            query, (symbol, price * (1 - price_range), price * (1 + price_range), k)
+        price_range = 0.1
+        rows = self._execute(
+            "SELECT * FROM ai_memory WHERE symbol=%s AND price BETWEEN %s AND %s "
+            "ORDER BY ts DESC LIMIT %s",
+            (symbol, price * (1 - price_range), price * (1 + price_range), k),
+            fetch="all",
         )
+        return rows or []
 
-        return [dict(row) for row in cur.fetchall()]
-
-    def get_outcomes_for_action(
-        self, action: str, symbol: str | None = None, horizon: str = "24h"
-    ) -> list[dict]:
-        """
-        Get historical outcomes for a specific action.
-
-        Args:
-            action: BUY, SELL, or HOLD
-            symbol: Optional symbol filter
-            horizon: '1h', '24h', or '7d'
-
-        Returns:
-            List of decisions with realized outcomes
-        """
+    def get_outcomes_for_action(self, action: str, symbol: str | None = None,
+                                horizon: str = "24h") -> list[dict]:
+        """Get historical outcomes for a specific action."""
         outcome_col = f"outcome_{horizon}"
-
-        query = f"""
-            SELECT * FROM ai_memory
-            WHERE action=?
-            AND {outcome_col} IS NOT NULL
-        """
-        params = [action]
-
+        if outcome_col not in ("outcome_1h", "outcome_24h", "outcome_7d"):
+            outcome_col = "outcome_24h"
         if symbol:
-            query += " AND symbol=?"
-            params.append(symbol)
-
-        query += " ORDER BY ts DESC LIMIT 100"
-
-        cur = self.conn.execute(query, params)
-        return [dict(row) for row in cur.fetchall()]
+            rows = self._execute(
+                f"SELECT * FROM ai_memory WHERE action=%s AND {outcome_col} IS NOT NULL "
+                f"AND symbol=%s ORDER BY ts DESC LIMIT 100",
+                (action, symbol), fetch="all")
+        else:
+            rows = self._execute(
+                f"SELECT * FROM ai_memory WHERE action=%s AND {outcome_col} IS NOT NULL "
+                f"ORDER BY ts DESC LIMIT 100",
+                (action,), fetch="all")
+        return rows or []
 
     def update_outcome(self, decision_id: int, horizon: str, outcome: float):
-        """
-        Update outcome for a past decision.
-
-        Args:
-            decision_id: Row ID of decision
-            horizon: '1h', '24h', or '7d'
-            outcome: PnL or return %
-        """
+        """Update outcome for a past decision."""
         outcome_col = f"outcome_{horizon}"
-
-        self.conn.execute(
-            f"""
-            UPDATE ai_memory
-            SET {outcome_col} = ?
-            WHERE id = ?
-        """,
-            (outcome, decision_id),
-        )
-        self.conn.commit()
-
+        if outcome_col not in ("outcome_1h", "outcome_24h", "outcome_7d"):
+            outcome_col = "outcome_24h"
+        self._execute(f"UPDATE ai_memory SET {outcome_col} = %s WHERE id = %s",
+                      (outcome, decision_id))
         LOGGER.debug(f"Updated outcome for decision {decision_id}: {outcome_col}={outcome}")
 
+    # -- Calibration ---------------------------------------------------------
+
     def compute_calibration_metrics(self, model_type: str | None = None) -> dict[str, Any]:
-        """
-        Compute confidence calibration metrics.
-
-        Calibration: "If model says 70% confidence, it should be right 70% of the time"
-
-        Returns:
-            Dict with calibration data:
-            - buckets: List of {confidence_range, predicted_prob, actual_success_rate, count}
-            - overall_error: Mean absolute calibration error
-            - r_squared: R² of calibration plot
-        """
-        # Get all decisions with outcomes
-        query = """
-            SELECT confidence, outcome_24h
-            FROM ai_memory
-            WHERE outcome_24h IS NOT NULL
-        """
-        params = []
-
+        """Compute confidence calibration metrics."""
         if model_type:
-            query += " AND model_type=?"
-            params.append(model_type)
+            rows = self._execute(
+                "SELECT confidence, outcome_24h FROM ai_memory "
+                "WHERE outcome_24h IS NOT NULL AND model_type=%s",
+                (model_type,), fetch="all")
+        else:
+            rows = self._execute(
+                "SELECT confidence, outcome_24h FROM ai_memory "
+                "WHERE outcome_24h IS NOT NULL", fetch="all")
 
-        cur = self.conn.execute(query, params)
-        rows = cur.fetchall()
+        if not rows or len(rows) < 10:
+            return {"error": "Insufficient data (need 10+ outcomes)",
+                    "sample_count": len(rows or [])}
 
-        if len(rows) < 10:
-            return {"error": "Insufficient data (need 10+ outcomes)", "sample_count": len(rows)}
-
-        # Bin by confidence (0-0.2, 0.2-0.4, 0.4-0.6, 0.6-0.8, 0.8-1.0)
         buckets = defaultdict(lambda: {"predicted": [], "actual": []})
-
         for row in rows:
-            conf = row[0]
-            outcome = row[1]
-
-            # Determine bucket
-            bucket = int(conf * 5) / 5  # 0.0, 0.2, 0.4, 0.6, 0.8
+            conf = row["confidence"] or 0
+            outcome = row["outcome_24h"] or 0
+            bucket = int(conf * 5) / 5
             bucket_label = f"{bucket:.1f}-{bucket + 0.2:.1f}"
-
             buckets[bucket_label]["predicted"].append(conf)
             buckets[bucket_label]["actual"].append(1 if outcome > 0 else 0)
 
-        # Compute calibration for each bucket
         calibration_data = []
         all_errors = []
-
         for bucket_label in sorted(buckets.keys()):
-            bucket_data = buckets[bucket_label]
-            predicted_prob = np.mean(bucket_data["predicted"])
-            actual_success_rate = np.mean(bucket_data["actual"])
-            count = len(bucket_data["actual"])
+            bd = buckets[bucket_label]
+            pp = np.mean(bd["predicted"])
+            asr = np.mean(bd["actual"])
+            cnt = len(bd["actual"])
+            calibration_data.append({
+                "confidence_bucket": bucket_label,
+                "predicted_prob": round(pp, 3),
+                "actual_success_rate": round(asr, 3),
+                "sample_count": cnt,
+                "error": abs(pp - asr),
+            })
+            all_errors.append(abs(pp - asr))
 
-            calibration_data.append(
-                {
-                    "confidence_bucket": bucket_label,
-                    "predicted_prob": round(predicted_prob, 3),
-                    "actual_success_rate": round(actual_success_rate, 3),
-                    "sample_count": count,
-                    "error": abs(predicted_prob - actual_success_rate),
-                }
-            )
-
-            all_errors.append(abs(predicted_prob - actual_success_rate))
-
-        # Overall metrics
         overall_error = np.mean(all_errors) if all_errors else 0
-
-        # R² (how well calibrated)
+        r_squared = 0
         if len(calibration_data) >= 2:
             predicted = [d["predicted_prob"] for d in calibration_data]
             actual = [d["actual_success_rate"] for d in calibration_data]
-            correlation = np.corrcoef(predicted, actual)[0, 1]
-            r_squared = correlation**2
-        else:
-            r_squared = 0
+            corr = np.corrcoef(predicted, actual)[0, 1]
+            r_squared = corr ** 2
 
-        # Store in database
         ts = int(time.time())
-        for bucket in calibration_data:
-            self.conn.execute(
-                """
-                INSERT INTO calibration_metrics (
-                    computed_at, model_type, confidence_bucket,
-                    predicted_prob, actual_success_rate, sample_count
-                ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    ts,
-                    model_type or "all",
-                    bucket["confidence_bucket"],
-                    bucket["predicted_prob"],
-                    bucket["actual_success_rate"],
-                    bucket["sample_count"],
-                ),
-            )
-        self.conn.commit()
+        for b in calibration_data:
+            self._execute(
+                "INSERT INTO calibration_metrics "
+                "(computed_at, model_type, confidence_bucket, "
+                "predicted_prob, actual_success_rate, sample_count) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (ts, model_type or "all", b["confidence_bucket"],
+                 b["predicted_prob"], b["actual_success_rate"], b["sample_count"]))
 
         return {
             "buckets": calibration_data,
@@ -616,157 +523,118 @@ class AIMemory:
             "computed_at": ts,
         }
 
+    # -- Stats ---------------------------------------------------------------
+
     def get_memory_stats(self) -> dict[str, Any]:
         """Get memory system statistics."""
-        cur = self.conn.execute("SELECT COUNT(*) FROM ai_memory")
-        total_count = cur.fetchone()[0]
+        try:
+            row = self._execute("SELECT COUNT(*) as cnt FROM ai_memory", fetch="one")
+            total_count = (row["cnt"] if isinstance(row, dict) else row[0]) if row else 0
 
-        cur = self.conn.execute("SELECT MIN(ts), MAX(ts) FROM ai_memory")
-        row = cur.fetchone()
-        min_ts, max_ts = row[0], row[1]
+            row = self._execute("SELECT MIN(ts) as min_ts, MAX(ts) as max_ts FROM ai_memory", fetch="one")
+            if row and isinstance(row, dict):
+                min_ts, max_ts = row.get("min_ts"), row.get("max_ts")
+            elif row:
+                min_ts, max_ts = row[0], row[1]
+            else:
+                min_ts, max_ts = None, None
 
-        cur = self.conn.execute("""
-            SELECT action, COUNT(*) FROM ai_memory
-            GROUP BY action
-        """)
-        action_counts = {row[0]: row[1] for row in cur.fetchall()}
+            action_rows = self._execute(
+                "SELECT action, COUNT(*) as cnt FROM ai_memory GROUP BY action", fetch="all")
+            action_counts = {r["action"]: r["cnt"] for r in (action_rows or [])}
 
-        cur = self.conn.execute("""
-            SELECT COUNT(*) FROM ai_memory
-            WHERE outcome_24h IS NOT NULL
-        """)
-        outcomes_count = cur.fetchone()[0]
+            row = self._execute(
+                "SELECT COUNT(*) as cnt FROM ai_memory WHERE outcome_24h IS NOT NULL", fetch="one")
+            outcomes_count = (row["cnt"] if isinstance(row, dict) else row[0]) if row else 0
 
-        cur = self.conn.execute("""
-            SELECT AVG(confidence) FROM ai_memory
-        """)
-        avg_confidence = cur.fetchone()[0] or 0
+            row = self._execute("SELECT AVG(confidence) as avg_conf FROM ai_memory", fetch="one")
+            avg_confidence = 0
+            if row:
+                avg_confidence = (row["avg_conf"] if isinstance(row, dict) else row[0]) or 0
 
-        return {
-            "total_decisions": total_count,
-            "time_range": {
-                "start": min_ts,
-                "end": max_ts,
-                "span_days": (max_ts - min_ts) / 86400 if min_ts and max_ts else 0,
-            },
-            "action_distribution": action_counts,
-            "outcomes_tracked": outcomes_count,
-            "avg_confidence": round(avg_confidence, 3),
-            "cache_size": len(self.cache),
-            "vector_store": self.vector_store_type if self.vector_store else "none",
-        }
+            return {
+                "total_decisions": total_count,
+                "time_range": {
+                    "start": min_ts, "end": max_ts,
+                    "span_days": (max_ts - min_ts) / 86400 if min_ts and max_ts else 0,
+                },
+                "action_distribution": action_counts,
+                "outcomes_tracked": outcomes_count,
+                "avg_confidence": round(float(avg_confidence), 3),
+                "cache_size": len(self.cache),
+                "vector_store": self.vector_store_type if self.vector_store else "none",
+                "backend": "postgresql" if self._use_pg else "sqlite",
+            }
+        except Exception as e:
+            LOGGER.error(f"get_memory_stats failed: {e}")
+            return {
+                "total_decisions": 0,
+                "time_range": {"start": None, "end": None, "span_days": 0},
+                "action_distribution": {}, "outcomes_tracked": 0,
+                "avg_confidence": 0, "cache_size": len(self.cache),
+                "vector_store": "none",
+                "backend": "postgresql" if self._use_pg else "sqlite",
+                "error": str(e),
+            }
 
     def search_by_reasoning(self, query: str, k: int = 10) -> list[dict]:
-        """
-        Semantic search over decision reasoning text.
+        """Semantic search over decision reasoning text."""
+        if self.vector_store and self.vector_store_type == "chromadb":
+            results = self.vector_store.query(query_texts=[query], n_results=k)
+            ids = results["ids"][0] if results["ids"] else []
+            similar = []
+            for doc_id in ids:
+                row = self._execute("SELECT * FROM ai_memory WHERE id=%s",
+                                    (int(doc_id),), fetch="one")
+                if row: similar.append(row)
+            return similar
+        rows = self._execute(
+            "SELECT * FROM ai_memory WHERE reasoning LIKE %s ORDER BY ts DESC LIMIT %s",
+            (f"%{query}%", k), fetch="all")
+        return rows or []
 
-        Args:
-            query: Natural language query (e.g., "high volatility bull market")
-            k: Number of results
-
-        Returns:
-            List of decisions matching query
-        """
-        if not self.vector_store or self.vector_store_type != "chromadb":
-            # Fallback to SQL LIKE search
-            cur = self.conn.execute(
-                """
-                SELECT * FROM ai_memory
-                WHERE reasoning LIKE ?
-                ORDER BY ts DESC
-                LIMIT ?
-            """,
-                (f"%{query}%", k),
-            )
-            return [dict(row) for row in cur.fetchall()]
-
-        # ChromaDB semantic search
-        results = self.vector_store.query(query_texts=[query], n_results=k)
-
-        ids = results["ids"][0] if results["ids"] else []
-        similar = []
-        for doc_id in ids:
-            cur = self.conn.execute("SELECT * FROM ai_memory WHERE id=?", (int(doc_id),))
-            row = cur.fetchone()
-            if row:
-                similar.append(dict(row))
-
-        return similar
-
-    def export_for_training(
-        self, symbol: str | None = None, min_samples: int = 100
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Export data for ML model training.
-
-        Returns:
-            (X, y) where:
-            - X: Feature matrix (N x D)
-            - y: Labels (N,) - 1 for positive outcome, 0 for negative
-        """
-        query = """
-            SELECT features, outcome_24h FROM ai_memory
-            WHERE outcome_24h IS NOT NULL
-        """
-        params = []
-
+    def export_for_training(self, symbol: str | None = None,
+                            min_samples: int = 100) -> tuple[np.ndarray, np.ndarray]:
+        """Export data for ML model training. Returns (X, y)."""
         if symbol:
-            query += " AND symbol=?"
-            params.append(symbol)
+            rows = self._execute(
+                "SELECT features, outcome_24h FROM ai_memory "
+                "WHERE outcome_24h IS NOT NULL AND symbol=%s",
+                (symbol,), fetch="all")
+        else:
+            rows = self._execute(
+                "SELECT features, outcome_24h FROM ai_memory "
+                "WHERE outcome_24h IS NOT NULL", fetch="all")
 
-        cur = self.conn.execute(query, params)
-        rows = cur.fetchall()
+        if not rows or len(rows) < min_samples:
+            raise ValueError(f"Insufficient training data: {len(rows or [])} < {min_samples}")
 
-        if len(rows) < min_samples:
-            raise ValueError(f"Insufficient training data: {len(rows)} < {min_samples}")
-
-        # Parse features and labels
-        X = []
-        y = []
+        X, y = [], []
         for row in rows:
-            features = json.loads(row[0])
-            outcome = row[1]
-
-            X.append(self._features_to_vector(features))
-            y.append(1 if outcome > 0 else 0)
-
+            feat = json.loads(row["features"]) if isinstance(row["features"], str) else row["features"]
+            X.append(self._features_to_vector(feat))
+            y.append(1 if row["outcome_24h"] > 0 else 0)
         return np.array(X), np.array(y)
 
     def prune_old_memories(self, keep_days: int = 365):
-        """
-        Prune memories older than keep_days (default 1 year).
-        Keep significant events (large outcomes, user feedback).
-        """
+        """Prune memories older than keep_days. Keep significant events."""
         cutoff_ts = int(time.time()) - (keep_days * 86400)
-
-        # Delete non-significant old memories
-        cur = self.conn.execute(
-            """
-            DELETE FROM ai_memory
-            WHERE ts < ?
-            AND user_feedback IS NULL
-            AND ABS(COALESCE(outcome_24h, 0)) < 0.05
-        """,
-            (cutoff_ts,),
-        )
-
-        deleted_count = cur.rowcount
-        self.conn.commit()
-
-        # Reload cache
+        deleted = self._execute(
+            "DELETE FROM ai_memory WHERE ts < %s AND user_feedback IS NULL "
+            "AND ABS(COALESCE(outcome_24h, 0)) < 0.05", (cutoff_ts,))
         self._load_cache()
-
-        LOGGER.info(f"Pruned {deleted_count} old memories (kept significant events)")
-
-        return deleted_count
+        LOGGER.info(f"Pruned {deleted} old memories (kept significant events)")
+        return deleted
 
     def close(self):
         """Close database connections."""
-        self.conn.close()
+        if self._sqlite_conn:
+            self._sqlite_conn.close()
         LOGGER.info("AI Memory closed")
 
 
-# Singleton instance (optional, for convenience)
+# -- Singleton ---------------------------------------------------------------
+
 _memory_instance: AIMemory | None = None
 
 

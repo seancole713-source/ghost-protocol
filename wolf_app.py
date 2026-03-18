@@ -9331,6 +9331,13 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
         # Combine LSTM + XGBoost + Transformer for 10-15% accuracy boost
         from core.ensemble_predictor import get_ensemble_predictor
         
+        # FIX (Mar 18, 2026): Pass current_price into features so the ensemble
+        # predictor can use it for price-level neutral defaults (SMA, EMA, BB).
+        # Without this, missing SMA/EMA/BB features default to 0, which the
+        # model interprets as "price is infinitely above its moving average"
+        # = extreme overbought = massive DOWN bias.
+        features["current_price"] = current_price
+        
         ensemble = get_ensemble_predictor()
         ensemble_prediction = ensemble.predict(features, method="confidence_weighted", symbol=symbol)
         

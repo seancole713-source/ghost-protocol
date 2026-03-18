@@ -586,6 +586,9 @@ class XGBoostModel:
                 
                 # NEUTRAL DEFAULTS: Use neutral values instead of 0 to avoid DOWN bias
                 # When features are missing, we assume neutral market conditions
+                # FIX (Mar 18, 2026): Extract current_price for price-level defaults.
+                # Without this, SMA/EMA/BB default to 0 = massive DOWN bias.
+                _cp = float(features.get("current_price", 0) or features.get("price", 0) or 1.0)
                 neutral_defaults = {
                     # Binary features default to 0.5 (uncertain) or actual neutral value
                     "RSI_OVERSOLD": 0,           # Not oversold
@@ -630,25 +633,30 @@ class XGBoostModel:
                     
                     # === V3-HOURLY feature defaults (59-feature model) ===
                     # These match the git pkl model's feature names exactly
-                    "SMA_12": 0,                 # Will be price-level (filled by pipeline)
-                    "SMA_24": 0,                 # Same
-                    "SMA_48": 0,                 # Same
-                    "SMA_168": 0,                # Same
-                    "EMA_12": 0,                 # Same
-                    "EMA_24": 0,                 # Same
+                    # FIX (Mar 18, 2026): Price-level features MUST default to
+                    # current_price, NOT 0. When SMA=0 the model sees "price is
+                    # infinitely above its moving average" = extreme overbought
+                    # = massive DOWN bias. Defaulting to current_price means
+                    # "price equals its MA" = perfectly neutral.
+                    "SMA_12": _cp,               # Price-level → current price (neutral)
+                    "SMA_24": _cp,               # Same
+                    "SMA_48": _cp,               # Same
+                    "SMA_168": _cp,              # Same
+                    "EMA_12": _cp,               # Same
+                    "EMA_24": _cp,               # Same
                     "RSI_OVERSOLD": 0,           # Not oversold
                     "RSI_OVERBOUGHT": 0,         # Not overbought
                     "MACD_LINE": 0,              # Neutral MACD
                     "MACD_SIGNAL": 0,            # Neutral
                     "MACD_HISTOGRAM": 0,         # Neutral
                     "MACD_BULLISH": 0.5,         # Uncertain
-                    "BB_MIDDLE": 0,              # Price-level
-                    "BB_UPPER": 0,               # Price-level
-                    "BB_LOWER": 0,               # Price-level
+                    "BB_MIDDLE": _cp,            # Price-level → current price
+                    "BB_UPPER": _cp * 1.02,     # +2% above price (typical)
+                    "BB_LOWER": _cp * 0.98,     # -2% below price (typical)
                     "BB_WIDTH": 0.04,            # Normal bandwidth
-                    "ATR_14": 0,                 # Will be absolute
+                    "ATR_14": _cp * 0.02,       # 2% of price (typical daily range)
                     "ATR_PCT": 0.02,             # Normal ATR %
-                    "VOLUME_SMA_24": 0,          # Volume level
+                    "VOLUME_SMA_24": 1.0,        # Normalized volume (neutral)
                     "OBV": 0,                    # Neutral OBV
                     "OBV_SMA": 0,                # Neutral
                     "OBV_TREND": 0.5,            # Uncertain trend

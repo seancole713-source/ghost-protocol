@@ -237,7 +237,7 @@ function renderPicks() {
 
         return `
         <div class="pick-card ${sideClass}">
-            <div class="pick-headline">${emoji} <strong>${p.symbol}</strong> is going <strong>${dirWord}</strong>${star}</div>
+            <div class="pick-headline">${emoji} <strong>${p.symbol || '???'}</strong> is going <strong>${dirWord}</strong>${star}</div>
             <div class="pick-body">
                 <div class="pick-row"><span class="pick-label">Get in at</span><span class="pick-val">${entry}</span></div>
                 <div class="pick-row"><span class="pick-label">Get out at</span><span class="pick-val green">${target} (you make ${gainPct}%)</span></div>
@@ -327,7 +327,7 @@ function renderActivePositions() {
         return `
         <div class="position-item">
             <div class="pos-left">
-                <span class="pos-sym">${emoji} ${p.symbol}</span>
+                <span class="pos-sym">${emoji} ${p.symbol || '???'}</span>
                 <span class="pos-meta">${dir} · Entry: ${fmtPrice(p.entry_price)}</span>
             </div>
             <div class="pos-right">
@@ -1099,19 +1099,23 @@ function renderFinancials() {
     }
 
     // ── Performance by Symbol ──
+    // FIX (Mar 18, 2026): Use actual_move_pct (percentage) NOT pnl (dollar amount)
+    // for avg win/loss display. Previously ETH showed +69.47% because that was
+    // the dollar PnL ($69.47), not the percentage move (~3%).
     const symbolStats = {};
     _history.forEach(t => {
         const sym = t.symbol || 'UNKNOWN';
         if (!symbolStats[sym]) symbolStats[sym] = { trades: 0, wins: 0, losses: 0, totalPnl: 0, winPnls: [], lossPnls: [] };
         symbolStats[sym].trades++;
-        const pnl = t.pnl || (t.actual_move_pct || 0);
-        symbolStats[sym].totalPnl += pnl;
+        // Use actual_move_pct (percentage) for display, fall back to 0
+        const movePct = t.actual_move_pct != null ? t.actual_move_pct : 0;
+        symbolStats[sym].totalPnl += movePct;
         if (t.outcome === 'win') {
             symbolStats[sym].wins++;
-            symbolStats[sym].winPnls.push(Math.abs(pnl));
+            symbolStats[sym].winPnls.push(Math.abs(movePct));
         } else {
             symbolStats[sym].losses++;
-            symbolStats[sym].lossPnls.push(Math.abs(pnl));
+            symbolStats[sym].lossPnls.push(Math.abs(movePct));
         }
     });
 
@@ -1166,8 +1170,9 @@ function renderFinancials() {
         const winPnls = _history.filter(t => t.outcome === 'win' && t.actual_move_pct).map(t => Math.abs(t.actual_move_pct));
         const lossPnls = _history.filter(t => t.outcome === 'loss' && t.actual_move_pct).map(t => Math.abs(t.actual_move_pct));
         const avgWin = winPnls.length ? (winPnls.reduce((a, b) => a + b, 0) / winPnls.length) : 0;
-        const avgLoss = lossPnls.length ? (lossPnls.reduce((a, b) => a + b, 0) / lossPnls.length) : 1;
-        const profitFactor = avgLoss > 0 ? (avgWin * totalWins) / (avgLoss * (totalTrades - totalWins)) : 0;
+        const avgLoss = lossPnls.length ? (lossPnls.reduce((a, b) => a + b, 0) / lossPnls.length) : 0;
+        const lossCount = totalTrades - totalWins;
+        const profitFactor = (avgLoss > 0 && lossCount > 0) ? (avgWin * totalWins) / (avgLoss * lossCount) : (totalWins > 0 ? 999 : 0);
         const rr = avgLoss > 0 ? (avgWin / avgLoss) : 0;
 
         riskEl.innerHTML = `
