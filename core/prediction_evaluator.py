@@ -169,6 +169,30 @@ def _ensure_pg_tables(conn) -> None:
     except Exception:
         pass
 
+    # --- ghost_prediction_outcomes (reconciler's table) --------------------
+    # FIX (Step 8, Mar 18 2026): Ensure this table exists so the evaluator's
+    # LEFT JOIN doesn't fail. The reconciler creates it too, but we need it
+    # to exist for the evaluator's skip-if-already-reconciled query.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ghost_prediction_outcomes (
+            id                    SERIAL PRIMARY KEY,
+            prediction_id         INTEGER NOT NULL UNIQUE,
+            symbol                TEXT NOT NULL,
+            closed_at             TIMESTAMPTZ,
+            price_at_prediction   DOUBLE PRECISION NOT NULL DEFAULT 0,
+            price_at_resolution   DOUBLE PRECISION NOT NULL DEFAULT 0,
+            realized_move_pct     DOUBLE PRECISION,
+            predicted_direction   TEXT,
+            actual_direction      TEXT,
+            hit_direction         INTEGER,
+            direction_threshold_pct DOUBLE PRECISION,
+            predicted_confidence  DOUBLE PRECISION,
+            resolution_method     TEXT,
+            resolution_provider   TEXT,
+            status                TEXT DEFAULT 'pending'
+        )
+    """)
+
     conn.commit()
 
 
@@ -530,11 +554,13 @@ def _evaluate_with_conn(conn) -> Dict:
     now = int(time.time())
 
     cur.execute("""
-        SELECT id, symbol, predicted_at, check_at, predicted_price,
-               predicted_direction, current_price, confidence
-        FROM ghost_predictions
-        WHERE checked = 0 AND check_at < %s
-        ORDER BY check_at ASC
+        SELECT gp.id, gp.symbol, gp.predicted_at, gp.check_at, gp.predicted_price,
+               gp.predicted_direction, gp.current_price, gp.confidence
+        FROM ghost_predictions gp
+        LEFT JOIN ghost_prediction_outcomes gpo ON gp.id = gpo.prediction_id
+        WHERE gp.checked = 0 AND gp.check_at < %s
+          AND gpo.prediction_id IS NULL
+        ORDER BY gp.check_at ASC
         LIMIT 500
     """, (now,))
     pending = cur.fetchall()

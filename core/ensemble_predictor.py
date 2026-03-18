@@ -590,6 +590,15 @@ class XGBoostModel:
                 # Without this, SMA/EMA/BB default to 0 = massive DOWN bias.
                 _cp = float(features.get("current_price", 0) or features.get("price", 0) or 1.0)
                 neutral_defaults = {
+                    # === V2 DAILY price-level features ===
+                    # FIX (Step 8, Mar 18 2026): SMA_7/20/50 and EMA_26 were MISSING
+                    # from neutral defaults, falling through to 0.0 = extreme DOWN bias.
+                    "SMA_7": _cp,                # Price-level → current price (neutral)
+                    "SMA_20": _cp,               # Same
+                    "SMA_50": _cp,               # Same
+                    "EMA_26": _cp,               # Same
+                    "VOLUME_SMA_20": 1.0,        # Normalized volume baseline (was 0 → spike signal)
+                    
                     # Binary features default to 0.5 (uncertain) or actual neutral value
                     "RSI_OVERSOLD": 0,           # Not oversold
                     "RSI_OVERBOUGHT": 0,         # Not overbought
@@ -612,10 +621,15 @@ class XGBoostModel:
                     
                     # Continuous features default to neutral values
                     "RSI_14": 50,                # Neutral RSI
+                    "MACD_LINE": 0,              # Neutral MACD
+                    "MACD_SIGNAL": 0,            # Neutral
+                    "MACD_HISTOGRAM": 0,         # Neutral
                     "BB_POSITION": 0.5,          # Middle of bands
                     "STOCH_K": 50,               # Neutral stochastic
                     "STOCH_D": 50,               # Neutral stochastic
                     "VOLUME_RATIO": 1.0,         # Average volume
+                    "OBV": 0,                    # Neutral OBV
+                    "OBV_SMA": 0,                # Neutral OBV
                     "fear_greed_value": 50,      # Neutral fear/greed
                     "fear_greed_numeric": 50,    # Neutral fear/greed
                     "funding_rate_proxy": 0,     # Neutral funding
@@ -722,6 +736,18 @@ class XGBoostModel:
                         f"Prediction quality severely degraded."
                     )
                 
+                # FIX (Step 8, Mar 18 2026): Cap confidence when too many features
+                # are defaults. >30% defaults = model is guessing, not predicting.
+                # Without this, missing data generates high-confidence wrong predictions.
+                _default_ratio = len(missing_features) / total_features if total_features > 0 else 0
+                _low_conf_cap = None
+                if _default_ratio > 0.30:
+                    _low_conf_cap = 0.50  # Cap at 50% confidence
+                    logger.info(
+                        f"📩 XGBoost: {len(missing_features)}/{total_features} features are defaults "
+                        f"({_default_ratio:.0%}) → confidence capped at 0.50"
+                    )
+                
                 X = np.array([feature_values])
                 
                 # Predict using trained model
@@ -804,6 +830,14 @@ class XGBoostModel:
                         f"⚠️ XGBoost confidence reduced {original_conf:.1%} → {confidence:.1%} "
                         f"(only {real_features}/{total_features} real features)"
                     )
+                
+                # Apply low-confidence cap if too many features are defaults (>30%)
+                if _low_conf_cap is not None and confidence > _low_conf_cap:
+                    logger.info(
+                        f"📉 XGBoost confidence capped {confidence:.1%} → {_low_conf_cap:.0%} "
+                        f"({len(missing_features)}/{total_features} features are defaults)"
+                    )
+                    confidence = _low_conf_cap
                 
                 return ModelPrediction(
                     model_name=f"XGBoost-{self.model_version}",

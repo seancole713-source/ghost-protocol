@@ -10,7 +10,7 @@ import requests
 
 # Cache for news data
 _NEWS_CACHE: dict[str, dict[str, Any]] = {}
-_NEWS_CACHE_TTL = 3600  # 1 hour
+_NEWS_CACHE_TTL = 600  # 10 minutes (was 3600s / 1h — too stale for 5-min cycle)
 
 
 def fetch_news_sentiment(symbol: str, limit: int = 10) -> dict[str, Any]:

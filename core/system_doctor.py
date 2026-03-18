@@ -117,10 +117,21 @@ def _check_price_feed() -> dict[str, Any]:
                         if result and result.get("price"):
                             return (result["price"],)
                     else:
+                        # FIX (Step 8, Mar 18 2026): Try multiple stock providers
+                        # to avoid false "partial outage" when just one provider is slow.
                         from core.providers.turbo_provider import turbo_stock_price
-                        data = turbo_stock_price(symbol)
+                        data = turbo_stock_price(symbol, max_budget_s=4.0)
                         if data and data.get("price"):
                             return (data["price"],)
+                        # Fallback to yfinance directly
+                        try:
+                            import yfinance as yf
+                            t = yf.Ticker(symbol)
+                            h = t.history(period="1d")
+                            if not h.empty:
+                                return (float(h['Close'].iloc[-1]),)
+                        except Exception:
+                            pass
                     return None
                 except Exception:
                     return None

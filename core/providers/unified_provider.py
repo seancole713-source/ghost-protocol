@@ -300,6 +300,17 @@ class UnifiedProvider:
             self._track_failure("yfinance")
             LOGGER.debug(f"yfinance failed for {symbol}: {e}")
         
+        # FIX (Step 8, Mar 18 2026): TwelveData as final fallback (free demo key)
+        try:
+            from wolf_app import _fetch_price_twelvedata
+            result = _fetch_price_twelvedata(symbol)
+            if result and result > 0:
+                self._track_success("twelvedata")
+                return {"price": float(result), "provider": "twelvedata", "symbol": symbol, "timestamp": int(time.time())}
+        except Exception as e:
+            self._track_failure("twelvedata")
+            LOGGER.debug(f"TwelveData failed for {symbol}: {e}")
+        
         LOGGER.warning(f"All stock providers failed for {symbol}")
         return None
     

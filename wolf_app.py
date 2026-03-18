@@ -5104,7 +5104,7 @@ async def _post_startup_init():
             from core.intelligence.ghost_news_brain import get_news_brain
             LOGGER.info("✅ News Brain: Import successful")
             
-            NEWS_ANALYSIS_INTERVAL_MINUTES = int(os.getenv("NEWS_ANALYSIS_INTERVAL_MINUTES", "30"))
+            NEWS_ANALYSIS_INTERVAL_MINUTES = int(os.getenv("NEWS_ANALYSIS_INTERVAL_MINUTES", "5"))  # FIX (Step 8): was 30 → 5 min to match prediction cycle
             LOGGER.info(f"🔍 News Brain: Interval set to {NEWS_ANALYSIS_INTERVAL_MINUTES} minutes")
             
             async def _news_analysis_loop():
@@ -7303,7 +7303,7 @@ ALERT_CONFIG = {
 # ── News sentiment fusion (env-toggled; defaults off to avoid regressions) ─────────────
 NEWS_SENTIMENT_ON = int(os.getenv("NEWS_SENTIMENT_ON", "1"))
 FINBERT_ON = int(os.getenv("FINBERT_ON", "0"))
-NEWS_LOOKBACK_MIN = int(os.getenv("NEWS_LOOKBACK_MIN", "240"))
+NEWS_LOOKBACK_MIN = int(os.getenv("NEWS_LOOKBACK_MIN", "30"))  # FIX (Step 8): was 240 → 30 min to weight recent news
 NEWS_DECAY_HALF_MIN = int(os.getenv("NEWS_DECAY_HALF_MIN", "180"))
 SENT_ALPHA = float(os.getenv("SENT_ALPHA", "0.7"))  # weight for price_signal
 SENT_BETA = float(os.getenv("SENT_BETA", "0.3"))  # weight for news_score
@@ -8826,6 +8826,9 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                 # Recalculate action after potential direction override
                 se_action = "BUY" if se_direction == "UP" else "SELL" if se_direction == "DOWN" else "HOLD"
                 
+                # FIX (Step 8): Detect crypto symbols going through stock engine
+                from core.asset_classification import is_crypto_symbol as _is_crypto_sym_stock
+                
                 with _LATEST_PREDICTIONS_LOCK:
                     _LATEST_PREDICTIONS[symbol] = {
                         "prediction_id": None,  # Updated after PG write below
@@ -8838,7 +8841,7 @@ def run_single_prediction(symbol: str) -> dict[str, Any]:
                         "provider": "stock_engine_v2",
                         "price": se_entry_price,
                         "price_at_prediction": se_entry_price,
-                        "market": "stock",
+                        "market": "crypto" if _is_crypto_sym_stock(symbol) else "stock",  # FIX: was hardcoded "stock"
                         "engine": "stock_v2",
                         "confirmations": stock_result.get("confirmations", 0),
                         "intel_applied": True,
@@ -15090,6 +15093,23 @@ async def _api_v3_watchlist_enriched_core():
         else:
             symbols_to_check = STOCK_SYMBOLS[:10] + CRYPTO_SYMBOLS[:10]
         
+        # FIX (Step 8, Mar 18 2026): If _LATEST_PREDICTIONS has < 20 symbols,
+        # supplement with a default set so the watchlist isn't empty after deploys.
+        # Previously only LINK showed up because it was the only symbol with a
+        # recent prediction. Now we always show at least 20 symbols.
+        _DEFAULT_WATCHLIST_SYMBOLS = [
+            # Top 10 crypto
+            "BTC", "ETH", "XRP", "SOL", "ADA", "LINK", "DOT", "AVAX", "DOGE", "MATIC",
+            # Top 10 stocks Ghost has historical data for
+            "T", "BMBL", "NET", "DDOG", "FTNT", "XPO", "PANW", "AAPL", "MSFT", "NVDA",
+        ]
+        if len(symbols_to_check) < 20:
+            for sym in _DEFAULT_WATCHLIST_SYMBOLS:
+                if sym not in symbols_to_check:
+                    symbols_to_check.append(sym)
+                if len(symbols_to_check) >= 20:
+                    break
+        
         # PERFORMANCE FIX (Jan 29, 2026): Separate crypto (batch) from stocks (parallel)
         # This reduces crypto fetch from 5s*N (with rate limit) to 1 batch call
         crypto_symbols = [s for s in symbols_to_check if s.upper() in CRYPTO_SYMBOLS]
@@ -15512,8 +15532,11 @@ async def api_v4_history(days: int = 90, limit: int = 500):
             eval_ts = r[8]      # unix timestamp (checked_at)
             confidence = float(r[9]) if r[9] else 0
             # Derive market from symbol (no market column in DB)
-            _crypto = ('BTC', 'ETH', 'SOL', 'DOGE', 'ADA', 'XRP', 'BNB', 'AVAX', 'MATIC', 'DOT')
-            market = "crypto" if any(k in symbol.upper() for k in _crypto) else "stock"
+            # FIX (Step 8, Mar 18 2026): Was a tiny 10-symbol tuple that missed
+            # CHZ, LINK, ICP, ALGO, BCH, ETC, TRX, SHIB etc → all tagged as "stock".
+            # Now uses the canonical is_crypto_symbol() which covers 200+ tokens.
+            from core.asset_classification import is_crypto_symbol as _hist_is_crypto
+            market = "crypto" if _hist_is_crypto(symbol) else "stock"
 
             # Calculate P&L based on actual move
             pnl = 0
