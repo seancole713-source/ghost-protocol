@@ -101,12 +101,13 @@ class ConfidenceCalibrator:
             SELECT
                 symbol,
                 confidence,
-                was_correct
+                correct AS was_correct
             FROM ghost_predictions
-            WHERE actual_direction IS NOT NULL
-              AND was_correct IS NOT NULL
+            WHERE checked = 1
+              AND correct IS NOT NULL
               AND confidence IS NOT NULL
-            ORDER BY run_at DESC
+              AND eval_version NOT LIKE 'skip%%'
+            ORDER BY predicted_at DESC
             LIMIT 10000
         """)
         

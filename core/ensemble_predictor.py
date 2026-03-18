@@ -771,6 +771,7 @@ class XGBoostModel:
                 #
                 # Math: logit(p) = log(p/(1-p)), adjusted = logit(p) - log(2.0), corrected = sigmoid(adjusted)
                 import math
+                import os as _os
                 _BIAS_CORRECTION = float(_os.getenv("XGBOOST_BIAS_CORRECTION", "0.7"))  # log(2.0) ≈ 0.693
                 if _BIAS_CORRECTION > 0:
                     _logit_up = math.log(prob_up / max(prob_down, 1e-10))
@@ -793,7 +794,6 @@ class XGBoostModel:
                 # "A binary classifier that's forced to choose will always output something.
                 #  Real edge comes from knowing when NOT to trade."
                 # If abs(prob_up - prob_down) < threshold, model has NO conviction → HOLD.
-                import os as _os
                 _HOLD_ZONE_THRESHOLD = float(_os.getenv("HOLD_ZONE_THRESHOLD", "0.08"))
                 _prob_spread = abs(prob_up - prob_down)
                 
@@ -941,6 +941,15 @@ class EnsemblePredictor:
         self.performance_history = {
             "XGBoost": deque(maxlen=100),
         }
+        
+        # =====================================================================
+        # PHASE 2: Symbol accuracy tracking (in-memory, per-symbol)
+        # Tracks last N predictions per symbol for accuracy gating
+        # =====================================================================
+        self._symbol_accuracy: dict[str, deque] = {}  # symbol → deque of booleans
+        self._SYMBOL_ACCURACY_WINDOW = 30  # Track last 30 predictions per symbol
+        self._SYMBOL_BLOCK_THRESHOLD = 0.30  # Block symbols with <30% accuracy
+        self._SYMBOL_PENALTY_THRESHOLD = 0.45  # Penalize symbols with <45% accuracy
         
     def predict(self, features: dict[str, Any], method: str = "confidence_weighted", symbol: str = "") -> EnsemblePrediction:
         """
@@ -1152,6 +1161,56 @@ class EnsemblePredictor:
                     model_weights=ensemble_result.model_weights,
                     ensemble_method=ensemble_result.ensemble_method
                 )
+        
+        # =====================================================================
+        # PHASE 2: POST-MODEL MARKET INTELLIGENCE
+        # Apply additional context that XGBoost doesn't see:
+        #   - Historical confidence calibration (predicted vs actual accuracy)
+        #   - Per-symbol accuracy gating (block chronically wrong symbols)
+        #   - Momentum acceleration, volatility regime, volume confirmation
+        #   - Mean reversion signals, cross-asset correlation (SPY for stocks)
+        #   - Time-of-day awareness (market hours, weekends)
+        # =====================================================================
+        try:
+            from core.market_intelligence import apply_market_intelligence
+            
+            intel = apply_market_intelligence(
+                features=adjusted_features,
+                predicted_direction=ensemble_result.direction,
+                raw_confidence=ensemble_result.confidence,
+                symbol=symbol,
+                is_crypto=is_crypto_symbol if isinstance(is_crypto_symbol, bool) else False,
+            )
+            
+            pre_intel_conf = ensemble_result.confidence
+            pre_intel_dir = ensemble_result.direction
+            
+            ensemble_result = EnsemblePrediction(
+                direction=intel["final_direction"],
+                confidence=intel["final_confidence"],
+                predicted_change_pct=ensemble_result.predicted_change_pct,
+                individual_predictions=ensemble_result.individual_predictions,
+                model_weights=ensemble_result.model_weights,
+                ensemble_method=ensemble_result.ensemble_method,
+            )
+            
+            if abs(intel["total_adjustment"]) > 0.01 or pre_intel_dir != intel["final_direction"]:
+                logger.info(
+                    f"[INTEL] {symbol}: {pre_intel_dir} {pre_intel_conf:.1%} → "
+                    f"{intel['final_direction']} {intel['final_confidence']:.1%} "
+                    f"(Δ{intel['total_adjustment']:+.1%}) | "
+                    f"session={intel['signals']['session']}, "
+                    f"vol={intel['signals']['volatility_regime']}, "
+                    f"sym_acc={intel['signals']['symbol_accuracy']}"
+                )
+            
+            if intel["blocked"]:
+                logger.warning(
+                    f"[INTEL] {symbol} BLOCKED: {intel['block_reason']} — forcing HOLD"
+                )
+                
+        except Exception as e:
+            logger.debug(f"[INTEL] Market intelligence skipped: {e}")
         
         duration_ms = (time.time() - start) * 1000
         logger.info(

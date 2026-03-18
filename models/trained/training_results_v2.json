@@ -1,0 +1,165 @@
+{
+  "ok": true,
+  "models": {
+    "xgboost": {
+      "ok": true,
+      "model_path": "/workspaces/ghost-protocol/models/trained/ghost_xgboost_v2.pkl",
+      "train_accuracy": 0.991,
+      "test_accuracy": 0.87,
+      "cv_score": 0.8043,
+      "cv_std": 0.1084,
+      "top_features": [
+        [
+          "RSI_OVERSOLD",
+          0.15260925889015198
+        ],
+        [
+          "fear_greed_numeric",
+          0.05429406836628914
+        ],
+        [
+          "ABOVE_SMA_20",
+          0.04469398036599159
+        ],
+        [
+          "BTC_MACD_BULLISH",
+          0.03686286136507988
+        ],
+        [
+          "BTC_RSI",
+          0.03490205109119415
+        ],
+        [
+          "funding_rate_proxy",
+          0.034662265330553055
+        ],
+        [
+          "BTC_MOMENTUM_7D",
+          0.030441807582974434
+        ],
+        [
+          "fear_greed_value",
+          0.03009173646569252
+        ],
+        [
+          "BTC_MOMENTUM_1D",
+          0.028502032160758972
+        ],
+        [
+          "RSI_14",
+          0.028370486572384834
+        ],
+        [
+          "EXTREME_FEAR",
+          0.026062022894620895
+        ],
+        [
+          "ROC_10",
+          0.02129633165895939
+        ],
+        [
+          "NEAR_7D_LOW",
+          0.018698828294873238
+        ],
+        [
+          "BB_POSITION",
+          0.01826443150639534
+        ],
+        [
+          "VOLUME_RATIO",
+          0.017847903072834015
+        ]
+      ],
+      "passed_validation": true
+    }
+  },
+  "data": {
+    "symbols": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "XRP",
+      "DOGE",
+      "ADA",
+      "AVAX",
+      "LINK",
+      "DOT",
+      "LTC",
+      "UNI",
+      "ATOM",
+      "MATIC",
+      "NEAR",
+      "FTM"
+    ],
+    "samples": 3881,
+    "features": 53,
+    "feature_names": [
+      "SMA_7",
+      "SMA_20",
+      "SMA_50",
+      "EMA_12",
+      "EMA_26",
+      "RSI_14",
+      "RSI_OVERSOLD",
+      "RSI_OVERBOUGHT",
+      "MACD_LINE",
+      "MACD_SIGNAL",
+      "MACD_HISTOGRAM",
+      "MACD_BULLISH",
+      "BB_MIDDLE",
+      "BB_UPPER",
+      "BB_LOWER",
+      "BB_WIDTH",
+      "BB_POSITION",
+      "STOCH_K",
+      "STOCH_D",
+      "ATR_14",
+      "VOLUME_SMA_20",
+      "VOLUME_RATIO",
+      "VOLUME_SPIKE",
+      "OBV",
+      "OBV_SMA",
+      "MOMENTUM_1D",
+      "MOMENTUM_7D",
+      "MOMENTUM_30D",
+      "ROC_10",
+      "ABOVE_SMA_20",
+      "ABOVE_SMA_50",
+      "EMA_BULLISH",
+      "SMA_CROSS_20_50",
+      "NEAR_7D_HIGH",
+      "NEAR_7D_LOW",
+      "NEAR_30D_HIGH",
+      "NEAR_30D_LOW",
+      "VOLATILITY_7D",
+      "VOLATILITY_30D",
+      "DAILY_RANGE_PCT",
+      "BTC_MOMENTUM_1D",
+      "BTC_MOMENTUM_7D",
+      "BTC_RSI",
+      "BTC_MACD_BULLISH",
+      "BTC_CORRELATION",
+      "BTC_LEADS",
+      "fear_greed_value",
+      "fear_greed_numeric",
+      "EXTREME_FEAR",
+      "EXTREME_GREED",
+      "funding_rate_proxy",
+      "HIGH_FUNDING",
+      "NEGATIVE_FUNDING"
+    ],
+    "class_balance": {
+      "UP": 1865,
+      "DOWN": 2016
+    }
+  },
+  "backtest": {
+    "total_trades": 727,
+    "wins": 647,
+    "losses": 80,
+    "win_rate": 0.889958734525447,
+    "total_return_pct": 491.761855161186,
+    "final_capital": 5917.61855161186
+  },
+  "duration_seconds": 45.1
+}
