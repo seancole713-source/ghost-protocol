@@ -197,6 +197,66 @@ def _ensure_pg_tables(conn) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Automatic direction mismatch correction (runs once on startup)
+# ---------------------------------------------------------------------------
+_DIRECTION_MISMATCH_FIXED = False
+
+
+def _fix_direction_mismatches_once(conn) -> None:
+    """
+    Fix predictions where predicted_direction disagrees with target vs start price.
+    E.g. direction=UP but target < current → should be DOWN.
+    Corrects direction and resets checked=0 so evaluator re-evaluates them.
+
+    This runs ONCE per process lifetime, not on every evaluation cycle.
+    Created: Step 9 (Mar 18, 2026) — was previously a manual-only endpoint.
+    """
+    global _DIRECTION_MISMATCH_FIXED
+    if _DIRECTION_MISMATCH_FIXED:
+        return
+    _DIRECTION_MISMATCH_FIXED = True
+
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE ghost_predictions
+            SET predicted_direction = CASE
+                    WHEN target_price > current_price THEN 'UP'
+                    ELSE 'DOWN'
+                END,
+                checked = 0,
+                checked_at = NULL,
+                correct = NULL,
+                outcome_price = NULL,
+                outcome_direction = NULL,
+                outcome_pct = NULL,
+                eval_version = NULL
+            WHERE (
+                (predicted_direction = 'UP' AND target_price < current_price AND current_price > 0)
+                OR
+                (predicted_direction = 'DOWN' AND target_price > current_price AND current_price > 0)
+            )
+            AND target_price IS NOT NULL
+            AND current_price IS NOT NULL
+        """)
+        fixed_count = cur.rowcount
+        conn.commit()
+        if fixed_count > 0:
+            LOGGER.warning(
+                f"🔧 Direction mismatch auto-fix: corrected {fixed_count} predictions "
+                f"(direction vs target_price). They will be re-evaluated."
+            )
+        else:
+            LOGGER.info("🔧 Direction mismatch auto-fix: no mismatches found")
+    except Exception as e:
+        LOGGER.warning(f"🔧 Direction mismatch auto-fix failed: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Price window helpers
 # ---------------------------------------------------------------------------
 
@@ -373,7 +433,8 @@ def _re_evaluate_skip_tagged_with_conn(conn) -> Dict:
 
     # Find all skip-tagged predictions
     cur.execute("""
-        SELECT id, symbol, predicted_at, check_at, predicted_price,
+        SELECT id, symbol, predicted_at, check_at,
+               COALESCE(target_price, predicted_price) AS target_price,
                predicted_direction, current_price, confidence,
                outcome_pct, outcome_direction, eval_version
         FROM ghost_predictions
@@ -549,12 +610,14 @@ def evaluate_pending_predictions() -> Dict:
 def _evaluate_with_conn(conn) -> Dict:
     """Inner evaluation logic that runs inside a connection context."""
     _ensure_pg_tables(conn)
+    _fix_direction_mismatches_once(conn)
     cur = conn.cursor()
 
     now = int(time.time())
 
     cur.execute("""
-        SELECT gp.id, gp.symbol, gp.predicted_at, gp.check_at, gp.predicted_price,
+        SELECT gp.id, gp.symbol, gp.predicted_at, gp.check_at,
+               COALESCE(gp.target_price, gp.predicted_price) AS target_price,
                gp.predicted_direction, gp.current_price, gp.confidence
         FROM ghost_predictions gp
         LEFT JOIN ghost_prediction_outcomes gpo ON gp.id = gpo.prediction_id

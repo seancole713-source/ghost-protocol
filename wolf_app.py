@@ -17461,7 +17461,7 @@ async def api_v4_subsystems():
 
         # OpusBrain (GPT-4 powered)
         try:
-            from core.opus_brain import OpusBrain
+            from core.intelligence.opus_brain import OpusBrain
             brains.append({"name": "Opus Brain", "key": "opus_brain", "active": True,
                            "desc": "GPT-4 powered deep analysis"})
         except Exception:
