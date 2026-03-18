@@ -1,6 +1,0 @@
-- news_routes: OK
-- agent_decisions_route: OK
-- agent_stats_route: OK
-- forecast_api: OK
-- crypto_supported: MISSING
-- ui_dist_present: OK

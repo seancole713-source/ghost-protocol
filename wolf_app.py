@@ -254,6 +254,19 @@ APP = FastAPI(
 # Alias for deployment runners that expect `wolf_app:app`
 app = APP
 
+# ── Extracted route modules ──────────────────────────────────────────────
+# Clean, self-contained route handlers extracted from the monolith.
+# Each module defines a FastAPI APIRouter and is wired in here.
+from routes.picks import router as picks_router
+from routes.history import router as history_router
+from routes.heartbeat import router as heartbeat_router
+from routes.subsystems import router as subsystems_router
+
+APP.include_router(picks_router)
+APP.include_router(history_router)
+APP.include_router(heartbeat_router)
+APP.include_router(subsystems_router)
+
 
 # ---------------------------------------------------------------------------
 # Timeout Wrapper for External Calls (2.5s cap to prevent 499 errors)
@@ -341,9 +354,12 @@ async def _debug_pool_status():
 # ---------------------------------------------------------------------------
 # Mount News Router (modular approach)
 # ---------------------------------------------------------------------------
-from routes.news_routes import news_router
-
-APP.include_router(news_router, prefix="/api/news", tags=["news"])
+try:
+    from routes.news_routes import news_router
+    APP.include_router(news_router, prefix="/api/news", tags=["news"])
+    print("[INIT] ✅ News router mounted")
+except Exception as e:
+    print(f"[INIT] ⚠️  News router unavailable: {e}")
 
 # Mount Demo Endpoints (provides instant testing)
 try:
@@ -8570,7 +8586,11 @@ async def api_forecast_backtest(
 # Ghost Prediction Endpoints
 # ══════════════════════════════════════════════════════════════════════════════
 
-from services import outcome_reconciler, predictor
+from services import predictor
+try:
+    from services import outcome_reconciler
+except ImportError:
+    outcome_reconciler = None  # v1 removed — using outcome_reconciler_v2
 
 
 class _PredictRunBody(BaseModel):
@@ -15281,367 +15301,13 @@ async def _fetch_symbol_price(symbol: str) -> dict[str, Any]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# V4 ENDPOINTS — Clean cockpit redesign
+# V4 ENDPOINTS — Extracted to routes/ modules (Step 10)
+# /api/v4/picks  → routes/picks.py
+# /api/v4/history → routes/history.py
 # ──────────────────────────────────────────────────────────────────────────────
 
-@APP.get("/api/v4/picks")
-async def api_v4_picks():
-    """
-    Today's trade picks — reads from ghost_tracked_picks (same source as Telegram).
-    Falls back to _LATEST_PREDICTIONS if tracked picks table is empty.
-    Every number here matches what the user received in Telegram.
-    """
-    try:
-        from datetime import timedelta
-        now = time.time()
-        picks = []
-        source = "none"
-
-        # ── PRIMARY: ghost_tracked_picks (same DB Telegram writes to) ──
-        database_url = os.getenv("DATABASE_URL")
-        if database_url:
-            try:
-                from core.db_pool import get_sync_connection
-                with get_sync_connection() as conn:
-                    cur = conn.cursor()
-                    cur.execute("""
-                        SELECT symbol, asset_type, direction, entry_price, target_price,
-                               stop_price, prediction_48h, confidence, entry_time,
-                               expires_at, status
-                        FROM ghost_tracked_picks
-                        ORDER BY entry_time DESC
-                        LIMIT 50
-                    """)
-                    rows = cur.fetchall()
-                    cur.close()
-
-                for r in rows:
-                    symbol = r[0]
-                    asset_type = (r[1] or "crypto").lower()
-                    db_direction = r[2] or "UP"
-                    entry = float(r[3]) if r[3] else 0
-                    target = float(r[4]) if r[4] else (float(r[6]) if r[6] else 0)
-                    stop = float(r[5]) if r[5] else 0
-                    conf = float(r[7]) if r[7] else 0
-                    entry_time = r[8]
-                    expires_at = r[9]
-                    status = (r[10] or "active").lower()
-
-                    if not entry or entry <= 0:
-                        continue
-
-                    # Derive direction from entry vs target prices (source of truth)
-                    # Fixes inversion bug where DB stores wrong direction for some picks
-                    if entry > 0 and target > 0:
-                        direction = "UP" if target > entry else "DOWN"
-                    else:
-                        direction = db_direction
-
-                    is_buy = direction in ("UP", "BUY")
-
-                    # Gain % — same formula as format_pick()
-                    if is_buy and target and entry:
-                        gain_pct = (target - entry) / entry * 100
-                    elif not is_buy and target and entry:
-                        gain_pct = (entry - target) / entry * 100
-                    else:
-                        gain_pct = 0
-
-                    # Done by — same logic as _exit_date()
-                    done_by = "--"
-                    if expires_at:
-                        try:
-                            if isinstance(expires_at, (int, float)):
-                                exp_dt = datetime.fromtimestamp(expires_at, tz=UTC)
-                            else:
-                                exp_dt = expires_at
-                                if exp_dt.tzinfo is None:
-                                    exp_dt = exp_dt.replace(tzinfo=UTC)
-                            is_stock = asset_type in ("stock", "stocks")
-                            if is_stock and exp_dt.weekday() >= 5:
-                                days_ahead = 7 - exp_dt.weekday()
-                                exp_dt += timedelta(days=days_ahead)
-                            done_by = exp_dt.strftime("%a %b %-d")
-                        except Exception:
-                            done_by = "--"
-
-                    picks.append({
-                        "symbol": symbol,
-                        "direction": direction,
-                        "confidence": round(conf, 1),
-                        "entry_price": round(entry, 6),
-                        "target_price": round(target, 6) if target else None,
-                        "stop_loss": round(stop, 6) if stop else None,
-                        "gain_pct": round(gain_pct, 1),
-                        "done_by": done_by,
-                        "type": asset_type,
-                        "market": asset_type,
-                        "status": status,
-                        "whitelisted": False,
-                    })
-                if picks:
-                    source = "ghost_tracked_picks"
-            except Exception as db_err:
-                LOGGER.error(f"[V4] ghost_tracked_picks query failed: {db_err}")
-
-        # ── FALLBACK: _LATEST_PREDICTIONS (in-memory, always populated) ──
-        if not picks:
-            with _LATEST_PREDICTIONS_LOCK:
-                for symbol, pred in _LATEST_PREDICTIONS.items():
-                    if not isinstance(pred, dict):
-                        continue
-                    conf = pred.get("confidence", 0)
-                    if conf < 50:
-                        continue
-                    direction = pred.get("direction", "FLAT")
-                    if direction == "FLAT":
-                        continue
-
-                    entry = pred.get("entry_price") or pred.get("price_at_prediction") or pred.get("price", 0)
-                    target = pred.get("target_price") or pred.get("take_profit", 0)
-                    stop = pred.get("stop_loss", 0)
-                    if not entry or entry <= 0:
-                        continue
-
-                    # Re-derive direction from prices (fixes CHZ and 216 historical mismatches)
-                    if entry > 0 and target > 0:
-                        direction = "UP" if target > entry else "DOWN"
-
-                    is_up = direction == "UP"
-                    if is_up and target and entry:
-                        gain_pct = (target - entry) / entry * 100
-                    elif not is_up and target and entry:
-                        gain_pct = (entry - target) / entry * 100
-                    else:
-                        gain_pct = 0
-
-                    horizon_h = pred.get("horizon_h", 48)
-                    run_at = pred.get("run_at", now)
-                    deadline_ts = run_at + (horizon_h * 3600)
-                    deadline_dt = datetime.fromtimestamp(deadline_ts, tz=UTC)
-                    market = pred.get("market", "crypto")
-                    if market == "stock" and deadline_dt.weekday() >= 5:
-                        days_ahead = 7 - deadline_dt.weekday()
-                        deadline_dt += timedelta(days=days_ahead)
-                    done_by = deadline_dt.strftime("%a %b %-d")
-
-                    age_h = (now - run_at) / 3600
-                    if age_h > horizon_h * 2:
-                        continue
-
-                    picks.append({
-                        "symbol": symbol,
-                        "direction": direction,
-                        "confidence": round(conf, 1),
-                        "entry_price": round(entry, 6),
-                        "target_price": round(target, 6) if target else None,
-                        "stop_loss": round(stop, 6) if stop else None,
-                        "gain_pct": round(gain_pct, 1),
-                        "done_by": done_by,
-                        "type": market,
-                        "market": market,
-                        "status": "active",
-                        "whitelisted": False,
-                    })
-            if picks:
-                source = "latest_predictions"
-
-        picks.sort(key=lambda p: p["confidence"], reverse=True)
-
-        return {
-            "ok": True,
-            "picks": picks,
-            "count": len(picks),
-            "timestamp": int(now),
-            "source": source,
-        }
-    except Exception as e:
-        LOGGER.error(f"[V4] Picks endpoint failed: {e}", exc_info=True)
-        return {"ok": False, "picks": [], "count": 0, "error": str(e)}
-
-
-@APP.get("/api/v4/history")
-async def api_v4_history(days: int = 90, limit: int = 500):
-    """
-    Full resolved prediction history from ghost_predictions (source of truth).
-    Returns actual_price, correct/incorrect, eval_ts — the REAL record.
-    This is the same table that drives the 247/463 accuracy number.
-    """
-    try:
-        from core.db_pool import get_sync_connection
-
-        with get_sync_connection() as conn:
-            # Safety: reset any aborted transaction state from previous pool user
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            cur = conn.cursor()
-            cutoff_ts = int(time.time()) - (days * 86400)
-
-            # Try with target_price column for direction re-derivation
-            has_target_col = True
-            try:
-                cur.execute("""
-                    SELECT symbol, predicted_direction, current_price, outcome_price,
-                           predicted_pct, outcome_pct, correct, predicted_at,
-                           checked_at, confidence, target_price
-                    FROM ghost_predictions
-                    WHERE correct IS NOT NULL
-                      AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
-                    ORDER BY checked_at DESC NULLS LAST, predicted_at DESC
-                    LIMIT %s
-                """, (limit,))
-            except Exception:
-                # FIX (Mar 13, 2026): MUST rollback before retry!
-                # Without this, PostgreSQL stays in aborted transaction state
-                # and the fallback query fails with "current transaction is aborted"
-                conn.rollback()
-                has_target_col = False
-                cur = conn.cursor()  # get fresh cursor after rollback
-                cur.execute("""
-                    SELECT symbol, predicted_direction, current_price, outcome_price,
-                           predicted_pct, outcome_pct, correct, predicted_at,
-                           checked_at, confidence
-                    FROM ghost_predictions
-                    WHERE correct IS NOT NULL
-                      AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%%')
-                    ORDER BY checked_at DESC NULLS LAST, predicted_at DESC
-                    LIMIT %s
-                """, (limit,))
-            rows = cur.fetchall()
-            cur.close()
-
-        trades = []
-        for r in rows:
-            symbol = r[0]
-            direction = r[1] or "UP"
-            entry_price = float(r[2]) if r[2] else 0
-            target_price_val = float(r[10]) if has_target_col and len(r) > 10 and r[10] else 0
-
-            # Re-derive direction from prices (fixes 216 historical mismatches)
-            if entry_price > 0 and target_price_val > 0:
-                direction = "UP" if target_price_val > entry_price else "DOWN"
-            elif r[4] and float(r[4]) != 0:  # predicted_pct fallback
-                direction = "UP" if float(r[4]) > 0 else "DOWN"
-            exit_price = float(r[3]) if r[3] else 0
-            expected_move = float(r[4]) if r[4] else 0
-            actual_move_pct = float(r[5]) if r[5] else 0
-            correct = r[6]  # 1 or 0
-            predicted_at = r[7]  # unix timestamp
-            eval_ts = r[8]      # unix timestamp (checked_at)
-            confidence = float(r[9]) if r[9] else 0
-            # Derive market from symbol (no market column in DB)
-            # FIX (Step 8, Mar 18 2026): Was a tiny 10-symbol tuple that missed
-            # CHZ, LINK, ICP, ALGO, BCH, ETC, TRX, SHIB etc → all tagged as "stock".
-            # Now uses the canonical is_crypto_symbol() which covers 200+ tokens.
-            from core.asset_classification import is_crypto_symbol as _hist_is_crypto
-            market = "crypto" if _hist_is_crypto(symbol) else "stock"
-
-            # Calculate P&L based on actual move
-            pnl = 0
-            if entry_price and actual_move_pct:
-                is_up = direction == "UP"
-                if is_up:
-                    pnl = entry_price * (actual_move_pct / 100)
-                else:
-                    pnl = entry_price * (-actual_move_pct / 100)
-
-            outcome = "win" if correct == 1 else "loss"
-
-            trades.append({
-                "symbol": symbol,
-                "direction": direction,
-                "entry_price": round(entry_price, 6) if entry_price else None,
-                "exit_price": round(exit_price, 6) if exit_price else None,
-                "pnl": round(pnl, 4),
-                "actual_move_pct": round(actual_move_pct, 2),
-                "outcome": outcome,
-                "confidence": round(confidence, 1),
-                "market": market,
-                "type": market,
-                "predicted_at": predicted_at,
-                "resolved_at": eval_ts,
-            })
-
-        # Summary stats
-        wins = sum(1 for t in trades if t["outcome"] == "win")
-        losses = len(trades) - wins
-        total_pnl = sum(t["pnl"] for t in trades)
-        win_rate = round(wins / len(trades) * 100, 1) if trades else 0
-
-        return {
-            "ok": True,
-            "trades": trades,
-            "count": len(trades),
-            "wins": wins,
-            "losses": losses,
-            "win_rate": win_rate,
-            "total_pnl": round(total_pnl, 2),
-            "source": "ghost_predictions",
-        }
-    except Exception as e:
-        LOGGER.error(f"[V4] History endpoint failed: {e}", exc_info=True)
-        return {"ok": False, "trades": [], "count": 0, "error": str(e)}
-
-
-@APP.get("/api/v3/heartbeat/status")
-async def api_v3_heartbeat_status():
-    """Get all heartbeat task statuses for the Health tab."""
-    try:
-        from core.heartbeat import get_all_heartbeats, get_missing_tasks, EXPECTED_INTERVALS
-        all_hb = get_all_heartbeats()
-        missing = get_missing_tasks()
-
-        # Tasks that run in web mode (before WORKER_MODE gate)
-        WEB_MODE_TASKS = {
-            "online-calibrator", "news-analysis", "self-improvement",
-            "notification-loop", "doctor-cron", "prediction-cycle",
-            "outcome-reconciler", "alert-worker", "accuracy-tracker",
-            "price-recorder", "autopilot-check",
-        }
-        _is_worker = os.getenv("WORKER_MODE") == "1"
-
-        tasks = {}
-        # Include pulsing tasks
-        for name, info in all_hb.items():
-            is_web = name in WEB_MODE_TASKS
-            tasks[name] = {
-                "alive": info["status"] == "alive",
-                "status": info["status"],
-                "last_pulse": info["last_pulse"],
-                "age_s": info["age_s"],
-                "web_mode": is_web,
-                "runs_here": _is_worker or is_web,
-            }
-        # Include missing tasks — show ALL, mark worker-only
-        for name in missing:
-            is_web_task = name in WEB_MODE_TASKS
-            runs_here = _is_worker or is_web_task
-            tasks[name] = {
-                "alive": False,
-                "status": "worker-only" if (not _is_worker and not is_web_task) else "never",
-                "last_pulse": None,
-                "age_s": None,
-                "web_mode": is_web_task,
-                "runs_here": runs_here,
-            }
-
-        alive_count = sum(1 for t in tasks.values() if t["alive"])
-        applicable = sum(1 for t in tasks.values() if t["runs_here"])
-        total_all = len(tasks)
-        return {
-            "ok": True,
-            "tasks": tasks,
-            "alive": alive_count,
-            "total": applicable,
-            "total_all": total_all,
-            "health_pct": round(alive_count / applicable * 100, 1) if applicable else 0,
-            "worker_mode": _is_worker,
-        }
-    except Exception as e:
-        LOGGER.error(f"Heartbeat status failed: {e}", exc_info=True)
-        return {"ok": False, "tasks": {}, "alive": 0, "total": 0, "error": str(e)}
+# /api/v4/history → extracted to routes/history.py (Step 10)
+# /api/v3/heartbeat/status → extracted to routes/heartbeat.py (Step 10)
 
 
 # Alias for /api/v3/watchlist/user (compatibility with personal watchlist router)
@@ -16190,10 +15856,13 @@ async def api_v3_reconcile_trigger():
     and records their actual outcomes (WIN/LOSS/NEUTRAL).
     """
     try:
-        from services.outcome_reconciler import reconcile_outcomes
-        
-        reconcile_outcomes()
-        
+        try:
+            from services.outcome_reconciler import reconcile_outcomes
+            reconcile_outcomes()
+        except ImportError:
+            from services.outcome_reconciler_v2 import reconcile_outcomes_v2
+            reconcile_outcomes_v2()
+    
         return {
             "ok": True,
             "message": "Reconciliation triggered",
@@ -17411,212 +17080,9 @@ async def api_v3_market_ticker():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# COMPREHENSIVE SUBSYSTEM INVENTORY — v5.5
-# Shows ALL Ghost systems, brains, memory, morning health check, background tasks
+# SUBSYSTEM INVENTORY — extracted to routes/subsystems.py (Step 10)
+# /api/v4/subsystems → routes/subsystems.py
 # ═══════════════════════════════════════════════════════════════════════════════
-
-@APP.get("/api/v4/subsystems")
-async def api_v4_subsystems():
-    """
-    Full Ghost subsystem inventory — every module, brain, memory, and task.
-    Used by the cockpit Health + Brain tabs to show everything Ghost has.
-    """
-    try:
-        import time as _t
-        _is_worker = os.getenv("WORKER_MODE") == "1"
-
-        # ── 1. BRAIN MODULES ─────────────────────────────────────────
-        brains = []
-
-        # GhostBrain (main prediction brain)
-        try:
-            from core.ghost_brain import GhostBrain
-            brains.append({"name": "Ghost Brain", "key": "ghost_brain", "active": True,
-                           "desc": "Core prediction engine — directional forecasts"})
-        except Exception:
-            brains.append({"name": "Ghost Brain", "key": "ghost_brain", "active": False,
-                           "desc": "Core prediction engine (import failed)"})
-
-        # LearningBrain
-        try:
-            from core.ghost_learning_brain import apply_inversion, get_inverted_symbols
-            _lb_inverted = get_inverted_symbols()
-            brains.append({"name": "Learning Brain", "key": "learning_brain", "active": True,
-                           "desc": f"Self-correction — {len(_lb_inverted)} symbols inverted"})
-        except Exception:
-            brains.append({"name": "Learning Brain", "key": "learning_brain", "active": False,
-                           "desc": "Self-correction engine (import failed)"})
-
-        # NewsBrain
-        try:
-            from core.intelligence_hub import get_news_brain_cache
-            cache, cache_ts = get_news_brain_cache()
-            has_data = bool(cache and (cache.get("major_events") or cache.get("predictions_at_risk")))
-            age_min = round((_t.time() - cache_ts) / 60, 1) if cache_ts > 0 else -1
-            brains.append({"name": "News Brain", "key": "news_brain", "active": has_data,
-                           "desc": f"News sentiment analysis — cache {age_min}m old" if has_data else "News sentiment (no cache)"})
-        except Exception:
-            brains.append({"name": "News Brain", "key": "news_brain", "active": False,
-                           "desc": "News sentiment analysis (not loaded)"})
-
-        # OpusBrain (GPT-4 powered)
-        try:
-            from core.intelligence.opus_brain import OpusBrain
-            brains.append({"name": "Opus Brain", "key": "opus_brain", "active": True,
-                           "desc": "GPT-4 powered deep analysis"})
-        except Exception:
-            brains.append({"name": "Opus Brain", "key": "opus_brain", "active": False,
-                           "desc": "GPT-4 deep analysis (not available)"})
-
-        # ── 2. MEMORY SYSTEMS ────────────────────────────────────────
-        memory = []
-
-        # AI Memory
-        try:
-            mem_active = AI_MEMORY_STORE is not None
-            ring_size = len(AI_MEMORY_RING) if AI_MEMORY_RING else 0
-            memory.append({"name": "AI Memory", "key": "ai_memory", "active": mem_active,
-                           "desc": f"Long-term memory store — {ring_size} entries in ring" if mem_active else "Not initialized"})
-        except Exception:
-            memory.append({"name": "AI Memory", "key": "ai_memory", "active": False, "desc": "Not available"})
-
-        # Market Memory (prediction store / PostgreSQL)
-        try:
-            from core.db_pool import get_sync_connection
-            with get_sync_connection() as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT COUNT(*) FROM ghost_predictions")
-                pred_count = cur.fetchone()[0]
-            memory.append({"name": "Market Memory", "key": "market_memory", "active": True,
-                           "desc": f"PostgreSQL — {pred_count} predictions stored"})
-        except Exception:
-            memory.append({"name": "Market Memory", "key": "market_memory", "active": False,
-                           "desc": "PostgreSQL connection unavailable"})
-
-        # Paper Tracker (ephemeral trades)
-        try:
-            from core.paper_tracker import get_paper_tracker
-            tracker = get_paper_tracker()
-            stats = tracker.get_stats() or {}
-            total = stats.get("total_trades", 0)
-            memory.append({"name": "Paper Tracker", "key": "paper_tracker", "active": True,
-                           "desc": f"Paper trading — {total} trades tracked"})
-        except Exception:
-            memory.append({"name": "Paper Tracker", "key": "paper_tracker", "active": False,
-                           "desc": "Paper tracker unavailable"})
-
-        # ── 3. INTELLIGENCE HUB ──────────────────────────────────────
-        intel_systems = []
-        try:
-            from core.intelligence_hub import get_intelligence_hub
-            hub = get_intelligence_hub()
-            status = hub.get_status()
-            subsystem_names = [
-                ("ensemble", "Multi-model consensus"),
-                ("calibrator", "Confidence calibration"),
-                ("trust_ladder", "Symbol trust scoring"),
-                ("quality_gate", "Quality filtering"),
-                ("killswitch", "Emergency kill switch"),
-                ("vwap", "Volume-weighted analysis"),
-                ("feed_fusion", "Multi-feed data fusion"),
-                ("regime_detector", "Market regime detection"),
-                ("self_improvement", "Self-improvement engine"),
-            ]
-            for name, desc in subsystem_names:
-                loaded = status.get(f"{name}_loaded", False)
-                intel_systems.append({"name": name.replace("_", " ").title(), "key": name, "active": loaded, "desc": desc})
-        except Exception:
-            pass
-
-        # ── 4. BACKGROUND TASKS (full inventory) ─────────────────────
-        bg_tasks = []
-        WEB_TASKS = {
-            "online-calibrator", "news-analysis", "self-improvement",
-            "notification-loop", "doctor-cron", "prediction-cycle",
-            "outcome-reconciler", "alert-worker", "accuracy-tracker",
-            "price-recorder",
-        }
-        try:
-            from core.heartbeat import get_all_heartbeats, get_missing_tasks, EXPECTED_INTERVALS
-            all_hb = get_all_heartbeats()
-            missing = get_missing_tasks()
-
-            # Pulsing tasks
-            for name, info in all_hb.items():
-                is_web = name in WEB_TASKS
-                runs_here = _is_worker or is_web
-                bg_tasks.append({
-                    "name": name, "status": info["status"],
-                    "last_pulse": info["last_pulse"], "age_s": info["age_s"],
-                    "category": "web" if is_web else "worker",
-                    "runs_here": runs_here,
-                })
-            # Missing (never pulsed) — include ALL, mark which ones can't run here
-            for name in missing:
-                is_web = name in WEB_TASKS
-                runs_here = _is_worker or is_web
-                bg_tasks.append({
-                    "name": name, "status": "never",
-                    "last_pulse": None, "age_s": None,
-                    "category": "web" if is_web else "worker",
-                    "runs_here": runs_here,
-                })
-        except Exception as e:
-            LOGGER.warning(f"Subsystems: heartbeat load failed: {e}")
-
-        # ── 5. MORNING HEALTH CHECK (System Doctor) ──────────────────
-        morning_health = None
-        try:
-            from core.system_doctor import run_system_doctor
-            report = run_system_doctor()
-            morning_health = {
-                "overall": report.get("overall", "UNKNOWN"),
-                "passed": report.get("passed", 0),
-                "failed": report.get("failed", 0),
-                "checks": report.get("checks", []),
-                "timestamp": report.get("timestamp"),
-            }
-        except Exception as e:
-            morning_health = {"overall": "ERROR", "error": str(e), "checks": []}
-
-        # ── 6. SUMMARY COUNTS ────────────────────────────────────────
-        brains_active = sum(1 for b in brains if b["active"])
-        memory_active = sum(1 for m in memory if m["active"])
-        intel_active = sum(1 for s in intel_systems if s["active"])
-        tasks_alive = sum(1 for t in bg_tasks if t["status"] == "alive")
-        tasks_applicable = sum(1 for t in bg_tasks if t["runs_here"])
-        doctor_pass = morning_health.get("overall") == "PASS" if morning_health else False
-
-        return {
-            "ok": True,
-            "worker_mode": _is_worker,
-            "brains": brains,
-            "brains_active": brains_active,
-            "brains_total": len(brains),
-            "memory": memory,
-            "memory_active": memory_active,
-            "memory_total": len(memory),
-            "intelligence": intel_systems,
-            "intel_active": intel_active,
-            "intel_total": len(intel_systems),
-            "tasks": bg_tasks,
-            "tasks_alive": tasks_alive,
-            "tasks_total": len(bg_tasks),
-            "tasks_applicable": tasks_applicable,
-            "morning_health": morning_health,
-            "doctor_pass": doctor_pass,
-            "summary": {
-                "brains": f"{brains_active}/{len(brains)}",
-                "memory": f"{memory_active}/{len(memory)}",
-                "intelligence": f"{intel_active}/{len(intel_systems)}",
-                "tasks": f"{tasks_alive}/{tasks_applicable} alive",
-                "doctor": morning_health.get("overall", "?") if morning_health else "?",
-            },
-            "ts": _t.time(),
-        }
-    except Exception as e:
-        LOGGER.error(f"Subsystems endpoint failed: {e}", exc_info=True)
-        return {"ok": False, "error": str(e)}
 
 
 @APP.get("/api/v3/intelligence/status")
@@ -24023,7 +23489,11 @@ def _reconciler_loop():
             _append_actual_prices()
 
             # 2. Reconcile outcomes for expired predictions
-            outcome_reconciler.reconcile_outcomes()
+            if outcome_reconciler is not None:
+                outcome_reconciler.reconcile_outcomes()
+            else:
+                from services.outcome_reconciler_v2 import reconcile_outcomes_v2
+                reconcile_outcomes_v2()
         except Exception as e:
             LOGGER.error(f"Outcome reconciler error: {e}", exc_info=True)
         finally:

@@ -1,1 +1,0 @@
-No /tmp/ghost_server.log found

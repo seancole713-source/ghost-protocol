@@ -1,5 +1,0 @@
-{
-  "require_last_good_snapshot": true,
-  "apply_only_newer_as_of": true,
-  "show_degraded_badge_instead_of_clearing": true
-}

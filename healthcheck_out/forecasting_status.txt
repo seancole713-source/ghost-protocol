@@ -1,2 +1,0 @@
-forecasts_count 0
-accuracy_keys ['error', 'count', 'symbol', 'days']

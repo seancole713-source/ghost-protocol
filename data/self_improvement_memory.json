@@ -1,14 +1,7 @@
 {
   "threshold_history": [
     {
-      "timestamp": 1773007309.9633963,
-      "old_threshold": 2.0,
-      "new_threshold": 4.0,
-      "vix": 18.5,
-      "regime": "NORMAL"
-    },
-    {
-      "timestamp": 1773007719.6237156,
+      "timestamp": 1773814673.8025668,
       "old_threshold": 2.0,
       "new_threshold": 4.0,
       "vix": 18.5,
@@ -43,6 +36,6 @@
     }
   },
   "universe_additions": [],
-  "last_tuning": 1773007719.6240356,
-  "iterations": 2
+  "last_tuning": 1773814673.8031719,
+  "iterations": 1
 }

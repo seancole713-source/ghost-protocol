@@ -1,9 +1,0 @@
-path	status	ms
-/health 200 10
-/api/news 200 361
-/api/agent/stats 200 8
-/api/agent/decisions 200 7
-/api/snapshot 200 130
-/api/stage2/forecasts 200 4
-/api/stage3/regime/current 200 2
-/api/portfolio 200 6
