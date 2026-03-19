@@ -1335,7 +1335,7 @@ async def get_market_movers(
         }
 
 
-@router.get("/accuracy/summary")
+@router.get("/accuracy/summary/legacy")
 async def get_accuracy_summary():
     """Get prediction accuracy metrics from ghost_prediction_outcomes table"""
     try:
