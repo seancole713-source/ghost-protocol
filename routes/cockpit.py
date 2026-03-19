@@ -51,12 +51,14 @@ STATIC_DIR = os.getenv("STATIC_DIR", "static")
 UI_DIR = os.getenv("UI_DIR", "ui")
 
 # ── Jinja2 template engine ────────────────────────────────────────────────
-# Use an absolute path so the template directory resolves correctly on Railway
-# regardless of the process working directory.
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_TEMPLATES_DIR = os.path.join(_HERE, "..", "templates")
+# Compute the absolute templates/ path from THIS file's location so it
+# resolves correctly on Railway regardless of the process cwd.
+# routes/cockpit.py lives at <project_root>/routes/cockpit.py, so
+# dirname(dirname(__file__)) == <project_root>.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_TEMPLATES_DIR = os.path.join(_PROJECT_ROOT, "templates")
 if not os.path.isdir(_TEMPLATES_DIR):
-    # Fallback: try cwd-relative path (local dev)
+    # Fallback: try cwd-relative path (local dev / unusual mount layout)
     _TEMPLATES_DIR = os.path.join(os.getcwd(), "templates")
 try:
     _TEMPLATES = Jinja2Templates(directory=_TEMPLATES_DIR)

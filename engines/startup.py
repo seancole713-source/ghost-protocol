@@ -12,6 +12,20 @@ from datetime import datetime, timezone, timedelta
 
 LOGGER = logging.getLogger("ghost")
 
+# ── Inject all app-config constants (STAGE1_ENABLED, SIM_MODE, etc.) ─────
+# engines/startup.py is a thin module extracted from wolf_app.py (Step 12).
+# _on_startup() and helper functions reference many module-level constants
+# (STAGE1_ENABLED, DATABASE_URL, SIM_MODE, DEFAULT_STOCKS, …) that live in
+# engines/app_config.py.  Injecting them here mirrors the pattern used in
+# wolf_app.py and all 16 route modules, and fixes the NameError cascade
+# that was keeping all 9 background workers from starting.
+try:
+    import engines.app_config as _ac
+    globals().update({k: v for k, v in vars(_ac).items() if not k.startswith("__")})
+    del _ac
+except Exception as _ac_err:
+    LOGGER.warning(f"[STARTUP] Could not inject app_config globals: {_ac_err}")
+
 # ── Missing imports that were lost when wolf_app.py was split (Step 12) ──
 # _post_startup_init: launches alert-worker, accuracy-tracker, autopilot,
 #   price-recorder, doctor-cron, news-analysis, self-improvement, etc.
