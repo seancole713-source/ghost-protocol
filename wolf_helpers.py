@@ -7906,6 +7906,23 @@ async def _gather_opus_context(symbol: str) -> dict:
     return context
 
 
+async def run_single_prediction_async(symbol: str) -> dict:
+    """Async wrapper for run_single_prediction — injected into auto_prediction_loop.
+
+    Uses a dedicated 2-worker thread pool so batch prediction cycles don't
+    block the main uvicorn thread pool or health-check endpoints.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    if not hasattr(run_single_prediction_async, '_executor'):
+        run_single_prediction_async._executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="ghost-predict"
+        )
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        run_single_prediction_async._executor, run_single_prediction, symbol
+    )
+
+
 def _get_watchlist_lock() -> asyncio.Lock:
     global _WATCHLIST_ENRICHED_LOCK
     if _WATCHLIST_ENRICHED_LOCK is None:

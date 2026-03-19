@@ -503,11 +503,11 @@ import sys
 
 print(
     f"[GHOST INIT] ALPHAVANTAGE_KEY: {f'SET (len={len(ALPHAVANTAGE_KEY)})' if ALPHAVANTAGE_KEY else 'MISSING'}",
-    file=sys.stderr,
+    file=sys.stdout,
 )
 print(
     f"[GHOST INIT] POLYGON_KEY: {f'SET (len={len(POLYGON_KEY)})' if POLYGON_KEY else 'MISSING'}",
-    file=sys.stderr,
+    file=sys.stdout,
 )
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()

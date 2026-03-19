@@ -1376,6 +1376,62 @@ async def get_accuracy_summary():
         weekly_acc, weekly_corr, weekly_wrong, weekly_pend = parse_view_row(weekly_row)
         monthly_acc, monthly_corr, monthly_wrong, monthly_pend = parse_view_row(monthly_row)
 
+        # ── Fallback: views empty → query ghost_predictions directly ──────────
+        # The accuracy views read from ghost_prediction_outcomes. If that table
+        # is empty (outcomes not yet written), fall back to ghost_predictions.correct
+        # which is populated by the accuracy-tracker background task.
+        if monthly_acc == 0.0 and monthly_corr == 0 and monthly_wrong == 0:
+            import time as _t2
+            cursor2 = conn.cursor()
+            # All-time
+            cursor2.execute(
+                "SELECT COUNT(*), "
+                "SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN correct=0 THEN 1 ELSE 0 END) "
+                "FROM ghost_predictions "
+                "WHERE correct IS NOT NULL "
+                "AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%')"
+            )
+            fb_all = cursor2.fetchone()
+            # 7-day
+            _7d = int(_t2.time()) - 7 * 86400
+            cursor2.execute(
+                "SELECT COUNT(*), "
+                "SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN correct=0 THEN 1 ELSE 0 END) "
+                "FROM ghost_predictions "
+                "WHERE correct IS NOT NULL "
+                "AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%') "
+                "AND checked_at > %s", (_7d,)
+            )
+            fb_7d = cursor2.fetchone()
+            # 24-hour
+            _24h = int(_t2.time()) - 86400
+            cursor2.execute(
+                "SELECT COUNT(*), "
+                "SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN correct=0 THEN 1 ELSE 0 END) "
+                "FROM ghost_predictions "
+                "WHERE correct IS NOT NULL "
+                "AND (eval_version IS NULL OR eval_version NOT LIKE 'skip%') "
+                "AND checked_at > %s", (_24h,)
+            )
+            fb_24h = cursor2.fetchone()
+            cursor2.close()
+
+            def _fb(row):
+                if not row or not row[0]: return 0.0, 0, 0
+                tot, corr, wrong = int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
+                pct = round(corr / tot * 100, 1) if tot else 0.0
+                return pct, corr, wrong
+
+            monthly_acc, monthly_corr, monthly_wrong = _fb(fb_all)
+            monthly_pend = 0
+            weekly_acc, weekly_corr, weekly_wrong = _fb(fb_7d)
+            weekly_pend = 0
+            daily_acc, daily_corr, daily_wrong = _fb(fb_24h)
+            daily_pend = 0
+
         # Determine accuracy status (70% threshold)
         accuracy_status = "ACCURATE" if monthly_acc >= 70.0 else "BELOW_TARGET"
         if monthly_acc == 0.0:
