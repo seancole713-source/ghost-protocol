@@ -17,3 +17,4 @@ GHOST_STATUS_REPORT.json
 # Ignore local DBs
 /data/*.db
 
+*.db

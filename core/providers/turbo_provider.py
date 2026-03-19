@@ -141,7 +141,7 @@ class TurboProvider:
 
         # Import stock providers
         try:
-            from wolf_app import _fetch_price_yfinance, _fetch_price_yahoo_http, _fetch_price_alphavantage, _fetch_price_polygon
+            from wolf_helpers import _fetch_price_yfinance, _fetch_price_yahoo_http, _fetch_price_alphavantage, _fetch_price_polygon
         except ImportError as e:
             LOGGER.error(f"Failed to import stock providers: {e}")
             return self._error_response(
@@ -152,7 +152,7 @@ class TurboProvider:
 
         # Import TwelveData fallback
         try:
-            from wolf_app import _fetch_price_twelvedata
+            from wolf_helpers import _fetch_price_twelvedata
         except ImportError:
             _fetch_price_twelvedata = None
 
