@@ -12,6 +12,24 @@ from datetime import datetime, timezone, timedelta
 
 LOGGER = logging.getLogger("ghost")
 
+# ── Missing imports that were lost when wolf_app.py was split (Step 12) ──
+# _post_startup_init: launches alert-worker, accuracy-tracker, autopilot,
+#   price-recorder, doctor-cron, news-analysis, self-improvement, etc.
+# _heartbeat_pulse:  records task aliveness for the Health tab.
+try:
+    from wolf_helpers import _post_startup_init
+except Exception as _wh_err:
+    LOGGER.warning(f"[STARTUP] Could not import _post_startup_init: {_wh_err}")
+    async def _post_startup_init():  # type: ignore[misc]
+        pass
+
+try:
+    from core.heartbeat import pulse as _heartbeat_pulse
+except Exception as _hb_err:
+    LOGGER.warning(f"[STARTUP] Could not import heartbeat.pulse: {_hb_err}")
+    def _heartbeat_pulse(name: str, **kw) -> None:  # type: ignore[misc]
+        pass
+
 async def _on_startup():
     """
     Startup handler with comprehensive error protection.

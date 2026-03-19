@@ -21,6 +21,16 @@ from datetime import UTC, datetime, timezone, timedelta
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+# ── Heartbeat: every background worker in this module calls _heartbeat_pulse ──
+# Previously this was available via wolf_app.py's module globals.  After Step 12
+# extraction, wolf_helpers.py is an independent module and must import it directly.
+try:
+    from core.heartbeat import pulse as _heartbeat_pulse
+except Exception:
+    def _heartbeat_pulse(name: str, **kw) -> None:  # type: ignore[misc]
+        """No-op fallback when core.heartbeat is unavailable."""
+        pass
+
 try:
     import httpx
 except ImportError:

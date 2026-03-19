@@ -250,20 +250,20 @@ async def api_admin_diagnostics_predictions():
                 
                 # Count predictions ready for reconciliation (>48h old)
                 ready_48h = conn.execute(text(
-                    "SELECT COUNT(*) FROM ghost_predictions WHERE run_at < :cutoff"
+                    "SELECT COUNT(*) FROM ghost_predictions WHERE predicted_at < :cutoff"
                 ), {"cutoff": cutoff_48h}).scalar()
                 
                 # Count predictions in last 7 days
                 recent_7d = conn.execute(text(
-                    "SELECT COUNT(*) FROM ghost_predictions WHERE run_at > :cutoff"
+                    "SELECT COUNT(*) FROM ghost_predictions WHERE predicted_at > :cutoff"
                 ), {"cutoff": cutoff_7d}).scalar()
                 
                 # Count outcomes
                 outcomes_total = conn.execute(text("SELECT COUNT(*) FROM ghost_prediction_outcomes")).scalar()
                 
                 # Get oldest and newest prediction
-                oldest = conn.execute(text("SELECT MIN(run_at) FROM ghost_predictions")).scalar()
-                newest = conn.execute(text("SELECT MAX(run_at) FROM ghost_predictions")).scalar()
+                oldest = conn.execute(text("SELECT MIN(predicted_at) FROM ghost_predictions")).scalar()
+                newest = conn.execute(text("SELECT MAX(predicted_at) FROM ghost_predictions")).scalar()
                 
                 # Check if reconciler ran recently
                 from datetime import datetime

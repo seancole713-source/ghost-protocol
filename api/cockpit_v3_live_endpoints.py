@@ -1356,7 +1356,7 @@ async def get_accuracy_summary():
 
             # Get latest prediction timestamp
             cursor.execute("""
-                SELECT MAX(gp.run_at)
+                SELECT MAX(gp.predicted_at)
                 FROM ghost_predictions gp
             """)
             last_tune_row = cursor.fetchone()
