@@ -20,6 +20,12 @@ from collections import deque, defaultdict
 from datetime import UTC, datetime, timezone, timedelta
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
+from config.symbols import DEFAULT_EDGE_SYMBOLS, get_edge_set
+try:
+        from core.providers.turbo_provider import turbo_crypto_price, turbo_stock_price
+except Exception:
+        turbo_crypto_price = None  # type: ignore[assignment]
+        turbo_stock_price = None  # type: ignore[assignment]
 
 # ── Heartbeat: every background worker in this module calls _heartbeat_pulse ──
 # Previously this was available via wolf_app.py's module globals.  After Step 12
