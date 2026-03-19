@@ -37,6 +37,17 @@ except Exception as _wh_err:
     async def _post_startup_init():  # type: ignore[misc]
         pass
 
+# ── Also inject wolf_helpers functions ─────────────────────────────────
+# Helper functions used by _on_startup() body: _ensure_startup_dirs,
+# _ensure_metrics_registered, _init_forecast_tables, _get_redis, etc.
+# These lived in wolf_app.py before Step 12 extraction.
+try:
+    import wolf_helpers as _wh
+    globals().update({k: v for k, v in vars(_wh).items() if not k.startswith("__")})
+    del _wh
+except Exception as _wh2_err:
+    LOGGER.warning(f"[STARTUP] Could not inject wolf_helpers globals: {_wh2_err}")
+
 try:
     from core.heartbeat import pulse as _heartbeat_pulse
 except Exception as _hb_err:

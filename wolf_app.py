@@ -354,6 +354,17 @@ except Exception as e:
     print(f"[INIT] ⚠️  cockpit_v2 unavailable: {e}")
 
 
+# ── Static file serving ────────────────────────────────────────────────
+# MUST come after all APP.include_router() calls. A StaticFiles mount is a
+# catch-all; placing it before routers causes it to intercept API paths.
+_STATIC_MOUNT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if os.path.isdir(_STATIC_MOUNT_DIR):
+    APP.mount("/static", StaticFiles(directory=_STATIC_MOUNT_DIR), name="static")
+    print(f"[INIT] ✅ Static files mounted: {_STATIC_MOUNT_DIR}", flush=True)
+else:
+    print(f"[INIT] ⚠️  Static directory not found: {_STATIC_MOUNT_DIR}", flush=True)
+
+
 # ── Lifecycle Events ─────────────────────────────────────────────────────
 
 @APP.on_event("startup")
