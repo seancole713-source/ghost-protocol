@@ -1088,10 +1088,15 @@ function renderFinancials() {
     if (statusEl) statusEl.innerHTML = '';
 
     // Forecast staleness warning — check audit issues for stale forecast
+    // Always remove stale warning first to prevent duplicate divs on each 30s refresh
+    const _prevForecastWarn = document.getElementById('forecast-stale-warning');
+    if (_prevForecastWarn) _prevForecastWarn.remove();
+
     if (_audit?.issues) {
         const forecastIssue = _audit.issues.find(i => (i.detail || i.message || '').toLowerCase().includes('forecast'));
         if (forecastIssue) {
             const warnEl = document.createElement('div');
+            warnEl.id = 'forecast-stale-warning';
             warnEl.style.cssText = 'background:rgba(255,204,0,0.12);border:1px solid var(--yellow);border-radius:8px;padding:10px 14px;margin-bottom:12px;color:var(--yellow);font-size:13px';
             warnEl.innerHTML = `⚠️ <strong>${esc(forecastIssue.detail || forecastIssue.message || 'Forecast data is stale')}</strong>`;
             statusEl?.parentElement?.insertBefore(warnEl, statusEl.nextSibling);
