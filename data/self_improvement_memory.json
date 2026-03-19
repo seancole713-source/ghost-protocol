@@ -1,35 +1,42 @@
 {
   "threshold_history": [
     {
-      "timestamp": 1773814897.566241,
+      "timestamp": 1773814800.6608438,
       "old_threshold": 2.0,
       "new_threshold": 4.0,
       "vix": 18.5,
       "regime": "NORMAL"
     },
     {
-      "timestamp": 1773816847.6496654,
+      "timestamp": 1773836412.6238167,
       "old_threshold": 2.0,
       "new_threshold": 4.0,
       "vix": 18.5,
       "regime": "NORMAL"
     },
     {
-      "timestamp": 1773838502.021067,
+      "timestamp": 1773858012.8009684,
       "old_threshold": 2.0,
       "new_threshold": 4.0,
       "vix": 18.5,
       "regime": "NORMAL"
     },
     {
-      "timestamp": 1773860102.3002317,
+      "timestamp": 1773879612.9384706,
       "old_threshold": 2.0,
       "new_threshold": 4.0,
       "vix": 18.5,
       "regime": "NORMAL"
     },
     {
-      "timestamp": 1773881702.4369104,
+      "timestamp": 1773901213.0694077,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1773928940.5431798,
       "old_threshold": 2.0,
       "new_threshold": 4.0,
       "vix": 18.5,
@@ -64,6 +71,6 @@
     }
   },
   "universe_additions": [],
-  "last_tuning": 1773881702.4374354,
-  "iterations": 5
+  "last_tuning": 1773928940.5439236,
+  "iterations": 6
 }

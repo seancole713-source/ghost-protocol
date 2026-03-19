@@ -29,8 +29,31 @@ except ImportError:
     DB_URL = ""
     PREDICTION_HISTORY = []
 
+# ── Also inject wolf_helpers globals (private helper functions + shared state) ─
+import wolf_helpers as _wh
+globals().update({k: v for k, v in vars(_wh).items() if not k.startswith("__")})
+del _wh
+
+# ── Inject all app-config globals into this route module ─────────────────────
+# Mirrors wolf_app.py's pattern: provides all module-level constants that route
+# handlers reference directly, without needing per-name imports.
+import engines.app_config as _ac
+globals().update({k: v for k, v in vars(_ac).items() if not k.startswith("__")})
+del _ac
+
 router = APIRouter()
 LOGGER = logging.getLogger("ghost")
+
+MEDIA_TEXT_HTML = "text/html"
+HTML_INDEX = "index.html"
+STATIC_DIR = os.getenv("STATIC_DIR", "static")
+UI_DIR = os.getenv("UI_DIR", "ui")
+
+try:
+    from wolf_app import _STATIC_CACHE_BUST
+except ImportError:
+    import time as _time
+    _STATIC_CACHE_BUST = str(int(_time.time()))
 
 # --- 18 endpoints ---
 
@@ -276,10 +299,15 @@ async def api_cockpit_snapshot():
     Designed for the web UI; must not raise HTTP errors on normal operation.
     """
     # Build system block
+    try:
+        import wolf_app as _wa
+        _app_ver = getattr(_wa.APP, "version", None)
+    except Exception:
+        _app_ver = None
     system = {
         "mode": str(STATE.get("mode", "live")),
         "active": bool(STATE.get("active", True)),
-        "version": getattr(app, "version", None),
+        "version": _app_ver,
         "uptime_seconds": int(time.time() - _START_TS) if "_START_TS" in globals() else 0,
     }
 

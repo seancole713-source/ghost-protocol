@@ -50,6 +50,18 @@ except Exception as _wh_e:
     WOLF_SQLITE_PATH = "data/wolf.db"
 
 
+# ── Also inject wolf_helpers globals (private helper functions + shared state) ─
+import wolf_helpers as _wh
+globals().update({k: v for k, v in vars(_wh).items() if not k.startswith("__")})
+del _wh
+
+# ── Inject all app-config globals into this route module ─────────────────────
+# Mirrors wolf_app.py's pattern: provides all module-level constants that route
+# handlers reference directly, without needing per-name imports.
+import engines.app_config as _ac
+globals().update({k: v for k, v in vars(_ac).items() if not k.startswith("__")})
+del _ac
+
 router = APIRouter()
 LOGGER = logging.getLogger("ghost")
 
@@ -65,6 +77,8 @@ async def _debug_routes():
     try:
         from fastapi.routing import APIRoute
 
+        import wolf_app as _wa  # lazy — avoids circular import at load time
+        _app = _wa.APP
         return {
             "routes": [
                 {
@@ -72,7 +86,7 @@ async def _debug_routes():
                     "name": getattr(r, "name", None),
                     "methods": list(getattr(r, "methods", []) or []),
                 }
-                for r in APP.routes
+                for r in _app.routes
                 if isinstance(r, APIRoute)
             ]
         }
@@ -3989,7 +4003,12 @@ async def debug_info():
         except Exception:
             commit = None
 
-        routes = [r.path for r in getattr(APP, "routes", []) if getattr(r, "path", None)]
+        try:
+            import wolf_app as _wa
+            _app = _wa.APP
+        except Exception:
+            _app = None
+        routes = [r.path for r in getattr(_app, "routes", []) if getattr(r, "path", None)]
         return {
             "ok": True,
             "commit": commit,

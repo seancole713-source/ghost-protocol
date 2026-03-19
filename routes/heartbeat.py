@@ -9,6 +9,18 @@ import os
 
 from fastapi import APIRouter
 
+# ── Also inject wolf_helpers globals (private helper functions + shared state) ─
+import wolf_helpers as _wh
+globals().update({k: v for k, v in vars(_wh).items() if not k.startswith("__")})
+del _wh
+
+# ── Inject all app-config globals into this route module ─────────────────────
+# Mirrors wolf_app.py's pattern: provides all module-level constants that route
+# handlers reference directly, without needing per-name imports.
+import engines.app_config as _ac
+globals().update({k: v for k, v in vars(_ac).items() if not k.startswith("__")})
+del _ac
+
 router = APIRouter(tags=["heartbeat"])
 LOGGER = logging.getLogger("ghost.routes.heartbeat")
 

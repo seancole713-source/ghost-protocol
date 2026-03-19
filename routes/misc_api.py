@@ -22,6 +22,12 @@ except ImportError:
     httpx = None
 
 try:
+    from prometheus_client import generate_latest, REGISTRY
+except ImportError:
+    generate_latest = lambda: b""  # type: ignore
+    REGISTRY = None  # type: ignore
+
+try:
     from state import APP_STATE, POOL, DB_URL, PREDICTION_HISTORY
 except ImportError:
     APP_STATE = {}
@@ -49,6 +55,18 @@ except Exception as _wh_e:
     WOLF = "WOLF"
     WOLF_SQLITE_PATH = "data/wolf.db"
 
+
+# ── Also inject wolf_helpers globals (private helper functions + shared state) ─
+import wolf_helpers as _wh
+globals().update({k: v for k, v in vars(_wh).items() if not k.startswith("__")})
+del _wh
+
+# ── Inject all app-config globals into this route module ─────────────────────
+# Mirrors wolf_app.py's pattern: provides all module-level constants that route
+# handlers reference directly, without needing per-name imports.
+import engines.app_config as _ac
+globals().update({k: v for k, v in vars(_ac).items() if not k.startswith("__")})
+del _ac
 
 router = APIRouter()
 LOGGER = logging.getLogger("ghost")
@@ -4723,7 +4741,12 @@ async def api_position_get():
 async def api_version():
     sha = os.getenv("GIT_SHA", "unknown")
     build = os.getenv("BUILD_TIME", "unknown")
-    return {"version": app.version, "git_sha": sha, "build_time": build}
+    try:
+        import wolf_app as _wa
+        ver = getattr(_wa.APP, "version", "1.0")
+    except Exception:
+        ver = os.getenv("APP_VERSION", "1.0")
+    return {"version": ver, "git_sha": sha, "build_time": build}
 
 
 @router.get("/api/config")
@@ -7285,15 +7308,20 @@ async def api_status():
             "STOCK_PRICE_SOURCE": os.getenv("STOCK_PRICE_SOURCE", "polygon"),
             "CRYPTO_PRICE_SOURCE": os.getenv("CRYPTO_PRICE_SOURCE", "coingecko"),
         }
+        try:
+            import wolf_app as _wa
+            _ver = getattr(_wa.APP, "version", "1.0")
+        except Exception:
+            _ver = os.getenv("APP_VERSION", "1.0")
         return {
             "mode": str(STATE.get("mode", "live")),
             "active": bool(STATE.get("active", True)),
-            "version": app.version,
+            "version": _ver,
             "env": env_flags,
             "uptime_seconds": int(time.time() - _START_TS),
         }
     except Exception:
-        return {"mode": "live", "active": True, "version": app.version}
+        return {"mode": "live", "active": True, "version": os.getenv("APP_VERSION", "1.0")}
 
 
 @router.get("/api/doctor")

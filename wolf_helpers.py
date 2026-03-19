@@ -1158,9 +1158,9 @@ def _ensure_ai_storage():
 
 def _is_ai_memory_auth_required() -> bool:
     try:
-        return bool(_AI_MEMORY_AUTH_REQUIRED)
+        return bool(int(os.getenv("AI_MEMORY_READ_AUTH", "0")))
     except Exception:
-        return bool(AI_MEMORY_READ_AUTH)
+        return False
 
 
 def _legacy_snapshot_to_decision(row: tuple[Any, ...]) -> dict[str, Any]:

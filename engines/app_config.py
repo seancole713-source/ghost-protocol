@@ -1903,3 +1903,206 @@ ORDERS_TABLE = "orders"
 
 
 # --- Memory MCP Integration Endpoints -------------------------------------
+
+# ===========================================================================
+# MISSING CONSTANTS — route modules migrated from wolf_app.py monolith
+# These are injected into route files via:
+#   import engines.app_config as _ac
+#   globals().update({k: v for k, v in vars(_ac).items() if not k.startswith("__")})
+# ===========================================================================
+
+# Process start timestamp (each process sets its own)
+_START_TS: float = time.time()
+
+# Memory engine (set during startup initialisation)
+_MEMORY_ENGINE = None
+
+# RSS feeds cache (populated by news subsystem)
+_RSS_FEEDS: dict = {}
+
+# Snapshot gauge (Prometheus, set during metrics init)
+_G_SNAPSHOT_ASOF = None
+
+# Prometheus metrics for Telegram test endpoints
+_C_TG_TEST = None
+_H_TG_TEST = None
+
+# Top-10 alert cooldown seconds
+_TOP10_COOLDOWN_SECONDS: int = int(os.getenv("TOP10_COOLDOWN_S", "300"))
+
+# Database URL (used in some route-level DB queries)
+DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+
+# Cron endpoint secret
+CRON_SECRET: str = os.getenv("CRON_SECRET", "ghost-cron-2024")
+
+# Simulation mode flag
+SIM_MODE: bool = os.getenv("SIM_MODE", "0").lower() in ("1", "true", "yes")
+
+# V2 start date for accuracy calculations
+V2_START_DATE: str = os.getenv("V2_START_DATE", "2024-01-01")
+
+# Prometheus CONTENT_TYPE_LATEST (re-export so route files don't need direct import)
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST as _CONTENT_TYPE_LATEST  # noqa: E402
+    CONTENT_TYPE_LATEST = _CONTENT_TYPE_LATEST
+except Exception:
+    CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
+
+# All registered symbols (from ghost_scout registry)
+try:
+    from core.ghost_scout import ALL_STOCKS, ALL_CRYPTO
+except Exception:
+    ALL_STOCKS: list = []
+    ALL_CRYPTO: list = []
+
+# V3 strategy data and notification constants
+try:
+    from core.ghost_notifications import (  # type: ignore
+        V3_VALIDATED_STRATEGIES,
+        V3_MIN_CONFIDENCE,
+        V3_DEFAULT_HOLD_HOURS,
+        V3_ENABLED,
+        HARDCODED_EXCLUSIONS,
+    )
+except Exception:
+    V3_VALIDATED_STRATEGIES: dict = {}
+    HARDCODED_EXCLUSIONS: set = set()  # type: ignore
+    V3_MIN_CONFIDENCE: float = 0.45
+    V3_DEFAULT_HOLD_HOURS: int = 72
+    V3_ENABLED: bool = True
+
+# V3 tracking
+try:
+    from core.ghost_notifications import V3_REMOVED_SYMBOLS  # type: ignore
+except Exception:
+    V3_REMOVED_SYMBOLS: set = set()  # type: ignore
+
+# Volatility / confidence thresholds (from ensemble predictor)
+try:
+    from core.ensemble_predictor import (  # type: ignore
+        MIN_VOLATILITY_CRYPTO,
+        MIN_VOLATILITY_STOCKS,
+        LOW_CONFIDENCE_THRESHOLD,
+    )
+except Exception:
+    MIN_VOLATILITY_CRYPTO: float = 0.5
+    MIN_VOLATILITY_STOCKS: float = 0.3
+    LOW_CONFIDENCE_THRESHOLD: float = 0.40
+
+# Alert-specific thresholds (from core.telegram_alerts)
+try:
+    from core.telegram_alerts import (  # type: ignore
+        MIN_ALERT_CONFIDENCE,
+        DAILY_ALERT_CAP,
+        SMART_CAP_ENABLED,
+    )
+except Exception:
+    MIN_ALERT_CONFIDENCE: float = 0.60
+    DAILY_ALERT_CAP: int = 10
+    SMART_CAP_ENABLED: bool = True
+
+# Default symbol seed lists (from v3_shadow_predictor)
+try:
+    from core.v3_shadow_predictor import DEFAULT_STOCKS, DEFAULT_CRYPTO  # type: ignore
+except Exception:
+    DEFAULT_STOCKS: list = []
+    DEFAULT_CRYPTO: list = []
+
+# Cache objects (from cache_manager)
+try:
+    from core.cache_manager import (  # type: ignore
+        MARKET_DATA_CACHE,
+        API_RESPONSE_CACHE,
+        FORECAST_CACHE,
+    )
+except Exception:
+    MARKET_DATA_CACHE: dict = {}
+    API_RESPONSE_CACHE: dict = {}
+    FORECAST_CACHE: dict = {}
+
+# Direction accuracy threshold
+try:
+    from services.outcome_reconciler_v2 import DIRECTION_THRESHOLD_PCT  # type: ignore
+except Exception:
+    DIRECTION_THRESHOLD_PCT: float = float(os.getenv("ACCURACY_DIRECTION_THRESHOLD_PCT", "0.25"))
+
+# Stock engine config object
+try:
+    from core.stock_engine import STOCK_CONFIG  # type: ignore
+except Exception:
+    STOCK_CONFIG = None
+
+# VIP watchlist (user-configured symbols that always get alerts)
+VIP_WATCHLIST: list = [
+    s.strip() for s in os.getenv("VIP_WATCHLIST", "").split(",") if s.strip()
+]
+
+# Accuracy benchmark thresholds
+BENCH_ACCURACY_THRESHOLD: float = float(os.getenv("BENCH_ACCURACY_THRESHOLD", "0.55"))
+INVERT_ACCURACY_THRESHOLD: float = float(os.getenv("INVERT_ACCURACY_THRESHOLD", "0.35"))
+
+# Learning boost configuration
+LEARNING_BOOST_ENABLED: bool = os.getenv("LEARNING_BOOST_ENABLED", "0").lower() in ("1", "true")
+LEARNING_BOOST_ACCURACY: float = float(os.getenv("LEARNING_BOOST_ACCURACY", "0.60"))
+LEARNING_BOOST_AMOUNT: float = float(os.getenv("LEARNING_BOOST_AMOUNT", "0.05"))
+LEARNING_EXCLUDE_ENABLED: bool = os.getenv("LEARNING_EXCLUDE_ENABLED", "0").lower() in ("1", "true")
+LEARNING_EXCLUDE_ACCURACY: float = float(os.getenv("LEARNING_EXCLUDE_ACCURACY", "0.45"))
+LEARNING_MIN_PREDICTIONS: int = int(os.getenv("LEARNING_MIN_PREDICTIONS", "10"))
+
+# Global confidence thresholds
+MIN_CONFIDENCE: float = float(os.getenv("MIN_CONFIDENCE", "0.70"))
+MIN_EVALUATED_PREDICTIONS: int = int(os.getenv("MIN_EVALUATED_PREDICTIONS", "5"))
+
+# Batch processing size
+BATCH_SIZE: int = int(os.getenv("BATCH_SIZE", "500"))
+
+# Top 10 tracking hour
+TOP_10_HOUR: int = int(os.getenv("TOP_10_HOUR", "7"))
+
+# Tracking DB path
+TRACKING_DB: str = os.getenv("TRACKING_DB", "tracking.db")
+
+# V3 quality configuration
+V3_TRACKING_DB: str = os.getenv("V3_TRACKING_DB", "v3_tracking.db")
+
+# Fallback symbol lists (used when dynamic lists unavailable)
+FALLBACK_STOCKS: list = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "JPM", "JNJ", "V"]
+FALLBACK_CRYPTO: list = ["RNDR", "TURBO", "SOL", "BTC", "SUI", "ETH", "INJ", "XRP", "AVAX", "LINK"]
+
+# Min prices / valid required
+MIN_PRICES: int = int(os.getenv("MIN_PRICES", "2"))
+MIN_VALID: int = int(os.getenv("MIN_VALID", "2"))
+
+# FIX timestamp flag for migrations
+FIX_TIMESTAMP: bool = os.getenv("FIX_TIMESTAMP", "0").lower() in ("1", "true")
+
+# Force stock predictions override
+FORCE_STOCK_PREDICTIONS: bool = os.getenv("FORCE_STOCK_PREDICTIONS", "0").lower() in ("1", "true")
+
+# Hunter symbol lists
+try:
+    from config.symbols import DEFAULT_EDGE_SYMBOLS  # type: ignore
+    HUNTER_STOCK_SYMBOLS: list = list(DEFAULT_EDGE_SYMBOLS.get("stocks", []))
+    HUNTER_CRYPTO_SYMBOLS: list = list(DEFAULT_EDGE_SYMBOLS.get("crypto", []))
+    BTC_CORRELATED_SYMBOLS: list = list(DEFAULT_EDGE_SYMBOLS.get("btc_correlated", []))
+except Exception:
+    HUNTER_STOCK_SYMBOLS = []
+    HUNTER_CRYPTO_SYMBOLS = []
+    BTC_CORRELATED_SYMBOLS = []
+
+# News override flag
+NEWS_OVERRIDE: bool = os.getenv("NEWS_OVERRIDE", "0").lower() in ("1", "true")
+
+# Telegram BOT object (initialized during startup, None until then)
+TELEGRAM_BOT = None
+
+# Price anomaly reason strings (used in cockpit price-anomaly logic)
+REASON_PRICE_ANOMALY: str = "price_anomaly"
+REASON_CORP_ACTION_SUSPECTED: str = "corp_action_suspected"
+
+# APP reference — set to None here; wolf_app.py overrides after FastAPI init.
+# Route files that need APP at call time should do:
+#   from wolf_app import APP
+# inside the function body to avoid circular imports.
+APP = None
