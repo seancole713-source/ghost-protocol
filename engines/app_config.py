@@ -190,10 +190,20 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 # PREDICTION GATES (Step 3, Mar 13 2026)
 # Kill switch + confidence floor + rate limit — applied before every INSERT
 # into ghost_predictions. Only blocks NEW predictions; never touches history.
+#
+# TUNED (Mar 19 2026): Tightened thresholds after audit revealed symbols with
+# catastrophic accuracy (PANW 5%, DDOG 3%, FTNT 9%) were still being predicted
+# because the old 35% threshold was too lenient.
+#
+# Two-tier kill switch:
+#   TIER 1 — Catastrophic: ≥ 5 trades and win rate < 20% → block immediately
+#   TIER 2 — Standard:     ≥ 15 trades and win rate < 40% → block
 # ============================================================================
-_PREDICTION_GATE_KILL_SWITCH_MIN_TRADES = 10
-_PREDICTION_GATE_KILL_SWITCH_MIN_WINRATE = 35.0   # percent
-_PREDICTION_GATE_CONFIDENCE_FLOOR = 0.45           # was 0.55 — too high, base_confidence starts at 0.50-0.52
+_PREDICTION_GATE_KILL_SWITCH_MIN_TRADES = 15        # was 10 — need more data before standard kill
+_PREDICTION_GATE_KILL_SWITCH_MIN_WINRATE = 40.0     # was 35% — tightened: below coin flip
+_PREDICTION_GATE_KILL_SWITCH_CATASTROPHIC_TRADES = 5   # fast-exit: only need 5 trades
+_PREDICTION_GATE_KILL_SWITCH_CATASTROPHIC_WINRATE = 20.0  # fast-exit: < 20% = stop immediately
+_PREDICTION_GATE_CONFIDENCE_FLOOR = 0.50            # was 0.45 — raise floor: don't predict low-confidence
 _PREDICTION_GATE_MAX_PER_DAY = 2
 
 

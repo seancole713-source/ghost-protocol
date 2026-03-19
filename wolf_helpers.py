@@ -458,7 +458,7 @@ def should_create_prediction(symbol: str, confidence: float) -> tuple:
                 pass
             _gate_cur = _gate_conn.cursor()
 
-            # ── Check 2: Kill switch — per-symbol win rate ─────────────────
+            # ── Check 2: Kill switch — per-symbol win rate (two-tier) ──────
             _gate_cur.execute("""
                 SELECT COUNT(*) AS total,
                        COALESCE(SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END), 0) AS wins
@@ -474,7 +474,15 @@ def should_create_prediction(symbol: str, confidence: float) -> tuple:
             if _gate_total >= _PREDICTION_GATE_KILL_SWITCH_MIN_TRADES:
                 _gate_winrate = round(_gate_wins / _gate_total * 100, 1)
                 if _gate_winrate < _PREDICTION_GATE_KILL_SWITCH_MIN_WINRATE:
-                    reason = f"KILL SWITCH: Skipping {symbol} — win rate {_gate_winrate}% over {_gate_total} trades"
+                    reason = f"KILL SWITCH: Skipping {symbol} — win rate {_gate_winrate}% over {_gate_total} trades (< {_PREDICTION_GATE_KILL_SWITCH_MIN_WINRATE}% threshold)"
+                    LOGGER.info(reason)
+                    _gate_cur.close()
+                    return (False, reason)
+            elif _gate_total >= _PREDICTION_GATE_KILL_SWITCH_CATASTROPHIC_TRADES:
+                # Tier 1 fast-exit: catastrophically bad accuracy with fewer trades
+                _gate_winrate = round(_gate_wins / _gate_total * 100, 1)
+                if _gate_winrate < _PREDICTION_GATE_KILL_SWITCH_CATASTROPHIC_WINRATE:
+                    reason = f"KILL SWITCH (CATASTROPHIC): Skipping {symbol} — win rate {_gate_winrate}% over {_gate_total} trades (< {_PREDICTION_GATE_KILL_SWITCH_CATASTROPHIC_WINRATE}% fast-exit threshold)"
                     LOGGER.info(reason)
                     _gate_cur.close()
                     return (False, reason)
