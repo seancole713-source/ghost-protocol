@@ -31,19 +31,22 @@ except Exception:
         """No-op fallback when core.heartbeat is unavailable."""
         pass
 
-# ── Inject all app-config constants ────────────────────────────────────────
-# wolf_helpers.py was extracted from wolf_app.py (Step 12) and references many
-# module-level constants from engines/app_config.py — STAGE4_ENABLED,
-# HUNTER_CRYPTO_SYMBOLS, _LATEST_PREDICTIONS, get_edge_set, and many more.
-# This injection mirrors the pattern used in engines/startup.py and all 16
-# route modules. It runs here, before any helper function bodies execute.
+# prometheus_client — Counter/Gauge/Histogram/REGISTRY used by _ensure_metrics_registered()
 try:
-    import engines.app_config as _ac
-    globals().update({k: v for k, v in vars(_ac).items() if not k.startswith("__")})
-    del _ac
-except Exception as _ac_err:
-    import logging as _log
-    _log.getLogger("ghost").warning(f"[WOLF_HELPERS] Could not inject app_config globals: {_ac_err}")
+    from prometheus_client import Counter, Gauge, Histogram, REGISTRY
+except ImportError:
+    class _PMStub:  # type: ignore[misc]
+        def __init__(self, *a, **kw): pass
+        def labels(self, **kw): return self
+        def inc(self, *a, **kw): pass
+        def set(self, *a, **kw): pass
+        def observe(self, *a, **kw): pass
+        def time(self): return __import__('contextlib').nullcontext()
+    Counter = Gauge = Histogram = _PMStub  # type: ignore[assignment,misc]
+    class _RegStub:  # type: ignore[misc]
+        _collector_to_names: dict = {}
+        def unregister(self, c): pass
+    REGISTRY = _RegStub()  # type: ignore[assignment]
 
 try:
     import httpx
@@ -14153,6 +14156,20 @@ class _LogDedupFilter(logging.Filter):
             return False
         except Exception:
             return True
+
+
+# ── Deferred injection: app_config globals ────────────────────────────────────
+# MUST be at the bottom of the file to break the circular import:
+#   wolf_helpers → engines.app_config → wolf_helpers._configure_logging
+# At module top, _configure_logging (and all other helpers) don't exist yet.
+# Down here, after all function/class definitions, they do.
+try:
+    import engines.app_config as _ac
+    globals().update({k: v for k, v in vars(_ac).items() if not k.startswith("__")})
+    del _ac
+except Exception as _ac_err:
+    import logging as _log
+    _log.getLogger("ghost").warning(f"[WOLF_HELPERS] app_config injection failed: {_ac_err}")
 
 
 
