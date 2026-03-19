@@ -14,7 +14,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Response, Query, Header, BackgroundTasks, WebSocket
-from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
+from fastapi.templating import Jinja2Templates
 
 try:
     import httpx
@@ -48,6 +49,21 @@ MEDIA_TEXT_HTML = "text/html"
 HTML_INDEX = "index.html"
 STATIC_DIR = os.getenv("STATIC_DIR", "static")
 UI_DIR = os.getenv("UI_DIR", "ui")
+
+# ── Jinja2 template engine ────────────────────────────────────────────────
+# Use an absolute path so the template directory resolves correctly on Railway
+# regardless of the process working directory.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_TEMPLATES_DIR = os.path.join(_HERE, "..", "templates")
+if not os.path.isdir(_TEMPLATES_DIR):
+    # Fallback: try cwd-relative path (local dev)
+    _TEMPLATES_DIR = os.path.join(os.getcwd(), "templates")
+try:
+    _TEMPLATES = Jinja2Templates(directory=_TEMPLATES_DIR)
+    LOGGER.info(f"[COCKPIT] Jinja2Templates initialized: {os.path.abspath(_TEMPLATES_DIR)}")
+except Exception as _tmpl_err:
+    _TEMPLATES = None
+    LOGGER.error(f"[COCKPIT] Jinja2Templates init failed: {_tmpl_err}")
 
 try:
     from wolf_app import _STATIC_CACHE_BUST
@@ -91,39 +107,56 @@ async def _ui_entrypoint():
 @router.get("/cockpit", include_in_schema=False)
 async def _cockpit_page(request: Request):
     """Serve Ghost v5 cockpit — Robinhood-style redesign."""
+    # Try v5 first, fall back through v4 → v3 to guarantee something renders
+    for tmpl_name in ("cockpit_v5.html", "cockpit_v4.html", "cockpit_v3.html"):
+        try:
+            if _TEMPLATES is None:
+                raise RuntimeError("Jinja2Templates not initialized")
+            response = _TEMPLATES.TemplateResponse(
+                tmpl_name,
+                {
+                    "request": request,
+                    "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", ""),
+                    "cache_bust": _STATIC_CACHE_BUST,
+                }
+            )
+            # CRITICAL: Prevent browser caching to force fresh JS load
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
+        except Exception as e:
+            LOGGER.warning(f"[COCKPIT] Could not render {tmpl_name}: {e}")
+            continue
+
+    # Last-resort: serve the raw file if Jinja2 is broken
+    for tmpl_name in ("cockpit_v5.html", "cockpit_v4.html", "cockpit_v3.html"):
+        raw_path = os.path.join(os.path.abspath(_TEMPLATES_DIR), tmpl_name)
+        if os.path.isfile(raw_path):
+            LOGGER.info(f"[COCKPIT] Serving raw template file: {raw_path}")
+            return FileResponse(raw_path, media_type=MEDIA_TEXT_HTML)
+
+    # Absolute last resort — inline HTML with diagnostics
+    LOGGER.error("[COCKPIT] All cockpit templates unavailable — serving fallback page")
+    tmpl_dir_abs = os.path.abspath(_TEMPLATES_DIR)
     try:
-        response = _TEMPLATES.TemplateResponse(
-            "cockpit_v5.html",
-            {
-                "request": request,
-                "GHOST_API_TOKEN": os.getenv("GHOST_API_TOKEN", ""),
-                "cache_bust": _STATIC_CACHE_BUST,
-            }
-        )
-        # CRITICAL: Prevent browser caching to force fresh JS load
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
-    except Exception as e:
-        # Error fallback - return basic HTML error page
-        LOGGER.error(f"Failed to render cockpit_v3.html: {e}")
-        from fastapi import Response as _Resp
-        
-        return _Resp(
-            """
-<!DOCTYPE html>
+        available = os.listdir(tmpl_dir_abs)
+    except Exception:
+        available = ["<templates dir not readable>"]
+    return Response(
+        f"""<!DOCTYPE html>
 <html>
-  <head><meta charset=\"utf-8\"><title>Ghost Cockpit V3</title></head>
+  <head><meta charset="utf-8"><title>Ghost Cockpit</title></head>
   <body>
-    <h1>Ghost Cockpit V3</h1>
-    <p>Cockpit V3 template not found. Please check deployment packaging for templates/cockpit_v3.html and static/cockpit_v3.js/css.</p>
+    <h1>Ghost Protocol</h1>
+    <p><strong>Templates directory:</strong> {tmpl_dir_abs}</p>
+    <p><strong>Available files:</strong> {', '.join(available)}</p>
+    <p>If this is Railway, ensure the <code>templates/</code> folder is committed and deployed.</p>
   </body>
-</html>
-""",
-            media_type=MEDIA_TEXT_HTML,
-            status_code=200,
-        )
+</html>""",
+        media_type=MEDIA_TEXT_HTML,
+        status_code=200,
+    )
 
 
 @router.get("/cockpit.html", include_in_schema=False)
