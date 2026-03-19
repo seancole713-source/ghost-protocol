@@ -312,19 +312,13 @@ _ROUTE_MODULES = [
     ("routes.admin", "admin"),
     ("routes.alerts", "alerts"),
     ("routes.brain", "brain"),
-    ("routes.broker", "broker"),
     ("routes.cockpit", "cockpit_ext"),
     ("routes.cron", "cron"),
     ("routes.debug", "debug_ext"),
-    ("routes.forecast", "forecast"),
-    ("routes.guardian", "guardian"),
     ("routes.health_ext", "health_ext"),
     ("routes.misc_api", "misc_api"),
-    ("routes.money_game", "money_game"),
     ("routes.news_api", "news_api"),
-    ("routes.paper_trading", "paper_trading"),
     ("routes.predict", "predict_ext"),
-    ("routes.scanner", "scanner"),
 ]
 
 for _mod, _name in _ROUTE_MODULES:
@@ -346,12 +340,6 @@ try:
     APP.include_router(cockpit_v3_router)
 except Exception as e:
     print(f"[INIT] ⚠️  cockpit_v3 unavailable: {e}")
-
-try:
-    from api.cockpit_v2_endpoints import router as cockpit_v2_router
-    APP.include_router(cockpit_v2_router)
-except Exception as e:
-    print(f"[INIT] ⚠️  cockpit_v2 unavailable: {e}")
 
 
 # ── Static file serving ────────────────────────────────────────────────

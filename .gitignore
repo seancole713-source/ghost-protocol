@@ -14,7 +14,34 @@ GHOST_STATUS_REPORT.json
 .env.*
 *.env
 
-# Ignore local DBs
-/data/*.db
-
+# Local SQLite / DuckDB databases — never commit
 *.db
+*.db-shm
+*.db-wal
+*.duckdb
+
+# Backup / temp files — never commit
+*.backup
+*.backup2
+*.backup3
+*.bak
+*.bak2
+*.bak3
+
+# PID files
+*.pid
+.ghost_pid
+.ghost_uvicorn.pid
+
+# Build / deploy artefacts
+.coverage
+.deploy
+.deployment_timestamp
+.railway-deploy
+.railway/
+
+# Dead platform configs (we run on Railway only)
+Caddyfile
+render.yaml
+docker-compose.yml
+sitecustomize.py

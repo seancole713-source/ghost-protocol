@@ -41,6 +41,13 @@
       "new_threshold": 4.0,
       "vix": 18.5,
       "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1773950540.68238,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
     }
   ],
   "missed_opportunities": [],
@@ -71,6 +78,6 @@
     }
   },
   "universe_additions": [],
-  "last_tuning": 1773928940.5439236,
-  "iterations": 6
+  "last_tuning": 1773950540.6849966,
+  "iterations": 7
 }
