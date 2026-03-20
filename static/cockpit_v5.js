@@ -1222,7 +1222,7 @@ function renderPnlChart() {
 
     let cumPnl = 0;
     const points = sorted.map(t => {
-        const pnl = t.actual_move_pct || 0;
+        const pnl = t.outcome === 'win' ? (t.actual_move_pct || 0) : -(t.actual_move_pct || 0);
         cumPnl += pnl;
         return cumPnl;
     });
