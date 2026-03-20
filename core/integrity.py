@@ -8,6 +8,7 @@
 # LINES: ~2093
 # ──────────────────────────────────────────────────────────────
 # CHANGE LOG:
+#   2026-03-20 — Remove auto_fix gate from expiry: always expire >7day stuck predictions (Browser Agent)
 #   2026-03-19 — Briefing header added (Browser Agent)
 # ──────────────────────────────────────────────────────────────
 # KNOWN ISSUES:
@@ -408,7 +409,7 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
             # Predictions >7 days past check_at are too old to evaluate
             # (price data unavailable). Mark them checked with skip tag.
             EXPIRE_HOURS = 168  # 7 days
-            if auto_fix and overdue:
+            if overdue:  # Always expire ancient >7day predictions (safe cleanup)
                 expire_cutoff = now_ts - (EXPIRE_HOURS * 3600)
                 ancient = [p for p in overdue if (p.get("check_at") or 0) < expire_cutoff]
                 if ancient:
