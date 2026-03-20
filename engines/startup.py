@@ -358,29 +358,24 @@ async def _on_startup():
                                 return
                             
                             try:
-                                conn = tracker._get_conn()
-                                cur = conn.cursor()
-                                cur.execute("""
-                                    SELECT 
-                                        id, symbol, direction, confidence,
-                                        entry_price, exit_price, was_correct,
-                                        pnl_pct, metadata, 
-                                        EXTRACT(EPOCH FROM created_at) as ts
-                                    FROM accuracy_forecasts
-                                    WHERE was_correct IS NOT NULL
-                                    AND created_at > NOW() - INTERVAL '24 hours'
-                                    ORDER BY created_at DESC
-                                    LIMIT 100
-                                """)
-                                completed = cur.fetchall()
+                                with tracker._get_conn() as conn:
+                                    cur = conn.cursor()
+                                    cur.execute("""
+                                        SELECT 
+                                            id, symbol, direction, confidence,
+                                            entry_price, exit_price, was_correct,
+                                            pnl_pct, metadata, 
+                                            EXTRACT(EPOCH FROM created_at) as ts
+                                        FROM accuracy_forecasts
+                                        WHERE was_correct IS NOT NULL
+                                        AND created_at > NOW() - INTERVAL '24 hours'
+                                        ORDER BY created_at DESC
+                                        LIMIT 100
+                                    """)
+                                    completed = cur.fetchall()
                             except Exception as db_err:
                                 LOGGER.debug(f"[FEEDBACK LOOP] DB query failed: {db_err}")
                                 return
-                            finally:
-                                try:
-                                    conn.close()
-                                except Exception:
-                                    pass
                             
                             outcomes_processed = 0
                             for row in completed:
@@ -469,24 +464,18 @@ async def _on_startup():
                     # instead of raw psycopg2 (which crashes when DATABASE_URL is SQLite)
                     conn = None
                     try:
-                        conn = tracker._get_connection()
-                        now_str = datetime.utcnow().isoformat()
-                        cur = tracker._execute(conn, """
-                            SELECT DISTINCT symbol FROM paper_trades 
-                            WHERE outcome = 'PENDING' 
-                            AND target_time <= ?
-                        """, (now_str,))
-                        rows = tracker._fetchall(cur)
-                        symbols = [(row["symbol"],) for row in rows]
+                        with tracker._get_connection() as conn:
+                            now_str = datetime.utcnow().isoformat()
+                            cur = tracker._execute(conn, """
+                                SELECT DISTINCT symbol FROM paper_trades 
+                                WHERE outcome = 'PENDING' 
+                                AND target_time <= ?
+                            """, (now_str,))
+                            rows = tracker._fetchall(cur)
+                            symbols = [(row["symbol"],) for row in rows]
                     except Exception as query_err:
                         LOGGER.error(f"[PAPER] Failed to query pending trades: {query_err}")
                         symbols = []
-                    finally:
-                        if conn is not None:
-                            try:
-                                conn.close()
-                            except Exception:
-                                pass
                     
                     if symbols:
                         LOGGER.info(f"[PAPER] Found {len(symbols)} symbols with due trades, fetching prices...")
