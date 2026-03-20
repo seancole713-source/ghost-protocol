@@ -1,3 +1,26 @@
+# ══════════════════════════════════════════════════════════════
+# FILE: core/accuracy_tracker.py
+# PURPOSE: Tracks prediction accuracy using PostgreSQL (DATABASE_URL).
+#          Records predictions and their outcomes. Used by the cockpit
+#          Accuracy tab and engines/startup.py for accuracy reporting.
+# STATUS: STABLE
+# LINES: ~367
+# ──────────────────────────────────────────────────────────────
+# CHANGE LOG:
+#   2026-03-19 — Briefing header added (Browser Agent)
+#   2026-03-19 — Related: Bug #23 fix in engines/startup.py ensures
+#                _get_conn() is called with 'with' statement
+# ──────────────────────────────────────────────────────────────
+# KNOWN ISSUES:
+#   None critical after Bug #23 fix
+# ──────────────────────────────────────────────────────────────
+# DO NOT CHANGE (frozen interfaces):
+#   AccuracyTracker class      — used by engines/startup.py
+#   _get_conn()                — @contextmanager via get_sync_connection()
+#                                MUST use 'with' statement
+#   record_prediction()        — called from prediction loop
+#   get_accuracy_stats()       — called by cockpit routes
+# ══════════════════════════════════════════════════════════════
 """
 Accuracy Tracker - FIXED VERSION
 Uses PostgreSQL (DATABASE_URL) instead of SQLite
