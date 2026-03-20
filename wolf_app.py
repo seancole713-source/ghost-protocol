@@ -1,3 +1,23 @@
+# ══════════════════════════════════════════════════════════════
+# FILE: wolf_app.py
+# PURPOSE: Main FastAPI application shell and entry point for Ghost Protocol.
+#          Creates the APP instance, mounts middleware, includes route routers,
+#          and registers startup/shutdown events. Procfile target: wolf_app:APP
+# STATUS: STABLE
+# LINES: ~386
+# ──────────────────────────────────────────────────────────────
+# CHANGE LOG:
+#   2026-03-19 — Briefing header added (Browser Agent)
+#   2026-03-19 — Bug #23 fix applied in engines/startup.py (related)
+# ──────────────────────────────────────────────────────────────
+# KNOWN ISSUES:
+#   None critical — file is structurally clean after Step 12 extraction
+# ──────────────────────────────────────────────────────────────
+# DO NOT CHANGE (frozen interfaces):
+#   APP = FastAPI(...)          — Procfile depends on wolf_app:APP
+#   startup_event()            — registered as APP lifespan/on_event
+#   STATIC_CACHE_BUST          — used by templates for cache busting
+# ══════════════════════════════════════════════════════════════
 #!/usr/bin/env python3
 # Ghost Protocol — WOLF FastAPI application shell
 # Step 12: Structural cleanup — routes extracted to routes/, helpers to wolf_helpers.py
