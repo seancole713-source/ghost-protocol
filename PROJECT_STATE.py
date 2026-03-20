@@ -267,21 +267,20 @@ LAST_SESSION = {
     "agent": "Browser Automation Agent (Claude Opus 4.6)",
     "date": "2026-03-20",
     "session_summary": (
-        "SESSION 3: Continued bug fixes and health improvements. "
-        "1) Removed auto_fix gate from integrity CHECK 7 expiry code so stuck predictions "
-        ">7 days get cleaned up on every audit call (was gated behind auto_fix=True which "
-        "no code path ever triggered). "
-        "2) Fixed Bug #25: P&L chart in cockpit_v5.js was using actual_move_pct (always "
-        "positive) for ALL trades. Now negates for losses so cumulative P&L shows correct "
-        "downward trend matching 41% accuracy. Chart renders properly now. "
-        "3) Changed EVAL_OVERDUE_HOURS 12->60 (prior sub-session). "
-        "4) Added auto-expiry for stuck predictions >7 days in integrity CHECK 7 (prior sub-session). "
-        "5) Health: 61->77/100. Main remaining issue: 178 overdue predictions (60-168h old, "
-        "not yet caught by 7-day expiry, needs reconciler to process them)."
+        "SESSION 3 (COMPLETE): Fixed multiple bugs and improved health. "
+        "Key fixes: (1) Removed auto_fix gate from CHECK 7 expiry - was dead code since "
+        "no caller ever used auto_fix=True. (2) Fixed Bug #25: P&L chart was always going "
+        "UP because actual_move_pct is always positive. Now negates for losses. "
+        "(3) Lowered EXPIRE_HOURS 168->72 so stuck predictions expire after 3 days. "
+        "(4) EVAL_OVERDUE_HOURS 12->60 (earlier sub-session). "
+        "(5) Investigated Bug #27 and #29 - both already resolved (dead imports removed, "
+        "Dockerfile already creates /tmp/prom_multiproc). "
+        "Health: started at 61, stabilized at 77/100. Pending: overdue predictions should "
+        "drop significantly after EXPIRE_HOURS=72 deploys and next audit runs."
     ),
     "health_score": 77,
     "files_modified": [
-        "core/integrity.py (removed auto_fix gate from expiry, EVAL_OVERDUE_HOURS 12->60, added auto-expiry)",
+        "core/integrity.py (EVAL_OVERDUE_HOURS 12->60, auto-expiry added, auto_fix gate removed, EXPIRE_HOURS 168->72)",
         "static/cockpit_v5.js (Bug #25: P&L chart direction fix)",
     ],
     "commits_this_session": [
@@ -289,28 +288,37 @@ LAST_SESSION = {
         "Add auto-expiry for stuck predictions >7 days in integrity CHECK 7",
         "Fix: Remove auto_fix gate from expiry so stuck >7day predictions get cleaned up on every audit",
         "Fix Bug #25: P&L chart - negate actual_move_pct for losses so cumulative P&L shows correct direction",
+        "Update PROJECT_STATE.py - Session 3 handoff",
+        "Lower EXPIRE_HOURS 168->72: expire stuck predictions after 3 days instead of 7",
     ],
-    "bugs_fixed": ["Bug #25 (P&L chart direction)"],
+    "bugs_fixed": [
+        "Bug #25 (P&L chart direction - was showing gains for losses)",
+        "Bug #27 (ghost_bootstrap - confirmed already resolved, no import exists in code)",
+        "Bug #29 (Prometheus temp - confirmed Dockerfile creates /tmp/prom_multiproc correctly)",
+    ],
     "bugs_investigated": [
-        "Bug #16 (watchlist change_pct=0): Root cause is price cache does not store change_pct data. Deep architectural fix needed.",
+        "Bug #16 (watchlist change_pct=0): Price cache does not store change_pct. Architectural fix needed.",
     ],
     "open_issues": [
-        "178 overdue predictions (60-168h old) - reconciler processes max 100/run with 48h window",
+        "Overdue predictions - should drop after EXPIRE_HOURS=72 kicks in (was 178, expect to drop to ~50-80)",
         "Bug #16: watchlist change_pct=0 (price cache architecture issue)",
-        "Bug #27: ghost_bootstrap (not yet investigated)",
-        "Bug #29: Prometheus temp (not yet investigated)",
-        "core/prediction_tracker.py uses SQLite (line 268) while predictions are in PostgreSQL - mismatch causes stuck evals",
+        "core/prediction_tracker.py uses SQLite (line 268) while predictions are in PostgreSQL",
+        "run_audit(auto_fix=True) is still never called - but expiry now runs without auto_fix gate",
+        "Overall accuracy 41% - model/strategy issue, not a code bug",
     ],
     "key_discoveries": [
-        "run_audit(auto_fix=True) was NEVER called by any code path - all callers use auto_fix=False",
-        "doctor-cron fires once per day (86400s), not every 5 minutes as previously assumed",
-        "P&L chart used actual_move_pct (always positive) - losses were shown as gains",
-        "The 178 overdue predictions are 60-168h old, below the 7-day expiry threshold",
+        "Bug #27 and #29 were already fixed - only existed in HANDOFF.md documentation",
+        "HANDOFF.md referenced /tmp/ghost_prom but actual path is /tmp/prom_multiproc (Dockerfile)",
+        "doctor-cron fires once per day (86400s), not every 5 minutes",
+        "P&L chart used actual_move_pct (always positive) - losses displayed as gains",
+        "The auto_fix parameter in run_audit() was effectively dead code",
     ],
     "next_agent_should": [
-        "Investigate Bug #27 (ghost_bootstrap) and Bug #29 (Prometheus temp)",
-        "Consider lowering EXPIRE_HOURS from 168 to 72 to catch more stuck predictions",
+        "Check health score after EXPIRE_HOURS=72 deployment - overdue count should drop significantly",
         "Fix core/prediction_tracker.py SQLite->PostgreSQL mismatch (root cause of stuck evals)",
+        "Consider adding a background task that calls run_audit(auto_fix=True) periodically",
+        "Bug #16: Add change_pct to price cache data structure",
+        "Update HANDOFF.md to mark bugs #25, #27, #29 as FIXED",
         "Always update this file (PROJECT_STATE.py) after completing work",
     ],
 }
@@ -323,6 +331,8 @@ LAST_SESSION = {
 # Use tools/update_briefing.py to append entries.
 
 CHANGELOG = [
+    {"date": "2026-03-20", "agent": "Browser Automation Agent",
+     "summary": "Lower EXPIRE_HOURS 168->72. Bugs #27/#29 confirmed resolved. Session 3 complete. Health: 77/100."},
     {"date": "2026-03-20", "agent": "Browser Automation Agent",
      "summary": "Fix: Removed auto_fix gate from integrity CHECK 7 expiry. Stuck >7day predictions now expire on every audit call."},
     {"date": "2026-03-20", "agent": "Browser Automation Agent",
