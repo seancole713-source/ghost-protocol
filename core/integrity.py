@@ -403,6 +403,36 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                     "type": "overdue_evals", "severity": "warn",
                     "detail": f"{len(overdue)} predictions overdue for evaluation",
                 })
+
+            # ── AUTO-FIX: Expire ancient stuck predictions ──────────────
+            # Predictions >7 days past check_at are too old to evaluate
+            # (price data unavailable). Mark them checked with skip tag.
+            EXPIRE_HOURS = 168  # 7 days
+            if auto_fix and overdue:
+                expire_cutoff = now_ts - (EXPIRE_HOURS * 3600)
+                ancient = [p for p in overdue if (p.get("check_at") or 0) < expire_cutoff]
+                if ancient:
+                    try:
+                        from core.db_pool import get_sync_connection
+                        with get_sync_connection() as conn:
+                            cur = conn.cursor()
+                            ancient_ids = [p.get("id") for p in ancient if p.get("id")]
+                            if ancient_ids:
+                                cur.execute(
+                                    f"""UPDATE ghost_predictions
+                                        SET checked = 1,
+                                            skip_tag = COALESCE(skip_tag, '') || 'expired_stale'
+                                        WHERE id IN ({','.join(['%s'] * len(ancient_ids))})
+                                          AND checked = 0""",
+                                    ancient_ids
+                                )
+                                conn.commit()
+                                expired_count = cur.rowcount
+                                fixes_applied += expired_count
+                                LOGGER.info(f"[INTEGRITY] Auto-expired {expired_count} ancient predictions (>{EXPIRE_HOURS}h)")
+                    except Exception as fix_err:
+                        LOGGER.warning(f"[INTEGRITY] Auto-expire failed: {fix_err}")
+
     except Exception as e:
         LOGGER.warning(f"[INTEGRITY] Stale eval check error: {e}")
 
