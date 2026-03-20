@@ -265,36 +265,40 @@ DECISIONS = {
 
 LAST_SESSION = {
     "agent": "Browser Automation Agent (Claude Opus 4.6)",
-    "date": "2026-03-20",
+    "date": "2026-03-19",
     "session_summary": (
-        "Built the project briefing system: PROJECT_STATE.py (this file), "
-        "tools/update_briefing.py (changelog append tool). "
-        "Scanned full repo via file finder (~100+ .py files across 8 directories). "
-        "Searched for TODOs (2 files), bare excepts (0), FIXME/HACK (0). "
-        "Cataloged module status from prior deep dive + deploy log analysis. "
-        "Prior session fixed Bugs #14, #23, #26, #30 and created HANDOFF.md."
+        "FULL SESSION: Created HANDOFF.md, fixed Bug #23 (paper trading cursor error "
+        "in engines/startup.py — wrapped _get_conn() and _get_connection() in proper "
+        "'with' context managers), built complete project briefing system including "
+        "PROJECT_STATE.py (this file, 341 lines, 8 sections), tools/update_briefing.py "
+        "(CLI changelog/handoff updater), and added briefing headers to 8 key .py files: "
+        "wolf_app.py, state.py, engines/startup.py, core/db_pool.py, core/paper_tracker.py, "
+        "routes/cockpit.py, core/integrity.py, core/accuracy_tracker.py. "
+        "All deployments verified successful on Railway. No new errors introduced."
     ),
+    "what_was_fixed": [
+        "Bug #23: Paper trading cursor error (_GeneratorContextManager) in engines/startup.py",
+    ],
     "what_was_built": [
-        "PROJECT_STATE.py — this self-updating project briefing (you are reading it)",
-        "tools/update_briefing.py — script to append changelog entries",
-        "HANDOFF.md — human-readable project context (created prior session)",
+        "HANDOFF.md — project context document for future AI agents",
+        "PROJECT_STATE.py — self-updating project briefing (this file)",
+        "tools/update_briefing.py — CLI to append changelog and update handoff",
+        "Briefing headers on 8 core .py files with status, known issues, frozen interfaces",
     ],
-    "what_was_scanned": [
-        "Full file tree via GitHub file finder (~100+ .py files)",
-        "GitHub code search for TODOs, bare excepts, FIXME, HACK",
-        "Railway deploy logs (@level:error) for deployment cfe764e6",
-        "/integrity/audit/readonly (40-check health audit)",
-        "Key source files: startup.py, paper_tracker.py, accuracy_tracker.py, db_pool.py, cockpit.py",
+    "health_score": "70/100 (6 pass, 2 fail — same as session start)",
+    "open_bugs": [
+        "Bug #16: watchlist change_pct=0 for some symbols",
+        "Bug #25: P&L display may show stale data",
+        "Bug #27: ghost_bootstrap issue",
+        "Bug #29: Prometheus temp file",
     ],
-    "health_at_handoff": "70/100 (30pt penalty: 2 errors, 3 warnings, 2 info)",
     "next_agent_should": [
-        "1. Read this file and HANDOFF.md before touching anything",
-        "2. Fix BUG-16: Watchlist change_pct=0 in wolf_helpers.py",
-        "3. Fix BUG-25: Pick card P&L display in static/cockpit_v5.js",
-        "4. Run tools/update_briefing.py after making changes",
-        "5. Add briefing headers to remaining .py files (pattern shown below)",
-        "6. Check deploy logs after each commit: @level:error filter on Railway",
-        "7. Target: health score 100/100 with zero code errors",
+        "READ this file first — especially SECTION 2 (Module Status) and SECTION 4 (Known Issues)",
+        "Run: python tools/update_briefing.py <YourAgentName> <summary> after making changes",
+        "Fix Bug #16 (watchlist change_pct) — likely in routes/cockpit.py or data provider",
+        "Fix Bug #25 (P&L display) — likely in routes/cockpit.py",
+        "Target health score 80/100+ by fixing remaining 2 failing integrity checks",
+        "Continue adding briefing headers to remaining .py files (100+ total, 8 done)",
     ],
 }
 
@@ -306,6 +310,8 @@ LAST_SESSION = {
 # Use tools/update_briefing.py to append entries.
 
 CHANGELOG = [
+    {"date": "2026-03-19", "agent": "Browser Automation Agent",
+     "summary": "Added briefing headers to 8 key .py files (wolf_app, state, startup, db_pool, paper_tracker, cockpit, integrity, accuracy_tracker). Updated Last Session Handoff with full session summary."},
     {"date": "2026-03-20", "agent": "Browser Automation Agent",
      "summary": "Created PROJECT_STATE.py with full architecture, module status, known issues, decisions, handoff. Created tools/update_briefing.py."},
     {"date": "2026-03-19", "agent": "Browser Automation Agent",
