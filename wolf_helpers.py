@@ -3888,7 +3888,7 @@ async def _post_startup_init():
                 
                 # Trigger immediate prediction via cascade
                 try:
-                    asyncio.create_task(_trigger_prediction_for_mover(symbol, mover))
+                    threading.Thread(target=asyncio.run, args=(_trigger_prediction_for_mover(symbol, mover),), daemon=True).start()
                 except Exception as e:
                     LOGGER.error(f"Failed to trigger prediction for {symbol}: {e}")
         
