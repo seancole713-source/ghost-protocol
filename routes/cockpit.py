@@ -215,6 +215,28 @@ async def dashboard_ui():
         )
 
 
+@router.get("/integrity/audit/readonly")
+async def integrity_audit_readonly():
+    """Return integrity audit results (read-only, no auto-fix)."""
+    try:
+        from core.integrity import run_audit
+        result = run_audit(auto_fix=False)
+        return JSONResponse(content=result)
+    except Exception as e:
+        LOGGER.warning(f"Integrity audit failed: {e}")
+        return JSONResponse(content={
+            "health_score": 0,
+            "issues_remaining": 0,
+            "issues": [],
+            "checks_run": [],
+            "checks_total": 0,
+            "total_penalty": 0,
+            "summary": {},
+            "last_audit": None,
+            "error": str(e)
+        })
+
+
 @router.get("/api/v3/cockpit/status")
 async def api_v3_cockpit_status():
     """
