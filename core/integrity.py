@@ -1,3 +1,25 @@
+# ══════════════════════════════════════════════════════════════
+# FILE: core/integrity.py
+# PURPOSE: System Integrity Audit (v2) — Ghost's health monitoring.
+#          Runs 40 checks on every page load + every 5 minutes.
+#          Self-healing: auto-fixes what it can. Powers the cockpit
+#          Health tab and /integrity/audit/readonly endpoint.
+# STATUS: STABLE
+# LINES: ~2093
+# ──────────────────────────────────────────────────────────────
+# CHANGE LOG:
+#   2026-03-19 — Briefing header added (Browser Agent)
+# ──────────────────────────────────────────────────────────────
+# KNOWN ISSUES:
+#   - Health score currently 70/100 (2 checks failing)
+#   - Some checks may report false failures during weekends/off-hours
+#     when market data is unavailable
+# ──────────────────────────────────────────────────────────────
+# DO NOT CHANGE (frozen interfaces):
+#   run_integrity_audit()      — called by cockpit routes + background task
+#   IntegrityResult            — returned by audit, consumed by cockpit
+#   /integrity/audit/readonly  — served via routes/cockpit.py, calls this
+# ══════════════════════════════════════════════════════════════
 """
 Ghost Protocol — System Integrity Audit (v2)
 ═════════════════════════════════════════════
