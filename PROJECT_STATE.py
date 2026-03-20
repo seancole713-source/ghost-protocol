@@ -2,7 +2,7 @@
 PROJECT_STATE.py — Ghost Protocol Self-Updating Project Briefing
 =================================================================
 Generated: 2026-03-19
-Last Updated: 2026-03-20 (Session 3)
+Last Updated: 2026-03-20 (Session 4)
 Author: Browser Automation Agent (Claude)
 
 READ THIS FILE FIRST before making any changes to Ghost Protocol.
@@ -318,7 +318,7 @@ LAST_SESSION = {
         "Fix core/prediction_tracker.py SQLite->PostgreSQL mismatch (root cause of stuck evals)",
         "Consider adding a background task that calls run_audit(auto_fix=True) periodically",
         "Bug #16: Add change_pct to price cache data structure",
-        "Update HANDOFF.md to mark bugs #25, #27, #29 as FIXED",
+        "Update HANDOFF.md to mark bugs #25, #27, #29 as FIXED",  # DONE (Session 4)
         "Always update this file (PROJECT_STATE.py) after completing work",
     ],
 }
@@ -331,6 +331,7 @@ LAST_SESSION = {
 # Use tools/update_briefing.py to append entries.
 
 CHANGELOG = [
+    {"date": "2026-03-20", "agent": "Browser Automation Agent", "summary": "Session 4: Updated HANDOFF.md — moved bugs #23/#25/#27/#29 to FIXED. Investigated prediction_tracker.py SQLite vs PostgreSQL mismatch. Health: 53.5/100."},
     {"date": "2026-03-20", "agent": "Browser Automation Agent",
      "summary": "Lower EXPIRE_HOURS 168->72. Bugs #27/#29 confirmed resolved. Session 3 complete. Health: 77/100."},
     {"date": "2026-03-20", "agent": "Browser Automation Agent",
