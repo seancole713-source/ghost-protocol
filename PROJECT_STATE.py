@@ -2,7 +2,7 @@
 PROJECT_STATE.py — Ghost Protocol Self-Updating Project Briefing
 =================================================================
 Generated: 2026-03-19
-Last Updated: 2026-03-20
+Last Updated: 2026-03-20 (Session 3)
 Author: Browser Automation Agent (Claude)
 
 READ THIS FILE FIRST before making any changes to Ghost Protocol.
@@ -265,40 +265,53 @@ DECISIONS = {
 
 LAST_SESSION = {
     "agent": "Browser Automation Agent (Claude Opus 4.6)",
-    "date": "2026-03-19",
+    "date": "2026-03-20",
     "session_summary": (
-        "FULL SESSION: Created HANDOFF.md, fixed Bug #23 (paper trading cursor error "
-        "in engines/startup.py — wrapped _get_conn() and _get_connection() in proper "
-        "'with' context managers), built complete project briefing system including "
-        "PROJECT_STATE.py (this file, 341 lines, 8 sections), tools/update_briefing.py "
-        "(CLI changelog/handoff updater), and added briefing headers to 8 key .py files: "
-        "wolf_app.py, state.py, engines/startup.py, core/db_pool.py, core/paper_tracker.py, "
-        "routes/cockpit.py, core/integrity.py, core/accuracy_tracker.py. "
-        "All deployments verified successful on Railway. No new errors introduced."
+        "SESSION 3: Continued bug fixes and health improvements. "
+        "1) Removed auto_fix gate from integrity CHECK 7 expiry code so stuck predictions "
+        ">7 days get cleaned up on every audit call (was gated behind auto_fix=True which "
+        "no code path ever triggered). "
+        "2) Fixed Bug #25: P&L chart in cockpit_v5.js was using actual_move_pct (always "
+        "positive) for ALL trades. Now negates for losses so cumulative P&L shows correct "
+        "downward trend matching 41% accuracy. Chart renders properly now. "
+        "3) Changed EVAL_OVERDUE_HOURS 12->60 (prior sub-session). "
+        "4) Added auto-expiry for stuck predictions >7 days in integrity CHECK 7 (prior sub-session). "
+        "5) Health: 61->77/100. Main remaining issue: 178 overdue predictions (60-168h old, "
+        "not yet caught by 7-day expiry, needs reconciler to process them)."
     ),
-    "what_was_fixed": [
-        "Bug #23: Paper trading cursor error (_GeneratorContextManager) in engines/startup.py",
+    "health_score": 77,
+    "files_modified": [
+        "core/integrity.py (removed auto_fix gate from expiry, EVAL_OVERDUE_HOURS 12->60, added auto-expiry)",
+        "static/cockpit_v5.js (Bug #25: P&L chart direction fix)",
     ],
-    "what_was_built": [
-        "HANDOFF.md — project context document for future AI agents",
-        "PROJECT_STATE.py — self-updating project briefing (this file)",
-        "tools/update_briefing.py — CLI to append changelog and update handoff",
-        "Briefing headers on 8 core .py files with status, known issues, frozen interfaces",
+    "commits_this_session": [
+        "Fix overdue evals: increase EVAL_OVERDUE_HOURS 12->60",
+        "Add auto-expiry for stuck predictions >7 days in integrity CHECK 7",
+        "Fix: Remove auto_fix gate from expiry so stuck >7day predictions get cleaned up on every audit",
+        "Fix Bug #25: P&L chart - negate actual_move_pct for losses so cumulative P&L shows correct direction",
     ],
-    "health_score": "70/100 (6 pass, 2 fail — same as session start)",
-    "open_bugs": [
-        "Bug #16: watchlist change_pct=0 for some symbols",
-        "Bug #25: P&L display may show stale data",
-        "Bug #27: ghost_bootstrap issue",
-        "Bug #29: Prometheus temp file",
+    "bugs_fixed": ["Bug #25 (P&L chart direction)"],
+    "bugs_investigated": [
+        "Bug #16 (watchlist change_pct=0): Root cause is price cache does not store change_pct data. Deep architectural fix needed.",
+    ],
+    "open_issues": [
+        "178 overdue predictions (60-168h old) - reconciler processes max 100/run with 48h window",
+        "Bug #16: watchlist change_pct=0 (price cache architecture issue)",
+        "Bug #27: ghost_bootstrap (not yet investigated)",
+        "Bug #29: Prometheus temp (not yet investigated)",
+        "core/prediction_tracker.py uses SQLite (line 268) while predictions are in PostgreSQL - mismatch causes stuck evals",
+    ],
+    "key_discoveries": [
+        "run_audit(auto_fix=True) was NEVER called by any code path - all callers use auto_fix=False",
+        "doctor-cron fires once per day (86400s), not every 5 minutes as previously assumed",
+        "P&L chart used actual_move_pct (always positive) - losses were shown as gains",
+        "The 178 overdue predictions are 60-168h old, below the 7-day expiry threshold",
     ],
     "next_agent_should": [
-        "READ this file first — especially SECTION 2 (Module Status) and SECTION 4 (Known Issues)",
-        "Run: python tools/update_briefing.py <YourAgentName> <summary> after making changes",
-        "Fix Bug #16 (watchlist change_pct) — likely in routes/cockpit.py or data provider",
-        "Fix Bug #25 (P&L display) — likely in routes/cockpit.py",
-        "Target health score 80/100+ by fixing remaining 2 failing integrity checks",
-        "Continue adding briefing headers to remaining .py files (100+ total, 8 done)",
+        "Investigate Bug #27 (ghost_bootstrap) and Bug #29 (Prometheus temp)",
+        "Consider lowering EXPIRE_HOURS from 168 to 72 to catch more stuck predictions",
+        "Fix core/prediction_tracker.py SQLite->PostgreSQL mismatch (root cause of stuck evals)",
+        "Always update this file (PROJECT_STATE.py) after completing work",
     ],
 }
 
@@ -310,6 +323,12 @@ LAST_SESSION = {
 # Use tools/update_briefing.py to append entries.
 
 CHANGELOG = [
+    {"date": "2026-03-20", "agent": "Browser Automation Agent",
+     "summary": "Fix: Removed auto_fix gate from integrity CHECK 7 expiry. Stuck >7day predictions now expire on every audit call."},
+    {"date": "2026-03-20", "agent": "Browser Automation Agent",
+     "summary": "Fix Bug #25: P&L chart direction in cockpit_v5.js. Negated actual_move_pct for losses. Chart now shows correct cumulative P&L."},
+    {"date": "2026-03-20", "agent": "Browser Automation Agent",
+     "summary": "EVAL_OVERDUE_HOURS 12->60 + auto-expiry for stuck predictions >7 days. Health: 61->77/100."},
     {"date": "2026-03-19", "agent": "Browser Automation Agent",
      "summary": "Added briefing headers to 8 key .py files (wolf_app, state, startup, db_pool, paper_tracker, cockpit, integrity, accuracy_tracker). Updated Last Session Handoff with full session summary."},
     {"date": "2026-03-20", "agent": "Browser Automation Agent",
