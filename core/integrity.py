@@ -104,7 +104,7 @@ SEVERITY_WEIGHTS = {"error": 10, "warn": 3, "info": 0.5}
 # ── Staleness thresholds ──────────────────────────────────────
 PREDICTION_STALE_MINUTES = 120
 PREDICTION_VERY_STALE_MINUTES = 360
-EVAL_OVERDUE_HOURS = 12
+EVAL_OVERDUE_HOURS = 60  # Reconciler uses 48h window; was 12 (too aggressive, caused 211 false overdue)
 
 # ── Known edge symbols (hardcoded cross-check) ───────────────
 KNOWN_CRYPTO_EDGE = {"ETH", "XRP", "LINK", "CHZ"}
