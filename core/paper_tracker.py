@@ -1,3 +1,25 @@
+# ══════════════════════════════════════════════════════════════
+# FILE: core/paper_tracker.py
+# PURPOSE: Automatic paper trade tracking. Logs EVERY Ghost signal and
+#          tracks what WOULD happen to prove accuracy over 30+ days.
+#          Different from trade_journal.py (manual user trades).
+# STATUS: STABLE
+# LINES: ~1172
+# ──────────────────────────────────────────────────────────────
+# CHANGE LOG:
+#   2026-03-19 — Briefing header added (Browser Agent)
+#   2026-03-19 — Related: Bug #23 fix in engines/startup.py ensures
+#                _get_connection() is called with 'with' statement
+# ──────────────────────────────────────────────────────────────
+# KNOWN ISSUES:
+#   None critical after Bug #23 fix
+# ──────────────────────────────────────────────────────────────
+# DO NOT CHANGE (frozen interfaces):
+#   PaperTracker class         — used by engines/startup.py
+#   _get_connection()          — @contextmanager, MUST use 'with'
+#   record_signal()            — called from prediction loop
+#   get_performance_summary()  — called by cockpit routes
+# ══════════════════════════════════════════════════════════════
 """
 Paper Trading Tracker - Automatically track EVERY Ghost signal
 
