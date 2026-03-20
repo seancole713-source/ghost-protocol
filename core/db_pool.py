@@ -1,3 +1,23 @@
+# ══════════════════════════════════════════════════════════════
+# FILE: core/db_pool.py
+# PURPOSE: Shared asyncpg connection pool for PostgreSQL. Replaces scattered
+#          psycopg2.connect() calls with centralized pooling. Also provides
+#          get_sync_connection() for synchronous access (@contextmanager).
+# STATUS: STABLE
+# LINES: ~447
+# ──────────────────────────────────────────────────────────────
+# CHANGE LOG:
+#   2026-03-19 — Briefing header added (Browser Agent)
+# ──────────────────────────────────────────────────────────────
+# KNOWN ISSUES:
+#   None critical — pool sizing may need tuning under heavy load
+# ──────────────────────────────────────────────────────────────
+# DO NOT CHANGE (frozen interfaces):
+#   get_pool()                 — returns the shared asyncpg pool
+#   get_sync_connection()      — @contextmanager, yields psycopg2 connection
+#   IMPORTANT: get_sync_connection() is a @contextmanager — callers MUST
+#              use 'with' statement. See Bug #23 fix for what happens otherwise.
+# ══════════════════════════════════════════════════════════════
 #!/usr/bin/env python3
 """
 🗄️ DB POOL — Shared asyncpg Connection Pool
