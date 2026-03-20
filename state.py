@@ -1,3 +1,22 @@
+# ══════════════════════════════════════════════════════════════
+# FILE: state.py
+# PURPOSE: Central shared mutable global state for all route handlers
+#          and engine modules. Import from here instead of scattering
+#          globals across wolf_app.py.
+# STATUS: STABLE
+# LINES: ~49
+# ──────────────────────────────────────────────────────────────
+# CHANGE LOG:
+#   2026-03-19 — Briefing header added (Browser Agent)
+# ──────────────────────────────────────────────────────────────
+# KNOWN ISSUES:
+#   None — small, clean file
+# ──────────────────────────────────────────────────────────────
+# DO NOT CHANGE (frozen interfaces):
+#   LATEST_PREDICTIONS         — used by cockpit routes + startup engine
+#   LATEST_PREDICTIONS_LOCK    — threading.Lock for prediction access
+#   PREDICTION_HISTORY         — deque used by cockpit display
+# ══════════════════════════════════════════════════════════════
 """
 Ghost Protocol — Shared Application State
 ==========================================
