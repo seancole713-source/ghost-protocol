@@ -1,3 +1,27 @@
+# ══════════════════════════════════════════════════════════════
+# FILE: engines/startup.py
+# PURPOSE: Startup event handler — runs on app boot. Initializes DB tables,
+#          loads models, starts the prediction loop, paper trading,
+#          accuracy tracking, and background tasks.
+# STATUS: STABLE (recently patched)
+# LINES: ~911
+# ──────────────────────────────────────────────────────────────
+# CHANGE LOG:
+#   2026-03-19 — Briefing header added (Browser Agent)
+#   2026-03-19 — Bug #23 fixed: wrapped _get_conn() and _get_connection()
+#                in proper 'with' context managers (lines ~361, ~472)
+# ──────────────────────────────────────────────────────────────
+# KNOWN ISSUES:
+#   - Crypto price fetches fail for some symbols (DLO, SRRK) — provider issue
+#   - coroutine 'get_crypto_price_quorum' warning in system_doctor.py:146
+#   - Market mood update fails when SPY data unavailable (weekends/after hours)
+# ──────────────────────────────────────────────────────────────
+# DO NOT CHANGE (frozen interfaces):
+#   startup_event()            — registered in wolf_app.py as on_event("startup")
+#   run_ghost_loop()           — main prediction loop, called from startup
+#   IMPORTANT: All get_sync_connection() / _get_conn() / _get_connection()
+#              calls MUST use 'with' statement — they are @contextmanager
+# ══════════════════════════════════════════════════════════════
 """Event handler: startup — extracted from wolf_app.py (Step 12)"""
 # fmt: off
 # ruff: noqa
