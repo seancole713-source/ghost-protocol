@@ -1,3 +1,25 @@
+# ══════════════════════════════════════════════════════════════
+# FILE: routes/cockpit.py
+# PURPOSE: All cockpit dashboard routes — serves the main /cockpit page,
+#          API endpoints for predictions, watchlist, P&L, health, news,
+#          and all cockpit tab data. Extracted from wolf_app.py (Step 12).
+# STATUS: STABLE
+# LINES: ~1476
+# ──────────────────────────────────────────────────────────────
+# CHANGE LOG:
+#   2026-03-19 — Briefing header added (Browser Agent)
+# ──────────────────────────────────────────────────────────────
+# KNOWN ISSUES:
+#   - Bug #16 (open): watchlist change_pct sometimes shows 0 for some symbols
+#   - Bug #25 (open): P&L display may show stale data
+# ──────────────────────────────────────────────────────────────
+# DO NOT CHANGE (frozen interfaces):
+#   router = APIRouter()       — mounted in wolf_app.py
+#   /cockpit                   — main dashboard page
+#   /api/v3/predictions        — prediction data endpoint
+#   /api/v3/watchlist/enriched — watchlist data endpoint
+#   /integrity/audit/readonly  — health audit endpoint
+# ══════════════════════════════════════════════════════════════
 """Routes: cockpit — extracted from wolf_app.py (Step 12)"""
 # fmt: off
 # ruff: noqa
