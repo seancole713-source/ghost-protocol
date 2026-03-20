@@ -1,5 +1,5 @@
 # Ghost Protocol — Handoff Document
-# Last updated: 2026-03-19 by Browser Automation Agent (Claude)
+# Last updated: 2026-03-20 by Browser Automation Agent (Claude) — Session 4
 
 ## WHAT IS THIS FILE?
 This document exists so that ANY future AI agent or developer can understand
@@ -53,7 +53,7 @@ The owner builds across many chat sessions — this prevents repeated confusion.
 - Background tasks use threading.Thread (not asyncio.create_task)
 - Many modules use try/except import fallbacks for resilience
 
-## BUG TRACKER (as of 2026-03-19)
+## BUG TRACKER (as of 2026-03-20)
 
 ### FIXED BUGS
 | Bug | Description | Commit |
@@ -79,31 +79,29 @@ The owner builds across many chat sessions — this prevents repeated confusion.
 | #26 | db_engine.py IndentationError | a44e469 |
 | #28 | apscheduler missing — added to requirements.txt | e13b1f5 |
 | #30 | indicators.py IndentationError | 17824b3 |
+| #23 | Paper trading cursor error — context managers | ebf634c |
+| #25 | Pick card P&L chart direction — negate losses | 1074e89 |
+| #27 | ghost_bootstrap — confirmed already removed (Phase 0) | N/A |
+| #29 | Prometheus temp dir — Dockerfile creates /tmp/prom_multiproc | N/A |
 
 ### OPEN BUGS
 | Bug | Description | Root Cause | Priority |
 |-----|-------------|------------|----------|
-| #23 | Paper trading cursor error | engines/startup.py L361,472 call _get_connection() without with | HIGH |
 | #16 | Watchlist change_pct = 0 | Price change calc missing | MEDIUM |
-| #25 | Pick card P&L wrong for losses | cockpit_v5.js shows gains for LOST trades | MEDIUM |
-| #27 | ghost_bootstrap missing | Module never created, try/except catches it | LOW |
-| #29 | Prometheus temp dir | /tmp/ghost_prom not created at startup | LOW |
 
 ### STARTUP ERRORS (non-fatal)
 - api.cockpit_v2_endpoints — Module never created
-- ghost_bootstrap — Module never created
 - core.position_manager — Module never created
 - stage2_init_failed — get_learning_loop scoping issue
-- metrics_registration_failed — /tmp/ghost_prom missing
 
 ## HEALTH SCORE
-- Current: ~70-80/100
+- Current: ~53-77/100 (varies with cache warmth after deploy)
 - Goal: 100/100
 - Check: /integrity/audit/readonly
 
 ## KEY ENDPOINTS
 | Endpoint | Purpose |
-|----------|---------|
+|----------|---------| 
 | /api/health | Basic health check |
 | /api/v4/picks | Current predictions |
 | /api/v4/history | Prediction history |
@@ -112,6 +110,15 @@ The owner builds across many chat sessions — this prevents repeated confusion.
 | /integrity/audit/readonly | Full health audit (40 checks) |
 | /cockpit | Web dashboard |
 
+## SESSION 4 NOTES (2026-03-20)
+- Bugs #23, #25, #27, #29 confirmed FIXED and moved to fixed table
+- Bug #16 (watchlist change_pct=0) remains the only open code bug
+- EXPIRE_HOURS lowered 168->72 (Session 3) — overdue predictions should decline over time
+- core/prediction_tracker.py uses SQLite but integrity.py reads from PostgreSQL — separate systems
+- 184 predictions stuck as overdue in PostgreSQL (auto-expiry runs but hasn't caught up yet)
+- Health score: 53.5/100 (3 errors: stale predictions 610min, 184 overdue evals, stale prices)
+- Key insight: run_audit(auto_fix=False) called everywhere, but expiry gate was removed so it runs anyway
+
 ## FOR FUTURE AGENTS
 1. Read this file FIRST before making changes
 2. Check Railway deploy logs after EVERY commit (@level:error filter)
@@ -119,3 +126,4 @@ The owner builds across many chat sessions — this prevents repeated confusion.
 4. Update this file when you fix bugs or discover new ones
 5. Test endpoints after changes
 6. The cockpit at /cockpit shows real-time health
+7. Also read PROJECT_STATE.py for deeper architecture details
