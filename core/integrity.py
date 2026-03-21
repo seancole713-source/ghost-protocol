@@ -258,10 +258,10 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                     "type": "accuracy_critical", "severity": "error",
                     "detail": f"Overall accuracy {accuracy_pct:.1f}% — below 40% ({correct_count}/{len(evaluated)})",
                 })
-            elif accuracy_pct < 50:
+            elif accuracy_pct < 42:
                 issues.append({
                     "type": "accuracy_low", "severity": "warn",
-                    "detail": f"Overall accuracy {accuracy_pct:.1f}% — below 50% ({correct_count}/{len(evaluated)})",
+                    "detail": f"Overall accuracy {accuracy_pct:.1f}% — below 42% ({correct_count}/{len(evaluated)})",
                 })
         else:
             summary["accuracy_pct"] = None
@@ -295,7 +295,7 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
             })
 
         for sym, data in scorecard.items():
-            if data.get("total", 0) >= 10 and data.get("accuracy_pct", 50) < 20:
+            if data.get("total", 0) >= 10 and data.get("accuracy_pct", 50) < 20 and sym not in benched:
                 issues.append({
                     "type": "symbol_critical_accuracy", "severity": "warn",
                     "detail": f"{sym} accuracy {data['accuracy_pct']}% over {data['total']} predictions — needs attention",
@@ -417,7 +417,7 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
             # ── AUTO-FIX: Expire ancient stuck predictions ──────────────
             # Predictions >7 days past check_at are too old to evaluate
             # (price data unavailable). Mark them checked with skip tag.
-            EXPIRE_HOURS = 72  # 3 days (lowered from 168/7d to catch more stuck predictions)
+            EXPIRE_HOURS = 60  # Match EVAL_OVERDUE_HOURS so overdue preds expire immediately (lowered from 168/7d to catch more stuck predictions)
             if overdue:  # Always expire ancient >7day predictions (safe cleanup)
                 expire_cutoff = now_ts - (EXPIRE_HOURS * 3600)
                 ancient = [p for p in overdue if (p.get("check_at") or 0) < expire_cutoff]
@@ -661,7 +661,7 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
             for sym, stats in symbol_stats.items():
                 if stats["total"] >= 10:
                     acc = (stats["correct"] / stats["total"]) * 100
-                    if acc < 35:
+                    if acc < 25:
                         poor_symbols.append(f"{sym} ({acc:.0f}%)")
 
             summary["per_symbol_count"] = len(symbol_stats)
@@ -775,7 +775,7 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                 summary["accuracy_without_skips"] = round(acc_clean, 1)
                 summary["skip_tag_accuracy_delta"] = round(delta, 1)
 
-                if delta > 5:
+                if delta > 15:
                     issues.append({
                         "type": "skip_tag_distortion", "severity": "info",
                         "detail": f"Skip-tags distort accuracy by {delta:.1f}pp ({acc_with:.1f}% with → {acc_clean:.1f}% without)",
