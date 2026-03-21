@@ -912,7 +912,6 @@ class StockEngine:
         regime_adj = 0.0
         try:
             from core.regime_detector import RegimeDetector
-            detector = RegimeDetector()
             
             # Get recent prices for SPY to detect regime
             # Use cached detector result if available
@@ -924,10 +923,32 @@ class StockEngine:
             if cached and (datetime.utcnow() - cached["timestamp"]).total_seconds() < regime_cache_ttl:
                 regime_result = cached["result"]
             else:
-                # Fetch SPY prices for regime detection
-                spy_prices = []  # TODO: Wire in actual SPY price history
-                regime_result = detector.detect_regime(spy_prices) if spy_prices else {"regime": "SIDEWAYS", "confidence": 0.5}
-                setattr(state, regime_cache_key, {"result": regime_result, "timestamp": datetime.utcnow()})
+                # Fetch SPY prices from indicators (last 50 periods for regime detection)
+                spy_prices = []
+                try:
+                    # Get SPY price history from polygon or indicators
+                    spy_indicators = self.get_indicators("SPY", "stock")
+                    if spy_indicators and "close_prices" in spy_indicators:
+                        spy_prices = spy_indicators["close_prices"][-50:]  # Last 50 periods
+                    
+                    # Fallback: try to get current price
+                    if not spy_prices:
+                        spy_quote = self.get_quote("SPY", "stock")
+                        if spy_quote and spy_quote.get("price"):
+                            # Use single price point with SIDEWAYS default
+                            regime_result = {"regime": "SIDEWAYS", "confidence": 0.5}
+                        else:
+                            regime_result = {"regime": "SIDEWAYS", "confidence": 0.5}
+                    else:
+                        # Have price history - run regime detection
+                        detector = RegimeDetector()
+                        regime_result = detector.detect_regime(spy_prices)
+                    
+                    setattr(state, regime_cache_key, {"result": regime_result, "timestamp": datetime.utcnow()})
+                except Exception as spy_err:
+                    LOGGER.debug(f"Could not fetch SPY prices for regime detection: {spy_err}")
+                    regime_result = {"regime": "SIDEWAYS", "confidence": 0.5}
+                    setattr(state, regime_cache_key, {"result": regime_result, "timestamp": datetime.utcnow()})
             
             regime = regime_result.get("regime", "SIDEWAYS")
             regime_confidence = regime_result.get("confidence", 0.5)
@@ -943,9 +964,10 @@ class StockEngine:
                 regime_adj = -0.02  # Reduce confidence in volatile regimes
                 all_reasons.append(f"Volatile regime ({regime_adj:.1%})")
             
-            LOGGER.info(f"[{symbol}] Regime: {regime} (conf={regime_confidence:.0%}), adj={regime_adj:+.1%}")
+            if regime != "SIDEWAYS":  # Only log non-default regimes
+                LOGGER.info(f"[{symbol}] Regime: {regime} (conf={regime_confidence:.0%}), adj={regime_adj:+.1%}")
         except Exception as e:
-            LOGGER.warning(f"[{symbol}] Regime detector failed: {e}")
+            LOGGER.debug(f"[{symbol}] Regime detector skipped: {e}")
             regime_adj = 0.0
         
         # Penalty for high VIX
