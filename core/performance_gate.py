@@ -76,6 +76,18 @@ def _refresh_gate() -> None:
         new_cache: Dict[str, dict] = {}
         new_killed: set = set()
         new_watching: set = set()
+        
+        # CRITICAL FIX (Mar 21, 2026): If no evaluated predictions exist yet,
+        # don't kill ALL symbols! This creates death spiral.
+        # When query returns 0 rows, allow all symbols (no data = allow trading)
+        if len(rows) == 0:
+            LOGGER.info("⚠️  Performance Gate: No evaluated predictions yet - allowing all symbols")
+            with _cache_lock:
+                _gate_cache.clear()
+                _killed_symbols.clear()
+                _watching_symbols.clear()
+                _last_refresh = time.time()
+            return
 
         for symbol, total, correct in rows:
             correct = correct or 0
