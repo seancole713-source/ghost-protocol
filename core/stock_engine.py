@@ -192,6 +192,9 @@ class StockPrediction:
     expected_move_pct: float = 0.0  # Predicted magnitude (e.g. 2.5 = +2.5%)
     atr_pct: float = 0.0  # Average True Range as % of price
     data_quality: float = 1.0  # 0.0 = all defaults, 1.0 = all real data
+    explanation: str = ""  # Human-readable prediction reasoning
+    position_size_usd: float = 0  # Recommended position size in dollars
+    shares: int = 0  # Recommended number of shares
     timestamp: datetime = field(default_factory=datetime.utcnow)
     
     @property
@@ -784,7 +787,22 @@ class StockEngine:
             else:
                 LOGGER.warning(f"[{symbol}] RSI/MACD unavailable — cannot use technical fallback")
         
-        # Step 7: Apply Ghost Intel Rules (CRITICAL FIX - was missing!)
+        # Step 7: Get News Sentiment
+        news_sentiment = 0.0
+        news_score_label = "NEUTRAL"
+        try:
+            from core.news_sentiment import fetch_news_sentiment
+            news_data = fetch_news_sentiment(symbol, limit=10)
+            if news_data.get("ok"):
+                news_sentiment = news_data.get("sentiment_score", 0.0)
+                news_score_label = news_data.get("sentiment_label", "NEUTRAL")
+                if abs(news_sentiment) > 0.3:
+                    all_reasons.append(f"News: {news_score_label} ({news_sentiment:+.2f})")
+                LOGGER.info(f"🏛️ [{symbol}] News sentiment: {news_score_label} ({news_sentiment:+.2f})")
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] News sentiment failed: {e}")
+        
+        # Step 8: Apply Ghost Intel Rules (CRITICAL FIX - was missing!)
         intel_boost = 0.0
         try:
             from ghost_intel.integration import apply_intel_to_prediction
@@ -872,6 +890,18 @@ class StockEngine:
         # Intel boost (already calculated)
         intel_adj = intel_boost
         
+        # News sentiment boost/penalty
+        news_adj = 0.0
+        if abs(news_sentiment) > 0.3:  # Only apply if sentiment is strong
+            if direction == "UP" and news_sentiment > 0.3:
+                news_adj = min(0.05, news_sentiment * 0.08)  # Max +5% for very bullish news
+            elif direction == "DOWN" and news_sentiment < -0.3:
+                news_adj = min(0.05, abs(news_sentiment) * 0.08)  # Max +5% for very bearish news
+            elif direction == "UP" and news_sentiment < -0.3:
+                news_adj = -0.03  # Penalty if news contradicts direction
+            elif direction == "DOWN" and news_sentiment > 0.3:
+                news_adj = -0.03
+        
         # Boost/penalty for sector (only if sector gate ran)
         try:
             sector_adj = (sector_modifier - 1.0) * 0.1
@@ -881,7 +911,7 @@ class StockEngine:
         # Penalty for high VIX
         vix_penalty = max(0, (vix - 15) * 0.01) if vix else 0
         
-        confidence = base_confidence + conf_boost + intel_adj + sector_adj - vix_penalty
+        confidence = base_confidence + conf_boost + intel_adj + news_adj + sector_adj - vix_penalty
         # HARD CAP at 85% - we only have 52% win rate, no justification for higher
         confidence = max(0.1, min(0.85, confidence))
         
@@ -951,6 +981,42 @@ class StockEngine:
         elif direction == "DOWN":
             target_price = price * (1 - expected_move_pct / 100)
         
+        # Step 12: Calculate Position Sizing (Kelly Criterion)
+        position_size_usd = 0
+        shares = 0
+        try:
+            from core.position_sizer import get_position_sizer
+            sizer = get_position_sizer()
+            # Use recent paper trade stats for win_rate
+            win_rate = 0.56  # Current paper trading win rate
+            avg_win = expected_move_pct if expected_move_pct > 0 else 3.0
+            avg_loss = (abs(entry_price - stop_loss) / entry_price) * 100
+            
+            sizing = sizer.calculate_position_size(
+                symbol=symbol,
+                entry_price=entry_price,
+                confidence=confidence,
+                atr=atr_pct * entry_price / 100,  # Convert ATR % to $
+                win_rate=win_rate,
+                avg_win_pct=avg_win,
+                avg_loss_pct=avg_loss
+            )
+            position_size_usd = sizing.dollar_amount
+            shares = sizing.shares
+            LOGGER.info(f"🏛️ [{symbol}] Position size: {shares} shares (${position_size_usd:.0f})")
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Position sizing failed: {e}")
+            position_size_usd = 1000  # Default $1000
+            shares = int(1000 / entry_price) if entry_price > 0 else 0
+        
+        # Step 13: Build Comprehensive Explanation
+        explanation = f"{direction} signal with {confidence:.0%} confidence. "
+        if all_reasons:
+            explanation += "Key factors: " + ", ".join(all_reasons[:3]) + ". "
+        if abs(news_sentiment) > 0.3:
+            explanation += f"News sentiment is {news_score_label.lower()}. "
+        explanation += f"Expected move: {expected_move_pct:.1f}% over {int(self.config.horizon_hours/24)} days."
+        
         # Final prediction
         prediction = StockPrediction(
             symbol=symbol,
@@ -967,6 +1033,9 @@ class StockEngine:
             expected_move_pct=round(expected_move_pct, 2),
             atr_pct=round(atr_pct, 2),
             data_quality=round(data_quality, 2),
+            explanation=explanation,
+            position_size_usd=round(position_size_usd, 2),
+            shares=shares,
         )
         
         LOGGER.info(
