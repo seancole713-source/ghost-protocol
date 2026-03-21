@@ -299,7 +299,7 @@ async def api_v3_news_feed(limit: int = 10):
         loop = asyncio.get_event_loop()
         rss_items = await asyncio.wait_for(
             loop.run_in_executor(None, _fetch_rss_sync),
-            timeout=8.0,
+            timeout=15.0,  # Increased from 8s - RSS feeds were timing out
         )
     except Exception:
         rss_items = []

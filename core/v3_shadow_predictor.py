@@ -19,7 +19,7 @@ LOGGER = logging.getLogger("ghost.v3_shadow")
 DEFAULT_STOCKS = [
     # Tech Giants
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "AMD", "TSLA", "NFLX", "CRM",
-    # Semiconductors
+    # Semiconductors (REMOVED: PANW 5.4% accuracy - chronically wrong)
     "INTC", "MU", "LRCX", "AMAT", "QCOM", "AVGO", "TXN", "MRVL", "ON", "SNDK",
     # Finance
     "JPM", "BAC", "GS", "MS", "C", "WFC", "BLK", "SCHW", "AXP", "V",
@@ -48,8 +48,8 @@ DEFAULT_CRYPTO = [
     "MANA", "SAND", "AXS", "GALA", "ENJ", "IMX", "ILV", "ALICE", "YGG", "MAGIC",
     # AI/Compute
     "RNDR", "FET", "OCEAN", "AGIX", "ROSE", "TAO", "NEAR", "ICP", "FIL", "AR",
-    # Meme
-    "DOGE", "SHIB", "PEPE", "FLOKI", "BONK", "WIF", "TURBO", "BRETT",
+    # Meme (REMOVED: SHIB 0% accuracy)
+    "DOGE", "PEPE", "FLOKI", "BONK", "WIF", "TURBO", "BRETT",
     # Privacy
     "XMR", "ZEC", "DASH", "SCRT", "OASIS",
     # Exchange Tokens
