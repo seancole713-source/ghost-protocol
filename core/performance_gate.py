@@ -30,9 +30,13 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 LOGGER = logging.getLogger("ghost.performance_gate")
 
 # ── Thresholds ────────────────────────────────────────────────
-KILL_THRESHOLD = 45.0       # Below this % → stop trading (killed)
-WARN_THRESHOLD = 50.0       # Below this % → reduced size (watching)
-REINSTATE_THRESHOLD = 55.0  # Must exceed this to come back from killed
+# DEATH SPIRAL FIX (Mar 21, 2026): Lowered from 45% → 25%
+# Problem: At 41% overall accuracy, 45% threshold killed ALL symbols
+# Result: No predictions → no learning → accuracy never improves
+# Solution: Only kill symbols with <25% (worse than random) to break death spiral
+KILL_THRESHOLD = 25.0       # Below this % → stop trading (killed)
+WARN_THRESHOLD = 40.0       # Below this % → reduced size (watching)
+REINSTATE_THRESHOLD = 50.0  # Must exceed this to come back from killed
 MIN_TRADES = 20             # Minimum evaluated predictions to judge
 LOOKBACK_DAYS = 14          # Only count recent performance
 

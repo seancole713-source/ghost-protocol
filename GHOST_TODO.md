@@ -8,6 +8,13 @@
 ## PHASE 1: AI BRAIN & ACCURACY (Current: 41% → Target: 60%+)
 > This is the #1 priority. Nothing else matters if the brain can't predict.
 
+**🔍 ROOT CAUSE DISCOVERED (2026-03-21)**: Performance Gate Death Spiral
+- Performance Gate kill threshold was 45% when overall accuracy is 41%
+- This killed ALL symbols except LINK → no predictions for 256 minutes  
+- Death spiral: No predictions → no learning → accuracy can't improve
+- **FIX APPLIED**: Lowered kill threshold 45% → 25% (only kill worse-than-random)
+- Predictions should resume within 60 minutes of deploy
+
 - [ ] 1.1 Retrain XGBoost model with updated feature engineering (current: 59 features, 84.8% training accuracy but 41% live)
 - [ ] 1.2 Add walk-forward validation to prevent overfitting (training vs live gap is massive)
 - [ ] 1.3 Implement proper backtesting framework before any model goes live
