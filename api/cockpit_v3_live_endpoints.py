@@ -2331,7 +2331,7 @@ async def _get_watchlist_enriched_core():
                         return {
                             "symbol": symbol,
                             "price": float(result.get("price", 0)),
-                            "change_pct": 0.0,
+                            "change_pct": round(((float(result.get("price", 0)) - float(result.get("prev_close", 0))) / float(result.get("prev_close", 1))) * 100, 2) if result.get("prev_close") and float(result.get("prev_close", 0)) > 0 else 0.0,
                             "type": "crypto" if symbol in crypto else "vip",
                             "provider": result.get("provider", "unknown")
                         }
@@ -2345,7 +2345,7 @@ async def _get_watchlist_enriched_core():
                         return {
                             "symbol": symbol,
                             "price": float(result.get("price", 0)),
-                            "change_pct": 0.0,
+                            "change_pct": round(((float(result.get("price", 0)) - float(result.get("prev_close", 0))) / float(result.get("prev_close", 1))) * 100, 2) if result.get("prev_close") and float(result.get("prev_close", 0)) > 0 else 0.0,
                             "type": "stock",
                             "provider": result.get("provider", "unknown")
                         }
