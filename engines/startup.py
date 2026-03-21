@@ -221,6 +221,27 @@ async def _on_startup():
         LOGGER.error(f"ai_memory_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
         # Non-critical - continue startup
     
+    # Initialize graceful shutdown handler (Phase 5.8)
+    try:
+        from core.shutdown_handler import install_shutdown_handler, register_cleanup
+        
+        # Install signal handlers
+        install_shutdown_handler()
+        
+        # Register cleanup callbacks
+        def stop_prediction_loop():
+            try:
+                from core.auto_prediction_loop import stop_auto_prediction_loop
+                stop_auto_prediction_loop()
+                LOGGER.info("[SHUTDOWN] Prediction loop stopped")
+            except Exception as e:
+                LOGGER.error(f"[SHUTDOWN] Failed to stop prediction loop: {e}")
+        
+        register_cleanup(stop_prediction_loop)
+        LOGGER.info("[GHOST STARTUP] ✅ Graceful shutdown handler installed")
+    except Exception as e:
+        LOGGER.error(f"shutdown_handler_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+    
     # Initialize goals from environment
     try:
         from core.goals_tracker import GoalsTracker

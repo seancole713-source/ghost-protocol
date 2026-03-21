@@ -1,0 +1,113 @@
+# GitHub Actions CI/CD Pipeline (Phase 6.6)
+# Runs tests, validates code, and deploys to Railway on push to main.
+# Ghost Protocol v5 — Session 6
+
+name: Ghost Protocol CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: ghost_test
+          POSTGRES_USER: ghost
+          POSTGRES_PASSWORD: ghost_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx
+      
+      - name: Set environment variables
+        run: |
+          echo "DATABASE_URL=postgresql://ghost:ghost_test_password@localhost:5432/ghost_test" >> $GITHUB_ENV
+          echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
+          echo "TESTING=1" >> $GITHUB_ENV
+      
+      - name: Run tests
+        run: |
+          pytest tests/ -v --cov=. --cov-report=term --cov-report=xml
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+  
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black isort
+      
+      - name: Run ruff linter
+        run: ruff check . --ignore=E501,F401,F841
+        continue-on-error: true
+      
+      - name: Check code formatting (black)
+        run: black --check . --line-length=120
+        continue-on-error: true
+      
+      - name: Check import sorting (isort)
+        run: isort --check-only . --profile black
+        continue-on-error: true
+  
+  deploy:
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy to Railway
+        run: |
+          echo "🚀 Railway auto-deploys from main branch"
+          echo "✅ Tests passed - Railway will deploy automatically"
+          echo "📊 Monitor deployment at: https://railway.app/project/ghost-protocol"

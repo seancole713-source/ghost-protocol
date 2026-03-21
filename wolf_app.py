@@ -214,6 +214,14 @@ try:
 except Exception as e:
     print(f"[INIT] ⚠️  News router unavailable: {e}")
 
+# Mount Quality API (Phase 4.2, 4.3, 5.6 - diversity, duplicates, scheduling)
+try:
+    from routes.quality_api import router as quality_router
+    APP.include_router(quality_router, tags=["quality"])
+    print("[INIT] ✅ Quality monitoring router mounted")
+except Exception as e:
+    print(f"[INIT] ⚠️  Quality router unavailable: {e}")
+
 # Mount Demo Endpoints (provides instant testing)
 try:
     from api.demo_endpoints import router as demo_router

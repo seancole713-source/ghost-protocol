@@ -48,6 +48,62 @@
       "new_threshold": 4.0,
       "vix": 18.5,
       "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1773972140.8264863,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1773993740.969205,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1774015341.090918,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1774036941.2168252,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1774058545.271043,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1774080145.4265645,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1774101745.5479271,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
+    },
+    {
+      "timestamp": 1774123345.6802251,
+      "old_threshold": 2.0,
+      "new_threshold": 4.0,
+      "vix": 18.5,
+      "regime": "NORMAL"
     }
   ],
   "missed_opportunities": [],
@@ -78,6 +134,6 @@
     }
   },
   "universe_additions": [],
-  "last_tuning": 1773950540.6849966,
-  "iterations": 7
+  "last_tuning": 1774123345.6821208,
+  "iterations": 15
 }

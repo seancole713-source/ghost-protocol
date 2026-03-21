@@ -236,6 +236,14 @@ async def _run_all_predictions_async():
     # Update last run time
     _LAST_RUN_TIME = time.time()
     
+    # Record cycle completion for scheduling monitoring (Phase 4.2)
+    try:
+        from core.prediction_scheduler import record_prediction_cycle
+        record_prediction_cycle(_LAST_RUN_TIME)
+    except Exception as e:
+        if LOGGER:
+            LOGGER.debug(f"Could not record prediction cycle: {e}")
+    
     # Update global prediction counters AND timestamp for health score
     try:
         import wolf_app

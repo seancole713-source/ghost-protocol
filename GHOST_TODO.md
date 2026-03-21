@@ -8,12 +8,22 @@
 ## PHASE 1: AI BRAIN & ACCURACY (Current: 41% → Target: 60%+)
 > This is the #1 priority. Nothing else matters if the brain can't predict.
 
-**🔍 ROOT CAUSE DISCOVERED (2026-03-21)**: Performance Gate Death Spiral
-- Performance Gate kill threshold was 45% when overall accuracy is 41%
-- This killed ALL symbols except LINK → no predictions for 256 minutes  
-- Death spiral: No predictions → no learning → accuracy can't improve
-- **FIX APPLIED**: Lowered kill threshold 45% → 25% (only kill worse-than-random)
-- Predictions should resume within 60 minutes of deploy
+**🔍 CRITICAL ISSUES DISCOVERED & FIXED (Session 6, 2026-03-21)**:
+
+**Death Spiral #1**: Performance Gate threshold too high (45% when accuracy was 41%)
+- Killed ALL symbols except LINK → 256 min stale predictions
+- **FIX (e16306a)**: Lowered kill threshold 45% → 25%
+
+**Death Spiral #2**: Performance Gate query returned 0 rows when no evaluated predictions
+- Query: `WHERE correct IS NOT NULL` returns 0 when predictions not reconciled
+- Gate interpreted as "no symbols exist" → returned empty set
+- **FIX (13d2b9b)**: Allow all symbols when query returns 0 rows
+
+**Death Spiral #3**: Previous fix cleared caches, causing empty active set
+- Fix #2 cleared `_gate_cache`, `_killed_symbols`, `_watching_symbols`
+- Then `get_active_edge_set()` saw empty caches → returned 0 symbols
+- **FIX (215b923)**: Don't clear caches when no data - keep existing state
+- Result: All 11 edge symbols now predict even on fresh deploy
 
 - [ ] 1.1 Retrain XGBoost model with updated feature engineering (current: 59 features, 84.8% training accuracy but 41% live)
 - [ ] 1.2 Add walk-forward validation to prevent overfitting (training vs live gap is massive)
