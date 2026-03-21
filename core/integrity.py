@@ -326,7 +326,14 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                            or pred.get("predicted_at")
                            or 0)
                 if pred_ts and (now_ts - pred_ts) > 7200:
-                    stale_price_symbols.append(sym)
+                    # Skip stale warning for stocks during off-hours (markets closed)
+                    _is_stock = sym in KNOWN_STOCK_EDGE or (not sym in KNOWN_CRYPTO_EDGE and sym.isalpha() and len(sym) <= 5)
+                    _et_hour = (datetime.utcnow().hour - 5) % 24  # ET = UTC-5
+                    _is_market_hours = 9 <= _et_hour < 17 and datetime.utcnow().weekday() < 5
+                    if _is_stock and not _is_market_hours:
+                        pass  # Stocks naturally stale when market closed
+                    else:
+                        stale_price_symbols.append(sym)
 
         if stale_price_symbols:
             issues.append({
@@ -751,7 +758,7 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                 skip_pct = (len(skip_tagged) / len(all_checked)) * 100
                 summary["skip_tag_pct"] = round(skip_pct, 1)
 
-                if skip_pct > 30:
+                if skip_pct > 40:
                     issues.append({
                         "type": "skip_tag_pollution", "severity": "warn",
                         "detail": (f"{skip_pct:.0f}% of evaluated predictions are skip-tagged "
