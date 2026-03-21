@@ -42,6 +42,7 @@ class ProviderResult:
     provider: Optional[str] = None
     duration_s: float = 0.0
     error: Optional[str] = None
+    prev_close: Optional[float] = None
     logs: List[str] = field(default_factory=list)
 
 
@@ -200,6 +201,7 @@ class TurboProvider:
                 return {
                     "ok": True,
                     "price": result.price,
+                    "prev_close": result.prev_close,
                     "provider": result.provider or provider_name,
                     "duration_s": duration,
                     "logs": logs,
@@ -366,6 +368,7 @@ class TurboProvider:
                 return {
                     "ok": True,
                     "price": result.price,
+                    "prev_close": result.prev_close,
                     "provider": result.provider or provider_name,
                     "duration_s": duration,
                     "logs": logs,
@@ -486,6 +489,7 @@ class TurboProvider:
                     # Handle TUPLE format (legacy wolf_app providers)
                     elif isinstance(result, tuple) and len(result) >= 1:
                         price = result[0]
+                        prev_close = result[1] if len(result) > 1 else None
                         actual_provider = result[2] if len(result) > 2 else provider_name
 
                         if price and price > 0:
@@ -498,6 +502,7 @@ class TurboProvider:
                                 price=float(price),
                                 provider=actual_provider,
                                 duration_s=duration,
+                                prev_close=float(prev_close) if prev_close else None,
                                 logs=logs,
                             )
                         else:
