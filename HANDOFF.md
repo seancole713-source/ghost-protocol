@@ -83,11 +83,12 @@ The owner builds across many chat sessions — this prevents repeated confusion.
 | #25 | Pick card P&L chart direction — negate losses | 1074e89 |
 | #27 | ghost_bootstrap — confirmed already removed (Phase 0) | N/A |
 | #29 | Prometheus temp dir — Dockerfile creates /tmp/prom_multiproc | N/A |
+| #16 | Watchlist change_pct always 0 — calc from prev_close | 943594a, ed0ab6f |
 
 ### OPEN BUGS
 | Bug | Description | Root Cause | Priority |
 |-----|-------------|------------|----------|
-| #16 | Watchlist change_pct = 0 | Price change calc missing | MEDIUM |
+| — | All known code bugs fixed as of Session 4 | — | — |
 
 ### STARTUP ERRORS (non-fatal)
 - api.cockpit_v2_endpoints — Module never created
@@ -112,11 +113,11 @@ The owner builds across many chat sessions — this prevents repeated confusion.
 
 ## SESSION 4 NOTES (2026-03-20)
 - Bugs #23, #25, #27, #29 confirmed FIXED and moved to fixed table
-- Bug #16 (watchlist change_pct=0) remains the only open code bug
+- Bug #16 (watchlist change_pct=0) FIXED — turbo_provider now passes prev_close, endpoint calculates change_pct
 - EXPIRE_HOURS lowered 168->72 (Session 3) — overdue predictions should decline over time
 - core/prediction_tracker.py uses SQLite but integrity.py reads from PostgreSQL — separate systems
 - 184 predictions stuck as overdue in PostgreSQL (auto-expiry runs but hasn't caught up yet)
-- Health score: 53.5/100 (3 errors: stale predictions 610min, 184 overdue evals, stale prices)
+- Health score: 70.0/100 after Bug #16 fix (up from 53.5) (3 errors: stale predictions 610min, 184 overdue evals, stale prices)
 - Key insight: run_audit(auto_fix=False) called everywhere, but expiry gate was removed so it runs anyway
 
 ## FOR FUTURE AGENTS
