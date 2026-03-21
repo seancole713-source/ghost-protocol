@@ -116,8 +116,8 @@ The owner builds across many chat sessions — this prevents repeated confusion.
 - Bug #16 (watchlist change_pct=0) FIXED — turbo_provider now passes prev_close, endpoint calculates change_pct
 - EXPIRE_HOURS lowered 168->72 (Session 3) — overdue predictions should decline over time
 - core/prediction_tracker.py uses SQLite but integrity.py reads from PostgreSQL — separate systems
-- 184 predictions stuck as overdue in PostgreSQL (auto-expiry runs but hasn't caught up yet)
-- Health score: 70.0/100 after Bug #16 fix (up from 53.5) (3 errors: stale predictions 610min, 184 overdue evals, stale prices)
+- 184 predictions stuck as overdue in PostgreSQL (auto-expiry runs but FIXED: reconciler had 30d floor + DESC order added to get_pending_outcomes)
+- Health score: 64.0/100 after Bug #16 fix (up from 53.5) (3 errors: stale predictions 610min, 184 overdue evals, stale prices)
 - Key insight: run_audit(auto_fix=False) called everywhere, but expiry gate was removed so it runs anyway
 
 ## FOR FUTURE AGENTS
