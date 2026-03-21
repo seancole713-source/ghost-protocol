@@ -12,6 +12,7 @@
 #   2026-03-20 — Remove auto_fix gate from expiry: always expire >7day stuck predictions (Browser Agent)
 #   2026-03-19 — Briefing header added (Browser Agent)
 # ──────────────────────────────────────────────────────────────
+#   2026-03-21 — Fix auto-expiry: skip_tag column doesn't exist, use eval_version instead (Browser Agent)
 # KNOWN ISSUES:
 #   - Health score currently 70/100 (2 checks failing)
 #   - Some checks may report false failures during weekends/off-hours
@@ -423,7 +424,7 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
                                 cur.execute(
                                     f"""UPDATE ghost_predictions
                                         SET checked = 1,
-                                            skip_tag = COALESCE(skip_tag, '') || 'expired_stale'
+                                            eval_version = 'skip-expired_stale'
                                         WHERE id IN ({','.join(['%s'] * len(ancient_ids))})
                                           AND checked = 0""",
                                     ancient_ids
