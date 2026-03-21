@@ -967,8 +967,10 @@ body {
 
 
 /* ═══════════════════════════════════════
-   RESPONSIVE
+   RESPONSIVE (Enhanced for mobile devices)
    ═══════════════════════════════════════ */
+
+/* Large tablets and below */
 @media (max-width: 1200px) {
     .content-with-sidebar {
         grid-template-columns: 1fr;
@@ -976,17 +978,208 @@ body {
     .content-sidebar {
         position: static;
         max-height: none;
+        margin-top: 20px;
+    }
+    .picks-grid {
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 
+/* Tablets and small laptops */
+@media (max-width: 992px) {
+    #main-area {
+        padding: 16px;
+    }
+    .picks-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    .acc-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .history-stats {
+        flex-wrap: wrap;
+    }
+}
+
+/* Mobile landscape and tablets portrait */
 @media (max-width: 768px) {
     :root {
         --sidebar-w: 0px;
+        --ticker-h: auto;
+        --right-sidebar-w: 0px;
     }
-    #left-sidebar { display: none; }
-    #main-area { padding: 12px; }
-    .picks-grid { grid-template-columns: 1fr; }
-    .acc-grid { grid-template-columns: repeat(2, 1fr); }
-    .history-stats { flex-direction: column; }
-    #market-ticker { font-size: 10px; }
+    
+    /* Hide left sidebar navigation */
+    #left-sidebar { 
+        display: none; 
+    }
+    
+    /* Full width main content */
+    #main-area { 
+        margin-left: 0;
+        padding: 12px;
+        width: 100%;
+    }
+    
+    /* Compact market ticker */
+    #market-ticker {
+        height: auto;
+        padding: 8px 0;
+    }
+    
+    .ticker-strip {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 8px;
+        padding: 0 12px;
+    }
+    
+    .ticker-item {
+        font-size: 11px;
+        padding: 4px 8px;
+    }
+    
+    .ticker-sep {
+        display: none;
+    }
+    
+    /* Single column picks */
+    .picks-grid { 
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    /* Compact pick cards */
+    .pick-card {
+        padding: 12px;
+    }
+    
+    .pick-header h3 {
+        font-size: 18px;
+    }
+    
+    .pick-price {
+        font-size: 14px;
+    }
+    
+    /* 2-column accuracy grid */
+    .acc-grid { 
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    
+    .acc-card {
+        padding: 12px;
+    }
+    
+    /* Stacked history stats */
+    .history-stats { 
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    /* Compact tables */
+    .data-table {
+        font-size: 12px;
+    }
+    
+    .data-table td, .data-table th {
+        padding: 8px 6px;
+    }
+    
+    /* Horizontal scroll for wide tables */
+    .table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Stack filter buttons */
+    .filter-row {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    
+    .filter-btn {
+        font-size: 11px;
+        padding: 6px 12px;
+    }
 }
+
+/* Mobile portrait (small phones) */
+@media (max-width: 480px) {
+    #main-area {
+        padding: 8px;
+    }
+    
+    .page-header h1 {
+        font-size: 20px;
+    }
+    
+    .picks-grid {
+        gap: 10px;
+    }
+    
+    .pick-card {
+        padding: 10px;
+    }
+    
+    .pick-header h3 {
+        font-size: 16px;
+    }
+    
+    .pick-meta {
+        font-size: 10px;
+    }
+    
+    .acc-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    .acc-card {
+        padding: 10px;
+    }
+    
+    .acc-value {
+        font-size: 24px;
+    }
+    
+    .data-table {
+        font-size: 11px;
+    }
+    
+    .data-table td, .data-table th {
+        padding: 6px 4px;
+    }
+    
+    /* Hide less critical columns on tiny screens */
+    .data-table .col-optional {
+        display: none;
+    }
+    
+    .filter-btn {
+        font-size: 10px;
+        padding: 5px 10px;
+    }
+}
+
+/* Extra small devices (iPhone SE, etc) */
+@media (max-width: 375px) {
+    .pick-header h3 {
+        font-size: 14px;
+    }
+    
+    .pick-price {
+        font-size: 12px;
+    }
+    
+    .acc-value {
+        font-size: 20px;
+    }
+    
+    .acc-label {
+        font-size: 10px;
+    }
+}
+

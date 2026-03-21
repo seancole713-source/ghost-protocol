@@ -908,10 +908,50 @@ class StockEngine:
         except NameError:
             sector_adj = 0
         
+        # Regime-aware adjustment (boost in favorable regimes)
+        regime_adj = 0.0
+        try:
+            from core.regime_detector import RegimeDetector
+            detector = RegimeDetector()
+            
+            # Get recent prices for SPY to detect regime
+            # Use cached detector result if available
+            import state
+            regime_cache_key = "regime_detector_cache"
+            regime_cache_ttl = 300  # 5 minutes
+            
+            cached = getattr(state, regime_cache_key, None)
+            if cached and (datetime.utcnow() - cached["timestamp"]).total_seconds() < regime_cache_ttl:
+                regime_result = cached["result"]
+            else:
+                # Fetch SPY prices for regime detection
+                spy_prices = []  # TODO: Wire in actual SPY price history
+                regime_result = detector.detect_regime(spy_prices) if spy_prices else {"regime": "SIDEWAYS", "confidence": 0.5}
+                setattr(state, regime_cache_key, {"result": regime_result, "timestamp": datetime.utcnow()})
+            
+            regime = regime_result.get("regime", "SIDEWAYS")
+            regime_confidence = regime_result.get("confidence", 0.5)
+            
+            # Apply regime-aware adjustments
+            if regime == "BULL" and direction == "UP":
+                regime_adj = 0.03 * regime_confidence  # Boost UP signals in bull market
+                all_reasons.append(f"Bull regime (+{regime_adj:.1%})")
+            elif regime == "BEAR" and direction == "DOWN":
+                regime_adj = 0.03 * regime_confidence  # Boost DOWN signals in bear market
+                all_reasons.append(f"Bear regime (+{regime_adj:.1%})")
+            elif regime == "VOLATILE":
+                regime_adj = -0.02  # Reduce confidence in volatile regimes
+                all_reasons.append(f"Volatile regime ({regime_adj:.1%})")
+            
+            LOGGER.info(f"[{symbol}] Regime: {regime} (conf={regime_confidence:.0%}), adj={regime_adj:+.1%}")
+        except Exception as e:
+            LOGGER.warning(f"[{symbol}] Regime detector failed: {e}")
+            regime_adj = 0.0
+        
         # Penalty for high VIX
         vix_penalty = max(0, (vix - 15) * 0.01) if vix else 0
         
-        confidence = base_confidence + conf_boost + intel_adj + news_adj + sector_adj - vix_penalty
+        confidence = base_confidence + conf_boost + intel_adj + news_adj + sector_adj + regime_adj - vix_penalty
         # HARD CAP at 85% - we only have 52% win rate, no justification for higher
         confidence = max(0.1, min(0.85, confidence))
         
