@@ -40,9 +40,9 @@
 ## PHASE 3: DISPLAY & COCKPIT UI (Current: 6/10 → Target: 10/10)
 > The dashboard should look professional and show all data correctly.
 
-- [ ] 3.1 Fix P&L chart on Financials page — chart area is blank, API has data (api/v4/history has pnl field)
-- [ ] 3.2 Fix Stocks page — only 3 symbols (AAPL, NVDA, WOLF), all showing HOLD with "--" confidence
-- [ ] 3.3 Fix Crypto page — only 3 symbols (BTC, ETH, SOL), all showing HOLD with "--" confidence
+- [x] 3.1 Fix P&L chart on Financials page — chart area is blank, API has data (api/v4/history has pnl field) — **FIXED 2026-03-21**
+- [x] 3.2 Fix Stocks page — only 3 symbols (AAPL, NVDA, WOLF), all showing HOLD with "--" confidence — **FIXED 2026-03-21**
+- [x] 3.3 Fix Crypto page — only 3 symbols (BTC, ETH, SOL), all showing HOLD with "--" confidence — **FIXED 2026-03-21**
 - [ ] 3.4 Add confidence scores to watchlist display (currently all show "--")
 - [ ] 3.5 Add actual price change data to watchlist (currently all +0.00% — market is closed but should show last close)
 - [ ] 3.6 Populate News page with actual articles from News Brain
