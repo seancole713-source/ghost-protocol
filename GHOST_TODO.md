@@ -47,7 +47,7 @@
 - [ ] 2.6 Ensure World Feed Fusion is actually fusing news + sentiment into predictions
 - [x] 2.7 Add market hours awareness — stocks should not predict during off-hours — **ALREADY IMPLEMENTED**: auto_prediction_loop.py has _is_market_hours() check
 
-## PHASE 3: DISPLAY & COCKPIT UI (Current: 6/10 → Target: 10/10)
+## PHASE 3: DISPLAY & COCKPIT UI (Current: 10/10 → Target: 10/10) ✅
 > The dashboard should look professional and show all data correctly.
 
 - [x] 3.1 Fix P&L chart on Financials page — chart area is blank, API has data (api/v4/history has pnl field) — **FIXED 2026-03-21**
@@ -57,7 +57,7 @@
 - [x] 3.5 Add actual price change data to watchlist (currently all +0.00% — market is closed but should show last close) — **FIXED 2026-03-21 (cf1230b): Price changes calculated from prev_close**
 - [x] 3.6 Populate News page with actual articles from News Brain — **FIXED: API wired, news rendering functional (rate-limited for protection)**
 - [x] 3.7 Add win/loss streaks and trends to History page — **FIXED 2026-03-21 (cf1230b): Streak tracking in History tab**
-- [ ] 3.8 Add accuracy charts (daily/weekly/monthly trend lines)
+- [x] 3.8 Add accuracy charts (daily/weekly/monthly trend lines) — **FIXED 2026-03-21 (5280c13): Chart.js accuracy trends with 7D/30D/90D toggles**
 - [x] 3.9 Make pick cards show time remaining until "Done by" date — **FIXED 2026-03-21 (cf1230b): Time remaining countdown (Xd/Xh/Xm)**
 - [x] 3.10 Add mobile-responsive layout (cockpit is currently desktop-only) — **FIXED 2026-03-21 (5f27e09): Enhanced responsive CSS with 5 breakpoints**
 

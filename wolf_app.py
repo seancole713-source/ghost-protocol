@@ -230,6 +230,14 @@ try:
 except Exception as e:
     print(f"[INIT] ⚠️  Accuracy trends router unavailable: {e}")
 
+# Mount Logging Dashboard API (Phase 5.3 - structured logs)
+try:
+    from routes.logging_api import router as logging_router
+    APP.include_router(logging_router, tags=["logs"])
+    print("[INIT] ✅ Logging dashboard router mounted")
+except Exception as e:
+    print(f"[INIT] ⚠️  Logging router unavailable: {e}")
+
 # Mount Demo Endpoints (provides instant testing)
 try:
     from api.demo_endpoints import router as demo_router

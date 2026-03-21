@@ -619,7 +619,7 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
             "TELEGRAM_CHAT_ID": "Telegram — picks won't be delivered",
         }
         optional_vars = {
-            "ALPACA_API_KEY": "Alpaca trading disabled",
+            "ALPACA_KEY_ID": "Alpaca trading disabled",
             "ALPACA_SECRET_KEY": "Alpaca trading disabled",
         }
 
@@ -1553,7 +1553,8 @@ def run_audit(auto_fix: bool = True) -> Dict[str, Any]:
     # ══════════════════════════════════════════════════════════════
     checks_run.append("Broker Health")
     try:
-        alpaca_key = os.environ.get("ALPACA_API_KEY")
+        # Fixed: Check correct env var names (ALPACA_KEY_ID not ALPACA_API_KEY)
+        alpaca_key = os.environ.get("ALPACA_KEY_ID")
         alpaca_secret = os.environ.get("ALPACA_SECRET_KEY")
 
         if alpaca_key and alpaca_secret:
