@@ -991,6 +991,31 @@ class StockEngine:
             target_price = price
             stop_loss = price
         
+        # VALIDATION: Check risk/reward ratio
+        # For UP: reward = target-entry, risk = entry-stop
+        # For DOWN: reward = entry-target, risk = stop-entry
+        if direction == "UP":
+            reward = target_price - entry_price
+            risk = entry_price - stop_loss
+        elif direction == "DOWN":
+            reward = entry_price - target_price
+            risk = stop_loss - entry_price
+        else:
+            reward = 0
+            risk = 0
+        
+        if risk > 0 and reward > 0:
+            risk_reward_ratio = reward / risk
+            if risk_reward_ratio < 1.0:
+                LOGGER.warning(
+                    f"⚠️ [{symbol}] Poor risk/reward {risk_reward_ratio:.2f}:1 "
+                    f"(reward={reward:.2f}, risk={risk:.2f}) - consider rejecting"
+                )
+                # Optionally reduce confidence for bad R:R
+                if risk_reward_ratio < 0.75:
+                    confidence = max(0.1, confidence * 0.9)  # 10% penalty
+                    LOGGER.info(f"🔻 [{symbol}] Confidence penalized to {confidence:.0%} due to bad R:R")
+        
         # Step 11: Magnitude Estimation (HOW MUCH will it move?)
         # Uses ATR + volatility + confidence to estimate expected % move
         atr_pct = indicators.get("atr_pct", 0)

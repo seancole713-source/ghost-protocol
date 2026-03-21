@@ -247,6 +247,33 @@ function renderPicks() {
         const gainPct = p.gain_pct != null ? Math.abs(p.gain_pct).toFixed(1) : '3.0';
         const returnVal = p.gain_pct != null ? (100 + Math.abs(p.gain_pct)).toFixed(2) : '103.00';
         const deadline = p.done_by || '--';
+        
+        // Calculate time remaining until deadline
+        let timeRemaining = '';
+        if (p.expires_at) {
+            try {
+                const expiresMs = typeof p.expires_at === 'number' ? p.expires_at * 1000 : new Date(p.expires_at).getTime();
+                const nowMs = Date.now();
+                const diffMs = expiresMs - nowMs;
+                
+                if (diffMs > 0) {
+                    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+                    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                    if (hours > 48) {
+                        const days = Math.floor(hours / 24);
+                        timeRemaining = ` (${days}d left)`;
+                    } else if (hours > 0) {
+                        timeRemaining = ` (${hours}h ${minutes}m left)`;
+                    } else {
+                        timeRemaining = ` (${minutes}m left)`;
+                    }
+                } else {
+                    timeRemaining = ' (EXPIRED)';
+                }
+            } catch (e) {
+                timeRemaining = '';
+            }
+        }
 
         const status = (p.status || 'pending').toLowerCase();
         let statusClass = 'pending', statusLabel = 'PENDING';
@@ -261,7 +288,7 @@ function renderPicks() {
                 <div class="pick-row"><span class="pick-label">Get in at</span><span class="pick-val">${entry}</span></div>
                 <div class="pick-row"><span class="pick-label">Get out at</span><span class="pick-val green">${target} (you make ${gainPct}%)</span></div>
                 <div class="pick-row"><span class="pick-label">Run away at</span><span class="pick-val red">${stop}</span></div>
-                <div class="pick-row"><span class="pick-label">Done by</span><span class="pick-val">${deadline}</span></div>
+                <div class="pick-row"><span class="pick-label">Done by</span><span class="pick-val">${deadline}${timeRemaining}</span></div>
             </div>
             <div class="pick-footer">
                 <span class="pick-return green">$100 in → $${returnVal} back</span>
@@ -468,21 +495,51 @@ function renderCryptoMovers() {
 
 function buildWatchlistRow(w) {
     const price = fmtPrice(w.price);
-    const changePct = w.change_pct || 0;
-    const changeAmt = w.change || 0;
+    
+    // FIX: Calculate change_pct from current price vs previous price if available
+    let changePct = w.change_pct || 0;
+    let changeAmt = w.change || 0;
+    
+    // If change_pct is provided, use it; otherwise try to calculate
+    if (changePct === 0 && w.price && w.prev_close && w.prev_close > 0) {
+        changePct = ((w.price - w.prev_close) / w.prev_close) * 100;
+    }
+    
+    // Calculate dollar change if we have both prices
+    if (changeAmt === 0 && w.price && w.prev_close) {
+        changeAmt = w.price - w.prev_close;
+    }
+    
     const changeClass = changePct >= 0 ? 'green' : 'red';
-    const changeStr = (changeAmt >= 0 ? '+' : '') + changeAmt.toFixed(2);
+    const changeStr = (changeAmt >= 0 ? '+$' : '-$') + Math.abs(changeAmt).toFixed(2);
     const changePctStr = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
 
-    const conf = w.ghost_confidence || 0;
+    // FIX: Look for confidence in multiple places (nested prediction object, or flat)
+    let conf = w.ghost_confidence || 0;
+    if (conf === 0 && w.prediction && w.prediction.confidence) {
+        conf = w.prediction.confidence * 100; // Convert 0-1 to percentage
+    }
+    if (conf > 1 && conf <= 100) {
+        // Already in percentage form
+    } else if (conf > 0 && conf <= 1) {
+        conf = conf * 100; // Convert decimal to percentage
+    }
+    
     let dirLabel, dirClass;
-    if (conf < 50) { dirLabel = 'HOLD'; dirClass = 'hold'; }
-    else {
-        const dir = (w.ghost_direction || '').toUpperCase();
+    let direction = w.ghost_direction || '';
+    if (!direction && w.prediction && w.prediction.direction) {
+        direction = w.prediction.direction;
+    }
+    
+    if (conf < 50) { 
+        dirLabel = 'HOLD'; 
+        dirClass = 'hold'; 
+    } else {
+        const dir = direction.toUpperCase();
         dirLabel = dir === 'UP' ? '↑ UP' : dir === 'DOWN' ? '↓ DOWN' : 'HOLD';
         dirClass = dir === 'UP' ? 'up' : dir === 'DOWN' ? 'down' : 'hold';
     }
-    const confStr = conf > 0 ? conf.toFixed(0) + '%' : '--';
+    const confStr = conf > 0 ? Math.round(conf) + '%' : '--';
 
     return `<tr>
         <td class="sym-cell">${w.symbol}</td>
@@ -510,11 +567,48 @@ function renderHistory() {
     const losses = _history.filter(t => t.outcome === 'loss').length;
     const totalPnl = _history.reduce((s, t) => s + (t.pnl || 0), 0);
     const winRate = _history.length > 0 ? (wins / _history.length * 100).toFixed(1) : '--';
+    
+    // Calculate current win/loss streak
+    let currentStreak = 0;
+    let streakType = '';
+    if (_history.length > 0) {
+        // Sort by resolved_at or predicted_at to get chronological order
+        const sorted = [..._history].sort((a, b) => {
+            const timeA = a.resolved_at || a.predicted_at || 0;
+            const timeB = b.resolved_at || b.predicted_at || 0;
+            return new Date(timeB).getTime() - new Date(timeA).getTime();
+        });
+        
+        // Count streak from most recent
+        const mostRecent = sorted[0]?.outcome;
+        if (mostRecent === 'win' || mostRecent === 'loss') {
+            streakType = mostRecent;
+            for (const trade of sorted) {
+                if (trade.outcome === streakType) {
+                    currentStreak++;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+    
+    const streakStr = currentStreak > 0 
+        ? `${currentStreak} ${streakType === 'win' ? 'win' : 'loss'}${currentStreak > 1 ? 's' : ''} in a row`
+        : 'No active streak';
 
     setText('hist-total', _history.length);
     setTextColor('hist-wins', wins, 'green');
     setTextColor('hist-losses', losses, 'red');
     setText('hist-winrate', winRate === '--' ? '--' : winRate + '%');
+    
+    // Update streak display
+    const streakEl = document.getElementById('hist-streak');
+    if (streakEl) {
+        streakEl.textContent = streakStr;
+        streakEl.className = 'stat-val ' + (streakType === 'win' ? 'green' : streakType === 'loss' ? 'red' : '');
+    }
+    
     const pnlEl = document.getElementById('hist-pnl');
     if (pnlEl) {
         pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + '$' + Math.abs(totalPnl).toFixed(2);
