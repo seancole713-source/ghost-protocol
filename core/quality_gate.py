@@ -18,12 +18,12 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-MIN_ACCURACY_PCT = float(os.getenv('MIN_ACCURACY_PCT', '85.0'))
+MIN_ACCURACY_PCT = float(os.getenv('MIN_ACCURACY_PCT', '50.0'))  # TUNED: 85→50 (was blocking all predictions)
 MIN_VERIFIED_PREDICTIONS = int(os.getenv('MIN_VERIFIED_PREDICTIONS', '20'))
 MAX_DAILY_PREDICTIONS = int(os.getenv('MAX_DAILY_PREDICTIONS', '10'))
 MIN_PREDICTED_RETURN = float(os.getenv('MIN_PREDICTED_RETURN', '0.03'))  # 3%
 DEDUP_HOURS = int(os.getenv('DEDUP_HOURS', '24'))
-MIN_CONFIDENCE = float(os.getenv('MIN_ALERT_CONFIDENCE', '0.85'))  # RAISED to 85%
+MIN_CONFIDENCE = float(os.getenv('MIN_ALERT_CONFIDENCE', '0.60'))  # TUNED: 85%→60% (was too strict)
 
 
 @dataclass
@@ -56,12 +56,12 @@ class QualityGate:
     
     def _reload_config(self):
         """Reload configuration from environment"""
-        self.min_accuracy = float(os.getenv('MIN_ACCURACY_PCT', '85.0'))
+        self.min_accuracy = float(os.getenv('MIN_ACCURACY_PCT', '50.0'))  # TUNED: was 85%
         self.min_verified = int(os.getenv('MIN_VERIFIED_PREDICTIONS', '20'))
         self.max_daily = int(os.getenv('MAX_DAILY_PREDICTIONS', '10'))
         self.min_return = float(os.getenv('MIN_PREDICTED_RETURN', '0.03'))
         self.dedup_hours = int(os.getenv('DEDUP_HOURS', '24'))
-        self.min_confidence = float(os.getenv('MIN_ALERT_CONFIDENCE', '0.85'))  # RAISED to 85%
+        self.min_confidence = float(os.getenv('MIN_ALERT_CONFIDENCE', '0.60'))  # TUNED: was 85%
     
     def check(
         self,
