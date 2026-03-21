@@ -138,21 +138,27 @@ def _check_price_feed() -> dict[str, Any]:
             price_func = _fallback_price
 
         ok_count = 0
-        # Use blue-chip symbols for feed checks (Step 5, Mar 17 2026)
-        # Was PANW — obscure stock that fails intermittently. AAPL is the most
-        # liquid stock on Earth; if its feed is down, something is truly broken.
-        for sym, mkt in [("BTC", "crypto"), ("AAPL", "stocks")]:
+        # Phase 2.1 Fix: Check 3 feeds instead of 2 for more accurate health status
+        # Use blue-chip symbols: BTC (crypto), AAPL (stocks), ETH (crypto)
+        # If 2/3 are working, system is healthy
+        test_symbols = [("BTC", "crypto"), ("AAPL", "stocks"), ("ETH", "crypto")]
+        
+        for sym, mkt in test_symbols:
             try:
                 result = price_func(sym, mkt)
                 if result and result[0] and result[0] > 0:
                     ok_count += 1
             except Exception:
                 pass
+        
+        total_feeds = len(test_symbols)
         if ok_count == 0:
-            return {"pass": False, "severity": "fail", "detail": "0/2 feeds responding — ALL price data offline"}
+            return {"pass": False, "severity": "fail", "detail": f"0/{total_feeds} feeds responding — ALL price data offline"}
         if ok_count == 1:
-            return {"pass": True, "severity": "warn", "detail": "1/2 feeds responding — partial outage"}
-        return {"pass": True, "severity": "pass", "detail": "2/2 feeds responding"}
+            return {"pass": False, "severity": "fail", "detail": f"1/{total_feeds} feeds responding — critical outage"}
+        if ok_count == 2:
+            return {"pass": True, "severity": "warn", "detail": f"2/{total_feeds} feeds responding — partial degradation"}
+        return {"pass": True, "severity": "pass", "detail": f"{total_feeds}/{total_feeds} feeds responding"}
     except Exception as e:
         return {"pass": False, "severity": "fail", "detail": str(e)[:80]}
 

@@ -156,14 +156,30 @@ class TurboProvider:
             from wolf_helpers import _fetch_price_twelvedata
         except ImportError:
             _fetch_price_twelvedata = None
+        
+        # Import FMP provider (Phase 2.4)
+        try:
+            from core.providers.fmp_provider import get_fmp_provider
+            _fmp_provider = get_fmp_provider()
+        except ImportError:
+            _fmp_provider = None
 
-        # Define provider chain (PAID FIRST: AlphaVantage → Polygon → yfinance → Yahoo HTTP → TwelveData)
+        # Define provider chain (PAID FIRST: AlphaVantage → Polygon → yfinance → Yahoo HTTP → FMP → TwelveData)
         providers: List[Tuple[str, Callable[[], Any]]] = [
             ("alphavantage", lambda: _fetch_price_alphavantage(symbol_upper)),
             ("polygon", lambda: _fetch_price_polygon(symbol_upper)),
             ("yfinance", lambda: _fetch_price_yfinance(symbol_upper)),
             ("yahoo_http", lambda: _fetch_price_yahoo_http(symbol_upper)),
         ]
+        
+        # Add FMP as additional fallback (Phase 2.4 - free tier, 250 calls/day)
+        if _fmp_provider and _fmp_provider.enabled:
+            async def _fmp_wrapper():
+                result = await _fmp_provider.get_quote(symbol_upper)
+                if result and result.get("price"):
+                    return (result["price"],)
+                return None
+            providers.append(("fmp", lambda: asyncio.run(_fmp_wrapper())))
         
         # Add TwelveData as final fallback (free tier with demo key)
         if _fetch_price_twelvedata:
@@ -314,13 +330,29 @@ class TurboProvider:
                 f"Import error: {e}",
                 time.monotonic() - start,
             )
+        
+        # Import additional Coinbase provider (Phase 2.4)
+        try:
+            from core.providers.coinbase_provider import get_coinbase_provider
+            _coinbase_provider = get_coinbase_provider()
+        except ImportError:
+            _coinbase_provider = None
 
-        # Define provider chain (Binance → CoinGecko → Coinbase)
+        # Define provider chain (Binance → CoinGecko → Coinbase → Coinbase API)
         providers: List[Tuple[str, Callable[[], Any]]] = [
             ("binance", lambda: get_price_binance(symbol_upper)),
             ("coingecko", lambda: get_price_coingecko(symbol_upper)),
             ("coinbase", lambda: get_price_coinbase(symbol_upper)),
         ]
+        
+        # Add Coinbase API provider as additional fallback (Phase 2.4)
+        if _coinbase_provider:
+            async def _coinbase_wrapper():
+                result = await _coinbase_provider.get_spot_price(symbol_upper)
+                if result and result.get("price"):
+                    return (result["price"],)
+                return None
+            providers.append(("coinbase_api", lambda: asyncio.run(_coinbase_wrapper())))
 
         # Try each provider with timeout
         logs: List[str] = []
