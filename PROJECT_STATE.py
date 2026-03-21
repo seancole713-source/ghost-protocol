@@ -353,9 +353,46 @@ CHANGELOG = [
 
 
 # ═══════════════════════════════════════════════════════════════════
-# SECTION 8: BRIEFING HEADER TEMPLATE
+# SECTION 9: BRIEFING HEADER TEMPLATE
 # ═══════════════════════════════════════════════════════════════════
 # Paste this template at the top of every .py file, filling in the fields.
+
+# ═══════════════════════════════════════════════════════════════════
+# SECTION 8: GHOST TODO — REBUILD TRACKER
+# ═══════════════════════════════════════════════════════════════════
+# Master rebuild checklist: GHOST_TODO.md (root of repo)
+# Goal: Take Ghost from 5.5/10 to 10/10
+# Rule: Items checked off ONLY after tested and verified in production
+# Status: Created 2026-03-21 (Session 6), 53 items across 6 phases
+#
+# Phase 1: AI Brain & Accuracy (10 items) — PRIORITY #1
+# Phase 2: Data Feeds & News (7 items)
+# Phase 3: Display & Cockpit UI (10 items)
+# Phase 4: Prediction Engine Hardening (7 items)
+# Phase 5: Infrastructure & Reliability (8 items)
+# Phase 6: Testing & Validation (8 items)
+#
+# Full checklist with checkboxes: See GHOST_TODO.md
+# Scoring criteria (12 items must ALL be true for 10/10): See GHOST_TODO.md
+
+GHOST_TODO_TRACKER = {
+    "file": "GHOST_TODO.md",
+    "created": "2026-03-21",
+    "current_score": 5.5,
+    "target_score": 10.0,
+    "total_items": 53,
+    "completed_items": 0,
+    "phases": {
+        "phase_1_ai_brain": {"items": 10, "done": 0, "status": "NOT_STARTED"},
+        "phase_2_data_feeds": {"items": 7, "done": 0, "status": "NOT_STARTED"},
+        "phase_3_display_ui": {"items": 10, "done": 0, "status": "NOT_STARTED"},
+        "phase_4_predictions": {"items": 7, "done": 0, "status": "NOT_STARTED"},
+        "phase_5_infrastructure": {"items": 8, "done": 0, "status": "NOT_STARTED"},
+        "phase_6_testing": {"items": 8, "done": 0, "status": "NOT_STARTED"},
+    },
+    "scoring_criteria": 12,
+    "scoring_met": 0,
+}
 
 BRIEFING_HEADER_TEMPLATE = '''
 # ══════════════════════════════════════════════════════════════
