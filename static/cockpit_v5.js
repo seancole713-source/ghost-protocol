@@ -135,7 +135,26 @@ async function loadAll() {
     _subsystems = val(9);
 
     if (picksData?.ok) _picks = picksData.picks || [];
-    if (watchData?.ok) _watchlist = watchData.items || watchData.watchlist || [];
+    if (watchData?.ok) {
+        // FIX (Mar 21, 2026): Flatten prediction nested object into watchlist items
+        // API returns {prediction: {direction, confidence}}, frontend expects ghost_direction, ghost_confidence
+        const items = watchData.items || watchData.watchlist || [];
+        _watchlist = items.map(item => {
+            // If item has nested prediction object, flatten it
+            if (item.prediction) {
+                return {
+                    ...item,
+                    ghost_direction: item.prediction.direction || 'HOLD',
+                    ghost_confidence: item.prediction.confidence || 0,
+                    price: item.current_price || item.price || 0,
+                    // Calculate change_pct if missing
+                    change_pct: item.change_pct || 0,
+                    type: item.asset_type || item.type || 'unknown'
+                };
+            }
+            return item;
+        });
+    }
     if (newsData?.ok) _news = newsData.articles || newsData.feed || [];
     if (histData?.ok) _history = histData.trades || [];
 
@@ -1215,15 +1234,16 @@ function renderPnlChart() {
     canvas.width = width;
     canvas.height = height;
 
-    // Sort history by date, compute cumulative P&L
+    // Sort history by resolved_at timestamp (most reliable chronological order)
     const sorted = [..._history]
-        .filter(t => t.predicted_at || t.resolved_at)
-        .sort((a, b) => new Date(a.predicted_at || a.resolved_at) - new Date(b.predicted_at || b.resolved_at));
+        .filter(t => t.resolved_at && t.pnl != null)
+        .sort((a, b) => a.resolved_at - b.resolved_at);
 
+    // FIX (Mar 21, 2026): Use actual pnl field from API, not recalculated from actual_move_pct
+    // The API provides dollar P&L already computed. Previous code assumed all moves = same $ value.
     let cumPnl = 0;
     const points = sorted.map(t => {
-        const pnl = t.outcome === 'win' ? (t.actual_move_pct || 0) : -(t.actual_move_pct || 0);
-        cumPnl += pnl;
+        cumPnl += (t.pnl || 0);
         return cumPnl;
     });
 
