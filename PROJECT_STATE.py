@@ -2,7 +2,7 @@
 PROJECT_STATE.py — Ghost Protocol Self-Updating Project Briefing
 =================================================================
 Generated: 2026-03-19
-Last Updated: 2026-03-21 (Session 5)
+Last Updated: 2026-03-21 22:00 UTC (Session 6 - Next Steps)
 Author: Browser Automation Agent (Claude)
 
 READ THIS FILE FIRST before making any changes to Ghost Protocol.
@@ -119,14 +119,21 @@ MODULE_STATUS = {
     # ── core/ — Intelligence ──
     "core/accuracy_tracker.py":    {"status": "STABLE", "role": "Accuracy tracking + _get_conn() = @contextmanager", "last_modified": "2026-03-19", "lines": "~350"},
     "core/learning_loop.py":       {"status": "STABLE", "role": "Learning brain — self-correction", "last_modified": "2026-03-18", "lines": "~500"},
+    "core/ghost_learning_brain.py":{"status": "FIXED",  "role": "Auto-inversion system (re-enabled at 30%)", "last_modified": "2026-03-21", "notes": "Inversions re-enabled (was 0.0%)"},
     "core/integrity.py":           {"status": "STABLE", "role": "40-check system health audit (run_audit)", "last_modified": "2026-03-18", "lines": "~800"},
-    "core/ghost_brain.py":         {"status": "UNTOUCHED","role": "Core ML ghost brain", "last_modified": "unknown", "lines": "unknown"},
+    "core/ghost_brain.py":         {"status": "FIXED",  "role": "Core ML ghost brain", "last_modified": "2026-03-21", "notes": "INVERT_BELOW 0.0 → 30.0"},
     "core/confidence_calibrator.py":{"status": "UNTOUCHED","role": "Confidence adjustment", "last_modified": "unknown", "lines": "unknown"},
-    "core/quality_gate.py":        {"status": "UNTOUCHED","role": "Prediction quality gating", "last_modified": "unknown", "lines": "unknown"},
+    "core/quality_gate.py":        {"status": "FIXED",  "role": "Prediction quality gating", "last_modified": "2026-03-21", "notes": "MIN_CONFIDENCE 85% → 60%, MIN_ACCURACY 85% → 50%"},
+    "core/performance_gate.py":    {"status": "CRITICAL_FIX", "role": "Dynamic symbol filtering based on accuracy", "last_modified": "2026-03-21", "notes": "CRITICAL: Death spiral #2 fixed (13d2b9b)"},
     "core/prediction_killswitch.py":{"status": "UNTOUCHED","role": "Emergency prediction stop", "last_modified": "unknown", "lines": "unknown"},
-    "core/regime_detector.py":     {"status": "UNTOUCHED","role": "Market regime classification", "last_modified": "unknown", "lines": "unknown"},
+    "core/regime_detector.py":     {"status": "FIXED",  "role": "Market regime classification (BULL/BEAR/SIDEWAYS/VOLATILE)", "last_modified": "2026-03-21", "notes": "Wired into predictions (5f27e09)"},
+    "core/stock_engine.py":        {"status": "FIXED",  "role": "Stock prediction engine with gates", "last_modified": "2026-03-21", "notes": "News sentiment, position sizing, regime detector, explanations wired"},
+    "core/news_sentiment.py":      {"status": "FIXED",  "role": "News sentiment scoring", "last_modified": "2026-03-21", "notes": "Wired into stock_engine (f03171d)"},
+    "core/position_sizer.py":      {"status": "FIXED",  "role": "Kelly Criterion position sizing", "last_modified": "2026-03-21", "notes": "Wired into stock_engine (f03171d)"},
+    "core/ai_memory.py":           {"status": "FIXED",  "role": "Long-term learning memory", "last_modified": "2026-03-21", "notes": "Initialization added to startup (13e4768)"},
     "core/feedback_loop.py":       {"status": "STABLE", "role": "Prediction outcome feedback", "last_modified": "2026-03-18", "lines": "unknown"},
     "core/self_improvement_engine.py":{"status": "UNTOUCHED","role": "Self-improvement automation", "last_modified": "unknown", "lines": "unknown"},
+    "core/auto_prediction_loop.py":{"status": "STABLE", "role": "Main prediction loop (60min interval)", "last_modified": "2026-03-21", "notes": "Uses performance_gate to filter symbols"},
 
     # ── core/ — Trading & Price ──
     "core/indicators.py":      {"status": "FIXED",   "role": "Technical indicators (SMA, EMA, RSI)", "last_modified": "2026-03-19", "notes": "IndentationError fixed"},
@@ -378,20 +385,42 @@ CHANGELOG = [
 GHOST_TODO_TRACKER = {
     "file": "GHOST_TODO.md",
     "created": "2026-03-21",
+    "last_updated": "2026-03-21 22:00 UTC",
     "current_score": 5.5,
     "target_score": 10.0,
-    "total_items": 53,
-    "completed_items": 0,
+    "total_items": 62,
+    "completed_items": 22,
+    "completion_pct": 35.5,
     "phases": {
-        "phase_1_ai_brain": {"items": 10, "done": 0, "status": "NOT_STARTED"},
-        "phase_2_data_feeds": {"items": 7, "done": 0, "status": "NOT_STARTED"},
-        "phase_3_display_ui": {"items": 10, "done": 0, "status": "NOT_STARTED"},
-        "phase_4_predictions": {"items": 7, "done": 0, "status": "NOT_STARTED"},
-        "phase_5_infrastructure": {"items": 8, "done": 0, "status": "NOT_STARTED"},
-        "phase_6_testing": {"items": 8, "done": 0, "status": "NOT_STARTED"},
+        "phase_1_ai_brain": {"items": 10, "done": 8, "status": "80%", "priority": "HIGH"},
+        "phase_2_data_feeds": {"items": 7, "done": 4, "status": "57%", "priority": "HIGH"},
+        "phase_3_display_ui": {"items": 10, "done": 4, "status": "40%", "priority": "MEDIUM"},
+        "phase_4_predictions": {"items": 7, "done": 3, "status": "43%", "priority": "HIGH"},
+        "phase_5_infrastructure": {"items": 8, "done": 4, "status": "50%", "priority": "MEDIUM"},
+        "phase_6_testing": {"items": 8, "done": 4, "status": "50%", "priority": "MEDIUM"},
     },
-    "scoring_criteria": 12,
-    "scoring_met": 0,
+    "scoring_criteria": 18,
+    "scoring_met": 6,
+    "recent_fixes": [
+        "Performance Gate Death Spiral #2 (13d2b9b) - CRITICAL",
+        "Regime Detector wired with SPY prices (7f0b6aa, 5f27e09)",
+        "News sentiment integration (f03171d)",
+        "Dynamic position sizing with Kelly Criterion (f03171d)",
+        "Prediction explanations (f03171d)",
+        "Test suite with 12 tests (5f27e09)",
+        "Database backup system (5f27e09)",
+        "Mobile responsive CSS (5f27e09)",
+        "Health monitoring alerts (09fbcaf)",
+    ],
+    "critical_discovery": {
+        "issue": "Performance Gate Death Spiral #2",
+        "discovered": "2026-03-21 18:30 UTC",
+        "symptom": "No predictions for 392 minutes, all symbols killed",
+        "root_cause": "Gate queries WHERE correct IS NOT NULL, returns 0 rows when no outcomes evaluated yet",
+        "fix": "Allow ALL symbols when query returns 0 rows (innocent until proven guilty)",
+        "commit": "13d2b9b",
+        "impact": "Predictions should resume immediately after deploy"
+    }
 }
 
 BRIEFING_HEADER_TEMPLATE = '''
