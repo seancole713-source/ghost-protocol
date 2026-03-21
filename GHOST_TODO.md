@@ -54,7 +54,7 @@
 ## PHASE 4: PREDICTION ENGINE HARDENING
 > Make predictions reliable, not just frequent.
 
-- [ ] 4.1 Fix prediction staleness — predictions go stale after deploy (214 min gap currently)
+- [x] 4.1 Fix prediction staleness — predictions go stale after deploy (214 min gap currently) — **FIXED 2026-03-21 (13d2b9b): Performance Gate was killing all symbols**
 - [ ] 4.2 Implement prediction scheduling — ensure cycle runs on consistent intervals
 - [ ] 4.3 Add prediction diversity — currently heavy on crypto DOWN predictions
 - [ ] 4.4 Validate entry/exit/stop-loss prices are realistic (some show 3% target with 6% stop = bad risk/reward)
@@ -124,11 +124,32 @@
 | 2026-03-21 | Regime Detector | Wired (5f27e09) | Detects market regime, applies ±3% confidence adjustment |
 | 2026-03-21 | Mobile Responsive | Enhanced (5f27e09) | 5 breakpoints (1200px→375px), single-column mobile layout |
 | 2026-03-21 | Health Monitor | Created | health_monitor.py sends Telegram alerts when health < 85 |
+| 2026-03-21 | Regime Detector Fix | Patched (7f0b6aa) | Wire in actual SPY prices instead of empty list (TODO comment fixed) |
+| 2026-03-21 | **Performance Gate Death Spiral #2** | **FIXED (13d2b9b)** | **Gate was killing ALL symbols (0 active) when no evaluated predictions exist** |
 
-**CURRENT STATUS**: 21/62 items complete (~34%)
+**CURRENT STATUS**: 22/62 items complete (~35%)
 - Phase 1 (AI Brain): 8/10 complete (80%)
 - Phase 2 (Data Feeds): 4/7 complete (57%)
 - Phase 3 (Display): 4/10 complete (40%)
-- Phase 4 (Prediction Engine): 2/7 complete (29%)
+- Phase 4 (Prediction Engine): 3/7 complete (43%)
 - Phase 5 (Infrastructure): 4/8 complete (50%)
 - Phase 6 (Testing): 4/8 complete (50%)
+
+---
+
+## CRITICAL ISSUES DISCOVERED
+
+### Performance Gate Death Spiral #2 (Mar 21, 2026)
+**Symptom**: No new predictions for 392 minutes, health dropped from 93.5 → 64.5, all symbols showing HOLD
+
+**Root Cause**:
+- Performance Gate queries `ghost_predictions WHERE correct IS NOT NULL`
+- New predictions haven't been reconciled yet (no outcome data)
+- Query returns 0 rows → gate interprets as "no symbols exist"
+- Returns empty active set to prediction loop
+- Prediction loop has nothing to predict → stale
+
+**Fix (13d2b9b)**:
+- When query returns 0 rows, allow ALL symbols (innocent until proven guilty)
+- Prevents: no predictions → no data → no predictions (death spiral)
+- Predictions should resume immediately after deploy
