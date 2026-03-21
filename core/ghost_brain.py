@@ -105,7 +105,7 @@ BRAIN_ENABLED = os.getenv("GHOST_BRAIN_ENABLED", "1") == "1"
 #
 # TUNED (Mar 19 2026): EXCLUDE_BELOW raised from 48% to 50% (coin-flip line).
 # A symbol with < 50% brain-accuracy has no edge and should be excluded.
-INVERT_BELOW = float(os.getenv("BRAIN_INVERT_BELOW", "0.0"))  # was 38.0 — intentionally disabled
+INVERT_BELOW = float(os.getenv("BRAIN_INVERT_BELOW", "30.0"))  # RE-ENABLED: Performance Gate now at 25%
 EXCLUDE_BELOW = float(os.getenv("BRAIN_EXCLUDE_BELOW", "50.0"))  # was 48.0 — raised to coin-flip line
 BOOST_ABOVE = float(os.getenv("BRAIN_BOOST_ABOVE", "62.0"))
 STRONG_BOOST_ABOVE = float(os.getenv("BRAIN_STRONG_BOOST", "70.0"))

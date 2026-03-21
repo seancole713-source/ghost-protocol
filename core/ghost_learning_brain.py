@@ -37,7 +37,7 @@ LOGGER = logging.getLogger("ghost.learning_brain")
 
 # ── Configuration ─────────────────────────────────────────────
 BENCH_ACCURACY_THRESHOLD = 45.0    # Below this % → bench (don't recommend)
-INVERT_ACCURACY_THRESHOLD = 0.0    # DISABLED — inversions caused feedback loops (Step 6+9)
+INVERT_ACCURACY_THRESHOLD = 30.0   # RE-ENABLED: Performance Gate now at 25%, safe to invert at 30%
 MIN_EVALUATED_PREDICTIONS = 10     # Need at least this many to judge
 CACHE_TTL_SECONDS = 300            # Refresh from PG every 5 minutes
 RECENCY_WINDOW_DAYS = 14           # Only look at last 14 days of predictions

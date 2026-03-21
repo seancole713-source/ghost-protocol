@@ -204,6 +204,23 @@ async def _on_startup():
     except Exception as e:
         LOGGER.error(f"telegram_alerts_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
     
+    # Initialize AI Memory (persistent long-term memory with PostgreSQL)
+    try:
+        from core.ai_memory import AIMemory
+        import state
+        
+        memory_db_path = _os_module.getenv("AI_MEMORY_DB_PATH", 
+                                           _os_module.path.join(_os_module.getenv("DATA_DIR", "data"), "ai_memory.db"))
+        vector_store = _os_module.getenv("VECTOR_SOURCE", "chromadb")
+        
+        state.AI_MEMORY_STORE = AIMemory(db_path=memory_db_path, vector_store=vector_store)
+        state.AI_MEMORY_RING = []  # Legacy ring buffer (deprecated but still referenced)
+        
+        LOGGER.info(f"[GHOST STARTUP] ✅ AI Memory initialized: {memory_db_path} (vector: {vector_store})")
+    except Exception as e:
+        LOGGER.error(f"ai_memory_init_failed: {e}", extra={"component": "startup"}, exc_info=False)
+        # Non-critical - continue startup
+    
     # Initialize goals from environment
     try:
         from core.goals_tracker import GoalsTracker
