@@ -278,7 +278,7 @@ LAST_SESSION = {
         "Health: started at 61, stabilized at 77/100. Pending: overdue predictions should "
         "drop significantly after EXPIRE_HOURS=72 deploys and next audit runs."
     ),
-    "health_score": 77,
+    "health_score": 87,
     "files_modified": [
         "core/integrity.py (EVAL_OVERDUE_HOURS 12->60, auto-expiry added, auto_fix gate removed, EXPIRE_HOURS 168->72)",
         "static/cockpit_v5.js (Bug #25: P&L chart direction fix)",
@@ -303,7 +303,7 @@ LAST_SESSION = {
         "FIXED: Overdue predictions - should drop after EXPIRE_HOURS=72 kicks in (was 178, expect to drop to ~50-80)",
         "FIXED: Bug #16: watchlist change_pct=0 (price cache architecture issue)",
         "core/prediction_tracker.py uses SQLite (line 268) while predictions are in PostgreSQL",
-        "run_audit(auto_fix=True) is still never called - but expiry now runs without auto_fix gate",
+        "FIXED: Auto-expiry was broken (skip_tag column didn't exist). Now uses eval_version. Health: 87/100",
         "Overall accuracy 41% - model/strategy issue, not a code bug",
     ],
     "key_discoveries": [
