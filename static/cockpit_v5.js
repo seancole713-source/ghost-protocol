@@ -119,6 +119,7 @@ async function loadAll() {
         fetchJSON('/api/v3/intelligence/status'),        // 7 – intelligence hub
         fetchJSON('/api/v3/intelligence/cache'),         // 8 – news brain cache
         fetchJSON('/api/v4/subsystems'),                 // 9 – full subsystem inventory
+        fetchJSON('/api/accuracy/trends?days=30'),       // 10 – accuracy trends (Phase 3.8)
     ]);
 
     const val = i => results[i].status === 'fulfilled' ? results[i].value : null;
@@ -133,6 +134,7 @@ async function loadAll() {
     _intelligence = val(7);
     const newsBrain = val(8);
     _subsystems = val(9);
+    const trendsData = val(10);
 
     if (picksData?.ok) _picks = picksData.picks || [];
     if (watchData?.ok) {
@@ -157,6 +159,12 @@ async function loadAll() {
     }
     if (newsData?.ok) _news = newsData.articles || newsData.feed || [];
     if (histData?.ok) _history = histData.trades || [];
+    
+    // Store accuracy trends for charting (Phase 3.8)
+    if (trendsData?.ok) {
+        window._accuracyTrends = trendsData;
+        renderAccuracyChart();
+    }
 
     // ── Status indicator ──
     setStatus(!!picksData || !!watchData);
@@ -1316,6 +1324,97 @@ function renderFinancials() {
 
     // ── P&L Chart (simple canvas-based) ──
     renderPnlChart();
+}
+
+// ── Phase 3.8: Accuracy Trends Chart ──
+function renderAccuracyChart() {
+    const canvas = document.getElementById('accuracy-chart');
+    if (!canvas || !window._accuracyTrends) return;
+
+    const trends = window._accuracyTrends;
+    const data = trends.daily || [];
+    
+    // Parse dates and accuracy values
+    const labels = data.map(d => d.date);
+    const accuracy = data.map(d => d.accuracy || 0);
+    
+    // Destroy existing chart if it exists
+    if (window._accuracyChartInstance) {
+        window._accuracyChartInstance.destroy();
+    }
+    
+    const ctx = canvas.getContext('2d');
+    window._accuracyChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Accuracy %',
+                data: accuracy,
+                borderColor: '#00ff88',
+                backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                borderWidth: 2,
+                tension: 0.3,
+                fill: true,
+                pointRadius: 3,
+                pointHoverRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const idx = context.dataIndex;
+                            const d = data[idx];
+                            return `Accuracy: ${d.accuracy.toFixed(1)}% (${d.correct}/${d.total})`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: { color: '#aaa' },
+                    grid: { color: '#333' }
+                },
+                x: {
+                    ticks: { 
+                        color: '#aaa',
+                        maxRotation: 45,
+                        minRotation: 45
+                    },
+                    grid: { color: '#333' }
+                }
+            }
+        }
+    });
+    
+    // Wire time toggle buttons
+    const toggles = document.getElementById('accuracy-toggles');
+    if (toggles) {
+        toggles.addEventListener('click', async (e) => {
+            if (!e.target.classList.contains('toggle-btn')) return;
+            
+            // Update active state
+            toggles.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+            e.target.classList.add('active');
+            
+            // Fetch new data
+            const range = e.target.dataset.range;
+            const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+            const newData = await fetchJSON(`/api/accuracy/trends?days=${days}`);
+            
+            if (newData?.ok) {
+                window._accuracyTrends = newData;
+                renderAccuracyChart();
+            }
+        });
+    }
 }
 
 function renderPnlChart() {

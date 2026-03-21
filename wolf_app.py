@@ -222,6 +222,14 @@ try:
 except Exception as e:
     print(f"[INIT] ⚠️  Quality router unavailable: {e}")
 
+# Mount Accuracy Trends API (Phase 3.8 - trend charts)
+try:
+    from routes.accuracy_trends import router as accuracy_trends_router
+    APP.include_router(accuracy_trends_router, tags=["accuracy"])
+    print("[INIT] ✅ Accuracy trends router mounted")
+except Exception as e:
+    print(f"[INIT] ⚠️  Accuracy trends router unavailable: {e}")
+
 # Mount Demo Endpoints (provides instant testing)
 try:
     from api.demo_endpoints import router as demo_router
