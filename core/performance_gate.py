@@ -77,15 +77,14 @@ def _refresh_gate() -> None:
         new_killed: set = set()
         new_watching: set = set()
         
-        # CRITICAL FIX (Mar 21, 2026): If no evaluated predictions exist yet,
-        # don't kill ALL symbols! This creates death spiral.
-        # When query returns 0 rows, allow all symbols (no data = allow trading)
+        # CRITICAL FIX #2 (Mar 21, 2026): If no evaluated predictions exist yet,
+        # don't process ANY rows (which would kill all symbols).
+        # Instead, keep existing caches unchanged (innocent until proven guilty).
+        # If caches are empty (first run), that's fine - get_active_edge_set()
+        # will return the full base_edge set when no symbols are in _killed_symbols.
         if len(rows) == 0:
-            LOGGER.info("⚠️  Performance Gate: No evaluated predictions yet - allowing all symbols")
+            LOGGER.info("⚠️  Performance Gate: No evaluated predictions yet - keeping existing state")
             with _cache_lock:
-                _gate_cache.clear()
-                _killed_symbols.clear()
-                _watching_symbols.clear()
                 _last_refresh = time.time()
             return
 
