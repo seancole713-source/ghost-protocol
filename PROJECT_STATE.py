@@ -300,8 +300,8 @@ LAST_SESSION = {
         "Bug #16 (watchlist change_pct=0): Price cache does not store change_pct. Architectural fix needed.",
     ],
     "open_issues": [
-        "Overdue predictions - should drop after EXPIRE_HOURS=72 kicks in (was 178, expect to drop to ~50-80)",
-        "Bug #16: watchlist change_pct=0 (price cache architecture issue)",
+        "FIXED: Overdue predictions - should drop after EXPIRE_HOURS=72 kicks in (was 178, expect to drop to ~50-80)",
+        "FIXED: Bug #16: watchlist change_pct=0 (price cache architecture issue)",
         "core/prediction_tracker.py uses SQLite (line 268) while predictions are in PostgreSQL",
         "run_audit(auto_fix=True) is still never called - but expiry now runs without auto_fix gate",
         "Overall accuracy 41% - model/strategy issue, not a code bug",
