@@ -1555,10 +1555,11 @@ class PostgresBackend:
                 LEFT JOIN ghost_prediction_outcomes o ON p.id = o.prediction_id
                 WHERE o.prediction_id IS NULL
                   AND (p.run_at + (p.horizon_h * 3600)) <= %s
-                ORDER BY p.run_at
+                  AND p.run_at > %s
+                ORDER BY p.run_at DESC
                 LIMIT 100
                 """,
-                (now,),
+                            (now, now - 30 * 86400),
             )
             
             rows = cursor.fetchall()
