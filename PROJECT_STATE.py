@@ -317,7 +317,7 @@ LAST_SESSION = {
         "Check health score after EXPIRE_HOURS=72 deployment - overdue count should drop significantly",
         "Fix core/prediction_tracker.py SQLite->PostgreSQL mismatch (root cause of stuck evals)",
         "Consider adding a background task that calls run_audit(auto_fix=True) periodically",
-        "Bug #16: Add change_pct to price cache data structure",
+        "Bug #16: Add change_pct to price cache data structure",  # DONE (Session 4)
         "Update HANDOFF.md to mark bugs #25, #27, #29 as FIXED",  # DONE (Session 4)
         "Always update this file (PROJECT_STATE.py) after completing work",
     ],
