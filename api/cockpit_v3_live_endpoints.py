@@ -1885,6 +1885,7 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
                         LOGGER.warning(f"Failed to add curated news: {e}")
                 
                 return {
+                    "ok": True,
                     "items": items,
                     "count": len(items),
                     "timestamp": time.time(),
@@ -1940,6 +1941,7 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
                 })
             
             return {
+                "ok": True,
                 "items": items,
                 "count": len(items),
                 "timestamp": time.time()
@@ -1986,6 +1988,7 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
                     })
                 
                 return {
+                    "ok": True,
                     "items": items,
                     "count": len(items),
                     "timestamp": time.time()
@@ -2035,6 +2038,7 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
                     if items:
                         LOGGER.info(f"News fallback: Generated {len(items)} items from predictions")
                         return {
+                            "ok": True,
                             "items": items,
                             "count": len(items),
                             "timestamp": time.time(),
@@ -2047,6 +2051,7 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
                 LOGGER.info("News feed: All dynamic sources failed, returning curated market intelligence")
                 fallback_articles = get_fallback_news(limit=min(limit, 20))
                 return {
+                    "ok": True,
                     "items": fallback_articles,
                     "count": len(fallback_articles),
                     "timestamp": time.time(),
@@ -2059,6 +2064,7 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
         try:
             fallback_articles = get_fallback_news(limit=20)
             return {
+                "ok": True,
                 "items": fallback_articles,
                 "count": len(fallback_articles),
                 "timestamp": time.time(),
