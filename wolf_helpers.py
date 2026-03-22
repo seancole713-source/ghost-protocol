@@ -9496,24 +9496,38 @@ def _fetch_price_yfinance(symbol: str) -> tuple[float | None, float | None, str]
 
 
 def _fetch_price_yahoo_http(symbol: str) -> tuple[float | None, float | None, str]:
-    """Lightweight Yahoo Finance HTTP quote API (no yfinance dependency).
+    """Lightweight Yahoo Finance HTTP chart API (bypasses rate limits with User-Agent).
     Returns (price, prev_close, provider_label). Provider label: 'yahoo'.
+    
+    FIX: Changed from query1/v7/quote (429 rate limit) to query2/v8/chart (works reliably).
+    Added User-Agent header to bypass Yahoo's aggressive rate limiting.
     """
     try:
         t0 = time.perf_counter()
-        url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol.upper()}"
+        # Use v8 chart API on query2 domain - more reliable than v7 quote API
+        url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol.upper()}?interval=1d&range=1d"
+        
+        # Add User-Agent header to avoid 429 rate limit errors
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
         if _OTEL_TRACER is not None:
             with _OTEL_TRACER.start_as_current_span("provider.yahoo_http.get"):  # type: ignore[attr-defined]
-                r = _http_get(url, timeout=30)
+                r = _http_get(url, headers=headers, timeout=5)
         else:
-            r = _http_get(url, timeout=30)
+            r = _http_get(url, headers=headers, timeout=5)
         r.raise_for_status()
         data = r.json() or {}
-        result = (data.get("quoteResponse") or {}).get("result") or []
+        
+        # Parse v8 chart API response structure
+        chart = data.get("chart") or {}
+        result = (chart.get("result") or [])[0] if chart.get("result") else None
         if result:
-            q = result[0] or {}
-            p = q.get("regularMarketPrice")
-            pc = q.get("regularMarketPreviousClose")
+            meta = result.get("meta") or {}
+            p = meta.get("regularMarketPrice")
+            # Try multiple fields for previous close (API naming varies)
+            pc = meta.get("chartPreviousClose") or meta.get("previousClose") or meta.get("regularMarketPreviousClose")
             price = float(p) if p is not None else None
             prev = float(pc) if pc is not None else None
             if (price and price > 0) or (prev and prev > 0):
