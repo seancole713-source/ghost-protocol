@@ -602,7 +602,7 @@ function renderHistory() {
     }
     
     const streakStr = currentStreak > 0 
-        ? `${currentStreak} ${streakType === 'win' ? 'win' : 'loss'}${currentStreak > 1 ? 's' : ''} in a row`
+        ? `${currentStreak} ${streakType === 'win' ? 'win' : 'loss'}${currentStreak > 1 ? 'es' : ''} in a row`
         : 'No active streak';
 
     setText('hist-total', _history.length);
