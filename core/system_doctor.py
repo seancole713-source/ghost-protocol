@@ -113,9 +113,24 @@ def _check_price_feed() -> dict[str, Any]:
                 try:
                     if market == "crypto":
                         from core.crypto.crypto_providers import get_crypto_price_quorum
-                        result = get_crypto_price_quorum(symbol)
-                        if result and result.get("price"):
-                            return (result["price"],)
+                        # CRITICAL FIX (Mar 22, 2026): get_crypto_price_quorum is ASYNC
+                        # Previous code was calling it synchronously, causing coroutine error
+                        # This is why crypto feeds showed as failing (1/3 responding)
+                        loop = None
+                        try:
+                            loop = asyncio.get_running_loop()
+                        except RuntimeError:
+                            pass
+                        
+                        if loop and loop.is_running():
+                            # Already in async context - can't use run_until_complete
+                            # Return None to skip this check (will be handled by async health check)
+                            return None
+                        else:
+                            # Not in async context - safe to create new loop
+                            result = asyncio.run(get_crypto_price_quorum(symbol))
+                            if result and result.get("price"):
+                                return (result["price"],)
                     else:
                         # FIX (Step 8, Mar 18 2026): Try multiple stock providers
                         # to avoid false "partial outage" when just one provider is slow.
