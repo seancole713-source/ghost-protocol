@@ -1170,7 +1170,7 @@ function renderNewsFeed() {
         const title = a.title || a.headline || 'Untitled';
         const url = a.url || a.link || '#';
         const time = fmtTimeAgo(a.published_at || a.timestamp || a.published);
-        const sent = (a.sentiment || 'neutral').toLowerCase();
+        const sent = (typeof a.sentiment === 'number' ? (a.sentiment < 0 ? 'bearish' : a.sentiment > 0 ? 'bullish' : 'neutral') : (a.sentiment || 'neutral')).toLowerCase();
         const sentClass = sent === 'bullish' ? 'bullish' : sent === 'bearish' ? 'bearish' : 'neutral';
 
         // Try to extract relevant symbols from title
