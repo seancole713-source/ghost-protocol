@@ -21,6 +21,7 @@ Severity levels:
   - fail: Broken, immediate action required
 """
 
+import asyncio
 import logging
 import os
 import time
