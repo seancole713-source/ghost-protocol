@@ -362,8 +362,13 @@ async def _on_startup():
     except Exception as e:
         LOGGER.error(f"calibration_autobuilder_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
-    # NOTE: Auto-prediction loop is started in wolf_helpers.py initialization
-    # Do NOT start it here to avoid duplicate loop instances
+    # Start auto-prediction loop (CRITICAL - without this, no predictions are generated)
+    try:
+        from core.auto_prediction_loop import start_auto_prediction_loop
+        start_auto_prediction_loop()
+        LOGGER.info("[GHOST STARTUP] Auto-prediction loop started")
+    except Exception as e:
+        LOGGER.error(f"auto_prediction_loop_start_failed: {e}", extra={"component": "startup"}, exc_info=True)
 
     # Stage 3: Initialize Continuous Improvement System
     if STAGE3_ENABLED:
