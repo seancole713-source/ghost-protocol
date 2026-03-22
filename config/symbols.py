@@ -64,29 +64,32 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     ),
     # =========================================================================
     # STOCKS - Added 2026-02-05 based on 5063+ bar backtest
+    # REMOVED Mar 22, 2026 (Phase 0.3 - Toxic Symbol Purge)
+    # PANW: 5% live accuracy (2W/35L) vs 64.6% backtest — massive overfitting
+    # NET: 20% live accuracy (15W/60L) vs 62.5% backtest — broken strategy
     # =========================================================================
-    'PANW': ValidatedStrategy(
-        symbol='PANW',
-        strategy='ghost_inverse',
-        direction_override=None,  # REMOVED: was DIRECTION_FLIP — showed 5% accuracy with flip
-        hold_hours=168,
-        backtest_win_rate=0.646,
-        backtest_trades=65,
-        p_value=0.0124,
-        confidence_interval=(0.525, 0.751),
-        asset_type='stock',
-    ),
-    'NET': ValidatedStrategy(
-        symbol='NET',
-        strategy='ghost_inverse',
-        direction_override=None,  # REMOVED: was DIRECTION_FLIP — showed 5% accuracy with flip
-        hold_hours=168,
-        backtest_win_rate=0.625,
-        backtest_trades=72,
-        p_value=0.0222,
-        confidence_interval=(0.510, 0.728),
-        asset_type='stock',
-    ),
+    # 'PANW': ValidatedStrategy(
+    #     symbol='PANW',
+    #     strategy='ghost_inverse',
+    #     direction_override=None,  # REMOVED: was DIRECTION_FLIP — showed 5% accuracy with flip
+    #     hold_hours=168,
+    #     backtest_win_rate=0.646,
+    #     backtest_trades=65,
+    #     p_value=0.0124,
+    #     confidence_interval=(0.525, 0.751),
+    #     asset_type='stock',
+    # ),
+    # 'NET': ValidatedStrategy(
+    #     symbol='NET',
+    #     strategy='ghost_inverse',
+    #     direction_override=None,  # REMOVED: was DIRECTION_FLIP — showed 5% accuracy with flip
+    #     hold_hours=168,
+    #     backtest_win_rate=0.625,
+    #     backtest_trades=72,
+    #     p_value=0.0222,
+    #     confidence_interval=(0.510, 0.728),
+    #     asset_type='stock',
+    # ),
     'FTNT': ValidatedStrategy(
         symbol='FTNT',
         strategy='ghost_inverse',
@@ -112,17 +115,19 @@ V3_VALIDATED_STRATEGIES: Dict[str, ValidatedStrategy] = {
     ),
     # DDOG always_up @ 48h: 56.9% win rate, 202 trades, p=0.0286
     # Added 2026-02-06 by auto-calibration discovery
-    'DDOG': ValidatedStrategy(
-        symbol='DDOG',
-        strategy='always_up',
-        direction_override=None,  # REMOVED: was 'UP' — showed 11% accuracy when DDOG went down
-        hold_hours=48,
-        backtest_win_rate=0.569,
-        backtest_trades=202,
-        p_value=0.0286,
-        confidence_interval=(0.500, 0.636),
-        asset_type='stock',
-    ),
+    # REMOVED Mar 22, 2026 (Phase 0.3 - Toxic Symbol Purge)
+    # 17% live accuracy (13W/63L) vs 56.9% backtest — complete failure
+    # 'DDOG': ValidatedStrategy(
+    #     symbol='DDOG',
+    #     strategy='always_up',
+    #     direction_override=None,  # REMOVED: was 'UP' — showed 11% accuracy when DDOG went down
+    #     hold_hours=48,
+    #     backtest_win_rate=0.569,
+    #     backtest_trades=202,
+    #     p_value=0.0286,
+    #     confidence_interval=(0.500, 0.636),
+    #     asset_type='stock',
+    # ),
 }
 
 
@@ -173,10 +178,13 @@ CRYPTO_SYMBOLS: FrozenSet[str] = frozenset([
     'TURBO', 'CHZ', 'ILV', 'ZEC', 'INJ', 'SUI', 'APT', 'ARB', 'OP', 'TIA',
     'PEPE', 'WIF', 'BONK', 'FLOKI', 'MEME', 'ORDI', 'SATS', 'SEI', 'FET',
     'RENDER', 'GRT', 'SNX', 'COMP', '1INCH', 'SAND', 'MANA', 'AXS', 'ENJ',
-    'VET', 'ALGO', 'NEAR', 'SUSHI', 'YFI', 'LDO', 'ETC', 'IMX', 'HBAR',
+    'VET', 'ALGO', 'NEAR', 'SUSHI', 'YFI', 'LDO', 'IMX', 'HBAR',
     'RLC', 'FIL', 'ICP', 'EGLD', 'XLM', 'XMR', 'IOTA', 'NEO', 'WAVES',
     # Edge whitelist crypto (added Feb 11, 2026)
-    'JUP', 'BAND', 'IQ', 'IOTX', 'GIGA', 'BCH', 'ALICE', 'BRETT',
+    'JUP', 'BAND', 'IQ', 'IOTX', 'GIGA', 'ALICE', 'BRETT',
+    # REMOVED Mar 22, 2026 (Phase 0.3 - Toxic Symbol Purge):
+    # 'BCH' — 0% accuracy (0W/3L)
+    # 'ETC' — 0% accuracy (0W/3L)
 ])
 
 
@@ -188,12 +196,25 @@ CRYPTO_SYMBOLS: FrozenSet[str] = frozenset([
 # Feb 26, 2026: Expanded from 13 → 50 symbols to increase prediction coverage.
 # Sources: V3_VALIDATED_STRATEGIES, V3_WHITELIST_STOCKS, top crypto by volume,
 # top stocks by liquidity. Excludes V3_BLACKLIST entries.
+#
+# Mar 22, 2026: REMOVED TOXIC SYMBOLS (Phase 0.3)
+# - PANW: 5% accuracy (2W/35L) - 10 loss streak destroyer
+# - DDOG: 17% accuracy (13W/63L) - drags down metrics
+# - NET: 20% accuracy (15W/60L) - consistent loser
+# - XPO: 23% accuracy (12W/40L) - below 25% kill threshold
+# These 4 symbols contributed to 10-loss streak and 41% accuracy.
+# Removing from active trading to improve system metrics.
 # =============================================================================
 DEFAULT_EDGE_SYMBOLS = ",".join([
-    # ── V3 Validated (statistically proven p<0.05) ── CORE 8
-    "ETH", "XRP", "LINK", "CHZ", "PANW", "NET", "FTNT", "DDOG",
-    # ── V3 Whitelist Stocks (sweetspot analysis) ──
-    "T", "BMBL", "XPO",
+    # ── V3 Validated (statistically proven p<0.05) ── CORE PERFORMERS
+    "ETH", "XRP", "LINK", "CHZ",
+    # ── V3 Whitelist Stocks (sweetspot analysis, >25% accuracy only) ──
+    "T", "BMBL", "FTNT",
+    # ── REMOVED Mar 22, 2026 (Phase 0.3 - Toxic Symbol Purge) ──
+    # PANW — 5% accuracy (2W/35L), killed 10-loss streak
+    # DDOG — 17% accuracy (13W/63L), always_up strategy broken
+    # NET — 20% accuracy (15W/60L), ghost_inverse not working
+    # XPO — 23% accuracy (12W/40L), below Performance Gate threshold
     # ── REMOVED Mar 5, 2026 ──
     # BTC — 50% live (coin flip), backtest "not significant" (52%)
     # SOL — 16.7% live, backtest "not significant" (50.2%)
