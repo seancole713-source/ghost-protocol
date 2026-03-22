@@ -189,6 +189,7 @@ def register_middleware(APP):
             "/api/money-game/",
             "/api/xray",
             "/api/doctor",
+            "/api/accuracy/",  # FIX: Allow cockpit to fetch accuracy trends
             "/alerts/",
             "/api/debug/crypto-check/",
             "/static/",
