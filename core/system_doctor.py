@@ -112,10 +112,17 @@ def _check_price_feed() -> dict[str, Any]:
             def _fallback_price(symbol, market):
                 try:
                     if market == "crypto":
-                        from core.crypto.crypto_providers import get_crypto_price_quorum
-                        result = get_crypto_price_quorum(symbol)
-                        if result and result.get("price"):
-                            return (result["price"],)
+                        # FIX: get_crypto_price_quorum is async — cannot call synchronously.
+                        # Use simple HTTP request to CoinGecko for health check instead.
+                        import requests as _req
+                        _cg_ids = {"BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana"}
+                        _cg_id = _cg_ids.get(symbol, symbol.lower())
+                        _r = _req.get(f"https://api.coingecko.com/api/v3/simple/price?ids={_cg_id}&vs_currencies=usd", timeout=5)
+                        if _r.status_code == 200:
+                            _data = _r.json()
+                            _price = _data.get(_cg_id, {}).get("usd", 0)
+                            if _price and _price > 0:
+                                return (_price,)
                     else:
                         # FIX (Step 8, Mar 18 2026): Try multiple stock providers
                         # to avoid false "partial outage" when just one provider is slow.
