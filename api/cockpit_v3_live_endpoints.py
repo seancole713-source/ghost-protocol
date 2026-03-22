@@ -2099,17 +2099,20 @@ async def get_watchlist():
             
             # If watchlist is empty, auto-initialize with defaults
             if not tickers or len(tickers) == 0:
-                LOGGER.warning("Smart Watcher empty - auto-initializing with 25 default symbols")
-                default_symbols = [
-                    "WOLF",  # VIP
-                    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",  # Stocks
-                    "AMD", "NFLX", "DIS", "BA", "JPM", "V", "MA",
-                    "BTC", "ETH", "SOL", "BNB", "XRP",  # Crypto
-                    "ADA", "AVAX", "DOT", "MATIC", "LINK"
-                ]
-                for sym in default_symbols:
+                LOGGER.warning("Smart Watcher empty - auto-initializing with EDGE_SYMBOLS")
+                # Use EDGE_SYMBOLS as the source of truth for default watchlist
+                try:
+                    from config.symbols import get_edge_set
+                    edge_symbols = sorted(get_edge_set())
+                except ImportError:
+                    # Fallback to hardcoded list if config unavailable
+                    edge_symbols = ["ETH", "XRP", "LINK", "CHZ", "T", "BMBL", "FTNT"]
+                
+                # Add all EDGE symbols to watchlist
+                for sym in edge_symbols:
                     try:
                         watcher.add_ticker(sym)
+                        LOGGER.info(f"Added {sym} to watchlist (EDGE symbol)")
                     except Exception as e:
                         LOGGER.debug(f"Failed to add ticker {sym}: {e}")
                 tickers = watcher.get_watchlist()
@@ -2372,10 +2375,48 @@ async def _get_watchlist_enriched_core():
         # Filter out exceptions and None values
         valid_items = [item for item in enriched_items if item and not isinstance(item, Exception)]
         
+        # Add latest predictions to each item (Phase 2.1 - Stocks/Crypto tabs need predictions)
+        try:
+            from core.prediction_store import get_latest_predictions
+            latest_preds = await get_latest_predictions(limit=100)  # Get recent predictions
+            
+            # Build lookup map: symbol -> prediction
+            pred_map = {}
+            for pred in latest_preds:
+                sym = pred.get("symbol")
+                if sym and sym not in pred_map:  # Keep only the latest for each symbol
+                    pred_map[sym] = {
+                        "direction": pred.get("direction", "HOLD"),
+                        "confidence": pred.get("confidence", 0),
+                        "predicted_at": pred.get("predicted_at"),
+                        "status": pred.get("status", "active")
+                    }
+            
+            # Attach predictions to items
+            for item in valid_items:
+                sym = item.get("symbol")
+                if sym in pred_map:
+                    item["prediction"] = pred_map[sym]
+                    # Also add flat fields for backwards compat
+                    item["ghost_direction"] = pred_map[sym]["direction"]
+                    item["ghost_confidence"] = pred_map[sym]["confidence"]
+                else:
+                    # No prediction available
+                    item["prediction"] = {"direction": "HOLD", "confidence": 0}
+                    item["ghost_direction"] = "HOLD"
+                    item["ghost_confidence"] = 0
+        except Exception as e:
+            LOGGER.warning(f"Failed to fetch predictions for watchlist: {e}")
+            # Continue without predictions if fetch fails
+            for item in valid_items:
+                item["prediction"] = {"direction": "HOLD", "confidence": 0}
+                item["ghost_direction"] = "HOLD"
+                item["ghost_confidence"] = 0
+        
         return {
             "ok": True,
             "items": valid_items,
-            "count": len(enriched_items),
+            "count": len(valid_items),
             "timestamp": time.time()
         }
     except Exception as e:
