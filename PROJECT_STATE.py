@@ -2,7 +2,7 @@
 PROJECT_STATE.py — Ghost Protocol Self-Updating Project Briefing
 =================================================================
 Generated: 2026-03-19
-Last Updated: 2026-03-21 23:30 UTC (Session 6 - COMPLETE - ALL 6 PHASES AT 100%)
+Last Updated: 2026-03-22 12:00 UTC (Session 7 - AUDITOR FIXES - 4 root cause commits)
 Author: Browser Automation Agent (Claude)
 
 READ THIS FILE FIRST before making any changes to Ghost Protocol.
@@ -793,4 +793,107 @@ NEXT AGENT PRIORITY:
   3. Verify News tab shows articles (was empty before)
   4. Fix health check to test feeds correctly (don't break predictions again!)
   5. Investigate watchlist prediction pipeline (why HOLD/0% when preds exist?)
+"""
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SECTION 12: MARCH 22, 2026 — AUDITOR-TO-FIXER SESSION
+# ═══════════════════════════════════════════════════════════════════
+# Agent: Claude Opus 4.6 (promoted from read-only auditor to fixer by owner)
+# Date: 2026-03-22
+# Method: Browser console debugging, GitHub code edits, live dashboard verification
+# Role Change: Owner said "fix the code yourself, you have access to everything"
+# ═══════════════════════════════════════════════════════════════════
+
+MARCH_22_AUDITOR_FIXES = """
+CONTEXT:
+  Previous agents claimed 10/10 but system was broken. Owner assigned me as
+  read-only auditor to verify agent claims. After multiple failed agent fixes,
+  owner promoted me to fixer role with direct code access.
+
+  Agent's commit f12c8e4 correctly added start_auto_prediction_loop() to startup.py,
+  but then commit 6cd30fb REVERTED it with a misleading comment claiming
+  "Auto-prediction loop is started in wolf_helpers.py initialization" — FALSE.
+  wolf_helpers.py has NO such code. This revert killed the entire prediction engine.
+
+FIXES COMMITTED (4 total):
+
+  FIX 1: News tab crash — sentiment is number not string
+    Commit: (cockpit_v5.js line 1173)
+    Root Cause: API returns sentiment as float (-1.0 to 1.0) but JS called
+                .toLowerCase() on it, causing TypeError that crashed renderNewsFeed()
+    Fix: Convert numeric sentiment to string label (bearish/bullish/neutral)
+    Verified: News tab now shows 10 articles with correct BEARISH/BULLISH labels
+
+  FIX 2: Accuracy trends SQL error — DATE(bigint) does not exist
+    Commit: (routes/accuracy_trends.py)
+    Root Cause: predicted_at stored as Unix epoch (bigint) but SQL used DATE()
+                which expects timestamp type, causing function signature error
+    Fix: Changed DATE(predicted_at) to DATE(to_timestamp(predicted_at))
+         Changed DATE_TRUNC('week', predicted_at) to DATE_TRUNC('week', to_timestamp(predicted_at))
+    Verified: API endpoint returns 200 (was returning SQL error in response body)
+
+  FIX 3: Chart.js crash blocking entire loadAll() function
+    Commit: (cockpit_v5.js lines 166 and 1414)
+    Root Cause: renderAccuracyChart() calls Chart.js but the library script tag
+                is not in the HTML template. The uncaught ReferenceError crashed
+                loadAll() BEFORE renderNewsFeed() could run, making News tab blank.
+    Fix: Wrapped renderAccuracyChart() in try-catch so Chart.js absence doesn't
+         block other dashboard components from loading
+    Verified: Console shows warning instead of crash, News/other tabs load correctly
+
+  FIX 4: Prediction loop NEVER STARTED — ROOT CAUSE of dead predictions
+    Commit: 34a0263 (engines/startup.py)
+    Root Cause: start_auto_prediction_loop() defined in core/auto_prediction_loop.py
+                but NEVER CALLED from anywhere in the codebase. Agent's revert (6cd30fb)
+                replaced the call with a false comment claiming wolf_helpers.py handles it.
+    Fix: Replaced misleading comment with actual startup call:
+         from core.auto_prediction_loop import start_auto_prediction_loop
+         start_auto_prediction_loop()
+         Wrapped in try/except so startup cannot crash if loop fails.
+    Verified: Server started successfully (8+ min uptime, no crash).
+              Predictions went from "0 in cache" to "3 preds" (restored from DB).
+              Full prediction cycle pending (Sunday = markets closed).
+
+DASHBOARD STATE AFTER ALL FIXES:
+  Health Score:    67.5/100 (was 60.5 before fixes, was 74.5 before agent broke it)
+  Predictions:    3 preds, 14.3h ago — STALE (loop just restarted, Sunday no markets)
+  News Tab:       10 articles showing with BEARISH/BULLISH labels (was empty)
+  Accuracy API:   200 OK (was returning SQL error)
+  Ticker Bar:     Live data (S&P, DOW, NASDAQ, BTC, ETH, VIX)
+  Status:         LIVE (green indicator)
+  Stocks:         AAPL $247.99, NVDA $172.70, WOLF $16.32 (prices OK, signals HOLD)
+  Crypto:         BTC $68,741, ETH $2,081 (prices OK, signals pending prediction cycle)
+  P&L Chart:      Working
+  Database:       1488 predictions stored
+
+REMAINING TODO (prioritized):
+
+  PRIORITY 1 — CRITICAL (affects core functionality):
+    [ ] Verify prediction loop generates fresh predictions when markets open Monday
+    [ ] If predictions still stale after market hours, investigate auto_prediction_loop
+        cycle timing and _is_market_hours() logic
+
+  PRIORITY 2 — HIGH (visible on dashboard):
+    [ ] Add Chart.js script tag to cockpit HTML template so accuracy trends chart renders
+        File: templates/cockpit.html (or wherever the HTML template lives)
+        Need: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    [ ] Fix price feeds health check (shows 1/3 but feeds actually work)
+        File: core/system_doctor.py lines 107-165
+        Root cause: _check_price_feed() calls async function synchronously
+    [ ] Fix watchlist prediction pipeline (HOLD/-- despite predictions existing)
+        File: api/cockpit_v3_live_endpoints.py (watchlist enrichment)
+        Trace: prediction -> wolf_app._LATEST_PREDICTIONS -> watchlist display
+
+  PRIORITY 3 — MEDIUM (cosmetic/data quality):
+    [ ] Fix History tab typo: "10 losss in a row" -> "10 losses in a row"
+    [ ] Wire up AI Memory (currently "0 entries in ring")
+    [ ] Investigate 24h accuracy showing 0%
+    [ ] Edge symbols missing: DDOG, NET, PANW, XPO
+    [ ] Low accuracy symbols need learning brain attention (DDOG 17.1%)
+
+  PRIORITY 4 — LOW (nice to have):
+    [ ] Update LINES count in startup.py header (was ~911, now ~916)
+    [ ] Remove/update stale agent session notes in earlier sections
+    [ ] Add automated smoke tests for critical paths
 """
