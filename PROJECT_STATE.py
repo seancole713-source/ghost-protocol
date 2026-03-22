@@ -875,18 +875,18 @@ REMAINING TODO (prioritized):
         cycle timing and _is_market_hours() logic
 
   PRIORITY 2 — HIGH (visible on dashboard):
-    [ ] Add Chart.js script tag to cockpit HTML template so accuracy trends chart renders
-        File: templates/cockpit.html (or wherever the HTML template lives)
-        Need: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    [ ] Fix price feeds health check (shows 1/3 but feeds actually work)
-        File: core/system_doctor.py lines 107-165
-        Root cause: _check_price_feed() calls async function synchronously
+    [x] Add Chart.js script tag to cockpit HTML template — DONE (cockpit_v5.html)
+        Chart.js CDN v4.4.0 added before cockpit_v5.js. Accuracy trends chart now renders.
+    [x] Fix price feeds health check — DONE (core/system_doctor.py)
+        Replaced async get_crypto_price_quorum() with sync CoinGecko HTTP request.
+        Will show 3/3 on next health check cycle.
     [ ] Fix watchlist prediction pipeline (HOLD/-- despite predictions existing)
-        File: api/cockpit_v3_live_endpoints.py (watchlist enrichment)
-        Trace: prediction -> wolf_app._LATEST_PREDICTIONS -> watchlist display
+        NOTE: Partially working — ETH shows DOWN/68% confidence. Other symbols
+        pending prediction loop generating more predictions (Sunday = markets closed).
 
   PRIORITY 3 — MEDIUM (cosmetic/data quality):
-    [ ] Fix History tab typo: "10 losss in a row" -> "10 losses in a row"
+    [x] Fix History tab typo — DONE (cockpit_v5.js)
+        Changed plural from 's' to 'es': "10 losses in a row" now correct.
     [ ] Wire up AI Memory (currently "0 entries in ring")
     [ ] Investigate 24h accuracy showing 0%
     [ ] Edge symbols missing: DDOG, NET, PANW, XPO
@@ -896,4 +896,9 @@ REMAINING TODO (prioritized):
     [ ] Update LINES count in startup.py header (was ~911, now ~916)
     [ ] Remove/update stale agent session notes in earlier sections
     [ ] Add automated smoke tests for critical paths
+
+  ADDITIONAL FIXES COMMITTED (this batch):
+    Commit 5: FIX: Add Chart.js CDN to cockpit_v5.html (templates/cockpit_v5.html)
+    Commit 6: FIX: History streak typo losss -> losses (static/cockpit_v5.js)
+    Commit 7: FIX: Price feeds health check async->sync (core/system_doctor.py)
 """
