@@ -43,13 +43,13 @@ async def api_accuracy_trends(days: int = 30):
             # Daily accuracy trends
             cur.execute("""
                 SELECT 
-                    DATE(predicted_at) as date,
+                    DATE(to_timestamp(predicted_at)) as date,
                     COUNT(*) as total,
                     SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as correct
                 FROM ghost_predictions
                 WHERE correct IS NOT NULL
-                  AND predicted_at > to_timestamp(%s)
-                GROUP BY DATE(predicted_at)
+                  AND predicted_at > %s
+                GROUP BY DATE(to_timestamp(predicted_at))
                 ORDER BY date DESC
                 LIMIT %s
             """, (cutoff_ts, days))
@@ -68,13 +68,13 @@ async def api_accuracy_trends(days: int = 30):
             # Weekly accuracy trends  
             cur.execute("""
                 SELECT 
-                    DATE_TRUNC('week', predicted_at) as week_start,
+                    DATE_TRUNC('week', to_timestamp(predicted_at)) as week_start,
                     COUNT(*) as total,
                     SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as correct
                 FROM ghost_predictions
                 WHERE correct IS NOT NULL
-                  AND predicted_at > to_timestamp(%s)
-                GROUP BY DATE_TRUNC('week', predicted_at)
+                  AND predicted_at > %s
+                GROUP BY DATE_TRUNC('week', to_timestamp(predicted_at))
                 ORDER BY week_start DESC
                 LIMIT 12
             """, (cutoff_ts,))
@@ -97,7 +97,7 @@ async def api_accuracy_trends(days: int = 30):
                     SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as correct
                 FROM ghost_predictions
                 WHERE correct IS NOT NULL
-                  AND predicted_at > to_timestamp(%s)
+                  AND predicted_at > %s
             """, (cutoff_ts,))
             
             total, correct = cur.fetchone()
