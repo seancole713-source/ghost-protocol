@@ -2431,20 +2431,28 @@ async def _get_watchlist_enriched_core():
         
         # Add latest predictions to each item (Phase 2.1 - Stocks/Crypto tabs need predictions)
         try:
-            from core.prediction_store import get_latest_predictions
-            latest_preds = await get_latest_predictions(limit=100)  # Get recent predictions
+            from wolf_app import _LATEST_PREDICTIONS
+            latest_preds_dict = dict(_LATEST_PREDICTIONS or {})
             
             # Build lookup map: symbol -> prediction
             pred_map = {}
-            for pred in latest_preds:
-                sym = pred.get("symbol")
-                if sym and sym not in pred_map:  # Keep only the latest for each symbol
+            for sym, pred in latest_preds_dict.items():
+                if pred and isinstance(pred, dict):
+                    confidence = pred.get("confidence", 0)
+                    # Convert 0-1 confidence to percentage if needed
+                    if isinstance(confidence, (int, float)) and 0 <= confidence <= 1:
+                        confidence_pct = int(confidence * 100)
+                    else:
+                        confidence_pct = int(confidence) if confidence else 0
+                    
                     pred_map[sym] = {
                         "direction": pred.get("direction", "HOLD"),
-                        "confidence": pred.get("confidence", 0),
-                        "predicted_at": pred.get("predicted_at"),
-                        "status": pred.get("status", "active")
+                        "confidence": confidence_pct,
+                        "predicted_at": pred.get("run_at") or pred.get("timestamp"),
+                        "status": "active"
                     }
+            
+            LOGGER.info(f"Watchlist enrichment: {len(pred_map)} predictions loaded from _LATEST_PREDICTIONS")
             
             # Attach predictions to items
             for item in valid_items:
@@ -2454,13 +2462,15 @@ async def _get_watchlist_enriched_core():
                     # Also add flat fields for backwards compat
                     item["ghost_direction"] = pred_map[sym]["direction"]
                     item["ghost_confidence"] = pred_map[sym]["confidence"]
+                    LOGGER.debug(f"Attached prediction to {sym}: {pred_map[sym]['direction']} @ {pred_map[sym]['confidence']}%")
                 else:
                     # No prediction available
                     item["prediction"] = {"direction": "HOLD", "confidence": 0}
                     item["ghost_direction"] = "HOLD"
                     item["ghost_confidence"] = 0
+                    LOGGER.debug(f"No prediction for {sym}")
         except Exception as e:
-            LOGGER.warning(f"Failed to fetch predictions for watchlist: {e}")
+            LOGGER.warning(f"Failed to fetch predictions for watchlist: {e}", exc_info=True)
             # Continue without predictions if fetch fails
             for item in valid_items:
                 item["prediction"] = {"direction": "HOLD", "confidence": 0}

@@ -157,7 +157,7 @@ async function loadAll() {
             return item;
         });
     }
-    if (newsData?.ok) _news = newsData.articles || newsData.feed || [];
+    if (newsData?.ok) _news = newsData.articles || newsData.items || newsData.feed || [];
     if (histData?.ok) _history = histData.trades || [];
     
     // Store accuracy trends for charting (Phase 3.8)
@@ -167,7 +167,7 @@ async function loadAll() {
     }
 
     // ── Status indicator ──
-    setStatus(!!picksData || !!watchData);
+    setStatus((picksData && picksData.ok) || (watchData && watchData.ok));
 
     // ── Picks header ──
     renderPicksHeader();
