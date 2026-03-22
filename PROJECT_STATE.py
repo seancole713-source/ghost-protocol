@@ -692,4 +692,105 @@ SNAPSHOT AT TIME OF AUDIT (2026-03-21 23:50 UTC):
                                                                                                                                                                                                                                                                                                                                                                                     Total realistic time to REAL 10/10: 10-14 days
                                                                                                                                                                                                                                                                                                                                                                                     Critical path: Model retraining (1.1) blocks accuracy targets (4.2)
                                                                                                                                                                                                                                                                                                                                                                                     """
-'''
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SECTION 11: MARCH 22, 2026 SESSION — ROOT CAUSE FIXES
+# ═══════════════════════════════════════════════════════════════════
+# Agent: Claude Sonnet 4.5
+# Start Time: 2026-03-22 07:00 UTC
+# Method: Root cause analysis from Railway deploy logs + live dashboard audit
+# ═══════════════════════════════════════════════════════════════════
+
+MARCH_22_SESSION = """
+INITIAL STATE (from independent auditor):
+  - Prediction loop: WORKING (0.2h fresh) after commit 6cd30fb
+  - Price feeds: 1/3 responding (BTC/ETH fail, AAPL works)
+  - Watchlist predictions: ALL showing HOLD/0% (--) despite fresh predictions
+  - News tab: Empty "No news articles"
+  - Accuracy trends chart: Blank (401 Unauthorized errors)
+  - Health score: 74.5/100 with penalties
+
+FIXES APPLIED:
+
+1. REVERT BROKEN FIX (commit 8f0ab87)
+   Problem: Agent added asyncio.run() wrapper to health check for crypto prices
+            This broke prediction loop startup - predictions went 0.2h → 4.9h stale
+   Action: Reverted commits 4727945 and e501757
+   Files: core/system_doctor.py (reverted async changes)
+   Reason: Railway logs showed price feeds WORK in production (coingecko/coinbase)
+           Health check was testing feeds differently than turbo_provider
+   Status: Prediction loop restored
+   
+2. ACCURACY TRENDS AUTH FIX (commit 027fd7a) ✅
+   Problem: /api/accuracy/trends returned 401 Unauthorized
+            Frontend couldn't fetch data for Accuracy Trends chart
+   Root Cause: Middleware requires Bearer token for all /api/ paths
+               /api/accuracy/ not in PUBLIC_PREFIXES exemption list
+   Solution: Added '/api/accuracy/' to PUBLIC_PREFIXES in engines/middleware.py:193
+   Files: engines/middleware.py (line 193)
+   Impact: Accuracy Trends chart on Health tab should populate
+   Verification: Check live Health tab for populated chart (was blank before)
+
+3. NEWS TAB FIX (commit bacd0e2) ✅
+   Problem: News tab showed "No news articles" despite API returning 200 OK
+            News Brain sidebar showed 5 headlines (working)
+   Root Cause: API endpoint /api/v3/news/feed returned {"items": [...], "count": N}
+               Frontend checks: if (newsData?.ok) _news = newsData.items
+               Missing "ok" field → check fails → _news stays empty
+   Solution: Added "ok": true to all 6 return paths in get_news_feed()
+   Files: api/cockpit_v3_live_endpoints.py (lines 1750-2080)
+          - Ghost AI hybrid response
+          - News routes fallback
+          - World feed fallback
+          - Prediction DB fallback
+          - Ultimate curated fallback
+          - Complete failure fallback
+   Impact: News tab should show 20+ articles (same data News Brain uses)
+   Verification: Check live NEWS tab for articles with sources and sentiment
+
+KNOWN ISSUES REMAINING:
+
+1. PRICE FEED HEALTH CHECK (not fixed yet)
+   Problem: Health shows "1/3 feeds responding" but logs show feeds working
+   Root Cause: Health check tests feeds DIFFERENTLY than turbo_provider
+               - turbo_provider uses async correctly (works in production)
+               - _check_price_feed() calls async get_crypto_price_quorum() synchronously
+               - Returns coroutine object instead of price
+   Files: core/system_doctor.py lines 107-165 (_check_price_feed function)
+   Next Action: Make health check test feeds SAME WAY turbo_provider does
+                Don't modify async/sync - just call turbo_provider functions
+   
+2. WATCHLIST PREDICTION PIPELINE (not investigated yet)
+   Problem: Predictions generated (4 preds, 0.2h fresh) but not displayed
+            Stocks/Crypto tabs show HOLD/0% for all symbols
+   Files: api/cockpit_v3_live_endpoints.py (watchlist enrichment)
+          wolf_app._LATEST_PREDICTIONS global
+   Next Action: Trace pipeline from prediction generation to watchlist display
+
+3. HEALTH SCORE PENALTIES
+   Current: 74.5/100 with -25.5 penalty
+   After fixes 1-2 above, several should auto-resolve:
+   - Price feeds error (if health check fixed)
+   - Stale prediction error (should stay gone)
+   - Edge symbols missing: DDOG, NET, PANW, XPO (add or remove from expected)
+   - Low accuracy symbols: DDOG 17.1% (learning brain should invert/drop)
+   - Stale price cache CHZ (should resolve with price feed fix)
+
+4. MINOR CLEANUP
+   - Typo: "10 losss in a row" → "10 losses in a row"
+   - AI Memory: 0 entries (wire up memory write after predictions)
+   - 24h accuracy: 0% (verify time window filter)
+
+DEPLOYMENT STATUS:
+  Commits: 8f0ab87 (revert), 027fd7a (auth), bacd0e2 (news)
+  Railway: Deployed 2026-03-22 ~07:30 UTC
+  Verification: Pending user confirmation on live dashboard
+  
+NEXT AGENT PRIORITY:
+  1. Verify predictions still fresh (<1h) after revert
+  2. Verify accuracy trends chart populated (was 401 before)
+  3. Verify News tab shows articles (was empty before)
+  4. Fix health check to test feeds correctly (don't break predictions again!)
+  5. Investigate watchlist prediction pipeline (why HOLD/0% when preds exist?)
+"""
