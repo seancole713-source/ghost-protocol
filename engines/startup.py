@@ -362,6 +362,20 @@ async def _on_startup():
     except Exception as e:
         LOGGER.error(f"calibration_autobuilder_start_failed: {e}", extra={"component": "startup"}, exc_info=False)
 
+    # ========================================================================
+    # CRITICAL FIX (Mar 22, 2026): Start Auto-Prediction Loop
+    # PROBLEM: Predictions stale for 702 minutes (nearly 12 hours)
+    # ROOT CAUSE: start_auto_prediction_loop() was never being called!
+    # The function exists in core/auto_prediction_loop.py but wasn't wired
+    # into the startup sequence. This is why predictions never ran.
+    # ========================================================================
+    try:
+        from core.auto_prediction_loop import start_auto_prediction_loop
+        start_auto_prediction_loop()
+        LOGGER.info("[GHOST STARTUP] ✅ Auto-prediction loop started (60-min cycles)")
+    except Exception as e:
+        LOGGER.error(f"auto_prediction_loop_start_failed: {e}", extra={"component": "startup"}, exc_info=True)
+
     # Stage 3: Initialize Continuous Improvement System
     if STAGE3_ENABLED:
         try:
