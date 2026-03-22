@@ -163,7 +163,7 @@ async function loadAll() {
     // Store accuracy trends for charting (Phase 3.8)
     if (trendsData?.ok) {
         window._accuracyTrends = trendsData;
-        renderAccuracyChart();
+        try { renderAccuracyChart(); } catch(e) { console.warn('Accuracy chart unavailable:', e.message); }
     }
 
     // ── Status indicator ──
@@ -1411,7 +1411,7 @@ function renderAccuracyChart() {
             
             if (newData?.ok) {
                 window._accuracyTrends = newData;
-                renderAccuracyChart();
+                try { renderAccuracyChart(); } catch(e) { console.warn('Accuracy chart unavailable:', e.message); }
             }
         });
     }
