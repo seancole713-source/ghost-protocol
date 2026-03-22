@@ -1769,6 +1769,35 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
         # This ensures news tab always has 20+ articles for context
         def get_fallback_news(limit: int = 20):
             """Generate curated market news articles as fallback."""
+            now = time.time()
+            
+            # Try to get real news from intelligence cache first
+            try:
+                from routes.ai_routes import get_intelligence_cache
+                cache = get_intelligence_cache()
+                if cache and cache.get("major_events"):
+                    real_news = []
+                    for i, event in enumerate(cache["major_events"][:limit]):
+                        severity = event.get("severity", "MEDIUM")
+                        sentiment_map = {"CRITICAL": -0.8, "HIGH": -0.5, "MEDIUM": 0.0}
+                        sentiment = sentiment_map.get(severity, 0.0)
+                        
+                        real_news.append({
+                            'headline': event.get("headline", ""),
+                            'timestamp': now - (i * 1800),  # 30 min intervals
+                            'source': 'Market Intelligence',
+                            'sentiment': sentiment,
+                            'url': 'https://ghost-protocol.ai/news',
+                            'symbols': event.get("bearish_symbols", [])[:3] + event.get("bullish_symbols", [])[:3]
+                        })
+                    
+                    if real_news:
+                        LOGGER.info(f"Using {len(real_news)} real events from intelligence cache")
+                        return real_news
+            except Exception as e:
+                LOGGER.debug(f"Could not fetch intelligence cache for news: {e}")
+            
+            # Fallback to curated news if intelligence cache unavailable
             news_items = [
                 {'headline': '📈 Markets Rally as Tech Stocks Lead Gains', 'sentiment': 0.8, 'symbols': ['TECH', 'AAPL', 'NVDA', 'MSFT']},
                 {'headline': '💹 Crypto Market Shows Strong Momentum, BTC Tests New Highs', 'sentiment': 0.7, 'symbols': ['BTC', 'ETH', 'CRYPTO']},
@@ -1844,11 +1873,22 @@ async def get_news_feed(symbol: Optional[str] = None, limit: int = Query(10, ge=
             
             if items:
                 LOGGER.info(f"News feed: Generated {len(items)} items from Ghost predictions")
+                
+                # If only 1-2 items, supplement with curated market news
+                if len(items) < 3:
+                    LOGGER.info("News feed: Only 1-2 prediction items, adding curated market news")
+                    try:
+                        fallback_articles = get_fallback_news(limit=min(limit-len(items), 20))
+                        items.extend(fallback_articles)
+                        LOGGER.info(f"News feed: Added {len(fallback_articles)} curated articles (total now {len(items)})")
+                    except Exception as e:
+                        LOGGER.warning(f"Failed to add curated news: {e}")
+                
                 return {
                     "items": items,
                     "count": len(items),
                     "timestamp": time.time(),
-                    "provider": "ghost_ai"
+                    "provider": "ghost_ai_hybrid"
                 }
         except Exception as e:
             LOGGER.warning(f"Ghost AI news fallback failed: {e}")
